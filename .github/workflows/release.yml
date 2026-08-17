@@ -19,7 +19,7 @@ jobs:
           cache: 'pip'
 
       - name: Cache Heavy Assets (Models & Wheels)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             build/windows/assets/models
@@ -86,7 +86,7 @@ jobs:
           cache: 'pip'
 
       - name: Cache Heavy Assets (Models & Wheels)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             build/macos/assets/models
