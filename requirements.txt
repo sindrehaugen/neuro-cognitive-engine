@@ -54,7 +54,7 @@ rq>=2.0.0
 APScheduler>=3.11.3          # Bridge subscription renewal + dep-audit scheduler
 
 # --- Caching -----------------------------------------------------------------
-cachetools>=7.1.4            # Signing key cache TTL eviction
+cachetools>=7.1.7            # Signing key cache TTL eviction
 
 # --- ML / Embeddings (Poly-Semantic Projection) ------------------------------
 sentence-transformers>=5.6.1
