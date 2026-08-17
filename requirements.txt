@@ -107,7 +107,7 @@ markdown-it-py>=4.2.0
 selectolax>=0.4.0
 striprtf>=0.0.30
 defusedxml>=0.7.1
-nbformat>=5.10.0
+nbformat>=5.11.0
 lxml>=6.0.0
 PyYAML>=6.0.2
 
