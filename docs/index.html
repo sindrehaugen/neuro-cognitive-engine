@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Neuro Cognitive Engine (NCE) | Documentation Portal</title>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+  <meta name="description" content="Technical specifications, architectural blueprints, and operational references for the Neuro Cognitive Engine (NCE).">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
+  
+  <!-- Typography from Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  
+  <!-- Docsify Themeable stylesheet -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify-themeable@0/dist/css/theme-simple-dark.css">
+  
+  <!-- KaTeX CSS for LaTeX math formula rendering -->
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/katex@latest/dist/katex.min.css">
+  
+  <style>
+    /* Design Aesthetics: Premium Dark Mode with Curated HSL Palette */
+    :root {
+      /* Theme variables override */
+      --theme-color: #6366f1; /* Premium Indigo Accent */
+      --theme-color-dark: #4f46e5;
+      
+      /* Colors */
+      --base-background: #090d16;
+      --base-color: #cbd5e1;
+      
+      /* Sidebar styling variables */
+      --sidebar-background: #05080f;
+      --sidebar-border-color: #1e293b;
+      --sidebar-name-color: #f8fafc;
+      --sidebar-name-font-weight: 700;
+      
+      /* Content width rules */
+      --content-max-width: 58rem;
+      
+      /* Fonts */
+      --base-font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --heading-font-family: 'Outfit', sans-serif;
+      --code-font-family: 'Fira Code', monospace;
+      
+      /* Custom UI Overrides */
+      --search-input-background: #0f172a;
+      --search-input-border-color: #1e293b;
+      --search-input-placeholder-color: #64748b;
+      --search-clear-icon-color: #94a3b8;
+      
+      /* Table elements */
+      --table-row-odd-background: #0e1525;
+      --table-cell-border-color: #1e293b;
+    }
+    
+    body {
+      font-family: var(--base-font-family);
+      background-color: var(--base-background);
+      color: var(--base-color);
+      -webkit-font-smoothing: antialiased;
+    }
+    
+    /* Elegant Title and Headers */
+    h1, h2, h3, h4, h5, h6 {
+      font-family: var(--heading-font-family);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+    }
+    
+    /* Custom Sidebar styling */
+    .sidebar {
+      border-right: 1px solid var(--sidebar-border-color);
+      box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
+    }
+    
+    .sidebar-nav li a {
+      font-size: 0.9rem;
+      transition: all 0.2s ease-in-out;
+      border-radius: 6px;
+      padding: 6px 12px;
+      margin: 2px 8px;
+      color: #94a3b8;
+    }
+    
+    .sidebar-nav li a:hover {
+      background: rgba(99, 102, 241, 0.08);
+      color: #a5b4fc !important;
+      padding-left: 16px;
+    }
+    
+    .sidebar-nav li.active > a {
+      background: rgba(99, 102, 241, 0.15) !important;
+      color: #818cf8 !important;
+      font-weight: 600;
+      border-left: 3px solid var(--theme-color) !important;
+    }
+    
+    /* Code block container aesthetics */
+    pre, code {
+      font-family: var(--code-font-family) !important;
+    }
+    
+    pre {
+      background-color: #0c1017 !important;
+      border: 1px solid #1e293b !important;
+      border-radius: 8px !important;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+    }
+    
+    code {
+      background-color: rgba(99, 102, 241, 0.12) !important;
+      color: #c084fc !important;
+      padding: 2px 6px !important;
+      border-radius: 4px !important;
+      font-size: 0.9em !important;
+    }
+    
+    pre code {
+      background-color: transparent !important;
+      color: inherit !important;
+      padding: 0 !important;
+      border-radius: 0 !important;
+    }
+    
+    /* Mermaid diagram container aesthetics */
+    .mermaid {
+      text-align: center;
+      margin: 1.5em 0;
+      background: transparent !important;
+    }
+    
+    /* KaTeX math formula display aesthetics */
+    .katex-display {
+      margin: 1.2em 0;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 0.5em 0;
+    }
+    
+    /* Custom Scrollbar for modern feel */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090d16;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #334155;
+    }
+    
+    /* Navigation Bar */
+    .app-nav {
+      margin: 16px 24px 0 0;
+    }
+    
+    .app-nav a {
+      color: #94a3b8;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    
+    .app-nav a:hover {
+      color: #ffffff;
+    }
+
+    /* Override flexible alerts styling to blend nicely with simple-dark theme */
+    .alert {
+      margin: 1.5em 0 !important;
+      padding: 1em !important;
+      border-left-width: 4px !important;
+      border-radius: 0 6px 6px 0 !important;
+    }
+    .alert.info {
+      background-color: rgba(59, 130, 246, 0.08) !important;
+      border-left-color: #3b82f6 !important;
+      color: #93c5fd !important;
+    }
+    .alert.tip {
+      background-color: rgba(16, 185, 129, 0.08) !important;
+      border-left-color: #10b981 !important;
+      color: #6ee7b7 !important;
+    }
+    .alert.warning {
+      background-color: rgba(245, 158, 11, 0.08) !important;
+      border-left-color: #f59e0b !important;
+      color: #fcd34d !important;
+    }
+    .alert.danger {
+      background-color: rgba(239, 68, 68, 0.08) !important;
+      border-left-color: #ef4444 !important;
+      color: #fca5a5 !important;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">Loading Neuro Cognitive Engine Wiki...</div>
+  
+  <script>
+    window.$docsify = {
+      name: 'NCE Documentation',
+      repo: '',
+      loadSidebar: true,
+      loadNavbar: true,
+      subMaxLevel: 3,
+      auto2top: true,
+      notFoundPage: true,
+      
+      // search configuration
+      search: {
+        maxAge: 86400000,
+        paths: 'auto',
+        placeholder: 'Search specifications...',
+        noData: 'No specifications found.',
+        depth: 6,
+        hideOtherSidebarContent: false
+      },
+      
+      // copy code configuration
+      copyCode: {
+        buttonText : 'Copy code',
+        errorText  : 'Error',
+        successText: 'Copied!'
+      },
+
+      // flexible alerts settings
+      flexibleAlerts: {
+        style: 'flat'
+      }
+    }
+  </script>
+  
+  <!-- Required JS dependencies -->
+  <script src="//cdn.jsdelivr.net/npm/docsify@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify-themeable@0/dist/js/docsify-themeable.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/docsify/lib/plugins/search.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/docsify-copy-code/dist/docsify-copy-code.min.js"></script>
+  <script src="https://unpkg.com/docsify-plugin-flexible-alerts"></script>
+  
+  <!-- KaTeX for LaTeX formula rendering ($$...$$ and $...$) -->
+  <script src="//cdn.jsdelivr.net/npm/katex@latest/dist/katex.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/docsify-katex@latest/dist/docsify-katex.js"></script>
+  
+  <!-- Mermaid for visual diagram rendering -->
+  <script src="//cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script src="//unpkg.com/docsify-mermaid@latest/dist/docsify-mermaid.js"></script>
+  <script>
+    mermaid.initialize({ startOnLoad: false });
+  </script>
+  
+  <!-- Prism components for comprehensive syntax highlighting -->
+  <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-python.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-sql.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-json.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-bash.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-yaml.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-markdown.min.js"></script>
+</body>
+</html>

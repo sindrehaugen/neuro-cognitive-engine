@@ -1,0 +1,19 @@
+deployment_name = "acme-trimcp-dev"
+region            = "eu-west-1"
+environment       = "dev"
+
+vpc_cidr         = "10.10.0.0/16"
+vpn_subnet_cidr  = "10.100.0.0/24"
+webhook_dns_name = "trimcp-webhooks.example.com"
+
+db_size_postgres = "small"
+db_size_mongo    = "small"
+db_size_redis    = "small"
+
+# Replace with your built image after ECR push
+# worker_container_image = "123456789012.dkr.ecr.eu-west-1.amazonaws.com/trimcp-worker:latest"
+
+tags = {
+  owner       = "platform"
+  costcenter  = "engineering"
+}

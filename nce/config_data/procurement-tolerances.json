@@ -1,0 +1,28 @@
+{
+  "_comment": "Config-as-IP: 3-zone match tolerance profiles + GREEN/YELLOW default thresholds. Per Andreas's 3-way-match design: score >= GREEN_THRESHOLD = GREEN, >= YELLOW_THRESHOLD = YELLOW, else RED. Namespace-scoped — each tenant (and per-supplier overlay) tunes its own copy.",
+  "MATCH_TOLERANCE": {
+    "GREEN_THRESHOLD": 115,
+    "YELLOW_THRESHOLD": 70,
+    "zones": {
+      "GREEN": {
+        "label": "GREEN",
+        "min_score": 115,
+        "action": "auto_approve"
+      },
+      "YELLOW": {
+        "label": "YELLOW",
+        "min_score": 70,
+        "action": "manual_review"
+      },
+      "RED": {
+        "label": "RED",
+        "min_score": 0,
+        "action": "reject"
+      }
+    }
+  },
+  "DEFAULT_THRESHOLDS": {
+    "green": 115,
+    "yellow": 70
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "conf_warranty": 0.90,
+  "conf_mount": 0.85,
+  "conf_replacement": 0.95,
+  "conf_accessory_min": 0.50,
+  "conf_accessory_max": 0.80,
+  "min_shared_tokens": 2,
+  "catalog_query_limit": 2000
+}

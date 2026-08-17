@@ -1,0 +1,331 @@
+# NCE v1.0 — prefer repository-root docker-compose.yml (admin + cron + a2a + Caddy).
+#
+# This file remains for alternate port mappings. Shared env: ../compose.stack.env
+#   cd deploy/multiuser && docker compose up -d --build
+
+services:
+  # ---------------------------------------------------------------------------
+  # env-validator: fail-fast init container.
+  # Exits 0 only when all critical variables are present and non-empty.
+  # All application services depend on this completing successfully so that
+  # missing secrets produce an immediate error at boot, not a cryptic runtime
+  # crash minutes later.
+  # ---------------------------------------------------------------------------
+  env-validator:
+    image: busybox:1.36
+    container_name: nce-env-validator
+    env_file:
+      - ../compose.stack.env
+    environment:
+      PG_DSN: postgresql://mcp_user:${POSTGRES_PASSWORD:-mcp_password}@postgres:5432/memory_meta
+    # Each variable is checked; any empty value causes a non-zero exit.
+    # Placeholder dev values that MUST be rotated before production are also
+    # flagged.  Add new required variables here as they are introduced.
+    command: >
+      sh -c '
+        rc=0;
+        for v in
+          NCE_MASTER_KEY
+          NCE_API_KEY
+          NCE_JWT_SECRET
+          NCE_ADMIN_PASSWORD
+          PG_DSN
+          MONGO_URI
+          REDIS_URL
+          MINIO_ENDPOINT
+        ; do
+          val=$(eval echo "\$$v");
+          if [ -z "$val" ]; then
+            echo "[env-validator] FATAL: required variable $v is not set" >&2;
+            rc=1;
+          fi;
+        done;
+        if [ $rc -eq 0 ]; then
+          echo "[env-validator] All required variables present. Boot proceeding.";
+        fi;
+        exit $rc
+      '
+    restart: "no"
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: nce-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: nce-postgres
+    environment:
+      POSTGRES_USER: mcp_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mcp_password}
+      POSTGRES_DB: memory_meta
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ../../nce/schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcp_user -d memory_meta"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:7.0
+    container_name: nce-mongo
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    container_name: nce-minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-mcp_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-super_secure_minio_password}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # [D7] Never bundled in the worker image — HTTP OpenAI-compatible surface on 11435.
+  cognitive:
+    image: ghcr.io/sindrehaugen/nce-cognitive:v1
+    container_name: nce-cognitive
+    ports:
+      - "${COGNITIVE_PORT:-11435}:11435"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11435/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  webhook-receiver:
+    build:
+      context: ../..
+      dockerfile: deploy/multiuser/Dockerfile
+    command:
+      [
+        "uvicorn",
+        "nce.webhook_receiver.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8080",
+      ]
+    container_name: nce-webhooks
+    env_file:
+      - ../compose.stack.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "${WEBHOOK_PORT:-8080}:8080"
+    depends_on:
+      env-validator:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: deploy/multiuser/Dockerfile
+    container_name: nce-worker
+    env_file:
+      - ../compose.stack.env
+    environment:
+      PG_DSN: postgresql://mcp_user:${POSTGRES_PASSWORD:-mcp_password}@postgres:5432/memory_meta
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-mcp_admin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-super_secure_minio_password}
+    # GPU access for re-embedding CUDA operations (Item 49)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      env-validator:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      cognitive:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # APScheduler: bridge renewal, re-embedding sweeps, cognitive maintenance.
+  cron:
+    build:
+      context: ../..
+      dockerfile: deploy/multiuser/Dockerfile
+    command: ["python", "-m", "nce.cron"]
+    container_name: nce-cron
+    env_file:
+      - ../compose.stack.env
+    environment:
+      PG_DSN: postgresql://mcp_user:${POSTGRES_PASSWORD:-mcp_password}@postgres:5432/memory_meta
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-mcp_admin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-super_secure_minio_password}
+    depends_on:
+      env-validator:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      cognitive:
+        condition: service_healthy
+    restart: unless-stopped
+
+  admin:
+    build:
+      context: ../..
+      dockerfile: deploy/multiuser/Dockerfile
+    command:
+      [
+        "uvicorn",
+        "admin_server:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8003",
+      ]
+    container_name: nce-admin
+    env_file:
+      - ../compose.stack.env
+    environment:
+      PG_DSN: postgresql://mcp_user:${POSTGRES_PASSWORD:-mcp_password}@postgres:5432/memory_meta
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-mcp_admin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-super_secure_minio_password}
+    ports:
+      - "${ADMIN_PORT:-8003}:8003"
+    depends_on:
+      env-validator:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8003/healthz')",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  a2a:
+    build:
+      context: ../..
+      dockerfile: deploy/multiuser/Dockerfile
+    command:
+      [
+        "uvicorn",
+        "nce.a2a_server:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8004",
+      ]
+    container_name: nce-a2a
+    env_file:
+      - ../compose.stack.env
+    environment:
+      PG_DSN: postgresql://mcp_user:${POSTGRES_PASSWORD:-mcp_password}@postgres:5432/memory_meta
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-mcp_admin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-super_secure_minio_password}
+    ports:
+      - "${A2A_PORT:-8004}:8004"
+    depends_on:
+      env-validator:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: nce-caddy
+    ports:
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+    volumes:
+      - ../../Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      webhook-receiver:
+        condition: service_healthy
+      admin:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  mongo_data:
+  redis_data:
+  minio_data:
+  caddy_data:
+  caddy_config:

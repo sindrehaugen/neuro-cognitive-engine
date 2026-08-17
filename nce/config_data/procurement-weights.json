@@ -1,0 +1,16 @@
+{
+  "_comment": "Config-as-IP: TCO component weights + supplier scoring weights. Namespace-scoped — each tenant tunes its own copy. No weight constants live in tco.py.",
+  "TCO_WEIGHTS": {
+    "freight": 0.05,
+    "warranty": 0.08,
+    "stock": 0.03,
+    "delivery_risk": 0.04
+  },
+  "SCORING_WEIGHTS": {
+    "tco": 0.40,
+    "delivery_reliability": 0.25,
+    "bid_price": 0.20,
+    "tier_bundling": 0.10,
+    "kickback_proximity": 0.05
+  }
+}

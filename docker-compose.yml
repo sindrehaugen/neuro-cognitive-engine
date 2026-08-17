@@ -1,0 +1,690 @@
+# NCE v1.0 — self-hosted stack (Decision D1).
+# Zero-config boot: deploy/compose.stack.env + optional deploy/compose.stack.env.generated
+# (create via: python scripts/bootstrap-compose-secrets.py — also runs from `make up`).
+#
+#   docker compose up -d --build
+#
+# Ports (host): 5432 Postgres, 27017 Mongo, 6379 Redis, 9002 MinIO S3, 9003 MinIO console,
+# 11435 cognitive, 8003 Admin UI + REST API, 8004 A2A, 8080 webhooks, 80 Caddy (UI + webhooks).
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    container_name: nce-redis
+    # Redis AUTH (security): require a password sourced from ${REDIS_PASSWORD}
+    # (env / secret manager — NEVER a literal here). Clients authenticate via the
+    # credentials embedded in REDIS_URL (redis://:<password>@redis:6379/0).
+    # Follow-up hardening (out of scope here): enable Redis TLS so the password
+    # and payloads are not sent in cleartext — run redis with --tls-port 6379
+    # --tls-cert-file/--tls-key-file/--tls-ca-cert-file (mount certs read-only,
+    # mirroring the commented Caddy mTLS cert mount below) and switch clients to
+    # the rediss:// scheme.
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      # -a authenticates the healthcheck PING against requirepass.
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: nce-postgres
+    # Disk-I/O tuning (VI.5c D1). Larger shared_buffers + maintenance_work_mem
+    # speed HNSW index builds; wal_compression + a higher max_wal_size and
+    # checkpoint_completion_target=0.9 spread WAL/checkpoint flushes for the
+    # write-heavy WORM event_log. synchronous_commit STAYS ON — the WORM log's
+    # durability (a committed row is WAL-durable on disk) must NOT be weakened.
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=512MB"
+      - "-c"
+      - "maintenance_work_mem=512MB"
+      - "-c"
+      - "wal_compression=on"
+      - "-c"
+      - "checkpoint_completion_target=0.9"
+      - "-c"
+      - "max_wal_size=4GB"
+      - "-c"
+      - "synchronous_commit=on"
+    environment:
+      POSTGRES_USER: mcp_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mcp_password}
+      POSTGRES_DB: memory_meta
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      # Initialize schema on first boot (idempotent)
+      - ./nce/schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcp_user -d memory_meta"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  mongodb:
+    image: mongo:7.0
+    container_name: nce-mongo
+    # Disk-I/O tuning (VI.5c D1): zstd block compressor (vs the snappy default)
+    # for collection data — transcripts/code/payloads compress well, so this
+    # cuts on-disk size and read I/O.
+    command:
+      - "--wiredTigerCollectionBlockCompressor"
+      - "zstd"
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    container_name: nce-minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-mcp_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-super_secure_minio_password}
+    ports:
+      - "127.0.0.1:9002:9000"
+      - "127.0.0.1:9003:9001"
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  cognitive:
+    image: ghcr.io/sindrehaugen/nce-cognitive:v1
+    container_name: nce-cognitive
+    ports:
+      - "${COGNITIVE_PORT:-11435}:11435"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:11435/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  worker:
+    build:
+      context: .
+      dockerfile: deploy/multiuser/Dockerfile
+    # Multicore (VI.5a): scale background indexing/sync across N RQ worker
+    # replicas. Lanes (high_priority -> batch_processing -> default) stay as-is;
+    # each replica is an independent forking Worker. No container_name so
+    # replicas > 1 is allowed (Compose names them nce-worker-1, -2, ...).
+    profiles:
+      - gpu
+    env_file:
+      - deploy/compose.stack.env
+      - deploy/compose.stack.env.generated
+    environment:
+      # Credentials inline (Redis AUTH) — password from ${REDIS_PASSWORD}, never a literal.
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0
+      PG_DSN: postgresql://mcp_user:${POSTGRES_PASSWORD:-mcp_password}@postgres:5432/memory_meta
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-mcp_admin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-super_secure_minio_password}
+      # CPU-thread tuning (VI.5a / M2): pin native thread pools to the CPU quota.
+      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-2}
+      MKL_NUM_THREADS: ${MKL_NUM_THREADS:-2}
+      TOKENIZERS_PARALLELISM: ${TOKENIZERS_PARALLELISM:-false}
+      # Disk-I/O tuning (VI.5c D4/D5): extractor temp churn (write temp ->
+      # subprocess reads -> unlink) is purely transient data. Point the artifact
+      # staging dir AND tempfile's TMPDIR at the RAM-backed tmpfs mount below so
+      # those writes never touch real disk.
+      NCE_ARTIFACT_STAGING_DIR: ${NCE_ARTIFACT_STAGING_DIR:-/dev/shm/nce-staging}
+      TMPDIR: /dev/shm/nce-staging
+      NCE_APP_PASSWORD: nce_app_secret
+      # File-based secret (closes /proc/<pid>/environ exposure). The master key
+      # is mounted at /run/secrets/nce_master_key and read via secret_env.
+      # If you have not created deploy/secrets/nce_master_key, drop this var and
+      # the secrets reference below — NCE_MASTER_KEY from env_file still works.
+      NCE_MASTER_KEY_FILE: /run/secrets/nce_master_key
+      # Strip broad env keys sourced from env_file — workers use the file-based
+      # secret above; NCE_ADMIN_API_KEY is coordinator-only and not needed here.
+      NCE_MASTER_KEY: ""
+      NCE_ADMIN_API_KEY: ""
+    secrets:
+      - nce_master_key
+    tmpfs:
+      - /dev/shm/nce-staging
+    # Confinement (Batch 123):
+    #   security_opt: prevents child processes gaining new privileges via
+    #   setuid/setgid binaries inside the container (defence-in-depth for
+    #   LibreOffice/MPXJ extraction subprocesses).
+    #   Optional: add a seccomp profile to restrict syscalls further:
+    #     security_opt:
+    #       - "no-new-privileges:true"
+    #       - "seccomp=deploy/seccomp/worker.json"
+    security_opt:
+      - "no-new-privileges:true"
+    deploy:
+      # N replicas process N RQ jobs concurrently (default 2).
+      replicas: ${WORKER_REPLICAS:-2}
+      # GPU access for re-embedding CUDA operations (Item 49)
+      resources:
+        limits:
+          cpus: "${WORKER_CPU_LIMIT:-2.0}"
+          memory: 1G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # APScheduler: bridge subscription renewal + re-embedding sweeps (cognitive maintenance).
+  cron:
+    build:
+      context: .
+      dockerfile: deploy/multiuser/Dockerfile
+    command: ["python", "-m", "nce.cron"]
+    container_name: nce-cron
+    env_file:
+      - deploy/compose.stack.env
+      - deploy/compose.stack.env.generated
+    environment:
+      # Credentials inline (Redis AUTH) — password from ${REDIS_PASSWORD}, never a literal.
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0
+      PG_DSN: postgresql://mcp_user:${POSTGRES_PASSWORD:-mcp_password}@postgres:5432/memory_meta
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-mcp_admin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-super_secure_minio_password}
+      # CPU-thread tuning (VI.5a / M2): pin native thread pools to the CPU quota.
+      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-2}
+      MKL_NUM_THREADS: ${MKL_NUM_THREADS:-2}
+      TOKENIZERS_PARALLELISM: ${TOKENIZERS_PARALLELISM:-false}
+      # Disk-I/O tuning (VI.5c D4/D5): RAM-backed temp/staging (see worker).
+      NCE_ARTIFACT_STAGING_DIR: ${NCE_ARTIFACT_STAGING_DIR:-/dev/shm/nce-staging}
+      TMPDIR: /dev/shm/nce-staging
+      NCE_APP_PASSWORD: nce_app_secret
+      # File-based master key (Batch 123/118): cron needs the master key for
+      # saga signing/re-embed sweeps; use the file-based secret to keep it out
+      # of /proc/<pid>/environ.  NCE_ADMIN_API_KEY is coordinator-only.
+      NCE_MASTER_KEY_FILE: /run/secrets/nce_master_key
+      NCE_MASTER_KEY: ""
+      NCE_ADMIN_API_KEY: ""
+    secrets:
+      - nce_master_key
+    tmpfs:
+      - /dev/shm/nce-staging
+    # Confinement (Batch 123): prevent privilege escalation.
+    # Optional seccomp profile: security_opt: ["no-new-privileges:true", "seccomp=deploy/seccomp/cron.json"]
+    security_opt:
+      - "no-new-privileges:true"
+    # Multicore (VI.5a): cron MUST stay a singleton — CronLock is the only
+    # split-brain guard. NEVER scale this above 1 replica.
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "${CRON_CPU_LIMIT:-1.0}"
+          memory: 512M
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  admin:
+    build:
+      context: .
+      dockerfile: deploy/multiuser/Dockerfile
+    # Multicore (VI.5a): stateless HTTP service — run N uvicorn worker processes.
+    # NOT a background-loop process, so --workers is safe (no GC/outbox/re-embed here).
+    command:
+      [
+        "uvicorn",
+        "admin_server:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8003",
+        "--workers",
+        "${ADMIN_WORKERS:-2}",
+      ]
+    container_name: nce-admin
+    env_file:
+      - deploy/compose.stack.env
+      - deploy/compose.stack.env.generated
+    environment:
+      # Credentials inline (Redis AUTH) — password from ${REDIS_PASSWORD}, never a literal.
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0
+      PG_DSN: postgresql://mcp_user:${POSTGRES_PASSWORD:-mcp_password}@postgres:5432/memory_meta
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-mcp_admin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-super_secure_minio_password}
+      # CPU-thread tuning (VI.5a / M2): pin native thread pools to the CPU quota.
+      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-2}
+      MKL_NUM_THREADS: ${MKL_NUM_THREADS:-2}
+      TOKENIZERS_PARALLELISM: ${TOKENIZERS_PARALLELISM:-false}
+      # Disk-I/O tuning (VI.5c D4/D5): RAM-backed temp/staging (see worker).
+      NCE_ARTIFACT_STAGING_DIR: ${NCE_ARTIFACT_STAGING_DIR:-/dev/shm/nce-staging}
+      TMPDIR: /dev/shm/nce-staging
+      NCE_APP_PASSWORD: nce_app_secret
+      # File-based secrets (out of /proc/<pid>/environ); see secret_env.
+      NCE_MASTER_KEY_FILE: /run/secrets/nce_master_key
+      NCE_API_KEY_FILE: /run/secrets/nce_api_key
+      # --- Zero-trust transport (mTLS) — see deploy/ and the caddy service below.
+      # In production (NCE_ENV=prod) the admin server REFUSES to boot when its mTLS
+      # middleware is disabled, unless NCE_MTLS_ACKNOWLEDGE_DISABLED=true (which is
+      # logged CRITICAL + recorded as a WORM event). Recommended hardening:
+      #   NCE_ENV: prod
+      #   NCE_ADMIN_MTLS_ENABLED: "true"
+      #   NCE_ADMIN_MTLS_TRUSTED_PROXY_HOP: "1"   # Caddy terminates mTLS in front
+      #   NCE_ADMIN_MTLS_ALLOWED_SANS: "client.internal.example"
+      # Cert paths are ENV-only (never via DB/settings):
+      #   NCE_MTLS_CERT_PATH: /etc/nce/certs/server.crt
+      #   NCE_MTLS_KEY_PATH: /etc/nce/certs/server.key
+      #   NCE_MTLS_CA_PATH: /etc/nce/certs/ca.crt
+    tmpfs:
+      - /dev/shm/nce-staging
+    # mTLS cert mount (commented — mounts read-only when you enable mTLS above):
+    # volumes:
+    #   - ./deploy/certs:/etc/nce/certs:ro
+    secrets:
+      - nce_master_key
+      - nce_api_key
+    ports:
+      - "${ADMIN_PORT:-8003}:8003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8003/healthz')",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  a2a:
+    build:
+      context: .
+      dockerfile: deploy/multiuser/Dockerfile
+    # Multicore (VI.5a): stateless HTTP service — run N uvicorn worker processes.
+    # NOT a background-loop process, so --workers is safe.
+    command:
+      [
+        "uvicorn",
+        "nce.a2a_server:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8004",
+        "--workers",
+        "${A2A_WORKERS:-2}",
+      ]
+    container_name: nce-a2a
+    stop_grace_period: 35s
+    env_file:
+      - deploy/compose.stack.env
+      - deploy/compose.stack.env.generated
+    environment:
+      # Credentials inline (Redis AUTH) — password from ${REDIS_PASSWORD}, never a literal.
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0
+      PG_DSN: postgresql://mcp_user:${POSTGRES_PASSWORD:-mcp_password}@postgres:5432/memory_meta
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-mcp_admin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-super_secure_minio_password}
+      # CPU-thread tuning (VI.5a / M2): pin native thread pools to the CPU quota.
+      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-2}
+      MKL_NUM_THREADS: ${MKL_NUM_THREADS:-2}
+      TOKENIZERS_PARALLELISM: ${TOKENIZERS_PARALLELISM:-false}
+      # Disk-I/O tuning (VI.5c D4/D5): RAM-backed temp/staging (see worker).
+      NCE_ARTIFACT_STAGING_DIR: ${NCE_ARTIFACT_STAGING_DIR:-/dev/shm/nce-staging}
+      TMPDIR: /dev/shm/nce-staging
+      NCE_APP_PASSWORD: nce_app_secret
+      # File-based master key (out of /proc/<pid>/environ); see secret_env.
+      NCE_MASTER_KEY_FILE: /run/secrets/nce_master_key
+      # --- Zero-trust transport (mTLS) — see deploy/ and the caddy service below.
+      # In production (NCE_ENV=prod) the a2a server REFUSES to boot when its mTLS
+      # middleware is disabled, unless NCE_MTLS_ACKNOWLEDGE_DISABLED=true (which is
+      # logged CRITICAL + recorded as a WORM event). Recommended hardening:
+      #   NCE_ENV: prod
+      #   NCE_A2A_MTLS_ENABLED: "true"
+      #   NCE_A2A_MTLS_TRUSTED_PROXY_HOP: "1"   # Caddy terminates mTLS in front
+      #   NCE_A2A_MTLS_ALLOWED_SANS: "peer-agent.internal.example"
+      # Cert paths are ENV-only (never via DB/settings):
+      #   NCE_MTLS_CERT_PATH: /etc/nce/certs/server.crt
+      #   NCE_MTLS_KEY_PATH: /etc/nce/certs/server.key
+      #   NCE_MTLS_CA_PATH: /etc/nce/certs/ca.crt
+    tmpfs:
+      - /dev/shm/nce-staging
+    # mTLS cert mount (commented — mounts read-only when you enable mTLS above):
+    # volumes:
+    #   - ./deploy/certs:/etc/nce/certs:ro
+    secrets:
+      - nce_master_key
+    ports:
+      - "${A2A_PORT:-8004}:8004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8004/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  webhook-receiver:
+    build:
+      context: .
+      dockerfile: deploy/multiuser/Dockerfile
+    # Multicore (VI.5a): stateless HTTP service — run N uvicorn worker processes.
+    # NOT a background-loop process, so --workers is safe.
+    command:
+      [
+        "uvicorn",
+        "nce.webhook_receiver.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8080",
+        "--workers",
+        "${WEBHOOK_WORKERS:-2}",
+      ]
+    container_name: nce-webhook-receiver
+    env_file:
+      - deploy/compose.stack.env
+      - deploy/compose.stack.env.generated
+    environment:
+      # Credentials inline (Redis AUTH) — password from ${REDIS_PASSWORD}, never a literal.
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0
+      PG_DSN: postgresql://mcp_user:${POSTGRES_PASSWORD:-mcp_password}@postgres:5432/memory_meta
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-mcp_admin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-super_secure_minio_password}
+      # CPU-thread tuning (VI.5a / M2): pin native thread pools to the CPU quota.
+      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-2}
+      MKL_NUM_THREADS: ${MKL_NUM_THREADS:-2}
+      TOKENIZERS_PARALLELISM: ${TOKENIZERS_PARALLELISM:-false}
+      # Disk-I/O tuning (VI.5c D4/D5): RAM-backed temp/staging (see worker).
+      NCE_ARTIFACT_STAGING_DIR: ${NCE_ARTIFACT_STAGING_DIR:-/dev/shm/nce-staging}
+      TMPDIR: /dev/shm/nce-staging
+      NCE_APP_PASSWORD: nce_app_secret
+    tmpfs:
+      - /dev/shm/nce-staging
+    ports:
+      - "${WEBHOOK_PORT:-8080}:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    container_name: nce-jaeger
+    ports:
+      - "${JAEGER_UI_PORT:-16686}:16686"
+      - "${JAEGER_OTLP_HTTP_PORT:-4318}:4318"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    volumes:
+      - jaeger_data:/badger
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:16686/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: nce-caddy
+    ports:
+      - "${CADDY_HTTP_PORT:-8082}:80"
+      - "${CADDY_HTTPS_PORT:-8443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      # --- mTLS termination (COMMENTED — opt-in for zero-trust transport) ---
+      # Mount the CA + server cert/key into Caddy and add an mTLS site block to
+      # the Caddyfile so Caddy verifies client certificates at the edge and
+      # forwards the verified leaf to admin/a2a via X-Forwarded-Client-Cert. Set
+      # NCE_{ADMIN,A2A}_MTLS_TRUSTED_PROXY_HOP=1 so the app trusts exactly one hop.
+      # - ./deploy/certs:/etc/nce/certs:ro
+      #
+      # Example Caddyfile site block to terminate mTLS and pass the leaf cert
+      # downstream (place in ./Caddyfile, then uncomment the mount above):
+      #
+      #   admin.internal.example {
+      #     tls /etc/nce/certs/server.crt /etc/nce/certs/server.key {
+      #       client_auth {
+      #         mode require_and_verify
+      #         trusted_ca_cert_file /etc/nce/certs/ca.crt
+      #       }
+      #     }
+      #     reverse_proxy admin:8003 {
+      #       header_up X-Forwarded-Client-Cert {http.request.tls.client.certificate_pem}
+      #     }
+      #   }
+    depends_on:
+      webhook-receiver:
+        condition: service_healthy
+      admin:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # Citus profile — DESCOPED (Batch 122)
+  # ---------------------------------------------------------------------------
+  # This service definition is provided for documentation and future reactivation.
+  # The ``citusdata/citus:12-pg16`` image tag does not exist; the nearest available
+  # tag (``citusdata/citus:12.1.1``) lacks pgvector, which is required by
+  # nce/schema.sql.  See docs/citus_descope.md for the full decision record.
+  #
+  # To activate when a suitable image is available:
+  #   1. Replace the image tag with one that includes BOTH Citus 12 and pgvector.
+  #   2. Ensure CITUS_TEST_PG_PASSWORD and CITUS_TEST_PORT are set in your env.
+  #   3. Run:  docker compose -p nce-citustest --profile citus up -d
+  #   4. Set CITUS_TEST_DSN and run:  pytest tests/integration/test_citus_rls.py -m integration
+  #
+  # Ports: use 5440 (host) to avoid collisions with nce-rltest (5433) and
+  # the live trimcp-1 stack (5432).
+  citus-coordinator:
+    image: citusdata/citus:12.1.1
+    # NOTE: 12.1.1 is PostgreSQL 16 but lacks pgvector. Swap for a combined image.
+    profiles:
+      - citus
+    container_name: nce-citus-coordinator
+    environment:
+      POSTGRES_USER: citus_user
+      POSTGRES_PASSWORD: ${CITUS_TEST_PG_PASSWORD:-citus_test_password}
+      POSTGRES_DB: citus_test
+    ports:
+      - "127.0.0.1:${CITUS_TEST_PORT:-5440}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U citus_user -d citus_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+volumes:
+  redis_data:
+  pg_data:
+  mongo_data:
+  minio_data:
+  caddy_data:
+  jaeger_data:
+  caddy_config:
+
+# --- Docker secrets (file-based) -------------------------------------------
+# File-based secrets are mounted at /run/secrets/<name> inside the container
+# and consumed via the matching ``*_FILE`` env var (see nce/config.secret_env).
+# This keeps the secret OUT of the process environment, closing the
+# /proc/<pid>/environ exposure vector that plain ``environment:`` vars have.
+#
+# Dev path (default): the secret files come from deploy/secrets/* on the host.
+# Create them once (these files are gitignored):
+#   mkdir -p deploy/secrets
+#   printf '%s' "$NCE_MASTER_KEY" > deploy/secrets/nce_master_key
+#   printf '%s' "$NCE_API_KEY"    > deploy/secrets/nce_api_key
+# The env-var fallbacks (env_file / ${REDIS_PASSWORD}) still work when these
+# files are absent and you remove the ``secrets:`` references below, so dev that
+# never created the files keeps working via the environment.
+#
+# Production: provision these via your orchestrator's external secret store
+# (e.g. ``docker secret create`` for Swarm, or a CSI driver on K8s) instead of
+# host files — flip ``file:`` to ``external: true``.
+secrets:
+  nce_master_key:
+    file: ./deploy/secrets/nce_master_key
+  nce_api_key:
+    file: ./deploy/secrets/nce_api_key

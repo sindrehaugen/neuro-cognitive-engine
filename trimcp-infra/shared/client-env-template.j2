@@ -1,0 +1,24 @@
+# TriMCP client / worker environment (rendered from trimcp-infra)
+# Cloud: {{ cloud }}  Deployment: {{ deployment_name }}  Region: {{ region }}
+
+# --- References (prefer runtime secret fetch in production) ---
+TRIMCP_POSTGRES_SECRET_REF={{ postgres_secret_ref }}
+TRIMCP_MONGO_SECRET_REF={{ mongo_secret_ref }}
+TRIMCP_REDIS_SECRET_REF={{ redis_secret_ref }}
+
+# --- Resolved connection hints (non-secret endpoints only) ---
+TRIMCP_POSTGRES_HOST={{ postgres_host }}
+TRIMCP_POSTGRES_PORT={{ postgres_port }}
+TRIMCP_POSTGRES_DATABASE={{ postgres_database }}
+
+TRIMCP_MONGO_HOSTS={{ mongo_hosts }}
+TRIMCP_MONGO_DATABASE={{ mongo_database }}
+
+TRIMCP_REDIS_HOST={{ redis_host }}
+TRIMCP_REDIS_PORT={{ redis_port }}
+
+TRIMCP_BLOB_ENDPOINT={{ blob_endpoint }}
+TRIMCP_BLOB_BUCKET={{ blob_bucket }}
+
+# Webhook base URL (public) — used by bridge subscriptions
+TRIMCP_WEBHOOK_PUBLIC_BASE_URL={{ webhook_public_base_url }}

@@ -1,0 +1,14 @@
+deployment_name = "acme-dev"
+region            = "europe-west1"
+environment       = "dev"
+
+# Optional: CIDR for office VPN / admin jump (Appendix I.6)
+vpn_subnet_cidr = "10.100.0.0/24"
+
+project_id = "your-gcp-project-id"
+
+labels = {
+  costcenter = "engineering"
+}
+
+worker_image = "gcr.io/cloudrun/hello"

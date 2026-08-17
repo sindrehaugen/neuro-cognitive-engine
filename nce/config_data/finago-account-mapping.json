@@ -1,0 +1,38 @@
+{
+  "_comment": "Config-as-IP (VERTICAL_MODULE_PATTERN.md §2.9, docs/vertical_engines/08-economy-engine.md 'Config keys'): the account/MVA resolver for NGAAP periodisering. finago-chart-of-accounts.json answers WHICH account a (bucket, role) target lands on; THIS file answers HOW that account is treated — the Norwegian MVA (VAT) code and the account's natural balance side. Together they make a complete periodisering target. Like the chart, this file carries NO accrual logic: no split percentages, no delivery curves, no recognition rules. Those are code (nce/vertical_modules/economy/ngaap.py) per round-2 hardening #5. MVA codes follow Andreas's cost-engine.ts posting literals: revenue-side postings carry code 3 (utgaende MVA 25% hoy sats), every balance-sheet periodisering leg carries code 0 (no MVA — periodisering moves an already-taxed or not-yet-taxed amount between periods, it never creates an MVA obligation; the MVA follows the actual invoice, not the accrual).",
+  "mva_regime": "NO-MVA (merverdiavgiftsloven)",
+  "roles": [
+    "cogs",
+    "revenue",
+    "accrued",
+    "deferred",
+    "wip"
+  ],
+  "role_mva_code": {
+    "cogs": 0,
+    "revenue": 3,
+    "accrued": 0,
+    "deferred": 0,
+    "wip": 0
+  },
+  "_role_balance_side_comment": "The NATURAL BALANCE SIDE of each role's account — accounting metadata (a cogs/expense account normally carries a debit balance, a revenue account a credit balance), NOT the side any particular leg posts on. It was called 'role_posting_side' and that name was a footgun: a periodisering leg's debit/credit DIRECTION follows the SIGN of its amount, and the reference (lib/finance/periodisering/cost-engine.ts) posts the same revenue account 3000 on BOTH sides — debited in the deferred leg, credited in the accrued leg — and credits WIP 1771 by -cogsDelta, which this map calls 'debit'. Deriving a direction from this field mis-signs a leg, and a voucher-balance check cannot catch it because both sign orderings still sum to zero. Read the amount's sign; use this field only as account metadata.",
+  "role_balance_side": {
+    "cogs": "debit",
+    "revenue": "credit",
+    "accrued": "debit",
+    "deferred": "credit",
+    "wip": "debit"
+  },
+  "mva_codes": {
+    "0": {
+      "name": "Ingen MVA-behandling (periodisering/balansekonto)",
+      "rate_pct": 0
+    },
+    "3": {
+      "name": "Utgaende MVA, hoy sats",
+      "rate_pct": 25
+    }
+  },
+  "_account_mva_overrides_comment": "Per-account escape hatch: overrides role_mva_code for a single account number when a tenant's plan needs it (e.g. an avgiftsfri revenue account). Empty = every account follows its role's code. An override is keyed by the ACCOUNT NUMBER as a string, exactly as it appears in finago-chart-of-accounts.json. The comment lives OUTSIDE the map on purpose: every key inside 'account_mva_overrides' is read as a real account number, so a '_comment' in there would be a fake account the resolver has to special-case.",
+  "account_mva_overrides": {}
+}

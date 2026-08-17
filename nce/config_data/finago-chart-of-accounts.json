@@ -1,0 +1,173 @@
+{
+  "_comment": "Config-as-IP (VERTICAL_MODULE_PATTERN.md §2.9, docs/vertical_engines/08-economy-engine.md 'Config keys'): Example Integrator AS AS's Norwegian chart of accounts (NS 4102-derived) for NGAAP periodisering — regnskapsloven §4-1. THIS FILE CARRIES ACCOUNT NUMBERS ONLY. The accrual/periodisation LOGIC (how a cost straddling a period boundary splits into recognised COGS vs WIP, and earned revenue into accrued vs deferred) is CODE, in nce/vertical_modules/economy/ngaap.py — round-2 hardening #5: NGAAP is an accrual ENGINE, not an account-number config swap. Swapping this file must change the target accounts and NOTHING about the split. Never put split percentages, delivery curves or recognition rules in here. Each tenant re-maps 'bucket_accounts'/'shared_accounts' to its own country's plan; a non-Norwegian GAAP (IFRS/US-GAAP) needs an ENGINE extension, not a new copy of this file.",
+  "country": "NO",
+  "gaap": "NGAAP",
+  "currency": "NOK",
+  "standard": "NS 4102 (Norsk standard kontoplan)",
+  "buckets": [
+    "hardware",
+    "materials",
+    "freight",
+    "pm",
+    "tek",
+    "programming",
+    "travel"
+  ],
+  "bucket_accounts": {
+    "hardware": {
+      "cogs": "4300",
+      "revenue": "3000",
+      "accrued": "1531",
+      "deferred": "2901"
+    },
+    "materials": {
+      "cogs": "4303",
+      "revenue": "3003",
+      "accrued": "1532",
+      "deferred": "2902"
+    },
+    "freight": {
+      "cogs": "4060",
+      "revenue": "3520",
+      "accrued": "1533",
+      "deferred": "2903"
+    },
+    "pm": {
+      "cogs": "5000",
+      "revenue": "3016",
+      "accrued": "1534",
+      "deferred": "2904"
+    },
+    "tek": {
+      "cogs": "5000",
+      "revenue": "3015",
+      "accrued": "1539",
+      "deferred": "2905"
+    },
+    "programming": {
+      "cogs": "5000",
+      "revenue": "3014",
+      "accrued": "1536",
+      "deferred": "2906"
+    },
+    "travel": {
+      "cogs": "4160",
+      "revenue": "3013",
+      "accrued": "1538",
+      "deferred": "2908"
+    }
+  },
+  "shared_accounts": {
+    "wip": "1771"
+  },
+  "accounts": {
+    "1531": {
+      "name": "Opptjent, ikke fakturert driftsinntekt - hardware",
+      "type": "asset"
+    },
+    "1532": {
+      "name": "Opptjent, ikke fakturert driftsinntekt - materiell",
+      "type": "asset"
+    },
+    "1533": {
+      "name": "Opptjent, ikke fakturert driftsinntekt - frakt",
+      "type": "asset"
+    },
+    "1534": {
+      "name": "Opptjent, ikke fakturert driftsinntekt - prosjektledelse",
+      "type": "asset"
+    },
+    "1536": {
+      "name": "Opptjent, ikke fakturert driftsinntekt - programmering",
+      "type": "asset"
+    },
+    "1538": {
+      "name": "Opptjent, ikke fakturert driftsinntekt - reise",
+      "type": "asset"
+    },
+    "1539": {
+      "name": "Opptjent, ikke fakturert driftsinntekt - teknikk",
+      "type": "asset"
+    },
+    "1771": {
+      "name": "Periodisert varekost (varer i arbeid)",
+      "type": "asset"
+    },
+    "2901": {
+      "name": "Uopptjent driftsinntekt - hardware",
+      "type": "liability"
+    },
+    "2902": {
+      "name": "Uopptjent driftsinntekt - materiell",
+      "type": "liability"
+    },
+    "2903": {
+      "name": "Uopptjent driftsinntekt - frakt",
+      "type": "liability"
+    },
+    "2904": {
+      "name": "Uopptjent driftsinntekt - prosjektledelse",
+      "type": "liability"
+    },
+    "2905": {
+      "name": "Uopptjent driftsinntekt - teknikk",
+      "type": "liability"
+    },
+    "2906": {
+      "name": "Uopptjent driftsinntekt - programmering",
+      "type": "liability"
+    },
+    "2908": {
+      "name": "Uopptjent driftsinntekt - reise",
+      "type": "liability"
+    },
+    "3000": {
+      "name": "Salgsinntekt handelsvarer, avgiftspliktig - hardware",
+      "type": "revenue"
+    },
+    "3003": {
+      "name": "Salgsinntekt handelsvarer, avgiftspliktig - materiell",
+      "type": "revenue"
+    },
+    "3013": {
+      "name": "Salgsinntekt tjenester, avgiftspliktig - reise",
+      "type": "revenue"
+    },
+    "3014": {
+      "name": "Salgsinntekt tjenester, avgiftspliktig - programmering",
+      "type": "revenue"
+    },
+    "3015": {
+      "name": "Salgsinntekt tjenester, avgiftspliktig - teknikk",
+      "type": "revenue"
+    },
+    "3016": {
+      "name": "Salgsinntekt tjenester, avgiftspliktig - prosjektledelse",
+      "type": "revenue"
+    },
+    "3520": {
+      "name": "Viderefakturert frakt",
+      "type": "revenue"
+    },
+    "4060": {
+      "name": "Frakt, toll og spedisjon",
+      "type": "expense"
+    },
+    "4160": {
+      "name": "Reisekostnad, prosjekt",
+      "type": "expense"
+    },
+    "4300": {
+      "name": "Innkjop av varer for videresalg - hardware",
+      "type": "expense"
+    },
+    "4303": {
+      "name": "Innkjop av varer for videresalg - materiell",
+      "type": "expense"
+    },
+    "5000": {
+      "name": "Lonn til ansatte (prosjekttimer)",
+      "type": "expense"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "_comment": "Config-as-IP (VERTICAL_MODULE_PATTERN.md §2.9): tier cutoffs for Economy's financial/posting invoice match (docs/vertical_engines/08-economy-engine.md §9.1). Score = classical 100-pt (supplier+amount+article+project) + 30-pt PFT context bonus (bomLine+poExpected+supplierPattern) + 50-pt additive PO-nr exact-match bonus (Plan-D, 2026-04-25), theoretical max 180 — NOT clamped. score >= green auto-approves the posting cascade (GREEN); score >= yellow requires human review (YELLOW); below yellow is manual classification (RED). supplier_overrides lets MatchLearning tighten or loosen a specific supplier's tolerance (keyed by supplier orgnr) without touching the algorithm; a missing entry falls back to the green/yellow defaults untouched. GLOBAL, not namespace-scoped — this is a single file shared by every tenant, so an override written for a supplier orgnr applies to every tenant that shares that orgnr, not just the one that triggered the recalibration.",
+  "green": 115,
+  "yellow": 70,
+  "supplier_overrides": {}
+}

@@ -1,0 +1,9 @@
+{
+  "grade_thresholds": [
+    [0.90, "A"],
+    [0.75, "B"],
+    [0.55, "C"],
+    [0.35, "D"]
+  ],
+  "trusted_min_grade": "C"
+}

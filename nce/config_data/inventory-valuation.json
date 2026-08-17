@@ -1,0 +1,4 @@
+{
+  "_comment": "Config-as-IP (docs/vertical_engines/VERTICAL_MODULE_PATTERN.md; roadmap-§2 convention 9): the stock valuation method nce/vertical_modules/inventory/transactions.py's do_valuation reads inventory_transactions ledger rows with (docs/vertical_engines/11-inventory-engine.md A3 / 11a-inventory-engine-research.md A3 -- Module 11, Wave 11 -- transactions-valuation). 'method' must be 'fifo' or 'average'. Inventory VALUES the stock from this config; Economy POSTS it -- this file never drives a GL write. Global (not namespace-scoped) for this wave, mirroring automation-tiers.json / economy-match-thresholds.json's global-file convention; a per-namespace override is not built here.",
+  "method": "fifo"
+}

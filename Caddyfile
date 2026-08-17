@@ -1,0 +1,60 @@
+# TriMCP v1.0 — Edge Proxy Configuration (Caddyfile)
+
+{
+	# Disable Caddy's admin API for security hardening
+	admin off
+}
+
+# Bind to HTTP and HTTPS with internal TLS termination
+http://:80, https://:443 {
+	# Internal self-signed TLS termination for HTTPS
+	tls internal
+
+	# Security Headers
+	header {
+		# Clickjacking protection
+		X-Frame-Options "DENY"
+		# MIME-type sniffing protection
+		X-Content-Type-Options "nosniff"
+		# Cross-Site Scripting (XSS) protection
+		X-XSS-Protection "1; mode=block"
+		# Prevent referrer information leak
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Restrict browser feature access
+		Permissions-Policy "geolocation=(), camera=(), microphone=()"
+		# Content Security Policy (strict by default, allowing local resources)
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self';"
+		# Hide the server signature
+		-Server
+	}
+
+	# Global request size limit to prevent resource exhaustion (20 MB default)
+	request_body {
+		max_size 20971520
+	}
+
+	# Route webhooks to the receiver
+	handle /webhooks/* {
+		# Limit webhook payload size to 1MB (matches WEBHOOK_MAX_BODY_BYTES)
+		request_body {
+			max_size 1048576
+		}
+		reverse_proxy webhook-receiver:8080 {
+			# Sanitize proxy headers to prevent client-side IP spoofing
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	# Route everything else to the Admin UI / REST API
+	handle {
+		reverse_proxy admin:8003 {
+			# Sanitize proxy headers to prevent client-side IP spoofing
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+}
+
