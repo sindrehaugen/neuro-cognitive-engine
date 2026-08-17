@@ -1,0 +1,152 @@
+# Secrets — never commit
+.env
+# ...and every variant: a `.env.bak` reached the PUBLIC remote on 2026-06-24 with
+# real NCE_MASTER_KEY / NCE_API_KEY / MinIO / DSN values, because `.env` alone
+# does not match `.env.bak`, `.env.local`, `.env.prod` etc.
+.env.*
+!.env.example
+!.env.template
+mcp_config.json
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+serviceAccountKey.json
+deploy/compose.stack.env.generated
+# Local overrides — track deploy/compose.stack.env.example instead (placeholders only).
+deploy/compose.stack.env
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# Embeddings model cache (can be several GB)
+~/.cache/huggingface/
+*.bin
+*.safetensors
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test artifacts
+.pytest_cache/
+htmlcov/
+.coverage
+.pytest_last.txt
+.pytest_failures.txt
+.pytest_failures_full.txt
+pytest-last.txt
+file_tree.txt
+
+# Internal work docs — planning, prompts, audits, roadmaps (local only).
+# Rule: code and code documentation belong on the remote; work documents never do.
+# EVERYTHING under _internal/ is local-only, without exception — never force-add from it.
+_internal/
+
+# Legacy paths (content lives under _internal/work-docs/)
+prompts/
+# ...and any ARCHIVE of them: `prompts/` only matches a directory, so a zipped
+# bundle of the same work docs slipped straight past it onto the public remote.
+prompts.zip
+prompts*.zip
+**/prompts.zip
+Instructions/
+phase6-runners/
+
+# Scratch / temp / session artifacts
+scratch/
+tmp_chars.txt
+last\ work\ done\ *.txt
+last-work-done-*.md
+.commit_msg
+
+# Duplicate / working copies
+TriMCP\ (1)/
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+
+# Planning, to-dos, roadmaps, and audit docs — internal only
+to-do-*
+to_do_*
+*REMEDIATION_PLAN.md
+*DEPLOYMENT_PHASE*.md
+Phase6*.md
+phase6-*.md
+*Audit*.md
+audit_report.md
+audit_bundle.md
+GAPS.md
+*Project View.md
+docs/deployment-findings-*.md
+Concept_*.md
+TriMCP\ Architectural\ Audit*.md
+TriMCP\ Enterprise\ Deployment\ Plan.md
+TriMCP_Innovation_Roadmap*.md
+TriMCP\ CodebaseVSRoadmap.md
+last-work-done-*.md
+verify_remediation.py
+scripts/_*.py
+scripts/verify_todo.py
+docs/background_task_manager_fix.md
+docs/architecture-phase-*.md
+
+# Node/npm dependencies
+node_modules/
+
+# Local orchestrator ledgers, session logs and prompt files (never pushed to remote).
+# One rule per ledger so a new one can't be force-added by accident: RL (refactor),
+# ML (module/engines), DL (docs), OL (optimization), TDL (tech-debt).
+RL.md
+ML.md
+DL.md
+OL.md
+TDL.md
+REMEDIATION_PROGRESS.md
+Batch_*_prompt.md
+Batch_[0-9]*.md
+diff_batch_*.md
+AUDIT_REPORT_*.md
+
+# Local plans, roadmaps, and tech debt documents
+NCE_IMPLEMENTATION_PROMPTS.md
+NCE_MASTER_PLAN.md
+NCE_TECH_DEBT.md
+Rebranding to NCE and V2-V3 Roadmap *.md
+Rebranding to NCE and V2-V3 Roadmap 05062026.md
+TriMCP + NetBox CAD Automation.pdf
+
+
+# scratch export, not source
+docs/vertical_engines.zip
+
+# Research documents and competitor analysis (local internal research only — never commit to GitHub)
+docs/vertical_engines/*research*.md
+docs/vertical_engines/*-research.md
+docs/vertical_engines/02a-product-engine-pim-research.md
+docs/vertical_engines/07a-project-engine-bim-research.md
+docs/vertical_engines/11a-inventory-engine-research.md
+docs/vertical_engines/13a-hr-engine-research.md
+docs/vertical_engines/14a-marketing-engine-research.md
+docs/vertical_engines/90-competitive-landscape*.md
+docs/vertical_engines/NCE_remote_access_rmm/19a-*.md
+docs/research/
+research/
+*research*.md
+

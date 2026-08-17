@@ -1,0 +1,255 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+jobs:
+  lint:
+    name: Ruff lint & format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install Ruff
+        run: pip install -r requirements-dev.txt
+
+      - name: Ruff check
+        run: ruff check .
+
+      # TDL-4/5 (2026-06-22): the ruff format sweep + isort first-party rename (trimcp -> nce)
+      # landed on main at the post-realignment sweet spot (v3.0). Now BLOCKING.
+      - name: Ruff format (check only)
+        run: ruff format --check .
+
+      # TDL-6: was DEFERRED (continue-on-error) because pip-tools 7.4.1 crashed on the runner's
+      # pip ("'PackageFinder' object has no attribute 'allow_all_prereleases'") and the lock was
+      # Python-3.10-compiled while CI runs 3.11. Both fixed: pip-tools 7.6.1 + lock regenerated
+      # under Linux/Python 3.11 (same platform as this runner, so the diff is reproducible).
+      # Now BLOCKING — a stale lock is how the aiosmtplib CVE stayed pinned after the fix landed.
+      - name: Verify requirements.lock is current
+        run: |
+          pip install pip-tools==7.6.1
+          python scripts/compile_requirements.py
+          git diff --exit-code requirements.lock
+
+  test:
+    name: Pytest (unit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Pytest (exclude integration)
+        env:
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          DROPBOX_APP_SECRET: test-dropbox-secret
+          GRAPH_CLIENT_STATE: test-graph-state
+          DRIVE_CHANNEL_TOKEN: test-drive-token
+          MINIO_ACCESS_KEY: test-minio-access-key
+          MINIO_SECRET_KEY: test-minio-secret-key
+        # "and not perf": the perf measurement harness (tests/perf, OL Batch O0)
+        # is opt-in — pytest.ini defaults exclude it, but a CLI -m overrides
+        # that default, so the exclusion must live here too.
+        run: pytest tests/ -m "not integration and not perf" -q --tb=short
+
+      - name: Empty with-block gate
+        run: python scripts/check_empty_with.py
+
+  security:
+    name: Security & IaC validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install security tools
+        run: pip install bandit==1.8.3 pip-audit==2.9.0
+
+      - name: Bandit (high severity)
+        # --severity-level high matches this step's declared intent; -ll
+        # (medium+) fails on ~80 B608 string-SQL findings in namespace-scoped
+        # query builders that are individually reviewed in-wave. Medium-level
+        # triage is tracked as TDL backlog, not a merge gate.
+        run: bandit -r nce server.py admin_server.py --severity-level high -q
+
+      - name: pip-audit (requirements)
+        # Let pip-audit resolve the requirements in its isolated venv and
+        # audit the actual resolved versions. The previous --disable-pip
+        # invocation exits 2 under pip-audit 2.9.0 (CLI usage error), and
+        # --no-deps additionally demands exact == pins while
+        # requirements.txt deliberately uses >= ranges.
+        run: pip-audit -r requirements.txt --strict
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          # 1.6.0's bundled release-signing keyring has expired — provider
+          # install dies with "openpgp: key expired" during init. Track
+          # latest: this job only runs `terraform validate`.
+          terraform_version: "latest"
+
+      - name: Terraform validate (GCP)
+        working-directory: trimcp-infra/gcp
+        run: |
+          terraform init -backend=false
+          terraform validate
+
+      - name: Terraform validate (AWS)
+        working-directory: trimcp-infra/aws
+        run: |
+          terraform init -backend=false
+          terraform validate
+
+      - name: Docker Compose config validate
+        env:
+          # docker-compose.yml uses ${REDIS_PASSWORD:?...} required
+          # interpolation; config validation only needs A value, not the
+          # real secret.
+          REDIS_PASSWORD: ci-config-validate-dummy
+        # The env_file entries are gitignored deploy-local files — seed them
+        # from the tracked example so config validation can resolve them.
+        run: |
+          cp deploy/compose.stack.env.example deploy/compose.stack.env
+          touch deploy/compose.stack.env.generated
+          docker compose -f docker-compose.yml config --quiet
+
+  integration:
+    name: Pytest (integration smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: mcp_user
+          POSTGRES_PASSWORD: mcp_password
+          POSTGRES_DB: memory_meta
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mcp_user -d memory_meta"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Apply Postgres schema
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:5432/memory_meta
+        run: python scripts/apply_integration_schema.py
+
+      - name: Integration smoke (RLS, schema, event log, outbox)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:5432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: |
+          pytest tests/test_rls_isolation_integration.py \
+            tests/test_schema_bootstrap.py \
+            tests/test_rls_catalog.py \
+            tests/test_outbox_relay.py \
+            tests/test_outbox_fanout.py \
+            tests/test_event_log_hardening.py \
+            tests/test_worm_registry.py::test_memory_salience_not_in_worm_tables \
+            tests/test_worm_registry.py::test_worm_tables_contains_expected_entries \
+            -m integration -q --tb=short
+
+      # M3 Agreements (W7-W10). These 2 757 lines of tests previously ran in NO
+      # CI job: they are all @pytest.mark.integration, and the unit job selects
+      # `-m "not integration and not perf"`, so the "90 M3 tests green" claim
+      # gated nothing. Wired in here so the §9.3 money gates are actually
+      # enforced on every PR.
+      - name: Integration — M3 Agreements (authoring, compliance, signing, SLA)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:5432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: |
+          pytest tests/test_agreements_authoring.py \
+            tests/test_agreements_compliance.py \
+            tests/test_agreements_signing.py \
+            tests/test_agreements_sla.py \
+            -m integration -q --tb=short
+
+      # M8 Economy. The invoice-ingest suite proves namespace isolation via a real
+      # RLS-enforced nce_app connection, and that the derived watermark is
+      # namespace-scoped — neither is provable from the unit job, which selects
+      # `-m "not integration and not perf"`. See tests/test_ci_integration_coverage.py
+      # for why "written and passing locally" is not the same as "gating anything".
+      - name: Integration — M8 Economy (invoice ingest, watermark, RLS, cascade)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:5432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: |
+          pytest tests/test_economy_ingestion.py \
+            tests/test_economy_cascade.py \
+            tests/test_economy_postings.py \
+            tests/test_economy_recurring.py \
+            tests/test_economy_recalibration.py \
+            tests/test_economy_finago.py \
+            tests/test_economy_peppol_close.py \
+            tests/test_economy_contracts.py \
+            -m integration -q --tb=short
+
+      # M11 Inventory (Wave 1 — locations-stock-tables; Wave 2 —
+      # stock-core-concurrency; Wave 11 — transactions-valuation). Proves
+      # FORCE RLS on stock_locations/inventory_items/inventory_transactions
+      # via a real nce_app connection, the stock_locations_hierarchy_shape /
+      # composite-FK / partial-unique-index structural claims, (Wave 2) the
+      # do_stock_levels/do_transfer_stock/do_record_consumption
+      # oversell/lost-update guard under REAL concurrent connections plus the
+      # canonical cross-location lock ordering (no opposite-direction
+      # deadlock), and (Wave 11) that every movement appends an immutable
+      # inventory_transactions row inside the SAME transaction as its row
+      # write (atomic — a rolled-back movement leaves no ledger row) and that
+      # do_valuation's FIFO/average computation discriminates correctly
+      # against seeded ledger rows — none of that is provable from the unit
+      # job (`-m "not integration and not perf"`). See
+      # tests/test_ci_integration_coverage.py.
+      - name: Integration — M11 Inventory (locations-stock-tables, stock-core-concurrency, transactions-valuation)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:5432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: |
+          pytest tests/test_inventory_tables.py \
+            tests/test_inventory_stock.py \
+            tests/test_inventory_transactions.py \
+            -m integration -q --tb=short

@@ -1,0 +1,19 @@
+{
+  "allowed_fields": [
+    "id",
+    "node_type",
+    "label",
+    "description",
+    "category",
+    "manufacturer",
+    "model",
+    "part_number",
+    "quantity",
+    "unit_price",
+    "currency",
+    "lead_time_days",
+    "availability",
+    "tags",
+    "namespace_id"
+  ]
+}

@@ -1,0 +1,394 @@
+{% load static %}
+<link rel="stylesheet" href="{% static 'nce_netbox_plugin/css/nce_netbox_plugin.css' %}">
+
+<div class="card nce-dashboard-card">
+    <!-- Header -->
+    <div class="card-header nce-card-header">
+        <div class="nce-header-title-group">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2a10 10 0 0 0-10 10c0 5.523 4.477 10 10 10s10-4.477 10-10c0-1.702-.425-3.305-1.172-4.717"></path>
+                <path d="M12 2a10 10 0 0 1 10 10c0 1.7-.42 3.3-1.17 4.7"></path>
+                <path d="M12 18V6"></path>
+                <path d="m17 13-5-5-5 5"></path>
+            </svg>
+            <h4 class="nce-header-title">NCE Cognitive Intelligence Dashboard</h4>
+        </div>
+        <div id="nce-status-badge" class="nce-status-badge">
+            Syncing...
+        </div>
+    </div>
+
+    <!-- Timeline Playback Slider -->
+    <div class="nce-timeline-container">
+        <div class="nce-timeline-header">
+            <label class="nce-timeline-label">Memory Playback & Causal Timeline</label>
+            <span id="nce-timeline-label" class="nce-timeline-value">Loading...</span>
+        </div>
+        <div class="nce-timeline-slider-group">
+            <span class="nce-timeline-slider-limit-start">-7 Days</span>
+            <input type="range" min="0" max="168" value="168" id="nce-timeline-slider" class="nce-timeline-slider">
+            <span class="nce-timeline-slider-limit-end">NOW</span>
+        </div>
+    </div>
+
+    <!-- Grid Layout -->
+    <div class="nce-dashboard-grid">
+        
+        <!-- Left: Stress Trend & Statistics -->
+        <div class="nce-grid-item">
+            <h5 class="nce-grid-item-title">Longitudinal Operator Stress</h5>
+            <div class="nce-chart-container">
+                <svg id="nce-stress-svg" width="100%" height="100%" viewBox="0 0 400 130" style="overflow: visible;">
+                    <defs>
+                        <linearGradient id="frustGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#ef4444" stop-opacity="0.4"></stop>
+                            <stop offset="100%" stop-color="#ef4444" stop-opacity="0.0"></stop>
+                        </linearGradient>
+                        <linearGradient id="fatigueGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.4"></stop>
+                            <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.0"></stop>
+                        </linearGradient>
+                    </defs>
+                    <g id="nce-chart-grid" stroke="rgba(255, 255, 255, 0.06)" stroke-width="1"></g>
+                    <path id="nce-frust-area" fill="url(#frustGrad)"></path>
+                    <path id="nce-fatigue-area" fill="url(#fatigueGrad)"></path>
+                    <path id="nce-frust-line" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round"></path>
+                    <path id="nce-fatigue-line" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="3 3"></path>
+                </svg>
+            </div>
+            <div class="nce-chart-legend">
+                <div class="nce-legend-item">
+                    <span class="nce-legend-dot-frustration"></span>
+                    <span>Frustration Index</span>
+                </div>
+                <div class="nce-legend-item">
+                    <span class="nce-legend-dot-fatigue"></span>
+                    <span>Fatigue Level</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Fault Map Graph -->
+        <div class="nce-grid-item" style="display: flex; flex-direction: column;">
+            <h5 class="nce-grid-item-title">Ahead-of-Time Fault Map</h5>
+            <div class="nce-fault-map-container">
+                <svg id="nce-fault-svg" width="100%" height="130" viewBox="0 0 300 130" style="overflow: visible;"></svg>
+            </div>
+        </div>
+
+        <!-- Full Width Bottom: Incidents & Replays -->
+        <div class="nce-grid-item-double">
+            <div class="nce-bottom-subgrid">
+                
+                <!-- Incidents Feed -->
+                <div>
+                    <h5 class="nce-grid-item-title">Real-Time incident Logs</h5>
+                    <div id="nce-incidents-list" class="nce-incidents-list">
+                        <div class="nce-list-empty-state">No incidents logged.</div>
+                    </div>
+                </div>
+
+                <!-- Replay Summary / Queue status -->
+                <div class="nce-replays-container">
+                    <div>
+                        <h5 class="nce-grid-item-title">Active Replays</h5>
+                        <div id="nce-replays-list" class="nce-replays-list">
+                            <div style="font-size: 12px; color: #64748b;">No active replay runs.</div>
+                        </div>
+                    </div>
+                    
+                    <div class="nce-queue-container">
+                        <div class="nce-queue-label">Pending Learning Queue</div>
+                        <span id="nce-queue-count" class="nce-queue-badge">0</span>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+(function() {
+    const slider = document.getElementById("nce-timeline-slider");
+    const label = document.getElementById("nce-timeline-label");
+    const status = document.getElementById("nce-status-badge");
+    const objectType = "{{ object_type }}";
+    const objectName = "{{ object_name }}";
+    const objectId = "{{ object_id }}";
+    const statsApiUrl = "{{ stats_api_url }}";
+
+    // Set base time relative to current local time
+    const baseDate = new Date();
+    
+    function updateTimelineLabel(hoursOffset) {
+        const date = new Date(baseDate.getTime() - (168 - hoursOffset) * 60 * 60 * 1000);
+        label.textContent = date.toISOString().slice(0, 19).replace('T', ' ') + ' UTC';
+        return date.toISOString();
+    }
+
+    async function loadData() {
+        const offset = parseInt(slider.value);
+        const isoTime = updateTimelineLabel(offset);
+        
+        try {
+            status.textContent = "Updating...";
+            status.style.color = "#818cf8";
+            status.style.background = "rgba(99, 102, 241, 0.2)";
+            status.style.borderColor = "rgba(99, 102, 241, 0.4)";
+
+            const response = await fetch(`${statsApiUrl}?as_of=${encodeURIComponent(isoTime)}&object_type=${objectType}&object_id=${objectId}`);
+            if (!response.ok) throw new Error("HTTP error " + response.status);
+            const data = await response.json();
+
+            // Update badge context status
+            if (data.real_database) {
+                status.textContent = "NCE Core Sync";
+                status.style.color = "#34d399";
+                status.style.background = "rgba(52, 211, 153, 0.2)";
+                status.style.borderColor = "rgba(52, 211, 153, 0.4)";
+            } else {
+                status.textContent = "Simulation Mode";
+                status.style.color = "#f472b6";
+                status.style.background = "rgba(244, 114, 182, 0.2)";
+                status.style.borderColor = "rgba(244, 114, 182, 0.4)";
+            }
+
+            // Render components
+            renderStressChart(data.operator_stress_trend || []);
+            renderFaultMap(data.fault_nodes || []);
+            renderIncidents(data.incidents || []);
+            renderReplays(data.replay_runs || []);
+            document.getElementById("nce-queue-count").textContent = data.pending_queue_count || 0;
+
+        } catch (err) {
+            console.error("NCE Dashboard sync failed:", err);
+            status.textContent = "Sync Error";
+            status.style.color = "#f87171";
+            status.style.background = "rgba(248, 113, 113, 0.2)";
+            status.style.borderColor = "rgba(248, 113, 113, 0.4)";
+        }
+    }
+
+    function renderStressChart(trend) {
+        const svg = document.getElementById("nce-stress-svg");
+        const frustLine = document.getElementById("nce-frust-line");
+        const fatigueLine = document.getElementById("nce-fatigue-line");
+        const frustArea = document.getElementById("nce-frust-area");
+        const fatigueArea = document.getElementById("nce-fatigue-area");
+        const gridGroup = document.getElementById("nce-chart-grid");
+
+        // Clear grid lines
+        gridGroup.innerHTML = "";
+
+        if (trend.length === 0) {
+            frustLine.setAttribute("d", "");
+            fatigueLine.setAttribute("d", "");
+            frustArea.setAttribute("d", "");
+            fatigueArea.setAttribute("d", "");
+            return;
+        }
+
+        const width = 400;
+        const height = 130;
+        const padding = 15;
+        const innerWidth = width - 2 * padding;
+        const innerHeight = height - 2 * padding;
+
+        // Draw horizontal grid lines
+        for (let i = 0; i <= 4; i++) {
+            const y = padding + (innerHeight / 4) * i;
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("x1", padding);
+            line.setAttribute("y1", y);
+            line.setAttribute("x2", width - padding);
+            line.setAttribute("y2", y);
+            gridGroup.appendChild(line);
+        }
+
+        // Map data points
+        const pointsCount = trend.length;
+        const xStep = innerWidth / (pointsCount - 1);
+
+        let frustPath = "";
+        let fatiguePath = "";
+        let frustPoints = [];
+        let fatiguePoints = [];
+
+        trend.forEach((d, idx) => {
+            const x = padding + idx * xStep;
+            
+            // Map values (0-10 scale mapped to height)
+            const frustY = height - padding - (d.frustration / 10.0) * innerHeight;
+            const fatigueY = height - padding - (d.fatigue / 10.0) * innerHeight;
+
+            frustPoints.push(`${x},${frustY}`);
+            fatiguePoints.push(`${x},${fatigueY}`);
+
+            if (idx === 0) {
+                frustPath = `M ${x} ${frustY}`;
+                fatiguePath = `M ${x} ${fatigueY}`;
+            } else {
+                frustPath += ` L ${x} ${frustY}`;
+                fatiguePath += ` L ${x} ${fatigueY}`;
+            }
+        });
+
+        // Apply path lines
+        frustLine.setAttribute("d", frustPath);
+        fatigueLine.setAttribute("d", fatiguePath);
+
+        // Apply area fills
+        frustArea.setAttribute("d", `${frustPath} L ${padding + (pointsCount - 1) * xStep} ${height - padding} L ${padding} ${height - padding} Z`);
+        fatigueArea.setAttribute("d", `${fatiguePath} L ${padding + (pointsCount - 1) * xStep} ${height - padding} L ${padding} ${height - padding} Z`);
+    }
+
+    function renderFaultMap(nodes) {
+        const svg = document.getElementById("nce-fault-svg");
+        svg.innerHTML = "";
+
+        if (nodes.length === 0) {
+            svg.innerHTML = `<text x="150" y="70" fill="#64748b" font-size="12" text-anchor="middle">No alerts generated.</text>`;
+            return;
+        }
+
+        // Render simple node diagram
+        const centers = [
+            { x: 70, y: 65 },
+            { x: 150, y: 65 },
+            { x: 230, y: 65 }
+        ];
+
+        // Draw links
+        for (let i = 0; i < nodes.length - 1; i++) {
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("x1", centers[i].x);
+            line.setAttribute("y1", centers[i].y);
+            line.setAttribute("x2", centers[i+1].x);
+            line.setAttribute("y2", centers[i+1].y);
+            line.setAttribute("stroke", "rgba(255,255,255,0.1)");
+            line.setAttribute("stroke-width", "3");
+            svg.appendChild(line);
+        }
+
+        // Draw nodes
+        nodes.forEach((n, idx) => {
+            const pos = centers[idx] || { x: 150, y: 65 };
+            const prob = n.failure_probability;
+
+            // Determine status color based on failure probability
+            let color = "#10b981"; // Healthy Green
+            if (prob > 0.7) color = "#ef4444"; // Danger Red
+            else if (prob > 0.4) color = "#f59e0b"; // Warning Orange
+
+            // Circle
+            const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            circle.setAttribute("cx", pos.x);
+            circle.setAttribute("cy", pos.y);
+            circle.setAttribute("r", "16");
+            circle.setAttribute("fill", "#1e293b");
+            circle.setAttribute("stroke", color);
+            circle.setAttribute("stroke-width", "3");
+            circle.style.transition = "stroke 0.3s, fill 0.3s";
+            
+            // Pulse animation for degraded nodes
+            if (prob > 0.4) {
+                const animate = document.createElementNS("http://www.w3.org/2000/svg", "animate");
+                animate.setAttribute("attributeName", "r");
+                animate.setAttribute("values", "16;19;16");
+                animate.setAttribute("dur", "2s");
+                animate.setAttribute("repeatCount", "indefinite");
+                circle.appendChild(animate);
+            }
+
+            // Name
+            const nameLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            nameLabel.setAttribute("x", pos.x);
+            nameLabel.setAttribute("y", pos.y + 32);
+            nameLabel.setAttribute("fill", "#94a3b8");
+            nameLabel.setAttribute("font-size", "10");
+            nameLabel.setAttribute("font-weight", "600");
+            nameLabel.setAttribute("text-anchor", "middle");
+            nameLabel.textContent = n.name;
+
+            // Stats
+            const statLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            statLabel.setAttribute("x", pos.x);
+            statLabel.setAttribute("y", pos.y + 4);
+            statLabel.setAttribute("fill", "#f8fafc");
+            statLabel.setAttribute("font-size", "9");
+            statLabel.setAttribute("font-weight", "700");
+            statLabel.setAttribute("text-anchor", "middle");
+            statLabel.textContent = Math.round(prob * 100) + "%";
+
+            // Tooltip / Description
+            const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+            title.textContent = `${n.name} (MTBF: ${n.estimated_mtbf_hours}h)\nFailure Prob: ${prob * 100}%`;
+            circle.appendChild(title);
+
+            svg.appendChild(circle);
+            svg.appendChild(nameLabel);
+            svg.appendChild(statLabel);
+        });
+    }
+
+    function renderIncidents(incidents) {
+        const feed = document.getElementById("nce-incidents-list");
+        feed.innerHTML = "";
+
+        if (incidents.length === 0) {
+            feed.innerHTML = `<div class="nce-list-empty-state">No incidents logged.</div>`;
+            return;
+        }
+
+        incidents.forEach(inc => {
+            const item = document.createElement("div");
+            item.className = "nce-incident-item";
+
+            let color = "#ef4444"; // Red for warnings/alerts
+            if (inc.event_type === "unregistered_asset_discovered") color = "#3b82f6"; // Blue for discovery
+            else if (inc.event_type === "store_memory_failed") color = "#f59e0b"; // Orange for fail-over
+
+            item.innerHTML = `
+                <span class="nce-incident-dot" style="background:${color};"></span>
+                <div style="flex:1;">
+                    <div style="font-weight:600; color:#f1f5f9;">${inc.event_type.replace(/_/g, ' ')}</div>
+                    <div style="color:#64748b; font-size:11px;">Seq: ${inc.event_seq} &bull; ${inc.occurred_at.slice(11, 19)}</div>
+                </div>
+            `;
+            feed.appendChild(item);
+        });
+    }
+
+    function renderReplays(replays) {
+        const list = document.getElementById("nce-replays-list");
+        list.innerHTML = "";
+
+        if (replays.length === 0) {
+            list.innerHTML = `<div class="nce-list-empty-state">No active replay runs.</div>`;
+            return;
+        }
+
+        replays.forEach(rep => {
+            const item = document.createElement("div");
+            item.className = "nce-replay-item";
+
+            item.innerHTML = `
+                <span style="color:#f1f5f9; font-weight:500;">${rep.run_id.slice(0, 10)}...</span>
+                <span style="color:#6366f1; text-transform:uppercase; font-weight:600;">${rep.mode}</span>
+                <span style="color:#22c55e; font-weight:700;">${rep.status}</span>
+            `;
+            list.appendChild(item);
+        });
+    }
+
+    // Attach listeners
+    slider.addEventListener("input", () => updateTimelineLabel(parseInt(slider.value)));
+    slider.addEventListener("change", loadData);
+
+    // Initial load
+    loadData();
+
+})();
+</script>

@@ -1,0 +1,45 @@
+{
+  "_comment": "Config-as-IP: phase-gate state-machine for the Project engine (G0–G6). Namespace-scoped — each tenant tunes its own copy. No transition constants or criteria keys live in phase_gates.py.",
+  "VALID_PHASE_TRANSITIONS": {
+    "G0": ["G1"],
+    "G1": ["G2"],
+    "G2": ["G3"],
+    "G3": ["G4"],
+    "G4": ["G5"],
+    "G5": ["G6"],
+    "G6": []
+  },
+  "GATE_CRITERIA": {
+    "G0": [],
+    "G1": [
+      "signed_quote_attached",
+      "project_manager_assigned"
+    ],
+    "G2": [
+      "signed_baseline_frozen",
+      "bom_lines_linked",
+      "kick_off_meeting_held"
+    ],
+    "G3": [
+      "design_approved",
+      "bom_fully_specified",
+      "site_access_confirmed"
+    ],
+    "G4": [
+      "frozen_baseline_locked",
+      "bom_ordered",
+      "project_lead_assigned"
+    ],
+    "G5": [
+      "all_bom_lines_delivered",
+      "installation_complete",
+      "testing_started"
+    ],
+    "G6": [
+      "all_tests_passed",
+      "customer_sign_off",
+      "as_built_documented",
+      "handover_to_support_done"
+    ]
+  }
+}

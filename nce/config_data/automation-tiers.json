@@ -1,0 +1,41 @@
+{
+  "_comment": "Value bands → autonomy level for Project Engine tier-gated auto-tasking (§9.5 Contract B). This file is the value axis ONLY. Ceiling/idempotency/kill-switch/audit machinery lives in @governed (nce/autonomy/governor.py). Do NOT duplicate governance logic here.",
+  "tiers": [
+    {
+      "tier": 1,
+      "label": "Autonomous",
+      "description": "Fully autonomous — BOM sync self-executes without human confirm.",
+      "min_value": 0,
+      "max_value": 49999.99,
+      "autonomy_level": "autonomous",
+      "confirm_required": false
+    },
+    {
+      "tier": 2,
+      "label": "Actor/Confirm",
+      "description": "Actor may execute with single human confirmation step.",
+      "min_value": 50000,
+      "max_value": 499999.99,
+      "autonomy_level": "actor_confirm",
+      "confirm_required": true
+    },
+    {
+      "tier": 3,
+      "label": "Advisor + PL Review",
+      "description": "Advisory output only — requires Project Lead review before action.",
+      "min_value": 500000,
+      "max_value": 2999999.99,
+      "autonomy_level": "advisor_pl_review",
+      "confirm_required": true
+    },
+    {
+      "tier": 4,
+      "label": "Advisor Only",
+      "description": "Advisor-only — no autonomous or single-confirm action permitted at this value.",
+      "min_value": 3000000,
+      "max_value": null,
+      "autonomy_level": "advisor_only",
+      "confirm_required": true
+    }
+  ]
+}

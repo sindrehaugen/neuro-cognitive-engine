@@ -1,0 +1,23 @@
+{
+  "version": "1.0",
+  "tiers": [
+    {
+      "min_margin_pct": 0.0,
+      "max_margin_pct": 0.20,
+      "hardware_rate": 0.01,
+      "service_rate": 0.02
+    },
+    {
+      "min_margin_pct": 0.20,
+      "max_margin_pct": 0.35,
+      "hardware_rate": 0.02,
+      "service_rate": 0.04
+    },
+    {
+      "min_margin_pct": 0.35,
+      "max_margin_pct": 1.00,
+      "hardware_rate": 0.03,
+      "service_rate": 0.06
+    }
+  ]
+}

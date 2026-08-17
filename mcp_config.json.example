@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "nce-memory": {
+      "command": "python",
+      "args": ["server.py"],
+      "env": {
+        "MONGO_URI": "mongodb://127.0.0.1:27017",
+        "PG_DSN": "postgresql://mcp_user:REPLACE_ME@127.0.0.1:5432/memory_meta",
+        "REDIS_URL": "redis://127.0.0.1:6379/0",
+        "NCE_MASTER_KEY": "replace-with-32-plus-random-chars-minimum",
+        "NCE_API_KEY": "replace-with-long-random-api-key",
+        "NCE_MCP_API_KEY": "replace-with-long-random-mcp-tenant-key",
+        "NCE_MCP_NAMESPACE_ID": "00000000-0000-4000-8000-000000000001",
+        "NCE_ADMIN_API_KEY": "replace-with-long-random-admin-mcp-key"
+      }
+    }
+  }
+}

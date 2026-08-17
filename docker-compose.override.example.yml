@@ -1,0 +1,71 @@
+# NCE v1.0 — Local Development docker-compose override template.
+#
+# Copy this file to 'docker-compose.override.yml' in the project root to enable
+# developer-friendly customizations for local development (CPU defaults, hot reloading,
+# and direct database/S3 port access):
+#
+#   cp docker-compose.override.example.yml docker-compose.override.yml
+#   docker compose up -d
+#
+
+services:
+  # 1. CPU-Only Development Worker Override
+  # By default, the main docker-compose.yml defines the worker service under the 'gpu'
+  # profile and allocates NVIDIA GPU hardware resources. This override strips the GPU
+  # profile and constraints, allowing the worker to run seamlessly on standard CPU-only machines.
+  worker:
+    profiles: [] # Clear the 'gpu' profile so the worker starts by default on 'docker compose up'
+    deploy: {}    # Remove hardware reservation requirements for NVIDIA GPUs
+
+  # 2. Expose Storage & Databases to Localhost
+  # Maps internal ports directly to your localhost, enabling inspection using GUI tools
+  # (e.g. DBeaver/TablePlus for PostgreSQL, MongoDB Compass, RedisInsight, or MinIO Web UI).
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  mongodb:
+    ports:
+      - "127.0.0.1:27017:27017"
+
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  minio:
+    ports:
+      - "127.0.0.1:9002:9000" # MinIO S3 API Endpoint
+      - "127.0.0.1:9003:9001" # MinIO Web Console UI
+
+  # 3. Mount Local Codebase for Hot-Reloading
+  # Mounts your local 'nce' package directly inside the running containers.
+  # This lets you edit Python files on your host machine and see the changes reflected
+  # in Uvicorn/RQ workers instantly without having to run 'docker compose build'.
+  admin:
+    volumes:
+      - ./nce:/app/nce
+      - ./admin_server.py:/app/admin_server.py
+    environment:
+      - NCE_ENV=dev
+      - LOG_LEVEL=DEBUG
+
+  a2a:
+    volumes:
+      - ./nce:/app/nce
+    environment:
+      - NCE_ENV=dev
+      - LOG_LEVEL=DEBUG
+
+  webhook-receiver:
+    volumes:
+      - ./nce:/app/nce
+    environment:
+      - NCE_ENV=dev
+      - LOG_LEVEL=DEBUG
+
+  cron:
+    volumes:
+      - ./nce:/app/nce
+    environment:
+      - NCE_ENV=dev
+      - LOG_LEVEL=DEBUG

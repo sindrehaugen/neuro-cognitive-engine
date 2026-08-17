@@ -1,0 +1,7 @@
+{
+  "_comment": "Config-as-IP: Vendor scorecard weights. Namespace-scoped — each tenant tunes its own. No weight constants live in scorecard.py.",
+  "on_time_weight": 0.4,
+  "defect_rma_weight": 0.3,
+  "substitution_weight": 0.1,
+  "reliability_weight": 0.2
+}

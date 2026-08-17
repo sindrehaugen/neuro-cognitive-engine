@@ -1,0 +1,96 @@
+name: Dependency Audit
+
+on:
+  schedule:
+    # Every Monday at 07:00 Oslo time (06:00 UTC)
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      notify:
+        description: "Send email notification even if no issues found"
+        type: boolean
+        default: false
+
+jobs:
+  audit:
+    name: Security & Outdated Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install audit tools
+        run: pip install pip-audit==2.9.0 pip-tools==7.4.1
+
+      - name: Install project deps (needed for full audit)
+        run: pip install -r requirements.txt --quiet
+
+      - name: Run pip-audit (CVE scan)
+        id: pip_audit
+        run: |
+          pip-audit -r requirements.txt --format=json -o /tmp/audit.json --strict --disable-pip || true
+          echo "audit_exit=$?" >> $GITHUB_OUTPUT
+
+      - name: Check for outdated packages
+        id: outdated
+        run: |
+          pip list --outdated --format=json > /tmp/outdated.json
+          COUNT=$(python3 -c "import json; d=json.load(open('/tmp/outdated.json')); print(len(d))")
+          echo "outdated_count=$COUNT" >> $GITHUB_OUTPUT
+
+      - name: Generate combined report
+        run: |
+          python3 scripts/dep_report.py \
+            --audit-json /tmp/audit.json \
+            --outdated-json /tmp/outdated.json \
+            --output /tmp/dep_report.md
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: dependency-report-${{ github.run_id }}
+          path: /tmp/dep_report.md
+          retention-days: 90
+
+      - name: Open GitHub Issue if vulnerabilities found
+        if: steps.pip_audit.outputs.audit_exit != '0'
+        uses: peter-evans/create-issue-from-file@v6
+        with:
+          title: "🔐 Dependency Security Alert — ${{ github.run_id }}"
+          content-filepath: /tmp/dep_report.md
+          labels: |
+            security
+            dependencies
+            automated
+
+      - name: Send email notification
+        if: >
+          steps.pip_audit.outputs.audit_exit != '0' ||
+          steps.outdated.outputs.outdated_count > 10 ||
+          inputs.notify == true
+        env:
+          NCE_SMTP_HOST: ${{ secrets.NCE_SMTP_HOST }}
+          NCE_SMTP_PORT: ${{ secrets.NCE_SMTP_PORT }}
+          NCE_SMTP_USER: ${{ secrets.NCE_SMTP_USER }}
+          NCE_SMTP_PASS: ${{ secrets.NCE_SMTP_PASS }}
+          NCE_ADMIN_EMAIL: ${{ secrets.NCE_ADMIN_EMAIL }}
+        run: |
+          python3 scripts/dep_report.py \
+            --audit-json /tmp/audit.json \
+            --outdated-json /tmp/outdated.json \
+            --send-email
+
+      - name: Summary
+        run: |
+          echo "## Dependency Audit Summary" >> $GITHUB_STEP_SUMMARY
+          cat /tmp/dep_report.md >> $GITHUB_STEP_SUMMARY

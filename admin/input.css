@@ -1,0 +1,127 @@
+@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,100..900;1,100..900&family=Poppins:ital,wght@0,100..900;1,100..900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #FFFFFF;
+  --color-surface-elevated: #F8FAFC;
+  --color-surface-border: #E2E8F0;
+
+  --color-bravo-navy: #F1F5F9;
+  --color-bravo-card: #FFFFFF;
+  --color-bravo-primary: #0F172A;
+  --color-bravo-green: #059669;
+  --color-bravo-green_sm: #10B981;
+  --color-bravo-pink: #E11D48;
+  --color-bravo-pink300: #BE123C;
+  --color-bravo-pink200: #FCE7F3;
+  --color-bravo-pink100: #FDF2F8;
+  --color-bravo-blue: #2563EB;
+  --color-bravo-blue300: #1D4ED8;
+  --color-bravo-yellow: #D97706;
+  --color-bravo-yellow300: #B45309;
+  --color-bravo-ui500: #0F172A;
+  --color-bravo-ui400: #475569;
+  --color-bravo-ui300: #94A3B8;
+  --color-bravo-ui200: #F8FAFC;
+
+  --font-sans: 'Poppins', sans-serif;
+  --font-hanken: '"Hanken Grotesk"', sans-serif;
+}
+
+body {
+  font-family: 'Poppins', sans-serif;
+  background-color: #020617 !important; /* Deep dark slate background */
+  color: #F8FAFC;
+}
+
+@layer utilities {
+  /* Enforce Dark/Hypnotic aesthetics without breaking specific colors */
+  .bg-white, .bg-\[\#FFFDFE\], .bg-\[\#F8FAFC\] {
+    background-color: #0F172A !important; /* slate-900 */
+  }
+  .bg-slate-50 {
+    background-color: #020617 !important; /* slate-950 */
+  }
+  .bg-slate-100 {
+    background-color: #1E293B !important; /* slate-800 */
+  }
+  .bg-slate-200 {
+    background-color: #334155 !important; /* slate-700 */
+  }
+  
+  .text-slate-900 { color: #F8FAFC !important; } /* slate-50 */
+  .text-slate-800 { color: #E2E8F0 !important; } /* slate-200 */
+  .text-slate-700 { color: #CBD5E1 !important; } /* slate-300 */
+  .text-slate-600 { color: #94A3B8 !important; } /* slate-400 */
+  .text-slate-500 { color: #64748B !important; } /* slate-500 */
+  .text-slate-400 { color: #475569 !important; } /* slate-600 */
+  
+  .border-slate-200 { border-color: #1E293B !important; } /* slate-800 */
+  .border-slate-300 { border-color: #334155 !important; } /* slate-700 */
+  .border-slate-100 { border-color: #0F172A !important; } /* slate-900 */
+  .border-b { border-color: #1E293B !important; }
+  .border-t { border-color: #1E293B !important; }
+  
+  .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.5) !important; }
+  .shadow-md { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.3) !important; }
+  
+  input, textarea, select {
+    background-color: #020617 !important;
+    color: #F8FAFC !important;
+    border-color: #1E293B !important;
+  }
+  
+  .placeholder-slate-400::placeholder {
+    color: #475569 !important;
+  }
+}
+
+h1, h2, h3, h4, .font-hanken, .brand-header {
+  font-family: 'Hanken Grotesk', sans-serif !important;
+}
+
+/* Predefined Bravo Gradients optimized for dark/hypnotic layouts */
+.bg-bravo-gradient-1 {
+  background: linear-gradient(135deg, #0F172A 0%, #4C1D95 100%);
+}
+.bg-bravo-gradient-2 {
+  background: linear-gradient(135deg, #1E1B4B 0%, #831843 100%);
+}
+.bg-bravo-gradient-3 {
+  background: linear-gradient(135deg, #064E3B 0%, #0F172A 100%);
+}
+.bg-bravo-gradient-4 {
+  background: linear-gradient(135deg, #4C0519 0%, #312E81 100%);
+}
+.bg-bravo-gradient-5 {
+  background: linear-gradient(135deg, #172554 0%, #1E1B4B 100%);
+}
+
+/* Micro-interactions & animations */
+.animate-bounce-slow {
+  animation: bounce 3s infinite;
+}
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+/* Interactive components and scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #020617;
+}
+::-webkit-scrollbar-thumb {
+  background: #1E293B;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #E11D48;
+}
+
+[x-cloak] {
+  display: none !important;
+}

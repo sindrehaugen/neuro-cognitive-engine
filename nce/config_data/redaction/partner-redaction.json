@@ -1,0 +1,27 @@
+{
+  "allowed_fields": [
+    "id",
+    "node_type",
+    "label",
+    "description",
+    "category",
+    "manufacturer",
+    "model",
+    "part_number",
+    "serial_number",
+    "status",
+    "location",
+    "site",
+    "rack",
+    "unit",
+    "interface",
+    "ip_address",
+    "mac_address",
+    "firmware_version",
+    "hardware_version",
+    "warranty_expiry",
+    "install_date",
+    "tags",
+    "namespace_id"
+  ]
+}

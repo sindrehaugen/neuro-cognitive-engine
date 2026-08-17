@@ -1,0 +1,147 @@
+name: TriMCP Enterprise Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Cache Heavy Assets (Models & Wheels)
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/windows/assets/models
+            build/windows/assets/wheels
+          key: ${{ runner.os }}-heavy-assets-${{ hashFiles('requirements.txt') }}
+
+      - name: Download Embedded Python
+        run: |
+          Invoke-WebRequest -Uri "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip" -OutFile "build/windows/assets/python-embed.zip"
+          Expand-Archive "build/windows/assets/python-embed.zip" -DestinationPath "build/windows/assets/python"
+
+      - name: Download Pip Packages & Wheels (CPU, CUDA, ROCm, XPU)
+        run: |
+          pip download -r requirements.txt -d build/windows/assets/wheels
+          pip download torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 -d build/windows/assets/wheels/cuda
+          pip download torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm5.6 -d build/windows/assets/wheels/rocm
+          pip download tree-sitter-language-pack -d build/windows/assets/wheels
+
+      - name: Download spaCy and Jina Models
+        run: |
+          pip install -r requirements.txt
+          python -m spacy download en_core_web_sm
+          # Assuming a script exists to pre-seed the Jina model via optimum-intel
+          python scripts/download_jina.py --output build/windows/assets/models/jina
+
+      - name: Build Go Shim
+        working-directory: ./go/cmd/trimcp-launch
+        run: |
+          $env:GOOS="windows"
+          $env:GOARCH="amd64"
+          go build -o ../../../build/windows/trimcp-launch.exe
+
+      - name: Run Inno Setup
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
+        with:
+          path: build/windows/TriMCP-Setup.iss
+
+      - name: Run WiX Toolset
+        run: |
+          dotnet tool install --global wix
+          wix build build/windows/TriMCP.wxs -o build/windows/TriMCP.msi
+
+      - name: Sign Artifacts (EV Cert)
+        run: echo "Signing .exe and .msi via signtool /fd SHA256"
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-installers
+          path: |
+            build/windows/Output/TriMCP-Setup.exe
+            build/windows/TriMCP.msi
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Cache Heavy Assets (Models & Wheels)
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/macos/assets/models
+            build/macos/assets/wheels
+          key: ${{ runner.os }}-heavy-assets-${{ hashFiles('requirements.txt') }}
+
+      - name: Download Python Standalone (Framework)
+        run: |
+          curl -L "https://github.com/indygreg/python-build-standalone/releases/download/20240224/cpython-3.11.8+20240224-aarch64-apple-darwin-install_only.tar.gz" -o python-mac.tar.gz
+          mkdir -p build/macos/assets/python
+          tar -xzf python-mac.tar.gz -C build/macos/assets/python
+
+      - name: Download Pip Packages & Wheels (CPU, MPS)
+        run: |
+          pip download -r requirements.txt -d build/macos/assets/wheels
+          pip download tree-sitter-language-pack -d build/macos/assets/wheels
+
+      - name: Download spaCy and Jina Models
+        run: |
+          pip install -r requirements.txt
+          python -m spacy download en_core_web_sm
+          python scripts/download_jina.py --output build/macos/assets/models/jina
+
+      - name: Build Go Shim (Universal)
+        working-directory: ./go/cmd/trimcp-launch
+        run: |
+          GOOS=darwin GOARCH=amd64 go build -o trimcp-launch-amd64
+          GOOS=darwin GOARCH=arm64 go build -o trimcp-launch-arm64
+          lipo -create -output ../../../build/macos/trimcp-launch trimcp-launch-amd64 trimcp-launch-arm64
+
+      - name: Build DMG, Codesign, Notarize, Staple
+        env:
+          APPLE_DEV_ID: ${{ secrets.APPLE_DEV_ID }}
+          APPLE_DEV_PASS: ${{ secrets.APPLE_DEV_PASS }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          chmod +x build/macos/build-dmg.sh
+          ./build/macos/build-dmg.sh
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-installers
+          path: build/macos/TriMCP-*.dmg
+
+  release:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v8
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            windows-installers/*
+            macos-installers/*

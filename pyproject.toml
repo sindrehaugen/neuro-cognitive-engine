@@ -1,0 +1,45 @@
+[project]
+name = "nce"
+version = "3.0.0"
+readme = "README.md"
+requires-python = ">=3.10"
+# Runtime deps remain in requirements.txt; this stanza anchors tooling.
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+# First-party = "nce" (the package). Corrected from legacy "trimcp" in the TDL-4/5
+# mass-churn sweep at the post-realignment sweet spot (after RL+ML merged to v3.0).
+src = ["nce", "tests"]
+extend-exclude = [
+    "build",
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "scratch",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "G004"]
+# E501 conflicts with legacy long lines; formatter + 100-col cap handle style incrementally.
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nce"]
+
+[tool.ruff.format]
+quote-style = "preserve"
+line-ending = "auto"
+
+[tool.ruff.lint.per-file-ignores]
+# admin_handlers re-export a shared namespace via `from ._shared import *`
+# (F403 is already suppressed at the import line); F405 name-resolution noise follows.
+"nce/admin_handlers/*.py" = ["F405"]
+# Pre-existing test-scaffold lint debt, scoped per-file (not masked repo-wide).
+# Tracked for cleanup alongside the deferred ruff-format sweep.
+"tests/conftest.py" = ["E402"]
+"tests/test_bridge_dispatch.py" = ["E402"]
+"tests/test_mcp_cache.py" = ["F841"]
+"tests/test_admin_a2a_api.py" = ["F841"]
+"tests/test_batch3_robustness.py" = ["F841"]

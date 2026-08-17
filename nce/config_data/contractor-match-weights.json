@@ -1,0 +1,7 @@
+{
+  "_comment": "Config-as-IP: Contractor matching weights. Namespace-scoped — each tenant tunes its own.",
+  "skill_weight": 0.4,
+  "location_weight": 0.3,
+  "load_weight": 0.1,
+  "history_weight": 0.2
+}

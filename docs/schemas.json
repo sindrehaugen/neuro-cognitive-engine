@@ -1,0 +1,1215 @@
+{
+  "$defs": {
+    "AssertionType": {
+      "description": "[D9] Fact-typing used for contradiction detection and memory classification.",
+      "enum": [
+        "fact",
+        "opinion",
+        "preference",
+        "observation"
+      ],
+      "title": "AssertionType",
+      "type": "string"
+    },
+    "ForgetMemoryRequest": {
+      "additionalProperties": false,
+      "description": "Input for the forget_memory MCP tool (Phase 1.1).",
+      "properties": {
+        "memory_id": {
+          "minLength": 1,
+          "title": "Memory Id",
+          "type": "string"
+        },
+        "agent_id": {
+          "title": "Agent Id",
+          "type": "string"
+        },
+        "namespace_id": {
+          "title": "Namespace Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_id",
+        "agent_id",
+        "namespace_id"
+      ],
+      "title": "ForgetMemoryRequest",
+      "type": "object"
+    },
+    "GetRecentContextRequest": {
+      "additionalProperties": false,
+      "description": "Input for the get_recent_context MCP tool.",
+      "properties": {
+        "namespace_id": {
+          "format": "uuid4",
+          "title": "Namespace Id",
+          "type": "string"
+        },
+        "user_id": {
+          "default": "default",
+          "title": "User Id",
+          "type": "string"
+        },
+        "session_id": {
+          "default": "default",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "limit": {
+          "default": 10,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip before returning `limit` recent memories.",
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        },
+        "as_of": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "As Of"
+        }
+      },
+      "required": [
+        "namespace_id"
+      ],
+      "title": "GetRecentContextRequest",
+      "type": "object"
+    },
+    "GraphSearchRequest": {
+      "additionalProperties": false,
+      "description": "Input for the graph_search MCP tool.",
+      "properties": {
+        "namespace_id": {
+          "format": "uuid4",
+          "title": "Namespace Id",
+          "type": "string"
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Filter graph traversal by agent. None = all agents in namespace.",
+          "title": "Agent Id"
+        },
+        "query": {
+          "minLength": 1,
+          "title": "Query",
+          "type": "string"
+        },
+        "max_depth": {
+          "default": 2,
+          "maximum": 3,
+          "minimum": 1,
+          "title": "Max Depth",
+          "type": "integer"
+        },
+        "as_of": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "As Of"
+        },
+        "max_edges_per_node": {
+          "default": 512,
+          "description": "Maximum incident edges loaded from the database per BFS expansion (ordered by decayed confidence). Caps hub-node fan-out to prevent OOM.",
+          "maximum": 2048,
+          "minimum": 1,
+          "title": "Max Edges Per Node",
+          "type": "integer"
+        },
+        "edge_limit": {
+          "anyOf": [
+            {
+              "maximum": 5000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "If set, return at most this many edges after deduplication (pagination).",
+          "title": "Edge Limit"
+        },
+        "edge_offset": {
+          "default": 0,
+          "description": "Offset into the deduplicated edge list before applying edge_limit.",
+          "minimum": 0,
+          "title": "Edge Offset",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "namespace_id",
+        "query"
+      ],
+      "title": "GraphSearchRequest",
+      "type": "object"
+    },
+    "IndexCodeFileRequest": {
+      "additionalProperties": false,
+      "description": "Input for the index_code_file MCP tool (Phase 3.2).",
+      "properties": {
+        "filepath": {
+          "title": "Filepath",
+          "type": "string"
+        },
+        "raw_code": {
+          "title": "Raw Code",
+          "type": "string"
+        },
+        "language": {
+          "enum": [
+            "python",
+            "javascript",
+            "typescript",
+            "go",
+            "rust"
+          ],
+          "title": "Language",
+          "type": "string"
+        },
+        "namespace_id": {
+          "anyOf": [
+            {
+              "format": "uuid4",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Namespace Id"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Id"
+        },
+        "private": {
+          "default": false,
+          "title": "Private",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "filepath",
+        "raw_code",
+        "language"
+      ],
+      "title": "IndexCodeFileRequest",
+      "type": "object"
+    },
+    "KGEdge": {
+      "additionalProperties": false,
+      "description": "An edge (relation) in the knowledge graph.",
+      "properties": {
+        "subject_label": {
+          "minLength": 1,
+          "title": "Subject Label",
+          "type": "string"
+        },
+        "predicate": {
+          "minLength": 1,
+          "title": "Predicate",
+          "type": "string"
+        },
+        "object_label": {
+          "minLength": 1,
+          "title": "Object Label",
+          "type": "string"
+        },
+        "confidence": {
+          "default": 1.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "payload_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Payload Ref"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "subject_label",
+        "predicate",
+        "object_label"
+      ],
+      "title": "KGEdge",
+      "type": "object"
+    },
+    "KGNode": {
+      "additionalProperties": false,
+      "description": "A node (entity) in the knowledge graph.",
+      "properties": {
+        "label": {
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "entity_type": {
+          "default": "UNKNOWN",
+          "title": "Entity Type",
+          "type": "string"
+        },
+        "source_text": {
+          "title": "Source Text",
+          "type": "string"
+        },
+        "payload_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Payload Ref"
+        }
+      },
+      "required": [
+        "label",
+        "source_text"
+      ],
+      "title": "KGNode",
+      "type": "object"
+    },
+    "ManageQuotasCommand": {
+      "description": "Commands accepted by the manage_quotas MCP admin tool (Phase 3.2).",
+      "enum": [
+        "set",
+        "list",
+        "delete",
+        "reset"
+      ],
+      "title": "ManageQuotasCommand",
+      "type": "string"
+    },
+    "ManageQuotasRequest": {
+      "additionalProperties": false,
+      "description": "Input for the manage_quotas MCP admin tool (Phase 3.2).",
+      "properties": {
+        "command": {
+          "$ref": "#/$defs/ManageQuotasCommand"
+        },
+        "namespace_id": {
+          "format": "uuid4",
+          "title": "Namespace Id",
+          "type": "string"
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agent Id"
+        },
+        "resource_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resource Type"
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Limit"
+        }
+      },
+      "required": [
+        "command",
+        "namespace_id"
+      ],
+      "title": "ManageQuotasRequest",
+      "type": "object"
+    },
+    "MediaPayload": {
+      "additionalProperties": false,
+      "description": "Input for the store_media MCP tool (Phase 1.2).",
+      "properties": {
+        "namespace_id": {
+          "format": "uuid4",
+          "title": "Namespace Id",
+          "type": "string"
+        },
+        "user_id": {
+          "title": "User Id",
+          "type": "string"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "media_type": {
+          "enum": [
+            "audio",
+            "video",
+            "image"
+          ],
+          "title": "Media Type",
+          "type": "string"
+        },
+        "file_path_on_disk": {
+          "title": "File Path On Disk",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 8192,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "namespace_id",
+        "user_id",
+        "session_id",
+        "media_type",
+        "file_path_on_disk",
+        "summary"
+      ],
+      "title": "MediaPayload",
+      "type": "object"
+    },
+    "MemoryRecord": {
+      "description": "In-memory representation of a single memories table row.\n\nThis model is produced by the orchestrator after a successful write,\nNOT constructed from raw user input.\nThe `valid_from` field is always server-assigned and present here for\ndownstream read paths (verify, search results, etc.).",
+      "properties": {
+        "id": {
+          "format": "uuid4",
+          "title": "Id",
+          "type": "string"
+        },
+        "namespace_id": {
+          "format": "uuid4",
+          "title": "Namespace Id",
+          "type": "string"
+        },
+        "agent_id": {
+          "title": "Agent Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "memory_type": {
+          "$ref": "#/$defs/MemoryType"
+        },
+        "assertion_type": {
+          "$ref": "#/$defs/AssertionType"
+        },
+        "payload_ref": {
+          "description": "MongoDB document _id (string form)",
+          "title": "Payload Ref",
+          "type": "string"
+        },
+        "embedding_model_id": {
+          "anyOf": [
+            {
+              "format": "uuid4",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Embedding Model Id"
+        },
+        "derived_from": {
+          "anyOf": [
+            {
+              "items": {
+                "format": "uuid4",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Derived From"
+        },
+        "valid_from": {
+          "description": "[D8] Server-assigned; never user-supplied",
+          "format": "date-time",
+          "title": "Valid From",
+          "type": "string"
+        },
+        "valid_to": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "NULL = current row (latest version)",
+          "title": "Valid To"
+        },
+        "signature": {
+          "description": "[Phase 0.2] HMAC-SHA256 over JCS payload",
+          "format": "binary",
+          "title": "Signature",
+          "type": "string"
+        },
+        "signature_key_id": {
+          "description": "[Phase 0.2] ID of the signing key used",
+          "title": "Signature Key Id",
+          "type": "string"
+        },
+        "pii_redacted": {
+          "default": false,
+          "title": "Pii Redacted",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "namespace_id",
+        "agent_id",
+        "created_at",
+        "memory_type",
+        "assertion_type",
+        "payload_ref",
+        "valid_from",
+        "signature",
+        "signature_key_id"
+      ],
+      "title": "MemoryRecord",
+      "type": "object"
+    },
+    "MemoryType": {
+      "description": "Classification of memory entries stored in the memories table.",
+      "enum": [
+        "episodic",
+        "consolidated",
+        "decision",
+        "code_chunk"
+      ],
+      "title": "MemoryType",
+      "type": "string"
+    },
+    "NamespaceCognitiveConfig": {
+      "additionalProperties": false,
+      "description": "Cognitive settings nested inside NamespaceMetadata.\nConsumed in Phase 1.1 (Ebbinghaus Decay + Salience).",
+      "properties": {
+        "half_life_days": {
+          "default": 30.0,
+          "exclusiveMinimum": 0.0,
+          "title": "Half Life Days",
+          "type": "number"
+        },
+        "reinforcement_delta": {
+          "default": 0.05,
+          "exclusiveMinimum": 0.0,
+          "maximum": 1.0,
+          "title": "Reinforcement Delta",
+          "type": "number"
+        },
+        "alpha": {
+          "default": 0.7,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Alpha",
+          "type": "number"
+        }
+      },
+      "title": "NamespaceCognitiveConfig",
+      "type": "object"
+    },
+    "NamespaceConsolidationConfig": {
+      "additionalProperties": false,
+      "description": "Cognitive consolidation settings nested inside NamespaceMetadata.\nConsumed in Phase 1 (Cognitive Layer). Declared here to allow pre-configuration.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "llm_provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Llm Provider"
+        },
+        "llm_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Llm Model"
+        },
+        "llm_credentials": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Llm Credentials"
+        },
+        "llm_temperature": {
+          "default": 0.2,
+          "maximum": 2.0,
+          "minimum": 0.0,
+          "title": "Llm Temperature",
+          "type": "number"
+        },
+        "decay_sources": {
+          "default": false,
+          "description": "Mark source memories as lower-salience after consolidation",
+          "title": "Decay Sources",
+          "type": "boolean"
+        }
+      },
+      "title": "NamespaceConsolidationConfig",
+      "type": "object"
+    },
+    "NamespaceCreate": {
+      "additionalProperties": false,
+      "description": "Input payload for manage_namespace(command='create').",
+      "properties": {
+        "slug": {
+          "description": "URL-safe lowercase identifier. 2\u201364 chars. Alphanumeric + hyphens. Must start and end with alphanumeric.",
+          "maxLength": 64,
+          "minLength": 2,
+          "title": "Slug",
+          "type": "string"
+        },
+        "parent_id": {
+          "anyOf": [
+            {
+              "format": "uuid4",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Parent namespace UUID for hierarchy. None = root namespace.",
+          "title": "Parent Id"
+        },
+        "metadata": {
+          "$ref": "#/$defs/NamespaceMetadata"
+        }
+      },
+      "required": [
+        "slug"
+      ],
+      "title": "NamespaceCreate",
+      "type": "object"
+    },
+    "NamespaceForkConfig": {
+      "additionalProperties": false,
+      "description": "Configuration for a forked namespace (Phase 2.3).",
+      "properties": {
+        "forked_from_as_of": {
+          "description": "The exact timezone.utc timestamp at which the parent namespace was forked",
+          "format": "date-time",
+          "title": "Forked From As Of",
+          "type": "string"
+        }
+      },
+      "required": [
+        "forked_from_as_of"
+      ],
+      "title": "NamespaceForkConfig",
+      "type": "object"
+    },
+    "NamespaceMetadata": {
+      "additionalProperties": false,
+      "description": "Typed representation of the namespaces.metadata JSONB column.\n\nextra='forbid' prevents unrecognised keys from silently entering the DB.\nUnknown future fields must be added here first (makes schema evolution explicit).",
+      "properties": {
+        "temporal_retention_days": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 90,
+          "description": "Days to retain memories. None = infinite. 0 = purge immediately.",
+          "title": "Temporal Retention Days"
+        },
+        "llm_payload_retention_days": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Days to retain LLM response payloads in MinIO. None = inherit temporal_retention_days. 0 = no caching, re-execute only.",
+          "title": "Llm Payload Retention Days"
+        },
+        "consolidation": {
+          "$ref": "#/$defs/NamespaceConsolidationConfig"
+        },
+        "pii": {
+          "$ref": "#/$defs/NamespacePIIConfig"
+        },
+        "cognitive": {
+          "$ref": "#/$defs/NamespaceCognitiveConfig"
+        },
+        "fork_config": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NamespaceForkConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "[Phase 2.3] Configuration if this namespace is a fork of another."
+        }
+      },
+      "title": "NamespaceMetadata",
+      "type": "object"
+    },
+    "NamespaceMetadataPatch": {
+      "additionalProperties": false,
+      "description": "Strictly-typed partial update for namespace metadata (Phase 3).\n\nMirrors :class:`NamespaceMetadata` fields but all are optional \u2014 suitable\nfor PATCH semantics via ``manage_namespace(command='update_metadata')``.\n\n``extra='forbid'`` rejects unrecognised keys (**schema pollution guard**):\na typo in a metadata-patch field name is caught at the Pydantic boundary\nrather than silently inserted into the namespaces JSONB column.",
+      "properties": {
+        "temporal_retention_days": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "[D5] Days to retain memories. None = infinite. 0 = purge immediately.",
+          "title": "Temporal Retention Days"
+        },
+        "llm_payload_retention_days": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "[D6] Days to retain LLM payloads in MinIO.",
+          "title": "Llm Payload Retention Days"
+        },
+        "consolidation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NamespaceConsolidationConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "pii": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NamespacePIIConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "cognitive": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NamespaceCognitiveConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "fork_config": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NamespaceForkConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "NamespaceMetadataPatch",
+      "type": "object"
+    },
+    "NamespacePIIConfig": {
+      "additionalProperties": false,
+      "description": "PII policy block nested inside NamespaceMetadata.\nConsumed in Phase 0.3 (PII Detection and Auto-Redaction).\nDeclared here so namespace creation can pre-configure it.",
+      "properties": {
+        "entity_types": {
+          "description": "Presidio entity types to detect (e.g. PERSON, EMAIL, PHONE)",
+          "items": {
+            "type": "string"
+          },
+          "title": "Entity Types",
+          "type": "array"
+        },
+        "policy": {
+          "$ref": "#/$defs/PIIPolicy",
+          "default": "redact",
+          "description": "Action when PII is found"
+        },
+        "reversible": {
+          "default": false,
+          "description": "If True and policy=pseudonymise, store encrypted original",
+          "title": "Reversible",
+          "type": "boolean"
+        },
+        "allowlist": {
+          "description": "Entity strings explicitly exempted from redaction",
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowlist",
+          "type": "array"
+        },
+        "pseudonym_hmac_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-namespace secret for HMAC-SHA256 pseudonym tokens (\u22658 UTF-8 bytes when set). If omitted, ``TRIMCP_MASTER_KEY`` (UTF-8, \u226532 chars) is used as the HMAC key.",
+          "title": "Pseudonym Hmac Key"
+        }
+      },
+      "title": "NamespacePIIConfig",
+      "type": "object"
+    },
+    "NamespaceRecord": {
+      "description": "Full namespace row as returned from the database.\nextra='ignore' tolerates any additional DB columns without breaking.",
+      "properties": {
+        "id": {
+          "format": "uuid4",
+          "title": "Id",
+          "type": "string"
+        },
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        },
+        "parent_id": {
+          "anyOf": [
+            {
+              "format": "uuid4",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Id"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "metadata": {
+          "$ref": "#/$defs/NamespaceMetadata"
+        }
+      },
+      "required": [
+        "id",
+        "slug",
+        "created_at",
+        "metadata"
+      ],
+      "title": "NamespaceRecord",
+      "type": "object"
+    },
+    "PIIPolicy": {
+      "description": "[Phase 0.3] Per-namespace PII handling policy.",
+      "enum": [
+        "redact",
+        "pseudonymise",
+        "reject",
+        "flag"
+      ],
+      "title": "PIIPolicy",
+      "type": "string"
+    },
+    "SemanticSearchRequest": {
+      "additionalProperties": false,
+      "description": "Input for the semantic_search MCP tool.",
+      "properties": {
+        "namespace_id": {
+          "format": "uuid4",
+          "title": "Namespace Id",
+          "type": "string"
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Filter by agent. None = all agents in namespace.",
+          "title": "Agent Id"
+        },
+        "query": {
+          "minLength": 1,
+          "title": "Query",
+          "type": "string"
+        },
+        "limit": {
+          "default": 5,
+          "description": "Maximum hits to return after offset.",
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "description": "Number of ranked hits to skip (offset pagination).",
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        },
+        "as_of": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Point-in-time recall: return memories valid at this timestamp",
+          "title": "As Of"
+        }
+      },
+      "required": [
+        "namespace_id",
+        "query"
+      ],
+      "title": "SemanticSearchRequest",
+      "type": "object"
+    },
+    "SemanticSearchResult": {
+      "description": "A single hit returned from a semantic search.",
+      "properties": {
+        "memory_id": {
+          "format": "uuid4",
+          "title": "Memory Id",
+          "type": "string"
+        },
+        "namespace_id": {
+          "format": "uuid4",
+          "title": "Namespace Id",
+          "type": "string"
+        },
+        "agent_id": {
+          "title": "Agent Id",
+          "type": "string"
+        },
+        "score": {
+          "minimum": 0.0,
+          "title": "Score",
+          "type": "number"
+        },
+        "payload_ref": {
+          "title": "Payload Ref",
+          "type": "string"
+        },
+        "assertion_type": {
+          "$ref": "#/$defs/AssertionType"
+        },
+        "memory_type": {
+          "$ref": "#/$defs/MemoryType"
+        },
+        "valid_from": {
+          "format": "date-time",
+          "title": "Valid From",
+          "type": "string"
+        },
+        "pii_redacted": {
+          "default": false,
+          "title": "Pii Redacted",
+          "type": "boolean"
+        },
+        "content_preview": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Populated by the orchestrator from MongoDB; may be None if redacted",
+          "title": "Content Preview"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional memories.metadata JSON (compare_states / diagnostics) \u2014 flat JSON-safe keys only",
+          "title": "Metadata"
+        }
+      },
+      "required": [
+        "memory_id",
+        "namespace_id",
+        "agent_id",
+        "score",
+        "payload_ref",
+        "assertion_type",
+        "memory_type",
+        "valid_from"
+      ],
+      "title": "SemanticSearchResult",
+      "type": "object"
+    },
+    "StoreMemoryRequest": {
+      "additionalProperties": false,
+      "description": "Input for the store_memory MCP tool (Phase 0.1).\n\nDecisions enforced:\n  [D4]  agent_id stripped, max 128 chars, defaults to 'default'.\n  [D8]  valid_from is NOT an input field \u2014 always assigned server-side (now()).\n        Any attempt to supply it is rejected by extra='forbid'.\n  [D9]  assertion_type defaults to AssertionType.fact. Classifier may override\n        during the ingest pipeline (trimcp/pii.py::infer_assertion_type).",
+      "properties": {
+        "namespace_id": {
+          "description": "Target namespace for this memory",
+          "format": "uuid4",
+          "title": "Namespace Id",
+          "type": "string"
+        },
+        "agent_id": {
+          "default": "default",
+          "description": "[D4] Agent identifier. Free-text, max 128 chars.",
+          "title": "Agent Id",
+          "type": "string"
+        },
+        "content": {
+          "description": "Primary text to store, embed, and graph-extract",
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "description": "Short synopsis used for FTS index. Auto-derived from content (first 8192 chars) if left blank.",
+          "maxLength": 8192,
+          "title": "Summary",
+          "type": "string"
+        },
+        "heavy_payload": {
+          "default": "",
+          "description": "Full raw content (transcript, document, \u2026). Stored in MongoDB, not embedded. Defaults to content when not supplied.",
+          "title": "Heavy Payload",
+          "type": "string"
+        },
+        "memory_type": {
+          "$ref": "#/$defs/MemoryType",
+          "default": "episodic"
+        },
+        "assertion_type": {
+          "$ref": "#/$defs/AssertionType",
+          "default": "fact",
+          "description": "[D9] Classifier may override this during ingest."
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Arbitrary caller metadata stored in MongoDB alongside the payload \u2014 flat JSON-safe keys only",
+          "title": "Metadata"
+        },
+        "derived_from": {
+          "anyOf": [
+            {
+              "items": {
+                "format": "uuid4",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Source memory IDs \u2014 required when memory_type='consolidated'",
+          "title": "Derived From"
+        },
+        "check_contradictions": {
+          "default": false,
+          "description": "Phase 1.3: If true, runs sync contradiction detection and returns result.",
+          "title": "Check Contradictions",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "namespace_id",
+        "content"
+      ],
+      "title": "StoreMemoryRequest",
+      "type": "object"
+    },
+    "UnredactMemoryRequest": {
+      "additionalProperties": false,
+      "description": "Input for the unredact_memory MCP tool (ADMIN).",
+      "properties": {
+        "memory_id": {
+          "minLength": 1,
+          "title": "Memory Id",
+          "type": "string"
+        },
+        "namespace_id": {
+          "title": "Namespace Id",
+          "type": "string"
+        },
+        "agent_id": {
+          "title": "Agent Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_id",
+        "namespace_id",
+        "agent_id"
+      ],
+      "title": "UnredactMemoryRequest",
+      "type": "object"
+    }
+  },
+  "title": "NCE API Schema"
+}

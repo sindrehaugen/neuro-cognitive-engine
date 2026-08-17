@@ -1,0 +1,75 @@
+version: 2
+
+updates:
+  # Python runtime dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Oslo"
+    open-pull-requests-limit: 10
+    groups:
+      # Security-critical packages get their own group for fast review
+      security-critical:
+        patterns:
+          - "cryptography"
+          - "PyJWT"
+          - "argon2-cffi"
+          - "starlette"
+          - "fastapi"
+          - "uvicorn"
+      # ML stack bumps together (they tend to be interdependent)
+      ml-stack:
+        patterns:
+          - "torch"
+          - "transformers"
+          - "sentence-transformers"
+          - "spacy"
+          - "scikit-learn"
+          - "numpy"
+          - "scipy"
+      # Observability stack
+      observability:
+        patterns:
+          - "opentelemetry-*"
+          - "prometheus-client"
+    labels:
+      - "dependencies"
+      - "automated"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    ignore:
+      # aiosmtplib is pinned <4 intentionally — review manually
+      - dependency-name: "aiosmtplib"
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Oslo"
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "ci"
+
+  # Node (Tailwind admin build)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Oslo"
+    labels:
+      - "dependencies"
+      - "frontend"
+    commit-message:
+      prefix: "deps(node)"

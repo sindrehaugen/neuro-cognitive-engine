@@ -1,0 +1,15 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+  - repo: local
+    hooks:
+      - id: check-empty-with
+        name: Check for empty with blocks
+        description: Detects `with ContextManager(): pass` anti-patterns
+        entry: python scripts/check_empty_with.py
+        language: python
+        language_version: python3.11
+        pass_filenames: false
+        always_run: true
+        files: ^(nce/|server\.py|admin_server\.py|start_worker\.py)
+        types: [python]

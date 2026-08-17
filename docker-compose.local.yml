@@ -1,0 +1,101 @@
+# NCE — D1: localhost-bound single-machine Compose stack (Phase 0.1 data + cognitive).
+# No edge/worker services — run MCP server and workers on the host against these ports.
+#
+# Optional: use repo-root docker-compose.yml or deploy/multiuser/docker-compose.yml for full stack.
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    container_name: nce-redis-local
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data_local:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: nce-postgres-local
+    environment:
+      POSTGRES_USER: mcp_user
+      POSTGRES_PASSWORD: mcp_password
+      POSTGRES_DB: memory_meta
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pg_data_local:/var/lib/postgresql/data
+      # Initialize schema on first boot (idempotent)
+      - ./nce/schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcp_user -d memory_meta"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:7.0
+    container_name: nce-mongo-local
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo_data_local:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    container_name: nce-minio-local
+    environment:
+      MINIO_ROOT_USER: mcp_admin
+      MINIO_ROOT_PASSWORD: super_secure_minio_password
+    ports:
+      - "127.0.0.1:9002:9000"
+      - "127.0.0.1:9003:9001"
+    volumes:
+      - minio_data_local:/data
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  cognitive:
+    # pull_policy: missing — tries to pull the real image first; falls back to
+    # building the local stub automatically when the registry is unreachable.
+    # No manual swap needed: once ghcr.io/sindrehaugen/nce-cognitive:v1 is
+    # available and pulled, subsequent `make local-up` uses it automatically.
+    image: ghcr.io/sindrehaugen/nce-cognitive:v1
+    build:
+      context: ./deploy/cognitive-stub
+      dockerfile: Dockerfile
+    pull_policy: missing
+    container_name: nce-cognitive-local
+    environment:
+      COGNITIVE_PORT: "11435"
+      EMBEDDING_VECTOR_DIM: "${EMBEDDING_VECTOR_DIM:-768}"
+    ports:
+      - "127.0.0.1:11435:11435"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:11435/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  redis_data_local:
+  pg_data_local:
+  mongo_data_local:
+  minio_data_local:

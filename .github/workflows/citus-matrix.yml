@@ -1,0 +1,89 @@
+name: Citus RLS matrix
+
+# DESCOPED (Batch 122) — this job is defined but will produce skip-only results
+# until a combined Citus 12 + pgvector image is available.
+# See docs/citus_descope.md for the decision record and resolution path.
+#
+# When re-activating:
+#   1. Replace the postgres image below with a Citus + pgvector combined image.
+#   2. Apply nce/schema.sql and nce/migrations/optional/010_citus_sharding.sql.
+#   3. The tests in tests/integration/test_citus_rls.py will run (CITUS_TEST_DSN set).
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+jobs:
+  citus-rls-matrix:
+    name: Citus distributed-table RLS matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      # ---------------------------------------------------------------------------
+      # DESCOPED: citusdata/citus:12-pg16 does not exist.
+      # Using pgvector/pgvector:pg16 (stock Postgres + pgvector) as a placeholder
+      # so this CI job runs without error.  The matrix tests will be skipped
+      # because CITUS_TEST_DSN is set to the placeholder and the Citus extension
+      # is unavailable — tests check for CITUS_TEST_DSN and skip when Citus is absent.
+      #
+      # To unblock: replace this image with one that has both Citus 12 and pgvector,
+      # and set CITUS_AVAILABLE=true in the env block below.
+      # ---------------------------------------------------------------------------
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: citus_user
+          POSTGRES_PASSWORD: citus_test_password
+          POSTGRES_DB: citus_test
+        ports:
+          - 5440:5432
+        options: >-
+          --health-cmd "pg_isready -U citus_user -d citus_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Check Citus extension availability
+        id: citus_check
+        env:
+          PGPASSWORD: citus_test_password
+        run: |
+          RESULT=$(psql -h localhost -p 5440 -U citus_user -d citus_test \
+            -tAc "SELECT name FROM pg_available_extensions WHERE name='citus';")
+          echo "citus_available=${RESULT}" >> "$GITHUB_OUTPUT"
+          if [ -z "$RESULT" ]; then
+            echo "::warning::Citus extension not available in image. Matrix tests will be skipped."
+            echo "::warning::Resolution: build or find a combined citusdata/citus:12 + pgvector image."
+            echo "::warning::See docs/citus_descope.md for the full decision record."
+          fi
+
+      - name: Run Citus RLS matrix (skips if Citus unavailable)
+        # CITUS_TEST_DSN is set only when the Citus extension is confirmed present.
+        # When the extension is absent (current DESCOPED state), the env var is
+        # omitted so the skip_citus_unavailable guard fires and all tests skip
+        # cleanly with exit 0.  This avoids fixture errors from attempting to
+        # connect to a non-Citus postgres.
+        env:
+          CITUS_TEST_DSN: ${{ steps.citus_check.outputs.citus_available != '' && 'postgresql://citus_user:citus_test_password@localhost:5440/citus_test' || '' }}
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+        run: |
+          pytest tests/integration/test_citus_rls.py \
+            -m integration \
+            -q --tb=short \
+            -v
