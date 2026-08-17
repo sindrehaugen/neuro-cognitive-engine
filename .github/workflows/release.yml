@@ -53,7 +53,7 @@ jobs:
           go build -o ../../../build/windows/trimcp-launch.exe
 
       - name: Run Inno Setup
-        uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.9
         with:
           path: build/windows/TriMCP-Setup.iss
 
