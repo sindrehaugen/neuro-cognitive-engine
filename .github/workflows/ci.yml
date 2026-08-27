@@ -189,6 +189,7 @@ jobs:
             tests/test_node_ownership_seed_bulk.py \
             tests/test_namespace_fk_cascade.py \
             tests/test_namespace_fixture_teardown.py \
+            tests/test_sales_signed_baselines_key.py \
             tests/test_worm_registry.py::test_memory_salience_not_in_worm_tables \
             tests/test_worm_registry.py::test_worm_tables_contains_expected_entries \
             -m integration -q --tb=short
