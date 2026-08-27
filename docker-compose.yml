@@ -672,10 +672,38 @@ volumes:
 # /proc/<pid>/environ exposure vector that plain ``environment:`` vars have.
 #
 # Dev path (default): the secret files come from deploy/secrets/* on the host.
-# Create them once (these files are gitignored):
-#   mkdir -p deploy/secrets
-#   printf '%s' "$NCE_MASTER_KEY" > deploy/secrets/nce_master_key
-#   printf '%s' "$NCE_API_KEY"    > deploy/secrets/nce_api_key
+# Create them once (these files are gitignored).
+#
+# The files MUST NOT begin with a UTF-8 BOM (EF BB BF) and MUST contain only
+# the secret. A BOM becomes part of the loaded secret's first character, which
+# silently derives a DIFFERENT key -- nce/config.secret_env now strips it and
+# logs a WARNING, but a BOM'd file still means the secret on disk is not what
+# it looks like. Fix the file rather than relying on the strip.
+#
+#   POSIX shell / Git Bash / WSL:
+#     mkdir -p deploy/secrets
+#     printf '%s' "$NCE_MASTER_KEY" > deploy/secrets/nce_master_key
+#     printf '%s' "$NCE_API_KEY"    > deploy/secrets/nce_api_key
+#
+#   PowerShell -- do NOT port the POSIX line above literally. Measured on
+#   Windows PowerShell 5.1, writing the string "abc123":
+#     'abc123' > file                      -> ff fe ...   UTF-16LE + BOM  (!)
+#     'abc123' | Out-File -Encoding utf8   -> ef bb bf    UTF-8 + BOM
+#     'abc123' | Set-Content               -> 61 62 63    clean
+#   So `>` -- the most literal translation of the recipe above -- gives you a
+#   UTF-16 file, and `-Encoding utf8` gives you a UTF-8 BOM. Both are rejected or
+#   corrected by nce/config.secret_env, but fix the file rather than relying on
+#   that. Use WriteAllText, which never writes a BOM in any PowerShell version:
+#     New-Item -ItemType Directory -Force deploy/secrets | Out-Null
+#     [IO.File]::WriteAllText("$PWD/deploy/secrets/nce_master_key", $env:NCE_MASTER_KEY)
+#     [IO.File]::WriteAllText("$PWD/deploy/secrets/nce_api_key",    $env:NCE_API_KEY)
+#   (pwsh 7+ may also use -Encoding utf8NoBOM.)
+#
+#   Verify: the file must be plain UTF-8 with no BOM. First bytes must NOT be
+#   ef bb bf (UTF-8 BOM) nor ff fe / fe ff (UTF-16), and the byte count must
+#   equal the secret's character count:
+#     head -c3 deploy/secrets/nce_master_key | xxd -p   # expect the key, not a BOM
+#     wc -c    deploy/secrets/nce_master_key            # expect exactly 64
 # The env-var fallbacks (env_file / ${REDIS_PASSWORD}) still work when these
 # files are absent and you remove the ``secrets:`` references below, so dev that
 # never created the files keeps working via the environment.

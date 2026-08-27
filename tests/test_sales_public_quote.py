@@ -250,3 +250,86 @@ class TestSalesPublicQuote:
                 assert "quote not found" in r.json()["error"].lower()
         finally:
             await engine.disconnect()
+
+
+# ---------------------------------------------------------------------------
+# Public-token key normalisation (unit — no DB).
+#
+# generate_public_token() HMACs with cfg.NCE_MASTER_KEY *raw*, but every other
+# consumer of that secret goes through MasterKey.from_env(), which .strip()s it.
+# secret_env deliberately "preserves any other whitespace" (it removes only one
+# trailing newline), so a configured key with surrounding whitespace produced two
+# different key values for one configured secret.
+#
+# The user-visible defect: quote-token validity depended on INVISIBLE padding.
+# Tidy the whitespace out of your config and every previously issued token
+# silently starts returning 401. This is also a non-AEAD derivation, so no
+# auth-tag / decrypt probe can detect the divergence.
+#
+# For a key with no surrounding whitespace -- the normal case -- normalising is a
+# no-op, so tokens are unchanged for healthy deployments.
+# ---------------------------------------------------------------------------
+
+_TOKEN_KEY_CORE = "m" * 64
+_TOKEN_QUOTE_ID = "quote-abc123"
+
+
+def test_public_token_ignores_surrounding_whitespace_in_master_key(monkeypatch) -> None:
+    """The token must depend on the secret's value, not on invisible padding."""
+    from nce.config import cfg
+
+    monkeypatch.setattr(cfg, "NCE_MASTER_KEY", _TOKEN_KEY_CORE, raising=False)
+    baseline = generate_public_token(_TOKEN_QUOTE_ID)
+
+    for padded in (
+        "  " + _TOKEN_KEY_CORE,
+        _TOKEN_KEY_CORE + "  ",
+        "  " + _TOKEN_KEY_CORE + "  ",
+        "\t" + _TOKEN_KEY_CORE + "\r\n",
+        _TOKEN_KEY_CORE + "\n",
+    ):
+        monkeypatch.setattr(cfg, "NCE_MASTER_KEY", padded, raising=False)
+        assert generate_public_token(_TOKEN_QUOTE_ID) == baseline, (
+            f"token changed when the configured key was padded with {padded[:2]!r}... -- "
+            "token validity must not depend on invisible whitespace"
+        )
+
+
+def test_public_token_key_matches_master_key_normalisation(monkeypatch) -> None:
+    """Pin the exact key bytes: the same .strip() MasterKey.from_env() applies."""
+    import hashlib
+    import hmac as _hmac
+
+    from nce.config import cfg
+
+    monkeypatch.setattr(cfg, "NCE_MASTER_KEY", "  " + _TOKEN_KEY_CORE + "  ", raising=False)
+
+    expected = _hmac.new(
+        _TOKEN_KEY_CORE.encode("utf-8"),
+        _TOKEN_QUOTE_ID.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+    assert generate_public_token(_TOKEN_QUOTE_ID) == expected
+
+
+def test_public_token_unchanged_for_clean_key(monkeypatch) -> None:
+    """Regression guard: normalising must NOT alter tokens for a clean key.
+
+    This is what makes the change safe to ship -- healthy deployments keep every
+    token they have already issued.
+    """
+    import hashlib
+    import hmac as _hmac
+
+    from nce.config import cfg
+
+    monkeypatch.setattr(cfg, "NCE_MASTER_KEY", _TOKEN_KEY_CORE, raising=False)
+
+    expected = _hmac.new(
+        _TOKEN_KEY_CORE.encode("utf-8"),
+        _TOKEN_QUOTE_ID.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+    assert generate_public_token(_TOKEN_QUOTE_ID) == expected

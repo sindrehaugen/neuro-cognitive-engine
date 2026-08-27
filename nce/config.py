@@ -12,6 +12,7 @@ Import pattern inside the package:
 import logging
 import os
 import re
+import unicodedata
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse, urlunparse
@@ -42,6 +43,67 @@ if _legacy_keys:
     )
 
 log = logging.getLogger("nce-config")
+
+# (``*_FILE`` var, path) pairs already warned about for a UTF-8 BOM. secret_env
+# is called per-operation (see require_master_key), so the warning is emitted
+# once per offending file rather than on every read.
+_BOM_WARNED: set[tuple[str, str]] = set()
+
+# Byte-order marks that mean "this file is not UTF-8 at all". Ordered longest
+# first: the UTF-32LE BOM (FF FE 00 00) starts with the UTF-16LE BOM (FF FE), so
+# a shorter-first scan would misreport the encoding.
+_NON_UTF8_BOMS: tuple[tuple[bytes, str], ...] = (
+    (b"\xff\xfe\x00\x00", "UTF-32LE"),
+    (b"\x00\x00\xfe\xff", "UTF-32BE"),
+    (b"\xff\xfe", "UTF-16LE"),
+    (b"\xfe\xff", "UTF-16BE"),
+)
+
+
+def _strip_leading_boms(value: str, *, source: tuple[str, str] | str, is_file: bool) -> str:
+    """Remove every leading U+FEFF from a resolved secret, warning once per source.
+
+    A UTF-8 BOM decodes to U+FEFF under the "utf-8" codec and is KEPT (only
+    "utf-8-sig" strips it). U+FEFF is not whitespace in Python, so no downstream
+    .strip() removes it either: the secret would differ from its visible content
+    by an invisible leading character, silently producing a WRONG key rather than
+    an error. Windows PowerShell 5.1 writes such files by default, so this is a
+    routine operator mistake.
+
+    ALL leading marks are removed, not one: stripping a single BOM from a
+    double-BOM'd file left a U+FEFF in the secret while logging that the BOM had
+    been dealt with -- a wrong value and a misleading log line together.
+
+    The warning is deduplicated per source because secret_env is on a hot path --
+    ``require_master_key()`` re-reads on every envelope encrypt/decrypt, PII
+    operation and settings read -- so warning unconditionally would emit
+    thousands of identical lines. The strip itself always happens.
+    """
+    if not value.startswith("\ufeff"):
+        return value
+    if source not in _BOM_WARNED:
+        _BOM_WARNED.add(source)
+        if is_file:
+            log.warning(
+                "%s points at a secret file beginning with a UTF-8 BOM (%r); the "
+                "BOM has been stripped. Rewrite the file without a BOM -- e.g. "
+                "printf '%%s' \"$SECRET\" > file, or PowerShell 7 "
+                "Set-Content -Encoding utf8NoBOM. WARNING: before this fix the "
+                "BOM was part of the loaded secret, so anything encrypted under "
+                "the old behaviour was wrapped with a DIFFERENT key.",
+                source[0],
+                source[1],
+            )
+        else:
+            log.warning(
+                "%s is set in the environment with a leading UTF-8 BOM; the BOM "
+                "has been stripped. Check whatever wrote it (an env_file written "
+                "by PowerShell is the usual cause). WARNING: before this fix the "
+                "BOM was part of the loaded secret.",
+                source,
+            )
+    return value.lstrip("\ufeff")
+
 
 _MASTER_KEY_MIN_UTF8_BYTES: int = 32
 
@@ -100,13 +162,50 @@ def redact_secrets_in_text(text: str) -> str:
 
 
 def _fail_unless_nce_master_key_ok(raw: str) -> None:
-    """Raise RuntimeError if the master key is missing or shorter than 32 UTF-8 bytes."""
+    """Raise RuntimeError if the master key is missing, too short, or malformed.
+
+    "Malformed" means the key carries invisible Unicode control/format
+    characters that survive ``.strip()`` — a file-encoding artifact, never real
+    key material.  Such a key derives a DIFFERENT encryption key than its
+    visible content implies, so it must fail closed here (import / startup)
+    rather than later at decrypt time, where it is indistinguishable from data
+    corruption.
+    """
     v = (raw or "").strip()
     if not v or len(v.encode("utf-8")) < _MASTER_KEY_MIN_UTF8_BYTES:
         raise RuntimeError(
             "CRITICAL SECURITY FAILURE: NCE_MASTER_KEY is missing or too short. "
             f"A minimum of {_MASTER_KEY_MIN_UTF8_BYTES} UTF-8 bytes of random key material "
             "is required to import or start the server."
+        )
+    # The length floor above CANNOT catch an encoding artifact: a BOM-prefixed
+    # 64-char key is 67 UTF-8 bytes and sails straight through it.  Reject the
+    # invisible characters that are NOT whitespace — U+FEFF (UTF-8 BOM), U+200B,
+    # U+200E, U+00AD, NUL — since those never occur in real key material.
+    #
+    # The ``not c.isspace()`` half is load-bearing, not decoration. ``.strip()``
+    # removes only LEADING/TRAILING whitespace, so INTERNAL whitespace reaches
+    # this scan, and LF / CR / TAB are all category Cc. Without the isspace()
+    # exclusion this would reject ``openssl rand -base64 64``, whose output
+    # base64-wraps at 64 columns and so legitimately contains a newline — and it
+    # would reject it at *import*, refusing to start the server on a key that
+    # ``main`` accepted. That is a worse failure than the BOM bug this guards.
+    offenders = sorted(
+        {
+            f"U+{ord(c):04X}"
+            for c in v
+            if unicodedata.category(c) in ("Cc", "Cf") and not c.isspace()
+        }
+    )
+    if offenders:
+        raise RuntimeError(
+            "CRITICAL SECURITY FAILURE: NCE_MASTER_KEY contains invisible control/"
+            f"format character(s) {', '.join(offenders)}. This is almost always a "
+            "file-encoding artifact — e.g. a UTF-8 BOM written by Windows "
+            "PowerShell 5.1 (`Out-File -Encoding utf8`). A key carrying such a "
+            "character derives a DIFFERENT encryption key than its visible content "
+            "implies, so it is rejected at startup rather than failing later at "
+            "decrypt time. Rewrite the secret without the BOM."
         )
 
 
@@ -152,7 +251,7 @@ def secret_env(name: str, default: str = "") -> str:
     if path is not None and path.strip():
         path = path.strip()
         try:
-            raw = Path(path).read_text(encoding="utf-8")
+            data = Path(path).read_bytes()
         except OSError as exc:
             # Surface the env var name + path + OS error class, but NEVER the
             # secret contents (the read failed, so there is nothing to leak —
@@ -162,6 +261,31 @@ def secret_env(name: str, default: str = "") -> str:
                 f"read ({type(exc).__name__}: {exc.strerror}). Provide a readable "
                 f"file containing the {name} secret."
             ) from None
+        # A UTF-16/UTF-32 BOM means the file is not UTF-8 at all. This is the
+        # SAME operator mistake as the UTF-8 BOM, and in fact the likelier one:
+        # PowerShell 5.1 `>` redirection -- the most literal translation of the
+        # documented `printf '%s' "$SECRET" > file` recipe -- writes UTF-16LE.
+        # Decoding that as UTF-8 raises UnicodeDecodeError, a ValueError, which
+        # escaped the OSError handler above and surfaced as a bare traceback
+        # naming neither the env var nor the path. Fail closed, clearly, here.
+        for _bom, _encoding_name in _NON_UTF8_BOMS:
+            if data.startswith(_bom):
+                raise RuntimeError(
+                    f"{file_var} is set to {path!r} but that file begins with a "
+                    f"{_encoding_name} byte-order mark, so it is {_encoding_name}-"
+                    f"encoded, not UTF-8. Rewrite it as UTF-8 with no BOM -- e.g. "
+                    f"on Windows [IO.File]::WriteAllText(path, secret). Note that "
+                    f"PowerShell 5.1 `>` redirection produces {_encoding_name}."
+                ) from None
+        try:
+            raw = data.decode("utf-8")
+        except UnicodeDecodeError:
+            # Never echo the offending bytes -- they are secret material.
+            raise RuntimeError(
+                f"{file_var} is set to {path!r} but that file is not valid UTF-8. "
+                f"Provide the {name} secret as a UTF-8 text file with no BOM."
+            ) from None
+        raw = _strip_leading_boms(raw, source=(file_var, path), is_file=True)
         # Strip exactly one trailing newline (\n or \r\n) that editors / Docker
         # secret tooling commonly append; preserve any other whitespace.
         if raw.endswith("\r\n"):
@@ -169,7 +293,10 @@ def secret_env(name: str, default: str = "") -> str:
         if raw.endswith("\n"):
             return raw[:-1]
         return raw
-    return os.getenv(name, default)
+    # The env branch needs the same guard: only NCE_MASTER_KEY had a
+    # backstop (the startup guard rejects U+FEFF), so a BOM in any of the
+    # other ten secrets resolved here was silently part of the value.
+    return _strip_leading_boms(os.getenv(name, default), source=name, is_file=False)
 
 
 def _int_env(

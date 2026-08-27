@@ -25,8 +25,22 @@ log = logging.getLogger("nce.admin_handlers.sales_public")
 
 
 def generate_public_token(quote_id: str) -> str:
-    """Generate a secure stateless token for a quote_id using NCE_MASTER_KEY."""
-    key = cfg.NCE_MASTER_KEY.encode("utf-8")
+    """Generate a secure stateless token for a quote_id using NCE_MASTER_KEY.
+
+    The key is ``.strip()``ed to match :meth:`nce.signing.MasterKey.from_env`,
+    which is how every other consumer of this secret normalises it.
+    ``cfg.NCE_MASTER_KEY`` holds the raw ``secret_env`` result, and ``secret_env``
+    deliberately preserves surrounding whitespace (it removes only one trailing
+    newline) — so HMACing the raw value made token validity depend on INVISIBLE
+    padding: tidy the whitespace out of the configured secret and every
+    previously issued token silently starts returning 401. It also meant one
+    configured secret yielded two different key values across subsystems, which
+    no decrypt/auth-tag probe can detect because this derivation is not AEAD.
+
+    For a key with no surrounding whitespace — the normal case — this is a no-op,
+    so healthy deployments keep every token they have already issued.
+    """
+    key = cfg.NCE_MASTER_KEY.strip().encode("utf-8")
     msg = quote_id.encode("utf-8")
     return hmac.new(key, msg, hashlib.sha256).hexdigest()
 
