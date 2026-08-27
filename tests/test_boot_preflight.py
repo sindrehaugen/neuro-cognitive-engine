@@ -56,15 +56,26 @@ def _entrypoint_statements() -> list[str]:
 class _FakeEngine:
     """Stands in for NCEEngine: records the calls the pre-flight must make."""
 
-    def __init__(self, *, connect_error: BaseException | None = None, hang: bool = False):
+    def __init__(
+        self,
+        *,
+        connect_error: BaseException | None = None,
+        hang: bool = False,
+        fail_times: int = 0,
+    ):
+        self.fail_times = fail_times
+        self.attempts = 0
         self._connect_error = connect_error
         self._hang = hang
         self.connected = False
         self.disconnected = False
 
     async def connect(self) -> None:
+        self.attempts += 1
         if self._hang:
             await asyncio.sleep(3600)
+        if self.attempts <= self.fail_times:
+            raise RuntimeError("the database system is starting up")
         if self._connect_error is not None:
             raise self._connect_error
         self.connected = True
@@ -146,6 +157,103 @@ class TestExitCodeContract:
 
         fake_engine(_BadCleanup())
         assert await preflight.run_preflight() == preflight.EXIT_OK
+
+
+class TestTransientDatastoreStartup:
+    """ "Not ready yet" must not be reported as "will never work".
+
+    Observed 2026-08-27: after Docker Desktop restarted, nce-a2a boot-looped on
+    ``CannotConnectNowError: the database system is starting up`` while Postgres
+    was still recovering. On a host reboot ``restart: unless-stopped`` brings
+    containers back *without* the compose ``depends_on: service_healthy``
+    gating that orders a cold start, so this is the normal case, not an edge one.
+    """
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "the database system is starting up",
+            "the database system is in recovery mode",
+            "Connection refused",
+            "server selection timeout",
+        ],
+    )
+    def test_datastore_not_ready_is_retryable(self, message: str) -> None:
+        assert preflight.is_retryable(RuntimeError(message))
+
+    def test_connection_refused_oserror_is_retryable(self) -> None:
+        """Raw socket errors carry no useful message on some platforms."""
+        assert preflight.is_retryable(ConnectionRefusedError())
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "RLS catalog consistency check failed: 13 undeclared tables",
+            "tuple concurrently updated",
+            "NCE_MASTER_KEY is missing or too short",
+            "relation applied_migrations does not exist",
+        ],
+    )
+    def test_real_failures_are_not_retryable(self, message: str) -> None:
+        """Retrying drift or a config error only hides it -- fail-fast is the point."""
+        assert not preflight.is_retryable(RuntimeError(message))
+
+    @pytest.mark.asyncio
+    async def test_a_slow_datastore_is_waited_out_not_failed(
+        self, fake_engine, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(preflight, "RETRY_INTERVAL_SECONDS", 0.01)
+        monkeypatch.setenv("NCE_PREFLIGHT_TIMEOUT", "30")
+        engine = fake_engine(_FakeEngine(fail_times=3))
+        assert await preflight.run_preflight() == preflight.EXIT_OK
+        assert engine.attempts == 4
+
+    @pytest.mark.asyncio
+    async def test_a_non_retryable_failure_is_not_retried(
+        self, fake_engine, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Guard the guard: the retry loop must not blunt fail-fast."""
+        monkeypatch.setattr(preflight, "RETRY_INTERVAL_SECONDS", 0.01)
+        monkeypatch.setenv("NCE_PREFLIGHT_TIMEOUT", "30")
+        engine = fake_engine(
+            _FakeEngine(connect_error=RuntimeError("RLS catalog drift: 13 tables"))
+        )
+        assert await preflight.run_preflight() == preflight.EXIT_STARTUP_FAILED
+        assert engine.attempts == 1
+
+    @pytest.mark.asyncio
+    async def test_a_datastore_that_never_comes_up_still_fails(
+        self, fake_engine, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The retry budget is bounded; it must not hold PID 1 open forever."""
+        monkeypatch.setattr(preflight, "RETRY_INTERVAL_SECONDS", 0.01)
+        monkeypatch.setenv("NCE_PREFLIGHT_TIMEOUT", "0.2")
+        fake_engine(_FakeEngine(fail_times=10_000))
+        code = await preflight.run_preflight()
+        assert code in (preflight.EXIT_STARTUP_FAILED, preflight.EXIT_TIMEOUT)
+
+    @pytest.mark.asyncio
+    async def test_the_message_does_not_blame_the_image_for_a_cold_datastore(
+        self, fake_engine, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The first version told every failure to rebuild the image."""
+        monkeypatch.setattr(preflight, "RETRY_INTERVAL_SECONDS", 5.0)
+        monkeypatch.setenv("NCE_PREFLIGHT_TIMEOUT", "3")
+        fake_engine(_FakeEngine(fail_times=10_000))
+        with caplog.at_level(logging.CRITICAL, logger="nce-preflight"):
+            await preflight.run_preflight()
+        assert "rebuild the image" not in caplog.text
+        assert "NCE_PREFLIGHT_TIMEOUT" in caplog.text or "still unavailable" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_a_real_deploy_failure_still_says_rebuild(
+        self, fake_engine, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The original guidance must survive for the case it was written for."""
+        fake_engine(_FakeEngine(connect_error=RuntimeError("RLS catalog drift")))
+        with caplog.at_level(logging.CRITICAL, logger="nce-preflight"):
+            await preflight.run_preflight()
+        assert "rebuild the image" in caplog.text
 
 
 class TestFailureLogging:

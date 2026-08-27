@@ -129,11 +129,73 @@ def _redact(text: str) -> str:
     return redact_secrets_in_text(text)
 
 
+#: Datastore-not-ready conditions. These say *not yet*, not *never*: a cold
+#: Postgres still in recovery, a socket that is not listening, a replica
+#: refusing connections. Treating them as permanent turns every host reboot
+#: into a restart race, because `restart: unless-stopped` brings containers
+#: back without the compose `depends_on: service_healthy` gating that
+#: normally orders a cold start. Observed on 2026-08-27:
+#: `CannotConnectNowError: the database system is starting up`.
+_RETRYABLE_MESSAGE_FRAGMENTS = (
+    "the database system is starting up",
+    "the database system is shutting down",
+    "the database system is in recovery mode",
+    "connection refused",
+    "connect call failed",
+    "no route to host",
+    "server selection timeout",
+    "temporary failure in name resolution",
+    "name or service not known",
+)
+
+#: Seconds between retries. Short: this is a boot path, and the timeout bounds it.
+RETRY_INTERVAL_SECONDS = 2.0
+
+
+def is_retryable(exc: BaseException) -> bool:
+    """True when the failure means a datastore is not up *yet*.
+
+    Deliberately narrow. Everything else -- schema/RLS drift, config errors,
+    a concurrent-DDL race -- stays fatal on the first attempt, because
+    retrying those only hides them, and fail-fast is the whole point of this
+    module. Classified by message fragment rather than exception class so it
+    holds across asyncpg, pymongo, redis and raw socket errors without
+    importing any of them here.
+    """
+    if isinstance(exc, (ConnectionRefusedError, ConnectionResetError)):
+        return True
+    text = str(exc).lower()
+    return any(fragment in text for fragment in _RETRYABLE_MESSAGE_FRAGMENTS)
+
+
+async def _probe_until_ready(deadline: float) -> None:
+    """Run the probe, retrying only while a datastore is still coming up."""
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            await _probe()
+            return
+        except Exception as exc:
+            remaining = deadline - asyncio.get_running_loop().time()
+            if not is_retryable(exc) or remaining <= RETRY_INTERVAL_SECONDS:
+                raise
+            log.info(
+                "pre-flight attempt %d: %s -- datastore not ready, retrying in %.0fs (%.0fs left)",
+                attempt,
+                type(exc).__name__,
+                RETRY_INTERVAL_SECONDS,
+                remaining,
+            )
+            await asyncio.sleep(RETRY_INTERVAL_SECONDS)
+
+
 async def run_preflight() -> int:
     """Run the probe under a timeout and map the outcome to an exit code."""
     timeout = _timeout_seconds()
+    deadline = asyncio.get_running_loop().time() + timeout
     try:
-        await asyncio.wait_for(_probe(), timeout=timeout)
+        await asyncio.wait_for(_probe_until_ready(deadline), timeout=timeout)
     except TimeoutError:
         log.critical(
             "FATAL: pre-flight did not complete within %.0fs. Refusing to start; "
@@ -147,12 +209,23 @@ async def run_preflight() -> int:
             type(exc).__name__,
             _redact(str(exc)),
         )
-        log.critical(
-            "Refusing to start. This is an environment/deploy failure, not a "
-            "request-time error -- rebuild the image or migrate the database. "
-            "The container exits so the failure is visible as a restart count "
-            "instead of a silent respawn loop."
-        )
+        # Say what kind of failure this is rather than asserting a cause. The
+        # first version told every failure to "rebuild the image or migrate the
+        # database", which was actively misleading for a datastore that was
+        # merely still starting up.
+        if is_retryable(exc):
+            log.critical(
+                "A datastore was still unavailable when the retry budget ran out. "
+                "Check that Postgres, Mongo, Redis and MinIO are up, or raise "
+                "NCE_PREFLIGHT_TIMEOUT if this host is simply slow to start."
+            )
+        else:
+            log.critical(
+                "This is an environment/deploy failure, not a request-time error "
+                "-- rebuild the image or migrate the database. Refusing to start, "
+                "so the failure is visible as a restart count instead of a silent "
+                "respawn loop."
+            )
         return EXIT_STARTUP_FAILED
     log.info("Pre-flight OK: NCEEngine startup path completed. Handing off.")
     return EXIT_OK
