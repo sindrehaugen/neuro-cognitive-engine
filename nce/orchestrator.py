@@ -165,9 +165,13 @@ class NCEEngine(OrchestratorBase):
 
         await self._init_pg_schema()
         await self._apply_pg_migrations()
-        await self._seed_node_ownership_all()
+        # Verification is cheap and read-only; seeding is expensive and mutating.
+        # Validate first so a drifted deployment fails in ~1 s instead of paying
+        # the full seed cost and *then* refusing to start.  Seeding depends only
+        # on schema + migrations having run, not on verification order.
         await self._verify_worm_enforcement()
         await self._verify_rls_enforcement()
+        await self._seed_node_ownership_all()
         await self._check_global_legacy_warning()
         await self._init_mongo_indexes()
 
@@ -454,7 +458,8 @@ class NCEEngine(OrchestratorBase):
     async def _seed_node_ownership_all(self) -> None:
         """Backfill node_ownership_registry for all existing namespaces.
 
-        Called once during startup, immediately after migrations are applied.
+        Called once during startup, after migrations are applied and after the
+        WORM/RLS enforcement checks have passed -- see ``connect()``.
         A single set-based statement covers every namespace: the previous
         per-namespace loop issued one round trip per ownership entry per
         namespace, so startup cost grew with the tenant count. A failure is
