@@ -1,0 +1,13 @@
+# Line-ending policy for artifacts consumed inside Linux containers.
+#
+# The repository is developed on Windows with core.autocrlf=true, so without a
+# pin git writes CRLF into the working tree -- and the working tree *is* the
+# Docker build context. A CRLF shell script fails to exec in the image
+# (`#!/bin/sh`: no such file or directory), and CRLF line continuations break
+# multi-line RUN instructions. Every one of these blobs is already LF in the
+# index, so this pin renormalises nothing; it only stops the checkout from
+# corrupting them.
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.Dockerfile text eol=lf
+entrypoint.sh text eol=lf
