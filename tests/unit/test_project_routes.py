@@ -72,7 +72,6 @@ async def test_convert_signed_quote_returns_project_id_and_baseline():
 
     with (
         patch("nce.admin_handlers.project.admin_state") as mock_state,
-        patch("nce.admin_handlers.project.validate_agent_id"),
         patch(
             "nce.admin_handlers.project.do_convert_signed_quote",
             new=AsyncMock(return_value=core_result),
@@ -132,7 +131,6 @@ async def test_convert_signed_quote_core_value_error_returns_422():
 
     with (
         patch("nce.admin_handlers.project.admin_state") as mock_state,
-        patch("nce.admin_handlers.project.validate_agent_id"),
         patch(
             "nce.admin_handlers.project.do_convert_signed_quote",
             new=AsyncMock(side_effect=ValueError("'quote_id' is required")),
@@ -159,7 +157,6 @@ async def test_get_phase_returns_current_phase():
 
     with (
         patch("nce.admin_handlers.project.admin_state") as mock_state,
-        patch("nce.admin_handlers.project.validate_agent_id"),
         patch(
             "nce.admin_handlers.project.read_current_phase",
             new=AsyncMock(return_value="G1"),
@@ -185,7 +182,6 @@ async def test_get_phase_returns_null_when_no_phase():
 
     with (
         patch("nce.admin_handlers.project.admin_state") as mock_state,
-        patch("nce.admin_handlers.project.validate_agent_id"),
         patch(
             "nce.admin_handlers.project.read_current_phase",
             new=AsyncMock(return_value=None),
@@ -247,7 +243,6 @@ async def test_advance_phase_success_returns_ok_and_phase():
 
     with (
         patch("nce.admin_handlers.project.admin_state") as mock_state,
-        patch("nce.admin_handlers.project.validate_agent_id"),
         patch(
             "nce.admin_handlers.project.do_advance_phase",
             new=AsyncMock(return_value=core_result),
@@ -284,7 +279,6 @@ async def test_advance_phase_noop_returns_200():
 
     with (
         patch("nce.admin_handlers.project.admin_state") as mock_state,
-        patch("nce.admin_handlers.project.validate_agent_id"),
         patch(
             "nce.admin_handlers.project.do_advance_phase",
             new=AsyncMock(return_value={"ok": True, "phase": "G0", "noop": True}),
@@ -321,7 +315,6 @@ async def test_advance_phase_gate_fail_returns_409_with_missing_criteria():
 
     with (
         patch("nce.admin_handlers.project.admin_state") as mock_state,
-        patch("nce.admin_handlers.project.validate_agent_id"),
         patch(
             "nce.admin_handlers.project.do_advance_phase",
             new=AsyncMock(return_value=gate_fail),
@@ -350,7 +343,6 @@ async def test_advance_phase_bad_params_returns_400():
 
     with (
         patch("nce.admin_handlers.project.admin_state") as mock_state,
-        patch("nce.admin_handlers.project.validate_agent_id"),
         patch(
             "nce.admin_handlers.project.do_advance_phase",
             new=AsyncMock(return_value=bad_result),

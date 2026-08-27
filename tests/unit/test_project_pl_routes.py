@@ -48,7 +48,6 @@ async def test_my_day_route_success():
 
     with (
         patch("nce.admin_handlers.project.admin_state") as mock_state,
-        patch("nce.admin_handlers.project.validate_agent_id"),
         patch(
             "nce.vertical_modules.project.pl.do_my_day",
             new=AsyncMock(return_value=core_result),
@@ -78,7 +77,6 @@ async def test_capacity_route_success():
 
     with (
         patch("nce.admin_handlers.project.admin_state") as mock_state,
-        patch("nce.admin_handlers.project.validate_agent_id"),
         patch(
             "nce.vertical_modules.project.pl.do_capacity",
             new=AsyncMock(return_value=core_result),
@@ -108,7 +106,6 @@ async def test_scope_creep_route_success():
 
     with (
         patch("nce.admin_handlers.project.admin_state") as mock_state,
-        patch("nce.admin_handlers.project.validate_agent_id"),
         patch(
             "nce.vertical_modules.project.insights.do_detect_scope_creep",
             new=AsyncMock(return_value=core_result),
@@ -141,7 +138,6 @@ async def test_status_report_route_success():
 
     with (
         patch("nce.admin_handlers.project.admin_state") as mock_state,
-        patch("nce.admin_handlers.project.validate_agent_id"),
         patch(
             "nce.vertical_modules.project.insights.do_status_report",
             new=AsyncMock(return_value=core_result),
@@ -184,20 +180,32 @@ async def test_routes_missing_namespace_id():
 
 @pytest.mark.asyncio
 async def test_routes_invalid_namespace_id():
+    """A malformed namespace_id is refused by the route, before any DB work.
+
+    This test used to patch ``validate_agent_id`` with
+    ``side_effect=ValueError("bad uuid")`` and assert 422. ``validate_agent_id``
+    is documented "Never raises." -- so that forced an exception the real code
+    path cannot produce, and passed over a route that had no UUID check at all.
+    It gated the ``except`` branch's formatting, not the validation.
+
+    Now it drives the real guard. The pool assertion is the part with teeth:
+    with a well-formed namespace_id this same route does reach ``pg_pool``.
+    See ``tests/unit/test_admin_namespace_uuid_guard.py`` for the full matrix.
+    """
     from nce.admin_handlers.project import api_admin_project_my_day
 
-    with (
-        patch("nce.admin_handlers.project.admin_state") as mock_state,
-        patch(
-            "nce.admin_handlers.project.validate_agent_id",
-            side_effect=ValueError("bad uuid"),
-        ),
-    ):
-        mock_state.engine = MagicMock()
+    with patch("nce.admin_handlers.project.admin_state") as mock_state:
+        engine = MagicMock()
+        engine.pg_pool.acquire.side_effect = AssertionError(
+            "malformed namespace_id reached the database"
+        )
+        mock_state.engine = engine
         req = _make_request(qp={"namespace_id": "invalid-uuid"})
         resp = await api_admin_project_my_day(req)
 
     assert resp.status_code == 422
+    assert json.loads(resp.body)["error"].startswith("Invalid namespace_id: ")
+    assert engine.pg_pool.acquire.call_count == 0
 
 
 # ---------------------------------------------------------------------------

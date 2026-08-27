@@ -24,11 +24,12 @@ import uuid
 from datetime import datetime, timezone
 
 from nce.admin_handlers._shared import (
+    _MISSING_NAMESPACE_QUERY_PARAM,
     JSONResponse,
+    _require_namespace_id,
     admin_error_response,
     admin_state,
 )
-from nce.auth import validate_agent_id
 from nce.db_utils import scoped_pg_session
 from nce.vertical_modules.procurement import frontier as procurement_frontier
 from nce.vertical_modules.procurement.ranking import do_rank_suppliers
@@ -97,14 +98,9 @@ async def api_procurement_calculate_tco(request) -> JSONResponse:
     except Exception:
         return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
 
-    namespace_id = str(body.get("namespace_id") or "").strip()
-    if not namespace_id:
-        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
-
-    try:
-        validate_agent_id(namespace_id)
-    except ValueError as exc:
-        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
 
     supplier = dict(body.get("supplier") or {})
     bom_line = dict(body.get("bom_line") or {})
@@ -144,14 +140,9 @@ async def api_procurement_rank_suppliers(request) -> JSONResponse:
     except Exception:
         return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
 
-    namespace_id = str(body.get("namespace_id") or "").strip()
-    if not namespace_id:
-        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
-
-    try:
-        validate_agent_id(namespace_id)
-    except ValueError as exc:
-        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
 
     bom_line = dict(body.get("bom_line") or {})
     candidates = list(body.get("candidates") or [])
@@ -192,14 +183,9 @@ async def api_procurement_evaluate_match(request) -> JSONResponse:
     except Exception:
         return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
 
-    namespace_id = str(body.get("namespace_id") or "").strip()
-    if not namespace_id:
-        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
-
-    try:
-        validate_agent_id(namespace_id)
-    except ValueError as exc:
-        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
 
     po = dict(body.get("po") or {})
     goods_receipt = dict(body.get("goods_receipt") or {})
@@ -251,15 +237,10 @@ async def api_procurement_sync_now(request) -> JSONResponse:
     except Exception:
         return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
 
-    namespace_id_raw = str(body.get("namespace_id") or "").strip()
-    if not namespace_id_raw:
-        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
-
-    try:
-        validate_agent_id(namespace_id_raw)
-        namespace_id = uuid.UUID(namespace_id_raw)
-    except (ValueError, AttributeError) as exc:
-        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+    namespace_id_str, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
+    namespace_id = uuid.UUID(str(namespace_id_str))
 
     try:
         async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
@@ -327,17 +308,13 @@ async def api_procurement_sync_status(request) -> JSONResponse:
     if not admin_state.engine:
         return JSONResponse({"error": "Engine not connected"}, status_code=503)
 
-    namespace_id_raw = str(request.query_params.get("namespace_id") or "").strip()
-    if not namespace_id_raw:
-        return JSONResponse(
-            {"error": "Missing required query param: namespace_id"}, status_code=422
-        )
-
-    try:
-        validate_agent_id(namespace_id_raw)
-        namespace_id = uuid.UUID(namespace_id_raw)
-    except (ValueError, AttributeError) as exc:
-        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+    namespace_id_str, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+    namespace_id = uuid.UUID(str(namespace_id_str))
 
     try:
         async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
@@ -405,14 +382,9 @@ async def api_procurement_forecast_rebate(request) -> JSONResponse:
     except Exception:
         return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
 
-    namespace_id = str(body.get("namespace_id") or "").strip()
-    if not namespace_id:
-        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
-
-    try:
-        validate_agent_id(namespace_id)
-    except ValueError as exc:
-        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
 
     try:
         result = await procurement_frontier.do_forecast_rebate(admin_state.engine, body)
@@ -448,14 +420,9 @@ async def api_procurement_recommend_move_spend(request) -> JSONResponse:
     except Exception:
         return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
 
-    namespace_id = str(body.get("namespace_id") or "").strip()
-    if not namespace_id:
-        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
-
-    try:
-        validate_agent_id(namespace_id)
-    except ValueError as exc:
-        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
 
     try:
         result = await procurement_frontier.do_recommend_move_spend(admin_state.engine, body)
@@ -495,14 +462,9 @@ async def api_procurement_whatif_spend(request) -> JSONResponse:
     except Exception:
         return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
 
-    namespace_id = str(body.get("namespace_id") or "").strip()
-    if not namespace_id:
-        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
-
-    try:
-        validate_agent_id(namespace_id)
-    except ValueError as exc:
-        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
 
     try:
         result = await procurement_frontier.do_whatif_spend(admin_state.engine, body)

@@ -21,12 +21,13 @@ import logging
 from typing import Any
 
 from nce.admin_handlers._shared import (
+    _MISSING_NAMESPACE_QUERY_PARAM,
     JSONResponse,
+    _require_namespace_id,
     admin_error_response,
     admin_state,
     bump_mcp_cache_generation,
 )
-from nce.auth import validate_agent_id
 from nce.vertical_modules.project.advance import do_advance_phase, read_current_phase
 from nce.vertical_modules.project.convert import do_convert_signed_quote
 
@@ -69,14 +70,9 @@ async def api_project_convert_signed_quote(request) -> JSONResponse:
     except Exception:
         return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
 
-    namespace_id = str(body.get("namespace_id") or "").strip()
-    if not namespace_id:
-        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
-
-    try:
-        validate_agent_id(namespace_id)
-    except ValueError as exc:
-        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
 
     try:
         result = await do_convert_signed_quote(admin_state.engine, body)
@@ -123,16 +119,14 @@ async def api_project_get_phase(request) -> JSONResponse:
     if not project_id:
         return JSONResponse({"error": "Missing path parameter: id"}, status_code=422)
 
-    namespace_id = str(request.query_params.get("namespace_id") or "").strip()
-    if not namespace_id:
-        return JSONResponse(
-            {"error": "Missing required query param: namespace_id"}, status_code=422
-        )
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
 
-    try:
-        validate_agent_id(namespace_id)
-    except ValueError as exc:
-        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+    assert namespace_id is not None  # narrowing for type-checkers
 
     try:
         phase = await read_current_phase(admin_state.engine, namespace_id, project_id)
@@ -184,14 +178,9 @@ async def api_project_advance_phase(request) -> JSONResponse:
     except Exception:
         return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
 
-    namespace_id = str(body.get("namespace_id") or "").strip()
-    if not namespace_id:
-        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
-
-    try:
-        validate_agent_id(namespace_id)
-    except ValueError as exc:
-        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
 
     params = {
         "namespace_id": namespace_id,
@@ -250,16 +239,12 @@ async def api_admin_project_my_day(request) -> JSONResponse:
     if not admin_state.engine:
         return JSONResponse({"error": "Engine not connected"}, status_code=503)
 
-    namespace_id = str(request.query_params.get("namespace_id") or "").strip()
-    if not namespace_id:
-        return JSONResponse(
-            {"error": "Missing required query param: namespace_id"}, status_code=422
-        )
-
-    try:
-        validate_agent_id(namespace_id)
-    except ValueError as exc:
-        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
 
     params = {
         "namespace_id": namespace_id,
@@ -302,16 +287,12 @@ async def api_admin_project_capacity(request) -> JSONResponse:
     if not admin_state.engine:
         return JSONResponse({"error": "Engine not connected"}, status_code=503)
 
-    namespace_id = str(request.query_params.get("namespace_id") or "").strip()
-    if not namespace_id:
-        return JSONResponse(
-            {"error": "Missing required query param: namespace_id"}, status_code=422
-        )
-
-    try:
-        validate_agent_id(namespace_id)
-    except ValueError as exc:
-        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
 
     params = {
         "namespace_id": namespace_id,
@@ -361,16 +342,12 @@ async def api_admin_project_scope_creep(request) -> JSONResponse:
     if not project_id:
         return JSONResponse({"error": "Missing path parameter: id"}, status_code=422)
 
-    namespace_id = str(request.query_params.get("namespace_id") or "").strip()
-    if not namespace_id:
-        return JSONResponse(
-            {"error": "Missing required query param: namespace_id"}, status_code=422
-        )
-
-    try:
-        validate_agent_id(namespace_id)
-    except ValueError as exc:
-        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
 
     params = {
         "namespace_id": namespace_id,
@@ -420,16 +397,12 @@ async def api_admin_project_status_report(request) -> JSONResponse:
     if not project_id:
         return JSONResponse({"error": "Missing path parameter: id"}, status_code=422)
 
-    namespace_id = str(request.query_params.get("namespace_id") or "").strip()
-    if not namespace_id:
-        return JSONResponse(
-            {"error": "Missing required query param: namespace_id"}, status_code=422
-        )
-
-    try:
-        validate_agent_id(namespace_id)
-    except ValueError as exc:
-        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
 
     est_cost = request.query_params.get("estimated_cost_nok")
     est_rev = request.query_params.get("estimated_revenue_nok")

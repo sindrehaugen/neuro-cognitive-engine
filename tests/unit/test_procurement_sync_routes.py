@@ -16,7 +16,9 @@ Covers:
 All tests are pure unit tests (no DB, no Redis).
 DB calls are mocked via a fake asyncpg connection / pool.
 ``append_event`` is patched so no signing infra is needed.
-``validate_agent_id`` is patched to accept the test UUID.
+``namespace_id`` validation is NOT patched out: the routes call the real
+``_shared._require_namespace_id``, and the malformed-input side of that guard
+is covered in ``tests/unit/test_admin_namespace_uuid_guard.py``.
 """
 
 from __future__ import annotations
@@ -130,7 +132,6 @@ async def test_sync_now_records_run_and_returns_column_report():
 
     with (
         patch("nce.admin_handlers.procurement.admin_state") as mock_state,
-        patch("nce.admin_handlers.procurement.validate_agent_id"),
         patch("nce.admin_handlers.procurement.scoped_pg_session", _scoped_pg_session_stub),
     ):
         mock_state.engine = engine
@@ -162,7 +163,6 @@ async def test_sync_now_column_report_no_secret_no_url():
 
     with (
         patch("nce.admin_handlers.procurement.admin_state") as mock_state,
-        patch("nce.admin_handlers.procurement.validate_agent_id"),
         patch("nce.admin_handlers.procurement.scoped_pg_session", _scoped_pg_session_stub),
     ):
         mock_state.engine = engine
@@ -193,7 +193,6 @@ async def test_sync_status_returns_freshness_and_row_count():
 
     with (
         patch("nce.admin_handlers.procurement.admin_state") as mock_state,
-        patch("nce.admin_handlers.procurement.validate_agent_id"),
         patch("nce.admin_handlers.procurement.scoped_pg_session", _scoped_pg_session_stub),
     ):
         mock_state.engine = engine
@@ -224,7 +223,6 @@ async def test_sync_status_column_report_no_secret_no_url():
 
     with (
         patch("nce.admin_handlers.procurement.admin_state") as mock_state,
-        patch("nce.admin_handlers.procurement.validate_agent_id"),
         patch("nce.admin_handlers.procurement.scoped_pg_session", _scoped_pg_session_stub),
     ):
         mock_state.engine = engine

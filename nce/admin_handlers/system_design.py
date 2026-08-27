@@ -16,11 +16,11 @@ import logging
 
 from nce.admin_handlers._shared import (
     JSONResponse,
+    _require_namespace_id,
     admin_error_response,
     admin_state,
     bump_mcp_cache_generation,
 )
-from nce.auth import validate_agent_id
 from nce.vertical_modules.system_design.lucid import do_publish_design_docs
 
 log = logging.getLogger("nce.admin_handlers.system_design")
@@ -46,18 +46,13 @@ async def api_system_design_publish_design_docs(request) -> JSONResponse:
     except Exception:
         return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
 
-    namespace_id = (body.get("namespace_id") or "").strip()
-    design_id = (body.get("design_id") or "").strip()
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
 
-    if not namespace_id:
-        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
+    design_id = str(body.get("design_id") or "").strip()
     if not design_id:
         return JSONResponse({"error": "Missing required field: design_id"}, status_code=422)
-
-    try:
-        validate_agent_id(namespace_id)
-    except ValueError as exc:
-        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
 
     try:
         result = await do_publish_design_docs(

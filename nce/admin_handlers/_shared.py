@@ -118,19 +118,41 @@ def _json_safe(value: Any) -> Any:
     return json.loads(json.dumps(_neutralise_non_finite(value), default=str))
 
 
-def _require_namespace_id(raw: str | None) -> tuple[str | None, JSONResponse | None]:
+#: The two "missing namespace_id" dialects already in use across the admin
+#: surface. Routes reading a JSON body answer the first; routes reading the
+#: query string answer the second. The split predates this helper
+#: (``product.py``, ``vendors.py``, ``sales.py`` all speak the query dialect on
+#: GETs) and is carried through rather than flattened, so folding a route onto
+#: the helper stays a pure gain of UUID validation instead of also being an
+#: unannounced change to that route's response body.
+_MISSING_NAMESPACE_FIELD = "Missing required field: namespace_id"
+_MISSING_NAMESPACE_QUERY_PARAM = "Missing required query param: namespace_id"
+
+
+def _require_namespace_id(
+    raw: str | None,
+    *,
+    missing_error: str = _MISSING_NAMESPACE_FIELD,
+) -> tuple[str | None, JSONResponse | None]:
     """Validate a route's required ``namespace_id``.
 
     Returns ``(namespace_id, None)`` on success or ``(None, error_response)``
     on failure. ``validate_agent_id`` only sanitises free text and never
     raises (see ``nce/auth.py``), so the actual UUID-shape check is the
     explicit ``uuid.UUID(...)`` parse below.
+
+    Args:
+        raw:            the value as it arrived, from a body field or a query
+                        parameter. ``None``/blank counts as absent.
+        missing_error:  the 422 message for an *absent* value. Pass
+                        :data:`_MISSING_NAMESPACE_QUERY_PARAM` on query-string
+                        routes; the default suits body routes. The *invalid*
+                        message is deliberately not parameterised -- every
+                        surface already agrees on it.
     """
     namespace_id = str(raw or "").strip()
     if not namespace_id:
-        return None, JSONResponse(
-            {"error": "Missing required field: namespace_id"}, status_code=422
-        )
+        return None, JSONResponse({"error": missing_error}, status_code=422)
     namespace_id = validate_agent_id(namespace_id)
     try:
         uuid.UUID(namespace_id)
