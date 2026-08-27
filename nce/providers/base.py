@@ -29,6 +29,7 @@ import logging
 import socket
 import sys
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 
 if sys.version_info >= (3, 11):
     from enum import StrEnum
@@ -487,10 +488,15 @@ class CircuitBreaker:
         failure_threshold: int = 5,
         recovery_timeout: float = 30.0,
         half_open_max_requests: int = 1,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
         self.half_open_max_requests = half_open_max_requests
+        # Injectable monotonic time source — production uses ``time.monotonic``;
+        # tests substitute a manually-advanced clock so recovery-window
+        # transitions are exercised deterministically, without real sleeps.
+        self._clock = clock
 
         self._state: CircuitBreakerState = CircuitBreakerState.CLOSED
         self._failure_count: int = 0
@@ -513,7 +519,7 @@ class CircuitBreaker:
                 return True
 
             if self._state is CircuitBreakerState.OPEN:
-                if time.monotonic() - self._last_failure_time >= self.recovery_timeout:
+                if self._clock() - self._last_failure_time >= self.recovery_timeout:
                     self._state = CircuitBreakerState.HALF_OPEN
                     self._half_open_used = 1  # this probe counts toward the limit
                     return True
@@ -549,7 +555,7 @@ class CircuitBreaker:
         """Record a failed call — may open the circuit at threshold."""
         async with self._lock:
             self._failure_count += 1
-            self._last_failure_time = time.monotonic()
+            self._last_failure_time = self._clock()
             if self._failure_count >= self.failure_threshold:
                 old_state = self._state
                 self._state = CircuitBreakerState.OPEN

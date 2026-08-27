@@ -10,8 +10,6 @@ Verification strategy:
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 
 import nce.providers._http_utils
@@ -208,6 +206,32 @@ class TestRetryPolicy:
 # ---------------------------------------------------------------------------
 
 
+class _FakeClock:
+    """Manually-advanced monotonic clock injected into ``CircuitBreaker``.
+
+    The recovery-window tests used to pair ``recovery_timeout=0.01`` with
+    ``asyncio.sleep(0.02)``, leaving a ~10 ms margin.  Windows' default timer
+    granularity is ~15.6 ms, so the sleep and ``time.monotonic()`` did not
+    reliably straddle the threshold in the intended order — the tests were
+    inherently raced, not merely slow.  Advancing this clock explicitly makes
+    the transition deterministic and removes the real waiting entirely.
+
+    Every test that advances this clock also asserts the breaker's behaviour
+    *inside* the window, not just after it.  Without that negative assertion
+    a test still passes when the breaker ignores the recovery window
+    altogether — deterministic, but no longer discriminating.
+    """
+
+    def __init__(self, start: float = 1_000.0) -> None:
+        self._now = start
+
+    def __call__(self) -> float:
+        return self._now
+
+    def advance(self, seconds: float) -> None:
+        self._now += seconds
+
+
 class TestCircuitBreaker:
     """``CircuitBreaker`` state machine behaviour."""
 
@@ -250,39 +274,54 @@ class TestCircuitBreaker:
 
     @pytest.mark.asyncio
     async def test_half_open_transitions_after_recovery_timeout(self):
+        clock = _FakeClock()
         cb = nce.providers.base.CircuitBreaker(
             failure_threshold=2,
-            recovery_timeout=0.01,
+            recovery_timeout=30.0,
+            clock=clock,
         )
         await cb.record_failure()
         await cb.record_failure()
         assert cb.state == nce.providers.base.CircuitBreakerState.OPEN
-        await asyncio.sleep(0.02)
+        # Inside the window the circuit must stay shut to callers.
+        clock.advance(29.9)
+        assert await cb.check() is False
+        assert cb.state == nce.providers.base.CircuitBreakerState.OPEN
+        # Crossing it, and only then, admits a probe.
+        clock.advance(0.1)
         assert await cb.check() is True
         assert cb.state == nce.providers.base.CircuitBreakerState.HALF_OPEN
 
     @pytest.mark.asyncio
     async def test_half_open_success_closes_circuit(self):
+        clock = _FakeClock()
         cb = nce.providers.base.CircuitBreaker(
             failure_threshold=2,
-            recovery_timeout=0.01,
+            recovery_timeout=30.0,
+            clock=clock,
         )
         await cb.record_failure()
         await cb.record_failure()
-        await asyncio.sleep(0.02)
+        clock.advance(29.9)
+        assert await cb.check() is False  # window not yet crossed
+        clock.advance(0.1)
         assert await cb.check() is True  # → HALF_OPEN
         await cb.record_success()
         assert cb.state == nce.providers.base.CircuitBreakerState.CLOSED
 
     @pytest.mark.asyncio
     async def test_half_open_failure_reopens_circuit(self):
+        clock = _FakeClock()
         cb = nce.providers.base.CircuitBreaker(
             failure_threshold=2,
-            recovery_timeout=0.01,
+            recovery_timeout=30.0,
+            clock=clock,
         )
         await cb.record_failure()
         await cb.record_failure()
-        await asyncio.sleep(0.02)
+        clock.advance(29.9)
+        assert await cb.check() is False  # window not yet crossed
+        clock.advance(0.1)
         assert await cb.check() is True  # → HALF_OPEN
         await cb.record_failure()
         assert cb.state == nce.providers.base.CircuitBreakerState.OPEN
@@ -291,14 +330,18 @@ class TestCircuitBreaker:
 
     @pytest.mark.asyncio
     async def test_half_open_limits_probe_requests(self):
+        clock = _FakeClock()
         cb = nce.providers.base.CircuitBreaker(
             failure_threshold=2,
-            recovery_timeout=0.01,
+            recovery_timeout=30.0,
             half_open_max_requests=1,
+            clock=clock,
         )
         await cb.record_failure()
         await cb.record_failure()
-        await asyncio.sleep(0.02)
+        clock.advance(29.9)
+        assert await cb.check() is False  # window not yet crossed
+        clock.advance(0.1)
         assert await cb.check() is True  # 1st probe allowed
         assert await cb.check() is False  # 2nd probe blocked
         await cb.record_success()
@@ -457,23 +500,30 @@ class TestExecuteWithRetry:
     @pytest.mark.asyncio
     async def test_success_closes_circuit_and_resets(self):
         provider = _FakeProvider()
+        clock = _FakeClock()
         cb = nce.providers.base.CircuitBreaker(
             failure_threshold=1,
-            recovery_timeout=0.01,
+            recovery_timeout=30.0,
+            clock=clock,
         )
         await cb.record_failure()
 
-        # Wait for recovery
-        await asyncio.sleep(0.02)
-
-        # This should succeed (half-open probe)
         async def ok_op():
             return "recovered"
 
+        retry_policy = nce.providers.base.RetryPolicy(max_retries=0, base_delay_ms=1)
+
+        # Inside the window the call must fail fast and never reach ok_op.
+        clock.advance(29.9)
+        with pytest.raises(nce.providers.base.LLMCircuitOpenError):
+            await provider.execute_with_retry(ok_op, retry_policy=retry_policy, circuit_breaker=cb)
+
+        # Cross the recovery window deterministically (no real sleep).
+        clock.advance(0.1)
+
+        # This should succeed (half-open probe)
         result = await provider.execute_with_retry(
-            ok_op,
-            retry_policy=nce.providers.base.RetryPolicy(max_retries=0, base_delay_ms=1),
-            circuit_breaker=cb,
+            ok_op, retry_policy=retry_policy, circuit_breaker=cb
         )
         assert result == "recovered"
         assert cb.state == nce.providers.base.CircuitBreakerState.CLOSED
