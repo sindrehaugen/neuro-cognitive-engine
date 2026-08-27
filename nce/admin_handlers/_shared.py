@@ -52,6 +52,7 @@ from nce.auth import set_namespace_context, validate_agent_id
 from nce.background_task_manager import create_tracked_task
 from nce.config import cfg
 from nce.event_log import verify_merkle_chain
+from nce.mcp_args import bump_cache_generation
 from nce.notifications import dispatcher
 from nce.observability import MERKLE_CHAIN_VALID
 from nce.signing import admin_signing_keys_status
@@ -136,3 +137,46 @@ def _require_namespace_id(raw: str | None) -> tuple[str | None, JSONResponse | N
     except ValueError as exc:
         return None, JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
     return namespace_id, None
+
+
+async def bump_mcp_cache_generation(engine: Any, *, route: str) -> None:
+    """Invalidate cached MCP tool responses after a REST-surface mutation.
+
+    MCP tool results are cached in Redis under a global generation counter
+    (``mcp_cache_generation``).  ``nce/mcp_stdio_dispatch.py`` bumps it after
+    every successful ``mutation=True`` tool call — that bump is the only thing
+    that makes stale ``cacheable=True`` entries unreachable.
+
+    REST routes in this package call the same ``do_*`` cores directly and never
+    reach that dispatch loop, so without this call a mutation performed over
+    HTTP leaves pre-mutation MCP cache entries readable for the full
+    ``MCP_CACHE_TTL_S`` (300 s) — silently, with nothing in any log.
+
+    Call this **after** the core has returned without raising, so a mutation
+    that never committed does not discard a still-valid cache.  Semantics
+    deliberately mirror the dispatch loop exactly: it bumps whenever the
+    handler returns normally, without inspecting whether the write actually
+    changed a row.  Matching that keeps the two surfaces equivalent — the
+    property this helper exists to restore.
+
+    A Redis failure here is logged, never raised: the mutation has already
+    committed, and failing the HTTP response would invite the caller to retry
+    a write that already landed.  The stale window degrades to TTL expiry,
+    which is exactly the pre-existing behaviour.
+
+    Args:
+        engine:  the connected ``NCEEngine`` (usually ``admin_state.engine``).
+        route:   route name, for the failure log line only.
+    """
+    redis_client = getattr(engine, "redis_client", None)
+    if redis_client is None:
+        return
+    try:
+        await bump_cache_generation(redis_client)
+    except Exception as exc:  # noqa: BLE001 - never fail a committed mutation
+        logger.warning(
+            "MCP cache generation bump failed after %s; cacheable MCP reads may "
+            "serve stale data for up to MCP_CACHE_TTL_S: %s",
+            route,
+            exc,
+        )

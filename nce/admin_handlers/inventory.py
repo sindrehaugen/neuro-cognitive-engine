@@ -35,6 +35,7 @@ from nce.admin_handlers._shared import (
     _require_namespace_id,
     admin_error_response,
     admin_state,
+    bump_mcp_cache_generation,
 )
 from nce.vertical_modules.inventory.stock import (
     InsufficientStockError,
@@ -156,6 +157,9 @@ async def api_inventory_transfer_stock(request) -> JSONResponse:
 
     try:
         result = await do_transfer_stock(admin_state.engine, params)
+        # Mirror the MCP dispatch loop: invalidate cached reads
+        # (inventory_stock_levels) now the transfer has committed.
+        await bump_mcp_cache_generation(admin_state.engine, route="api_inventory_transfer_stock")
         return JSONResponse(_json_safe(result))
     except InsufficientStockError as exc:
         return _insufficient_stock_response(exc)
@@ -216,6 +220,11 @@ async def api_inventory_record_consumption(request) -> JSONResponse:
 
     try:
         result = await do_record_consumption(admin_state.engine, params)
+        # Mirror the MCP dispatch loop: invalidate cached reads
+        # (inventory_stock_levels) now the consumption has committed.
+        await bump_mcp_cache_generation(
+            admin_state.engine, route="api_inventory_record_consumption"
+        )
         return JSONResponse(_json_safe(result))
     except InsufficientStockError as exc:
         return _insufficient_stock_response(exc)

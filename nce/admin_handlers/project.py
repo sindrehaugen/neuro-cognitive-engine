@@ -24,6 +24,7 @@ from nce.admin_handlers._shared import (
     JSONResponse,
     admin_error_response,
     admin_state,
+    bump_mcp_cache_generation,
 )
 from nce.auth import validate_agent_id
 from nce.vertical_modules.project.advance import do_advance_phase, read_current_phase
@@ -79,6 +80,11 @@ async def api_project_convert_signed_quote(request) -> JSONResponse:
 
     try:
         result = await do_convert_signed_quote(admin_state.engine, body)
+        # Mirror the MCP dispatch loop: the newly created project must be
+        # visible to this module's cacheable MCP read tools.
+        await bump_mcp_cache_generation(
+            admin_state.engine, route="api_project_convert_signed_quote"
+        )
         return JSONResponse(result)
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=422)
@@ -204,6 +210,10 @@ async def api_project_advance_phase(request) -> JSONResponse:
             status_code=500,
             log_event="api_project_advance_phase",
         )
+
+    # Mirror the MCP dispatch loop: invalidate this module's cacheable MCP
+    # read tools now the phase advance has committed.
+    await bump_mcp_cache_generation(admin_state.engine, route="api_project_advance_phase")
 
     if result.get("ok"):
         return JSONResponse(result)

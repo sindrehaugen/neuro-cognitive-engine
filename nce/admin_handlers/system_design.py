@@ -18,6 +18,7 @@ from nce.admin_handlers._shared import (
     JSONResponse,
     admin_error_response,
     admin_state,
+    bump_mcp_cache_generation,
 )
 from nce.auth import validate_agent_id
 from nce.vertical_modules.system_design.lucid import do_publish_design_docs
@@ -66,5 +67,11 @@ async def api_system_design_publish_design_docs(request) -> JSONResponse:
     except Exception as exc:
         log.exception("api_system_design_publish_design_docs: unexpected error")
         return admin_error_response(exc, status_code=500)
+
+    # Mirror the MCP dispatch loop's post-mutation invalidation
+    # (system_design_publish_design_docs is a mutation=True tool).
+    await bump_mcp_cache_generation(
+        admin_state.engine, route="api_system_design_publish_design_docs"
+    )
 
     return JSONResponse({"status": "ok", "lucid_url": result.get("lucid_url")})

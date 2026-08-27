@@ -253,3 +253,50 @@ jobs:
             tests/test_inventory_stock.py \
             tests/test_inventory_transactions.py \
             -m integration -q --tb=short
+
+  # REST-surface mutations must invalidate the MCP response cache.
+  # `bump_cache_generation` is called from the MCP dispatch loop only, so a
+  # mutation performed through nce/admin_handlers/* left cacheable MCP reads
+  # serving pre-mutation data for the full MCP_CACHE_TTL_S (300 s).
+  #
+  # Its own job, not a step in `integration`: it needs a real Redis (a mocked
+  # redis_client stores nothing and cannot detect staleness at all), and
+  # `services:` is job-wide -- a Redis under `integration` would sit beneath
+  # every other step there and could silently flip tests that take a
+  # Redis-absent fallback path. It needs no Postgres: the test stubs the domain
+  # cores and exercises the cache mechanism itself.
+  cache-invalidation:
+    name: Pytest (REST/MCP cache invalidation)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      # Reads through the cacheable MCP path, mutates through the REST route,
+      # reads again. FAILS on the unfixed tree -- that is the point.
+      - name: Integration — REST/MCP cache invalidation (real Redis)
+        env:
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_TEST_REDIS_URL: redis://localhost:6379/15
+        run: pytest tests/test_rest_cache_invalidation.py -m integration -q --tb=short

@@ -228,6 +228,15 @@ async def api_replay_fork(request):
                 config_overrides=frozen_config.overrides_dict,
             )
 
+        # Mirror the MCP dispatch loop: _create_run is the shared core behind
+        # mutation=True replay tools, and the run row is now committed.
+        #
+        # Scope limit, stated plainly: this covers the run row only. The replay's
+        # own writes into the target namespace happen in the background task
+        # below and are invalidated by nobody — the MCP surface has the identical
+        # gap, so this is not a regression, but it is not closed either.
+        await bump_mcp_cache_generation(admin_state.engine, route="api_replay_fork")
+
         replay = ForkedReplay(pool=admin_state.engine.pg_pool)
 
         async def _run_fork() -> None:

@@ -11,6 +11,7 @@ from nce import admin_state
 from nce.admin_handlers._shared import (
     admin_error_response,
     admin_validation_error,
+    bump_mcp_cache_generation,
     cfg,
     logger,
     offset_from_page_limit,
@@ -158,6 +159,10 @@ async def api_admin_d365_sync_now(request):
                 return stats
 
         stats = await asyncio.wait_for(_run_sync(), timeout=300.0)
+        # Mirror the MCP dispatch loop: d365_sync_now is mutation=True. A full
+        # sync rewrites kg nodes and the integration row that the cacheable
+        # d365_netbox_mappings / d365_query_case tools read.
+        await bump_mcp_cache_generation(admin_state.engine, route="api_admin_d365_sync_now")
         return JSONResponse({"status": "ok", "stats": stats})
 
     except asyncio.TimeoutError:

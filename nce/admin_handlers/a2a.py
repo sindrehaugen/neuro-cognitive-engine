@@ -55,6 +55,10 @@ async def api_a2a_create_grant(request):
     except Exception as exc:
         return admin_error_response("Failed to create grant", exc, status_code=500)
 
+    # Mirror the MCP dispatch loop: a2a_create_grant is mutation=True and shares
+    # this exact core.
+    await bump_mcp_cache_generation(admin_state.engine, route="api_a2a_create_grant")
+
     return JSONResponse(
         {
             "grant_id": str(resp.grant_id),
@@ -109,6 +113,10 @@ async def api_a2a_revoke_grant(request):
             revoked = await revoke_grant(conn, grant_id, caller_ctx)
     except Exception as exc:
         return admin_error_response("Revoke failed", exc, status_code=500)
+
+    # Mirror the MCP dispatch loop: a2a_revoke_grant is mutation=True and shares
+    # this exact core.
+    await bump_mcp_cache_generation(admin_state.engine, route="api_a2a_revoke_grant")
 
     if not revoked:
         return JSONResponse(

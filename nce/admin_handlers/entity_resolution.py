@@ -13,7 +13,12 @@ from __future__ import annotations
 import json
 import uuid
 
-from nce.admin_handlers._shared import JSONResponse, admin_error_response, admin_state
+from nce.admin_handlers._shared import (
+    JSONResponse,
+    admin_error_response,
+    admin_state,
+    bump_mcp_cache_generation,
+)
 from nce.auth import validate_agent_id
 from nce.db_utils import scoped_pg_session
 from nce.entity_resolution.merge_queue import confirm, list_pending, reject
@@ -270,6 +275,13 @@ async def api_entity_resolution_queue_confirm(request) -> JSONResponse:
                 decided_by=decided_by,
             )
 
+        # Transaction has committed. Mirror the MCP dispatch loop:
+        # merge_queue_confirm is mutation=True, and the cacheable merge_queue_list
+        # filters on the very `status` column this just wrote.
+        await bump_mcp_cache_generation(
+            admin_state.engine, route="api_entity_resolution_queue_confirm"
+        )
+
         return JSONResponse(
             {
                 "status": "ok",
@@ -358,6 +370,13 @@ async def api_entity_resolution_queue_reject(request) -> JSONResponse:
                 queue_id=queue_id,
                 decided_by=decided_by,
             )
+
+        # Transaction has committed. Mirror the MCP dispatch loop:
+        # merge_queue_reject is mutation=True, and the cacheable merge_queue_list
+        # filters on the very `status` column this just wrote.
+        await bump_mcp_cache_generation(
+            admin_state.engine, route="api_entity_resolution_queue_reject"
+        )
 
         return JSONResponse(
             {

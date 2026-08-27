@@ -644,6 +644,8 @@ async def api_admin_embedding_migration_start(request):
         return admin_validation_error(exc, status_code=409)
     except Exception as exc:
         return admin_error_response("start_migration failed", exc, status_code=500)
+    # Mirror the MCP dispatch loop: start_migration is mutation=True.
+    await bump_mcp_cache_generation(admin_state.engine, route="api_admin_embedding_migration_start")
     return JSONResponse(out)
 
 
@@ -725,6 +727,12 @@ async def api_admin_embedding_migration_commit(request):
         return admin_error_response(
             "Internal server error", exc, log_event="commit_migration failed"
         )
+    # Mirror the MCP dispatch loop: commit_migration is mutation=True. Committing
+    # retires the old vector space, so cached searches must not keep answering
+    # from it.
+    await bump_mcp_cache_generation(
+        admin_state.engine, route="api_admin_embedding_migration_commit"
+    )
     return JSONResponse(out)
 
 
@@ -741,6 +749,8 @@ async def api_admin_embedding_migration_abort(request):
         return admin_error_response(
             "Internal server error", exc, log_event="abort_migration failed"
         )
+    # Mirror the MCP dispatch loop: abort_migration is mutation=True.
+    await bump_mcp_cache_generation(admin_state.engine, route="api_admin_embedding_migration_abort")
     return JSONResponse(out)
 
 
@@ -885,6 +895,8 @@ async def api_admin_dlq_replay(request):
         return admin_error_response(
             "Internal server error", exc, log_event="api_admin_dlq_replay failed"
         )
+    # Mirror the MCP dispatch loop: the same core backs a mutation=True tool.
+    await bump_mcp_cache_generation(admin_state.engine, route="api_admin_dlq_replay")
     return JSONResponse(result)
 
 
@@ -904,6 +916,8 @@ async def api_admin_dlq_purge(request):
         return admin_error_response(
             "Internal server error", exc, log_event="api_admin_dlq_purge failed"
         )
+    # Mirror the MCP dispatch loop: the same core backs a mutation=True tool.
+    await bump_mcp_cache_generation(admin_state.engine, route="api_admin_dlq_purge")
     return JSONResponse({"status": "ok", "id": dlq_id})
 
 
@@ -1783,6 +1797,12 @@ async def api_admin_namespaces_update_metadata(request):
         )
 
         res = await admin_state.engine.manage_namespace(payload, admin_identity="admin_webportal")
+        # Mirror the MCP dispatch loop: manage_namespace is mutation=True. The
+        # orchestrator's own bump (nce/orchestrators/namespace.py) fires on the
+        # DELETE branch only, so update_metadata would otherwise never invalidate.
+        await bump_mcp_cache_generation(
+            admin_state.engine, route="api_admin_namespaces_update_metadata"
+        )
         return JSONResponse(res)
     except ValidationError as exc:
         return admin_validation_error(exc, status_code=422)
@@ -1829,6 +1849,10 @@ async def api_admin_memory_boost(request):
         return admin_error_response(
             "Internal server error", exc, log_event="api_admin_memory_boost failed"
         )
+
+    # Mirror the MCP dispatch loop: boost_memory is mutation=True. Salience feeds
+    # the ranking of cacheable searches, so their cached results are now stale.
+    await bump_mcp_cache_generation(admin_state.engine, route="api_admin_memory_boost")
 
     return JSONResponse(res)
 
