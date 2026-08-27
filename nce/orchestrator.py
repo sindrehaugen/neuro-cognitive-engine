@@ -405,14 +405,65 @@ class NCEEngine(OrchestratorBase):
             log.debug("[PG] nce_app login password dynamically updated from configuration")
 
     async def _apply_pg_migrations(self) -> None:
-        """Apply idempotent SQL files from nce/migrations/ in lexical order."""
+        """Apply SQL files from nce/migrations/ in lexical order, once each.
+
+        Files are recorded in ``applied_migrations`` (see
+        :mod:`nce.migration_ledger`) and skipped on later boots while their
+        content is unchanged. Before the ledger every file re-ran on every
+        start: 54 statements-batches of pure no-op work per boot, and no way to
+        ask what version a database was at -- which is what made the 2026-08-27
+        image-vs-database skew invisible.
+
+        A file whose content *has* changed is re-applied and re-recorded, not
+        refused: migrations here are edited in place when one turns out not to
+        be idempotent, and refusing to boot on a corrected migration would be
+        worse than re-running an idempotent one.
+        """
         from pathlib import Path
+
+        from nce.migration_ledger import (
+            applied_checksums,
+            ensure_ledger,
+            migration_checksum,
+            record_applied,
+            should_skip,
+        )
 
         migrations_dir = Path(__file__).resolve().parent / "migrations"
         if not migrations_dir.is_dir():
             return
+
+        # The ledger is bookkeeping, not a safety guard: if it cannot be created
+        # (an older role without DDL rights, say) fall back to the previous
+        # behaviour of applying every file, rather than refusing to boot.
+        # CREATE TABLE IF NOT EXISTS is not concurrency-safe against itself in
+        # Postgres, and five services now boot this path at once (each one twice,
+        # counting the pre-flight), so it takes the same advisory lock the
+        # migrations do.
+        ledger_ok = True
+        applied: dict[str, str] = {}
+        try:
+            async with self.pg_pool.acquire(timeout=60.0) as conn:
+                async with conn.transaction():
+                    await conn.execute("SELECT pg_advisory_xact_lock(123456)")
+                    await ensure_ledger(conn)
+                applied = await applied_checksums(conn)
+        except Exception as exc:
+            log.warning("[PG] migration ledger unavailable (%s) — applying every migration", exc)
+            ledger_ok = False
+
+        skipped = 0
         for path in sorted(migrations_dir.glob("*.sql")):
             sql = path.read_text(encoding="utf-8")
+            checksum = migration_checksum(sql)
+            if should_skip(path.name, checksum, applied):
+                skipped += 1
+                continue
+            if path.name in applied:
+                log.warning(
+                    "[PG] migration %s changed since it was applied — re-applying",
+                    path.name,
+                )
             async with self.pg_pool.acquire(timeout=60.0) as conn:
                 async with conn.transaction():
                     await conn.execute("SELECT pg_advisory_xact_lock(123456)")
@@ -451,9 +502,18 @@ class NCEEngine(OrchestratorBase):
                                 GRANT SELECT, INSERT, UPDATE, DELETE ON topology_graph TO nce_app;
                                 GRANT SELECT, INSERT, UPDATE, DELETE ON topology_graph TO nce_gc;
                             """)
+                            # Deliberately NOT recorded: the real Citus
+                            # migration must still run if the extension
+                            # appears later, so this file stays unapplied.
                             continue
                     await conn.execute(sql)
+                    if ledger_ok:
+                        # Same transaction as the migration: a recorded row for
+                        # a migration that did not commit would skip it forever.
+                        await record_applied(conn, path.name, checksum)
             log.debug("[PG] migration applied: %s", path.name)
+        if skipped:
+            log.debug("[PG] %d migration(s) already applied — skipped", skipped)
 
     async def _seed_node_ownership_all(self) -> None:
         """Backfill node_ownership_registry for all existing namespaces.
