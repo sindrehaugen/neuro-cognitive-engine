@@ -17,6 +17,9 @@ Covers:
   5. The three REST routes are mounted in the admin app and return the same
      shape as the cores, including the 409 mapping for
      ``InsufficientStockError`` and 503 when no engine is connected.
+  6. A non-finite ``float`` in a core result is neutralised by
+     ``_shared._json_safe`` instead of crashing Starlette's
+     ``allow_nan=False`` encoder and being mis-filed as a 422.
 
 The Wave 2 cores (``stock.do_stock_levels`` / ``do_transfer_stock`` /
 ``do_record_consumption``) are patched at the point of use in both surface
@@ -462,3 +465,134 @@ async def test_api_inventory_routes_no_engine_returns_503() -> None:
             _make_request(body={"namespace_id": _NAMESPACE_ID})
         )
         assert resp.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# 6. Non-finite float serialisation  (regression: inventory's `_json_safe`
+#    dropped `_neutralise_non_finite`, so a nan/inf sailed through into
+#    Starlette's `allow_nan=False` encoder)
+#
+# `JSONResponse(_json_safe(result))` is built INSIDE each route's
+# `try:` block, whose `except (ValueError, KeyError, TypeError)` maps to 422.
+# `JSONResponse.__init__` renders the body eagerly, so the encoder's
+# `ValueError("Out of range float values are not JSON compliant")` is caught
+# by that handler and reported to the caller as a malformed request -- the
+# exact mis-filing `economy.py`'s `_neutralise_non_finite` was added to stop.
+#
+# The Wave 2 cores currently return `Decimal` for every quantity (and
+# `default=str` already renders even `Decimal("NaN")` safely), so these tests
+# inject the non-finite float via the patched core rather than through a route
+# payload: they gate the serialisation boundary against drift, they are not a
+# reproduction of a caller-reachable path on today's cores.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_api_inventory_stock_levels_non_finite_float_serialises_successfully() -> None:
+    """A non-finite ``float`` reaching the read route must be neutralised to a JSON
+    string and returned 200 -- never crash the response encoder and get mis-filed as
+    a 422 domain-validation error.
+
+    Goes RED if ``_json_safe`` stops neutralising non-finite floats (mirrors
+    ``test_economy_surface.py``'s NaN regression tests).
+    """
+    from nce import admin_state
+    from nce.admin_handlers import inventory as inventory_mod
+
+    poisoned: dict[str, Any] = {
+        "ok": True,
+        "items": [
+            {
+                "sku": "SKU-1",
+                "location_id": _LOCATION_A,
+                "on_hand": Decimal("10.000"),
+                "reserved": Decimal("0.000"),
+                "blocked": Decimal("0.000"),
+                "available": float("inf"),
+            }
+        ],
+    }
+
+    with patch.object(admin_state, "engine", MagicMock()):
+        with patch.object(inventory_mod, "do_stock_levels", AsyncMock(return_value=poisoned)):
+            req = _make_request(query={"namespace_id": _NAMESPACE_ID, "sku": "SKU-1"})
+            resp = await inventory_mod.api_inventory_stock_levels(req)
+
+    body = json.loads(bytes(resp.body).decode("utf-8"))
+    assert resp.status_code == 200, f"non-finite float was mis-filed as {resp.status_code}: {body}"
+    assert body["ok"] is True
+    assert body["items"][0]["available"] == "inf"
+    assert body["items"][0]["on_hand"] == "10.000"
+
+
+@pytest.mark.asyncio
+async def test_api_inventory_record_consumption_non_finite_float_serialises_successfully() -> None:
+    """Same guard on a write route: a non-finite ``float`` echoed into the
+    consumption result serialises to a string at 200 rather than 422."""
+    from nce import admin_state
+    from nce.admin_handlers import inventory as inventory_mod
+
+    poisoned: dict[str, Any] = {**_CONSUMPTION_RESULT, "on_hand": float("nan")}
+
+    with patch.object(admin_state, "engine", MagicMock()):
+        with patch.object(inventory_mod, "do_record_consumption", AsyncMock(return_value=poisoned)):
+            req = _make_request(
+                body={
+                    "namespace_id": _NAMESPACE_ID,
+                    "sku": "SKU-1",
+                    "qty": 1,
+                    "location": _LOCATION_A,
+                }
+            )
+            resp = await inventory_mod.api_inventory_record_consumption(req)
+
+    body = json.loads(bytes(resp.body).decode("utf-8"))
+    assert resp.status_code == 200, f"non-finite float was mis-filed as {resp.status_code}: {body}"
+    assert body["on_hand"] == "nan"
+    assert body["qty"] == "1.000"
+
+
+@pytest.mark.asyncio
+async def test_api_inventory_insufficient_stock_non_finite_float_serialises_successfully() -> None:
+    """The 409 refusal body also goes through ``_json_safe``; a non-finite float
+    there must not turn the structured 409 into a 422."""
+    from nce import admin_state
+    from nce.admin_handlers import inventory as inventory_mod
+
+    exc = InsufficientStockError(
+        sku="SKU-1",
+        location_id=_LOCATION_A_UUID,
+        requested=Decimal("5.000"),
+        available_on_hand=float("-inf"),
+    )
+
+    with patch.object(admin_state, "engine", MagicMock()):
+        with patch.object(inventory_mod, "do_record_consumption", AsyncMock(side_effect=exc)):
+            req = _make_request(
+                body={
+                    "namespace_id": _NAMESPACE_ID,
+                    "sku": "SKU-1",
+                    "qty": 5,
+                    "location": _LOCATION_A,
+                }
+            )
+            resp = await inventory_mod.api_inventory_record_consumption(req)
+
+    body = json.loads(bytes(resp.body).decode("utf-8"))
+    assert resp.status_code == 409, (
+        f"non-finite float turned the 409 refusal into {resp.status_code}: {body}"
+    )
+    assert body["available_on_hand"] == "-inf"
+
+
+def test_inventory_and_economy_share_one_json_safe() -> None:
+    """The drift that caused this bug was two separate ``_json_safe`` copies whose
+    behaviour diverged while inventory's docstring claimed to mirror economy's.
+    Assert there is now exactly ONE implementation behind both surfaces, so a
+    future fix to one can never again silently skip the other."""
+    from nce.admin_handlers import economy as economy_mod
+    from nce.admin_handlers import inventory as inventory_mod
+    from nce.admin_handlers._shared import _json_safe, _require_namespace_id
+
+    assert inventory_mod._json_safe is economy_mod._json_safe is _json_safe
+    assert inventory_mod._require_namespace_id is _require_namespace_id

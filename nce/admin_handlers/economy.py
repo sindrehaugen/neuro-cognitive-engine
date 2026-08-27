@@ -20,14 +20,12 @@ caller can never auto-approve its own invoice or redirect its own postings
 
 from __future__ import annotations
 
-import json
 import logging
-import math
-from typing import Any
 from uuid import UUID
 
 from nce.admin_handlers._shared import (
     JSONResponse,
+    _json_safe,
     admin_error_response,
     admin_state,
 )
@@ -75,48 +73,6 @@ _BALANCE_EPSILON_DEFAULT: float = 0.01
 # sole success/failure signal. Checked with an EXACT match (see the call site) -- do not lowercase
 # or strip before comparing.
 _RESERVED_EVENT_KEYS: frozenset[str] = frozenset({"status", "error"})
-
-
-def _neutralise_non_finite(value: Any) -> Any:
-    """Recursively replace non-finite ``float``\\ s (``nan``/``inf``/``-inf``) with their
-    string form, so ``json.dumps`` never has to fall back to emitting the bare
-    ``NaN``/``Infinity`` tokens that Starlette's ``JSONResponse.render`` (``allow_nan=False``)
-    rejects with a ``ValueError``.
-
-    ``json.dumps``'s ``default=`` hook (used below in :func:`_json_safe` for ``Decimal``) is
-    **never** invoked for ``float`` — floats are natively handled — so a non-finite float
-    silently sails through ``_json_safe`` unconverted and only blows up later, inside
-    ``JSONResponse``'s own encoder. At that point it is indistinguishable from a genuine
-    domain-validation ``ValueError`` and gets misreported as an invalid invoice/event instead
-    of what it actually is: a correct computation that merely echoed a non-finite caller value
-    (e.g. a poisoned ``candidate_id`` or ``period_end``). Converting here, before ``json.dumps``
-    ever sees the value, avoids that exception entirely — the same treatment ``Decimal``
-    already gets via ``default=str``.
-    """
-    if isinstance(value, float):
-        if not math.isfinite(value):
-            return str(value)
-        return value
-    if isinstance(value, dict):
-        return {key: _neutralise_non_finite(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_neutralise_non_finite(item) for item in value]
-    return value
-
-
-def _json_safe(value: Any) -> Any:
-    """Round-trip *value* through a ``Decimal``-aware ``json.dumps`` so every
-    ``Decimal`` becomes its exact string form before Starlette's own JSON
-    encoder (which has no ``default=`` hook here) ever sees it. Non-finite
-    ``float`` values are neutralised the same way (see
-    :func:`_neutralise_non_finite`) so a caller-echoed NaN/Infinity can never reach
-    Starlette's ``allow_nan=False`` encoder and be mis-filed as a domain-validation error.
-
-    Money must never be coerced through ``float`` (money-module briefing #2;
-    see also ``ngaap.py``'s module docstring) — this is the route layer's
-    job, not the core's.
-    """
-    return json.loads(json.dumps(_neutralise_non_finite(value), default=str))
 
 
 async def api_economy_match_invoice(request) -> JSONResponse:

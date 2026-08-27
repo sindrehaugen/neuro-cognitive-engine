@@ -26,17 +26,16 @@ Error mapping:
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any
-from uuid import UUID
 
 from nce.admin_handlers._shared import (
     JSONResponse,
+    _json_safe,
+    _require_namespace_id,
     admin_error_response,
     admin_state,
 )
-from nce.auth import validate_agent_id
 from nce.vertical_modules.inventory.stock import (
     InsufficientStockError,
     do_record_consumption,
@@ -45,40 +44,6 @@ from nce.vertical_modules.inventory.stock import (
 )
 
 log = logging.getLogger("nce.admin_handlers.inventory")
-
-
-def _json_safe(value: Any) -> Any:
-    """Round-trip *value* through a ``Decimal``-aware ``json.dumps`` so every
-    exact-decimal quantity (``inventory_items`` is ``NUMERIC(18,3)`` — see
-    ``stock.py``'s module docstring) becomes its exact string form before
-    Starlette's own JSON encoder (which has no ``default=`` hook) ever sees
-    it. Mirrors ``admin_handlers/economy.py``'s ``_json_safe`` — the "never
-    coerce an exact quantity through float" discipline applies to stock
-    quantities, not just money.
-    """
-    return json.loads(json.dumps(value, default=str))
-
-
-def _require_namespace_id(raw: str | None) -> tuple[str | None, JSONResponse | None]:
-    """Validate the ``namespace_id`` shared by all three routes.
-
-    Returns ``(namespace_id, None)`` on success or ``(None, error_response)``
-    on failure. ``validate_agent_id`` only sanitises free text and never
-    raises (see ``nce/auth.py``), so the actual UUID-shape check is the
-    explicit ``UUID(...)`` parse below (mirrors
-    ``admin_handlers/economy.py``'s namespace validation).
-    """
-    namespace_id = str(raw or "").strip()
-    if not namespace_id:
-        return None, JSONResponse(
-            {"error": "Missing required field: namespace_id"}, status_code=422
-        )
-    namespace_id = validate_agent_id(namespace_id)
-    try:
-        UUID(namespace_id)
-    except ValueError as exc:
-        return None, JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
-    return namespace_id, None
 
 
 def _insufficient_stock_response(exc: InsufficientStockError) -> JSONResponse:
