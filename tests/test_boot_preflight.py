@@ -179,6 +179,56 @@ class TestFailureLogging:
         assert secret not in caplog.text
 
 
+class TestReportingDoesNotDependOnConfig:
+    """``nce.config`` raising at import time is one of the failures to report."""
+
+    def test_the_fallback_redactor_strips_the_password(self) -> None:
+        out = preflight._fallback_redact(
+            "could not connect: postgresql://mcp_user:hunter2_secret@postgres:5432/db"
+        )
+        assert "hunter2_secret" not in out
+
+    def test_the_fallback_redactor_keeps_the_role_and_target(self) -> None:
+        """Over-redacting hides which principal failed and against what."""
+        out = preflight._fallback_redact(
+            "could not connect: postgresql://mcp_user:hunter2_secret@postgres:5432/db"
+        )
+        assert "mcp_user" in out
+        assert "postgres:5432/db" in out
+
+    def test_the_fallback_leaves_credential_free_text_alone(self) -> None:
+        text = "relation applied_migrations does not exist"
+        assert preflight._fallback_redact(text) == text
+
+    def test_nce_config_is_not_imported_at_module_scope(self) -> None:
+        """The property that broke: an eager import made the report a traceback."""
+        import ast
+        import inspect
+
+        tree = ast.parse(inspect.getsource(preflight))
+        for node in tree.body:
+            if isinstance(node, ast.ImportFrom):
+                assert node.module != "nce.config", (
+                    "nce.config must only be imported inside a try, since its "
+                    "import-time failures are among the failures this reports"
+                )
+            if isinstance(node, ast.Import):
+                assert all(a.name != "nce.config" for a in node.names)
+
+    @pytest.mark.asyncio
+    async def test_a_config_import_failure_is_reported_not_raised(
+        self, fake_engine, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """It must reach the FATAL line, not escape as a traceback."""
+        fake_engine(
+            _FakeEngine(connect_error=RuntimeError("NCE_LOAD_DOTENV must be false in production"))
+        )
+        with caplog.at_level(logging.CRITICAL, logger="nce-preflight"):
+            code = await preflight.run_preflight()
+        assert code == preflight.EXIT_STARTUP_FAILED
+        assert "NCE_LOAD_DOTENV" in caplog.text
+
+
 class TestTimeoutConfiguration:
     """The timeout must be overridable and must never be disabled by a typo."""
 

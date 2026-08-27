@@ -44,9 +44,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import sys
 
 log = logging.getLogger("nce-preflight")
+
+#: ``scheme://user:password@host`` -- the credential shape a DSN error carries.
+_CREDENTIAL_URL_RE = re.compile(r"([a-zA-Z][a-zA-Z0-9+.-]*)://([^:/@\s]+):[^@/\s]+@")
 
 EXIT_OK = 0
 EXIT_STARTUP_FAILED = 1
@@ -97,10 +101,36 @@ async def _probe() -> None:
             log.debug("pre-flight cleanup failed (ignored): %s", exc)
 
 
+def _fallback_redact(text: str) -> str:
+    """Strip ``scheme://user:password@host`` credentials, keeping the user.
+
+    Used when the real redactor cannot be imported. The role name is kept
+    deliberately: it says which principal failed to connect, and it is not the
+    secret.
+    """
+    return _CREDENTIAL_URL_RE.sub(r"\1://\2:***@", text)
+
+
+def _redact(text: str) -> str:
+    """Redact secrets without making the redactor a prerequisite for reporting.
+
+    ``nce.config`` raises at import time for some environment failures -- for
+    example ``NCE_LOAD_DOTENV must be false in production`` -- and those are
+    exactly the failures this module exists to report. Importing the real
+    redactor eagerly turned such a failure into a raw traceback instead of the
+    FATAL line below. When it is unavailable, fall back to stripping
+    ``scheme://user:password@host`` credentials, the shape a connection error
+    actually carries.
+    """
+    try:
+        from nce.config import redact_secrets_in_text
+    except Exception:
+        return _fallback_redact(text)
+    return redact_secrets_in_text(text)
+
+
 async def run_preflight() -> int:
     """Run the probe under a timeout and map the outcome to an exit code."""
-    from nce.config import redact_secrets_in_text
-
     timeout = _timeout_seconds()
     try:
         await asyncio.wait_for(_probe(), timeout=timeout)
@@ -115,7 +145,7 @@ async def run_preflight() -> int:
         log.critical(
             "FATAL: pre-flight startup failure: %s: %s",
             type(exc).__name__,
-            redact_secrets_in_text(str(exc)),
+            _redact(str(exc)),
         )
         log.critical(
             "Refusing to start. This is an environment/deploy failure, not a "
