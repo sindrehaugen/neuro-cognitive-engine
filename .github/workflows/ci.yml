@@ -186,6 +186,7 @@ jobs:
             tests/test_outbox_relay.py \
             tests/test_outbox_fanout.py \
             tests/test_event_log_hardening.py \
+            tests/test_node_ownership_seed_bulk.py \
             tests/test_worm_registry.py::test_memory_salience_not_in_worm_tables \
             tests/test_worm_registry.py::test_worm_tables_contains_expected_entries \
             -m integration -q --tb=short

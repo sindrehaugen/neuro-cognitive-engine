@@ -64,6 +64,21 @@ WHERE NOT EXISTS (
 )
 """
 
+# Bulk counterpart: one set-based statement covering every namespace.
+_BULK_INSERT_SQL = """
+INSERT INTO node_ownership_registry (namespace_id, node_type, transition, owner_engine)
+SELECT n.id, v.node_type, v.transition, v.owner_engine
+FROM namespaces n
+CROSS JOIN UNNEST($1::text[], $2::text[], $3::text[])
+     AS v(node_type, transition, owner_engine)
+WHERE NOT EXISTS (
+    SELECT 1 FROM node_ownership_registry r
+    WHERE r.namespace_id = n.id
+      AND r.node_type    = v.node_type
+      AND r.transition IS NOT DISTINCT FROM v.transition
+)
+"""
+
 
 async def seed_node_ownership_registry(
     conn: asyncpg.Connection,  # type: ignore[type-arg]
@@ -114,4 +129,36 @@ async def seed_node_ownership_registry(
         ns_uuid,
         inserted,
     )
+    return inserted
+
+
+async def seed_node_ownership_all_namespaces(
+    conn: asyncpg.Connection,  # type: ignore[type-arg]
+) -> int:
+    """Idempotently seed every existing namespace in a single statement.
+
+    Startup-backfill counterpart to :func:`seed_node_ownership_registry`.
+    The per-namespace variant costs one round trip per ownership entry, so
+    a boot-time loop over N namespaces issues ``N * len(_OWNERSHIP_ENTRIES)``
+    statements and comes to dominate startup once N grows.  This collapses
+    that to one set-based INSERT with the same NOT EXISTS idempotency guard.
+
+    Caller contract:
+      ``conn`` must be a connection whose role bypasses RLS (the owner pool),
+      because a single statement writes rows for every namespace at once.
+
+    Returns
+    -------
+    int
+        The number of rows actually inserted (0 when already seeded).
+    """
+    node_types = [e["node_type"] for e in _OWNERSHIP_ENTRIES]
+    transitions = [e.get("transition") for e in _OWNERSHIP_ENTRIES]
+    owner_engines = [e["owner_engine"] for e in _OWNERSHIP_ENTRIES]
+    status = await conn.execute(_BULK_INSERT_SQL, node_types, transitions, owner_engines)
+    try:
+        inserted = int(status.split()[-1])
+    except (AttributeError, ValueError, IndexError):
+        inserted = 0
+    log.debug("seed_node_ownership_all_namespaces: inserted=%d", inserted)
     return inserted

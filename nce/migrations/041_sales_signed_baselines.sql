@@ -29,6 +29,10 @@ BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
         REVOKE ALL ON TABLE sales_signed_baselines FROM nce_app;
         GRANT SELECT, INSERT ON TABLE sales_signed_baselines TO nce_app;
-        GRANT USAGE, SELECT ON SEQUENCE sales_signed_baselines_id_seq TO nce_app;
+        -- Pre-BIGSERIAL databases created this table with a UUID key, so the
+        -- sequence may not exist; grant only when it does.
+        IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'sales_signed_baselines_id_seq') THEN
+            GRANT USAGE, SELECT ON SEQUENCE sales_signed_baselines_id_seq TO nce_app;
+        END IF;
     END IF;
 END $$;

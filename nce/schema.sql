@@ -2340,7 +2340,10 @@ BEGIN
                 t
             );
         END IF;
-        IF t = 'sales_signed_baselines' THEN
+        -- Pre-BIGSERIAL databases created this table with a UUID key, so the
+        -- sequence may not exist; grant only when it does.
+        IF t = 'sales_signed_baselines'
+           AND EXISTS (SELECT 1 FROM pg_class WHERE relname = 'sales_signed_baselines_id_seq') THEN
             EXECUTE 'GRANT USAGE, SELECT ON SEQUENCE public.sales_signed_baselines_id_seq TO nce_app';
         END IF;
     END LOOP;

@@ -455,30 +455,22 @@ class NCEEngine(OrchestratorBase):
         """Backfill node_ownership_registry for all existing namespaces.
 
         Called once during startup, immediately after migrations are applied.
-        Each namespace is processed independently: a per-namespace error is
-        logged and skipped so a single bad namespace never aborts startup.
+        A single set-based statement covers every namespace: the previous
+        per-namespace loop issued one round trip per ownership entry per
+        namespace, so startup cost grew with the tenant count. A failure is
+        logged and skipped so seeding never aborts startup.
         """
-        from nce.auth import set_namespace_context
-        from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
+        from nce.entity_resolution.ownership_seed import (
+            seed_node_ownership_all_namespaces,
+        )
 
         try:
             async with self.pg_pool.acquire(timeout=10.0) as conn:
-                rows = await conn.fetch("SELECT id FROM namespaces")
+                inserted = await seed_node_ownership_all_namespaces(conn)
+            if inserted:
+                log.info("[ownership-seed] seeded %d row(s) across all namespaces", inserted)
         except Exception as exc:
-            log.warning("[ownership-seed] Could not fetch namespaces: %s", exc)
-            return
-
-        for row in rows:
-            ns_id = row["id"]
-            try:
-                async with self.pg_pool.acquire(timeout=10.0) as conn:
-                    async with conn.transaction():
-                        await set_namespace_context(conn, ns_id)
-                        inserted = await seed_node_ownership_registry(conn, ns_id)
-                        if inserted:
-                            log.debug("[ownership-seed] ns=%s seeded %d row(s)", ns_id, inserted)
-            except Exception as exc:
-                log.warning("[ownership-seed] Failed for namespace %s: %s", ns_id, exc)
+            log.warning("[ownership-seed] Bulk seed failed: %s", exc)
 
     async def _verify_worm_enforcement(self):
         """
