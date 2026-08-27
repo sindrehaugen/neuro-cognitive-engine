@@ -16,6 +16,20 @@ Operational defaults for NCE v1.0 assume **self-hosted Docker Compose** on one m
 python scripts/bootstrap-compose-secrets.py
 
 docker compose up -d --build
+
+# Gate the deploy on the stack actually coming up. Exits non-zero on any
+# container that is unhealthy, exited, or restarting. Compose itself acts on a
+# healthcheck verdict in no way at all -- see "Health gating" below.
+python -m nce.deploy_health
+```
+
+Stamp the image with the commit it was built from so a version-skew failure can
+name it (optional, recommended for anything but a throwaway stack):
+
+```bash
+export NCE_GIT_SHA=$(git rev-parse --short HEAD)
+export NCE_BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+docker compose up -d --build
 ```
 
 This loads **`deploy/compose.stack.env`** (dev placeholders only; copy from **`deploy/compose.stack.env.example`** on first clone) plus optional **`deploy/compose.stack.env.generated`** from the bootstrap script above. The stack handles automated PostgreSQL schema initialization (extensions + RLS), bundles required spaCy models, and starts:
@@ -151,6 +165,40 @@ The stack includes built-in HTTP-based process and connection checks suitable fo
 - **Admin Web Server (`admin`):** Exposes `GET /healthz` on port `8003`. Returns 200 OK after checking all backend services (PostgreSQL, MongoDB, Redis, MinIO).
 - **Webhook Receiver (`webhook-receiver`):** Exposes `GET /health` on port `8080` (or `8002` internally).
 - **Caddy Edge (`caddy`):** Exposes `GET /health` via proxy-pass where appropriate.
+
+### Health gating — act on `unhealthy`
+
+Plain Compose **ignores** a healthcheck verdict: nothing alerts, nothing
+restarts, nothing exits non-zero. On 2026-08-27 `nce-admin` and `nce-a2a`
+crash-looped inside their own uvicorn supervisors for hours at ~137% CPU each
+while `docker ps` reported both `Up`, because the supervisor process never
+exited and so `restart: unless-stopped` never engaged.
+
+Two halves close that gap.
+
+**1. Fail-fast in the container.** The image entrypoint runs
+`python -m nce.preflight` before `exec`ing the real command. If startup cannot
+succeed — stale image against a migrated database, unreachable datastore — the
+container *exits* instead of respawning workers forever, so the failure shows up
+as a restart count and Docker's backoff applies. `NCE_PREFLIGHT=0` skips it;
+`NCE_PREFLIGHT_TIMEOUT` (default 120 s) bounds it.
+
+**2. Gate and watch from outside.**
+
+```bash
+# After `compose up`: poll until every container is healthy, or fail the deploy.
+python -m nce.deploy_health --timeout 300
+
+# One-shot verdict for a watchdog / scheduled alert. Non-zero while any
+# container is unhealthy, exited, or restarting; a container still starting is
+# not an alert.
+python -m nce.deploy_health --once
+```
+
+Exit codes: `0` healthy, `1` something is unhealthy, `2` timed out, `3` no
+containers found. Add `-f <compose-file>` / `-p <project>` for a non-default
+stack. Run the `--once` form on a timer (cron, systemd timer, Task Scheduler)
+and alert on non-zero — that is the minimum viable version of this.
 
 ### Running GPU-Accelerated Workloads
 

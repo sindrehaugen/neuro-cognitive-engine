@@ -165,9 +165,18 @@ class NCEEngine(OrchestratorBase):
 
         await self._init_pg_schema()
         await self._apply_pg_migrations()
-        await self._seed_node_ownership_all()
+        # Verification is cheap and read-only; seeding is expensive and mutating.
+        # Validate first so a drifted deployment fails in ~1 s instead of paying
+        # the full seed cost and *then* refusing to start.  Seeding depends only
+        # on schema + migrations having run, not on verification order.
+        # Before the enforcement checks, not after: version skew is what makes
+        # those checks fail, and their error text reads like a code bug. Naming
+        # the skew first turns 13 lines of "add to EXPECTED_TENANT_RLS_TABLES"
+        # into "this image is older than this database".
+        await self._verify_schema_version()
         await self._verify_worm_enforcement()
         await self._verify_rls_enforcement()
+        await self._seed_node_ownership_all()
         await self._check_global_legacy_warning()
         await self._init_mongo_indexes()
 
@@ -401,14 +410,65 @@ class NCEEngine(OrchestratorBase):
             log.debug("[PG] nce_app login password dynamically updated from configuration")
 
     async def _apply_pg_migrations(self) -> None:
-        """Apply idempotent SQL files from nce/migrations/ in lexical order."""
+        """Apply SQL files from nce/migrations/ in lexical order, once each.
+
+        Files are recorded in ``applied_migrations`` (see
+        :mod:`nce.migration_ledger`) and skipped on later boots while their
+        content is unchanged. Before the ledger every file re-ran on every
+        start: 54 statements-batches of pure no-op work per boot, and no way to
+        ask what version a database was at -- which is what made the 2026-08-27
+        image-vs-database skew invisible.
+
+        A file whose content *has* changed is re-applied and re-recorded, not
+        refused: migrations here are edited in place when one turns out not to
+        be idempotent, and refusing to boot on a corrected migration would be
+        worse than re-running an idempotent one.
+        """
         from pathlib import Path
+
+        from nce.migration_ledger import (
+            applied_checksums,
+            ensure_ledger,
+            migration_checksum,
+            record_applied,
+            should_skip,
+        )
 
         migrations_dir = Path(__file__).resolve().parent / "migrations"
         if not migrations_dir.is_dir():
             return
+
+        # The ledger is bookkeeping, not a safety guard: if it cannot be created
+        # (an older role without DDL rights, say) fall back to the previous
+        # behaviour of applying every file, rather than refusing to boot.
+        # CREATE TABLE IF NOT EXISTS is not concurrency-safe against itself in
+        # Postgres, and five services now boot this path at once (each one twice,
+        # counting the pre-flight), so it takes the same advisory lock the
+        # migrations do.
+        ledger_ok = True
+        applied: dict[str, str] = {}
+        try:
+            async with self.pg_pool.acquire(timeout=60.0) as conn:
+                async with conn.transaction():
+                    await conn.execute("SELECT pg_advisory_xact_lock(123456)")
+                    await ensure_ledger(conn)
+                applied = await applied_checksums(conn)
+        except Exception as exc:
+            log.warning("[PG] migration ledger unavailable (%s) — applying every migration", exc)
+            ledger_ok = False
+
+        skipped = 0
         for path in sorted(migrations_dir.glob("*.sql")):
             sql = path.read_text(encoding="utf-8")
+            checksum = migration_checksum(sql)
+            if should_skip(path.name, checksum, applied):
+                skipped += 1
+                continue
+            if path.name in applied:
+                log.warning(
+                    "[PG] migration %s changed since it was applied — re-applying",
+                    path.name,
+                )
             async with self.pg_pool.acquire(timeout=60.0) as conn:
                 async with conn.transaction():
                     await conn.execute("SELECT pg_advisory_xact_lock(123456)")
@@ -447,14 +507,93 @@ class NCEEngine(OrchestratorBase):
                                 GRANT SELECT, INSERT, UPDATE, DELETE ON topology_graph TO nce_app;
                                 GRANT SELECT, INSERT, UPDATE, DELETE ON topology_graph TO nce_gc;
                             """)
+                            # Deliberately NOT recorded: the real Citus
+                            # migration must still run if the extension
+                            # appears later, so this file stays unapplied.
                             continue
                     await conn.execute(sql)
+                    if ledger_ok:
+                        # Same transaction as the migration: a recorded row for
+                        # a migration that did not commit would skip it forever.
+                        await record_applied(conn, path.name, checksum)
             log.debug("[PG] migration applied: %s", path.name)
+        if skipped:
+            log.debug("[PG] %d migration(s) already applied — skipped", skipped)
+
+    async def _verify_schema_version(self) -> None:
+        """Report (and in production, refuse) an image older than its database.
+
+        The 2026-08-27 failure was version skew: an image built one day behind
+        the checkout that had migrated the live database. Its
+        ``EXPECTED_TENANT_RLS_TABLES`` predated 13 tables that now existed, so
+        ``_verify_rls_enforcement`` failed closed -- with a message listing
+        tables to add to an allowlist, which reads like a code bug rather than a
+        stale deploy. Two containers then crash-looped on it silently.
+
+        This names the actual problem first. It is advisory outside production
+        because branch images legitimately share a development database with
+        different migration sets; in production it raises, unless
+        ``NCE_ALLOW_SCHEMA_SKEW`` acknowledges it (the same shape as the mTLS
+        boot guard).
+        """
+        import os
+        from pathlib import Path
+
+        from nce.build_info import describe
+        from nce.migration_ledger import (
+            applied_checksums,
+            highest_version,
+            missing_from_image,
+        )
+
+        migrations_dir = Path(__file__).resolve().parent / "migrations"
+        if not migrations_dir.is_dir():
+            return
+        image_files = [p.name for p in sorted(migrations_dir.glob("*.sql"))]
+
+        try:
+            async with self.pg_pool.acquire(timeout=10.0) as conn:
+                recorded = list(await applied_checksums(conn))
+        except Exception as exc:
+            log.warning("[PG] schema-version check skipped: %s", exc)
+            return
+
+        if not recorded:
+            # A database that predates the ledger records nothing; this boot
+            # will populate it. Nothing to compare against yet.
+            return
+
+        missing = missing_from_image(image_files, recorded)
+        if not missing:
+            return
+
+        image_at = highest_version(image_files)
+        db_at = highest_version(recorded)
+        message = (
+            f"schema skew: this image is missing {len(missing)} migration(s) the "
+            f"database has already applied: {', '.join(missing[:10])}"
+            + (" ..." if len(missing) > 10 else "")
+            + f". This image has migrations up to {image_at}; the database is at "
+            f"{db_at}. {describe()}. Rebuild or redeploy this image from a commit "
+            "that includes them (or roll the database back). Until then the RLS "
+            "catalog check will also fail, because this image's allowlist predates "
+            "those tables -- that failure is a symptom, not the cause."
+        )
+
+        acknowledged = os.environ.get("NCE_ALLOW_SCHEMA_SKEW", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        if cfg.IS_PROD and not acknowledged:
+            raise RuntimeError("FATAL: " + message)
+        log.critical("%s%s", message, " (acknowledged)" if acknowledged else "")
 
     async def _seed_node_ownership_all(self) -> None:
         """Backfill node_ownership_registry for all existing namespaces.
 
-        Called once during startup, immediately after migrations are applied.
+        Called once during startup, after migrations are applied and after the
+        WORM/RLS enforcement checks have passed -- see ``connect()``.
         A single set-based statement covers every namespace: the previous
         per-namespace loop issued one round trip per ownership entry per
         namespace, so startup cost grew with the tenant count. A failure is

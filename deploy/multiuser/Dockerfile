@@ -37,9 +37,11 @@ COPY nce ./nce
 COPY start_worker.py health_probe.py ./
 COPY admin_server.py server.py ./
 COPY admin ./admin
+COPY deploy/multiuser/entrypoint.sh ./entrypoint.sh
 
 # Ensure the app directory is owned by our non-root user
-RUN chown -R nce:nce /app
+RUN chmod 0755 /app/entrypoint.sh \
+    && chown -R nce:nce /app
 
 USER nce
 
@@ -47,8 +49,25 @@ ENV XDG_CACHE_HOME=/tmp
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 
+# Build stamp (fix recipe #2). Read back by nce/build_info.py so a version-skew
+# failure can name the image instead of leaving the operator to guess which
+# checkout is running. Both default to unset -> "unknown"; never load-bearing.
+ARG NCE_GIT_SHA=
+ARG NCE_BUILD_TIME=
+ENV NCE_GIT_SHA=${NCE_GIT_SHA}
+ENV NCE_BUILD_TIME=${NCE_BUILD_TIME}
+
 # Robust healthcheck verifying backend connectivity
 HEALTHCHECK --interval=60s --timeout=15s --start-period=90s --retries=3 \
     CMD python health_probe.py
+
+# Boot pre-flight before the real command (fix recipe #2). `uvicorn --workers N`
+# respawns a worker that dies during startup immediately and forever without
+# backoff, and its supervisor never exits - so the container stays `Up`, Docker's
+# restart backoff never engages, and an environmental startup failure presents as
+# saturated CPU rather than an error. The entrypoint validates once and lets the
+# container *exit* non-zero on failure. HEALTHCHECK bypasses ENTRYPOINT, so the
+# probe above is unaffected. Set NCE_PREFLIGHT=0 to skip.
+ENTRYPOINT ["/app/entrypoint.sh"]
 
 CMD ["python", "start_worker.py"]

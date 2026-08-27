@@ -350,6 +350,9 @@ EXPECTED_GLOBAL_TABLES: set[str] = {
     "kg_node_embeddings",
     "reembedding_runs",
     "event_sequences",
+    # Deployment state, not tenant data: which migration files this database
+    # has applied (see nce/migration_ledger.py).
+    "applied_migrations",
 }
 
 
