@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS signing_keys (
 -- Replaces memory_metadata and code_metadata. Partitioned by RANGE(created_at).
 CREATE TABLE IF NOT EXISTS memories (
     id                  UUID        NOT NULL DEFAULT gen_random_uuid(),
-    namespace_id        UUID        REFERENCES namespaces(id),
+    namespace_id        UUID        REFERENCES namespaces(id) ON DELETE CASCADE,
     agent_id            TEXT        NOT NULL DEFAULT 'default',
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     memory_type         TEXT        NOT NULL DEFAULT 'episodic',
@@ -262,7 +262,7 @@ BEGIN
         WHERE constraint_name = 'kg_nodes_namespace_id_fkey'
     ) THEN
         ALTER TABLE kg_nodes ADD CONSTRAINT kg_nodes_namespace_id_fkey
-            FOREIGN KEY (namespace_id) REFERENCES namespaces(id);
+            FOREIGN KEY (namespace_id) REFERENCES namespaces(id) ON DELETE CASCADE;
     END IF;
 
     -- Migrate UNIQUE constraint: (label) → (label, namespace_id)
@@ -375,7 +375,7 @@ BEGIN
         WHERE constraint_name = 'kg_edges_namespace_id_fkey'
     ) THEN
         ALTER TABLE kg_edges ADD CONSTRAINT kg_edges_namespace_id_fkey
-            FOREIGN KEY (namespace_id) REFERENCES namespaces(id);
+            FOREIGN KEY (namespace_id) REFERENCES namespaces(id) ON DELETE CASCADE;
     END IF;
 
     -- Migrate UNIQUE: (s,p,o) → (s,p,o,namespace_id)
@@ -401,7 +401,7 @@ CREATE INDEX IF NOT EXISTS idx_kg_edges_updated ON kg_edges (updated_at);
 -- --- Phase 0.3: PII Redactions Vault ---
 CREATE TABLE IF NOT EXISTS pii_redactions (
     id              UUID DEFAULT gen_random_uuid(),
-    namespace_id    UUID NOT NULL REFERENCES namespaces(id),
+    namespace_id    UUID NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
     memory_id       UUID NOT NULL,
     token           TEXT NOT NULL,
     encrypted_value BYTEA NOT NULL,
@@ -423,7 +423,7 @@ CREATE INDEX IF NOT EXISTS idx_pii_redactions_namespace_id
 CREATE TABLE IF NOT EXISTS memory_salience (
     memory_id       UUID        NOT NULL,
     agent_id        TEXT        NOT NULL,
-    namespace_id    UUID        NOT NULL REFERENCES namespaces(id),
+    namespace_id    UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
     salience_score  REAL        NOT NULL DEFAULT 1.0,
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     access_count    INTEGER     NOT NULL DEFAULT 0,
@@ -442,7 +442,7 @@ CREATE INDEX IF NOT EXISTS idx_memory_salience_namespace_id ON memory_salience (
 -- --- Phase 1.3: Contradictions ---
 CREATE TABLE IF NOT EXISTS contradictions (
     id             UUID        NOT NULL DEFAULT gen_random_uuid(),
-    namespace_id   UUID        NOT NULL REFERENCES namespaces(id),
+    namespace_id   UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
     memory_a_id    UUID        NOT NULL,
     memory_b_id    UUID        NOT NULL,
     agent_id       TEXT        NOT NULL DEFAULT 'system',
@@ -476,7 +476,7 @@ CREATE TABLE IF NOT EXISTS memory_embeddings (
     memory_id    UUID NOT NULL,
     model_id     UUID NOT NULL REFERENCES embedding_models(id),
     embedding    vector, -- Unconstrained dimension to support any model
-    namespace_id UUID REFERENCES namespaces(id),
+    namespace_id UUID REFERENCES namespaces(id) ON DELETE CASCADE,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (memory_id, model_id)
 ) PARTITION BY HASH (memory_id);
@@ -493,7 +493,7 @@ CREATE TABLE IF NOT EXISTS embedding_aspects (
     memory_id    UUID NOT NULL,
     aspect       VARCHAR(64) NOT NULL,
     embedding    halfvec(768),
-    namespace_id UUID REFERENCES namespaces(id),
+    namespace_id UUID REFERENCES namespaces(id) ON DELETE CASCADE,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (memory_id, aspect)
 ) PARTITION BY HASH (memory_id);
@@ -539,7 +539,7 @@ END $$;
 
 CREATE TABLE IF NOT EXISTS embedding_migrations (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    namespace_id     UUID REFERENCES namespaces(id),
+    namespace_id     UUID REFERENCES namespaces(id) ON DELETE CASCADE,
     target_model_id  UUID NOT NULL REFERENCES embedding_models(id),
     status           TEXT NOT NULL DEFAULT 'running', -- running | validating | committed | aborted
     last_memory_id   UUID,
@@ -551,7 +551,7 @@ CREATE TABLE IF NOT EXISTS embedding_migrations (
 -- --- Document bridge subscriptions ---
 CREATE TABLE IF NOT EXISTS bridge_subscriptions (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    namespace_id    UUID REFERENCES namespaces(id),
+    namespace_id    UUID REFERENCES namespaces(id) ON DELETE CASCADE,
     user_id         TEXT NOT NULL,
     provider        TEXT NOT NULL CHECK (provider IN ('sharepoint', 'gdrive', 'dropbox')),
     resource_id     TEXT NOT NULL,
@@ -571,7 +571,7 @@ CREATE INDEX IF NOT EXISTS idx_bridge_subs_expires_active ON bridge_subscription
 CREATE INDEX IF NOT EXISTS idx_bridge_subscriptions_namespace_id ON bridge_subscriptions (namespace_id);
 
 ALTER TABLE bridge_subscriptions ADD COLUMN IF NOT EXISTS oauth_access_token_enc BYTEA;
-ALTER TABLE bridge_subscriptions ADD COLUMN IF NOT EXISTS namespace_id UUID REFERENCES namespaces(id);
+ALTER TABLE bridge_subscriptions ADD COLUMN IF NOT EXISTS namespace_id UUID REFERENCES namespaces(id) ON DELETE CASCADE;
 
 -- --- Phase 2.2: Time Travel Snapshots ---
 CREATE TABLE IF NOT EXISTS snapshots (
@@ -600,7 +600,7 @@ END $$;
 -- --- Phase 2.3: Event Log (WORM) ---
 CREATE TABLE IF NOT EXISTS consolidation_runs (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    namespace_id      UUID NOT NULL REFERENCES namespaces(id),
+    namespace_id      UUID NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
     agent_id          TEXT NOT NULL DEFAULT 'system',
     started_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     finished_at       TIMESTAMPTZ,
@@ -661,15 +661,15 @@ CREATE TABLE IF NOT EXISTS event_log_default PARTITION OF event_log DEFAULT;
 -- Per-namespace monotonic event_seq counter (single-row UPSERT avoids MAX(event_seq)
 -- merge-append scans across event_log partitions on every append).
 CREATE TABLE IF NOT EXISTS event_sequences (
-    namespace_id UUID PRIMARY KEY REFERENCES namespaces(id),
+    namespace_id UUID PRIMARY KEY REFERENCES namespaces(id) ON DELETE CASCADE,
     seq          BIGINT NOT NULL DEFAULT 0
 );
 
 -- --- Phase 2.3: Memory Replay Engine Sessions ---
 CREATE TABLE IF NOT EXISTS replay_runs (
     id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    source_namespace_id  UUID NOT NULL REFERENCES namespaces(id),
-    target_namespace_id  UUID REFERENCES namespaces(id),
+    source_namespace_id  UUID NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    target_namespace_id  UUID REFERENCES namespaces(id) ON DELETE CASCADE,
     mode                 TEXT NOT NULL,          -- observational | reconstructive | forked
     replay_mode          TEXT NOT NULL DEFAULT 'deterministic',  -- deterministic | re-execute
     start_seq            BIGINT NOT NULL,
@@ -904,7 +904,7 @@ END $$;
 -- --- Phase 3.1: A2A (Agent-to-Agent) Sharing Grants ---
 CREATE TABLE IF NOT EXISTS a2a_grants (
     id                   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    owner_namespace_id   UUID        NOT NULL REFERENCES namespaces(id),
+    owner_namespace_id   UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
     owner_agent_id       TEXT        NOT NULL,
     target_namespace_id  UUID,                       -- NULL = any bearer is valid
     target_agent_id      TEXT,                       -- NULL = any agent
@@ -1015,7 +1015,7 @@ END $$;
 -- are not re-enqueued indefinitely.  Admin UI / API can replay or purge.
 CREATE TABLE IF NOT EXISTS dead_letter_queue (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    namespace_id   UUID REFERENCES namespaces(id),
+    namespace_id   UUID REFERENCES namespaces(id) ON DELETE CASCADE,
     task_name      TEXT NOT NULL,          -- e.g. 'process_code_indexing'
     job_id         TEXT NOT NULL,          -- RQ job id
     kwargs         JSONB NOT NULL,         -- frozen kwargs of the failed invocation
@@ -2075,13 +2075,13 @@ END $$;
 -- --- Muscles Schema Contract (Batch C0) ---
 CREATE TABLE IF NOT EXISTS processed_outbox_events (
     event_id     UUID PRIMARY KEY,
-    namespace_id UUID NOT NULL REFERENCES namespaces(id),
+    namespace_id UUID NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
     processed_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_processed_outbox_events_namespace_id ON processed_outbox_events (namespace_id);
 
 CREATE TABLE IF NOT EXISTS actor_trust (
-    namespace_id           UUID NOT NULL REFERENCES namespaces(id),
+    namespace_id           UUID NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
     actor_id               TEXT NOT NULL,
     actor_kind             TEXT NOT NULL CHECK (actor_kind IN ('agent','operator')),
     confirmations          INT NOT NULL DEFAULT 0,
@@ -2114,7 +2114,7 @@ END $$;
 
 CREATE TABLE IF NOT EXISTS action_approval_queue (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    namespace_id     UUID NOT NULL REFERENCES namespaces(id),
+    namespace_id     UUID NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
     agent_id         TEXT NOT NULL,
     action_type      TEXT NOT NULL,
     target_system    TEXT NOT NULL,
@@ -2131,7 +2131,7 @@ CREATE INDEX IF NOT EXISTS idx_action_approval_queue_ns_created ON action_approv
 
 CREATE TABLE IF NOT EXISTS action_idempotency (
     idempotency_key  TEXT NOT NULL,
-    namespace_id     UUID NOT NULL REFERENCES namespaces(id),
+    namespace_id     UUID NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
     action_type      TEXT NOT NULL,
     target_entity_id TEXT,
     response_hash    BYTEA,

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Generator
 
 # `nce.config` fails fast on import if unset; tests often import the package
 # without a local .env — provide deterministic dev keys for collection only.
@@ -436,12 +437,9 @@ async def pg_app_conn(
         await app_pool.close()
 
 
-@pytest_asyncio.fixture
-async def namespace_id(pg_pool: asyncpg.Pool) -> uuid.UUID:
-    """Fresh namespace row for integration tests that need RLS / event_log scope."""
-
+async def _insert_namespace(pool: asyncpg.Pool) -> uuid.UUID:
     slug = f"pytest-ns-{uuid.uuid4().hex}"
-    async with pg_pool.acquire() as conn:
+    async with pool.acquire() as conn:
         ns = await conn.fetchval(
             "INSERT INTO namespaces (slug) VALUES ($1) RETURNING id",
             slug,
@@ -450,21 +448,125 @@ async def namespace_id(pg_pool: asyncpg.Pool) -> uuid.UUID:
     return ns
 
 
+async def _drop_namespaces(pool: asyncpg.Pool, ids: list[uuid.UUID]) -> None:
+    """Delete test namespaces, tolerating the ones that cannot go.
+
+    Migration 055 made every tenant-scoped child FK ON DELETE CASCADE, so this
+    removes the namespace and its rows in one statement. ``event_log`` and
+    ``event_parents`` are deliberately still NO ACTION (they are WORM), so a
+    namespace that recorded events raises ForeignKeyViolationError -- that is
+    expected, not a teardown bug, and must never fail a passing test.
+    """
+
+    for ns in ids:
+        try:
+            async with pool.acquire() as conn:
+                await conn.execute("DELETE FROM namespaces WHERE id = $1", ns)
+        except (asyncpg.PostgresError, OSError):
+            # Best-effort: a WORM-pinned or already-gone namespace is fine.
+            pass
+
+
+@pytest_asyncio.fixture
+async def namespace_id(pg_pool: asyncpg.Pool) -> AsyncGenerator[uuid.UUID, None]:
+    """Fresh namespace row for integration tests that need RLS / event_log scope.
+
+    Yields rather than returns so the row is removed afterwards. Before this had
+    teardown, every test run leaked a namespace permanently: the live database
+    had accumulated 4,613 ``pytest-ns-*`` rows against 7 real tenants, and the
+    boot-time ownership backfill was fanning out over all of them.
+    """
+
+    ns = await _insert_namespace(pg_pool)
+    try:
+        yield ns
+    finally:
+        await _drop_namespaces(pg_pool, [ns])
+
+
 @pytest_asyncio.fixture
 async def make_namespace(pg_pool: asyncpg.Pool):
-    """Factory that inserts a new namespace and returns its id."""
+    """Factory that inserts a new namespace and returns its id.
+
+    Every namespace it hands out is removed when the test ends -- see
+    :func:`_drop_namespaces` for why some legitimately survive.
+    """
+
+    created: list[uuid.UUID] = []
 
     async def _make() -> uuid.UUID:
-        slug = f"pytest-ns-{uuid.uuid4().hex}"
-        async with pg_pool.acquire() as conn:
-            ns = await conn.fetchval(
-                "INSERT INTO namespaces (slug) VALUES ($1) RETURNING id",
-                slug,
-            )
-        assert ns is not None
+        ns = await _insert_namespace(pg_pool)
+        created.append(ns)
         return ns
 
-    return _make
+    try:
+        yield _make
+    finally:
+        await _drop_namespaces(pg_pool, created)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _sweep_leaked_test_namespaces() -> Generator[None, None, None]:
+    """Remove ``pytest-%`` namespaces this session created but did not tear down.
+
+    Per-test teardown handles the normal path; this catches what it cannot --
+    a hard kill, a crashed worker, a test that inserts a namespace without going
+    through the fixtures. Without it the leak is unbounded: the live database
+    had 4,613 ``pytest-ns-*`` rows against 7 real tenants, and boot-time seeding
+    fanned out over every one of them.
+
+    Only namespaces absent at session start are swept, so a concurrent session's
+    rows are never touched. Failures are swallowed: a namespace holding WORM
+    ``event_log`` rows cannot be deleted, and that must not fail a green run.
+    """
+
+    dsn = _integration_pool_dsn()
+    if not dsn:
+        yield
+        return
+
+    async def _slugs() -> set[str]:
+        conn = None
+        try:
+            conn = await asyncpg.connect(dsn, timeout=10)
+            rows = await conn.fetch("SELECT slug FROM namespaces WHERE slug LIKE 'pytest-%'")
+            return {r["slug"] for r in rows}
+        except (asyncpg.PostgresError, OSError):
+            return set()
+        finally:
+            if conn is not None:
+                await conn.close()
+
+    async def _sweep(preexisting: set[str]) -> None:
+        conn = None
+        try:
+            conn = await asyncpg.connect(dsn, timeout=10)
+            rows = await conn.fetch("SELECT id, slug FROM namespaces WHERE slug LIKE 'pytest-%'")
+            for row in rows:
+                if row["slug"] in preexisting:
+                    continue
+                try:
+                    await conn.execute("DELETE FROM namespaces WHERE id = $1", row["id"])
+                except (asyncpg.PostgresError, OSError):
+                    continue
+        except (asyncpg.PostgresError, OSError):
+            return
+        finally:
+            if conn is not None:
+                await conn.close()
+
+    try:
+        before = asyncio.run(_slugs())
+    except RuntimeError:
+        before = set()
+
+    try:
+        yield
+    finally:
+        try:
+            asyncio.run(_sweep(before))
+        except RuntimeError:
+            pass
 
 
 @pytest.fixture(autouse=True)
