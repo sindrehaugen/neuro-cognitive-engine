@@ -130,6 +130,10 @@ services:
     build:
       context: ../..
       dockerfile: deploy/multiuser/Dockerfile
+      # Build stamp so a version-skew failure can name the image (recipe #2).
+      args:
+        NCE_GIT_SHA: ${NCE_GIT_SHA:-}
+        NCE_BUILD_TIME: ${NCE_BUILD_TIME:-}
     command:
       [
         "uvicorn",
@@ -162,6 +166,10 @@ services:
     build:
       context: ../..
       dockerfile: deploy/multiuser/Dockerfile
+      # Build stamp so a version-skew failure can name the image (recipe #2).
+      args:
+        NCE_GIT_SHA: ${NCE_GIT_SHA:-}
+        NCE_BUILD_TIME: ${NCE_BUILD_TIME:-}
     container_name: nce-worker
     env_file:
       - ../compose.stack.env
@@ -197,6 +205,10 @@ services:
     build:
       context: ../..
       dockerfile: deploy/multiuser/Dockerfile
+      # Build stamp so a version-skew failure can name the image (recipe #2).
+      args:
+        NCE_GIT_SHA: ${NCE_GIT_SHA:-}
+        NCE_BUILD_TIME: ${NCE_BUILD_TIME:-}
     command: ["python", "-m", "nce.cron"]
     container_name: nce-cron
     env_file:
@@ -224,6 +236,10 @@ services:
     build:
       context: ../..
       dockerfile: deploy/multiuser/Dockerfile
+      # Build stamp so a version-skew failure can name the image (recipe #2).
+      args:
+        NCE_GIT_SHA: ${NCE_GIT_SHA:-}
+        NCE_BUILD_TIME: ${NCE_BUILD_TIME:-}
     command:
       [
         "uvicorn",
@@ -271,6 +287,10 @@ services:
     build:
       context: ../..
       dockerfile: deploy/multiuser/Dockerfile
+      # Build stamp so a version-skew failure can name the image (recipe #2).
+      args:
+        NCE_GIT_SHA: ${NCE_GIT_SHA:-}
+        NCE_BUILD_TIME: ${NCE_BUILD_TIME:-}
     command:
       [
         "uvicorn",

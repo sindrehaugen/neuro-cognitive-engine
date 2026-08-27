@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from collections.abc import Iterable
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -85,6 +86,40 @@ async def record_applied(conn: Any, filename: str, checksum: str) -> None:
     row for a migration that did not commit would skip it forever.
     """
     await conn.execute(_UPSERT_SQL, filename, checksum)
+
+
+def migration_version(filename: str) -> int | None:
+    """The numeric prefix of a migration filename, or None when unnumbered."""
+    digits = ""
+    for ch in filename:
+        if not ch.isdigit():
+            break
+        digits += ch
+    return int(digits) if digits else None
+
+
+def highest_version(filenames: Iterable[str]) -> int | None:
+    """The highest numeric prefix across ``filenames``, or None if none carry one."""
+    versions = [v for v in (migration_version(f) for f in filenames) if v is not None]
+    return max(versions) if versions else None
+
+
+def missing_from_image(
+    image_filenames: Iterable[str], recorded_filenames: Iterable[str]
+) -> list[str]:
+    """Migrations the database has applied that this image does not contain.
+
+    This is the version-skew direction that actually breaks a deployment: an
+    image at commit X against a database migrated by commit Y > X. Its RLS
+    allowlist predates tables that now exist, so ``verify_rls_catalog_consistency``
+    fails closed -- and the error it prints reads like a code bug ("add to
+    EXPECTED_TENANT_RLS_TABLES") rather than a stale deploy.
+
+    The opposite direction needs no check: an image carrying migrations the
+    database lacks applies them itself during startup.
+    """
+    known = set(image_filenames)
+    return sorted(f for f in recorded_filenames if f not in known)
 
 
 def should_skip(filename: str, checksum: str, applied: dict[str, str]) -> bool:

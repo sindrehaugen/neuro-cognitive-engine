@@ -169,6 +169,11 @@ class NCEEngine(OrchestratorBase):
         # Validate first so a drifted deployment fails in ~1 s instead of paying
         # the full seed cost and *then* refusing to start.  Seeding depends only
         # on schema + migrations having run, not on verification order.
+        # Before the enforcement checks, not after: version skew is what makes
+        # those checks fail, and their error text reads like a code bug. Naming
+        # the skew first turns 13 lines of "add to EXPECTED_TENANT_RLS_TABLES"
+        # into "this image is older than this database".
+        await self._verify_schema_version()
         await self._verify_worm_enforcement()
         await self._verify_rls_enforcement()
         await self._seed_node_ownership_all()
@@ -514,6 +519,75 @@ class NCEEngine(OrchestratorBase):
             log.debug("[PG] migration applied: %s", path.name)
         if skipped:
             log.debug("[PG] %d migration(s) already applied — skipped", skipped)
+
+    async def _verify_schema_version(self) -> None:
+        """Report (and in production, refuse) an image older than its database.
+
+        The 2026-08-27 failure was version skew: an image built one day behind
+        the checkout that had migrated the live database. Its
+        ``EXPECTED_TENANT_RLS_TABLES`` predated 13 tables that now existed, so
+        ``_verify_rls_enforcement`` failed closed -- with a message listing
+        tables to add to an allowlist, which reads like a code bug rather than a
+        stale deploy. Two containers then crash-looped on it silently.
+
+        This names the actual problem first. It is advisory outside production
+        because branch images legitimately share a development database with
+        different migration sets; in production it raises, unless
+        ``NCE_ALLOW_SCHEMA_SKEW`` acknowledges it (the same shape as the mTLS
+        boot guard).
+        """
+        import os
+        from pathlib import Path
+
+        from nce.build_info import describe
+        from nce.migration_ledger import (
+            applied_checksums,
+            highest_version,
+            missing_from_image,
+        )
+
+        migrations_dir = Path(__file__).resolve().parent / "migrations"
+        if not migrations_dir.is_dir():
+            return
+        image_files = [p.name for p in sorted(migrations_dir.glob("*.sql"))]
+
+        try:
+            async with self.pg_pool.acquire(timeout=10.0) as conn:
+                recorded = list(await applied_checksums(conn))
+        except Exception as exc:
+            log.warning("[PG] schema-version check skipped: %s", exc)
+            return
+
+        if not recorded:
+            # A database that predates the ledger records nothing; this boot
+            # will populate it. Nothing to compare against yet.
+            return
+
+        missing = missing_from_image(image_files, recorded)
+        if not missing:
+            return
+
+        image_at = highest_version(image_files)
+        db_at = highest_version(recorded)
+        message = (
+            f"schema skew: this image is missing {len(missing)} migration(s) the "
+            f"database has already applied: {', '.join(missing[:10])}"
+            + (" ..." if len(missing) > 10 else "")
+            + f". This image has migrations up to {image_at}; the database is at "
+            f"{db_at}. {describe()}. Rebuild or redeploy this image from a commit "
+            "that includes them (or roll the database back). Until then the RLS "
+            "catalog check will also fail, because this image's allowlist predates "
+            "those tables -- that failure is a symptom, not the cause."
+        )
+
+        acknowledged = os.environ.get("NCE_ALLOW_SCHEMA_SKEW", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        if cfg.IS_PROD and not acknowledged:
+            raise RuntimeError("FATAL: " + message)
+        log.critical("%s%s", message, " (acknowledged)" if acknowledged else "")
 
     async def _seed_node_ownership_all(self) -> None:
         """Backfill node_ownership_registry for all existing namespaces.

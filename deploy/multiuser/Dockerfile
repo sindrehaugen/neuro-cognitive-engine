@@ -49,6 +49,14 @@ ENV XDG_CACHE_HOME=/tmp
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 
+# Build stamp (fix recipe #2). Read back by nce/build_info.py so a version-skew
+# failure can name the image instead of leaving the operator to guess which
+# checkout is running. Both default to unset -> "unknown"; never load-bearing.
+ARG NCE_GIT_SHA=
+ARG NCE_BUILD_TIME=
+ENV NCE_GIT_SHA=${NCE_GIT_SHA}
+ENV NCE_BUILD_TIME=${NCE_BUILD_TIME}
+
 # Robust healthcheck verifying backend connectivity
 HEALTHCHECK --interval=60s --timeout=15s --start-period=90s --retries=3 \
     CMD python health_probe.py

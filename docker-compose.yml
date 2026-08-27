@@ -156,6 +156,10 @@ services:
     build:
       context: .
       dockerfile: deploy/multiuser/Dockerfile
+      # Build stamp so a version-skew failure can name the image (recipe #2).
+      args:
+        NCE_GIT_SHA: ${NCE_GIT_SHA:-}
+        NCE_BUILD_TIME: ${NCE_BUILD_TIME:-}
     # Multicore (VI.5a): scale background indexing/sync across N RQ worker
     # replicas. Lanes (high_priority -> batch_processing -> default) stay as-is;
     # each replica is an independent forking Worker. No container_name so
@@ -239,6 +243,10 @@ services:
     build:
       context: .
       dockerfile: deploy/multiuser/Dockerfile
+      # Build stamp so a version-skew failure can name the image (recipe #2).
+      args:
+        NCE_GIT_SHA: ${NCE_GIT_SHA:-}
+        NCE_BUILD_TIME: ${NCE_BUILD_TIME:-}
     command: ["python", "-m", "nce.cron"]
     container_name: nce-cron
     env_file:
@@ -300,6 +308,10 @@ services:
     build:
       context: .
       dockerfile: deploy/multiuser/Dockerfile
+      # Build stamp so a version-skew failure can name the image (recipe #2).
+      args:
+        NCE_GIT_SHA: ${NCE_GIT_SHA:-}
+        NCE_BUILD_TIME: ${NCE_BUILD_TIME:-}
     # Multicore (VI.5a): stateless HTTP service — run N uvicorn worker processes.
     # NOT a background-loop process, so --workers is safe (no GC/outbox/re-embed here).
     command:
@@ -394,6 +406,10 @@ services:
     build:
       context: .
       dockerfile: deploy/multiuser/Dockerfile
+      # Build stamp so a version-skew failure can name the image (recipe #2).
+      args:
+        NCE_GIT_SHA: ${NCE_GIT_SHA:-}
+        NCE_BUILD_TIME: ${NCE_BUILD_TIME:-}
     # Multicore (VI.5a): stateless HTTP service — run N uvicorn worker processes.
     # NOT a background-loop process, so --workers is safe.
     command:
@@ -485,6 +501,10 @@ services:
     build:
       context: .
       dockerfile: deploy/multiuser/Dockerfile
+      # Build stamp so a version-skew failure can name the image (recipe #2).
+      args:
+        NCE_GIT_SHA: ${NCE_GIT_SHA:-}
+        NCE_BUILD_TIME: ${NCE_BUILD_TIME:-}
     # Multicore (VI.5a): stateless HTTP service — run N uvicorn worker processes.
     # NOT a background-loop process, so --workers is safe.
     command:
