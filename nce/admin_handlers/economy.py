@@ -21,15 +21,14 @@ caller can never auto-approve its own invoice or redirect its own postings
 from __future__ import annotations
 
 import logging
-from uuid import UUID
 
 from nce.admin_handlers._shared import (
     JSONResponse,
     _json_safe,
+    _require_namespace_id,
     admin_error_response,
     admin_state,
 )
-from nce.auth import validate_agent_id
 from nce.vertical_modules.economy._guard import EconomyDisabledError, require_economy_enabled
 from nce.vertical_modules.economy.events import UnbalancedPostingsError, do_emit_financial_event
 from nce.vertical_modules.economy.matching import do_match_invoice, load_economy_thresholds
@@ -94,21 +93,19 @@ async def api_economy_match_invoice(request) -> JSONResponse:
     except Exception:
         return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
 
-    namespace_id = str(body.get("namespace_id") or "").strip()
-    if not namespace_id:
-        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
-
     # Validate the UUID shape at the REST boundary, BEFORE the opt-in gate:
+    # the shared helper's `uuid.UUID(...)` parse is the real check, because
     # `validate_agent_id` only sanitizes free text and never raises (see
-    # nce/auth.py), so it cannot catch a malformed namespace_id. Without this
-    # explicit check, `_check_economy_enabled_rest` -> `require_economy_enabled`
-    # would hand the raw string to asyncpg's `::uuid` cast, which raises
-    # asyncpg.exceptions.DataError (not ValueError) and escapes uncaught.
-    namespace_id = validate_agent_id(namespace_id)
-    try:
-        UUID(namespace_id)
-    except ValueError as exc:
-        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+    # nce/auth.py). Without it, `_check_economy_enabled_rest` ->
+    # `require_economy_enabled` would hand the raw string to asyncpg's
+    # `::uuid` cast, which raises asyncpg.exceptions.DataError (not
+    # ValueError) and escapes uncaught.
+    namespace_id, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+    # _require_namespace_id's contract: err is None => namespace_id is set.
+    # mypy cannot correlate the two tuple slots, so state the invariant.
+    assert namespace_id is not None
 
     disabled = await _check_economy_enabled_rest(namespace_id)
     if disabled is not None:
@@ -152,17 +149,14 @@ async def api_economy_periodisering(request) -> JSONResponse:
     except Exception:
         return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
 
-    namespace_id = str(body.get("namespace_id") or "").strip()
-    if not namespace_id:
-        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
-
-    # See api_economy_match_invoice: explicit UUID check must precede the
-    # opt-in gate — validate_agent_id() never raises, so it cannot do this job.
-    namespace_id = validate_agent_id(namespace_id)
-    try:
-        UUID(namespace_id)
-    except ValueError as exc:
-        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+    # See api_economy_match_invoice: the shared helper's explicit UUID check
+    # must precede the opt-in gate — validate_agent_id() never raises.
+    namespace_id, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+    # _require_namespace_id's contract: err is None => namespace_id is set.
+    # mypy cannot correlate the two tuple slots, so state the invariant.
+    assert namespace_id is not None
 
     disabled = await _check_economy_enabled_rest(namespace_id)
     if disabled is not None:
@@ -216,17 +210,14 @@ async def api_economy_emit_event(request) -> JSONResponse:
     except Exception:
         return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
 
-    namespace_id = str(body.get("namespace_id") or "").strip()
-    if not namespace_id:
-        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
-
-    # See api_economy_match_invoice: explicit UUID check must precede the
-    # opt-in gate — validate_agent_id() never raises, so it cannot do this job.
-    namespace_id = validate_agent_id(namespace_id)
-    try:
-        UUID(namespace_id)
-    except ValueError as exc:
-        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+    # See api_economy_match_invoice: the shared helper's explicit UUID check
+    # must precede the opt-in gate — validate_agent_id() never raises.
+    namespace_id, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+    # _require_namespace_id's contract: err is None => namespace_id is set.
+    # mypy cannot correlate the two tuple slots, so state the invariant.
+    assert namespace_id is not None
 
     disabled = await _check_economy_enabled_rest(namespace_id)
     if disabled is not None:
