@@ -73,22 +73,31 @@ async def test_init_pg_schema_special_character_password():
     ):
         await engine._init_pg_schema()
 
-    # The calls to execute should be:
-    # 1. pg_advisory_xact_lock
-    # 2. execute(ddl)
-    # 3. set_config
-    # 4. DO block
+    # execute() calls, in order:
+    #   1. pg_advisory_xact_lock   -- schema batch
+    #   2. execute(ddl)
+    #   3. pg_advisory_xact_lock   -- role refresh, same lock. schema.sql itself
+    #      ALTER ROLEs nce_app, so an unlocked refresh races it on the pg_authid
+    #      tuple; see tests/test_schema_ddl_lock.py.
+    #   4. set_config
+    #   5. DO block
+    #
+    # Located by content rather than index: this test is about the special-character
+    # password being passed as a parameter, not about how many locks are taken.
     calls = mock_conn.execute.call_args_list
-    assert len(calls) == 4
+    assert len(calls) == 5, [c[0][0] for c in calls]
 
-    # Verify set_config parameters
-    assert calls[2][0][0] == "SELECT set_config('nce.temp_password', $1, true)"
-    assert calls[2][0][1] == special_password
+    locks = [c for c in calls if "pg_advisory_xact_lock" in c[0][0]]
+    assert len(locks) == 2, "both DDL transactions must take the schema advisory lock"
 
-    # Verify DO block executes safely using current_setting
-    assert "DO $$" in calls[3][0][0]
-    assert "ALTER ROLE nce_app WITH LOGIN PASSWORD %L" in calls[3][0][0]
-    assert "current_setting('nce.temp_password')" in calls[3][0][0]
+    (set_config,) = [c for c in calls if "set_config" in c[0][0]]
+    assert set_config[0][0] == "SELECT set_config('nce.temp_password', $1, true)"
+    assert set_config[0][1] == special_password
+
+    # Verify the DO block executes safely using current_setting
+    (do_block,) = [c for c in calls if "DO $$" in c[0][0]]
+    assert "ALTER ROLE nce_app WITH LOGIN PASSWORD %L" in do_block[0][0]
+    assert "current_setting('nce.temp_password')" in do_block[0][0]
 
 
 # ---------------------------------------------------------------------------

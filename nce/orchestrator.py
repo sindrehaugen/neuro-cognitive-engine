@@ -105,6 +105,16 @@ class MongoDocument(BaseModel):
 # --- Engine ---
 
 
+#: Advisory lock serialising every DDL path in startup: schema.sql, the
+#: migration ledger, each migration, and the nce_app password refresh.
+#: One constant on purpose -- the 2026-08-27 crash loop was a DDL site that
+#: picked no lock at all, and a second site picking a *different* number would
+#: fail the same way.
+SCHEMA_ADVISORY_LOCK_ID = 123456
+
+_ADVISORY_LOCK_SQL = "SELECT pg_advisory_xact_lock($1)"
+
+
 class NCEEngine(OrchestratorBase):
     def __init__(self):
         super().__init__(None, None, None)
@@ -390,13 +400,20 @@ class NCEEngine(OrchestratorBase):
         ddl = schema_path.read_text(encoding="utf-8")
         async with self.pg_pool.acquire(timeout=10.0) as conn:
             async with conn.transaction():
-                await conn.execute("SELECT pg_advisory_xact_lock(123456)")
+                await conn.execute(_ADVISORY_LOCK_SQL, SCHEMA_ADVISORY_LOCK_ID)
                 await conn.execute(ddl)
         log.debug("[PG] schema.sql applied from %s", schema_path)
 
         if cfg.NCE_APP_PASSWORD:
             async with self.pg_pool.acquire(timeout=10.0) as conn:
                 async with conn.transaction():
+                    # Same advisory lock as the schema batch above, which itself
+                    # CREATE/ALTER ROLEs nce_app. Without it, one process running
+                    # schema.sql and another refreshing the password update the
+                    # same pg_authid tuple concurrently, and Postgres raises
+                    # "tuple concurrently updated" rather than serialising --
+                    # observed crash-looping nce-admin on 2026-08-27.
+                    await conn.execute(_ADVISORY_LOCK_SQL, SCHEMA_ADVISORY_LOCK_ID)
                     await conn.execute(
                         "SELECT set_config('nce.temp_password', $1, true)", cfg.NCE_APP_PASSWORD
                     )
@@ -450,7 +467,7 @@ class NCEEngine(OrchestratorBase):
         try:
             async with self.pg_pool.acquire(timeout=60.0) as conn:
                 async with conn.transaction():
-                    await conn.execute("SELECT pg_advisory_xact_lock(123456)")
+                    await conn.execute(_ADVISORY_LOCK_SQL, SCHEMA_ADVISORY_LOCK_ID)
                     await ensure_ledger(conn)
                 applied = await applied_checksums(conn)
         except Exception as exc:
@@ -471,7 +488,7 @@ class NCEEngine(OrchestratorBase):
                 )
             async with self.pg_pool.acquire(timeout=60.0) as conn:
                 async with conn.transaction():
-                    await conn.execute("SELECT pg_advisory_xact_lock(123456)")
+                    await conn.execute(_ADVISORY_LOCK_SQL, SCHEMA_ADVISORY_LOCK_ID)
                     if "citus" in path.name:
                         citus_available = await conn.fetchval(
                             "SELECT EXISTS(SELECT 1 FROM pg_available_extensions WHERE name = 'citus')"
