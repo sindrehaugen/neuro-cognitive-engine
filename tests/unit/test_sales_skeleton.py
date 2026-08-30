@@ -109,6 +109,6 @@ def test_sales_ping_registered_with_correct_flags() -> None:
 def test_tool_count_grew_by_one() -> None:
     from nce.tool_registry import TOOL_REGISTRY
 
-    assert len(TOOL_REGISTRY) == 115, (
-        f"Expected 115 tools (unified realignment registry), got {len(TOOL_REGISTRY)}: {sorted(TOOL_REGISTRY)}"
+    assert len(TOOL_REGISTRY) == 124, (
+        f"Expected 124 tools (unified realignment registry), got {len(TOOL_REGISTRY)}: {sorted(TOOL_REGISTRY)}"
     )

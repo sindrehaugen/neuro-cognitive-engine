@@ -315,6 +315,13 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "procurement_bid_prices": "namespace_id",
     # System Design engine (Module 6) Phase-2: device capability attributes (W12).
     "system_design_device_capabilities": "namespace_id",
+    # System Design engine (Module 6) W14: canvas geometry + the per-DESIGN
+    # optimistic-concurrency version row (two key grains, one table).
+    "system_design_geometry": "namespace_id",
+    # System Design engine (Module 6) W16: per-node lifecycle state (status /
+    # revision / salience) for DEVICE / RACK / CABLE. A node with no row here
+    # has no state -- absence is meaningful and is never defaulted.
+    "system_design_node_state": "namespace_id",
     # Sales engine (Module 5): read model (W2) + targets (W2) + signed baselines (W8)
     "sales_read_model": "namespace_id",
     "sales_targets": "namespace_id",
@@ -337,6 +344,12 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     # Inventory engine (Module 11, Wave 11): append-only transaction ledger
     # (transactions-valuation).
     "inventory_transactions": "namespace_id",
+    # Inventory engine (Module 11, Wave 4): goods-receipt record (Batch 132).
+    "goods_receipts": "namespace_id",
+    # Inventory engine (Module 11, Wave 10): returns/RMA + WEEE disposal state.
+    "inventory_rma": "namespace_id",
+    # Assets engine (Module 9, Wave 2): relational asset register (seed-from-bom).
+    "assets": "namespace_id",
 }
 
 EXPECTED_SPECIAL_RLS_TABLES: dict[str, tuple[str, ...]] = {

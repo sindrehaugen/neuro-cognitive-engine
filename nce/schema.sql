@@ -2654,13 +2654,19 @@ CREATE TABLE IF NOT EXISTS inventory_transactions (
     -- nothing and must not be appended.
     delta            NUMERIC(18,3) NOT NULL CHECK (delta <> 0),
     -- Typed, not free text (Rackbeat's movements-vs-adjustments split;
-    -- docs/vertical_engines/11-inventory-engine.md A5). Extend this list via
-    -- an idempotent ALTER ... DROP/ADD CONSTRAINT in the migration that lands
-    -- the next writer (e.g. Batch 132 goods-receipt) -- never widen it by
-    -- dropping the CHECK outright.
-    reason_category  TEXT          NOT NULL
-                                    CHECK (reason_category IN
-                                        ('transfer_in', 'transfer_out', 'consumption', 'adjustment')),
+    -- docs/vertical_engines/11-inventory-engine.md A5). Widened by migration
+    -- 052 (Batch 132 goods-receipt) to add 'goods_receipt' via an idempotent
+    -- ALTER ... DROP/ADD CONSTRAINT against an already-existing table --
+    -- never widened by dropping the CHECK outright. This CHECK is a NAMED
+    -- table-level constraint (not an inline/anonymous column CHECK) so a
+    -- fresh install (this file alone) and a migrated install (this file +
+    -- migration 052's DROP/ADD CONSTRAINT) produce the SAME catalog identity
+    -- -- inventory_transactions_reason_category -- not just the same body.
+    -- An anonymous column CHECK here would let Postgres auto-name it
+    -- inventory_transactions_reason_category_check on a from-scratch boot,
+    -- silently diverging from the migrated path's explicit name even though
+    -- the enforced expression is byte-identical either way.
+    reason_category  TEXT          NOT NULL,
     -- Money, NOT quantity -- mirrors economy_postings.amount / economy_bom_
     -- actual_costs.actual_cost's NUMERIC(18,2) precision (migrations 047/048).
     -- NULL is the honest default for the transfer/consumption rows this wave's
@@ -2685,6 +2691,11 @@ CREATE TABLE IF NOT EXISTS inventory_transactions (
     CONSTRAINT inventory_transactions_location_fk
         FOREIGN KEY (location_id, namespace_id)
         REFERENCES stock_locations (id, namespace_id),
+    -- Named explicitly (see the reason_category column comment above) so
+    -- this constraint's catalog name matches migration 052's post-ALTER
+    -- name on BOTH a fresh install and a migrated one.
+    CONSTRAINT inventory_transactions_reason_category CHECK (reason_category IN
+        ('transfer_in', 'transfer_out', 'consumption', 'adjustment', 'goods_receipt')),
     -- Sign must agree with the category (storage-level backstop, mirrors
     -- economy_postings' non-empty-account CHECK reasoning -- migration 048):
     -- a 'transfer_out' row with a positive delta would be silently wrong and
@@ -2695,6 +2706,7 @@ CREATE TABLE IF NOT EXISTS inventory_transactions (
         (reason_category = 'transfer_in' AND delta > 0)
         OR (reason_category IN ('transfer_out', 'consumption') AND delta < 0)
         OR (reason_category = 'adjustment')
+        OR (reason_category = 'goods_receipt' AND delta > 0)
     )
 );
 
@@ -2738,3 +2750,817 @@ from these rows per nce/config_data/inventory-valuation.json, and is the
 number Inventory hands to Economy to post -- this table and its reader never
 post to the GL themselves. FORCE RLS isolates per tenant; nce_app is granted
 only SELECT, INSERT -- corrections are new rows, never an UPDATE/DELETE.';
+
+CREATE TABLE IF NOT EXISTS inventory_rma (
+    id                    UUID          NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id          UUID          NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    -- Caller-supplied natural key -- the idempotency handle for do_record_rma
+    -- (re-recording the same rma_ref returns the existing row, unchanged) and
+    -- Batch 138b's stable handle for the two stock legs it performs later.
+    rma_ref               TEXT          NOT NULL,
+    sku                   TEXT          NOT NULL,
+    -- Serialised units; a non-serialised return has none.
+    serial                TEXT,
+    -- Where the returned stock physically is. Batch 138b restocks TO this
+    -- location on the restock leg and disposes FROM it on the WEEE-disposal
+    -- leg. Provisioned here so Batch 138b needs no DDL of its own.
+    location_id           UUID          NOT NULL,
+    -- Same NUMERIC(18,3) scale as inventory_items.qty_on_hand /
+    -- inventory_transactions.delta (migrations 050/051). Provisioned here for
+    -- the same reason as location_id above.
+    qty                   NUMERIC(18,3) NOT NULL CHECK (qty > 0),
+    -- Free-form return reason; never interpreted by this table.
+    reason                TEXT          NOT NULL,
+    -- The WEEE compliance lifecycle. do_record_rma only ever writes
+    -- 'not_applicable' or a caller-supplied value from this set at INSERT
+    -- time -- there is no UPDATE path in this module (see rma.py's module
+    -- docstring); a future wave owns the state's own transitions.
+    weee_state            TEXT          NOT NULL DEFAULT 'not_applicable'
+                                         CHECK (weee_state IN
+                                             ('not_applicable', 'pending', 'awaiting_collection', 'disposed')),
+    -- The approved take-back scheme's documentation reference. Required the
+    -- moment weee_state = 'disposed' -- see the CHECK constraint below.
+    disposal_ref          TEXT,
+    -- The stock-leg lifecycle, independent of weee_state. This wave writes
+    -- ONLY 'pending' here -- Batch 138b performs both transitions
+    -- (restocked / disposed).
+    stock_movement_state  TEXT          NOT NULL DEFAULT 'pending'
+                                         CHECK (stock_movement_state IN ('pending', 'restocked', 'disposed')),
+    change_origin         TEXT          NOT NULL DEFAULT 'agent'
+                                         CHECK (change_origin IN
+                                             ('sync','webhook','agent','operator','consolidation','replay','unknown')),
+    created_at            TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at            TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    -- The natural key -- precedent: economy_contracts' (ns, contract_id),
+    -- migration 049.
+    CONSTRAINT inventory_rma_ns_ref_uq UNIQUE (namespace_id, rma_ref),
+    -- Composite, so an RMA can never point at another tenant's location.
+    -- Target index is stock_locations_id_ns_uq (migration 050). No
+    -- ON DELETE CASCADE: an RMA is compliance evidence and must not be taken
+    -- down by a location deletion (same reasoning as
+    -- inventory_transactions_location_fk).
+    CONSTRAINT inventory_rma_location_fk
+        FOREIGN KEY (location_id, namespace_id)
+        REFERENCES stock_locations (id, namespace_id),
+    -- The compliance claim of this wave: a WEEE item cannot be recorded as
+    -- disposed without the take-back scheme's documentation reference.
+    -- Storage-level, so no application bug -- present or future -- can record
+    -- an undocumented disposal.
+    CONSTRAINT inventory_rma_disposed_requires_ref
+        CHECK (weee_state <> 'disposed' OR disposal_ref IS NOT NULL)
+);
+
+-- Read pattern: every RMA row for one (namespace, sku), newest first.
+CREATE INDEX IF NOT EXISTS idx_inventory_rma_namespace_sku
+    ON inventory_rma (namespace_id, sku, created_at);
+
+-- Batch 138b's worklist read: every RMA row still awaiting its stock leg.
+CREATE INDEX IF NOT EXISTS idx_inventory_rma_pending
+    ON inventory_rma (namespace_id)
+    WHERE stock_movement_state = 'pending';
+
+ALTER TABLE inventory_rma ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inventory_rma FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON inventory_rma;
+CREATE POLICY tenant_isolation_policy ON inventory_rma
+    FOR ALL TO nce_app
+    USING  (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE inventory_rma FROM nce_app;
+        -- UPDATE is granted because Batch 138b transitions the two state
+        -- columns (weee_state, stock_movement_state) on this same row. No
+        -- DELETE: an RMA row is compliance evidence and nothing in the
+        -- application may erase a WEEE disposal record -- a correction is a
+        -- new row, never an erased one.
+        GRANT SELECT, INSERT, UPDATE ON TABLE inventory_rma TO nce_app;
+    END IF;
+END $$;
+
+COMMENT ON TABLE inventory_rma IS
+'Returns/RMA + WEEE disposal state (Module 11, Wave 10 -- rma-table).
+One row per return: do_record_rma (nce/vertical_modules/inventory/rma.py)
+INSERT-only creates this row with stock_movement_state = ''pending'' and
+records the WEEE compliance lifecycle for the returned item. This table
+records; it does not move stock -- no inventory_transactions row is written
+on this path and inventory_items is left untouched. Batch 138b performs both
+stock legs (restock-on-return and permanent WEEE disposal), transitioning
+weee_state / stock_movement_state on this same row via the UPDATE grant
+below; Batch 138c (dead-stock-reconcile) reads this table''s settled rows
+against the ledger. FORCE RLS isolates per tenant; nce_app is granted
+SELECT, INSERT, UPDATE but never DELETE -- an RMA is compliance evidence and
+nothing in the application may erase a WEEE disposal record.';
+
+
+-- Assets engine (Module 9, Wave 2 -- seed-from-bom): the relational asset
+-- register behind nce/vertical_modules/assets/seed.py's
+-- do_seed_asset_from_bom (migration 054).
+--
+-- MIRROR OF nce/migrations/054_assets.sql -- the DDL statements below are
+-- byte-identical to that file's. A fresh install boots from this file alone;
+-- an existing install runs the migration. Both paths must produce not merely
+-- the same enforced expressions but the same catalog IDENTITY, which is why
+-- every CHECK and UNIQUE carries an explicit name (an anonymous column CHECK
+-- is auto-named, and the auto-name differs between the two paths -- the
+-- divergence that caused a rejection on Batch 132). See migration 054's file
+-- header for the full rationale: no graph writes in this wave (Batch 142b
+-- owns the ASSET node + installed_as/lives_in edges), no FK on bom_line_id
+-- or functional_location_id (neither target has a relational home yet), and
+-- no enumerated CHECK on lifecycle_state (the state vocabulary is
+-- config-as-IP in nce/config_data/asset-lifecycle.json).
+
+CREATE TABLE IF NOT EXISTS assets (
+    id                     UUID        NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id           UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    -- The originating BOM line, as a caller-supplied identifier. This is the
+    -- idempotency handle for do_seed_asset_from_bom (see the UNIQUE below)
+    -- and Batch 142b's handle for the BOM_LINE -[installed_as]-> ASSET edge.
+    -- NOT an FK: no BOM_LINE table or node exists yet (file header).
+    bom_line_id            TEXT        NOT NULL,
+    -- Serialised units; a seed made before the installer scans a serial has
+    -- none. Nullable on purpose -- an absent serial is an honest "not
+    -- captured yet", never an empty string (assets_serial_not_blank).
+    serial                 TEXT,
+    -- The room the asset lives in. Nullable for the same reason, and NOT an
+    -- FK (file header). Batch 142b builds ASSET -[lives_in]->
+    -- FUNCTIONAL_LOCATION from this column.
+    functional_location_id TEXT,
+    -- The 14-state lifecycle position. Written once here, at seed time, from
+    -- asset-lifecycle.json's entry state; transitions belong to a later
+    -- wave's do_advance_lifecycle, which is why nce_app holds UPDATE below.
+    -- No enumerated CHECK -- see the file header.
+    lifecycle_state        TEXT        NOT NULL,
+    change_origin          TEXT        NOT NULL DEFAULT 'agent',
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    -- THE idempotency arbiter: one asset per (namespace, BOM line). Seeding
+    -- the same line twice is refused HERE, by the database, not by a Python
+    -- "does it exist?" pre-check -- two concurrent identical seeds would both
+    -- pass such a pre-check and both insert. Precedent: migration 053's
+    -- inventory_rma_ns_ref_uq, migration 052's goods_receipts_idempotency_uq.
+    CONSTRAINT assets_ns_bom_line_uq UNIQUE (namespace_id, bom_line_id),
+    -- Structural non-blank guards: a whitespace-only identifier is not an
+    -- identifier, and must not be able to occupy the idempotency key.
+    CONSTRAINT assets_bom_line_id_not_blank
+        CHECK (btrim(bom_line_id) <> ''),
+    CONSTRAINT assets_lifecycle_state_not_blank
+        CHECK (btrim(lifecycle_state) <> ''),
+    CONSTRAINT assets_serial_not_blank
+        CHECK (serial IS NULL OR btrim(serial) <> ''),
+    CONSTRAINT assets_functional_location_id_not_blank
+        CHECK (functional_location_id IS NULL OR btrim(functional_location_id) <> ''),
+    CONSTRAINT assets_change_origin_check
+        CHECK (change_origin IN
+            ('sync','webhook','agent','operator','consolidation','replay','unknown'))
+);
+
+-- The room-centric register read named in 09-assets-engine.md's REST surface
+-- (api_assets_register: "assets by FUNCTIONAL_LOCATION"). The
+-- (namespace_id, bom_line_id) read is already served by the unique index
+-- behind assets_ns_bom_line_uq. Deliberately NOT indexed here: serial,
+-- lifecycle_state -- nothing in this wave or Batch 142b reads by either, and
+-- the wave that does owns its own index.
+CREATE INDEX IF NOT EXISTS idx_assets_namespace_functional_location
+    ON assets (namespace_id, functional_location_id);
+
+ALTER TABLE assets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE assets FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON assets;
+CREATE POLICY tenant_isolation_policy ON assets
+    FOR ALL TO nce_app
+    USING  (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE assets FROM nce_app;
+        -- UPDATE is granted for do_advance_lifecycle, which transitions
+        -- lifecycle_state on this same row (09-assets-engine.md, build phase
+        -- B1) -- the same forward-provisioning migration 053 did for Batch
+        -- 138b. No DELETE: retirement is a lifecycle STATE (RETIRED), never a
+        -- deleted row -- an asset register that can forget a device is not a
+        -- register. A namespace teardown still removes rows via the
+        -- namespace_id FK's ON DELETE CASCADE, which RLS grants do not gate.
+        GRANT SELECT, INSERT, UPDATE ON TABLE assets TO nce_app;
+    END IF;
+END $$;
+
+COMMENT ON TABLE assets IS
+'Relational asset register (Module 9, Wave 2 -- seed-from-bom). One row per
+originating BOM line: do_seed_asset_from_bom
+(nce/vertical_modules/assets/seed.py) is the SOLE writer and is INSERT-only,
+creating the row with lifecycle_state taken from
+nce/config_data/asset-lifecycle.json''s entry state via Batch 141''s pure
+lifecycle module. Idempotency is by DB constraint
+(assets_ns_bom_line_uq + INSERT ... ON CONFLICT DO NOTHING), never a
+check-then-write. This table is the RELATIONAL half only: the ASSET kg_node
+and the BOM_LINE -[installed_as]-> ASSET / ASSET -[lives_in]->
+FUNCTIONAL_LOCATION edges are Batch 142b''s, as is ASSET''s row in
+node-ownership.json -- no code in this wave writes kg_nodes or kg_edges.
+bom_line_id and functional_location_id are identifier columns with NO foreign
+key: neither target has a relational home yet (BOM_LINE nodes are Batch
+132a, unbuilt; FUNCTIONAL_LOCATION is the unresolved intent->as-built spine
+gap, roadmap §9.1). lifecycle_state carries no enumerated CHECK because the
+state vocabulary is config-as-IP in asset-lifecycle.json, tuned per tenant.
+FORCE RLS isolates per tenant; nce_app is granted SELECT, INSERT, UPDATE
+(the UPDATE is for a later wave''s do_advance_lifecycle) but never DELETE --
+retirement is the RETIRED lifecycle state, not an erased row.';
+
+-- ============================================================================
+-- Module 11, Wave 4 (goods-receipt, Batch 132): the record of one inbound
+-- delivery. Idempotent on (namespace_id, receipt_hash) -- see migration 052
+-- for the full rationale. inventory_items remains authoritative stock;
+-- inventory_transactions remains the movement ledger; this table is neither
+-- -- it is the delivery's own record. No kg_node/kg_edge is written from
+-- here (that is Batch 132b).
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS goods_receipts (
+    id             UUID          NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id   UUID          NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    -- Stored in the SAME normal form the receipt hash uses: stripped and
+    -- UPPER-CASED by goods_receipt.py's _as_po_ref, once, at the boundary.
+    -- See the COMMENT ON COLUMN below -- Batch 133's matcher queries this
+    -- column and must not have to guess the case.
+    po_ref         TEXT          NOT NULL,
+    -- OPTIONAL delivery-note / packing-slip number, same normal form as
+    -- po_ref (stripped + upper-cased; blank collapses to NULL). PARTICIPATES
+    -- IN receipt_hash, which is the whole point: two genuine PARTIAL
+    -- deliveries against one PO -- same location, byte-identical line set,
+    -- no scans -- would otherwise hash identically and the second would be
+    -- swallowed as a replay, silently losing stock. NULL is legal and means
+    -- "no note supplied": hashing then behaves exactly as it did before this
+    -- column existed, collision included.
+    delivery_note_ref TEXT,
+    location_id    UUID          NOT NULL,
+    -- Aggregated, sku-sorted line list -- see goods_receipt.py's
+    -- _compute_receipt_hash for the exact canonical shape this is hashed
+    -- from. Never mutated after insert (WORM-adjacent: a correction is a NEW
+    -- receipt, never an edit of this row's lines).
+    lines          JSONB         NOT NULL,
+    -- Per-unit barcode/serial capture, optional. A SECOND way to distinguish
+    -- two deliveries with an identical line set (delivery_note_ref above is
+    -- the primary one): real serials differ between real deliveries even
+    -- when the aggregate line set does not.
+    scans          JSONB         NOT NULL DEFAULT '[]'::jsonb,
+    -- Reserved for Batch 133's Receive->Match->Cascade verdict -- NULL until
+    -- that wave lands. This wave creates the column and writes nothing to
+    -- it; do not populate it here.
+    match_result   JSONB,
+    -- sha256 hex over the canonically normalised (po_ref, delivery_note_ref,
+    -- location_id, lines, scans) payload -- see goods_receipt.py's
+    -- _compute_receipt_hash. Deliberately excludes received_at/created_at/id:
+    -- including a timestamp would make every retry a new receipt and defeat
+    -- idempotency entirely.
+    receipt_hash   TEXT          NOT NULL,
+    received_at    TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    created_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    -- Composite FK target is stock_locations_id_ns_uq (migration 050) -- a
+    -- receipt can never point at another tenant's location, refused by
+    -- Postgres, not by careful code.
+    CONSTRAINT goods_receipts_location_fk
+        FOREIGN KEY (location_id, namespace_id)
+        REFERENCES stock_locations (id, namespace_id)
+        ON DELETE CASCADE,
+    -- THE idempotency arbiter. A replay's INSERT ... ON CONFLICT (namespace_id,
+    -- receipt_hash) DO NOTHING returns no row, and every subsequent effect in
+    -- do_record_goods_receipt is gated on that row having been returned --
+    -- that gating IS the idempotency, refused by Postgres at the DB level,
+    -- never a Python-side check-then-write.
+    CONSTRAINT goods_receipts_idempotency_uq UNIQUE (namespace_id, receipt_hash)
+);
+
+-- Idempotent re-run safety for a database that already received an EARLIER
+-- revision of this migration (the table exists, so CREATE TABLE IF NOT EXISTS
+-- above is a no-op and would leave the column missing). On both audited
+-- install paths -- schema.sql alone, and origin/main's schema.sql + this file
+-- -- the column already came from the CREATE TABLE above and this statement
+-- does nothing, so the two catalogs stay identical. Same statement, verbatim,
+-- in nce/schema.sql.
+ALTER TABLE goods_receipts ADD COLUMN IF NOT EXISTS delivery_note_ref TEXT;
+
+COMMENT ON COLUMN goods_receipts.po_ref IS
+'Purchase-order reference, stored in ONE normal form: stripped and
+UPPER-CASED (goods_receipt.py''s _as_po_ref), the same value hashed into
+receipt_hash. Normalising for the hash but storing verbatim -- an earlier
+revision of this wave -- made idempotency case-insensitive while this column
+and idx_goods_receipts_namespace_po stayed case-sensitive, so a replay was
+correctly detected yet a lookup by the canonical case found nothing. Batch
+133''s matcher queries this column: match against the upper-cased form.';
+
+COMMENT ON COLUMN goods_receipts.delivery_note_ref IS
+'OPTIONAL delivery-note / packing-slip number from the paperwork that arrived
+with the goods; stripped and UPPER-CASED like po_ref, blank collapsed to
+NULL. PARTICIPATES IN receipt_hash so two genuine PARTIAL deliveries against
+the same PO line -- identical location, identical aggregated lines, no scans
+-- are two receipts instead of one swallowed replay, while a true retry of
+the SAME note remains idempotent. NULL (no note supplied) reproduces the
+pre-existing behaviour exactly, collision included.';
+
+COMMENT ON COLUMN goods_receipts.match_result IS
+'Reserved for Batch 133''s Receive->Match->Cascade verdict. NULL until that
+wave lands; this wave (Batch 132) creates the column and never writes to it.';
+
+CREATE INDEX IF NOT EXISTS idx_goods_receipts_namespace_po
+    ON goods_receipts (namespace_id, po_ref);
+
+CREATE INDEX IF NOT EXISTS idx_goods_receipts_namespace_location
+    ON goods_receipts (namespace_id, location_id);
+
+ALTER TABLE goods_receipts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE goods_receipts FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON goods_receipts;
+CREATE POLICY tenant_isolation_policy ON goods_receipts
+    FOR ALL TO nce_app
+    USING  (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE goods_receipts FROM nce_app;
+        -- Live mutable-shape record (not a WORM ledger like inventory_transactions)
+        -- -- nce_app gets the full CRUD set, mirroring stock_locations/inventory_items
+        -- (migration 050). match_result is the one column a LATER wave (Batch 133)
+        -- will UPDATE; this wave never does.
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE goods_receipts TO nce_app;
+    END IF;
+END $$;
+
+COMMENT ON TABLE goods_receipts IS
+'Record of one inbound delivery (Module 11, Wave 4 -- goods-receipt, Batch
+132). Idempotent on (namespace_id, receipt_hash) -- goods_receipts_idempotency_uq
+refuses a duplicate INSERT at the DB level, so a replay (including two
+concurrent identical submissions) increments stock exactly once.
+receipt_hash covers po_ref, delivery_note_ref, location_id, lines and scans;
+supplying delivery_note_ref is how two GENUINE partial deliveries against one
+PO line stay two receipts. This row is
+the RECORD of the delivery; inventory_items (migration 050) remains the
+AUTHORITATIVE stock row and inventory_transactions (migration 051) the
+movement ledger -- do_record_goods_receipt increments the former and appends
+one goods_receipt-category row per line to the latter, inside the SAME
+transaction as this row''s own INSERT. match_result is reserved for Batch
+133''s Receive->Match->Cascade verdict and is NULL until then. The graph
+projection (GOODS_RECEIPT kg_node, -[against]->PO / -[of]->SKU edges) is
+Batch 132b''s -- no kg_node or kg_edge is written from this table or its
+writer. FORCE RLS isolates per tenant; location_id is a composite FK on
+(location_id, namespace_id) into stock_locations so a receipt can never
+reference another tenant''s location.';
+
+-- ============================================================================
+-- System Design engine (Module 6, Wave 14 -- B067e): canvas geometry AND the
+-- per-DESIGN optimistic-concurrency token, behind
+-- nce/vertical_modules/system_design/geometry.py.
+--
+-- MIRROR OF nce/migrations/060_system_design_geometry.sql -- the DDL
+-- statements below are byte-identical to that file's. A fresh install boots
+-- from this file alone; an existing install runs the migration. Both paths
+-- must produce not merely the same enforced expressions but the same catalog
+-- IDENTITY, which is why every CHECK and UNIQUE carries an explicit name (an
+-- anonymous column CHECK is auto-named, and the auto-name differs between the
+-- two paths -- the divergence that caused a rejection on Batch 132).
+--
+-- See migration 060's file header for the full rationale, in particular:
+--   * the TWO KEY GRAINS (node-geometry rows vs the one DESIGN version row)
+--     and how to tell them apart -- version IS NOT NULL;
+--   * that x/y are CANVAS GRID UNITS, origin TOP-LEFT, y-down, and that room
+--     dimensions live in meta under copper.room.w/d/h in METERS;
+--   * that rack_position / rack_face carry NetBox's contractual vocabulary and
+--     may not be renamed.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS system_design_geometry (
+    id              UUID        NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id    UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+
+    -- Grain key.  A NODE label for a geometry row; the DESIGN label for the
+    -- one version row.  See the file header.
+    node_label      TEXT        NOT NULL,
+
+    -- Canvas placement.  Grid units, origin top-left, y-down (Rev 2 section 4).
+    x               NUMERIC,
+    y               NUMERIC,
+
+    -- Rack elevation (NetBox vocabulary -- do not rename).
+    -- Half-U granularity: 0.0, 0.5, 1.0 ... 999.5 -- enforced by
+    -- validate_geometry(), not by this column (see the file header).
+    -- 999.9 fits the column but is NOT a legal value: it is not a half-U.
+    rack_position   NUMERIC(4,1),
+    rack_face       TEXT,
+
+    -- Cable run.  Length in METERS; cable_type is free text (Cat6A, OM4, ...)
+    -- and is deliberately not enumerated -- the vocabulary is the installer's.
+    cable_length_m  NUMERIC,
+    cable_type      TEXT,
+
+    -- Escape hatch.  Room dimensions live here under copper.room.w/d/h in
+    -- METERS.  Reserved copper.* keys are stored verbatim and interpreted by
+    -- Copper, never by NCE (Rev 2 section 5).
+    meta            JSONB       NOT NULL DEFAULT '{}'::jsonb,
+
+    -- Per-DESIGN optimistic-concurrency token.  NULL on every geometry row;
+    -- set only on the design version row.  Monotonic, starts at 0 when the
+    -- row is created and is incremented by every authoring write.
+    version         BIGINT,
+
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    CONSTRAINT system_design_geometry_pkey PRIMARY KEY (id),
+    CONSTRAINT system_design_geometry_ns_node_uq UNIQUE (namespace_id, node_label),
+    CONSTRAINT system_design_geometry_node_label_not_blank
+        CHECK (btrim(node_label) <> ''),
+    CONSTRAINT system_design_geometry_rack_face_check
+        CHECK (rack_face IS NULL OR rack_face IN ('front', 'rear')),
+    -- Every stored coordinate must be a REAL number.
+    --
+    -- NOT written as `x = x`. That idiom catches NaN for IEEE floats but is a
+    -- NO-OP on NUMERIC: PostgreSQL defines NUMERIC 'NaN' = 'NaN' as TRUE so
+    -- that NaN sorts and groups deterministically. Verified on PG 16.14.
+    -- The three special values are therefore excluded by name.
+    --
+    -- validate_geometry() already refuses these at the write boundary; this
+    -- is the structural backstop for a writer that does not go through it --
+    -- psql, a repair script, a future core. A stored NaN cannot be undone
+    -- (there is no delete path) and makes the WHOLE design's topology
+    -- response raise for every reader, so it is worth a constraint.
+    CONSTRAINT system_design_geometry_numerics_finite
+        CHECK (
+            (x IS NULL OR x NOT IN ('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric))
+            AND (y IS NULL OR y NOT IN ('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric))
+            AND (rack_position IS NULL OR rack_position NOT IN ('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric))
+            AND (cable_length_m IS NULL OR cable_length_m NOT IN ('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric))
+        ),
+    -- And it must survive the JSON round trip.
+    --
+    -- NUMERIC stores 10^400 happily; the read path converts back with
+    -- float(Decimal), which does NOT raise for an over-large Decimal -- it
+    -- returns inf -- and JSONResponse.render (allow_nan=False) then raises on
+    -- that. So a merely LARGE finite value poisons a design exactly as NaN
+    -- does. The bound is the IEEE double maximum.
+    --
+    -- It is spelled as the EXACT 309-digit expansion of that double, not as
+    -- the familiar 1.7976931348623157e308, and the difference is load-bearing:
+    -- the short form is the 17-digit ROUNDED decimal and is strictly SMALLER
+    -- than the real maximum. Using it here put every value in the gap into a
+    -- state the application accepted and the database refused -- a
+    -- CheckViolationError, i.e. a 500, which is the exact defect class this
+    -- constraint exists to prevent. Caught by the test below before it shipped.
+    --
+    -- The application bound is Decimal(sys.float_info.max) -- this same exact
+    -- value. Agreement between the two is NOT automatic just because the
+    -- numbers match: an earlier revision claimed here that "the two agree on
+    -- every input" while the application compared with Python's abs(), which
+    -- ROUNDS a Decimal to the context precision (28 significant digits against
+    -- this value's 309) and so accepted a ~1.8e280-wide band of values above
+    -- the true maximum -- which this constraint then refused as a 500. The
+    -- application now compares with Decimal.copy_abs(), which does no
+    -- rounding. THAT is what makes the two agree, and it is a property of the
+    -- comparison, not of the constant: anything here that reintroduces a
+    -- rounding operation on either side reopens the gap.
+    --
+    -- This is a serialisation limit expressed in the schema, which is a real
+    -- trade-off: a future consumer reading NUMERIC natively would not need
+    -- it. It is here anyway because EVERY consumer of this table today goes
+    -- through do_get_topology's JSON, and a silent 500 for every reader of a
+    -- design is worse than a visible ALTER TABLE for the wave that one day
+    -- needs bigger numbers.
+    CONSTRAINT system_design_geometry_numerics_in_double_range
+        CHECK (
+            (x IS NULL OR abs(x) <= '179769313486231570814527423731704356798070567525844996598917476803157260780028538760589558632766878171540458953514382464234321326889464182768467546703537516986049910576551282076245490090389328944075868508455133942304583236903222948165808559332123348274797826204144723168738177180919299881250404026184124858368'::numeric)
+            AND (y IS NULL OR abs(y) <= '179769313486231570814527423731704356798070567525844996598917476803157260780028538760589558632766878171540458953514382464234321326889464182768467546703537516986049910576551282076245490090389328944075868508455133942304583236903222948165808559332123348274797826204144723168738177180919299881250404026184124858368'::numeric)
+            AND (cable_length_m IS NULL OR abs(cable_length_m) <= '179769313486231570814527423731704356798070567525844996598917476803157260780028538760589558632766878171540458953514382464234321326889464182768467546703537516986049910576551282076245490090389328944075868508455133942304583236903222948165808559332123348274797826204144723168738177180919299881250404026184124858368'::numeric)
+        ),
+    CONSTRAINT system_design_geometry_version_non_negative
+        CHECK (version IS NULL OR version >= 0)
+);
+
+-- Index: the primary read path -- geometry for a batch of node labels within
+-- one namespace, and the single-row version lookup, are the same shape.
+-- (namespace_id, node_label) is already unique-indexed by the UNIQUE above;
+-- no second index is added for it.
+
+-- Row-Level Security.
+ALTER TABLE system_design_geometry ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_design_geometry FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON system_design_geometry;
+CREATE POLICY tenant_isolation_policy ON system_design_geometry
+    FOR ALL TO nce_app
+    USING  (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+-- Application role grants.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE system_design_geometry FROM nce_app;
+        -- UPDATE is required: geometry is re-authored in place on every canvas
+        -- save, and the version row is incremented rather than appended.
+        -- DELETE is granted for parity with the sibling capability table
+        -- (migration 039); no code in this wave issues one.
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE system_design_geometry TO nce_app;
+    END IF;
+END $$;
+
+COMMENT ON TABLE system_design_geometry IS
+'Canvas geometry AND the per-DESIGN optimistic-concurrency token for the System
+Design engine (Module 6, Wave 14).
+
+TWO KEY GRAINS IN ONE TABLE -- deliberate, and the only exception in this
+engine. Most rows are GEOMETRY rows keyed by a NODE label (DEVICE:/PORT:/RACK:/
+CABLE:/FL:) carrying x/y, rack_position/rack_face, cable_length_m/cable_type
+and meta, with version NULL. Exactly one row per design is the DESIGN VERSION
+row, keyed by the DESIGN label (DESIGN:<ID>), carrying version and no geometry.
+Distinguish them by version IS NOT NULL (equivalently node_label LIKE
+''DESIGN:%''); a geometry row is any row with version NULL. They share a table
+because they share the natural key, the tenancy boundary, the lifecycle and the
+writer transaction, and because a DESIGN node is never placed on the canvas so
+the two grains cannot collide on (namespace_id, node_label).
+
+UNITS AND AXES ARE NORMATIVE (Rev 2 section 4): x/y are CANVAS GRID UNITS with
+the origin TOP-LEFT and y increasing DOWNWARD. NCE converts nothing; exporters
+convert. Room dimensions are NOT x/y -- they live in meta under
+copper.room.w / copper.room.d / copper.room.h, in METERS.
+
+NAMING IS CONTRACTUAL: rack_position and rack_face carry the NetBox vocabulary
+(position/face) that Copper follows as a binding ADR. Renaming either breaks
+Copper.
+
+version is monotonic per design, starts at 0 and is incremented inside the
+authoring write''s own transaction. A caller that supplies expected_version
+gets a compare-and-swap; a caller that omits it gets last-writer-wins and the
+increment still happens.
+
+SCOPE OF THAT PROMISE: it covers writes made through the two authoring
+adapters in nce/vertical_modules/system_design/mcp_handlers.py -- the
+system_design_author_topology and system_design_author_functional_location
+tools and their REST twins -- and ONLY those. Three other modules under
+system_design/ write kg_nodes/kg_edges for a design without passing through
+them and never move the token: from_quote.py, to_quote.py and
+netbox_bridge.py. All three are unwired today (no non-test callers), so this
+is latent rather than exploitable -- but it is not hypothetical, because
+read.py''s edge projection filters on subject_label only, so to_quote.py''s
+DESIGN -[becomes]-> QUOTE edge would appear in a topology read while version
+stood still. Do not read this token as covering every change to a design.
+
+FORCE RLS isolates per tenant, but the pools that serve requests are owner
+pools and bypass it -- the real boundary is the explicit namespace_id predicate
+in nce/vertical_modules/system_design/geometry.py.';
+
+COMMENT ON COLUMN system_design_geometry.node_label IS
+'GRAIN KEY. A node label (DEVICE:/PORT:/RACK:/CABLE:/FL:) on a geometry row;
+the DESIGN label on the one version row. Matches kg_nodes.label for geometry
+rows.';
+
+COMMENT ON COLUMN system_design_geometry.x IS
+'Canvas X in GRID UNITS. Origin TOP-LEFT (Rev 2 section 4). Not meters.';
+
+COMMENT ON COLUMN system_design_geometry.y IS
+'Canvas Y in GRID UNITS, increasing DOWNWARD (y-down), origin TOP-LEFT
+(Rev 2 section 4). Not meters.';
+
+COMMENT ON COLUMN system_design_geometry.rack_position IS
+'NetBox "position": the lowest rack unit this device occupies. NUMERIC(4,1)
+carries one decimal place; the HALF-U STEP (a multiple of 0.5) is enforced by
+validate_geometry() at the write boundary, NOT by this column -- a direct
+INSERT of 1.27 is still rounded to 1.3 silently. Legal range is 0.0 to 999.5
+in 0.5 steps; 999.9 fits the column but is not a half-U and is refused.
+CONTRACTUAL NAME -- renaming breaks Copper.';
+
+COMMENT ON COLUMN system_design_geometry.rack_face IS
+'NetBox "face": ''front'' or ''rear''. CONTRACTUAL NAME AND VOCABULARY --
+renaming or extending breaks Copper.';
+
+COMMENT ON COLUMN system_design_geometry.cable_length_m IS
+'Cable run length in METERS.';
+
+COMMENT ON COLUMN system_design_geometry.meta IS
+'Verbatim passthrough store. Room dimensions live here under copper.room.w /
+copper.room.d / copper.room.h, in METERS. NCE stores, Copper interprets
+(Rev 2 section 5).';
+
+COMMENT ON COLUMN system_design_geometry.version IS
+'Per-DESIGN optimistic-concurrency token. NULL on every geometry row; set only
+on the design version row, where it starts at 0 and is incremented by every
+authoring write inside that write''s own transaction. Its presence is the
+discriminator between the two key grains.';
+
+-- ============================================================================
+-- System Design engine (Module 6, Wave 16 -- B067g): per-node LIFECYCLE STATE
+-- (status / revision / salience) for a DEVICE, a RACK or a CABLE, behind
+-- nce/vertical_modules/system_design/devices.py.
+--
+-- MIRROR OF nce/migrations/061_system_design_node_state.sql -- the DDL
+-- statements below are byte-identical to that file's. A fresh install boots
+-- from this file alone; an existing install runs the migration. Both paths
+-- must produce not merely the same enforced expressions but the same catalog
+-- IDENTITY, which is why every CHECK and UNIQUE carries an explicit name (an
+-- anonymous column CHECK is auto-named, and the auto-name differs between the
+-- two paths -- the divergence that caused a rejection on Batch 132).
+--
+-- See migration 061's file header for the full rationale, in particular:
+--   * why this is a SIBLING table and not a column on system_design_geometry,
+--     and that the accepted cost is a second join in do_get_topology;
+--   * why the status CHECK is COMPOSITE per node_type rather than a union --
+--     a union would let a CABLE be 'inventory' -- and why its ELSE branch is
+--     FALSE, which is what refuses a PORT state row structurally;
+--   * that NOTHING backfills this table and nothing may COALESCE the absence
+--     of a row to 'planned', because the W17 retirement guard denies on an
+--     absent state and needs "no row" to stay distinguishable from a stored
+--     'planned';
+--   * that revision is inert storage and is NOT the PolyForm-licensed
+--     netbox-branching model.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS system_design_node_state (
+    id              UUID        NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id    UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+
+    -- Graph key -- matches (label, namespace_id) in kg_nodes, exactly as
+    -- system_design_device_capabilities and system_design_geometry do.
+    node_label      TEXT        NOT NULL,
+
+    -- The node's entity_type. On the row because the status vocabulary is per
+    -- node type and the CHECK below has to see it. DEVICE | RACK | CABLE only:
+    -- the CHECK's ELSE FALSE refuses everything else, PORT included.
+    node_type       TEXT        NOT NULL,
+
+    -- NetBox lifecycle status. NULLABLE AND WITHOUT A DEFAULT, deliberately --
+    -- see the file header. NULL means "we hold data for this node, nobody has
+    -- declared its lifecycle", which W17 denies on exactly as it denies on a
+    -- missing row.
+    status          TEXT,
+
+    -- INERT STORAGE this wave. Free text; NCE interprets nothing.
+    revision        TEXT,
+
+    -- Per-node salience. kg_nodes has no salience column; this is it.
+    -- Finite and non-negative -- see the file header for why NaN is the
+    -- dangerous case and why one clause catches all four bad shapes.
+    salience        NUMERIC,
+
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    CONSTRAINT system_design_node_state_pkey PRIMARY KEY (id),
+    CONSTRAINT system_design_node_state_ns_node_uq UNIQUE (namespace_id, node_label),
+    CONSTRAINT system_design_node_state_node_label_not_blank
+        CHECK (btrim(node_label) <> ''),
+    -- COMPOSITE, per node_type. See the header: a union CHECK would let a
+    -- CABLE be 'inventory'. ELSE FALSE denies unknown node types by default.
+    --
+    -- The `status IS NULL` allowance is INSIDE each arm, never in front of the
+    -- CASE: in front, a NULL status short-circuits the whole expression and a
+    -- PORT row slips past ELSE FALSE. THAT PLACEMENT IS LOAD-BEARING.
+    --
+    -- The disjunct itself is NOT. `NULL IN ('planned', ...)` evaluates to NULL
+    -- and a CHECK that evaluates to NULL PASSES, so a NULL status is accepted
+    -- with or without it. The mutation sweep proved that: removing it left the
+    -- whole suite green. It is kept as DOCUMENTATION -- it says a NULL status
+    -- is permitted on purpose rather than by three-valued accident -- and no
+    -- test can gate it, which is recorded rather than papered over. Do NOT
+    -- "simplify" it to `status IS NOT NULL AND ...`: that DOES change
+    -- behaviour and breaks the revision-only row.
+    CONSTRAINT system_design_node_state_status_per_node_type
+        CHECK (
+            CASE node_type
+                WHEN 'DEVICE' THEN status IS NULL OR status IN (
+                    'planned', 'staged', 'active', 'offline',
+                    'decommissioning', 'inventory', 'failed'
+                )
+                WHEN 'CABLE' THEN status IS NULL OR status IN (
+                    'planned', 'connected', 'decommissioning'
+                )
+                WHEN 'RACK' THEN status IS NULL OR status IN (
+                    'reserved', 'available', 'planned', 'active', 'deprecated'
+                )
+                ELSE FALSE
+            END
+        ),
+    -- Finite and non-negative. NaN passes >= 0 (numeric NaN sorts above
+    -- everything) and is caught by < Infinity; +Infinity is caught by
+    -- < Infinity; -Infinity and any negative are caught by >= 0.
+    CONSTRAINT system_design_node_state_salience_finite_non_negative
+        CHECK (
+            salience IS NULL
+            OR (salience >= 0 AND salience < 'Infinity'::numeric)
+        )
+);
+
+-- Index: the primary read path -- state for a batch of node labels within one
+-- namespace. (namespace_id, node_label) is already unique-indexed by the
+-- UNIQUE above; no second index is added for it, and none is added for a
+-- status filter: that filter (B067g2) narrows an already-narrow label set.
+
+-- Row-Level Security.
+ALTER TABLE system_design_node_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_design_node_state FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON system_design_node_state;
+CREATE POLICY tenant_isolation_policy ON system_design_node_state
+    FOR ALL TO nce_app
+    USING  (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+-- Application role grants.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE system_design_node_state FROM nce_app;
+        -- UPDATE is required: a node's status is re-authored in place.
+        -- DELETE is granted because W17 MUST delete a node's state row in the
+        -- same transaction as the node itself -- see the orphan obligation in
+        -- the file header. No code in THIS wave issues one.
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE system_design_node_state TO nce_app;
+    END IF;
+END $$;
+
+COMMENT ON TABLE system_design_node_state IS
+'Per-node lifecycle state for the System Design engine (Module 6, Wave 16):
+status, revision and salience for a DEVICE, a RACK or a CABLE.
+
+A SIBLING of system_design_geometry, not a column on it: geometry already
+carries two key grains, it does not carry node_type (which the per-type status
+CHECK needs on the row), and the wave that reads state never reads geometry.
+The accepted cost is that do_get_topology joins two side tables instead of one.
+
+THREE DISTINGUISHABLE STATES, and W17''s retirement guard needs all three:
+NO ROW = nothing was ever declared about this node (every pre-W16 node, and it
+stays that way until somebody declares something); status IS NULL = we hold
+data for this node but nobody declared a lifecycle; status = a value = a
+lifecycle was declared. W17 denies on the first two. The writer creates a row
+only when the node is genuinely NEW to the authoring call or the caller
+supplied an explicit lifecycle key, so an ordinary re-author, a geometry-only
+canvas save and a re-author-shaped data-fix all leave a pre-existing node with
+no row. NOTHING backfills this table.
+
+status is NULLABLE AND HAS NO COLUMN DEFAULT on purpose: a DEFAULT ''planned''
+would be a second, independent source of the one dangerous value, mintable by
+any future writer or manual data-fix that never touches the write path.
+
+THE STATUS CHECK IS COMPOSITE, PER node_type. A union CHECK would accept a
+CABLE whose status is ''inventory''. The vocabulary is NetBox''s and Copper
+follows it as a binding ADR:
+  DEVICE -> planned | staged | active | offline | decommissioning | inventory |
+            failed
+  CABLE  -> planned | connected | decommissioning
+  RACK   -> reserved | available | planned | active | deprecated
+The CASE''s ELSE branch is FALSE, so an unknown node_type is refused. PORT is
+deliberately among the refused: NetBox has no lifecycle status for a port and
+none is invented here.
+
+salience is FINITE and NON-NEGATIVE. PostgreSQL numeric NaN is not IEEE NaN --
+it compares GREATER than every finite value and equal to itself -- so a stored
+NaN would sort as the largest salience in the tenant and silently flip any W17
+threshold predicate. Negative is refused because this engine''s own salience
+decay clamps at a floor of zero, so a negative has no meaning in NCE.
+
+W17 OBLIGATION: no FK ties a state row to its node (kg_nodes is HASH-partitioned
+on label). W17 must delete a node''s state row in the same transaction as the
+node, or a later re-author of the same deterministic label inherits the
+orphan''s status through ON CONFLICT DO UPDATE.
+
+revision is INERT STORAGE this wave (Copper-side sibling-retirement flow, Rev 2
+section 7); it is explicitly NOT the PolyForm-licensed netbox-branching design.
+
+FORCE RLS isolates per tenant, but the pools that serve requests are owner
+pools and bypass it -- the real boundary is the explicit namespace_id predicate
+in nce/vertical_modules/system_design/devices.py.';
+
+COMMENT ON COLUMN system_design_node_state.node_label IS
+'Graph key. Matches kg_nodes.label. One row per node, at most. No FK -- see the
+W17 orphan obligation on the table comment.';
+
+COMMENT ON COLUMN system_design_node_state.node_type IS
+'The node''s entity_type, on the row because the status vocabulary is per node
+type. DEVICE | RACK | CABLE -- the composite CHECK refuses anything else,
+including PORT.';
+
+COMMENT ON COLUMN system_design_node_state.status IS
+'NetBox lifecycle status, validated per node_type by the composite CHECK.
+CONTRACTUAL VOCABULARY -- adding or renaming a value is a Copper contract
+change. NULLABLE AND WITHOUT A DEFAULT: NULL means "we hold data for this node,
+nobody has declared its lifecycle", which W17 denies on exactly as it denies on
+a missing row. A column DEFAULT would be a second source of ''planned'' that no
+review of the write path could catch.';
+
+COMMENT ON COLUMN system_design_node_state.revision IS
+'Inert storage. Free text, stored verbatim, interpreted by Copper (Rev 2
+section 7). NOT the PolyForm-licensed netbox-branching model.';
+
+COMMENT ON COLUMN system_design_node_state.salience IS
+'Per-node salience. Stored here because kg_nodes has no salience column.
+FINITE and NON-NEGATIVE: PostgreSQL numeric NaN sorts ABOVE every finite value,
+so a stored NaN would silently win every W17 threshold comparison.';

@@ -10,7 +10,9 @@ Five design-quality checks — each split into:
    ``check_<name>(devices, ports, edges, capabilities) -> CheckResult``
 
 2. A **thin fetch layer** that reads the graph + capability table via
-   ``scoped_pg_session``, then calls the pure function.
+   ``scoped_pg_session``, then calls the pure function.  Since M6.W13a the four
+   readers themselves live in ``read.py`` — the module's one query set, shared
+   with the ``system_design_get_topology`` tool — and are imported from there.
 
 3. An **aggregator** ``validate_design_graph(engine, params)`` that runs all five
    checks and returns the same ``{passed: bool, reasons: list[str]}`` shape as
@@ -59,6 +61,18 @@ from typing import Any
 
 from nce.db_utils import scoped_pg_session
 
+# The four graph/capability readers used by validate_design_graph were promoted
+# into read.py (M6.W13a) so that the MCP/REST topology tool and these validation
+# checks share ONE query set instead of two copies that could drift.  They are
+# imported under their original private names, so this module's behaviour — and
+# its tests — are unchanged.
+from nce.vertical_modules.system_design.read import (
+    _fetch_connections_and_capabilities,
+    _fetch_device_capabilities,
+    _fetch_port_capabilities,
+    _fetch_port_directions,
+)
+
 log = logging.getLogger("nce.vertical_modules.system_design.validation_queries")
 
 # ---------------------------------------------------------------------------
@@ -101,7 +115,9 @@ _CROSS_FORMAT_COMPAT: frozenset[tuple[str, str]] = frozenset(
     }
 )
 
-# Valid port_direction values (mirrors CHECK constraint in migration 038).
+# Valid port_direction values (mirrors the CHECK constraint in migration
+# 039_system_design_device_capabilities.sql, which is what creates the table;
+# 038 is 039's predecessor, system_design_source_id, and creates nothing here).
 _VALID_PORT_DIRECTIONS: frozenset[str] = frozenset({"input", "output", "bidirectional"})
 
 
@@ -363,194 +379,6 @@ def check_avixa_checkpoint_conformance(
             )
 
     return {"passed": len(reasons) == 0, "reasons": reasons}
-
-
-# ---------------------------------------------------------------------------
-# Fetch helpers — read graph + capability table via scoped_pg_session.
-# ---------------------------------------------------------------------------
-
-
-async def _fetch_port_directions(
-    conn: Any,
-    ns_uuid: Any,
-    design_label: str,
-) -> tuple[list[str], set[str]]:
-    """Return (input_port_labels, connected_to_targets).
-
-    Fetches:
-    - All PORT nodes reachable from the DESIGN via DEVICE -[has_port]-> PORT,
-      filtered to those with port_direction='input'.
-    - All target labels of ``connected_to`` edges within the design's scope.
-
-    Both queries are explicitly scoped to ``ns_uuid`` so that identical design
-    labels in different namespaces (e.g. multiple ``make_namespace()`` test runs)
-    do not bleed into each other.  This avoids the ``LIMIT 1`` subquery that
-    previously picked an arbitrary namespace for the same design label.
-    """
-    # Input ports: PORT nodes with direction='input' under this DESIGN,
-    # all rows pinned to ns_uuid.
-    input_rows = await conn.fetch(
-        """
-        SELECT kn.label
-        FROM kg_nodes kn
-        JOIN kg_edges dev_port
-            ON dev_port.object_label = kn.label
-            AND dev_port.predicate = 'has_port'
-            AND dev_port.namespace_id = $2::uuid
-        JOIN kg_edges design_dev
-            ON design_dev.object_label = dev_port.subject_label
-            AND design_dev.predicate = 'contains'
-            AND design_dev.subject_label = $1
-            AND design_dev.namespace_id = $2::uuid
-        JOIN system_design_device_capabilities sddc
-            ON sddc.node_label = kn.label
-            AND sddc.namespace_id = $2::uuid
-        WHERE kn.entity_type = 'PORT'
-          AND kn.namespace_id = $2::uuid
-          AND sddc.port_direction = 'input'
-        """,
-        design_label,
-        ns_uuid,
-    )
-    input_port_labels = [r["label"] for r in input_rows]
-
-    # connected_to targets within this namespace (any PORT that receives a signal).
-    # Directly scoped — no label→namespace subquery needed.
-    target_rows = await conn.fetch(
-        """
-        SELECT DISTINCT object_label
-        FROM kg_edges
-        WHERE predicate = 'connected_to'
-          AND namespace_id = $1::uuid
-        """,
-        ns_uuid,
-    )
-    connected_to_targets = {r["object_label"] for r in target_rows}
-
-    return input_port_labels, connected_to_targets
-
-
-async def _fetch_connections_and_capabilities(
-    conn: Any,
-    ns_uuid: Any,
-    design_label: str,
-) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
-    """Return (connections, capability_by_label) for the PORT format check.
-
-    connections: list of {from_port, to_port}
-    capability_by_label: {label: {signal_format, signal_version, dante_*}}
-
-    All queries are explicitly scoped to ``ns_uuid``.
-    """
-    cnx_rows = await conn.fetch(
-        """
-        SELECT ke.subject_label AS from_port, ke.object_label AS to_port
-        FROM kg_edges ke
-        JOIN kg_edges design_dev
-            ON design_dev.predicate = 'contains'
-            AND design_dev.subject_label = $1
-            AND design_dev.namespace_id = $2::uuid
-        JOIN kg_edges dev_port
-            ON dev_port.predicate = 'has_port'
-            AND dev_port.subject_label = design_dev.object_label
-            AND dev_port.namespace_id = $2::uuid
-        WHERE ke.predicate = 'connected_to'
-          AND ke.subject_label = dev_port.object_label
-          AND ke.namespace_id = $2::uuid
-        """,
-        design_label,
-        ns_uuid,
-    )
-    connections = [{"from_port": r["from_port"], "to_port": r["to_port"]} for r in cnx_rows]
-
-    # Collect distinct port labels from this design.
-    port_labels: set[str] = set()
-    for c in connections:
-        port_labels.add(c["from_port"])
-        port_labels.add(c["to_port"])
-
-    cap_by_label: dict[str, dict[str, Any]] = {}
-    if port_labels:
-        cap_rows = await conn.fetch(
-            """
-            SELECT node_label, signal_format, signal_version,
-                   dante_rx_channels, dante_tx_channels
-            FROM system_design_device_capabilities
-            WHERE node_label = ANY($1::text[])
-              AND namespace_id = $2::uuid
-            """,
-            list(port_labels),
-            ns_uuid,
-        )
-        for r in cap_rows:
-            cap_by_label[r["node_label"]] = dict(r)
-
-    return connections, cap_by_label
-
-
-async def _fetch_device_capabilities(
-    conn: Any,
-    ns_uuid: Any,
-    design_label: str,
-) -> list[dict[str, Any]]:
-    """Fetch capability rows for all DEVICE nodes under this DESIGN.
-
-    Explicitly scoped to ``ns_uuid`` so parallel test namespaces do not bleed.
-    """
-    rows = await conn.fetch(
-        """
-        SELECT sddc.node_label, sddc.power_draw_watts, sddc.heat_btu_hr,
-               sddc.redundancy_role, sddc.device_category
-        FROM system_design_device_capabilities sddc
-        JOIN kg_edges ke
-            ON ke.object_label = sddc.node_label
-            AND ke.predicate = 'contains'
-            AND ke.subject_label = $1
-            AND ke.namespace_id = $2::uuid
-        JOIN kg_nodes kn
-            ON kn.label = sddc.node_label
-            AND kn.entity_type = 'DEVICE'
-            AND kn.namespace_id = $2::uuid
-        WHERE sddc.namespace_id = $2::uuid
-        """,
-        design_label,
-        ns_uuid,
-    )
-    return [dict(r) for r in rows]
-
-
-async def _fetch_port_capabilities(
-    conn: Any,
-    ns_uuid: Any,
-    design_label: str,
-) -> list[dict[str, Any]]:
-    """Fetch capability rows for all PORT nodes under this DESIGN.
-
-    Explicitly scoped to ``ns_uuid`` so parallel test namespaces do not bleed.
-    """
-    rows = await conn.fetch(
-        """
-        SELECT sddc.node_label, sddc.signal_format, sddc.port_direction
-        FROM system_design_device_capabilities sddc
-        JOIN kg_nodes kn
-            ON kn.label = sddc.node_label
-            AND kn.entity_type = 'PORT'
-            AND kn.namespace_id = $2::uuid
-        JOIN kg_edges dev_port
-            ON dev_port.object_label = kn.label
-            AND dev_port.predicate = 'has_port'
-            AND dev_port.namespace_id = $2::uuid
-        JOIN kg_edges design_dev
-            ON design_dev.object_label = dev_port.subject_label
-            AND design_dev.predicate = 'contains'
-            AND design_dev.subject_label = $1
-            AND design_dev.namespace_id = $2::uuid
-        WHERE sddc.namespace_id = $2::uuid
-        """,
-        design_label,
-        ns_uuid,
-    )
-    return [dict(r) for r in rows]
 
 
 # ---------------------------------------------------------------------------

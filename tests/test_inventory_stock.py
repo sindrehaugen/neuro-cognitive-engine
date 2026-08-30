@@ -66,8 +66,12 @@ import pytest
 
 from nce.auth import set_namespace_context
 from nce.config import cfg
+from nce.db_utils import scoped_pg_session
+from nce.entity_resolution.ownership import OwnershipError
+from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
 from nce.vertical_modules.inventory.stock import (
     InsufficientStockError,
+    _upsert_kg_node,
     do_record_consumption,
     do_stock_levels,
     do_transfer_stock,
@@ -186,6 +190,22 @@ def _app_dsn() -> str:
     app_pass = cfg.NCE_APP_PASSWORD or "nce_app_secret"
     netloc = f"nce_app:{app_pass}@{netloc}"
     return urlunparse(parsed._replace(netloc=netloc))
+
+
+async def _seed_ownership(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """Seed the node-ownership registry so Inventory's guarded graph mirror
+    (``_upsert_kg_node``, Batch 130a) passes for this namespace. Mirrors
+    ``tests/test_agreements_authoring.py``'s ``_seed_ownership`` verbatim in
+    shape. NOT called from conftest.py's fixtures on purpose — see the
+    B130a wave's amendment for why (it would disarm two deliberate
+    deny-by-default proofs elsewhere)."""
+    async with pg_pool.acquire() as conn:
+        async with conn.transaction():
+            await set_namespace_context(conn, namespace_id)
+            await seed_node_ownership_registry(conn, namespace_id)
 
 
 async def _seed_location(
@@ -350,6 +370,8 @@ async def test_rows_written_by_do_transfer_stock_are_rls_isolated(
     only, exactly as the rest of this suite does)."""
     ns_a = await make_namespace()
     ns_b = await make_namespace()
+    await _seed_ownership(pg_pool, ns_a)
+    await _seed_ownership(pg_pool, ns_b)
     loc_a1 = await _seed_location(pg_pool, ns_a, "A1")
     loc_a2 = await _seed_location(pg_pool, ns_a, "A2")
     await _seed_item(pg_pool, ns_a, "SKU-RLS-WRITE", loc_a1, on_hand="20")
@@ -428,6 +450,7 @@ async def test_record_consumption_decrements_and_refuses_when_insufficient(
     pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
     namespace_id: uuid.UUID,
 ) -> None:
+    await _seed_ownership(pg_pool, namespace_id)
     loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
     await _seed_item(pg_pool, namespace_id, "SKU-BASIC", loc, on_hand="10")
     engine = _EngineStub(pg_pool)
@@ -474,6 +497,7 @@ async def test_transfer_qty_is_quantised_to_3dp_before_binding(
     Each assertion is checked on the value the module returned AND on the
     value read back out of the column, so a Postgres-side rounding
     difference could not mask a Python-side one."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc_a = await _seed_location(pg_pool, namespace_id, "From")
     loc_b = await _seed_location(pg_pool, namespace_id, "To")
     await _seed_item(pg_pool, namespace_id, "SKU-QUANT", loc_a, on_hand="10")
@@ -530,6 +554,7 @@ async def test_repeated_transfers_into_same_location_accumulate_not_overwrite(
     read-then-write": a second transfer into an already-populated location
     must ADD, never overwrite. (Mutation-verified — see fix-forward report:
     dropping the '+' in the ON CONFLICT SET makes this go RED.)"""
+    await _seed_ownership(pg_pool, namespace_id)
     loc_a = await _seed_location(pg_pool, namespace_id, "From")
     loc_b = await _seed_location(pg_pool, namespace_id, "To")
     await _seed_item(pg_pool, namespace_id, "SKU-ACCUM", loc_a, on_hand="100")
@@ -600,6 +625,7 @@ async def test_transfer_rolls_back_from_decrement_when_to_location_is_invalid(
     proof that the ledger append is inside the SAME transaction as the row
     write, not a separate one. If it were separate, this row would already
     be durably committed and the assertion below would go RED."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc_a = await _seed_location(pg_pool, namespace_id, "From")
     await _seed_item(pg_pool, namespace_id, "SKU-ATOMIC", loc_a, on_hand="10")
     engine = _EngineStub(pg_pool)
@@ -664,6 +690,7 @@ async def test_doubly_invalid_transfer_error_type_is_lock_order_dependent(
     This is documented in stock.py's 'Consequence' section; the test exists so
     the documented behaviour is ENFORCED rather than merely asserted in prose.
     Either way the transfer must roll back completely — checked below."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc_a = await _seed_location(pg_pool, namespace_id, "From")
     await _seed_item(pg_pool, namespace_id, "SKU-DOUBLY-INVALID", loc_a, on_hand="1")
     engine = _EngineStub(pg_pool)
@@ -703,6 +730,7 @@ async def test_increment_before_decrement_branch_still_refuses_oversell(
     increment that was ALREADY APPLIED at to_location rolls back with the
     refusal — same transaction, so no stock is conjured at the destination of
     a transfer that never happened."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc_1 = await _seed_location(pg_pool, namespace_id, "L1")
     loc_2 = await _seed_location(pg_pool, namespace_id, "L2")
     lower, higher = sorted((loc_1, loc_2))
@@ -740,6 +768,14 @@ async def test_transfer_mirrors_into_kg_nodes_and_edges(
     pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
     namespace_id: uuid.UUID,
 ) -> None:
+    """The happy path: with the registry seeded, the KG mirror still upserts
+    exactly as before. NOT guard-discriminating (Batch 130a Step 5(d)) — this
+    proves the guard does not break an OWNED write, which passes identically
+    whether or not ``assert_owner`` is even called. The discriminating proofs
+    live in ``test_unregistered_node_type_is_refused_and_writes_nothing``,
+    ``test_wrong_owner_is_refused_at_the_upsert_call_site``, and
+    ``test_deny_by_default_end_to_end_rolls_back_the_authoritative_write``."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc_a = await _seed_location(pg_pool, namespace_id, "From")
     loc_b = await _seed_location(pg_pool, namespace_id, "To")
     await _seed_item(pg_pool, namespace_id, "SKU-MIRROR", loc_a, on_hand="10")
@@ -800,6 +836,7 @@ async def test_concurrent_record_consumption_never_oversells(
     this go RED — the request that would push it negative raises a raw
     asyncpg.CheckViolationError instead of the intended
     InsufficientStockError.)"""
+    await _seed_ownership(pg_pool, namespace_id)
     loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
     await _seed_item(pg_pool, namespace_id, "SKU-RACE", loc, on_hand="10")
     engine = _EngineStub(pg_pool)
@@ -835,6 +872,7 @@ async def test_concurrent_transfers_from_same_location_never_oversell(
     """Same race, through do_transfer_stock instead of do_record_consumption
     — 3 concurrent A→B transfers of qty=4 against on_hand=10 at A: exactly 2
     succeed, arithmetic exact on BOTH sides."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc_a = await _seed_location(pg_pool, namespace_id, "From")
     loc_b = await _seed_location(pg_pool, namespace_id, "To")
     await _seed_item(pg_pool, namespace_id, "SKU-RACE-XFER", loc_a, on_hand="10")
@@ -926,6 +964,7 @@ async def test_cross_sku_opposite_direction_transfers_do_not_deadlock(
     mirror nodes. transfer(SKU-X, a→b) and transfer(SKU-Y, b→a) run
     concurrently over separate pool connections; both must succeed, and each
     SKU's total must be conserved every round."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc_a = await _seed_location(pg_pool, namespace_id, "Warehouse A")
     loc_b = await _seed_location(pg_pool, namespace_id, "Warehouse B")
     for sku in ("SKU-LOCK-X", "SKU-LOCK-Y"):
@@ -978,6 +1017,7 @@ async def test_same_sku_opposite_direction_transfers_do_not_deadlock(
     canonical (ascending-UUID) order means the second transaction simply
     queues behind the first — it must not deadlock, and total quantity must
     be conserved every round."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc_a = await _seed_location(pg_pool, namespace_id, "Warehouse A")
     loc_b = await _seed_location(pg_pool, namespace_id, "Warehouse B")
     await _seed_item(pg_pool, namespace_id, "SKU-LOCK-SAME", loc_a, on_hand="100")
@@ -1013,3 +1053,176 @@ async def test_same_sku_opposite_direction_transfers_do_not_deadlock(
         assert final_a + final_b == Decimal("200.000"), (
             f"round {round_no}: conservation violated — a({final_a}) + b({final_b}) != 200"
         )
+
+
+# ---------------------------------------------------------------------------
+# 5. Contract A — the `assert_owner` guard on `_upsert_kg_node` (Batch 130a).
+#
+# (a)-(c) are guard-DISCRIMINATING: they must go RED when `assert_owner` is
+# disarmed inside `_upsert_kg_node`. Proven by mutation with an out-of-tree
+# pytest plugin (never an in-tree edit — see the wave's rule 11), RED then
+# GREEN, both verbatim summary lines reported alongside this file's gate
+# output. (d) is the pre-existing `test_transfer_mirrors_into_kg_nodes_and_edges`
+# above, re-labelled NOT guard-discriminating now that it needs seeding. (e)
+# below is also NOT guard-discriminating — its own docstring says so.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_unregistered_node_type_is_refused_and_writes_nothing(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """Guard-discriminating (Batch 130a Step 5(a)). Drives `_upsert_kg_node`
+    directly with an entity_type deliberately absent from
+    node-ownership.json. Without the guard the INSERT of an unregistered
+    entity_type simply succeeds — that is what makes this discriminating: it
+    goes RED the instant `assert_owner` is disarmed (see this wave's
+    out-of-tree pytest-plugin RED/GREEN proof)."""
+    await _seed_ownership(pg_pool, namespace_id)
+    label = f"NotOwned:pytest-{uuid.uuid4().hex}"
+
+    async with scoped_pg_session(pg_pool, namespace_id) as conn:
+        with pytest.raises(OwnershipError) as excinfo:
+            await _upsert_kg_node(conn, namespace_id, label, "NOT_AN_OWNED_TYPE")
+    assert excinfo.value.owner_engine is None, "deny-by-default: no row means no owner"
+
+    async with pg_pool.acquire() as conn:
+        row = await conn.fetchval(
+            "SELECT 1 FROM kg_nodes WHERE namespace_id = $1 AND label = $2",
+            namespace_id,
+            label,
+        )
+    assert row is None, "a refused node upsert must not have written a kg_nodes row"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_wrong_owner_is_refused_at_the_upsert_call_site(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """Guard-discriminating (Batch 130a Step 5(b)) AND owner-specific, not
+    merely presence-checking. `PO` is registered to `procurement`
+    (node-ownership.json) — an inventory write must still be refused, and the
+    error must name the REAL owner. Deliberately drives `_upsert_kg_node`
+    itself, NOT a bare `assert_owner(conn, ns, "STOCK_LOCATION",
+    "procurement")` call — that form never enters the write path and is
+    invariant under removal of the guard, which is the exact
+    non-discriminating proof Batch 130 was rejected for."""
+    await _seed_ownership(pg_pool, namespace_id)
+    label = f"PO:pytest-{uuid.uuid4().hex}"
+
+    async with scoped_pg_session(pg_pool, namespace_id) as conn:
+        with pytest.raises(OwnershipError) as excinfo:
+            await _upsert_kg_node(conn, namespace_id, label, "PO")
+    assert excinfo.value.owner_engine == "procurement", (
+        "must name the REAL registered owner, proving the guard checks identity, "
+        "not merely row presence"
+    )
+
+    async with pg_pool.acquire() as conn:
+        row = await conn.fetchval(
+            "SELECT 1 FROM kg_nodes WHERE namespace_id = $1 AND label = $2",
+            namespace_id,
+            label,
+        )
+    assert row is None, "a wrong-owner node upsert must not have written a kg_nodes row"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_deny_by_default_end_to_end_rolls_back_the_authoritative_write(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """Guard-discriminating (Batch 130a Step 5(c)) — the blast radius made
+    executable. `namespace_id` here is deliberately left UNSEEDED (contrast
+    every other test in this file). `do_transfer_stock` must raise
+    `OwnershipError` the moment its graph mirror runs, and the refusal must
+    roll back the WHOLE transaction: the authoritative `inventory_items`
+    decrement at `from_location` AND the increment at `to_location`, AND
+    (B139's `append_transaction` calls, which run BEFORE the mirror at each
+    of `do_transfer_stock`'s call sites, same `scoped_pg_session`) the two
+    `inventory_transactions` ledger rows this transfer already wrote before
+    the refusal fired — proving the refusal aborts the row write AND the
+    ledger append, not just the mirror."""
+    loc_a = await _seed_location(pg_pool, namespace_id, "From")
+    loc_b = await _seed_location(pg_pool, namespace_id, "To")
+    await _seed_item(pg_pool, namespace_id, "SKU-UNSEEDED", loc_a, on_hand="10")
+    engine = _EngineStub(pg_pool)
+
+    with pytest.raises(OwnershipError):
+        await do_transfer_stock(
+            engine,
+            {
+                "namespace_id": namespace_id,
+                "sku": "SKU-UNSEEDED",
+                "qty": 4,
+                "from_location": loc_a,
+                "to_location": loc_b,
+            },
+        )
+
+    assert await _get_on_hand(pg_pool, namespace_id, "SKU-UNSEEDED", loc_a) == Decimal("10.000"), (
+        "the refused transfer's decrement at from_location must have rolled back"
+    )
+
+    async with pg_pool.acquire() as conn:
+        to_row = await conn.fetchval(
+            "SELECT qty_on_hand FROM inventory_items "
+            "WHERE namespace_id = $1 AND sku = $2 AND location_id = $3",
+            namespace_id,
+            "SKU-UNSEEDED",
+            loc_b,
+        )
+    assert to_row is None, (
+        "the refused transfer's increment at to_location must have rolled back too "
+        "— no row should exist there at all"
+    )
+
+    async with pg_pool.acquire() as conn:
+        ledger_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM inventory_transactions WHERE namespace_id = $1 AND sku = $2",
+            namespace_id,
+            "SKU-UNSEEDED",
+        )
+    assert ledger_count == 0, (
+        "the refused transfer's inventory_transactions ledger rows — appended "
+        "by append_transaction BEFORE the mirror ran — must have rolled back "
+        "too; the blast radius is the ledger as well as inventory_items"
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_four_inventory_ownership_rows_are_seeded(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """NOT guard-discriminating (Batch 130a Step 5(e)) — this pins that the
+    four `node-ownership.json` rows this wave added actually reach the
+    per-namespace table on seed. Its discriminating mutation is deleting the
+    four rows from `node-ownership.json`, never disarming `assert_owner` —
+    do not read a pass here as proof the guard is wired; the tests above
+    prove that."""
+    await _seed_ownership(pg_pool, namespace_id)
+
+    async with pg_pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT node_type, transition FROM node_ownership_registry "
+            "WHERE namespace_id = $1 AND owner_engine = 'inventory'",
+            namespace_id,
+        )
+
+    by_type = {r["node_type"]: r["transition"] for r in rows}
+    assert set(by_type) == {
+        "STOCK_LOCATION",
+        "INVENTORY_ITEM",
+        "GOODS_RECEIPT",
+        "INVENTORY_RMA",
+    }, f"expected exactly the four inventory rows, got {sorted(by_type)}"
+    assert all(transition is None for transition in by_type.values()), (
+        "all four rows must be transition:null (whole-node-type ownership)"
+    )

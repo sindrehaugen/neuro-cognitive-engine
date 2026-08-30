@@ -155,6 +155,29 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
+      # Redis for the M6 System Design cache-invalidation tests, which need
+      # Postgres AND Redis in the same job: they author through the real cores
+      # (so they need the pool and namespace fixtures) and then assert the cached
+      # read path serves fresh data (so they need a real Redis -- a mock stores
+      # nothing and cannot detect staleness). The dedicated cache-invalidation
+      # job cannot host them; it has no Postgres.
+      #
+      # Deliberately published on 6380, NOT the default 6379. A `services:` block
+      # is job-wide, so binding the default port would put a reachable Redis
+      # under every other step here and silently flip any test that currently
+      # takes a Redis-absent fallback path -- the exact objection that kept the
+      # cache-invalidation job separate. On 6380 the ambient default
+      # (redis://localhost:6379/0) still finds nothing, and only the step that
+      # sets NCE_TEST_REDIS_URL explicitly can reach it.
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v7
 
@@ -211,64 +234,169 @@ jobs:
             tests/test_agreements_sla.py \
             -m integration -q --tb=short
 
-      # M8 Economy. The invoice-ingest suite proves namespace isolation via a real
-      # RLS-enforced nce_app connection, and that the derived watermark is
-      # namespace-scoped — neither is provable from the unit job, which selects
-      # `-m "not integration and not perf"`. See tests/test_ci_integration_coverage.py
-      # for why "written and passing locally" is not the same as "gating anything".
-      - name: Integration — M8 Economy (invoice ingest, watermark, RLS, cascade)
+      # M8 Economy (tests/test_economy_*.py). The invoice-ingest suite proves
+      # namespace isolation via a real RLS-enforced nce_app connection, and that
+      # the derived watermark is namespace-scoped — neither is provable from the
+      # unit job, which selects `-m "not integration and not perf"`. See
+      # tests/test_ci_integration_coverage.py for why "written and passing
+      # locally" is not the same as "gating anything". Wired by prefix glob
+      # (Batch 152a): a new tests/test_economy_*.py file needs no ci.yml edit.
+      - name: Integration — M8 Economy (tests/test_economy_*.py)
         env:
           PG_DSN: postgresql://mcp_user:mcp_password@localhost:5432/memory_meta
           NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
-        run: |
-          pytest tests/test_economy_ingestion.py \
-            tests/test_economy_cascade.py \
-            tests/test_economy_postings.py \
-            tests/test_economy_recurring.py \
-            tests/test_economy_recalibration.py \
-            tests/test_economy_finago.py \
-            tests/test_economy_peppol_close.py \
-            tests/test_economy_contracts.py \
-            -m integration -q --tb=short
+        run: pytest tests/test_economy_*.py -m integration -q --tb=short
 
-      # M11 Inventory (Wave 1 — locations-stock-tables; Wave 2 —
-      # stock-core-concurrency; Wave 11 — transactions-valuation). Proves
-      # FORCE RLS on stock_locations/inventory_items/inventory_transactions
+      # M11 Inventory (tests/test_inventory_*.py). Proves FORCE RLS on
+      # stock_locations/inventory_items/inventory_transactions/goods_receipts/
+      # inventory_rma
       # via a real nce_app connection, the stock_locations_hierarchy_shape /
       # composite-FK / partial-unique-index structural claims, (Wave 2) the
       # do_stock_levels/do_transfer_stock/do_record_consumption
       # oversell/lost-update guard under REAL concurrent connections plus the
       # canonical cross-location lock ordering (no opposite-direction
-      # deadlock), and (Wave 11) that every movement appends an immutable
+      # deadlock), (Wave 8, RE-SCOPED per Batch 136 to do_reserve_stock/
+      # do_release_stock only — phantom-BOM kitting is Batch 136b, not built)
+      # the do_reserve_stock/do_release_stock
+      # available/reserved guard under REAL concurrent connections (never a
+      # ledger movement — see reservation.py's module docstring), (Wave 10)
+      # that do_record_rma's disposed-requires-disposal_ref CHECK is enforced
+      # at the DB level, that inventory_rma's nce_app grant excludes DELETE,
+      # and that recording an RMA moves no stock (zero inventory_transactions
+      # rows, inventory_items untouched), and
+      # (Wave 11) that every movement appends an immutable
       # inventory_transactions row inside the SAME transaction as its row
       # write (atomic — a rolled-back movement leaves no ledger row) and that
       # do_valuation's FIFO/average computation discriminates correctly
-      # against seeded ledger rows — none of that is provable from the unit
-      # job (`-m "not integration and not perf"`). See
+      # against seeded ledger rows, and (Wave 4) that do_record_goods_receipt
+      # is idempotent BY CONSTRUCTION under real concurrency
+      # (goods_receipts_idempotency_uq), that overlapping-SKU concurrent
+      # receipts do not deadlock, and that a receipt's real unit_cost
+      # survives to do_valuation, and (Wave 6) that do_recommend_restock
+      # derives consumption velocity from REAL seeded inventory_transactions
+      # rows and cites them by row id in its rationale, and that a second
+      # namespace's ledger rows never influence the first's recommendation —
+      # none of that is provable from the unit job
+      # (`-m "not integration and not perf"`). See
       # tests/test_ci_integration_coverage.py.
-      - name: Integration — M11 Inventory (locations-stock-tables, stock-core-concurrency, transactions-valuation)
+      #
+      # Waves 4 and 6 were both wired here by the ORCHESTRATOR, not by their own
+      # waves. Each brief allowed a fixed file list that did not include ci.yml,
+      # so both coders correctly STOPped and reported rather than widening their
+      # own scope. That STOP is the intended behaviour: test_ci_integration_coverage
+      # exists precisely because "written and passing locally" is not the same as
+      # "gating anything", and a wave that quietly edits ci.yml to silence its own
+      # ratchet is the failure this repo has already paid for twice.
+      # Wave 5 (gr-match-trigger) adds the Receive->Match->Cascade keystone:
+      # that a genuinely-new goods receipt fires procurement_evaluate_match
+      # EXACTLY ONCE, that a replayed receipt fires it ZERO additional times
+      # (idempotency inherited from goods_receipts_idempotency_uq rather than
+      # re-implemented), and that a second namespace's receipts under the SAME
+      # po_ref never contribute to the first's matched quantity. That last one
+      # is why the namespace predicate is load-bearing here: po_ref is NOT
+      # unique across tenants. The test seeds the same po_ref in two tenants
+      # and reads through the OWNER pool, so the predicate is the only thing
+      # separating them — through nce_app the RLS policy would refuse the leak
+      # regardless and the test would prove nothing (_ORCHESTRATOR.md §6.4).
+      #
+      # Wired by the ORCHESTRATOR, not by the wave: Batch 133's brief allowed
+      # exactly two files, so the coder correctly STOPped and reported rather
+      # than silencing its own ratchet. See tests/test_ci_integration_coverage.py.
+      #
+      # Batch 152a switched this step from a hardcoded file list to a prefix
+      # glob, so a new tests/test_inventory_*.py file needs no further ci.yml
+      # edit. Verified at that rebase: the glob resolves to exactly the same 8
+      # files this list named, test_inventory_match_trigger.py included.
+      - name: Integration — M11 Inventory (tests/test_inventory_*.py)
         env:
           PG_DSN: postgresql://mcp_user:mcp_password@localhost:5432/memory_meta
           NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
-        run: |
-          pytest tests/test_inventory_tables.py \
-            tests/test_inventory_stock.py \
-            tests/test_inventory_transactions.py \
-            -m integration -q --tb=short
+        run: pytest tests/test_inventory_*.py -m integration -q --tb=short
+
+      # M9 Assets (tests/test_assets_*.py). FIRST integration job for Module 9;
+      # Wave 1 (Batch 141) was a pure state machine with no DB surface to
+      # integrate against. Proves FORCE RLS on `assets` via a real nce_app
+      # connection — that a second namespace can neither read nor reach the
+      # first's asset row — that nce_app's grant deliberately EXCLUDES DELETE,
+      # and that do_seed_asset_from_bom is idempotent by the
+      # assets_ns_bom_line_uq constraint rather than by a Python check-then-write
+      # that would race. None of that is provable from the unit job, which
+      # selects `-m "not integration and not perf"`: the owner/superuser pool
+      # BYPASSES FORCE RLS, so an isolation test that does not use a real
+      # nce_app connection passes while the query leaks in production.
+      #
+      # A second wave (Batch 142b) adds the Contract-A half: that an ASSET
+      # kg_node write is REFUSED when the node-ownership.json row is absent and
+      # PERMITTED when it is present — deny-by-default proven in both
+      # directions, not just the happy path — and that the projection is
+      # idempotent under re-run. Its namespace-scoping test seeds the SAME
+      # asset_id in two tenants and reads through the OWNER pool, so the
+      # namespace predicate is the only thing separating them; through nce_app
+      # the RLS policy would refuse the leak regardless and the test would
+      # prove nothing (see _ORCHESTRATOR.md §6.4).
+      #
+      # Both files were wired by the ORCHESTRATOR, not by their waves. Batch
+      # 142's brief allowed four files and 142b's allowed three; ci.yml was
+      # outside both, so each coder correctly STOPped and reported rather than
+      # silencing its own ratchet. Batch 152a switched this step from a
+      # hardcoded file list to a prefix glob, so a third tests/test_assets_*.py
+      # file needs no further ci.yml edit. See tests/test_ci_integration_coverage.py.
+      - name: Integration — M9 Assets (tests/test_assets_*.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:5432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/test_assets_*.py -m integration -q --tb=short
+
+      # M6 System Design. Module 6's FIRST integration job: it had no step
+      # here at all, so all eight of its DB-backed files sat in KNOWN_UNWIRED
+      # and gated nothing (§9.9). This wave ran all eight against a real
+      # Postgres before wiring them — 58 marked tests, all green — and removed
+      # all eight KNOWN_UNWIRED entries.
+      #
+      # Wired as a per-module glob (§7.9, the B152a pattern) so the nine M6
+      # waves queued behind this one each land a DB-backed test with ZERO
+      # further ci.yml edits — the undeclared-chokepoint defect this shape
+      # exists to stop.
+      #
+      # The glob is non-recursive, so it does NOT reach the five pure-unit
+      # System Design files under tests/unit/ (lucid, sharepoint, skeleton,
+      # sow, toolcount). None of those carries an integration marker or needs
+      # a database, so they stay in the unit job — which is why none of them
+      # needs a GLOBBED_UNMARKED_BY_DESIGN entry. Falsify that by resolving
+      # the glob: it yields exactly the eight top-level files, every one
+      # marked.
+      #
+      # NB: the ratchet's token scanner reads this whole file, comments
+      # included, so spelling any other test-path glob in a comment here
+      # registers it as a wired CI glob and breaks the ratchets. Name paths
+      # in prose, not as patterns.
+      - name: Integration — M6 System Design (tests/test_system_design_*.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:5432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+          # Points at the 6380 service above. Without it the cache-invalidation
+          # tests skip, and a skipped gate gates nothing.
+          NCE_TEST_REDIS_URL: redis://localhost:6380/14
+        run: pytest tests/test_system_design_*.py -m integration -q --tb=short
 
   # REST-surface mutations must invalidate the MCP response cache.
   # `bump_cache_generation` is called from the MCP dispatch loop only, so a
   # mutation performed through nce/admin_handlers/* left cacheable MCP reads
-  # serving pre-mutation data for the full MCP_CACHE_TTL_S (300 s).
+  # serving pre-mutation data for the full MCP_CACHE_TTL_S (300 s). Found in the
+  # Batch 143 audit; pre-existing and systemic, not introduced by that wave.
   #
-  # Its own job, not a step in `integration`: it needs a real Redis (a mocked
-  # redis_client stores nothing and cannot detect staleness at all), and
-  # `services:` is job-wide -- a Redis under `integration` would sit beneath
-  # every other step there and could silently flip tests that take a
-  # Redis-absent fallback path. It needs no Postgres: the test stubs the domain
-  # cores and exercises the cache mechanism itself.
+  # This runs as its OWN job rather than a step in `integration`, for two
+  # reasons. It needs a real Redis — tests/test_mcp_cache.py mocks
+  # redis_client, which stores nothing and therefore cannot detect staleness at
+  # all — and a `services:` block is job-wide, so adding Redis to `integration`
+  # would put a live Redis under every other step there, silently flipping any
+  # test that currently takes a Redis-absent fallback path. It also needs no
+  # Postgres: the test stubs the do_* cores and exercises the cache mechanism
+  # itself, so a dedicated job is both safer and cheaper.
   cache-invalidation:
     name: Pytest (REST/MCP cache invalidation)
     runs-on: ubuntu-latest
@@ -298,7 +426,7 @@ jobs:
         run: pip install -r requirements.txt -r requirements-dev.txt
 
       # Reads through the cacheable MCP path, mutates through the REST route,
-      # reads again. FAILS on the unfixed tree -- that is the point.
+      # reads again. FAILS on the unfixed tree — that is the point.
       - name: Integration — REST/MCP cache invalidation (real Redis)
         env:
           NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!

@@ -1254,6 +1254,17 @@ async def _retention_tick(pool: asyncpg.Pool) -> None:
         stats = await run_retention_pass(pool, minio_client)
         log.info("event_retention tick complete: %s", stats)
 
+        # B067h2 — M6.W17b retired-archive sweep.  OFF by default behind
+        # NCE_SYSTEM_DESIGN_ARCHIVE_SWEEP_ENABLED; the call is unconditional
+        # here and the flag is checked inside, so the default lives in exactly
+        # one place (archive.sweep_enabled) rather than being restated at the
+        # schedule.  It shares this tick because it is the same kind of work on
+        # the same cadence and needs the same MinIO client and cron lock.
+        from nce.vertical_modules.system_design.archive import run_design_archive_sweep
+
+        design_stats = await run_design_archive_sweep(pool, minio_client)
+        log.info("system_design archive sweep complete: %s", design_stats)
+
     except _CRON_TICK_ERRORS as exc:
         log.exception("event_retention tick failed unexpectedly")
         await _dispatch_throttled_alert(
@@ -1616,6 +1627,16 @@ async def async_main() -> None:
         max_instances=1,
         replace_existing=True,
     )
+
+    # Register outbox subscribers BEFORE the relay job is scheduled. cron is the
+    # second process that runs the relay (the first is nce/mcp_stdio_main.py), and
+    # OUTBOX_HANDLERS is per-process state -- registering in only one of them
+    # leaves the other dead-lettering every System Design authoring event it polls.
+    from nce.vertical_modules.system_design.subscribers import (
+        register_system_design_subscribers,
+    )
+
+    register_system_design_subscribers()
 
     outbox_seconds = max(1, int(cfg.OUTBOX_RELAY_INTERVAL_SECONDS))
     scheduler.add_job(

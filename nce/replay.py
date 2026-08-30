@@ -1120,6 +1120,10 @@ _additional_fork_provenance_types: tuple[str, ...] = (
     "d365_sla_breach",
     "project_phase_advanced",
     "sales_ai_decision",
+    # M6.W13b — System Design authoring audit. Provenance-only, exactly like
+    # project_phase_advanced: the design graph a fork would need is rebuilt by
+    # replaying the graph writes, not by re-running the audit record.
+    "system_design_authored",
     # Part II.4: shred is destructive + content-free; fork projection records
     # provenance only (no content to re-apply).
     "memory_shredded",

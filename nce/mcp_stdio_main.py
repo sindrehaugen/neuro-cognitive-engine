@@ -93,6 +93,16 @@ async def run_stdio_server(*, app: Server | None = None, engine: NCEEngine | Non
         log.info("Re-embedder background task started.")
 
         from nce.outbox_relay import run_outbox_relay_once
+        from nce.vertical_modules.system_design.subscribers import (
+            register_system_design_subscribers,
+        )
+
+        # Must run BEFORE the relay task below starts polling. Every
+        # <TYPE>.upserted event the System Design authoring cores emit
+        # dead-letters if its selector has no subscriber -- and the row is
+        # never marked published either, so it also stays in
+        # idx_outbox_unpublished, which every tenant's relay poll reads.
+        register_system_design_subscribers()
 
         interval_s = max(1, int(cfg.OUTBOX_RELAY_INTERVAL_SECONDS))
 

@@ -33,6 +33,12 @@
     { "node_type": "POSTING",              "owner_engine": "economy",       "transition": null },
     { "node_type": "PERIOD",               "owner_engine": "economy",       "transition": null },
     { "node_type": "MARGIN",               "owner_engine": "economy",       "transition": "actual",
-      "_note": "MARGIN is a PER-DIMENSION node (00-ENGINES-ROADMAP.md:234, the margin-trinity worked example for per-field ownership): 'signed'=Sales (frozen/immutable), 'estimated'=Project, 'actual'=Economy cascade. Only the 'actual' row is registered here — Economy owns just its own dimension. The 'signed' and 'estimated' rows are deliberately UNCLAIMED; they belong to Sales' and Project's own waves when built, not to Economy. Do NOT add a transition:null row for MARGIN — that would silently re-claim the whole node type and deny Sales/Project their dimensions (the Contract A bug this fixed in Batch 121 round-2)." }
+      "_note": "MARGIN is a PER-DIMENSION node (00-ENGINES-ROADMAP.md:234, the margin-trinity worked example for per-field ownership): 'signed'=Sales (frozen/immutable), 'estimated'=Project, 'actual'=Economy cascade. Only the 'actual' row is registered here — Economy owns just its own dimension. The 'signed' and 'estimated' rows are deliberately UNCLAIMED; they belong to Sales' and Project's own waves when built, not to Economy. Do NOT add a transition:null row for MARGIN — that would silently re-claim the whole node type and deny Sales/Project their dimensions (the Contract A bug this fixed in Batch 121 round-2)." },
+    { "node_type": "STOCK_LOCATION",  "owner_engine": "inventory", "transition": null },
+    { "node_type": "INVENTORY_ITEM",  "owner_engine": "inventory", "transition": null },
+    { "node_type": "GOODS_RECEIPT",   "owner_engine": "inventory", "transition": null },
+    { "node_type": "INVENTORY_RMA",   "owner_engine": "inventory", "transition": null },
+    { "node_type": "ASSET",           "owner_engine": "assets",    "transition": null,
+      "_note": "Module 9's FIRST Contract-A row (Batch 142b). transition:null — Assets is the SOLE writer-of-record for the whole ASSET node, following the GOODS_RECEIPT / INVENTORY_RMA whole-node precedent above, NOT the per-transition MARGIN pattern (which is split because four engines write one node's status in sequence; nothing of the kind applies here). Without this row assert_owner's deny-by-default refuses every ASSET node write. Deliberately NOT added by this wave: FUNCTIONAL_LOCATION (owned by system_design, already registered above — Assets writes the lives_in EDGE to it and never authors the node) and BOM_LINE (Batch 132a / 133b's rows; Assets writes the installed_as edge by label only)." }
   ]
 }

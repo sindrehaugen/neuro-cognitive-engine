@@ -11,8 +11,18 @@ Verifies:
    rolls back (e.g. emit raises), neither row is visible — both commit or
    both roll back (transactional-outbox semantics).
 
-All tests are ``@pytest.mark.integration`` — they require a live Postgres
+Also covers Wave M0.W20b — c4-payload-contract:
+4. ``emit_graph_write``'s payload stays exactly the 4-key
+   ``(node_type, op, id, namespace)`` shape (regression guard — 22
+   ``op="upserted"`` sites and ``memory.stored`` depend on it).
+5. ``emit_status_change`` (new, additive) carries ``project_id``/``status``
+   on top of the same 4 keys, and both round-trip intact through
+   ``publish`` → JSONB → read-back.
+
+Most tests are ``@pytest.mark.integration`` and require a live Postgres
 instance reachable via ``NCE_INTEGRATION_PG_DSN`` / ``PG_DSN`` / ``DATABASE_URL``.
+The payload-shape unit tests (4 and 5 above) patch ``publish`` out, so they
+need no database.
 """
 
 from __future__ import annotations
@@ -24,7 +34,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import asyncpg  # type: ignore[import-untyped]
 import pytest
 
-from nce.events.emit import emit_graph_write, mark_graph_write_processed
+from nce.events.emit import emit_graph_write, emit_status_change, mark_graph_write_processed
 
 # ---------------------------------------------------------------------------
 # Unit — pure-logic tests (no DB)
@@ -45,6 +55,107 @@ def test_emit_graph_write_is_coroutine():
     )
     assert inspect.iscoroutine(coro), "emit_graph_write must return a coroutine"
     coro.close()  # prevent ResourceWarning
+
+
+def test_emit_graph_write_payload_is_exactly_four_keys():
+    """Regression guard (M0.W20b): emit_graph_write's payload must stay 4-key.
+
+    ``memory.stored`` and the 22 ``op="upserted"`` call sites depend on this
+    exact shape.  Adding ``emit_status_change`` alongside it must not widen
+    this payload by even one key.
+    """
+    import asyncio
+
+    ns_id = uuid.uuid4()
+    captured: dict = {}
+
+    async def _fake_publish(conn, *, namespace_id, node_type, op, aggregate_id, payload):
+        captured["payload"] = payload
+
+    with patch("nce.events.emit.publish", new=_fake_publish):
+        asyncio.run(
+            emit_graph_write(
+                MagicMock(),
+                namespace_id=ns_id,
+                node_type="account",
+                op="upserted",
+                node_id="Contoso Ltd",
+            )
+        )
+
+    assert captured["payload"] == {
+        "node_type": "account",
+        "op": "upserted",
+        "id": "Contoso Ltd",
+        "namespace": str(ns_id),
+    }
+    assert set(captured["payload"].keys()) == {"node_type", "op", "id", "namespace"}
+
+
+def test_emit_status_change_is_coroutine():
+    """emit_status_change must be an async function."""
+    import inspect
+
+    conn = MagicMock()
+    coro = emit_status_change(
+        conn,
+        namespace_id=uuid.uuid4(),
+        node_type="BOM_LINE",
+        op="status_changed",
+        node_id="BOM_LINE:Q1:AMP01",
+        project_id="PROJECT:Q1",
+        status="DELIVERED",
+    )
+    assert inspect.iscoroutine(coro), "emit_status_change must return a coroutine"
+    coro.close()  # prevent ResourceWarning
+
+
+def test_emit_status_change_builds_six_key_payload_round_trip():
+    """emit_status_change's payload carries the base 4 keys PLUS project_id/status.
+
+    This is the payload-contract acceptance test for M0.W20b: Module 7's
+    handlers require ``project_id`` and ``status`` on top of the base
+    ``(node_type, op, id, namespace)`` contract, and both must round-trip
+    intact through the payload dict handed to ``publish``.
+    """
+    import asyncio
+
+    ns_id = uuid.uuid4()
+    captured: dict = {}
+
+    async def _fake_publish(conn, *, namespace_id, node_type, op, aggregate_id, payload):
+        captured["payload"] = payload
+        captured["namespace_id"] = namespace_id
+        captured["node_type"] = node_type
+        captured["op"] = op
+        captured["aggregate_id"] = aggregate_id
+
+    with patch("nce.events.emit.publish", new=_fake_publish):
+        asyncio.run(
+            emit_status_change(
+                MagicMock(),
+                namespace_id=ns_id,
+                node_type="BOM_LINE",
+                op="status_changed",
+                node_id="BOM_LINE:Q1:AMP01",
+                project_id="PROJECT:Q1",
+                status="DELIVERED",
+            )
+        )
+
+    assert captured["payload"] == {
+        "node_type": "BOM_LINE",
+        "op": "status_changed",
+        "id": "BOM_LINE:Q1:AMP01",
+        "namespace": str(ns_id),
+        "project_id": "PROJECT:Q1",
+        "status": "DELIVERED",
+    }
+    # publish() plumbing args unaffected — same call shape as emit_graph_write.
+    assert captured["namespace_id"] == ns_id
+    assert captured["node_type"] == "BOM_LINE"
+    assert captured["op"] == "status_changed"
+    assert captured["aggregate_id"] == "BOM_LINE:Q1:AMP01"
 
 
 def test_mark_graph_write_processed_is_coroutine():
@@ -213,6 +324,64 @@ async def test_emit_graph_write_lands_in_outbox_events(pg_pool, namespace_id):
     assert payload["op"] == "upserted"
     assert payload["id"] == node_id
     assert payload["namespace"] == str(namespace_id)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_emit_status_change_lands_in_outbox_events_with_project_and_status(
+    pg_pool, namespace_id
+):
+    """emit_status_change inserts a row whose payload carries project_id + status.
+
+    Same DB round-trip shape as ``test_emit_graph_write_lands_in_outbox_events``,
+    but for the new typed helper: proves the extra two keys survive the
+    ``publish`` → JSONB → read-back round trip, not just an in-memory dict
+    build.
+    """
+    node_id = f"direct-status-test-{uuid.uuid4().hex[:8]}"
+    node_type = "BOM_LINE"
+    project_id = f"PROJECT:{uuid.uuid4().hex[:8].upper()}"
+    status = "DELIVERED"
+
+    async with pg_pool.acquire(timeout=10.0) as conn:
+        async with conn.transaction():
+            await emit_status_change(
+                conn,
+                namespace_id=namespace_id,
+                node_type=node_type,
+                op="status_changed",
+                node_id=node_id,
+                project_id=project_id,
+                status=status,
+            )
+
+    async with pg_pool.acquire(timeout=10.0) as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT namespace_id, aggregate_type, aggregate_id, event_type, payload
+            FROM outbox_events
+            WHERE aggregate_id = $1 AND namespace_id = $2
+            """,
+            node_id,
+            namespace_id,
+        )
+
+    assert row is not None, "emit_status_change must insert a row into outbox_events"
+    assert row["namespace_id"] == namespace_id
+    assert row["aggregate_type"] == node_type
+    assert row["event_type"] == f"{node_type}.status_changed"
+
+    payload = row["payload"]
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    assert payload == {
+        "node_type": node_type,
+        "op": "status_changed",
+        "id": node_id,
+        "namespace": str(namespace_id),
+        "project_id": project_id,
+        "status": status,
+    }
 
 
 @pytest.mark.integration

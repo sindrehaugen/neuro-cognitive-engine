@@ -2,15 +2,16 @@
 
 Why this file exists
 --------------------
-``_require_namespace_id`` was duplicated: ``inventory.py`` carried a private
-copy and ``economy.py`` inlined the same logic three times. The copies were
-consolidated into ``_shared.py`` (inventory in PR #15, economy here).
+``_require_namespace_id`` was triplicated: ``assets.py`` and ``inventory.py``
+each carried a byte-identical private copy, and ``economy.py`` inlined the same
+logic three times. The copies were consolidated into ``_shared.py`` (assets and
+inventory in PR #110, economy here).
 
 The pre-existing surface tests assert only ``status_code == 422`` (or
 ``400 <= sc < 500``) plus ``"error" in body`` — never the message. Verified by
-mutation: swapping both message strings on every folded module left those
+mutation: swapping both message strings on all four modules left 137 of those
 tests green. So the "one helper, identical 422 body on every surface" property
-the consolidation exists for was completely ungated.
+the consolidation is *for* was completely ungated.
 
 These tests gate it two ways:
   1. the helper's own input/output contract, message text included; and
@@ -46,7 +47,7 @@ def _make_request(
     query: dict[str, str] | None = None,
     body: dict[str, Any] | None = None,
 ) -> MagicMock:
-    """Minimal Starlette-like request mock (mirrors test_inventory_surface.py)."""
+    """Minimal Starlette-like request mock (mirrors test_assets_surface.py)."""
     req = MagicMock()
     req.json = AsyncMock(return_value=body or {})
     req.query_params = query or {}
@@ -112,19 +113,19 @@ def test_over_length_input_is_rejected_not_silently_truncated() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 2. One helper, not several — resolved by object identity
+# 2. One helper, not three — resolved by object identity
 # ---------------------------------------------------------------------------
 
 
 def test_all_folded_modules_share_one_helper_object() -> None:
-    """inventory/economy must resolve to the *same* function object.
+    """assets/inventory/economy must resolve to the *same* function object.
 
     A module reintroducing its own copy would still pass every status-code
     test in the suite; this is the check that fails instead.
     """
-    from nce.admin_handlers import _shared, economy, inventory
+    from nce.admin_handlers import _shared, assets, economy, inventory
 
-    for module in (inventory, economy):
+    for module in (assets, inventory, economy):
         assert module._require_namespace_id is _shared._require_namespace_id, (
             f"{module.__name__} no longer shares _shared._require_namespace_id"
         )
@@ -136,9 +137,9 @@ def test_folded_modules_do_not_reimport_validate_agent_id() -> None:
     If one comes back it is a signal that inline validation was reintroduced
     alongside the shared call.
     """
-    from nce.admin_handlers import economy, inventory
+    from nce.admin_handlers import assets, economy, inventory
 
-    for module in (inventory, economy):
+    for module in (assets, inventory, economy):
         assert not hasattr(module, "validate_agent_id"), (
             f"{module.__name__} re-imported validate_agent_id"
         )
@@ -164,6 +165,26 @@ async def _economy_responses(payload: dict[str, Any]) -> list[Any]:
     return out
 
 
+async def _assets_responses(ns: str | None) -> list[Any]:
+    from nce import admin_state
+    from nce.admin_handlers.assets import (
+        api_assets_advance_lifecycle,
+        api_assets_get,
+        api_assets_list,
+    )
+
+    query = {} if ns is None else {"namespace_id": ns}
+    body = {} if ns is None else {"namespace_id": ns}
+    with patch.object(admin_state, "engine", MagicMock()):
+        return [
+            await api_assets_get(_make_request(path_params={"id": _VALID_NS}, query=query)),
+            await api_assets_list(_make_request(query=query)),
+            await api_assets_advance_lifecycle(
+                _make_request(path_params={"id": _VALID_NS}, body=body)
+            ),
+        ]
+
+
 async def _inventory_responses(ns: str | None) -> list[Any]:
     from nce import admin_state
     from nce.admin_handlers.inventory import (
@@ -183,10 +204,14 @@ async def _inventory_responses(ns: str | None) -> list[Any]:
 
 
 @pytest.mark.asyncio
-async def test_missing_namespace_id_body_identical_across_all_folded_routes() -> None:
+async def test_missing_namespace_id_body_identical_across_all_nine_routes() -> None:
     """The point of the extraction: one body, every surface."""
-    responses = await _economy_responses({}) + await _inventory_responses(None)
-    assert len(responses) == 6
+    responses = (
+        await _economy_responses({})
+        + await _assets_responses(None)
+        + await _inventory_responses(None)
+    )
+    assert len(responses) == 9
     for resp in responses:
         assert resp.status_code == 422
         assert json.loads(resp.body) == _MISSING_BODY
@@ -194,14 +219,16 @@ async def test_missing_namespace_id_body_identical_across_all_folded_routes() ->
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("bad_ns", _MALFORMED)
-async def test_malformed_namespace_id_body_identical_across_all_folded_routes(bad_ns: str) -> None:
+async def test_malformed_namespace_id_body_identical_across_all_nine_routes(bad_ns: str) -> None:
     """A malformed namespace_id is refused pre-gate with one shared body, and
     never reaches asyncpg's ``::uuid`` cast (the DataError-escape defect class).
     """
-    responses = await _economy_responses({"namespace_id": bad_ns}) + await _inventory_responses(
-        bad_ns
+    responses = (
+        await _economy_responses({"namespace_id": bad_ns})
+        + await _assets_responses(bad_ns)
+        + await _inventory_responses(bad_ns)
     )
-    assert len(responses) == 6
+    assert len(responses) == 9
     bodies = set()
     for resp in responses:
         assert resp.status_code == 422

@@ -93,31 +93,49 @@ the kg-upsert template this wave's brief names explicitly
 un-gated write; mirrors ``economy/graph.py``'s ``_upsert_edge`` /
 ``procurement/graph.py``'s ``upsert_offers_edge`` reasoning).
 
-**Flagged gap, not silently resolved:** three of the four most recent
-vertical-engine graph writers (``economy/graph.py``, ``product/graph.py``,
-``system_design/graph.py``) additionally gate every NODE upsert behind
-``nce.entity_resolution.ownership.assert_owner`` (Contract A, deny-by-
-default against ``node_ownership_registry``). ``nce/config_data/
-node-ownership.json`` has **no entry** for ``STOCK_LOCATION`` or
-``INVENTORY_ITEM`` as of this wave, and seeding one is a JSON-config change
-outside this wave's ``Files:`` list (Migrations: NONE; only ``stock.py`` and
-its test file are in scope) — adding ``assert_owner`` calls here with no
-registry row would make EVERY graph-mirror write in this module raise
-``OwnershipError`` unconditionally (deny-by-default), which would also aborts
-the whole ``do_transfer_stock``/``do_record_consumption`` transaction (row
-write included) since the mirror runs in the same transaction. This module
-therefore follows the OLDER, ownership-unguarded template
-(``dynamics365/sync.py``) that this wave's brief cites by name, and uses
+**Ownership gap CLOSED (Batch 130a); one gap remains, disclosed below.**
+``STOCK_LOCATION``, ``INVENTORY_ITEM``, ``GOODS_RECEIPT`` and
+``INVENTORY_RMA`` are now registered in ``nce/config_data/
+node-ownership.json`` with ``owner_engine: "inventory"``, and every NODE
+upsert in this module is gated behind ``nce.entity_resolution.ownership.
+assert_owner`` (Contract A, deny-by-default against
+``node_ownership_registry``) — matching ``economy/graph.py``,
+``product/graph.py`` and ``system_design/graph.py``'s guarded template
+rather than ``dynamics365/sync.py``'s unguarded one (that D365 writer stays
+unguarded on purpose: it is an external-system sync with authority-
+precedence on conflict, not this module's concern).
+
+**Operator-facing consequence, stated explicitly:** ``node_ownership_registry``
+is a PER-NAMESPACE table, and seeding it is additive-only
+(``seed_node_ownership_registry``, insert-only). A namespace whose registry
+has **not yet** been seeded with these four rows will have its entire
+``do_transfer_stock`` / ``do_record_consumption`` transaction ABORTED the
+moment either function tries to mirror a write — the authoritative
+``inventory_items`` row write AND the ``inventory_transactions`` ledger
+row(s) ``append_transaction`` already wrote (Module 11, Wave 11 — B139; it
+runs BEFORE the mirror at every call site in this module) both included,
+because the ledger append, the row write, and the mirror all run inside the
+SAME transaction.
+
+This is not a caller-free vacuum: Batch 131 already put both functions on
+production-reachable surfaces — ``nce/admin_handlers/inventory.py``'s
+stock-levels/transfer/consumption handlers, wired to routes in
+``nce/admin_app.py`` and registered as MCP tools in ``nce/tool_registry.py``.
+An unseeded namespace's transfer/consumption request through EITHER the
+admin/REST route or the MCP tool call fails closed the same way — this
+guard is not landing ahead of its callers. The namespace self-heals the next
+time the orchestrator boots (``nce/orchestrator.py:454-481`` backfills every
+existing namespace immediately after migrations run), but until then every
+transfer/consumption in that namespace fails closed, through every surface
+that reaches it.
+
 ``change_origin='agent'`` (not ``'sync'``, which is reserved for the D365
-external-sync origin) since these are engine-authored writes. **Recommended
-follow-up:** a later wave should add ``{"node_type": "STOCK_LOCATION",
-"owner_engine": "inventory"}`` / ``{"node_type": "INVENTORY_ITEM",
-"owner_engine": "inventory"}`` to ``node-ownership.json`` (mirroring how
-Module 7/Project added its own ``PROJECT``/``GATE``/``TASK`` rows) and
-switch this module's node upserts to the ``assert_owner``-guarded pattern.
-No ``inventory_source_id`` column exists yet either (kg_nodes/kg_edges only
-carry ``d365_source_id`` / ``procurement_source_id`` / ``economy_source_id``
-today) — also deferred, also a schema change outside this wave's scope.
+external-sync origin) is unchanged — these remain engine-authored writes.
+No ``inventory_source_id`` column exists yet (kg_nodes/kg_edges only carry
+``d365_source_id`` / ``procurement_source_id`` / ``economy_source_id``
+today) — this half of the original gap is still deliberately deferred (see
+``OUT OF SCOPE`` in the B130a wave brief); only the *ownership* half was
+discharged by this change.
 
 A van/warehouse's own ``kind``/``name`` metadata is not owned by this module
 (``schema_seed.py`` owns ``stock_locations`` rows) — the ``STOCK_LOCATION``
@@ -127,11 +145,13 @@ this module already has from its own params), never by name.
 Dependency direction (uncle-bob-craft)
 -----------------------------------------
 This module imports only ``asyncpg``, ``nce.db_utils.scoped_pg_session``,
-``nce.events.emit.emit_graph_write``, and (Module 11, Wave 11 —
-``transactions-valuation``) ``nce.vertical_modules.inventory.transactions``'s
-typed reason constants + ``append_transaction`` — no web/HTTP/admin framework
-imports, matching ``schema_seed.py`` and ``economy/contracts.py``'s
-convention. ``NCEEngine`` is imported under ``TYPE_CHECKING`` only.
+``nce.entity_resolution.ownership.assert_owner`` (peer domain core, same
+direction as ``economy/graph.py``), ``nce.events.emit.emit_graph_write``, and
+(Module 11, Wave 11 — ``transactions-valuation``)
+``nce.vertical_modules.inventory.transactions``'s typed reason constants +
+``append_transaction`` — no web/HTTP/admin framework imports, matching
+``schema_seed.py`` and ``economy/contracts.py``'s convention. ``NCEEngine``
+is imported under ``TYPE_CHECKING`` only.
 
 Wave 11 addition: the immutable transaction ledger
 ------------------------------------------------------
@@ -245,6 +265,7 @@ from uuid import UUID
 import asyncpg  # type: ignore[import-untyped]
 
 from nce.db_utils import scoped_pg_session
+from nce.entity_resolution.ownership import assert_owner
 from nce.events.emit import emit_graph_write
 from nce.vertical_modules.inventory.transactions import (
     REASON_CONSUMPTION,
@@ -265,6 +286,10 @@ log = logging.getLogger("nce.vertical_modules.inventory.stock")
 _NODE_TYPE_STOCK_LOCATION = "STOCK_LOCATION"
 _NODE_TYPE_INVENTORY_ITEM = "INVENTORY_ITEM"
 _PRED_AT = "at"
+# Must equal node-ownership.json's "owner_engine" for STOCK_LOCATION /
+# INVENTORY_ITEM exactly — _internal/tools/coverage_check.py:754 already
+# declares Obligation("STOCK_LOCATION", None, ("inventory",)) against it.
+_OWNER_ENGINE = "inventory"
 # Engine-authored write, not an external-system sync — see module docstring's
 # "Graph mirror" section for why this differs from D365 sync's 'sync' origin.
 _CHANGE_ORIGIN = "agent"
@@ -499,8 +524,8 @@ async def _increment_on_hand(
 
 # ---------------------------------------------------------------------------
 # Graph mirror — kg_nodes/kg_edges upsert. See module docstring's "Graph
-# mirror" section for the ownership-guard gap this deliberately does not
-# resolve.
+# mirror" section: node upserts are assert_owner-guarded (Contract A); the
+# remaining, deliberately deferred gap is inventory_source_id, not ownership.
 # ---------------------------------------------------------------------------
 
 
@@ -520,9 +545,14 @@ async def _upsert_kg_node(
 ) -> None:
     """Upsert a single kg_nodes row and emit the transactional outbox event.
 
+    Guarded by ``assert_owner`` (deny-by-default when no registry row
+    exists — Contract A), checked FIRST so a refusal writes nothing at all.
+
     No ``inventory_source_id`` column exists yet, so no per-engine source tag
     is written (see module docstring's flagged gap).
     """
+    await assert_owner(conn, ns_uuid, entity_type, _OWNER_ENGINE)
+
     await conn.execute(
         """
         INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)
@@ -715,6 +745,14 @@ async def do_transfer_stock(engine: NCEEngine, params: dict[str, Any]) -> dict[s
         namespace.
     InsufficientStockError
         ``from_location`` does not hold at least *qty* units of *sku*.
+    OwnershipError
+        The namespace's ``node_ownership_registry`` has no (or a differently
+        owned) row for ``STOCK_LOCATION``/``INVENTORY_ITEM`` when the graph
+        mirror tries to write it. This ABORTS THE ENTIRE TRANSACTION,
+        including the already-applied ``inventory_items`` row write AND the
+        ``inventory_transactions`` ledger row(s) already appended by this
+        call (they run BEFORE the mirror) — the refusal is not limited to
+        the mirror (see module docstring's "Graph mirror" section).
     """
     ns_uuid = _as_ns_uuid(params.get("namespace_id"), "namespace_id")
     sku = _as_sku(params.get("sku"), "sku")
@@ -833,6 +871,14 @@ async def do_record_consumption(engine: NCEEngine, params: dict[str, Any]) -> di
         not a string.
     InsufficientStockError
         *location* does not hold at least *qty* units of *sku*.
+    OwnershipError
+        The namespace's ``node_ownership_registry`` has no (or a differently
+        owned) row for ``STOCK_LOCATION``/``INVENTORY_ITEM`` when the graph
+        mirror tries to write it. This ABORTS THE ENTIRE TRANSACTION,
+        including the already-applied ``inventory_items`` row write AND the
+        ``inventory_transactions`` ledger row(s) already appended by this
+        call (they run BEFORE the mirror) — the refusal is not limited to
+        the mirror (see module docstring's "Graph mirror" section).
     """
     ns_uuid = _as_ns_uuid(params.get("namespace_id"), "namespace_id")
     sku = _as_sku(params.get("sku"), "sku")

@@ -90,6 +90,9 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/agreements/extract` | `api_agreements_extract` |
 | POST | `/api/agreements/review` | `api_agreements_review` |
 | GET | `/api/agreements/{id}` | `api_agreements_detail` |
+| GET | `/api/assets` | `api_assets_list` |
+| GET | `/api/assets/{id}` | `api_assets_get` |
+| POST | `/api/assets/{id}/lifecycle` | `api_assets_advance_lifecycle` |
 | POST | `/api/economy/emit-event` | `api_economy_emit_event` |
 | POST | `/api/economy/match-invoice` | `api_economy_match_invoice` |
 | POST | `/api/economy/periodisering` | `api_economy_periodisering` |
@@ -135,7 +138,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | PUT | `/api/sales/targets` | `api_admin_sales_targets_put` |
 | POST | `/api/search` | `api_search` |
 | POST | `/api/snapshot/export` | `api_snapshot_export` |
+| POST | `/api/system-design/functional-location` | `api_system_design_author_functional_location` |
+| DELETE | `/api/system-design/planned` | `api_system_design_delete_planned` |
 | POST | `/api/system-design/publish-design-docs` | `api_system_design_publish_design_docs` |
+| GET | `/api/system-design/topology` | `api_system_design_get_topology` |
+| POST | `/api/system-design/topology` | `api_system_design_author_topology` |
+| POST | `/api/system-design/validate` | `api_system_design_validate_design_graph` |
 | GET | `/api/vendors/scorecard` | `api_vendors_scorecard` |
 | GET | `/api/vendors/{id}` | `api_vendors_get_vendor` |
 | GET | `/healthz` | `get_healthz` |
@@ -157,6 +165,10 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `a2a_verify_grant_status` |  |  |  |  |
 | `abort_migration` |  | yes |  | yes |
 | `agreements_lookup_terms` |  |  | yes |  |
+| `assets_advance_lifecycle` |  | yes |  |  |
+| `assets_get` |  |  | yes |  |
+| `assets_list` |  |  | yes |  |
+| `assets_ping` |  |  | yes |  |
 | `boost_memory` |  | yes |  |  |
 | `bridge_status` |  |  |  |  |
 | `check_indexing_status` |  |  |  |  |
@@ -247,8 +259,13 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `store_media` |  | yes |  |  |
 | `store_memory` |  | yes |  |  |
 | `suggest_queries` |  |  |  |  |
+| `system_design_author_functional_location` |  | yes |  |  |
+| `system_design_author_topology` |  | yes |  |  |
+| `system_design_delete_planned` | yes | yes |  |  |
+| `system_design_get_topology` |  |  | yes |  |
 | `system_design_ping` |  |  | yes |  |
 | `system_design_publish_design_docs` |  | yes |  |  |
+| `system_design_validate_design_graph` |  |  |  |  |
 | `trigger_consolidation` |  | yes |  |  |
 | `unredact_memory` | yes | yes |  |  |
 | `validate_migration` |  |  |  | yes |
@@ -264,4 +281,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_reliability_radar` |  |  | yes |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 131 REST endpoints, 115 MCP tools._
+_Totals: 139 REST endpoints, 124 MCP tools._

@@ -547,11 +547,20 @@ class TestProjectAdvancePhaseToolRegistry:
         )
 
     def test_mutation_count(self) -> None:
-        """Mutation tools must total 41 (unified realignment registry;
-        +2 Batch 131 inventory_transfer_stock/inventory_record_consumption)."""
-        assert len(MUTATION_TOOLS) == 41
+        """Mutation tools must total 45 (unified realignment registry;
+        +2 Batch 131 inventory_transfer_stock/inventory_record_consumption;
+        +1 Batch 143 assets_advance_lifecycle, M9.W3;
+        +2 Batch 067c system_design_author_topology/
+        system_design_author_functional_location, M6.W13b;
+        +1 Batch 067h system_design_delete_planned, M6.W17 -- the module's
+        first delete path, and the only one of the three that can remove
+        anything)."""
+        assert len(MUTATION_TOOLS) == 45
 
     def test_admin_only_count(self) -> None:
-        """Admin-only tools must total 17 (unified realignment registry;
-        +2 Batch 131 inventory_transfer_stock/inventory_record_consumption)."""
-        assert len(ADMIN_ONLY_TOOLS) == 17
+        """Admin-only tools must total 18 (unified realignment registry;
+        +2 Batch 131 inventory_transfer_stock/inventory_record_consumption;
+        +1 Batch 067h system_design_delete_planned, M6.W17 -- admin_only is the
+        one flag that separates it from the two authoring tools, which are
+        not)."""
+        assert len(ADMIN_ONLY_TOOLS) == 18

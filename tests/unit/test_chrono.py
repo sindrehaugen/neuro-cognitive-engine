@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -48,9 +48,38 @@ def _graph(*edges: tuple[str, str, float], edge_type: str = "connected_to") -> C
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Temporal fixtures — RELATIVE, never dated literals.
+#
+# ``as_of`` timestamps are validated against NCE_MAX_TEMPORAL_LOOKBACK_DAYS
+# (default 90). These tests previously pinned 2026-06-01, which sat inside the
+# window when they were written and fell outside it exactly 90 days later, on
+# 2026-08-30 — the whole class began failing on wall-clock alone, in every repo
+# at once, with no code change.
+#
+# Anchored one day back so the values are always comfortably inside the window
+# and never in the future. ``_t`` and ``_ts`` derive from ONE base, so the
+# string handed to branch_timeline and the datetime asserted against it cannot
+# drift apart.
+# ---------------------------------------------------------------------------
+_CHRONO_BASE = (datetime.now(timezone.utc) - timedelta(days=1)).replace(
+    minute=0, second=0, microsecond=0
+)
+
+
+def _t(hour: int) -> datetime:
+    """A tz-aware datetime inside the lookback window, at *hour* UTC."""
+    return _CHRONO_BASE.replace(hour=hour)
+
+
+def _ts(hour: int) -> str:
+    """The same instant as :func:`_t`, in the string form the API accepts."""
+    return _t(hour).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 class TestChronoContextManager:
     def test_branch_timeline_activates_and_cleans_up(self):
-        target_time = "2026-06-01T12:00:00Z"
+        target_time = _ts(12)
         hypothetical = {"nodes": {"switch_01": {"node_type": "router"}}}
 
         assert get_active_branch() is None
@@ -58,14 +87,14 @@ class TestChronoContextManager:
         with branch_timeline(target_time, hypothetical):
             branch = get_active_branch()
             assert branch is not None
-            assert branch["target_time"] == datetime(2026, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+            assert branch["target_time"] == _t(12)
             assert branch["hypothetical_states"] == hypothetical
 
         assert get_active_branch() is None
 
     def test_nested_branch_timeline_is_rejected(self):
         """Nested branch_timeline must raise RuntimeError; outer branch must survive."""
-        outer_time = "2026-06-01T12:00:00Z"
+        outer_time = _ts(12)
         inner_time = "2026-06-02T08:00:00Z"
         outer_hypo = {"nodes": {"switch_01": {"node_type": "router"}}}
 
@@ -80,17 +109,15 @@ class TestChronoContextManager:
             # Outer branch must survive the failed inner attempt
             surviving_branch = get_active_branch()
             assert surviving_branch is not None
-            assert surviving_branch["target_time"] == datetime(
-                2026, 6, 1, 12, 0, 0, tzinfo=timezone.utc
-            )
+            assert surviving_branch["target_time"] == _t(12)
             assert surviving_branch["hypothetical_states"] == outer_hypo
 
         assert get_active_branch() is None
 
     def test_sequential_branches_after_exit_are_allowed(self):
         """branch→exit→branch must succeed; the guard must not block sequential usage."""
-        t1 = "2026-06-01T09:00:00Z"
-        t2 = "2026-06-01T10:00:00Z"
+        t1 = _ts(9)
+        t2 = _ts(10)
 
         with branch_timeline(t1, {}):
             assert get_active_branch() is not None
@@ -100,27 +127,27 @@ class TestChronoContextManager:
         with branch_timeline(t2, {}):
             branch = get_active_branch()
             assert branch is not None
-            assert branch["target_time"] == datetime(2026, 6, 1, 10, 0, 0, tzinfo=timezone.utc)
+            assert branch["target_time"] == _t(10)
 
         assert get_active_branch() is None
 
     @pytest.mark.anyio
     async def test_contextvar_isolation_across_async_tasks(self):
         """Verify that the chrono branch ContextVar is isolated between coroutines."""
-        t1 = "2026-06-01T10:00:00Z"
-        t2 = "2026-06-01T11:00:00Z"
+        t1 = _ts(10)
+        t2 = _ts(11)
 
         async def worker1():
             with branch_timeline(t1, {}):
                 await asyncio.sleep(0.05)
                 branch = get_active_branch()
-                assert branch["target_time"] == datetime(2026, 6, 1, 10, 0, 0, tzinfo=timezone.utc)
+                assert branch["target_time"] == _t(10)
 
         async def worker2():
             with branch_timeline(t2, {}):
                 await asyncio.sleep(0.02)
                 branch = get_active_branch()
-                assert branch["target_time"] == datetime(2026, 6, 1, 11, 0, 0, tzinfo=timezone.utc)
+                assert branch["target_time"] == _t(11)
 
         await asyncio.gather(worker1(), worker2())
 

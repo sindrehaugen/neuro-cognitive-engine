@@ -158,9 +158,14 @@ def test_tool_count_updated_for_inventory() -> None:
     assert "inventory_stock_levels" in TOOL_REGISTRY
     assert "inventory_transfer_stock" in TOOL_REGISTRY
     assert "inventory_record_consumption" in TOOL_REGISTRY
-    assert len(TOOL_REGISTRY) == 115, (
-        f"Expected 115 tools (112 + 3 inventory from Batch 131), got "
-        f"{len(TOOL_REGISTRY)}: {sorted(TOOL_REGISTRY)}"
+    assert len(TOOL_REGISTRY) == 124, (
+        f"Expected 124 tools (112 + 3 inventory from Batch 131 + 1 assets_ping "
+        f"from Batch 141 + 3 assets tools from Batch 143 + 1 system_design tool "
+        f"from Batch 067b + 2 system_design authoring tools from Batch 067c "
+        f"+ 1 system_design validator from Batch 067d "
+        f"+ 1 system_design retire tool from Batch 067h), "
+        f"got {len(TOOL_REGISTRY)}: "
+        f"{sorted(TOOL_REGISTRY)}"
     )
 
 
@@ -590,9 +595,11 @@ def test_inventory_and_economy_share_one_json_safe() -> None:
     behaviour diverged while inventory's docstring claimed to mirror economy's.
     Assert there is now exactly ONE implementation behind both surfaces, so a
     future fix to one can never again silently skip the other."""
+    from nce.admin_handlers import assets as assets_mod
     from nce.admin_handlers import economy as economy_mod
     from nce.admin_handlers import inventory as inventory_mod
     from nce.admin_handlers._shared import _json_safe, _require_namespace_id
 
     assert inventory_mod._json_safe is economy_mod._json_safe is _json_safe
     assert inventory_mod._require_namespace_id is _require_namespace_id
+    assert assets_mod._require_namespace_id is _require_namespace_id

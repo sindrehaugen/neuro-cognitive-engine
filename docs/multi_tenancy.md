@@ -41,29 +41,29 @@ USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
 WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
 ```
 
-### 2a. Authoritative Source of Truth: `EXPECTED_TENANT_RLS_TABLES` (57 Tables)
+### 2a. Authoritative Source of Truth: `EXPECTED_TENANT_RLS_TABLES` (63 Tables)
 
-**The definitive source of truth for RLS-protected tables across NCE is `EXPECTED_TENANT_RLS_TABLES` defined in [`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py) (57 tables), rather than the partial `schema.sql` loop (42 tables) or the initial migration 001 seed (14 tables).**
+**The definitive source of truth for RLS-protected tables across NCE is `EXPECTED_TENANT_RLS_TABLES` defined in [`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py) (63 tables), rather than the partial `schema.sql` loop (42 tables) or the initial migration 001 seed (14 tables).**
 
-At runtime, NCE executes `verify_rls_catalog_consistency()` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py)) during server startup, inspecting PostgreSQL's `pg_tables`, `pg_class.relrowsecurity`, and `pg_policies` catalogs to strictly validate all 57 tenant tables against the active schema.
+At runtime, NCE executes `verify_rls_catalog_consistency()` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py)) during server startup, inspecting PostgreSQL's `pg_tables`, `pg_class.relrowsecurity`, and `pg_policies` catalogs to strictly validate all 63 tenant tables against the active schema.
 
 The catalog consistency validator categorizes all tables in the engine into three exhaustive sets:
 
-1. **`EXPECTED_TENANT_RLS_TABLES` (57 tables)**: All standard tenant-isolated tables where rows belong to a single tenant and are partitioned by a `namespace_id` column.
+1. **`EXPECTED_TENANT_RLS_TABLES` (63 tables)**: All standard tenant-isolated tables where rows belong to a single tenant and are partitioned by a `namespace_id` column.
 2. **`EXPECTED_SPECIAL_RLS_TABLES` (1 table)**: `a2a_grants`, which enforces a dual-namespace ownership policy (`owner_namespace_id` and `target_namespace_id`).
-3. **`EXPECTED_GLOBAL_TABLES` (4 tables)**: Shared tables intentionally without RLS across all tenants (`embedding_models`, `kg_node_embeddings`, `reembedding_runs`, `event_sequences`).
+3. **`EXPECTED_GLOBAL_TABLES` (5 tables)**: Shared tables intentionally without RLS across all tenants (`embedding_models`, `kg_node_embeddings`, `reembedding_runs`, `event_sequences`, `applied_migrations`). `applied_migrations` is deployment state — which migration files this database has applied — not tenant data, which is why it carries no `namespace_id` (see `nce/migration_ledger.py`).
 
 ```
                               ┌─────────────────────────────────────────────────────────┐
                               │            NCE Database Schema Surface                  │
-                              │                 (62 Total Tables)                       │
+                              │                 (69 Total Tables)                       │
                               └────────────────────────────┬────────────────────────────┘
                                                            │
                      ┌─────────────────────────────────────┼─────────────────────────────────────┐
                      ▼                                     ▼                                     ▼
         ┌─────────────────────────┐           ┌─────────────────────────┐           ┌─────────────────────────┐
         │EXPECTED_TENANT_RLS_TABLES│          │EXPECTED_SPECIAL_RLS_TBLS│           │ EXPECTED_GLOBAL_TABLES  │
-        │       (57 Tables)       │           │        (1 Table)        │           │       (4 Tables)        │
+        │       (63 Tables)       │           │        (1 Table)        │           │       (5 Tables)        │
         │ Single namespace_id RLS │           │  a2a_grants (Dual-NS)   │           │ Intentionally Global    │
         └─────────────────────────┘           └─────────────────────────┘           └─────────────────────────┘
 ```
@@ -73,12 +73,12 @@ The catalog consistency validator categorizes all tables in the engine into thre
 | Surface Definition | Table Count | Scope / Description | Why It Is Not the Source of Truth |
 | :--- | :---: | :--- | :--- |
 | **Migration [`001_enable_rls.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/001_enable_rls.sql)** | 14 | Initial baseline seed (`memories`, `kg_nodes`, `kg_edges`, `pii_redactions`, `memory_salience`, `contradictions`, `snapshots`, `event_log`, `resource_quotas`, `consolidation_runs`, `bridge_subscriptions`, `dead_letter_queue`, `embedding_migrations`, `memory_embeddings`) + `a2a_grants`. | Only seeds initial v1 tables; omits post-v1 migrations ([`002`–`050`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/)). |
-| **[`schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) `tenant_tables` loop** | 42 | Dynamic PL/pgSQL array loop in `nce/schema.sql`. Additional tables (`replay_runs`, `outbox_events`, `saga_execution_log`, `topology_graph`, `economy_contracts`, `stock_locations`, `inventory_items`, etc.) receive policy statements inline outside the loop. | Incomplete as a standalone list; lacks 15 tables handled inline or in newer vertical engine migrations. |
-| **`EXPECTED_TENANT_RLS_TABLES` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py))** | **57** | Authoritative programmatic specification covering all core, cognitive, governance, diagnostics, shared-core, and vertical-engine tables. Validated by `verify_rls_catalog_consistency()` at startup. | **Definitive source of truth**: Enforced by automated runtime assertions against live database catalog metadata. |
+| **[`schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) `tenant_tables` loop** | 42 | Dynamic PL/pgSQL array loop in `nce/schema.sql`. Additional tables (`replay_runs`, `outbox_events`, `saga_execution_log`, `topology_graph`, `economy_contracts`, `stock_locations`, `inventory_items`, etc.) receive policy statements inline outside the loop. | Incomplete as a standalone list; lacks 21 tables (63 − 42) handled inline or in newer vertical engine migrations. |
+| **`EXPECTED_TENANT_RLS_TABLES` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py))** | **63** | Authoritative programmatic specification covering all core, cognitive, governance, diagnostics, shared-core, and vertical-engine tables. Validated by `verify_rls_catalog_consistency()` at startup. | **Definitive source of truth**: Enforced by automated runtime assertions against live database catalog metadata. |
 
-### 2c. Complete Inventory of the 57 Tenant RLS Tables
+### 2c. Complete Inventory of the 63 Tenant RLS Tables
 
-The 57 tables in `EXPECTED_TENANT_RLS_TABLES` span all 15 functional domains of NCE:
+The 63 tables in `EXPECTED_TENANT_RLS_TABLES` span all 17 functional domains of NCE:
 
 | Subsystem Domain | Count | Table Names | Description |
 | :--- | :---: | :--- | :--- |
@@ -92,12 +92,13 @@ The 57 tables in `EXPECTED_TENANT_RLS_TABLES` span all 15 functional domains of 
 | **Shared-Core Foundation** | 4 | `node_ownership_registry`, `entity_merge_queue`, `source_mode_config`, `divergence_log` | Cross-engine entity resolution, survivorship merges, source mode routing (D365/NCE/Both), and divergence logs. |
 | **Product Engine** | 4 | `product_catalog`, `product_prices`, `product_match_feedback`, `product_enrichment_log` | PIM catalog entries, price tiers, distributor matching feedback, and supplier enrichment review audit. |
 | **Procurement Engine** | 1 | `procurement_bid_prices` | Consumer projection cache for Product BID and supplier pricing models. |
-| **System Design Engine** | 1 | `system_design_device_capabilities` | Device capability attributes, functional location models, and design BOM constraints. |
+| **System Design Engine** | 3 | `system_design_device_capabilities`, `system_design_geometry`, `system_design_node_state` | Device capability attributes, functional location models, and design BOM constraints; canvas geometry (x/y in grid units, origin top-left, y-down; rack `position`/`face` in NetBox's vocabulary) plus the per-DESIGN optimistic-concurrency version row; and per-node lifecycle state (NetBox status/revision/salience for DEVICE, RACK and CABLE). `system_design_geometry` deliberately holds **two key grains** under one natural key — geometry rows keyed by a node label (`version IS NULL`) and one version row keyed by the design label (`version IS NOT NULL`). In `system_design_node_state` a row exists only where somebody declared something, so absence stays meaningful. |
 | **Sales Engine** | 3 | `sales_read_model`, `sales_targets`, `sales_signed_baselines` | Pipeline read models, sales quotas/targets, and immutable signed quote baselines. |
 | **Vendors & Contractors** | 2 | `vendor_scorecards`, `contractor_profiles` | Partner contractor profiles (external scoped) and supplier performance scorecards. |
 | **Agreements Engine** | 2 | `agreement_review_queue`, `agreement_extraction_runs` | OCR contract extraction runs and legal/financial human review queue. |
 | **Economy Engine** | 3 | `economy_bom_actual_costs`, `economy_postings`, `economy_contracts` | BOM line actual cost cascades, balanced general ledger postings (`sum=0`), and recurring contract stores. |
-| **Inventory Engine** | 2 | `stock_locations`, `inventory_items` | Logistics location hierarchies (warehouses/zones/bins/vans) and per-SKU inventory stock balances. |
+| **Inventory Engine** | 5 | `stock_locations`, `inventory_items`, `inventory_transactions`, `goods_receipts`, `inventory_rma` | Logistics location hierarchies (warehouses/zones/bins/vans), per-SKU inventory stock balances, the append-only movement/valuation ledger, inbound goods-receipt records, and returns/RMA with WEEE disposal state. |
+| **Assets Engine** | 1 | `assets` | Relational asset register seeded from BOM lines (Module 9), keyed per `(namespace_id, bom_line_id)`. |
 
 ---
 
