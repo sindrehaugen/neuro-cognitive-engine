@@ -67,7 +67,7 @@ logger = logging.getLogger("nce-admin")
 #
 # Shared by the vertical-module admin handlers that echo core results straight
 # into a ``JSONResponse``. These lived as per-module private copies in
-# ``economy.py`` and ``inventory.py``; the ``_json_safe`` copies
+# ``economy.py`` / ``inventory.py`` / ``assets.py``; the ``_json_safe`` copies
 # had DRIFTED -- inventory's dropped the non-finite-float half while its
 # docstring still claimed to mirror economy's -- so they are defined once here.
 # ---------------------------------------------------------------------------

@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 115  # 67 base + 23 ml engine tools + 6 rl tools (detect_causal_cycles + 5 diag_* from Batch 77) + 1 sales tool + 10 vendors tools (vendors_get_vendor/vendors_compute_scorecard from Batch 096 + 3 from Batch 098 + 1 from Batch 102 + 2 from Batch 103 + 2 from Batch 104) + 1 agreements tool (agreements_lookup_terms from Batch 109) + 1 sales A2A tool (sales_get_signed_baseline from PR #26) + 3 economy tools (economy_match_invoice/economy_compute_periodisering/economy_emit_event from Batch 119) + 3 inventory tools (inventory_stock_levels/inventory_transfer_stock/inventory_record_consumption from Batch 131, M11.W3).
+_EXPECTED_TOTAL = 124  # 67 base + 23 ml engine tools + 6 rl tools (detect_causal_cycles + 5 diag_* from Batch 77) + 1 sales tool + 10 vendors tools (vendors_get_vendor/vendors_compute_scorecard from Batch 096 + 3 from Batch 098 + 1 from Batch 102 + 2 from Batch 103 + 2 from Batch 104) + 1 agreements tool (agreements_lookup_terms from Batch 109) + 1 sales A2A tool (sales_get_signed_baseline from PR #26) + 3 economy tools (economy_match_invoice/economy_compute_periodisering/economy_emit_event from Batch 119) + 3 inventory tools (inventory_stock_levels/inventory_transfer_stock/inventory_record_consumption from Batch 131, M11.W3) + 1 assets tool (assets_ping from Batch 141, M9.W1) + 3 assets tools (assets_get/assets_list/assets_advance_lifecycle from Batch 143, M9.W3) + 1 system_design tool (system_design_get_topology from Batch 067b, M6.W13a) + 2 system_design authoring tools (system_design_author_topology/system_design_author_functional_location from Batch 067c, M6.W13b — both cacheable=False, so CACHEABLE_TOOLS is unchanged at 46) + 1 system_design validator (system_design_validate_design_graph from Batch 067d, M6.W13c — cacheable=False AND mutation=False, so CACHEABLE_TOOLS stays 46 and MUTATION_TOOLS stays 44; only this total moves) + 1 system_design retire tool (system_design_delete_planned from Batch 067h, M6.W17 -- the module's FIRST delete path: cacheable=False so CACHEABLE_TOOLS stays 46, but mutation=True AND admin_only=True, so MUTATION_TOOLS moves 44 -> 45 and ADMIN_ONLY_TOOLS moves 17 -> 18 alongside this total; MIGRATION_TOOLS stays 5).
 
 
 def test_registry_has_expected_entries():
@@ -124,6 +124,27 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # one; both are admin_only.
         "inventory_transfer_stock",
         "inventory_record_consumption",
+        # Batch 143 (M9.W3) — Assets Actor mutation: advance-lifecycle writes
+        # assets.lifecycle_state on a legal transition. NOT admin_only — the
+        # MCP tools table in docs/vertical_engines/09-assets-engine.md
+        # specifies cacheable=N, admin_only=N, mutation=Y for this tool.
+        "assets_advance_lifecycle",
+        # Batch 067c (M6.W13b) — System Design authoring: the first external
+        # write path into the design graph. mutation=True is what makes the
+        # dispatch loop bump the MCP cache generation, which is the only thing
+        # that keeps the cacheable system_design_get_topology entry from serving
+        # pre-write data for MCP_CACHE_TTL_S. Neither is admin_only — Copper
+        # calls them as a tenant, and the guard is assert_owner + the SQL
+        # namespace predicate, not an admin key.
+        "system_design_author_topology",
+        "system_design_author_functional_location",
+        # Batch 067h (M6.W17) — the System Design retire tool, and the module's
+        # FIRST delete path. mutation=True for the same cache reason as the two
+        # above, and more sharply: without the generation bump the cacheable
+        # system_design_get_topology entry keeps serving a device the caller
+        # just removed. Unlike the two above it is ALSO admin_only — see
+        # _EXPECTED_ADMIN_ONLY.
+        "system_design_delete_planned",
     }
 )
 
@@ -136,7 +157,12 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 41
+    assert (
+        len(MUTATION_TOOLS) == 45
+    )  # 42 + 2 system_design authoring tools (system_design_author_topology /
+    # system_design_author_functional_location) from Batch 067c, M6.W13b
+    # + 1 system_design retire tool (system_design_delete_planned) from
+    # Batch 067h, M6.W17.
 
 
 # ---------------------------------------------------------------------------
@@ -182,6 +208,8 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "procurement_whatif_spend",
         # System Design vertical module (M6.W1) — skeleton ping, cacheable
         "system_design_ping",
+        # System Design vertical module (M6.W13a) — topology read, cacheable
+        "system_design_get_topology",
         # Sales vertical module (Batch 080) — skeleton ping, cacheable
         "sales_ping",
         # Project vertical module (M7.W3) — phase-gate readiness check, cacheable
@@ -200,6 +228,11 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "economy_emit_event",
         # Inventory vertical module (Batch 131, M11.W3) — Watcher read, cacheable
         "inventory_stock_levels",
+        # Assets vertical module (Batch 141, M9.W1) — skeleton ping, cacheable
+        "assets_ping",
+        # Assets vertical module (Batch 143, M9.W3) — Watcher reads, cacheable
+        "assets_get",
+        "assets_list",
     }
 )
 
@@ -213,8 +246,8 @@ def test_cacheable_tools_exact_match():
 
 def test_cacheable_tools_count():
     assert (
-        len(CACHEABLE_TOOLS) == 42
-    )  # ml +4 product (M2.W3-W5); +3 procurement M1.W4; +3 procurement M1.W12; +1 system_design_ping (M6.W1); +1 sales_ping (Batch 080); +1 project_can_enter_phase (M7.W3); +1 project_suggest_pl (M7.W11); +1 pricing_resolve; +2 resolve/merge_queue_list (C1); +10 vendors tools (Batch 096/098/102/103/104) | rl +3 diag_digest_status/diag_device_health/diag_list_anomalies (Batch 77) | +1 agreements_lookup_terms (Batch 109) | +3 economy tools (Batch 119, M8.W4) | +1 inventory_stock_levels (Batch 131, M11.W3)
+        len(CACHEABLE_TOOLS) == 46
+    )  # ml +4 product (M2.W3-W5); +3 procurement M1.W4; +3 procurement M1.W12; +1 system_design_ping (M6.W1); +1 sales_ping (Batch 080); +1 project_can_enter_phase (M7.W3); +1 project_suggest_pl (M7.W11); +1 pricing_resolve; +2 resolve/merge_queue_list (C1); +10 vendors tools (Batch 096/098/102/103/104) | rl +3 diag_digest_status/diag_device_health/diag_list_anomalies (Batch 77) | +1 agreements_lookup_terms (Batch 109) | +3 economy tools (Batch 119, M8.W4) | +1 inventory_stock_levels (Batch 131, M11.W3) | +1 assets_ping (Batch 141, M9.W1) | +2 assets_get/assets_list (Batch 143, M9.W3); +1 system_design_get_topology (Batch 067b, M6.W13a)
 
 
 # ---------------------------------------------------------------------------
@@ -249,6 +282,12 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         # Batch 131 (M11.W3) — Inventory Actor mutations are admin_only.
         "inventory_transfer_stock",
         "inventory_record_consumption",
+        # Batch 067h (M6.W17) — System Design retire. THE ONLY TOOL IN THE
+        # MODULE THAT CAN REMOVE ANYTHING, and the codebase's first delete
+        # path. The two W13b authoring tools are deliberately NOT admin_only —
+        # Copper calls them as a tenant — and this one deliberately IS: adding
+        # and updating is a canvas operation, taking away is not.
+        "system_design_delete_planned",
     }
 )
 
@@ -261,7 +300,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 17
+    assert len(ADMIN_ONLY_TOOLS) == 18
 
 
 # ---------------------------------------------------------------------------

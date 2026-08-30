@@ -39,6 +39,7 @@ from nce.admin_handlers import settings as settings_mcp_handlers
 from nce.entity_resolution import mcp_handlers as entity_resolution_mcp_handlers
 from nce.pricing import mcp_handlers as pricing_mcp_handlers
 from nce.vertical_modules.agreements import mcp_handlers as agreements_mcp_handlers
+from nce.vertical_modules.assets import mcp_handlers as assets_mcp_handlers
 from nce.vertical_modules.diagnostics import mcp_handlers as diag_mcp_handlers
 from nce.vertical_modules.dynamics365 import mcp_handlers as d365_mcp_handlers
 from nce.vertical_modules.economy import mcp_handlers as economy_mcp_handlers
@@ -516,6 +517,65 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         cacheable=False,
         admin_only=False,
     ),
+    # System Design vertical module tools (M6.W13a) — read-only topology surface.
+    # These three flags are Copper's published contract — do not adjust them.
+    "system_design_get_topology": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_get_topology"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    # System Design vertical module tools (M6.W13b) — the authoring surface: the
+    # first external WRITE path into the design graph.  These names and flags are
+    # Copper's published contract — do not adjust them.  ``mutation=True`` is what
+    # makes the dispatch loop bump the MCP cache generation, and that bump is the
+    # only thing stopping the cacheable ``system_design_get_topology`` entry from
+    # serving pre-write data for the full MCP_CACHE_TTL_S.
+    "system_design_author_topology": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_author_topology"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    "system_design_author_functional_location": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_author_functional_location"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    # System Design vertical module tools (M6.W13c) — the design-graph validator,
+    # row four of Copper's contract table.  Do not adjust the name or the flags.
+    # ``cacheable=False`` on a ``mutation=False`` read is deliberate, not an
+    # oversight: a design under active canvas editing must not be served a stale
+    # verdict for the full MCP_CACHE_TTL_S, and unlike a write there is nothing
+    # here whose cache-generation bump would refresh it.
+    "system_design_validate_design_graph": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_validate_design_graph"),
+        cacheable=False,
+        admin_only=False,
+        mutation=False,
+    ),
+    # System Design vertical module tools (M6.W17) — retire planned nodes, and
+    # THE FIRST DELETE PATH IN THIS CODEBASE.
+    #
+    # 🔴 The NAME IS A DELIBERATE MISMATCH WITH THE BEHAVIOUR. Copper's contract
+    # pins ``system_design_delete_planned`` and ``DELETE /api/system-design/planned``,
+    # so neither may be renamed — but the DEFAULT IS A SOFT RETIRE and nothing is
+    # removed without an explicit ``permanent=true`` (which additionally requires
+    # ``actor``). Every docstring on the path says so in its first line.
+    #
+    # ``admin_only=True`` is the one flag that differs from the two authoring
+    # tools above, and it is the contract, not a preference: those add and
+    # update, this is the only tool in the module that can take something away.
+    # ``mutation=True`` bumps the MCP cache generation, which is the only thing
+    # stopping the cacheable ``system_design_get_topology`` entry from serving
+    # a deleted device back for the full MCP_CACHE_TTL_S.
+    "system_design_delete_planned": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_delete_planned"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
     # ------------------------------------------------------------------
     # Project vertical module tools (M7.W3) — phase-gate readiness check
     # ------------------------------------------------------------------
@@ -701,6 +761,41 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         _h(inventory_mcp_handlers, "handle_inventory_record_consumption"),
         cacheable=False,
         admin_only=True,
+        mutation=True,
+    ),
+    # ------------------------------------------------------------------
+    # Assets vertical module tools (Batch 141, M9.W1) — skeleton ping
+    # ------------------------------------------------------------------
+    "assets_ping": ToolSpec(
+        _h(assets_mcp_handlers, "handle_assets_ping"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    # ------------------------------------------------------------------
+    # Assets vertical module tools (Batch 143, M9.W3) — assets-surface:
+    # get/list (Watcher reads, cacheable) + advance-lifecycle (Actor,
+    # mutation). Flags for assets_advance_lifecycle match the MCP tools
+    # table in docs/vertical_engines/09-assets-engine.md exactly
+    # (cacheable=N, admin_only=N, mutation=Y) — unlike Inventory/Project's
+    # Actor tools, this one is NOT admin_only per that table.
+    # ------------------------------------------------------------------
+    "assets_get": ToolSpec(
+        _h(assets_mcp_handlers, "handle_assets_get"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "assets_list": ToolSpec(
+        _h(assets_mcp_handlers, "handle_assets_list"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "assets_advance_lifecycle": ToolSpec(
+        _h(assets_mcp_handlers, "handle_assets_advance_lifecycle"),
+        cacheable=False,
+        admin_only=False,
         mutation=True,
     ),
 }

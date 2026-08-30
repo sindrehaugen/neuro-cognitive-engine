@@ -1590,6 +1590,492 @@ TOOLS = [
             "required": ["namespace_id"],
         },
     ),
+    Tool(
+        name="system_design_ping",
+        description=(
+            "[M6.W1] Liveness probe for the System Design vertical. Verifies the "
+            "caller's namespace_id is present and returns "
+            '{"ok": true, "engine": "system_design"}. Reads nothing and changes '
+            "nothing."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Caller namespace UUID.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="system_design_publish_design_docs",
+        description=(
+            "[M6.W11] EXPORT ONLY - publish a System Design DESIGN and its "
+            "DESIGN_LINE / FUNCTIONAL_LOCATION tree to Lucid. Lucid IMPORT is "
+            "cut and is not reachable here. Returns a 'lucid_url', which is "
+            "null when Lucid credentials are unset - an unconfigured export is "
+            "a clean no-op, not an error. Also reachable over REST as POST "
+            "/api/system-design/publish-design-docs."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Caller namespace UUID.",
+                },
+                "design_id": {
+                    "type": "string",
+                    "description": "Design identifier (the DESIGN node's id).",
+                },
+            },
+            "required": ["namespace_id", "design_id"],
+        },
+    ),
+    Tool(
+        name="system_design_get_topology",
+        description=(
+            "[M6.W13a] Read-only: return a System Design DESIGN's full topology — "
+            "the design node, its functional-location tree, its devices (each with "
+            "AVIXA capability attributes and ports), its RACKS (each with capability "
+            "attributes), its cables, and the edges between them. Also returns "
+            "'geometry' - the canvas layout of every node in the design, keyed by "
+            "node label, where x/y are CANVAS GRID UNITS with the origin TOP-LEFT and "
+            "y increasing DOWNWARD (room dimensions are not x/y; they are in "
+            "meta.copper.room.w/d/h, in METERS) - and 'version', the design's "
+            "optimistic-concurrency token to pass back as expected_version on the "
+            "next write. A node absent from 'geometry' has never been placed. "
+            "'version' 0 means the design has never been authored."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Caller namespace UUID.",
+                },
+                "design_id": {
+                    "type": "string",
+                    "description": "Design identifier (the DESIGN node's id).",
+                },
+                "statuses": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "[M6.W16b] LIVE lifecycle filter — no longer a no-op. Narrows "
+                        "'devices', 'racks' and 'cables' to nodes whose stored status is "
+                        "one of these values; a device's ports follow their device. It "
+                        "does NOT narrow 'design', 'functional_locations', 'edges', "
+                        "'geometry', 'state' or 'version' — a filtered read is a view of "
+                        "the lifecycle-bearing nodes, not a subgraph, so you can still "
+                        "see what a filtered-out node was attached to and why it was "
+                        "excluded. A NODE WITH NO STATE ROW NEVER MATCHES, and neither "
+                        "does one whose status is null: absence of a declaration is not "
+                        "the default status, and everything authored before M6.W16 is "
+                        "absent. The vocabulary is NetBox's and is per node type — it is "
+                        "spelled once, on system_design_author_topology's devices / "
+                        "connections / racks descriptions, and is not repeated here. "
+                        "Values are matched verbatim: no case folding, no trimming, and "
+                        "an unknown value is accepted and simply matches nothing. Omit "
+                        "it, or send [], for no filter."
+                    ),
+                },
+            },
+            "required": ["namespace_id", "design_id"],
+        },
+    ),
+    Tool(
+        name="system_design_author_topology",
+        description=(
+            "[M6.W13b] Author a System Design DESIGN's device topology: DEVICE / "
+            "PORT / RACK / CABLE nodes, their AVIXA capability attributes, and the "
+            "signal-path edges between ports. ADDITIVE ONLY: re-authoring the same "
+            "input is idempotent (nothing is duplicated) and re-authoring changed "
+            "input updates what you send, but nothing is ever removed. Dropping a "
+            "device from the input does NOT delete it — the node and its edges stay "
+            "in the graph. Removal is W17; until then this cannot express a deletion."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Caller namespace UUID.",
+                },
+                "design_id": {
+                    "type": "string",
+                    "description": "Design identifier (the DESIGN node's id).",
+                },
+                "devices": {
+                    "type": "array",
+                    "items": {"type": "object", "additionalProperties": True},
+                    "description": (
+                        "Device dicts: device_ref, optional capability (AVIXA Revit "
+                        "params; its 'extra' object carries the reserved copper.* "
+                        "component-class keys verbatim, unvalidated), optional ports "
+                        "(port_ref + capability + optional geometry), optional "
+                        "rack_ref, optional geometry. GEOMETRY is an object whose members are "
+                        "exactly: x, y (CANVAS GRID UNITS, origin top-left, y-DOWN - not "
+                        "metres, and NCE converts nothing), rack_position, rack_face, "
+                        "cable_length_m, cable_type and meta. ANY OTHER MEMBER IS REJECTED "
+                        "(422) and fails the whole write - a near-miss like 'rackPosition' is "
+                        "refused rather than silently dropped; put anything outside that list "
+                        "inside meta, including room dimensions under copper.room.w / "
+                        "copper.room.d / copper.room.h, in METRES. Numbers must be JSON "
+                        "numbers: strings are rejected (\"12.5\" is NOT accepted), booleans "
+                        "are rejected, and NaN / Infinity / any magnitude above the largest "
+                        "finite IEEE double are rejected because they cannot survive the JSON "
+                        "round trip (the bound is that double exactly, which is slightly "
+                        "LARGER than the familiar 17-digit 1.797693134862316e308 form of it, "
+                        "so do not treat that shorthand as the limit). rack_position must be "
+                        "a multiple of 0.5 (a whole or half rack unit) between -999.5 and "
+                        "999.5 - 1.27 is refused, not rounded. rack_face is 'front' or 'rear' "
+                        "(NetBox vocabulary, contractual). meta must be a JSON object and "
+                        "must not contain NaN or Infinity at any depth. Omitted members keep "
+                        "their stored value; meta is replaced wholesale; a KNOWN member may "
+                        "be null and is then treated as not supplied, so an object whose "
+                        "every member is null counts as no geometry at all - but null does "
+                        "NOT excuse an unknown member: {'rackPosition': null} is rejected "
+                        "exactly like {'rackPosition': 3}. Omitting geometry entirely leaves "
+                        "the node's existing geometry untouched - this cannot express 'no "
+                        "geometry any more'. [M6.W16] A device may also carry status, "
+                        "revision and salience. status is NetBox's DEVICE vocabulary and "
+                        "nothing else: planned | staged | active | offline | decommissioning "
+                        "| inventory | failed (a CABLE's or a RACK's vocabulary is REJECTED "
+                        "per node type, as invalid params). LIFECYCLE STATE IS RECORDED ONLY "
+                        "FOR A DEVICE THIS CALL CREATES, OR ONE YOU SEND A KEY FOR: re- "
+                        "authoring an existing device without these keys - an ordinary canvas "
+                        "save, or moving it on the canvas - records NOTHING and leaves it "
+                        "with no lifecycle at all. That is deliberate: it is what keeps "
+                        "already-installed equipment out of retirement flows. A device this "
+                        "call creates with no status is stored as 'planned'; sending only "
+                        "revision on an existing device stores the revision and leaves its "
+                        "status undeclared. This tool performs no transition, so it cannot "
+                        "promote planned to active. An explicit null says nothing and is read "
+                        "as absent. revision is free text stored verbatim and interpreted by "
+                        "the caller. salience must be a FINITE, NON-NEGATIVE number - NaN and "
+                        "Infinity are rejected, because a stored NaN would sort above every "
+                        "real salience. A device's PORTS take NONE of these three: a port has "
+                        "no lifecycle status, and sending one on a port - in any casing, with "
+                        "or without the cable_ prefix, at the top level or inside its "
+                        "capability or geometry object - is REJECTED (invalid params) rather "
+                        "than silently dropped. The same applies to a device: putting status, "
+                        "revision or salience INSIDE capability or geometry is REJECTED, "
+                        "because those objects store only their own fields and the lifecycle "
+                        "key would be dropped."
+                    ),
+                },
+                "connections": {
+                    "type": "array",
+                    "items": {"type": "object", "additionalProperties": True},
+                    "description": (
+                        "Optional port-to-port signal connections: from_device_ref, "
+                        "from_port_ref, to_device_ref, to_port_ref, optional "
+                        "confidence (0-1), cable_ref, and cable_geometry. "
+                        "cable_geometry (the SAME object and the same rules as a device's "
+                        "geometry - see the devices parameter, including the rejection of "
+                        "unknown members - with cable_length_m and cable_type the useful "
+                        "ones) is written to the CABLE NODE and is ignored unless cable_ref "
+                        "is also given: it is not the edge's own layout, which is why it is "
+                        "not called 'geometry'. [M6.W16] cable_status, cable_revision and "
+                        "cable_salience follow the same rule: they describe the CABLE NODE, "
+                        "not the edge. Sending them WITHOUT a cable_ref is REJECTED rather "
+                        "than ignored - there is no node for them to describe - and so is "
+                        "sending the unprefixed status / revision / salience on a connection, "
+                        "in any casing. cable_status is NetBox's CABLE vocabulary and nothing "
+                        "else: planned | connected | decommissioning. As with devices, state "
+                        "is recorded only for a cable this call creates or one you send a key "
+                        "for, so re-authoring existing cable records nothing."
+                    ),
+                },
+                "racks": {
+                    "type": "array",
+                    "items": {"type": "object", "additionalProperties": True},
+                    "description": (
+                        "Optional rack dicts: rack_ref + optional capability + "
+                        "optional geometry - the SAME object and the same rules as a device's "
+                        "geometry, unknown-member rejection included. [M6.W16] A rack may "
+                        "also carry status, revision and salience, under the same rules as a "
+                        "device's: recorded only for a rack this call creates or one you send "
+                        "a key for. status is NetBox's RACK vocabulary and nothing else: "
+                        "reserved | available | planned | active | deprecated."
+                    ),
+                },
+                "source_id": {
+                    "type": "string",
+                    "description": "Optional System Design source record id (retirement tracking).",
+                },
+                "actor": {
+                    "type": "string",
+                    "description": (
+                        "Optional UPN of the human on whose behalf this write is made. "
+                        "The API key authenticates the calling service; this attributes "
+                        "the person. Omit it and no actor is recorded — it is never "
+                        "invented or defaulted to a service identity."
+                    ),
+                },
+                "expected_version": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": (
+                        "Optional optimistic-concurrency token: the 'version' you got "
+                        "from system_design_get_topology. Supply it and the write is a "
+                        "compare-and-swap - if the design has moved on you get a "
+                        "DISTINCT conflict error (JSON-RPC code -32040, reason "
+                        "'version_conflict', carrying expected_version and "
+                        "actual_version) and NOTHING is written; re-read and retry. "
+                        "Omit it and the write is last-writer-wins. Either way THIS TOOL "
+                        "increments the design's version and returns the new value as "
+                        "'version'. That covers writes made through this tool and "
+                        "system_design_author_functional_location, and only those: "
+                        "three other System Design modules (from_quote, to_quote, "
+                        "netbox_bridge) write design nodes and edges without moving "
+                        "the token. All three are unwired today, but do not assume the "
+                        "token covers every possible change to a design. "
+                        "0 means the design has never been authored."
+                    ),
+                },
+            },
+            "required": ["namespace_id", "design_id", "devices"],
+        },
+    ),
+    Tool(
+        name="system_design_author_functional_location",
+        description=(
+            "[M6.W13b] Author a System Design DESIGN plus its customer-site "
+            "SITE > BUILDING > FLOOR > ROOM > POSITION functional-location tree and "
+            "any DESIGN_LINE nodes. ADDITIVE ONLY: re-authoring the same input is "
+            "idempotent, but omitting a building, floor, room, position or design "
+            "line does NOT remove it — the node and its edges stay in the graph. "
+            "Removal is W17; until then this cannot express a deletion."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Caller namespace UUID.",
+                },
+                "namespace_slug": {
+                    "type": "string",
+                    "description": (
+                        "Human-readable namespace slug. It is the deterministic prefix "
+                        "of every FL: label, so the same slug must be used every time "
+                        "for a site or a second parallel tree is authored."
+                    ),
+                },
+                "design_id": {
+                    "type": "string",
+                    "description": "Design identifier (the DESIGN node's id).",
+                },
+                "site_name": {
+                    "type": "string",
+                    "description": "Top-level site name (root of the hierarchy).",
+                },
+                "buildings": {
+                    "type": "array",
+                    "items": {"type": "object", "additionalProperties": True},
+                    "description": (
+                        "Building dicts: name + optional geometry + optional floors, "
+                        "each with name + optional geometry + optional rooms, each "
+                        "with name + optional geometry + optional positions. "
+                        "positions are bare strings and therefore cannot carry "
+                        "geometry. "
+                        "GEOMETRY is an object whose members are exactly: x, y "
+                        "(CANVAS GRID UNITS, origin top-left, y-DOWN - not metres, and "
+                        "NCE converts nothing), rack_position, rack_face, "
+                        "cable_length_m, cable_type and meta. ANY OTHER MEMBER IS "
+                        "REJECTED (422) and fails the whole write - a near-miss like "
+                        "'rackPosition' is refused rather than silently dropped; put "
+                        "anything outside that list inside meta, including room "
+                        "dimensions under copper.room.w / copper.room.d / "
+                        "copper.room.h, in METRES. Numbers must be JSON numbers: "
+                        "strings are rejected (\"12.5\" is NOT accepted), booleans are "
+                        "rejected, and NaN / Infinity / any magnitude above the "
+                        "largest finite IEEE double are rejected because they cannot "
+                        "survive the JSON round trip (the bound is that double exactly, "
+                        "which is slightly LARGER than the familiar 17-digit "
+                        "1.797693134862316e308 form of it, so do not treat that "
+                        "shorthand as the limit). rack_position must be a "
+                        "multiple of 0.5 (a whole or half rack unit) between -999.5 "
+                        "and 999.5 - 1.27 is refused, not rounded. rack_face is "
+                        "'front' or 'rear' (NetBox vocabulary, contractual). meta "
+                        "must be a JSON object and must not contain NaN or Infinity "
+                        "at any depth. Omitted members keep their stored value; meta "
+                        "is replaced wholesale; a KNOWN member may be null and is "
+                        "then treated as not supplied, so an object whose every member "
+                        "is null counts as no geometry at all - but null does NOT excuse "
+                        "an unknown member: {'rackPosition': null} is rejected exactly "
+                        "like {'rackPosition': 3}. Omitting geometry entirely "
+                        "leaves the node's existing geometry untouched - this cannot "
+                        "express 'no geometry any more'."
+                    ),
+                },
+                "design_lines": {
+                    "type": "array",
+                    "items": {"type": "object", "additionalProperties": True},
+                    "description": (
+                        "Optional DESIGN_LINE dicts: line_ref, manufacturer, "
+                        "mfr_part_no, optional confidence (0-1) and source_id."
+                    ),
+                },
+                "source_id": {
+                    "type": "string",
+                    "description": "Optional System Design source record id (retirement tracking).",
+                },
+                "actor": {
+                    "type": "string",
+                    "description": (
+                        "Optional UPN of the human on whose behalf this write is made. "
+                        "The API key authenticates the calling service; this attributes "
+                        "the person. Omit it and no actor is recorded — it is never "
+                        "invented or defaulted to a service identity."
+                    ),
+                },
+                "expected_version": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": (
+                        "Optional optimistic-concurrency token: the 'version' you got "
+                        "from system_design_get_topology. Supply it and the write is a "
+                        "compare-and-swap - if the design has moved on you get a "
+                        "DISTINCT conflict error (JSON-RPC code -32040, reason "
+                        "'version_conflict', carrying expected_version and "
+                        "actual_version) and NOTHING is written; re-read and retry. "
+                        "Omit it and the write is last-writer-wins. Either way THIS TOOL "
+                        "increments the design's version and returns the new value as "
+                        "'version'. That covers writes made through this tool and "
+                        "system_design_author_functional_location, and only those: "
+                        "three other System Design modules (from_quote, to_quote, "
+                        "netbox_bridge) write design nodes and edges without moving "
+                        "the token. All three are unwired today, but do not assume the "
+                        "token covers every possible change to a design. "
+                        "0 means the design has never been authored."
+                    ),
+                },
+            },
+            "required": [
+                "namespace_id",
+                "namespace_slug",
+                "design_id",
+                "site_name",
+                "buildings",
+            ],
+        },
+    ),
+    Tool(
+        name="system_design_validate_design_graph",
+        description=(
+            "[M6.W13c] Read-only: run the five System Design design-quality checks "
+            "over a DESIGN's graph — signal-flow continuity, port/format "
+            "compatibility, power/heat budget, SPOF redundancy, and AVIXA "
+            "checkpoint conformance — and return {passed, reasons}. 'passed' is "
+            "true only when every check passes. Two behaviours are deliberate and "
+            "will not change: an unknown signal format does NOT fail the design, "
+            "and the power/heat budget is INFORMATIONAL — it always contributes "
+            "its totals to 'reasons' and never sets passed=false, because NCE "
+            "holds no budget ceiling. So a non-empty 'reasons' does not by itself "
+            "mean the design failed: read 'passed'."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Caller namespace UUID.",
+                },
+                "design_id": {
+                    "type": "string",
+                    "description": "Design identifier (the DESIGN node's id).",
+                },
+            },
+            "required": ["namespace_id", "design_id"],
+        },
+    ),
+    Tool(
+        name="system_design_delete_planned",
+        description=(
+            "[M6.W17] SOFT-RETIRES BY DEFAULT - the name says 'delete' and the "
+            "default behaviour does not delete. The name and the matching "
+            "DELETE /api/system-design/planned route are Copper's pinned "
+            "contract, so neither is renamed; read this line rather than the "
+            "name. By default this sets each named node's lifecycle status to "
+            "its node type's retired value ('decommissioning' for a DEVICE or a "
+            "CABLE, 'deprecated' for a RACK - the NetBox vocabularies are "
+            "disjoint and a RACK has no 'decommissioning') and floors its "
+            "salience. NOTHING IS REMOVED. Pass permanent=true for a genuine "
+            "transactional delete of the nodes, their edges, the PORT children "
+            "of any DEVICE, and their capability / geometry / lifecycle rows - "
+            "that path additionally REQUIRES 'actor'. Only nodes whose declared "
+            "status is 'planned' can be touched: a node with no lifecycle state "
+            "row, or one whose status is NULL, is DENIED, and no row is the "
+            "normal state of everything authored before W16. Retiring 'active' "
+            "equipment is OUT OF SCOPE and cannot be expressed here. ONE DENIED "
+            "NODE DENIES THE WHOLE CALL and nothing is changed."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Caller namespace UUID.",
+                },
+                "design_id": {
+                    "type": "string",
+                    "description": (
+                        "Design identifier (the DESIGN node's id). Every label in "
+                        "node_labels must belong to it."
+                    ),
+                },
+                "node_labels": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Canonical node labels to retire, exactly as returned by "
+                        "system_design_get_topology. DEVICE / RACK / CABLE only - a "
+                        "PORT label is refused, because NetBox has no lifecycle "
+                        "status for a port and one cannot be declared planned; ports "
+                        "are removed with their device on the permanent path. "
+                        "Duplicates collapse. At least one is required."
+                    ),
+                },
+                "permanent": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "false (default) soft-retires and removes nothing. true "
+                        "PERMANENTLY DELETES and requires 'actor'. Must be a JSON "
+                        "boolean: a string is refused rather than coerced, because "
+                        "the string \"false\" is truthy and would delete."
+                    ),
+                },
+                "actor": {
+                    "type": "string",
+                    "description": (
+                        "The human's UPN. Optional on the default soft-retire path "
+                        "and never invented when omitted (Rev 2 section 1), but "
+                        "MANDATORY when permanent=true - an unattributable permanent "
+                        "delete fails closed."
+                    ),
+                },
+                "expected_version": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": (
+                        "Optimistic-concurrency token from system_design_get_topology. "
+                        "Supply it and the retire is a compare-and-swap: a stale token "
+                        "is refused with -32040 and nothing is changed. Omit it for "
+                        "last-writer-wins. The design's version is incremented either "
+                        "way, so a client polling the token sees that the retire "
+                        "happened."
+                    ),
+                },
+            },
+            "required": ["namespace_id", "design_id", "node_labels"],
+        },
+    ),
 ]
 
 # Conditionally include migration tools based on operator config.

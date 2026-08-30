@@ -14,6 +14,7 @@ from starlette.routing import Route
 from nce import admin_http_handlers as h
 from nce import admin_state
 from nce.admin_handlers import agreements as agreements_handlers
+from nce.admin_handlers import assets as assets_handlers
 from nce.admin_handlers import economy as economy_handlers
 from nce.admin_handlers import entity_resolution as entity_resolution_handlers
 from nce.admin_handlers import inventory as inventory_handlers
@@ -655,6 +656,49 @@ def build_admin_routes() -> list[Route]:
             endpoint=system_design_handlers.api_system_design_publish_design_docs,
             methods=["POST"],
         ),
+        # System Design vertical module endpoints (M6.W13a) — read-only topology
+        Route(
+            "/api/system-design/topology",
+            endpoint=system_design_handlers.api_system_design_get_topology,
+            methods=["GET"],
+        ),
+        # System Design vertical module endpoints (M6.W13b) — authoring (writes).
+        # The POST shares its path with the W13a GET above: Starlette records a
+        # path-but-not-method hit as a PARTIAL match and keeps scanning, so the
+        # method-specific route below still wins for POST. Two entries, not one
+        # merged `methods=["GET", "POST"]`, because they are two endpoints.
+        Route(
+            "/api/system-design/topology",
+            endpoint=system_design_handlers.api_system_design_author_topology,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/system-design/functional-location",
+            endpoint=system_design_handlers.api_system_design_author_functional_location,
+            methods=["POST"],
+        ),
+        # System Design vertical module endpoints (M6.W13c) — the design-graph
+        # validator. POST, but a pure read: it writes nothing and therefore does
+        # not bump the MCP cache generation.
+        Route(
+            "/api/system-design/validate",
+            endpoint=system_design_handlers.api_system_design_validate_design_graph,
+            methods=["POST"],
+        ),
+        # System Design vertical module endpoints (M6.W17) — retire planned
+        # nodes.  THE FIRST DELETE PATH IN THIS CODEBASE.
+        #
+        # 🔴 The VERB IS A DELIBERATE MISMATCH WITH THE DEFAULT BEHAVIOUR.
+        # ``DELETE`` and this path are Copper's pinned contract row, so neither
+        # may change — but the default is a SOFT RETIRE (a lifecycle status
+        # change plus a salience floor) and nothing is removed without an
+        # explicit ``permanent: true`` in the body, which additionally requires
+        # ``actor``.  Stated in the handler's first docstring line.
+        Route(
+            "/api/system-design/planned",
+            endpoint=system_design_handlers.api_system_design_delete_planned,
+            methods=["DELETE"],
+        ),
         # ------------------------------------------------------------------
         # Vendors vertical module endpoints (M4.W3)
         # ------------------------------------------------------------------
@@ -773,6 +817,27 @@ def build_admin_routes() -> list[Route]:
         Route(
             "/api/inventory/record-consumption",
             endpoint=inventory_handlers.api_inventory_record_consumption,
+            methods=["POST"],
+        ),
+        # ------------------------------------------------------------------
+        # Assets vertical module endpoints (Batch 143, M9.W3) — assets-surface
+        # ------------------------------------------------------------------
+        # No literal path under /api/assets/ besides {id} and {id}/lifecycle,
+        # so there is no Starlette literal-vs-{id} ordering hazard here (unlike
+        # /api/product/enrichment/review vs /api/product/{id}).
+        Route(
+            "/api/assets",
+            endpoint=assets_handlers.api_assets_list,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/assets/{id}",
+            endpoint=assets_handlers.api_assets_get,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/assets/{id}/lifecycle",
+            endpoint=assets_handlers.api_assets_advance_lifecycle,
             methods=["POST"],
         ),
     ]

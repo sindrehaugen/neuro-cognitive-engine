@@ -61,6 +61,11 @@ EventType = Literal[
     "d365_sla_breach",
     # PROJECT_EVENTS — phase-transition audit trail (M7.W4a; Hendelser.jsx feed)
     "project_phase_advanced",
+    # SYSTEM_DESIGN_EVENTS — authoring audit trail (M6.W13b). Records WHICH HUMAN
+    # (``actor``, their UPN) a design write was made on behalf of. The MCP/HMAC key
+    # authenticates the calling *service*; that is a different fact, and it is never
+    # substituted for the human. ``actor`` is optional and absent when not supplied.
+    "system_design_authored",
     # INGESTION_EVENTS — Diagnostic Log Digestion Engine (Phase 1)
     "ingestion_completed",
     # ACTIVE_LEARNING_EVENTS — human quarantine decisions (Batch 112)

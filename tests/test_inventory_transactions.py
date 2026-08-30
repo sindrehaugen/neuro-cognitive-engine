@@ -52,6 +52,7 @@ import asyncpg  # type: ignore[import-untyped]
 import pytest
 
 from nce.auth import set_namespace_context
+from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
 from nce.vertical_modules.inventory import transactions
 from nce.vertical_modules.inventory.stock import do_record_consumption, do_transfer_stock
 from nce.vertical_modules.inventory.transactions import (
@@ -305,6 +306,23 @@ async def _seed_transaction(
     return row_id
 
 
+async def _seed_ownership(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """Seed the node-ownership registry so Inventory's guarded graph mirror
+    (``_upsert_kg_node``, Batch 130a) passes for this namespace. Verbatim
+    copy of ``tests/test_inventory_stock.py``'s ``_seed_ownership`` — one
+    idiom, not two. NOT called from conftest.py's fixtures on purpose (see
+    that file's own docstring): it would disarm two deliberate deny-by-
+    default proofs elsewhere (``tests/test_project_convert.py:587``,
+    ``tests/test_system_design_graph.py:549``)."""
+    async with pg_pool.acquire() as conn:
+        async with conn.transaction():
+            await set_namespace_context(conn, namespace_id)
+            await seed_node_ownership_registry(conn, namespace_id)
+
+
 # ---------------------------------------------------------------------------
 # 3a. Every movement appends the matching typed ledger row(s)
 # ---------------------------------------------------------------------------
@@ -316,6 +334,7 @@ async def test_do_transfer_stock_appends_transfer_out_and_transfer_in_rows(
     pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
     namespace_id: uuid.UUID,
 ) -> None:
+    await _seed_ownership(pg_pool, namespace_id)
     loc_a = await _seed_location(pg_pool, namespace_id, "From")
     loc_b = await _seed_location(pg_pool, namespace_id, "To")
     await _seed_item(pg_pool, namespace_id, "SKU-LEDGER-XFER", loc_a, on_hand="10")
@@ -362,6 +381,7 @@ async def test_do_record_consumption_appends_consumption_row_with_work_order_ref
     pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
     namespace_id: uuid.UUID,
 ) -> None:
+    await _seed_ownership(pg_pool, namespace_id)
     loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
     await _seed_item(pg_pool, namespace_id, "SKU-LEDGER-CONSUME", loc, on_hand="10")
     engine = _EngineStub(pg_pool)

@@ -47,6 +47,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from starlette.datastructures import QueryParams
 
 _VALID_NS = "11111111-2222-3333-4444-555555555555"
 
@@ -97,6 +98,7 @@ _ROUTES: list[tuple[str, str, str, dict[str, Any], dict[str, str]]] = [
         _MISSING_QUERY_PARAM,
     ),
     ("system_design", "api_system_design_publish_design_docs", "body", {}, _MISSING_FIELD),
+    ("system_design", "api_system_design_get_topology", "query", {}, _MISSING_QUERY_PARAM),
 ]
 
 _ROUTE_IDS = [f"{mod}.{fn}" for mod, fn, _, _, _ in _ROUTES]
@@ -106,6 +108,14 @@ _ROUTE_IDS = [f"{mod}.{fn}" for mod, fn, _, _, _ in _ROUTES]
 _EXTRA_BODY_FIELDS: dict[str, dict[str, Any]] = {
     "api_system_design_publish_design_docs": {"design_id": "DESIGN:1"},
     "api_project_advance_phase": {"target_phase": "G1", "actor": "alice"},
+}
+
+#: Same idea for routes that read their required fields from the query string:
+#: ``api_system_design_get_topology`` refuses a blank ``design_id`` after
+#: ``namespace_id``, so the query must carry one for the namespace assertions --
+#: and not the design_id check -- to be the thing under test.
+_EXTRA_QUERY_FIELDS: dict[str, dict[str, str]] = {
+    "api_system_design_get_topology": {"design_id": "DESIGN:1"},
 }
 
 _POOL_METHODS = ("acquire", "fetch", "fetchrow", "fetchval", "execute", "executemany")
@@ -138,14 +148,17 @@ def _make_request(
     """Minimal Starlette-like request mock (mirrors test_admin_shared_namespace_id.py)."""
     req = MagicMock()
     req.json = AsyncMock(return_value=body or {})
-    req.query_params = query or {}
+    # Real QueryParams, not a bare dict: Starlette's type supports ``getlist``
+    # for repeatable params, and a dict would turn that call into an
+    # AttributeError the route swallows as a 500.
+    req.query_params = QueryParams(query or {})
     req.path_params = path_params or {}
     return req
 
 
 def _build_request(function: str, source: str, extra: dict[str, Any], ns: str | None) -> MagicMock:
     payload: dict[str, Any] = dict(_EXTRA_BODY_FIELDS.get(function, {}))
-    query: dict[str, str] = {}
+    query: dict[str, str] = dict(_EXTRA_QUERY_FIELDS.get(function, {}))
     if ns is not None:
         if source == "body":
             payload["namespace_id"] = ns

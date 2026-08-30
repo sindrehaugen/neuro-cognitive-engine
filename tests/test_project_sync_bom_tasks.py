@@ -18,8 +18,23 @@ Validates the Acceptance criteria from Batch_073_Module_7_Wave_6.md:
      moves from PLANNED → ORDERED the PROCUREMENT generates-edge is removed
      (the task node stays as provenance).
 
-All tests are @pytest.mark.integration — require a live Postgres with
-schema.sql + migrations applied.
+Also covers Wave M0.W20b — c4-payload-contract (fail-loud, defect B):
+  6. ``_handle_bom_line_status_changed`` raises ``EngineNotRegisteredError``
+     (never logs-and-returns) when no engine is registered.
+  7. That undeliverable event lands in ``dead_letter_queue`` with
+     ``published_at`` left NULL — proven end-to-end through the real relay.
+  8. The SAME handler raises ``IncompletePayloadError`` (never logs-and-
+     returns) when the payload is missing a required field (e.g. ``status``)
+     even though an engine IS registered -- the identical bug class as 6/7,
+     caught in review as a second live instance in the same function.
+  9. That undeliverable event ALSO lands in ``dead_letter_queue`` with
+     ``published_at`` left NULL, proven end-to-end through the real relay.
+
+Most tests are @pytest.mark.integration — require a live Postgres with
+schema.sql + migrations applied.  Tests 6 and 8 above are pure-logic unit
+tests (no DB) that each isolate one defect-B failure mode from the others
+(missing engine vs. incomplete payload) and from defect A (the payload-
+contract widening tested in ``tests/test_emit_on_graph_write.py``).
 
 Design notes
 -----------
@@ -40,11 +55,13 @@ import pytest
 from nce import outbox_relay
 from nce.auth import set_namespace_context
 from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
-from nce.events.bus import publish, subscribe
+from nce.events.bus import OutboxDeliveryError, publish, subscribe
 from nce.events.dispatch import dispatch_once
 from nce.vertical_modules.project.tasks import (
     _GENERATES_CONFIDENCE,
     _STATUS_TO_TASK_KIND,
+    EngineNotRegisteredError,
+    IncompletePayloadError,
     _task_label_for_kind,
     do_sync_bom_tasks,
 )
@@ -656,3 +673,342 @@ async def test_c4_relay_replay_is_idempotent(
     assert task_count == 0, f"No task must be created on replay; got {task_count}"
 
     _ENGINE_REGISTRY.pop("engine", None)
+
+
+# ---------------------------------------------------------------------------
+# M0.W20b — c4-payload-contract: fail-loud on no-engine (defect B)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_handler_raises_engine_not_registered_error_when_no_engine() -> None:
+    """No-engine must raise, never log-and-return None.
+
+    Before this fix, ``_handle_bom_line_status_changed`` logged an error and
+    returned ``None`` when no engine was registered.  To the relay
+    (``outbox_relay.deliver_one`` / ``run_outbox_relay_once``) a plain
+    ``None`` return is indistinguishable from success: the dedup row commits
+    and the outbox row is marked published, permanently destroying the event
+    with the automation never having run and no DLQ row or alert to show for
+    it.
+
+    It must now raise ``EngineNotRegisteredError`` — a subclass of
+    ``OutboxDeliveryError`` — which the relay treats as a wiring defect: dead
+    letter immediately, alert, keep the event replayable.
+    """
+    from nce.vertical_modules.project.tasks import _ENGINE_REGISTRY, _handle_bom_line_status_changed
+
+    _ENGINE_REGISTRY.pop("engine", None)  # the defect under test: no engine registered
+
+    ns_id = uuid.uuid4()
+    event: dict[str, Any] = {
+        "id": uuid.uuid4(),
+        "namespace_id": ns_id,
+        "event_type": "BOM_LINE.status_changed",
+        "payload": {
+            "id": "BOM_LINE:NOENGINE:AMP01",
+            "namespace": str(ns_id),
+            "project_id": "PROJECT:NOENGINE",
+            "bom_line_label": "BOM_LINE:NOENGINE:AMP01",
+            "status": "PLANNED",
+        },
+        "attempt_count": 0,
+    }
+
+    # The payload is complete (project_id + status both present), so the
+    # ONLY reason this can fail is the missing engine — isolates defect B
+    # from defect A (the payload-contract widening tested elsewhere).
+    with pytest.raises(EngineNotRegisteredError):
+        await _handle_bom_line_status_changed(None, event)  # type: ignore[arg-type]
+
+    assert issubclass(EngineNotRegisteredError, OutboxDeliveryError), (
+        "EngineNotRegisteredError must be an OutboxDeliveryError so the relay's "
+        "immediate-DLQ (no-retry) branch in run_outbox_relay_once applies to it"
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_no_engine_event_lands_in_dlq_not_marked_published(
+    pg_pool: asyncpg.Pool,
+    namespace_id: uuid.UUID,
+) -> None:
+    """Behavioural proof: an undeliverable (no-engine) event lands in the DLQ, never 'published'.
+
+    BEFORE M0.W20b: ``_handle_bom_line_status_changed`` returned ``None`` on
+    no-engine.  Run through the real relay (``run_outbox_relay_once``), that
+    return value would have been read as a successful delivery — the dedup
+    row would commit, ``mark_published`` would run, ``delivered`` would count
+    it, and the event would vanish: no ``dead_letter_queue`` row, no alert,
+    no trace it was ever undeliverable.
+
+    AFTER: the handler raises ``EngineNotRegisteredError``.  This test
+    registers the REAL production handler (unwrapped, exactly as
+    ``register_bom_task_subscriber`` would), publishes one complete event
+    through it with no engine registered, drains via
+    ``outbox_relay.run_outbox_relay_once``, and asserts:
+      1. ``outbox_events.published_at`` stays NULL (never marked delivered).
+      2. A ``dead_letter_queue`` row appears on the FIRST attempt (the relay's
+         ``OutboxDeliveryError`` branch skips the normal 5-retry ramp).
+      3. No ``PROJECT_TASK`` node was created — the automation never ran.
+    """
+    from nce.vertical_modules.project.tasks import _ENGINE_REGISTRY, _handle_bom_line_status_changed
+
+    _ENGINE_REGISTRY.pop("engine", None)  # the defect under test: no engine registered
+
+    quote_id = f"B20B-NOENGINE-{uuid.uuid4().hex[:8]}"
+    project_lbl, bom_labels = await _seed_project_and_bom(
+        pg_pool, namespace_id, quote_id, ["AMP01"]
+    )
+    bom_label = bom_labels[0]
+
+    # Unique node_type isolates this test's outbox rows from concurrent tests
+    # (including the live nce-cron container that drains the same dev DB).
+    node_type_suffix = uuid.uuid4().hex[:12]
+    node_type = f"BOM_LINE_{node_type_suffix}"
+    op = "status_changed"
+    event_type = f"{node_type}.{op}"
+
+    await _pre_clean_outbox(pg_pool, event_type)
+
+    snapshot = _save_and_clear_handlers()
+    try:
+        # Register the REAL handler unwrapped — exactly the production
+        # registration shape (register_bom_task_subscriber calls subscribe()
+        # with this same function object, unwrapped).
+        subscribe({"node_type": node_type, "op": op}, _handle_bom_line_status_changed)
+
+        async with pg_pool.acquire(timeout=10.0) as conn:
+            async with conn.transaction():
+                await publish(
+                    conn,
+                    namespace_id=namespace_id,
+                    node_type=node_type,
+                    op=op,
+                    aggregate_id=bom_label,
+                    payload={
+                        "node_type": node_type,
+                        "op": op,
+                        "id": bom_label,
+                        "namespace": str(namespace_id),
+                        "project_id": project_lbl,
+                        "bom_line_label": bom_label,
+                        "status": "PLANNED",
+                    },
+                )
+
+        await outbox_relay.run_outbox_relay_once(pg_pool, batch_size=10)
+
+        async with pg_pool.acquire(timeout=10.0) as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT id, published_at, attempt_count
+                FROM outbox_events
+                WHERE aggregate_id = $1 AND namespace_id = $2 AND event_type = $3
+                """,
+                bom_label,
+                namespace_id,
+                event_type,
+            )
+        assert row is not None, "the outbox row itself must still exist"
+        assert row["published_at"] is None, (
+            "REGRESSION: an unhandleable event (no engine) must NOT be marked published — "
+            "this is exactly the silent-data-loss defect M0.W20b fixes"
+        )
+        assert row["attempt_count"] == outbox_relay.MAX_OUTBOX_ATTEMPTS, (
+            "OutboxDeliveryError must skip straight to the exhausted attempt_count, "
+            "not burn through the normal per-attempt retry ramp"
+        )
+
+        async with pg_pool.acquire(timeout=10.0) as conn:
+            dlq_row = await conn.fetchrow(
+                "SELECT task_name, error_message FROM dead_letter_queue WHERE job_id = $1",
+                str(row["id"]),
+            )
+        assert dlq_row is not None, (
+            "an unhandleable event must land in dead_letter_queue instead of being lost silently"
+        )
+        assert dlq_row["task_name"] == f"outbox:{event_type}"
+        assert "EngineNotRegisteredError" in dlq_row["error_message"]
+
+        # The automation itself must never have run.
+        expected_task = _task_label_for_kind(bom_label, "PROCUREMENT")
+        task_count = await _count_task_nodes(pg_pool, namespace_id, expected_task)
+        assert task_count == 0, "do_sync_bom_tasks must never have run when no engine is registered"
+
+    finally:
+        _restore_handlers(snapshot)
+        _ENGINE_REGISTRY.pop("engine", None)
+
+
+# ---------------------------------------------------------------------------
+# M0.W20b re-review fix — fail-loud on incomplete payload (defect B, 2nd instance)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_handler_raises_incomplete_payload_error_when_status_missing() -> None:
+    """Incomplete payload must raise, never log-and-return None.
+
+    Same bug class as the no-engine case, found by review as a SECOND live
+    instance in the same function: before this fix,
+    ``_handle_bom_line_status_changed`` logged a warning and returned
+    ``None`` when the payload was missing ``status`` (or any of
+    ``namespace``/``project_id``/``bom_line_label``).  This event matched the
+    ``BOM_LINE.status_changed`` selector, so it IS for this handler -- it
+    just cannot act on it.  A plain ``None`` return is indistinguishable
+    from success to the relay: the dedup row commits and the outbox row is
+    marked published, permanently destroying the event with no DLQ row and
+    no indication of which field was missing.
+
+    An engine IS registered here (unlike the no-engine test) so the ONLY
+    possible failure is the missing ``status`` field -- isolating this
+    failure mode from ``EngineNotRegisteredError``.  Must raise
+    ``IncompletePayloadError``, a subclass of ``OutboxDeliveryError``, naming
+    ``status`` in its message.
+    """
+    from nce.vertical_modules.project.tasks import _ENGINE_REGISTRY, _handle_bom_line_status_changed
+
+    _ENGINE_REGISTRY["engine"] = object()  # any truthy value; must not be reached
+    try:
+        ns_id = uuid.uuid4()
+        event: dict[str, Any] = {
+            "id": uuid.uuid4(),
+            "namespace_id": ns_id,
+            "event_type": "BOM_LINE.status_changed",
+            "aggregate_id": "BOM_LINE:NOSTATUS:AMP01",
+            "payload": {
+                "id": "BOM_LINE:NOSTATUS:AMP01",
+                "namespace": str(ns_id),
+                "project_id": "PROJECT:NOSTATUS",
+                "bom_line_label": "BOM_LINE:NOSTATUS:AMP01",
+                # "status" deliberately omitted.
+            },
+            "attempt_count": 0,
+        }
+
+        with pytest.raises(IncompletePayloadError) as exc_info:
+            await _handle_bom_line_status_changed(None, event)  # type: ignore[arg-type]
+
+        assert "status" in str(exc_info.value), (
+            "IncompletePayloadError message must name the missing field so the DLQ row "
+            "is diagnostic, not just a stack trace"
+        )
+        assert issubclass(IncompletePayloadError, OutboxDeliveryError), (
+            "IncompletePayloadError must be an OutboxDeliveryError so the relay's "
+            "immediate-DLQ (no-retry) branch in run_outbox_relay_once applies to it"
+        )
+    finally:
+        _ENGINE_REGISTRY.pop("engine", None)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_incomplete_payload_event_lands_in_dlq_not_marked_published(
+    pg_pool: asyncpg.Pool,
+    namespace_id: uuid.UUID,
+) -> None:
+    """Behavioural proof: an incomplete-payload event lands in the DLQ, never 'published'.
+
+    Mirrors ``test_no_engine_event_lands_in_dlq_not_marked_published`` but
+    isolates the OTHER defect-B failure mode: here an engine IS registered
+    (so ``EngineNotRegisteredError`` cannot fire) and the published event's
+    payload is simply missing ``status``.
+
+    BEFORE this fix: the handler logged a warning and returned ``None`` --
+    read by the real relay as a successful delivery.  AFTER: it raises
+    ``IncompletePayloadError``.  Drains via the real
+    ``outbox_relay.run_outbox_relay_once`` and asserts:
+      1. ``outbox_events.published_at`` stays NULL (never marked delivered).
+      2. A ``dead_letter_queue`` row appears on the FIRST attempt (the
+         relay's ``OutboxDeliveryError`` branch skips the normal 5-retry
+         ramp), naming the missing field.
+      3. No ``PROJECT_TASK`` node was created -- the automation never ran.
+    """
+    from nce.vertical_modules.project.tasks import _ENGINE_REGISTRY, _handle_bom_line_status_changed
+
+    quote_id = f"B20B-NOSTATUS-{uuid.uuid4().hex[:8]}"
+    project_lbl, bom_labels = await _seed_project_and_bom(
+        pg_pool, namespace_id, quote_id, ["AMP02"]
+    )
+    bom_label = bom_labels[0]
+    engine = _make_engine_stub(pg_pool)
+    _ENGINE_REGISTRY["engine"] = (
+        engine  # registered -- isolates this from defect-B's no-engine path
+    )
+
+    node_type_suffix = uuid.uuid4().hex[:12]
+    node_type = f"BOM_LINE_{node_type_suffix}"
+    op = "status_changed"
+    event_type = f"{node_type}.{op}"
+
+    await _pre_clean_outbox(pg_pool, event_type)
+
+    snapshot = _save_and_clear_handlers()
+    try:
+        subscribe({"node_type": node_type, "op": op}, _handle_bom_line_status_changed)
+
+        async with pg_pool.acquire(timeout=10.0) as conn:
+            async with conn.transaction():
+                await publish(
+                    conn,
+                    namespace_id=namespace_id,
+                    node_type=node_type,
+                    op=op,
+                    aggregate_id=bom_label,
+                    payload={
+                        "node_type": node_type,
+                        "op": op,
+                        "id": bom_label,
+                        "namespace": str(namespace_id),
+                        "project_id": project_lbl,
+                        "bom_line_label": bom_label,
+                        # "status" deliberately omitted -- the defect under test.
+                    },
+                )
+
+        await outbox_relay.run_outbox_relay_once(pg_pool, batch_size=10)
+
+        async with pg_pool.acquire(timeout=10.0) as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT id, published_at, attempt_count
+                FROM outbox_events
+                WHERE aggregate_id = $1 AND namespace_id = $2 AND event_type = $3
+                """,
+                bom_label,
+                namespace_id,
+                event_type,
+            )
+        assert row is not None, "the outbox row itself must still exist"
+        assert row["published_at"] is None, (
+            "REGRESSION: an incomplete-payload event must NOT be marked published -- "
+            "this is the second instance of the silent-data-loss defect M0.W20b fixes"
+        )
+        assert row["attempt_count"] == outbox_relay.MAX_OUTBOX_ATTEMPTS, (
+            "OutboxDeliveryError must skip straight to the exhausted attempt_count, "
+            "not burn through the normal per-attempt retry ramp"
+        )
+
+        async with pg_pool.acquire(timeout=10.0) as conn:
+            dlq_row = await conn.fetchrow(
+                "SELECT task_name, error_message FROM dead_letter_queue WHERE job_id = $1",
+                str(row["id"]),
+            )
+        assert dlq_row is not None, (
+            "an incomplete-payload event must land in dead_letter_queue instead of being "
+            "lost silently"
+        )
+        assert dlq_row["task_name"] == f"outbox:{event_type}"
+        assert "IncompletePayloadError" in dlq_row["error_message"]
+        assert "status" in dlq_row["error_message"], (
+            "the DLQ error message must name the missing field, not just the exception class"
+        )
+
+        expected_task = _task_label_for_kind(bom_label, "PROCUREMENT")
+        task_count = await _count_task_nodes(pg_pool, namespace_id, expected_task)
+        assert task_count == 0, "do_sync_bom_tasks must never have run on an incomplete payload"
+
+    finally:
+        _restore_handlers(snapshot)
+        _ENGINE_REGISTRY.pop("engine", None)

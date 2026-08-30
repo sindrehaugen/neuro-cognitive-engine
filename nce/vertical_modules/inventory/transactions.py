@@ -32,34 +32,38 @@ Honest scope limit — do not overclaim
 ---------------------------------------
 ``inventory_items`` has no cost column (migration 050's own docstring says
 so), so a unit cost only exists where THIS ledger row carries one. Costed
-inbound only becomes real once a goods-receipt writer lands (Batch 132) — not
-built yet. ``stock.py``'s two callers append ``unit_cost=None`` because no
-cost source exists this wave; :func:`do_valuation` is proven in
-``tests/test_inventory_transactions.py`` against SEEDED ledger rows that
-stand in for a future costed receipt, never against an emergent
-transfer/consumption chain. An inbound row recorded WITHOUT a cost (every
-``transfer_in`` this wave writes) still opens a FIFO layer, valued at
-**zero** — never skipped — so the layered quantity always matches the
-ledger's own arithmetic exactly; only the VALUE of stock with an unknown cost
-is understated, never its quantity. Do not read a non-zero valuation out of
-this module as proof that end-to-end costed inventory works; it proves only
-that FIFO/average is computed correctly over whatever costed rows exist.
+inbound is now real (Batch 132, migration 052): ``goods_receipt`` rows carry
+a real ``unit_cost`` supplied by
+``nce/vertical_modules/inventory/goods_receipt.py``'s
+``do_record_goods_receipt``, appended via :func:`append_transaction` inside
+that function's own transaction. ``stock.py``'s ``transfer_in`` /
+``transfer_out`` / ``consumption`` writers still legitimately carry
+``unit_cost = NULL`` — no cost source exists at a transfer or a consumption,
+only at the inbound receipt that first brought the stock in. An inbound row
+recorded WITHOUT a cost (every ``transfer_in`` this module's callers write)
+still opens a FIFO layer, valued at **zero** — never skipped — so the
+layered quantity always matches the ledger's own arithmetic exactly; only the
+VALUE of stock with an unknown cost is understated, never its quantity.
 
 Typed reason categories, not free text
 -----------------------------------------
 Rackbeat's movements-vs-adjustments split (research doc A5): every qty
 change is an append-only transaction with a typed reason, enforced by
-migration 051's ``CHECK (reason_category IN (...))`` AND re-checked here
+migration 051's ``CHECK (reason_category IN (...))`` (widened by migration
+052, Batch 132, to admit ``goods_receipt``) AND re-checked here
 (:func:`_assert_sign_matches_category`) for a clearer domain error before the
-row ever reaches Postgres. Four categories, each with a real writer or test
-in this wave — no speculative category is added ahead of a writer that would
-use it:
+row ever reaches Postgres. Five categories, each with a real writer or test —
+no speculative category is added ahead of a writer that would use it:
 
 * ``transfer_in`` / ``transfer_out`` — ``do_transfer_stock``'s two sides.
 * ``consumption`` — ``do_record_consumption``.
 * ``adjustment`` — the one open-signed category, for a manual/typed
   correction; this wave's own valuation tests use it to seed a cost-bearing
   inbound row standing in for a not-yet-built goods receipt.
+* ``goods_receipt`` (Batch 132) — ``goods_receipt.py``'s
+  ``do_record_goods_receipt``, the first writer of a REAL costed inbound row
+  (``unit_cost`` supplied by the caller, not seeded). Positive-delta-only,
+  like ``transfer_in``.
 
 Dependency direction (uncle-bob-craft)
 -----------------------------------------
@@ -102,16 +106,24 @@ if TYPE_CHECKING:
 log = logging.getLogger("nce.vertical_modules.inventory.transactions")
 
 # ---------------------------------------------------------------------------
-# Typed reason categories — the migration 051 CHECK's Python-side mirror.
+# Typed reason categories — migration 051's CHECK's Python-side mirror,
+# widened by migration 052 (Batch 132 goods-receipt) to add REASON_GOODS_RECEIPT.
 # ---------------------------------------------------------------------------
 
 REASON_TRANSFER_IN = "transfer_in"
 REASON_TRANSFER_OUT = "transfer_out"
 REASON_CONSUMPTION = "consumption"
 REASON_ADJUSTMENT = "adjustment"
+REASON_GOODS_RECEIPT = "goods_receipt"
 
 _VALID_REASON_CATEGORIES: frozenset[str] = frozenset(
-    {REASON_TRANSFER_IN, REASON_TRANSFER_OUT, REASON_CONSUMPTION, REASON_ADJUSTMENT}
+    {
+        REASON_TRANSFER_IN,
+        REASON_TRANSFER_OUT,
+        REASON_CONSUMPTION,
+        REASON_ADJUSTMENT,
+        REASON_GOODS_RECEIPT,
+    }
 )
 
 # Engine-authored write, not an external-system sync — mirrors stock.py's own
@@ -203,14 +215,15 @@ def _as_location_uuid(raw: Any, where: str) -> UUID:
 
 
 def _assert_sign_matches_category(reason_category: str, delta: Decimal) -> None:
-    """Python-side mirror of migration 051's
+    """Python-side mirror of migration 051's (widened by migration 052)
     ``inventory_transactions_sign_matches_category`` CHECK — a clearer domain
     error than a raw ``asyncpg.CheckViolationError`` for the same mistake.
     ``adjustment`` is deliberately unconstrained: a manual correction can
-    move quantity either way."""
-    if reason_category == REASON_TRANSFER_IN and delta <= _ZERO_QTY:
+    move quantity either way. ``goods_receipt`` requires a positive delta,
+    same as ``transfer_in``."""
+    if reason_category in (REASON_TRANSFER_IN, REASON_GOODS_RECEIPT) and delta <= _ZERO_QTY:
         raise ValueError(
-            f"append_transaction: {REASON_TRANSFER_IN!r} requires a positive delta, got {delta}"
+            f"append_transaction: {reason_category!r} requires a positive delta, got {delta}"
         )
     if reason_category in (REASON_TRANSFER_OUT, REASON_CONSUMPTION) and delta >= _ZERO_QTY:
         raise ValueError(

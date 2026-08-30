@@ -1,0 +1,36 @@
+{
+  "_comment": "Config-as-IP (docs/vertical_engines/VERTICAL_MODULE_PATTERN.md; roadmap-§2 convention 9): the ASSET 14-state lifecycle transition map that nce/vertical_modules/assets/lifecycle.py's advance() reads (docs/vertical_engines/09-assets-engine.md § do_advance_lifecycle -- Module 9, Wave 1 -- lifecycle-core, Batch 141). Ported near-1:1 from Andreas's idempotent lifecycle.ts enrichment (RECEIVED->INSTALLED->VERIFIED, sets warranty) and extended to the full 14-state sequence named in the engine spec. STATES lists every legal lifecycle_state value, in the engine spec's declared order. VALID_TRANSITIONS is the only source of legal directed edges -- lifecycle.py contains no state-name or transition literals of its own, mirroring project-gate-criteria.json / phase_gates.py's convention. WARRANTY_SET_ON_ENTER names the state(s) whose entry computes warranty_until from a caller-supplied warranty_months duration (the duration itself comes from Product's warranty terms, resolved by a future DB-aware wave -- this file and the pure engine that reads it never look that up). Honest scope limit, disclosed rather than silent: only the engine spec's literal forward sequence is encoded here -- PROPOSED through RETIRED, one successor per state. No repair/return edge (e.g. MAINTENANCE->ACTIVE or DEGRADED->ACTIVE) is modelled because no wave brief or spec line states one; adding a real-world repair loop is a config-only change to VALID_TRANSITIONS for whoever makes that explicit design call, not a change to the engine. Global (not namespace-scoped) for this wave, mirroring inventory-valuation.json's global-file convention; a per-namespace override is not built here.",
+  "STATES": [
+    "PROPOSED",
+    "QUOTED",
+    "ORDERED",
+    "RECEIVED",
+    "STAGED",
+    "INSTALLED",
+    "CONFIGURED",
+    "VERIFIED",
+    "ACTIVE",
+    "DEGRADED",
+    "MAINTENANCE",
+    "EOL",
+    "RETIRING",
+    "RETIRED"
+  ],
+  "VALID_TRANSITIONS": {
+    "PROPOSED": ["QUOTED"],
+    "QUOTED": ["ORDERED"],
+    "ORDERED": ["RECEIVED"],
+    "RECEIVED": ["STAGED"],
+    "STAGED": ["INSTALLED"],
+    "INSTALLED": ["CONFIGURED"],
+    "CONFIGURED": ["VERIFIED"],
+    "VERIFIED": ["ACTIVE"],
+    "ACTIVE": ["DEGRADED"],
+    "DEGRADED": ["MAINTENANCE"],
+    "MAINTENANCE": ["EOL"],
+    "EOL": ["RETIRING"],
+    "RETIRING": ["RETIRED"],
+    "RETIRED": []
+  },
+  "WARRANTY_SET_ON_ENTER": ["VERIFIED"]
+}

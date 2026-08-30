@@ -6,12 +6,32 @@
 
 The **System Design Engine** (`nce/vertical_modules/system_design/`) is NCE's Revenue↔Delivery bridge: it turns a room brief or a Sales quote into a versioned, room-centric Bill of Materials (BOM) and a Statement of Work (SoW). It is the "AI Solution Agent" — an embedding-recall loop over past `DESIGN`/`PROJECT` memories, not a rules engine — and it is strictly **propose-only**: every line it produces carries `validated: False` until a human explicitly accepts or overrides it.
 
-> [!WARNING]
-> **Limited External Surface & Client Invocation Boundary:**
-> Despite full wave completion of internal modules (Phase-1a recall/SoW core and Phase-2 device topology/graph validation), the System Design Engine exposes **only 2 MCP tools** (`system_design_ping` - a ping stub, and `system_design_publish_design_docs`) and **1 REST route** (`POST /api/system-design/publish-design-docs` / `/api/system-design/publish`).
+> [!NOTE]
+> **External surface: COMPLETE as of Module 6 W12a-W20 (2026-08-30).**
+> This block previously warned that the engine exposed only 2 MCP tools and that interactive topological
+> design "CANNOT be invoked over MCP or REST endpoints today". **That is no longer true** — and the warning
+> is replaced rather than amended, because it was cited downstream as evidence of the gap.
 >
-> **Notice for Frontend & Client Developers:**
-> Interactive topological design, CAD layout, room/topology authoring (`do_author_functional_location`, `do_author_device_topology`), design generation (`do_propose_design`, `do_design_from_quote`), validation (`do_validate_design`, `validate_design_graph`), and SoW generation (`do_generate_sow`) **CANNOT be invoked over MCP or REST endpoints today**. These capabilities exist strictly as in-process async Python functions callable by internal backend flows (such as Sales commission workflows) or direct integration code. Frontend applications (such as host web CAD/design tools) and external MCP clients cannot remotely trigger interactive CAD layout or topological design workflows until dedicated client-facing endpoints are implemented.
+> **7 MCP tools**, all advertised in `tools/list` and asserted equal to the registry in both directions by
+> `tests/unit/test_system_design_toolcount.py`: `system_design_ping` · `system_design_publish_design_docs` ·
+> `system_design_get_topology` · `system_design_author_topology` ·
+> `system_design_author_functional_location` · `system_design_validate_design_graph` ·
+> `system_design_delete_planned`
+>
+> **5 REST routes:** `POST /api/system-design/publish-design-docs` · `GET|POST /api/system-design/topology` ·
+> `POST /api/system-design/functional-location` · `POST /api/system-design/validate` ·
+> `DELETE /api/system-design/planned`
+>
+> Also live: canvas geometry and the per-design optimistic-concurrency token (`expected_version`, W14),
+> per-node lifecycle `status`/`revision`/`salience` with a live `statuses` read filter (W16/W16b), and a
+> retire path that soft-retires by default (W17).
+>
+> **Two caveats that are still true and matter to a client:**
+> 1. `system_design_delete_planned` is `admin_only=True`, but `nce/auth.py`'s MCP dispatch gates on its own
+>    hardcoded `MCP_ADMIN_TOOL_NAMES` rather than the registry's `ADMIN_ONLY_TOOLS`. Until those are
+>    reconciled the tool **will not answer over MCP without `NCE_ADMIN_OVERRIDE=true`**. It fails closed.
+> 2. MCP is stdio-only. Server-to-server REST with HMAC is the transport for a browser-facing client; there
+>    is no browser path to MCP.
 
 > [!IMPORTANT]
 > Phase-1a of this engine (the value core: propose → gap-fill → SoW → freeze) ships with **zero external systems**. The functions in this guide read/write only the knowledge graph (`kg_nodes`/`kg_edges`) and the `memories` table. NetBox, SharePoint, and Lucid are independent Phase-1b adapters — see the [Admin Guide](system-design-admin.md).
@@ -40,7 +60,7 @@ Liveness probe / ping stub. Requires `namespace_id`. Returns:
 Source: `nce/vertical_modules/system_design/mcp_handlers.py:36-45`.
 
 ### `system_design_publish_design_docs`
-The one real MCP tool with domain effect — exports a `DESIGN` to Lucid (see §7). Requires `namespace_id` and `design_id`. Also reachable over REST as `POST /api/system-design/publish-design-docs` (and `/api/system-design/publish`, `nce/admin_handlers/system_design.py:28-70`).
+The one real MCP tool with domain effect — exports a `DESIGN` to Lucid (see §7). Requires `namespace_id` and `design_id`. Also reachable over REST as `POST /api/system-design/publish-design-docs` — the only registered route for it (`nce/admin_handlers/system_design.py`, `api_system_design_publish_design_docs`).
 
 ---
 
@@ -252,7 +272,7 @@ All five underlying `check_*` functions are pure (no DB) and independently unit-
 
 Source: `nce/vertical_modules/system_design/lucid.py`. **Export only** — there is no import path; the spec's original idea of parsing Lucid diagrams back into `DESIGN_LINE`s was cut.
 
-Call via the `system_design_publish_design_docs` MCP tool or `POST /api/system-design/publish-design-docs` (and `/api/system-design/publish`) with `{"namespace_id": "…", "design_id": "DESIGN-…"}`.
+Call via the `system_design_publish_design_docs` MCP tool or `POST /api/system-design/publish-design-docs` with `{"namespace_id": "…", "design_id": "DESIGN-…"}`.
 
 Behavior:
 - Reads the `DESIGN`, all `DESIGN_LINE`, and all `FUNCTIONAL_LOCATION` nodes linked to the design.

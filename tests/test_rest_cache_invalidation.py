@@ -13,12 +13,12 @@ mutation performed over REST leaves stale MCP cache entries alive for up to
 ``MCP_CACHE_TTL_S`` (300 s) — a client reading over MCP sees pre-mutation data
 for five minutes, with no error and nothing in any log.
 
-One route is covered behaviourally here: ``merge_queue_confirm``, whose core is
-named plainly ``confirm``.  It is the sharpest stale-read pair in the codebase —
-``merge_queue_list`` is ``cacheable=True`` and filters on the exact ``status``
-column ``confirm`` writes — and a ``do_``-prefix criterion silently excluded that
-whole family.  (The private repo also covers ``assets_advance_lifecycle``; that
-module postdates this branch point and its test ports over with Batch 143.)
+Two routes are covered behaviourally here, deliberately chosen to be different
+shapes: ``assets_advance_lifecycle`` (core named ``do_advance_lifecycle``) and
+``merge_queue_confirm`` (core named plainly ``confirm``).  The second exists
+because a ``do_``-prefix criterion silently excluded that whole family, and
+``merge_queue_list`` is ``cacheable=True`` while filtering on the exact ``status``
+column ``confirm`` writes — the sharpest stale-read pair in the codebase.
 Structural coverage for the remaining routes is in
 ``tests/test_rest_cache_invalidation_coverage.py``.
 
@@ -45,10 +45,12 @@ import pytest
 import redis.asyncio as aioredis
 
 from nce import admin_state
+from nce.admin_handlers import assets as assets_routes
 from nce.admin_handlers import entity_resolution as er_routes
 from nce.auth import _mcp_bound_namespace_id
 from nce.entity_resolution import mcp_handlers as er_cores
 from nce.mcp_stdio_dispatch import execute_call_tool
+from nce.vertical_modules.assets import mcp_handlers as assets_cores
 
 pytestmark = pytest.mark.integration
 
@@ -142,6 +144,94 @@ async def _open_redis():
             )
     await _clear_test_keys(client)
     return client
+
+
+@pytest.mark.asyncio
+async def test_rest_lifecycle_mutation_invalidates_mcp_asset_cache(monkeypatch):
+    """Read (MCP, cacheable) -> mutate (REST) -> read (MCP) must show the mutation.
+
+    On unmodified ``main`` the second read is served from the pre-mutation
+    cache entry, because ``api_assets_advance_lifecycle`` never bumps the
+    generation counter.
+    """
+    monkeypatch.setattr("nce.quotas.cfg.NCE_QUOTAS_ENABLED", False)
+
+    redis_client = await _open_redis()
+    # Honour an ambient NCE_MCP_NAMESPACE_ID: when the server is pinned to a
+    # tenant, `enforce_mcp_tool_auth` rejects any other namespace_id outright.
+    namespace_id = _mcp_bound_namespace_id() or str(uuid.uuid4())
+    asset_id = str(uuid.uuid4())
+
+    # Single mutable source of truth, standing in for the `assets` table.
+    db_state = {"lifecycle_state": "RECEIVED"}
+
+    async def fake_do_get_asset(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "asset": {"id": asset_id, "lifecycle_state": db_state["lifecycle_state"]},
+        }
+
+    async def fake_do_advance_lifecycle(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
+        previous = db_state["lifecycle_state"]
+        db_state["lifecycle_state"] = params["target_state"]  # the "commit"
+        return {
+            "ok": True,
+            "changed": True,
+            "asset_id": params["asset_id"],
+            "previous_state": previous,
+            "new_state": params["target_state"],
+            "error": None,
+        }
+
+    # `handle_assets_get` resolves `do_get_asset` as a module global.
+    monkeypatch.setattr(assets_cores, "do_get_asset", fake_do_get_asset)
+    # `nce.admin_handlers.assets` imported the core into its own namespace.
+    monkeypatch.setattr(assets_routes, "do_advance_lifecycle", fake_do_advance_lifecycle)
+
+    engine = _StubEngine(redis_client)
+    monkeypatch.setattr(admin_state, "engine", engine, raising=False)
+
+    read_args = {
+        "namespace_id": namespace_id,
+        "agent_id": "u1",
+        "asset_id": asset_id,
+    }
+
+    try:
+        # 1. Read through the cacheable MCP path — populates the cache.
+        first = await execute_call_tool(engine, "assets_get", dict(read_args))
+        first_payload = json.loads(first[0].text)
+        assert first_payload["asset"]["lifecycle_state"] == "RECEIVED", first_payload
+
+        cached_keys = await redis_client.keys("mcp_cache:v*")
+        assert cached_keys, (
+            "Precondition failed: the first MCP read did not populate the cache, "
+            "so this test could not detect staleness either way."
+        )
+
+        # 2. Mutate through the REST route (bypasses the MCP dispatch loop).
+        request = _StubRequest(
+            path_params={"id": asset_id},
+            body={"namespace_id": namespace_id, "target_state": "VERIFIED"},
+        )
+        response = await assets_routes.api_assets_advance_lifecycle(request)
+        assert response.status_code == 200, getattr(response, "body", response)
+        assert db_state["lifecycle_state"] == "VERIFIED", "the mutation did not commit"
+
+        # 3. Read again through MCP — must reflect the mutation, not the cache.
+        second = await execute_call_tool(engine, "assets_get", dict(read_args))
+        second_payload = json.loads(second[0].text)
+
+        assert second_payload["asset"]["lifecycle_state"] == "VERIFIED", (
+            "STALE MCP CACHE: the REST lifecycle mutation committed "
+            f"({db_state['lifecycle_state']!r}) but the cacheable MCP tool "
+            f"`assets_get` still served {second_payload['asset']['lifecycle_state']!r}. "
+            "The REST route did not bump `mcp_cache_generation`, so the "
+            "pre-mutation entry stays readable for the full MCP_CACHE_TTL_S."
+        )
+    finally:
+        await _clear_test_keys(redis_client)
+        await redis_client.aclose()
 
 
 @pytest.mark.asyncio

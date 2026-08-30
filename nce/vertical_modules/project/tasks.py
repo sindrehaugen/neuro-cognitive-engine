@@ -60,7 +60,7 @@ import asyncpg  # type: ignore[import-untyped]
 
 from nce.db_utils import scoped_pg_session
 from nce.entity_resolution.ownership import assert_owner
-from nce.events.bus import subscribe
+from nce.events.bus import OutboxDeliveryError, subscribe
 
 if TYPE_CHECKING:
     from nce.orchestrator import NCEEngine
@@ -97,6 +97,47 @@ _STATUS_ORDER: list[str] = ["PLANNED", "ORDERED", "DELIVERED", "INSTALLED", "TES
 
 # Rule-strength confidence for BOM_LINE -[generates]-> TASK edges.
 _GENERATES_CONFIDENCE: float = 0.9
+
+
+class EngineNotRegisteredError(OutboxDeliveryError):
+    """No ``NCEEngine`` was registered in this process, so the work cannot run.
+
+    A subclass of ``OutboxDeliveryError`` so the relay (``run_outbox_relay_once``)
+    treats it the way it treats any other wiring defect: dead-letter
+    immediately (retrying five times will not conjure a registration), fire
+    an alert, and keep the event replayable once the composition root
+    registers an engine.
+
+    It exists because the alternative — logging an error and returning —
+    reads to the relay as a successful delivery: the dedup row in
+    ``processed_outbox_events`` commits, the outbox row is marked
+    ``published``, and the event is destroyed while the automation it was
+    meant to trigger never ran, with no DLQ row and no alert.  That is
+    strictly worse than the handler not being registered at all — a dead
+    path is at least visible; a silently-succeeding one is not.
+    """
+
+
+class IncompletePayloadError(OutboxDeliveryError):
+    """The event payload is missing a field this handler needs to act on it.
+
+    A subclass of ``OutboxDeliveryError`` for the identical reason as
+    ``EngineNotRegisteredError``: an event routed to this handler by selector
+    (``BOM_LINE.status_changed``) that is missing ``namespace``/``project_id``/
+    ``bom_line_label``/``status`` is not "not for me" — the selector match
+    means it IS for this handler, and it cannot act on it.  Retrying five
+    times will not grow a field the publisher never wrote, so this fails
+    exactly the same way as a wiring defect: dead-letter immediately, alert,
+    keep the event replayable once the payload contract is fixed (see
+    ``emit_status_change`` / W20c).
+
+    The alternative — logging a warning and returning ``None`` — reads to the
+    relay as a successful delivery: the dedup row commits, the outbox row is
+    marked ``published``, and the event is gone for good with no DLQ row and
+    no indication of which field was missing.  The message this exception
+    carries names the missing field(s) explicitly so the DLQ row is
+    diagnostic, not just a stack trace.
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -458,22 +499,38 @@ async def _handle_bom_line_status_changed(
     status: str = payload.get("status", "")
 
     if not (namespace_id and project_id and bom_line_label and status):
-        log.warning(
-            "[bom_tasks] incomplete event payload — skipping. ns=%s project_id=%s bom=%s status=%s",
-            namespace_id,
-            project_id,
-            bom_line_label,
-            status,
+        missing = [
+            name
+            for name, value in (
+                ("namespace", namespace_id),
+                ("project_id", project_id),
+                ("bom_line_label", bom_line_label),
+                ("status", status),
+            )
+            if not value
+        ]
+        # Raise, never log-and-return: this event matched the
+        # BOM_LINE.status_changed selector, so it IS for this handler — it
+        # just cannot be acted on.  A return here is indistinguishable from
+        # a successful delivery to the relay (dedup row commits, outbox row
+        # marked published, event gone for good).  See IncompletePayloadError.
+        raise IncompletePayloadError(
+            f"[bom_tasks] event payload missing required field(s) {missing} — cannot sync "
+            f"tasks. event_type={event.get('event_type')!r} "
+            f"aggregate_id={event.get('aggregate_id')!r}"
         )
-        return None
 
     engine = _get_registered_engine()
     if engine is None:
-        log.error(
-            "[bom_tasks] no engine registered — cannot sync tasks for bom=%s",
-            bom_line_label,
+        # Raise, never log-and-return: a return here is indistinguishable from
+        # a successful delivery to the relay, which commits the dedup row and
+        # marks the outbox row published — the event would be gone for good
+        # with the automation never having run.  See EngineNotRegisteredError.
+        raise EngineNotRegisteredError(
+            f"[bom_tasks] no engine registered in this process — cannot sync tasks for "
+            f"bom={bom_line_label!r}. Call register_engine(engine) at startup before this "
+            "subscriber can receive traffic."
         )
-        return None
 
     await do_sync_bom_tasks(
         engine,
