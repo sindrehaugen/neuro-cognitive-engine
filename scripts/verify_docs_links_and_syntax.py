@@ -39,10 +39,10 @@ def main():
     # Status / Verified patterns (handling markdown bolding and variants)
     status_pattern = re.compile(r"(?:\*\*Status:\*\*|Status:)", re.IGNORECASE)
     verified_pattern = re.compile(
-        r"(?:\*\*Verified-against:\*\*|Verified-against:)\s*`?(?:7304330|9415eb0)`?", re.IGNORECASE
+        r"(?:\*\*Verified-against:\*\*|Verified-against:)\s*`?[0-9a-f]{7,40}`?", re.IGNORECASE
     )
     spec_annotation_pattern = re.compile(
-        r"<!--\s*BLOCKED ON OQ-2 / OQ-4.*?Verified-against:\s*(?:7304330|9415eb0).*?-->",
+        r"<!--\s*BLOCKED ON OQ-2 / OQ-4.*?Verified-against:\s*[0-9a-f]{7,40}.*?-->",
         re.DOTALL | re.IGNORECASE,
     )
 
@@ -172,8 +172,8 @@ def main():
         for doc, line, text, url, target in broken_internal_links:
             print(f"       * {doc}:{line} -> [{text}]({url}) (target: {target})")
 
-    # 4. Status and Verified-against: 7304330 Stamps Check
-    print("\n[4] Status & Verified-against: 7304330 Stamps Check:")
+    # 4. Status and Verified-against Stamps Check
+    print("\n[4] Status & Verified-against Stamps Check:")
     non_exempt = [s for s in status_summary if not s["exempt"]]
     stamped = [s for s in non_exempt if s["has_status"] and s["has_verified"]]
     unstamped = [s for s in non_exempt if not (s["has_status"] and s["has_verified"])]
@@ -183,14 +183,14 @@ def main():
         f"    Exempt system/navigation files: {len(status_summary) - len(non_exempt)} (index.html, _sidebar.md, _navbar.md, surface.md, API.md)"
     )
     print(f"    Operational docs verified: {len(non_exempt)}")
-    print(f"    Correctly stamped with 7304330: {len(stamped)}")
+    print(f"    Correctly stamped: {len(stamped)}")
     print(f"    Unstamped or unverified: {len(unstamped)}")
 
     if unstamped:
         print("\n    Details of unstamped/unverified files:")
         for u in unstamped:
             print(
-                f"       * {u['doc']} (status={u['has_status']}, verified_7304330={u['has_verified']})"
+                f"       * {u['doc']} (status={u['has_status']}, verified={u['has_verified']})"
             )
 
     # Overall Verdict

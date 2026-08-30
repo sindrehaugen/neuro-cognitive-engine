@@ -6,12 +6,10 @@
 
 The **System Design Engine** (`nce/vertical_modules/system_design/`) is the Revenue↔Delivery bridge: an embedding-recall "AI Solution Agent" that proposes room BOMs, a pure SoW generator, and (Phase-2) a device/port topology model with structural validation. This guide covers enablement, configuration, database schema/RLS, the three Phase-1b adapters (NetBox, SharePoint, Lucid), autonomy posture, and troubleshooting — grounded strictly in what is implemented, not the design-intent spec.
 
-> [!WARNING]
-> **Surface Warning — Limited Network/MCP Exposure & Notice for Frontend Developers:**
-> Despite full wave completion of internal modules (Phase-1a propose/SoW and Phase-2 topology/validation), the engine exposes only **2 MCP tools** (`system_design_ping` - a ping stub, and `system_design_publish_design_docs`) and **1 REST route** (`POST /api/system-design/publish-design-docs` / `/api/system-design/publish`).
->
-> **Notice for Frontend & Client Developers:**
-> Interactive topological design, CAD layout, functional location authoring, and automated validation **cannot be invoked over MCP or REST endpoints today**. All topological design and graph functions exist solely as in-process Python calls. Frontend client applications (e.g. host web CAD UIs) and external MCP agents cannot trigger CAD layout or interactive design workflows over the network.
+> [!NOTE]
+> **External surface: COMPLETE as of Module 6 (2026-08-30).**
+> This block previously warned that the engine exposed only 2 MCP tools and that interactive topological design "cannot be invoked over MCP or REST endpoints today". **That is no longer true**.
+> The System Design engine now exposes **7 MCP tools** and **5 REST routes**, making interactive topological design, CAD layout, and functional location authoring fully accessible over the network.
 
 ---
 
@@ -20,14 +18,17 @@ The **System Design Engine** (`nce/vertical_modules/system_design/`) is the Reve
 > [!WARNING]
 > Unlike the Product engine (`nce/vertical_modules/product/_guard.py`, `NCE_PRODUCT_ENABLED` + namespace `metadata->'product'->>'enabled'`) and the Agreements engine (`nce/vertical_modules/agreements/_guard.py`), **System Design has no `_guard.py`, no `NCE_SYSTEM_DESIGN_ENABLED` flag, and no namespace-level `metadata->'system_design'->>'enabled'` opt-in check anywhere in code.** A grep across `nce/vertical_modules/system_design/*.py` and `nce/config.py` confirms this. The design spec (`docs/vertical_engines/06-system-design-engine.md:162-163`) documents `NCE_SYSTEM_DESIGN_ENABLED` as a config key — *(planned — not yet implemented)*. Today the engine's functions are simply importable and callable for any namespace; there is no fail-closed gate to configure or audit.
 
-Because most of the engine's functions are not registered MCP tools (see the [User Guide](system-design-user.md) §1), there is also no per-tool admin/mutation gate to reason about beyond the two tools that do exist:
+The engine exposes the following 7 MCP tools, pinned by `tests/unit/test_system_design_toolcount.py` (any addition/removal of a `system_design_*` tool fails that test):
 
 | MCP tool | cacheable | admin_only | mutation |
 |---|---|---|---|
 | `system_design_ping` | `True` | `False` | `False` |
 | `system_design_publish_design_docs` | `False` | `False` | `True` |
-
-This is pinned by `tests/unit/test_system_design_toolcount.py` — any addition/removal of a `system_design_*` tool, or a flag change on these two, fails that test.
+| `system_design_get_topology` | `False` | `False` | `False` |
+| `system_design_author_topology` | `False` | `False` | `True` |
+| `system_design_author_functional_location` | `False` | `False` | `True` |
+| `system_design_validate_design_graph` | `False` | `False` | `False` |
+| `system_design_delete_planned` | `False` | `True` | `True` |
 
 ---
 

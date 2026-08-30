@@ -40,17 +40,22 @@ The **System Design Engine** (`nce/vertical_modules/system_design/`) is NCE's Re
 
 ## 1. What you can actually call
 
-Unlike most other NCE vertical engines, the System Design core functions are **not exposed as individually-registered MCP tools**. Only two MCP tools exist for this engine (`nce/tool_registry.py:504-516`, pinned by a regression test at `tests/unit/test_system_design_toolcount.py:24-35`):
+The System Design engine exposes **7 individually-registered MCP tools**:
 
 | MCP tool | cacheable | admin_only | mutation |
 |---|---|---|---|
 | `system_design_ping` | `True` | `False` | `False` |
 | `system_design_publish_design_docs` | `False` | `False` | `True` |
+| `system_design_get_topology` | `False` | `False` | `False` |
+| `system_design_author_topology` | `False` | `False` | `True` |
+| `system_design_author_functional_location` | `False` | `False` | `True` |
+| `system_design_validate_design_graph` | `False` | `False` | `False` |
+| `system_design_delete_planned` | `False` | `True` | `True` |
 
-Everything else — `do_propose_design`, `do_design_from_quote`, `do_design_to_quote`, `do_validate_design`, `validate_design_graph`, `do_generate_sow`, `do_author_functional_location`, `do_author_device_topology`, `do_enrich_design_lines` — is a **plain async Python function**, invoked in-process by another engine's flow code (A2A by direct call, not by MCP dispatch). The clearest example is Sales's `do_initiate_quote_flow`, which calls `do_propose_design` directly (`nce/vertical_modules/sales/commission.py:189-196`).
+Other functions — `do_propose_design`, `do_design_from_quote`, `do_design_to_quote`, `do_validate_design`, `do_generate_sow`, `do_enrich_design_lines` — are **plain async Python functions**, invoked in-process by another engine's flow code (A2A by direct call, not by MCP dispatch). The clearest example is Sales's `do_initiate_quote_flow`, which calls `do_propose_design` directly (`nce/vertical_modules/sales/commission.py:189-196`).
 
 > [!NOTE]
-> *(planned — not yet implemented)* The design spec (`docs/vertical_engines/06-system-design-engine.md:136-148`) describes a full MCP tool set (`system_design_propose_design`, `system_design_design_from_quote`, `system_design_generate_sow`, `system_design_design_to_quote`, `system_design_validate_design`, `system_design_sync_functional_locations`, `system_design_publish_docs`) plus matching REST routes and a `NCE_SYSTEM_DESIGN_ENABLED` per-namespace opt-in. None of that exists in code today. If you are integrating against this engine, call the Python functions directly (as Sales does) or wait for those tools to ship.
+> *(planned — not yet implemented)* The design spec (`docs/vertical_engines/06-system-design-engine.md:136-148`) describes a full MCP tool set including `system_design_propose_design`, `system_design_design_from_quote`, `system_design_generate_sow`, `system_design_design_to_quote`, and `system_design_validate_design`. None of those specific flow tools exist in code today. If you are integrating against this engine for those flows, call the Python functions directly (as Sales does) or wait for those tools to ship.
 
 ### `system_design_ping`
 Liveness probe / ping stub. Requires `namespace_id`. Returns:
@@ -59,8 +64,18 @@ Liveness probe / ping stub. Requires `namespace_id`. Returns:
 ```
 Source: `nce/vertical_modules/system_design/mcp_handlers.py:36-45`.
 
+### `system_design_get_topology`
+Reads the functional location tree and node states for a design. 
+
+> [!WARNING]
+> **REST vs. MCP filter asymmetry (`statuses`)**
+> When filtering by node status, an empty filter behaves oppositely depending on the transport:
+> - **MCP:** Sending `statuses: []` is falsy and means **no filter** (returns all nodes).
+> - **REST:** Sending `?statuses=` results in `[""]` which is truthy, so one empty-string status is forwarded. Because no node has an empty-string status, it **returns nothing**. 
+> This is a known contract divergence.
+
 ### `system_design_publish_design_docs`
-The one real MCP tool with domain effect — exports a `DESIGN` to Lucid (see §7). Requires `namespace_id` and `design_id`. Also reachable over REST as `POST /api/system-design/publish-design-docs` — the only registered route for it (`nce/admin_handlers/system_design.py`, `api_system_design_publish_design_docs`).
+Exports a `DESIGN` to Lucid (see §7). Requires `namespace_id` and `design_id`. Also reachable over REST as `POST /api/system-design/publish-design-docs`.
 
 ---
 

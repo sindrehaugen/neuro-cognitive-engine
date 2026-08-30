@@ -312,14 +312,18 @@ The table participates in the global tenant database boundary:
 
 ## 9. PostgreSQL Schema Source & Lifecycle Management
 
-> **Authoritative DDL Source:** The canonical DDL is maintained in [`nce/schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) and the sequential migration chain in [`nce/migrations/`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/) (`001_enable_rls.sql` through `050_inventory_core.sql`).
+> **Authoritative DDL Source:** The canonical DDL is maintained in [`nce/schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) and the sequential migration chain in [`nce/migrations/`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/) (`001_enable_rls.sql` through `061_system_design_node_state.sql`).
 >
 > ⚠ **Important Provisioning Notice:** Do not copy or execute static embedded SQL snippets from documentation to provision database tables. Doing so bypasses the migration lifecycle and risks provisioning tenant tables without mandatory Row-Level Security (RLS) policies and security triggers. Always allow the engine to initialize its schema automatically via `NCEEngine._init_pg_schema()` or execute the versioned migrations in order.
 
 ### 9a. Schema Boot Initialization
 At engine startup, `NCEEngine.connect()` ([`nce/orchestrator.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/orchestrator.py)) invokes `_init_pg_schema()`, executing [`nce/schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) inside an asyncpg connection. All DDL statements are strictly idempotent (`IF NOT EXISTS` / `CREATE OR REPLACE`), ensuring safe execution on existing and freshly provisioned databases alike.
 
-### 9b. Complete Versioned Migrations Catalog (001 through 050)
+> [!WARNING]
+> **Test Environment Setup (`schema.sql` is not enough)**
+> `nce/schema.sql` alone is not a usable database. A schema-only initialization will yield a false green on test runs by skipping hundreds of tests (e.g. missing `public.event_log.chain_hash`, missing `v3_cognitive_ledger`). All files in `nce/migrations/*.sql` **must be applied on top**, in filename order, to reach a full green test run.
+
+### 9b. Complete Versioned Migrations Catalog (001 through 061)
 
 Schema evolution is governed by chronological migration scripts located in [`nce/migrations/`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/):
 
@@ -373,6 +377,12 @@ Schema evolution is governed by chronological migration scripts located in [`nce
 | [`048_economy_postings.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/048_economy_postings.sql) | Double-entry ledger: general ledger journal postings with balanced-sum trigger assertion. | `economy_postings` | `kg_nodes`, `kg_edges` | `trg_economy_postings_assert_balanced` (balances `sum=0`); `tenant_isolation_policy` |
 | [`049_economy_contracts.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/049_economy_contracts.sql) | Recurring revenue: recurring service contracts and subscription schedule tracking. | `economy_contracts` | None | `tenant_isolation_policy` |
 | [`050_inventory_core.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/050_inventory_core.sql) | Inventory Engine: warehouse location hierarchies (zones/bins/vans) and SKU stock balances. | `stock_locations`, `inventory_items` | None | `tenant_isolation_policy` on both tables |
+| [`051_inventory_transactions.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/051_inventory_transactions.sql) | Inventory Engine: append-only ledger for stock transactions and valuation. | `inventory_transactions` | None | `tenant_isolation_policy` |
+| [`052_goods_receipts.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/052_goods_receipts.sql) | Inventory Engine: inbound stock increments (goods receipts). | `goods_receipts` | None | `tenant_isolation_policy` |
+| [`053_inventory_rma.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/053_inventory_rma.sql) | Inventory Engine: customer returns and WEEE dispositions. | `inventory_rma` | None | `tenant_isolation_policy` |
+| [`054_assets.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/054_assets.sql) | Assets Engine: relational asset register seeded from BOM lines. | `assets` | None | `tenant_isolation_policy` |
+| [`055_namespace_fk_cascade.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/055_namespace_fk_cascade.sql) | Infrastructure: updates all tenant-scoped foreign keys to `namespaces` with `ON DELETE CASCADE`. | None | Multiple tables | Cascade deletes |
+| [`056_sales_signed_baselines_bigserial.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/056_sales_signed_baselines_bigserial.sql) | Schema correction: converges `sales_signed_baselines.id` to `BIGSERIAL`. | None | `sales_signed_baselines` | `BIGSERIAL` type |
 | [`060_system_design_geometry.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/060_system_design_geometry.sql) | System Design W14: canvas geometry (`x`/`y` in grid units, origin top-left, y-down; `rack_position`/`rack_face` in NetBox's binding vocabulary; room dimensions in `meta.copper.room.w/d/h`, in metres) **and** the per-DESIGN optimistic-concurrency token. Two key grains in one table, distinguished by `version IS NOT NULL`. | `system_design_geometry` | None | `tenant_isolation_policy`; `system_design_geometry_ns_node_uq`; `system_design_geometry_rack_face_check` (`front`/`rear`); `system_design_geometry_version_non_negative`; `system_design_geometry_node_label_not_blank` |
 | [`061_system_design_node_state.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/061_system_design_node_state.sql) | System Design M6.W16: per-node lifecycle state — NetBox `status` (validated by a **composite CHECK per `node_type`**, not a union, with the `status IS NULL` allowance INSIDE each arm so a NULL cannot short-circuit the deny-by-default `ELSE FALSE`), inert `revision`, and a finite non-negative `salience` — for DEVICE / RACK / CABLE. `status` is **nullable with no column DEFAULT**: a default would be a second, independent source of a retirable lifecycle. Creates the table and backfills **nothing**, and the writer records a row only for a node that is genuinely new or that the caller sent a lifecycle key for — a node with no row has no state, and that absence is what the W17 retirement guard denies on. | `system_design_node_state` | None | `tenant_isolation_policy` |
 

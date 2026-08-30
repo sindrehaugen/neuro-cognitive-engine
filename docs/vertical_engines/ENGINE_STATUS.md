@@ -31,7 +31,7 @@
 |---|---|---|---|---|---|
 | Product | M2 | 13 · B31–B43 | ✅ Complete | Main (`7304330`) | Owns `PRODUCT`/`SKU`. Nettailer catalog ingest, search, pricing, on-demand enrichment. Exposes 6 MCP tools and 3 REST routes. |
 | Procurement | M1 | 12 · B44–B55 | ✅ Complete | Main (`7304330`) | Owns `PO`. TCO, supplier ranking, 3-way match, human-confirmed PO submission, rebate forecasting. Exposes 6 MCP tools and 8 REST routes (3 domain cores unwired). |
-| System Design | M6 | 12 · B56–B67 | ✅ Complete | Main (`7304330`) | Owns `DESIGN`/`FUNCTIONAL_LOCATION`. Design↔quote, SoW, NetBox/SharePoint/Lucid export, and device-capability validation. Exposes 2 MCP tools (1 ping stub) and 1 REST route. *(See warning below)* |
+| System Design | M6 | 12 · B56–B67 | ✅ Complete | Main (`7304330`) | Owns `DESIGN`/`FUNCTIONAL_LOCATION`. Design↔quote, SoW, NetBox/SharePoint/Lucid export, and device-capability validation. Exposes 7 MCP tools and 5 REST routes. |
 | Project | M7 | 13 of 13 · B68–B79d | ✅ Complete | Main (`7304330`) | Owns `PROJECT`/`GATE`/`TASK`. Phase-gate state machine (G0–G5), signed-quote→project conversion, phase advance, my-day, capacity calendar, scope creep detection, and status reports. Exposes 4 MCP tools and 7 REST routes. |
 
 ## Tier 2 — Commercial & Financial Spine
@@ -95,11 +95,7 @@ The following table provides the ground truth of all exposed MCP tools and mount
 
 > [!WARNING]
 > ### System Design (M6) Surface Constraint
-> While System Design is marked ✅ Complete in terms of wave milestones (B56–B67), its **exposed HTTP/MCP surface is currently limited to 2 MCP tools and 1 REST route**:
-> - MCP: `system_design_ping` (a cacheable health check stub) and `system_design_publish_design_docs` (mutation).
-> - REST: `POST /api/system-design/publish-design-docs`.
->
-> Frontend developers **must not** assume the existence of interactive design-canvas endpoints, BOM-sync routes, or NetBox/Lucid direct REST APIs. If building design interfaces, coordinate backend surface additions before implementation.
+> System Design is marked ✅ Complete in terms of wave milestones (B56–B67), and its **exposed HTTP/MCP surface is now COMPLETE** (7 MCP tools, 5 REST routes). All interactive topological design, CAD layout, and functional location authoring can be invoked over the network.
 
 > [!IMPORTANT]
 > ### Economy (M8) Built vs. Exposed Cores
