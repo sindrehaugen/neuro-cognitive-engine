@@ -12,7 +12,7 @@
 # =============================================================================
 
 # --- Cryptography & Auth -----------------------------------------------------
-cryptography>=50.0.0         # Post-quantum ML-DSA signing; AES-256-GCM key storage
+cryptography>=50.0.1         # Post-quantum ML-DSA signing; AES-256-GCM key storage
 argon2-cffi>=25.1.0          # Argon2id wrapping keys for signing_keys v3 blobs
 jcs>=0.2.1                   # RFC 8785 canonical JSON — required for JCS signing inputs
 PyJWT>=2.13.0                # JWT Bearer token validation (RS256/ES256 via cryptography)
@@ -33,7 +33,7 @@ python-dotenv>=1.2.2
 mcp>=1.28.1,<2               # MCP SDK (cap: 2.0 removes Server.list_tools, used by server.py + nce/mcp_stdio_main.py)
 starlette>=1.6.0             # ASGI server core (>=1.0: 0.4x testclient demanded nonexistent httpx2; see #23)
 fastapi>=0.141.1             # REST + WebSocket interface layer
-uvicorn>=0.52.1              # ASGI process runner
+uvicorn>=0.52.4              # ASGI process runner
 sse-starlette>=2.0.0         # Server-Sent Events for live telemetry feed
 httpx>=0.28.1                # Async HTTP client
 tenacity>=9.1.4              # Retry / resilience decorator
