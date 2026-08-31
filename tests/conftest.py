@@ -45,15 +45,25 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _inject_mcp_tenant_api_key_for_tool_calls(monkeypatch):
-    """Tenant MCP tools require mcp_api_key in production; tests often omit it."""
+def _inject_mcp_tenant_api_key_for_tool_calls(request, monkeypatch):
+    """Supplies MCP admin/tenant API credentials on every test's behalf, suite-wide.
+
+    That means missing-credential rejections are unobservable to any test that
+    goes through this fixture: the real auth boundary is patched away before the
+    test body runs. A test that needs to exercise that boundary for real must be
+    marked `@pytest.mark.real_mcp_auth` to opt out of this patching.
+    """
+    if request.node.get_closest_marker("real_mcp_auth"):
+        return
     from nce.auth import MCP_ADMIN_TOOL_NAMES, enforce_mcp_tool_auth
+    from nce.tool_registry import TOOL_REGISTRY
 
     _real = enforce_mcp_tool_auth
 
     def _enforce_with_test_keys(tool_name: str, arguments: dict) -> None:
         args = dict(arguments)
-        if tool_name in MCP_ADMIN_TOOL_NAMES:
+        spec = TOOL_REGISTRY.get(tool_name)
+        if tool_name in MCP_ADMIN_TOOL_NAMES or (spec is not None and spec.admin_only):
             args.setdefault("admin_api_key", os.environ.get("NCE_ADMIN_API_KEY", ""))
         elif not args.get("admin_api_key"):
             args.setdefault("mcp_api_key", os.environ.get("NCE_MCP_API_KEY", ""))

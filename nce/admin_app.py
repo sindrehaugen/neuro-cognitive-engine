@@ -820,6 +820,65 @@ def build_admin_routes() -> list[Route]:
             methods=["POST"],
         ),
         # ------------------------------------------------------------------
+        # Inventory vertical module endpoints (Batch 138a, M11.W10a) — surface
+        # completion: the cores Batch 131's single surface wave predated.
+        # ------------------------------------------------------------------
+        Route(
+            "/api/inventory/record-goods-receipt",
+            endpoint=inventory_handlers.api_inventory_record_goods_receipt,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/inventory/recommend-restock",
+            endpoint=inventory_handlers.api_inventory_recommend_restock,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/inventory/forecast-demand",
+            endpoint=inventory_handlers.api_inventory_forecast_demand,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/inventory/reserve-stock",
+            endpoint=inventory_handlers.api_inventory_reserve_stock,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/inventory/release-stock",
+            endpoint=inventory_handlers.api_inventory_release_stock,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/inventory/record-rma",
+            endpoint=inventory_handlers.api_inventory_record_rma,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/inventory/valuation",
+            endpoint=inventory_handlers.api_inventory_valuation,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/inventory/record-goods-receipt-and-match",
+            endpoint=inventory_handlers.api_inventory_record_goods_receipt_and_match,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/inventory/reconcile-dead-stock",
+            endpoint=inventory_handlers.api_inventory_reconcile_dead_stock,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/inventory/restock-from-rma",
+            endpoint=inventory_handlers.api_inventory_restock_from_rma,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/inventory/dispose-rma-weee",
+            endpoint=inventory_handlers.api_inventory_dispose_rma_weee,
+            methods=["POST"],
+        ),
+        # ------------------------------------------------------------------
         # Assets vertical module endpoints (Batch 143, M9.W3) — assets-surface
         # ------------------------------------------------------------------
         # No literal path under /api/assets/ besides {id} and {id}/lifecycle,

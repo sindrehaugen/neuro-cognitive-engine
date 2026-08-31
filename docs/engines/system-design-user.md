@@ -26,12 +26,13 @@ The **System Design Engine** (`nce/vertical_modules/system_design/`) is NCE's Re
 > per-node lifecycle `status`/`revision`/`salience` with a live `statuses` read filter (W16/W16b), and a
 > retire path that soft-retires by default (W17).
 >
-> **Two caveats that are still true and matter to a client:**
-> 1. `system_design_delete_planned` is `admin_only=True`, but `nce/auth.py`'s MCP dispatch gates on its own
->    hardcoded `MCP_ADMIN_TOOL_NAMES` rather than the registry's `ADMIN_ONLY_TOOLS`. Until those are
->    reconciled the tool **will not answer over MCP without `NCE_ADMIN_OVERRIDE=true`**. It fails closed.
-> 2. MCP is stdio-only. Server-to-server REST with HMAC is the transport for a browser-facing client; there
+> **One caveat that is still true and matters to a client:**
+> 1. MCP is stdio-only. Server-to-server REST with HMAC is the transport for a browser-facing client; there
 >    is no browser path to MCP.
+>
+> `system_design_delete_planned` is `admin_only=True`; `nce/auth.py`'s MCP dispatch gates on the registry's
+> `admin_only` flag in addition to its hardcoded `MCP_ADMIN_TOOL_NAMES`, so the tool answers over MCP with a
+> valid `admin_api_key` — no `NCE_ADMIN_OVERRIDE` needed.
 
 > [!IMPORTANT]
 > Phase-1a of this engine (the value core: propose → gap-fill → SoW → freeze) ships with **zero external systems**. The functions in this guide read/write only the knowledge graph (`kg_nodes`/`kg_edges`) and the `memories` table. NetBox, SharePoint, and Lucid are independent Phase-1b adapters — see the [Admin Guide](system-design-admin.md).

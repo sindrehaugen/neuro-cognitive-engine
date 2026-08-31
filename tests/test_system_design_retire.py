@@ -78,18 +78,15 @@ All DB-dependent tests are ``@pytest.mark.integration`` (wave rule 9).
 
 A NOTE ON ``NCE_ADMIN_OVERRIDE`` IN THE DISPATCH TESTS
 -------------------------------------------------------
-``system_design_delete_planned`` is ``admin_only=True``.  ``nce/auth.py``'s
-``enforce_mcp_tool_auth`` gates on its OWN hardcoded ``MCP_ADMIN_TOOL_NAMES``
-set rather than on the registry's ``ADMIN_ONLY_TOOLS``, and the two have
-already drifted for twelve pre-existing tools; a tool absent from that set takes
-the *tenant* branch, which pops ``admin_api_key`` out of the argument bag, so
-the registry's ``_check_admin`` a few lines later can never see one.  The
-consequence is that every such tool is reachable over MCP only with
-``NCE_ADMIN_OVERRIDE`` — which is fail-CLOSED, and is why these tests use the
-override rather than a key.  ``nce/auth.py`` is outside this wave's ``Files:``
-list, so the drift is REPORTED, not fixed here, and
-:func:`test_admin_only_is_enforced_by_the_dispatch_loop` pins the fail-closed
-half so a future edit cannot quietly open it.
+``system_design_delete_planned`` is ``admin_only=True``.  Batch 67L fixed the
+drift between ``nce/auth.py``'s hardcoded ``MCP_ADMIN_TOOL_NAMES`` and the
+registry's ``ADMIN_ONLY_TOOLS``: ``enforce_mcp_tool_auth`` now takes the
+*admin* branch for a tool if it is in either set, so this tool is reachable
+over MCP with a valid ``admin_api_key``.  These tests still set
+``NCE_ADMIN_OVERRIDE`` as belt-and-braces so they do not depend on a
+particular key being configured, but it is no longer the only way through.
+:func:`test_admin_only_is_enforced_by_the_dispatch_loop` still pins the
+fail-closed half: with the override off and no keys, the call is refused.
 """
 
 from __future__ import annotations
@@ -205,11 +202,12 @@ class _StubRequest:
 def _admin_override(monkeypatch: pytest.MonkeyPatch) -> None:
     """Let the dispatch loop reach an ``admin_only=True`` handler.
 
-    See the module docstring: the registry's ``admin_only`` flag and
-    ``nce/auth.py``'s ``MCP_ADMIN_TOOL_NAMES`` are two independent lists and
-    have drifted, so the documented dev bypass is the only way to call this tool
-    over MCP today.  :func:`test_admin_only_is_enforced_by_the_dispatch_loop`
-    turns the override OFF and pins the refusal.
+    See the module docstring: Batch 67L reconciled the registry's
+    ``admin_only`` flag with ``nce/auth.py``'s ``MCP_ADMIN_TOOL_NAMES``, so a
+    valid ``admin_api_key`` now reaches this tool without the override too.
+    Setting it here is belt-and-braces, not load-bearing.
+    :func:`test_admin_only_is_enforced_by_the_dispatch_loop` turns the
+    override OFF and pins the refusal.
     """
     monkeypatch.setenv("NCE_ADMIN_OVERRIDE", "true")
 
@@ -2038,14 +2036,13 @@ async def test_admin_only_is_enforced_by_the_dispatch_loop(
 ) -> None:
     """With the dev override OFF and no admin key, the MCP call is refused.
 
-    This is the FAIL-CLOSED half of the ``admin_only=True`` contract, and it is
-    the half that matters: the tool is currently unreachable over MCP without
-    ``NCE_ADMIN_OVERRIDE`` at all, because ``nce/auth.py``'s
-    ``MCP_ADMIN_TOOL_NAMES`` is a second, drifted list that does not contain it
-    (nor twelve other ``admin_only`` tools).  That drift is REPORTED, not fixed
-    here — ``nce/auth.py`` is outside this wave's ``Files:`` list — and this
-    test pins the refusal so a future edit cannot quietly open the destructive
-    tool to a tenant key.
+    This is the FAIL-CLOSED half of the ``admin_only=True`` contract. Batch
+    67L made ``enforce_mcp_tool_auth`` take the admin branch for this tool
+    (its registry ``admin_only`` flag is now honoured alongside the hardcoded
+    ``MCP_ADMIN_TOOL_NAMES`` list), but the admin branch itself must still
+    refuse when no override and no admin key are present. This test pins that
+    refusal so a future edit cannot quietly open the destructive tool to a
+    tenant key.
     """
     monkeypatch.delenv("NCE_ADMIN_OVERRIDE", raising=False)
     monkeypatch.delenv("NCE_ADMIN_API_KEY", raising=False)

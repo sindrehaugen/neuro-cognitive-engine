@@ -1,0 +1,4 @@
+{
+  "_comment": "Config-as-IP (docs/vertical_engines/VERTICAL_MODULE_PATTERN.md; roadmap-§2 convention 9): the dead-stock window nce/vertical_modules/inventory/reconcile.py's do_reconcile_dead_stock reads (docs/vertical_engines/11-inventory-engine.md §Intelligence -- Watcher: dead-stock detection, no movement in N days, capital sitting idle -- Module 11, Wave 10c -- dead-stock-reconcile). 'dead_stock_days' is a non-negative integer number of days; a (sku, location) pair holding stock whose latest inventory_transactions row is older than that window is 'dead'. Global (not namespace-scoped) for this wave, mirroring inventory-valuation.json / automation-tiers.json's global-file convention; a per-namespace override is not built here. The reconcile READS inventory_items against the inventory_transactions ledger and never repairs, marks or writes anything -- on divergence it raises.",
+  "dead_stock_days": 90
+}

@@ -211,7 +211,7 @@ MCP extended error codes (defined in `nce/mcp_stdio_rpc.py`):
 
 ### Available MCP tools
 
-Tools are conditionally included: migration tools are present unless `NCE_DISABLE_MIGRATION_MCP=true`; D365 tools appear only when `NCE_D365_ENABLED=true`. `[ADMIN]` marks any tool requiring admin privileges via one of three enforcement mechanisms: (a) `ToolSpec(admin_only=True)` in `nce/tool_registry.py` — the dispatcher calls `_check_admin` before invoking the handler (`nce/mcp_stdio_dispatch.py`); (b) membership in `MCP_ADMIN_TOOL_NAMES` — enforced by `enforce_mcp_tool_auth` via the caller scope (`nce/auth.py`); (c) a required `admin_api_key` argument in the tool `inputSchema`, validated by the handler (`nce/mcp_stdio_tools.py`). See per-section notes for which mechanism applies to each tool.
+Tools are conditionally included: migration tools are present unless `NCE_DISABLE_MIGRATION_MCP=true`; D365 tools appear only when `NCE_D365_ENABLED=true`. `[ADMIN]` marks any tool requiring admin privileges via one of three enforcement mechanisms: (a) `ToolSpec(admin_only=True)` in `nce/tool_registry.py` — the dispatcher calls `_check_admin` before invoking the handler (`nce/mcp_stdio_dispatch.py`); (b) membership in `MCP_ADMIN_TOOL_NAMES` — enforced by `enforce_mcp_tool_auth` via the caller scope (`nce/auth.py`); (c) a required `admin_api_key` argument in the tool `inputSchema`, validated by the handler (`nce/mcp_stdio_tools.py`). Mechanisms (a) and (b) are no longer independent: `enforce_mcp_tool_auth` takes the admin branch when a tool is in `MCP_ADMIN_TOOL_NAMES` **or** carries `admin_only=True`, so mechanism (a) tools are now gated at `enforce_mcp_tool_auth` too. See per-section notes for which mechanism applies to each tool.
 
 **Memory**
 
@@ -294,7 +294,7 @@ Tools are conditionally included: migration tools are present unless `NCE_DISABL
 
 **Admin / Operations**
 
-All tools in this group are admin-enforced and carry `[ADMIN]`. `explain_past_decision` and `explain_config_change` set `admin_only=True` in their ToolSpec (mechanism **a** — the dispatch layer calls `_check_admin` before the handler; source: `nce/tool_registry.py`). The remaining tools (`manage_namespace`, `manage_quotas`, `rotate_signing_key`, `get_health`, `list_dlq`, `replay_dlq`, `purge_dlq`, `trigger_consolidation`, `consolidation_status`) are **not** gated by `admin_only=True`; they are enforced via membership in `MCP_ADMIN_TOOL_NAMES` (mechanism **b** — `enforce_mcp_tool_auth`, source: `nce/auth.py`) and require `admin_api_key` as a `required` field in their `inputSchema` (mechanism **c**, source: `nce/mcp_stdio_tools.py`).
+All tools in this group are admin-enforced and carry `[ADMIN]`. `explain_past_decision` and `explain_config_change` set `admin_only=True` in their ToolSpec (mechanism **a** — the dispatch layer calls `_check_admin` before the handler; source: `nce/tool_registry.py`); since `enforce_mcp_tool_auth` now honours that flag too, they are also gated at mechanism **b**. The remaining tools (`manage_namespace`, `manage_quotas`, `rotate_signing_key`, `get_health`, `list_dlq`, `replay_dlq`, `purge_dlq`, `trigger_consolidation`, `consolidation_status`) are **not** `admin_only=True`; they are enforced via membership in `MCP_ADMIN_TOOL_NAMES` (mechanism **b** — `enforce_mcp_tool_auth`, source: `nce/auth.py`) and require `admin_api_key` as a `required` field in their `inputSchema` (mechanism **c**, source: `nce/mcp_stdio_tools.py`).
 
 | Tool | Description |
 |---|---|

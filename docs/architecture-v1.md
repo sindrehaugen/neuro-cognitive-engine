@@ -109,7 +109,7 @@ NCE version 3.0.0 exposes six distinct entry points, isolating workloads across 
 ### 2.1 `server.py` — MCP stdio Server
 - **Role**: Entry point for IDE integration (Cursor, Claude Desktop). Envelopes the core cognitive engine in the Model Context Protocol (MCP) using the stdio transport.
 - **Protocol**: JSON-RPC 2.0 over standard input/output.
-- **Authentication**: `mcp_api_key` matching `NCE_MCP_API_KEY`.
+- **Authentication**: OS process boundary — the stdio client spawns this server and supplies its own env, so it already holds any key it would present; `NCE_MCP_API_KEY` is a configuration/defence-in-depth value, not a check against the caller. Tenant isolation is enforced separately via `NCE_MCP_NAMESPACE_ID` pinning.
 - **Lifecycle**: Initiated when the IDE launches the agent. A garbage collector background loop (`run_gc_loop`), a quota Redis-flush loop, a re-embedder task, and an outbox relay loop are co-launched as tracked asyncio tasks by `nce/mcp_stdio_main.py:run_stdio_server()` after the engine connects.
 
 ### 2.2 `admin_server.py` — Admin UI & REST API

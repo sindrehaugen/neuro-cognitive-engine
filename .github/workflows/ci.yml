@@ -149,7 +149,7 @@ jobs:
           POSTGRES_PASSWORD: mcp_password
           POSTGRES_DB: memory_meta
         ports:
-          - 5432:5432
+          - 15432:5432
         options: >-
           --health-cmd "pg_isready -U mcp_user -d memory_meta"
           --health-interval 5s
@@ -173,6 +173,12 @@ jobs:
         image: redis:7.4-alpine
         ports:
           - 6380:6379
+          # Host ports 15432/16379 (and this 6380) are deliberately NOT the
+          # service's own port. On a SELF-HOSTED runner under WSL2, Windows'
+          # localhost is forwarded into the distro, so the developer stack's
+          # Docker Desktop publishes of 5432/6379 are already bound and the
+          # service container fails with "address already in use" before any
+          # test runs. Hosted runners do not care which host port is used.
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s
@@ -194,12 +200,12 @@ jobs:
 
       - name: Apply Postgres schema
         env:
-          PG_DSN: postgresql://mcp_user:mcp_password@localhost:5432/memory_meta
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
         run: python scripts/apply_integration_schema.py
 
       - name: Integration smoke (RLS, schema, event log, outbox)
         env:
-          PG_DSN: postgresql://mcp_user:mcp_password@localhost:5432/memory_meta
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
           NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: |
@@ -224,7 +230,7 @@ jobs:
       # enforced on every PR.
       - name: Integration — M3 Agreements (authoring, compliance, signing, SLA)
         env:
-          PG_DSN: postgresql://mcp_user:mcp_password@localhost:5432/memory_meta
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
           NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: |
@@ -243,7 +249,7 @@ jobs:
       # (Batch 152a): a new tests/test_economy_*.py file needs no ci.yml edit.
       - name: Integration — M8 Economy (tests/test_economy_*.py)
         env:
-          PG_DSN: postgresql://mcp_user:mcp_password@localhost:5432/memory_meta
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
           NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/test_economy_*.py -m integration -q --tb=short
@@ -310,10 +316,27 @@ jobs:
       # files this list named, test_inventory_match_trigger.py included.
       - name: Integration — M11 Inventory (tests/test_inventory_*.py)
         env:
-          PG_DSN: postgresql://mcp_user:mcp_password@localhost:5432/memory_meta
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
           NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/test_inventory_*.py -m integration -q --tb=short
+
+      # Module 0, Wave 31 (Batch 132a): tests/test_bom_line_store.py.
+      # BOM_LINE is a Module 0 foundation object (shared across system_design
+      # and sales, and read by project/procurement/inventory/economy) so this
+      # file fits no per-module glob above (test_economy_*, test_inventory_*,
+      # test_assets_*, test_system_design_*) — that is correct rather than a
+      # naming mistake; naming it e.g. test_inventory_bom_line_store.py to
+      # catch an existing glob would assert a false owner. A dedicated step,
+      # added rather than folded into another module's step, is what a
+      # rebase against a concurrent glob-rewrite of those other steps
+      # survives. See tests/test_ci_integration_coverage.py.
+      - name: Integration — M0 BOM_LINE store (tests/test_bom_line_store.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/test_bom_line_store.py -m integration -q --tb=short
 
       # M9 Assets (tests/test_assets_*.py). FIRST integration job for Module 9;
       # Wave 1 (Batch 141) was a pure state machine with no DB surface to
@@ -345,7 +368,7 @@ jobs:
       # file needs no further ci.yml edit. See tests/test_ci_integration_coverage.py.
       - name: Integration — M9 Assets (tests/test_assets_*.py)
         env:
-          PG_DSN: postgresql://mcp_user:mcp_password@localhost:5432/memory_meta
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
           NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/test_assets_*.py -m integration -q --tb=short
@@ -375,7 +398,7 @@ jobs:
       # in prose, not as patterns.
       - name: Integration — M6 System Design (tests/test_system_design_*.py)
         env:
-          PG_DSN: postgresql://mcp_user:mcp_password@localhost:5432/memory_meta
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
           NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
           # Points at the 6380 service above. Without it the cache-invalidation
@@ -405,7 +428,7 @@ jobs:
       redis:
         image: redis:7.4-alpine
         ports:
-          - 6379:6379
+          - 16379:6379
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s
@@ -430,5 +453,5 @@ jobs:
       - name: Integration — REST/MCP cache invalidation (real Redis)
         env:
           NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
-          NCE_TEST_REDIS_URL: redis://localhost:6379/15
+          NCE_TEST_REDIS_URL: redis://localhost:16379/15
         run: pytest tests/test_rest_cache_invalidation.py -m integration -q --tb=short

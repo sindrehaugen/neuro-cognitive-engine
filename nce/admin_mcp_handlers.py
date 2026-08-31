@@ -38,9 +38,10 @@ async def handle_manage_namespace(
     admin_identity: str | None = None,
 ) -> str:
     """[ADMIN] Manage namespaces: create, list, grant, revoke, update_metadata."""
+    from nce.mcp_args import model_kwargs
     from nce.models import ManageNamespaceRequest
 
-    payload = ManageNamespaceRequest(**arguments)
+    payload = ManageNamespaceRequest(**model_kwargs(arguments))
     res = await engine.manage_namespace(payload, admin_identity=admin_identity)
     return json.dumps(res, default=str)
 
@@ -87,9 +88,10 @@ async def handle_consolidation_status(engine: NCEEngine, arguments: dict[str, An
 @mcp_handler
 async def handle_manage_quotas(engine: NCEEngine, arguments: dict[str, Any]) -> str:
     """[ADMIN] Manage resource quotas for a namespace."""
+    from nce.mcp_args import model_kwargs
     from nce.models import ManageQuotasRequest
 
-    req = ManageQuotasRequest(**arguments)
+    req = ManageQuotasRequest(**model_kwargs(arguments))
     res = await engine.manage_quotas(req)
     return json.dumps(res, default=str)
 

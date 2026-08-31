@@ -212,12 +212,40 @@ from typing import Any
 import asyncpg  # type: ignore[import-untyped]
 import pytest
 
+import nce.entity_resolution.ownership_seed as ownership_seed_module
+from nce.auth import set_namespace_context
+from nce.bom_lines import bom_line_label, create_bom_line
+from nce.entity_resolution.ownership import OwnershipError, assert_owner
+from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
 from nce.vertical_modules.inventory import triggers
 from nce.vertical_modules.inventory.triggers import (
     MATCH_TOOL_NAME,
+    do_advance_bom_line_to_delivered,
     do_record_goods_receipt_and_evaluate_match,
 )
 from nce.vertical_modules.procurement.three_way_match import do_evaluate_three_way_match
+
+
+async def _seed_ownership(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """Seed the node-ownership registry for this namespace.
+
+    B132b made ``do_record_goods_receipt`` (called by this module's own
+    ``do_record_goods_receipt_and_evaluate_match``) perform a guarded
+    ``GOODS_RECEIPT`` kg_nodes write (``assert_owner``, deny-by-default,
+    Contract A). Any test that reaches that call must seed first or it is
+    refused with ``OwnershipError``. Identical in shape to
+    ``tests/test_inventory_gr.py``'s own ``_seed_ownership`` (one idiom
+    across the module's test files, not a third variant). NOT autouse and
+    NOT in conftest.py: seeding globally would disarm the deliberate
+    deny-by-default proofs elsewhere in the repo."""
+    async with pg_pool.acquire() as conn:
+        async with conn.transaction():
+            await set_namespace_context(conn, namespace_id)
+            await seed_node_ownership_registry(conn, namespace_id)
+
 
 # ---------------------------------------------------------------------------
 # Shared fixtures/helpers. Every helper takes an explicit namespace_id and
@@ -646,6 +674,7 @@ async def test_a_new_receipt_fires_the_match_exactly_once(
     The verdict asserted here is Procurement's OWN (the counter delegates), so
     a payload Inventory shapes wrongly fails here rather than silently
     recording an error object."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
     engine = _EngineStub(pg_pool)
 
@@ -701,6 +730,7 @@ async def test_a_replayed_receipt_fires_the_match_zero_additional_times(
     refuses it and no delivery exists to match. The TOTAL fire count — not a
     delta, not the DB row — is the assertion: a re-fire would overwrite
     ``match_result`` with identical content and leave no trace in the table."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
     engine = _EngineStub(pg_pool)
     params: dict[str, Any] = {
@@ -750,6 +780,7 @@ async def test_two_concurrent_identical_submissions_fire_the_match_once(
     ``asyncio.gather`` over REAL separate pool connections is the actual race
     the unique index closes; a sequential double-call cannot exercise it.
     Exactly one of the two calls must see ``duplicate: False``."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
     engine = _EngineStub(pg_pool)
     params: dict[str, Any] = {
@@ -799,7 +830,9 @@ async def test_a_second_namespaces_receipt_never_fires_the_first_namespaces_matc
     ``namespace_id`` predicate would be invisible. Here it shows up as a WRONG
     NUMBER — 12 where 7 was received — and this pool is the owner pool, which
     BYPASSES FORCE RLS, so the policy cannot rescue an unscoped query."""
+    await _seed_ownership(pg_pool, namespace_id)
     other_ns = await make_namespace()
+    await _seed_ownership(pg_pool, other_ns)
     loc_a = await _seed_location(pg_pool, namespace_id, "Warehouse A")
     loc_b = await _seed_location(pg_pool, other_ns, "Warehouse B")
     engine = _EngineStub(pg_pool)
@@ -862,6 +895,7 @@ async def test_the_fired_quantity_is_cumulative_across_partial_deliveries(
     reporting 3 would score every partial delivery as a shortfall. This is
     also the property that gives (d)'s ``namespace_id`` predicate something to
     protect: the aggregate spans rows, so an unscoped one spans tenants."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
     engine = _EngineStub(pg_pool)
     base: dict[str, Any] = {
@@ -964,11 +998,13 @@ async def test_an_unrelated_sku_on_the_pallet_cannot_conceal_a_short_delivery(
 
     # 1. Control — the honest short delivery.
     ns1 = await make_namespace()
+    await _seed_ownership(pg_pool, ns1)
     alone = await _deliver(ns1, "PO-FOAM-1", "DN-ALONE", [{"sku": _ARTICLE, "qty": 3}])
     assert _verdict_of(alone) == ("3.000", "YELLOW", 72.0)
 
     # 2. The same shortfall with packing foam on the same pallet.
     ns2 = await make_namespace()
+    await _seed_ownership(pg_pool, ns2)
     with_foam = await _deliver(
         ns2,
         "PO-FOAM-2",
@@ -982,6 +1018,7 @@ async def test_an_unrelated_sku_on_the_pallet_cannot_conceal_a_short_delivery(
 
     # 3. The same shortfall with the foam arriving as its own later delivery.
     ns3 = await make_namespace()
+    await _seed_ownership(pg_pool, ns3)
     await _deliver(ns3, "PO-FOAM-3", "DN-GOODS", [{"sku": _ARTICLE, "qty": 3}])
     foam_later = await _deliver(
         ns3, "PO-FOAM-3", "DN-FOAM-LATER", [{"sku": "PACKING-FOAM", "qty": 7}]
@@ -1006,6 +1043,7 @@ async def test_an_unrelated_sku_on_the_pallet_cannot_conceal_a_short_delivery(
     #    must be the same article to this sum. RED if the filter compares
     #    case-sensitively (0 received where 3 were delivered).
     ns4 = await make_namespace()
+    await _seed_ownership(pg_pool, ns4)
     lower = await _deliver(ns4, "PO-FOAM-4", "DN-LOWER", [{"sku": _ARTICLE.lower(), "qty": 3}])
     assert _verdict_of(lower) == ("3.000", "YELLOW", 72.0), (
         f"{_ARTICLE.lower()!r} and {_ARTICLE!r} are one article to _detect_substitution; "
@@ -1068,6 +1106,7 @@ async def test_a_declared_equivalent_re_opens_the_concealment_path(
         )
 
     ns_plain = await make_namespace()
+    await _seed_ownership(pg_pool, ns_plain)
     plain = await _deliver(
         ns_plain, "PLAIN", {"article_id": foam, "quantity": 10, "unit_price": 10.0}
     )
@@ -1077,6 +1116,7 @@ async def test_a_declared_equivalent_re_opens_the_concealment_path(
     )
 
     ns_decl = await make_namespace()
+    await _seed_ownership(pg_pool, ns_decl)
     declared = await _deliver(
         ns_decl,
         "DECL",
@@ -1151,6 +1191,7 @@ async def test_a_non_ascii_article_is_one_article_to_the_filter(
     this module can ship, so the assertion is the full verdict, not just
     "no exception"."""
     ns = await make_namespace()
+    await _seed_ownership(pg_pool, ns)
     loc = await _seed_location(pg_pool, ns, "Warehouse")
     result = await do_record_goods_receipt_and_evaluate_match(
         _EngineStub(pg_pool),
@@ -1232,6 +1273,7 @@ async def test_a_declared_substitution_is_counted_toward_the_matched_quantity(
     premise with a false conclusion: the filter removes the QUANTITY
     ``_compute_confidence`` needs, not the information the classifier uses."""
     ns = await make_namespace()
+    await _seed_ownership(pg_pool, ns)
     loc = await _seed_location(pg_pool, ns, "Warehouse")
     result = await do_record_goods_receipt_and_evaluate_match(
         _EngineStub(pg_pool),
@@ -1278,6 +1320,7 @@ async def test_a_declared_substitution_is_counted_alongside_the_ordered_article(
     the quiet half of the same defect and the reason the article SET, not a
     fallback, is the fix."""
     ns = await make_namespace()
+    await _seed_ownership(pg_pool, ns)
     loc = await _seed_location(pg_pool, ns, "Warehouse")
     result = await do_record_goods_receipt_and_evaluate_match(
         _EngineStub(pg_pool),
@@ -1328,6 +1371,7 @@ async def test_an_undeclared_different_article_is_still_a_shortfall(
     counting only the PO's. Together they say exactly "the invoice's article
     counts when, and only when, Procurement honours the declaration"."""
     ns = await make_namespace()
+    await _seed_ownership(pg_pool, ns)
     loc = await _seed_location(pg_pool, ns, "Warehouse")
     result = await do_record_goods_receipt_and_evaluate_match(
         _EngineStub(pg_pool),
@@ -1389,6 +1433,7 @@ async def test_a_delivery_with_nothing_countable_records_nothing(
 
     # 1. Nothing countable, nothing banked -> refused, nothing written.
     ns1 = await make_namespace()
+    await _seed_ownership(pg_pool, ns1)
     loc1 = await _seed_location(pg_pool, ns1, "Warehouse")
     with pytest.raises(ValueError, match=re.escape("carries none of the article(s)")):
         await do_record_goods_receipt_and_evaluate_match(
@@ -1410,6 +1455,7 @@ async def test_a_delivery_with_nothing_countable_records_nothing(
 
     # 2. CONTROL — the same foam AFTER a real delivery is accepted.
     ns2 = await make_namespace()
+    await _seed_ownership(pg_pool, ns2)
     loc2 = await _seed_location(pg_pool, ns2, "Warehouse")
     base: dict[str, Any] = {
         "namespace_id": ns2,
@@ -1430,3 +1476,345 @@ async def test_a_delivery_with_nothing_countable_records_nothing(
         f"a legitimate receipt and must still fire; got {_verdict_of(foam_later)}"
     )
     assert len(match_counter.calls) == 2
+
+
+# ---------------------------------------------------------------------------
+# Batch 133b — bom-delivered-transition. do_advance_bom_line_to_delivered:
+# flip a BOM_LINE to DELIVERED only when fully received, guarded by Batch
+# 132a's own update_bom_line_status (assert_owner, transition="status:
+# delivered"). All integration — every load-bearing assertion here needs
+# Postgres and the registry.
+# ---------------------------------------------------------------------------
+
+
+async def _seed_bom_line(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+    *,
+    qty: str,
+    quote_id: str = "Q-1",
+    line_ref: str = "L1",
+) -> tuple[str, str]:
+    """Author one BOM_LINE via Batch 132a's OWN guarded writer
+    (``content:create:design``, ``system_design``'s registered transition) —
+    never a hand-rolled INSERT. Requires the registry to already carry that
+    row, which ``_seed_ownership`` provides. Returns ``(quote_id, line_ref)``.
+    """
+    async with pg_pool.acquire() as conn:
+        async with conn.transaction():
+            await set_namespace_context(conn, namespace_id)
+            await create_bom_line(
+                conn,
+                namespace_id,
+                flow="design",
+                writer_engine="system_design",
+                quote_id=quote_id,
+                line_ref=line_ref,
+                qty=Decimal(qty),
+                unit_price=Decimal("10.00"),
+                line_total=Decimal(qty) * Decimal("10.00"),
+            )
+    return quote_id, line_ref
+
+
+async def _bom_line_row(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+    quote_id: str,
+    line_ref: str,
+) -> asyncpg.Record:
+    async with pg_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM bom_line_content WHERE namespace_id = $1 AND bom_line_label = $2",
+            namespace_id,
+            bom_line_label(quote_id, line_ref),
+        )
+    assert row is not None
+    return row
+
+
+async def _seed_ownership_without_bom_delivered(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Seed every registered row EXCEPT ``BOM_LINE``/``status:delivered``.
+
+    An entirely EMPTY registry would also refuse ``content:create:design``
+    and make it impossible to author the line at all — the discriminating
+    test needs everything else present and ONLY the one grant under test
+    missing. Rebinds ``ownership_seed_module._OWNERSHIP_ENTRIES`` via
+    pytest's own ``monkeypatch`` fixture (auto-restored at teardown) — an
+    in-memory rebind, not a file mutation (rule 11); the identical technique
+    this file's own ``match_counter`` fixture already uses via
+    ``monkeypatch.setattr``.
+    """
+    filtered = [
+        e
+        for e in ownership_seed_module._OWNERSHIP_ENTRIES
+        if not (e.get("node_type") == "BOM_LINE" and e.get("transition") == "status:delivered")
+    ]
+    monkeypatch.setattr(ownership_seed_module, "_OWNERSHIP_ENTRIES", filtered)
+    await _seed_ownership(pg_pool, namespace_id)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_flip_refused_when_delivered_row_absent(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """(a) THE GUARD IS REACHED — refused when the row is absent.
+
+    With ``BOM_LINE``/``status:delivered`` missing from the seeded registry
+    (every other row present), the flip raises ``OwnershipError`` AND the
+    line's status is unchanged AND ``status_changed_at`` stays NULL — no
+    write reached the row at all.
+
+    Discriminating: without the ``assert_owner`` call inside
+    ``update_bom_line_status``, this write simply succeeds.
+    """
+    await _seed_ownership_without_bom_delivered(pg_pool, namespace_id, monkeypatch)
+    quote_id, line_ref = await _seed_bom_line(pg_pool, namespace_id, qty="5")
+    engine = _EngineStub(pg_pool)
+    loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
+    await do_record_goods_receipt_and_evaluate_match(
+        engine,
+        {
+            "namespace_id": namespace_id,
+            "po_ref": "PO-A",
+            "location_id": loc,
+            "lines": [{"sku": _ARTICLE, "qty": 5}],
+            **_perfect_legs(quantity=5),
+        },
+    )
+
+    with pytest.raises(OwnershipError):
+        await do_advance_bom_line_to_delivered(
+            engine,
+            {
+                "namespace_id": namespace_id,
+                "quote_id": quote_id,
+                "line_ref": line_ref,
+                "po_ref": "PO-A",
+                "article_id": _ARTICLE,
+            },
+        )
+
+    row = await _bom_line_row(pg_pool, namespace_id, quote_id, line_ref)
+    assert row["status"] == "DRAFT", (
+        f"a refused flip must leave status untouched, got {row['status']!r}"
+    )
+    assert row["status_changed_at"] is None, "a refused flip must write nothing"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_grant_is_narrow_not_whole_node(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """(b) 🔴 THE GRANT IS NARROW — this wave's real load-bearing claim.
+
+    In a FULLY seeded namespace, ``assert_owner(..., "BOM_LINE", "inventory",
+    transition="status:installed")`` raises, and so does the same call with
+    ``transition=None``. Discriminating in the sharpest possible way: if the
+    JSON row had been written with ``"transition": null``, ``_lookup_owner``'s
+    fallback would find it and the ``transition=None`` call would PERMIT.
+    Proved by mutation (``b133b_widen_row``), not by narration — see the
+    RED/GREEN runs in the wave report.
+    """
+    await _seed_ownership(pg_pool, namespace_id)
+    async with pg_pool.acquire() as conn:
+        async with conn.transaction():
+            await set_namespace_context(conn, namespace_id)
+            with pytest.raises(OwnershipError):
+                await assert_owner(
+                    conn, namespace_id, "BOM_LINE", "inventory", transition="status:installed"
+                )
+            with pytest.raises(OwnershipError):
+                await assert_owner(conn, namespace_id, "BOM_LINE", "inventory", transition=None)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_fully_received_line_flips_to_delivered(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """(c) Permitted when the row IS present — happy path.
+
+    NOT guard-discriminating: this assertion passes identically with no
+    guard at all. (a) and (b) above are the discriminating proofs.
+    """
+    await _seed_ownership(pg_pool, namespace_id)
+    quote_id, line_ref = await _seed_bom_line(pg_pool, namespace_id, qty="5")
+    engine = _EngineStub(pg_pool)
+    loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
+    await do_record_goods_receipt_and_evaluate_match(
+        engine,
+        {
+            "namespace_id": namespace_id,
+            "po_ref": "PO-C",
+            "location_id": loc,
+            "lines": [{"sku": _ARTICLE, "qty": 5}],
+            **_perfect_legs(quantity=5),
+        },
+    )
+
+    result = await do_advance_bom_line_to_delivered(
+        engine,
+        {
+            "namespace_id": namespace_id,
+            "quote_id": quote_id,
+            "line_ref": line_ref,
+            "po_ref": "PO-C",
+            "article_id": _ARTICLE,
+        },
+    )
+
+    assert result["advanced"] is True
+    assert result["reason"] is None
+    row = await _bom_line_row(pg_pool, namespace_id, quote_id, line_ref)
+    assert row["status"] == "DELIVERED"
+    assert row["status_changed_at"] is not None
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_partial_receipt_does_not_flip(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """(d) A partial receipt (3 of 5 ordered) leaves the status untouched —
+    asserted directly on the row, not merely "no exception was raised"."""
+    await _seed_ownership(pg_pool, namespace_id)
+    quote_id, line_ref = await _seed_bom_line(pg_pool, namespace_id, qty="5")
+    engine = _EngineStub(pg_pool)
+    loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
+    await do_record_goods_receipt_and_evaluate_match(
+        engine,
+        {
+            "namespace_id": namespace_id,
+            "po_ref": "PO-D",
+            "location_id": loc,
+            "lines": [{"sku": _ARTICLE, "qty": 3}],
+            **_perfect_legs(quantity=3),
+        },
+    )
+
+    result = await do_advance_bom_line_to_delivered(
+        engine,
+        {
+            "namespace_id": namespace_id,
+            "quote_id": quote_id,
+            "line_ref": line_ref,
+            "po_ref": "PO-D",
+            "article_id": _ARTICLE,
+        },
+    )
+
+    assert result["advanced"] is False
+    assert result["reason"] == "partial"
+    assert Decimal(result["ordered_qty"]) == Decimal("5")
+    assert Decimal(result["received_qty"]) == Decimal("3")
+    row = await _bom_line_row(pg_pool, namespace_id, quote_id, line_ref)
+    assert row["status"] == "DRAFT"
+    assert row["status_changed_at"] is None
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_successful_flip_moves_nothing_else_on_the_line(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """(e) After a successful flip, content (qty/unit_price/line_total) is
+    byte-identical to what :func:`_seed_bom_line` wrote — the flip advances
+    ``status``/``status_changed_at`` and NOTHING else on the row, in
+    particular no ``INSTALLED``/``TESTED`` advance and nothing resembling
+    ``actual_cost`` (which has no column on this table at all)."""
+    await _seed_ownership(pg_pool, namespace_id)
+    quote_id, line_ref = await _seed_bom_line(pg_pool, namespace_id, qty="5")
+    engine = _EngineStub(pg_pool)
+    loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
+    await do_record_goods_receipt_and_evaluate_match(
+        engine,
+        {
+            "namespace_id": namespace_id,
+            "po_ref": "PO-E",
+            "location_id": loc,
+            "lines": [{"sku": _ARTICLE, "qty": 5}],
+            **_perfect_legs(quantity=5),
+        },
+    )
+
+    await do_advance_bom_line_to_delivered(
+        engine,
+        {
+            "namespace_id": namespace_id,
+            "quote_id": quote_id,
+            "line_ref": line_ref,
+            "po_ref": "PO-E",
+            "article_id": _ARTICLE,
+        },
+    )
+
+    row = await _bom_line_row(pg_pool, namespace_id, quote_id, line_ref)
+    assert row["status"] == "DELIVERED"
+    assert Decimal(str(row["qty"])) == Decimal("5")
+    assert Decimal(str(row["unit_price"])) == Decimal("10.00")
+    assert Decimal(str(row["line_total"])) == Decimal("50.00")
+    assert row["frozen_at"] is None
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_reflip_is_idempotent_no_second_write(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """(f) Idempotent re-run: flipping an already-``DELIVERED`` line is a
+    no-op, not a second write and not an error — ``status_changed_at`` is
+    byte-identical before and after the second call."""
+    await _seed_ownership(pg_pool, namespace_id)
+    quote_id, line_ref = await _seed_bom_line(pg_pool, namespace_id, qty="5")
+    engine = _EngineStub(pg_pool)
+    loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
+    await do_record_goods_receipt_and_evaluate_match(
+        engine,
+        {
+            "namespace_id": namespace_id,
+            "po_ref": "PO-F",
+            "location_id": loc,
+            "lines": [{"sku": _ARTICLE, "qty": 5}],
+            **_perfect_legs(quantity=5),
+        },
+    )
+    params = {
+        "namespace_id": namespace_id,
+        "quote_id": quote_id,
+        "line_ref": line_ref,
+        "po_ref": "PO-F",
+        "article_id": _ARTICLE,
+    }
+
+    first = await do_advance_bom_line_to_delivered(engine, params)
+    assert first["advanced"] is True
+    row_after_first = await _bom_line_row(pg_pool, namespace_id, quote_id, line_ref)
+
+    second = await do_advance_bom_line_to_delivered(engine, params)
+    assert second == {
+        "advanced": False,
+        "reason": "already_delivered",
+        "bom_line_label": bom_line_label(quote_id, line_ref),
+    }
+
+    row_after_second = await _bom_line_row(pg_pool, namespace_id, quote_id, line_ref)
+    assert row_after_second["status_changed_at"] == row_after_first["status_changed_at"], (
+        "a second call must not write status_changed_at again"
+    )
+    assert row_after_second["updated_at"] == row_after_first["updated_at"], (
+        "a second call must not touch the row at all"
+    )

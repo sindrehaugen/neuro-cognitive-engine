@@ -1,0 +1,15 @@
+{
+  "_comment": "Config-as-IP (docs/vertical_engines/VERTICAL_MODULE_PATTERN.md; docs/vertical_engines/11-inventory-engine.md 'Config keys' -- inventory-forecast-weights.json): nce/vertical_modules/inventory/forecast.py's do_forecast_demand (Module 11, Wave 7 -- demand-forecast) reads this for pipeline-stage -> demand-probability weights (a draft quote implies less than a signed project). GLOBAL, not namespace-scoped, for this wave -- same choice inventory-reorder-points.json/inventory-valuation.json make for themselves. Each weight is a demand-PROBABILITY multiplier in 0..1, applied against each pipeline kg_edges row's own confidence (0..1, kg_edges' own WORM invariant) to produce that line's contribution to a SKU's forecasted_demand_score. 'stage' here is the kg_nodes.entity_type of the pipeline item (the QUOTE/DESIGN/PROJECT node the demand-implying kg_edges row hangs off) -- a stage absent from this map has no policy at all: do_forecast_demand never guesses a weight for it, the pipeline line is reported with stage_weight=null, counted=false, and excluded from the sum (same 'config is IP, never guess' fallback inventory-reorder-points.json's own reorder_points documents for an unconfigured SKU). Values are plain JSON numbers in the inclusive range 0..1 -- a value outside that range is rejected with a ValueError rather than clamped, because a malformed config value should fail loudly rather than quietly produce a plausible-looking wrong score. 'stage_days_to_close' (Wave 7b -- forecast-horizon-filter) is how horizon_days FILTERS: the anchor is the demand-implying kg_edges row's own created_at, a line's expected close date is created_at + stage_days_to_close[stage], and the line counts toward forecasted_demand_score only when that expected close date falls at or before now() + horizon_days (inclusive at the boundary). Each value is a non-negative WHOLE number of days; anything else (negative, fractional, non-numeric) is rejected with a ValueError at config load, never clamped -- the same loud-failure rule stage_weights uses. Same 'config is IP, never guess' fallback as well: a stage absent from stage_days_to_close has NO horizon policy, so its lines are reported with within_horizon=null, counted=false and excluded from the sum -- never defaulted to 'closes today' and never treated as 'always within horizon'.",
+  "stage_weights": {
+    "quote_draft": 0.2,
+    "quote_sent": 0.4,
+    "design_approved": 0.6,
+    "project_signed": 1.0
+  },
+  "stage_days_to_close": {
+    "quote_draft": 60,
+    "quote_sent": 30,
+    "design_approved": 14,
+    "project_signed": 7
+  }
+}

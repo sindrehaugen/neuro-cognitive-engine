@@ -61,11 +61,17 @@ row this function just wrote, not merely the mirror.
 
 Dependency direction (uncle-bob-craft)
 -------------------------------------------
-This module imports only ``asyncpg``, ``nce.db_utils.scoped_pg_session``,
-``nce.entity_resolution.ownership.assert_owner`` and
-``nce.events.emit.emit_graph_write`` — no web/HTTP/admin framework imports,
-and nothing from another vertical module (in particular, nothing from
-``nce.vertical_modules.inventory.stock`` or ``.transactions``).
+This module imports ``asyncpg``, ``nce.db_utils.scoped_pg_session``,
+``nce.entity_resolution.ownership.assert_owner``,
+``nce.events.emit.emit_graph_write`` and — Batch 138b's two stock legs —
+``nce.vertical_modules.inventory.stock``'s public ``decrement_on_hand`` /
+``increment_on_hand`` / ``mirror_item_at_location`` plus
+``nce.vertical_modules.inventory.transactions``'s ``append_transaction`` /
+``REASON_ADJUSTMENT``. Both are peers within the same
+``nce.vertical_modules.inventory`` package — uncle-bob-craft's rule for this
+module is "imports only within ``nce.vertical_modules.inventory`` plus
+``nce.db_utils``/``nce.events``/``nce.entity_resolution``", not "no sibling
+modules at all" — no web/HTTP/admin framework imports either way.
 ``NCEEngine`` is imported under ``TYPE_CHECKING`` only, matching ``stock.py``
 and ``transactions.py``'s own convention.
 
@@ -77,9 +83,28 @@ rather than importing them across modules — the same duplication-over-
 cross-module-private-import choice ``transactions.py``'s own docstring
 argues for regarding ``stock.py``.
 
+Batch 138b: the two stock legs this wave adds
+------------------------------------------------
+Everything above describes ``do_record_rma`` exactly as Batch 138 shipped
+it — it still records only, still moves no stock. This wave adds two
+SEPARATE public functions, :func:`do_restock_from_rma` and
+:func:`do_dispose_rma_weee`, which perform the movement ``do_record_rma``
+explicitly declines to: each claims one ``'pending'`` ``inventory_rma`` row
+with a single ``UPDATE ... RETURNING`` (:func:`_claim_rma` — the
+``AND stock_movement_state = 'pending'`` predicate IS the idempotency
+guard), moves ``inventory_items`` through ``stock.py``'s existing guarded
+primitives, appends one typed ``inventory_transactions`` row
+(``REASON_ADJUSTMENT`` for both legs — see :func:`_run_rma_leg`'s docstring
+for why a dedicated category is DEFERRED, not silent), and refreshes the
+graph projection — all inside the SAME transaction, in the fixed order
+``inventory_rma`` -> ``inventory_items`` -> ``inventory_transactions`` ->
+``kg_nodes``. The disposal leg is the one where nothing arrives: stock
+leaves permanently and the ledger row is what proves it happened.
+
 Registration is deliberately NOT this wave's job
 -----------------------------------------------------
-``do_record_rma`` is not registered as an MCP tool or a REST route here.
+Neither ``do_record_rma`` nor Batch 138b's ``do_restock_from_rma`` /
+``do_dispose_rma_weee`` is registered as an MCP tool or a REST route here.
 Batch 138a (``inventory-surface-completion``) owns registration for all of
 Inventory's ``do_*`` entry points; registration and certification are kept
 in different waves on purpose.
@@ -97,6 +122,15 @@ import asyncpg  # type: ignore[import-untyped]
 from nce.db_utils import scoped_pg_session
 from nce.entity_resolution.ownership import assert_owner
 from nce.events.emit import emit_graph_write
+from nce.vertical_modules.inventory.stock import (
+    decrement_on_hand,
+    increment_on_hand,
+    mirror_item_at_location,
+)
+from nce.vertical_modules.inventory.transactions import (
+    REASON_ADJUSTMENT,
+    append_transaction,
+)
 
 if TYPE_CHECKING:
     from nce.orchestrator import NCEEngine
@@ -426,4 +460,316 @@ async def do_record_rma(engine: NCEEngine, params: dict[str, Any]) -> dict[str, 
         "weee_state": row["weee_state"],
         "disposal_ref": row["disposal_ref"],
         "stock_movement_state": row["stock_movement_state"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Batch 138b — the two stock legs. See module docstring's "Batch 138b: the
+# two stock legs this wave adds" section.
+# ---------------------------------------------------------------------------
+
+_STATE_RESTOCKED = "restocked"
+_STATE_DISPOSED = "disposed"
+
+
+class RmaNotFoundError(Exception):
+    """No ``inventory_rma`` row exists for this ``(namespace_id, rma_ref)``."""
+
+    def __init__(self, *, rma_ref: str) -> None:
+        self.rma_ref = rma_ref
+        super().__init__(f"no inventory_rma row for rma_ref={rma_ref!r}")
+
+
+class RmaAlreadySettledError(Exception):
+    """The RMA's ``stock_movement_state`` is no longer ``'pending'`` — a
+    stock leg (this call, or a concurrent one) already claimed it."""
+
+    def __init__(self, *, rma_ref: str, stock_movement_state: str) -> None:
+        self.rma_ref = rma_ref
+        self.stock_movement_state = stock_movement_state
+        super().__init__(
+            f"rma_ref={rma_ref!r} is already settled: "
+            f"stock_movement_state={stock_movement_state!r}, not 'pending'"
+        )
+
+
+class RmaNotWeeeScopeError(Exception):
+    """Disposal was attempted on an RMA whose ``weee_state`` is
+    ``'not_applicable'`` — a contradiction: no WEEE take-back can be
+    documented for an item that is not WEEE-scope."""
+
+    def __init__(self, *, rma_ref: str) -> None:
+        self.rma_ref = rma_ref
+        super().__init__(
+            f"rma_ref={rma_ref!r} has weee_state='not_applicable': cannot "
+            "dispose an item that is not WEEE-scope"
+        )
+
+
+async def _claim_rma(
+    conn: asyncpg.Connection,  # type: ignore[type-arg]
+    ns_uuid: UUID,
+    rma_ref: str,
+    *,
+    target_state: str,
+    disposal_ref: str | None = None,
+) -> asyncpg.Record:  # type: ignore[type-arg]
+    """Claim one ``inventory_rma`` row for a stock leg — a single
+    ``UPDATE ... RETURNING``, never a Python-side read-then-write. This is
+    ``stock.py``'s ``decrement_on_hand``'s exact shape and reasoning, applied
+    to the RMA's own state machine instead of a quantity column.
+
+    The ``AND stock_movement_state = 'pending'`` predicate IS the idempotency
+    guard: two concurrent callers cannot both move the same RMA's stock,
+    because only one ``UPDATE`` can see the row as ``'pending'`` — the other
+    sees zero rows affected and this raises :class:`RmaAlreadySettledError`.
+
+    The disposal leg (``target_state == 'disposed'``) additionally sets
+    ``weee_state = 'disposed'`` and ``disposal_ref`` on the SAME row, and
+    guards ``AND weee_state <> 'not_applicable'`` — disposing an item that is
+    not WEEE-scope is a contradiction, not a race.
+
+    Returns
+    -------
+    asyncpg.Record
+        ``id``, ``sku``, ``location_id``, ``qty`` from the just-claimed row —
+        the caller reads the movement's sku/location/qty from THIS record,
+        never from its own ``params``, so the movement can never disagree
+        with the record it settles.
+
+    Raises
+    ------
+    RmaNotFoundError
+        No row exists for this ``(namespace_id, rma_ref)``.
+    RmaAlreadySettledError
+        The row exists but ``stock_movement_state`` is not ``'pending'``.
+    RmaNotWeeeScopeError
+        ``target_state == 'disposed'`` and the row's ``weee_state`` is
+        ``'not_applicable'``.
+    """
+    if target_state == _STATE_DISPOSED:
+        row = await conn.fetchrow(
+            """
+            UPDATE inventory_rma
+            SET stock_movement_state = $3, updated_at = now(),
+                weee_state = 'disposed', disposal_ref = $4
+            WHERE namespace_id = $1::uuid AND rma_ref = $2
+              AND stock_movement_state = 'pending'
+              AND weee_state <> 'not_applicable'
+            RETURNING id, sku, location_id, qty
+            """,
+            str(ns_uuid),
+            rma_ref,
+            target_state,
+            disposal_ref,
+        )
+    else:
+        row = await conn.fetchrow(
+            """
+            UPDATE inventory_rma
+            SET stock_movement_state = $3, updated_at = now()
+            WHERE namespace_id = $1::uuid AND rma_ref = $2
+              AND stock_movement_state = 'pending'
+            RETURNING id, sku, location_id, qty
+            """,
+            str(ns_uuid),
+            rma_ref,
+            target_state,
+        )
+    if row is not None:
+        return row
+
+    # Guard failed. A diagnostic-only read (no decision hinges on it — the
+    # refusal above is already final) to report WHICH of the three cases
+    # this was.
+    diag = await conn.fetchrow(
+        """
+        SELECT stock_movement_state, weee_state
+        FROM inventory_rma
+        WHERE namespace_id = $1::uuid AND rma_ref = $2
+        """,
+        str(ns_uuid),
+        rma_ref,
+    )
+    if diag is None:
+        raise RmaNotFoundError(rma_ref=rma_ref)
+    if target_state == _STATE_DISPOSED and diag["weee_state"] == WEEE_NOT_APPLICABLE:
+        raise RmaNotWeeeScopeError(rma_ref=rma_ref)
+    raise RmaAlreadySettledError(rma_ref=rma_ref, stock_movement_state=diag["stock_movement_state"])
+
+
+async def _run_rma_leg(
+    engine: NCEEngine,
+    params: dict[str, Any],
+    *,
+    target_state: str,
+    sign: int,
+    disposal_ref: str | None,
+) -> dict[str, Any]:
+    """Shared body for both stock legs — the two legs are near-identical
+    (claim, move, ledger, mirror) and differ only in DIRECTION (``sign``) and
+    the claimed target state; this is the one small helper uncle-bob-craft's
+    "third duplication" rule allows, and is as far as the abstraction goes
+    (no strategy object).
+
+    **Reason category is ``REASON_ADJUSTMENT`` for BOTH legs.** It is B139's
+    one open-signed category, so both ``+qty`` (restock) and ``-qty``
+    (disposal) satisfy ``inventory_transactions_sign_matches_category``. A
+    dedicated ``return_restock`` / ``weee_disposal`` category is DEFERRED,
+    declared here rather than silent: widening that CHECK needs a migration,
+    and this wave has no allocated number (see module docstring's "Batch
+    138b" section) — inventing one is the exact race pre-allocation exists to
+    prevent. The two legs stay distinguishable in the ledger by SIGN plus the
+    ``ref=f"rma:{rma_ref}"`` attribution.
+
+    One transaction: the claim, the quantity move, the ledger append and the
+    mirror all run on the SAME ``conn`` inside ONE ``scoped_pg_session`` block
+    — either the whole leg commits or none of it does, by construction, never
+    by convention (``transactions.py``'s own words).
+
+    Write order (fixed for both legs and every future RMA leg): ``inventory_
+    rma`` -> ``inventory_items`` -> ``inventory_transactions`` -> ``kg_nodes``
+    — extends B130's rule (items before kg_nodes) with the RMA claim in
+    front. Each leg touches exactly ONE location, so ``_canonical_lock_
+    order`` is not needed here and is not called. The mirror is written LAST
+    and is never read back as truth (stock.py's own rule).
+    """
+    ns_uuid = _as_ns_uuid(params.get("namespace_id"), "namespace_id")
+    rma_ref = _as_required_text(params.get("rma_ref"), "rma_ref")
+
+    async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
+        claimed = await _claim_rma(
+            conn, ns_uuid, rma_ref, target_state=target_state, disposal_ref=disposal_ref
+        )
+        sku: str = claimed["sku"]
+        location_id: UUID = claimed["location_id"]
+        qty: Decimal = claimed["qty"]
+
+        if sign > 0:
+            on_hand = await increment_on_hand(conn, ns_uuid, sku, location_id, qty)
+        else:
+            on_hand = await decrement_on_hand(conn, ns_uuid, sku, location_id, qty)
+
+        await append_transaction(
+            conn,
+            ns_uuid,
+            sku=sku,
+            location_id=location_id,
+            delta=qty if sign > 0 else -qty,
+            reason_category=REASON_ADJUSTMENT,
+            ref=f"rma:{rma_ref}",
+            unit_cost=None,
+        )
+
+        await mirror_item_at_location(conn, ns_uuid, sku, location_id)
+
+    return {
+        "rma_ref": rma_ref,
+        "sku": sku,
+        "location_id": str(location_id),
+        "qty": qty,
+        "on_hand": on_hand,
+    }
+
+
+async def do_restock_from_rma(engine: NCEEngine, params: dict[str, Any]) -> dict[str, Any]:
+    """Return a repairable unit to stock at the RMA's own location.
+
+    Parameters
+    ----------
+    params:
+        ``{"namespace_id": str | UUID, "rma_ref": str}`` — ``sku``,
+        ``location_id`` and ``qty`` are read from the CLAIMED
+        ``inventory_rma`` row, never from *params* (see :func:`_run_rma_leg`).
+
+    Returns
+    -------
+    dict
+        ``{"ok": True, "rma_ref", "sku", "location_id", "qty", "on_hand",
+        "stock_movement_state": "restocked"}``.
+
+    Raises
+    ------
+    ValueError
+        ``namespace_id``/``rma_ref`` missing or malformed.
+    RmaNotFoundError
+        No ``inventory_rma`` row for this ``rma_ref``.
+    RmaAlreadySettledError
+        The RMA's ``stock_movement_state`` is not ``'pending'`` — including a
+        second call for an RMA this same function already restocked.
+    OwnershipError
+        The graph mirror's ``assert_owner`` check refuses the write; rolls
+        back the whole leg, the claim and the quantity move included.
+    """
+    result = await _run_rma_leg(
+        engine, params, target_state=_STATE_RESTOCKED, sign=1, disposal_ref=None
+    )
+    return {
+        "ok": True,
+        "rma_ref": result["rma_ref"],
+        "sku": result["sku"],
+        "location_id": result["location_id"],
+        "qty": result["qty"],
+        "on_hand": result["on_hand"],
+        "stock_movement_state": _STATE_RESTOCKED,
+    }
+
+
+async def do_dispose_rma_weee(engine: NCEEngine, params: dict[str, Any]) -> dict[str, Any]:
+    """Permanently remove a WEEE-scope return from stock under the approved
+    take-back scheme — the leg nothing arrives for: stock leaves and the
+    ledger row is what proves it happened.
+
+    Parameters
+    ----------
+    params:
+        ``{"namespace_id": str | UUID, "rma_ref": str, "disposal_ref": str}``
+        — ``disposal_ref`` is REQUIRED (the take-back scheme's documentation
+        reference); ``sku``, ``location_id`` and ``qty`` are read from the
+        CLAIMED ``inventory_rma`` row, never from *params*.
+
+    Returns
+    -------
+    dict
+        ``{"ok": True, "rma_ref", "sku", "location_id", "qty", "on_hand",
+        "disposal_ref", "weee_state": "disposed",
+        "stock_movement_state": "disposed"}``.
+
+    Raises
+    ------
+    ValueError
+        ``namespace_id``/``rma_ref`` missing/malformed, or no non-empty
+        ``disposal_ref`` given — the Python mirror of migration 053's
+        ``inventory_rma_disposed_requires_ref`` CHECK, checked BEFORE any DB
+        call.
+    RmaNotFoundError
+        No ``inventory_rma`` row for this ``rma_ref``.
+    RmaNotWeeeScopeError
+        The RMA's ``weee_state`` is ``'not_applicable'`` — disposing an item
+        that is not WEEE-scope is a contradiction.
+    RmaAlreadySettledError
+        The RMA's ``stock_movement_state`` is not ``'pending'``.
+    InsufficientStockError
+        The claimed location does not hold at least ``qty`` units of ``sku``
+        — rolls back the whole leg, the claim included.
+    OwnershipError
+        The graph mirror's ``assert_owner`` check refuses the write; rolls
+        back the whole leg, the claim and the quantity move included.
+    """
+    disposal_ref = _as_optional_text(params.get("disposal_ref"))
+    _assert_disposal_ref_present_when_disposed(WEEE_DISPOSED, disposal_ref)
+
+    result = await _run_rma_leg(
+        engine, params, target_state=_STATE_DISPOSED, sign=-1, disposal_ref=disposal_ref
+    )
+    return {
+        "ok": True,
+        "rma_ref": result["rma_ref"],
+        "sku": result["sku"],
+        "location_id": result["location_id"],
+        "qty": result["qty"],
+        "on_hand": result["on_hand"],
+        "disposal_ref": disposal_ref,
+        "weee_state": WEEE_DISPOSED,
+        "stock_movement_state": _STATE_DISPOSED,
     }

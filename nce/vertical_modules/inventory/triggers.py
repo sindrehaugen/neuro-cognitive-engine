@@ -242,13 +242,18 @@ tenant's deliveries as evidence.
 
 What this wave does NOT do — by name
 ---------------------------------------
-  * **No ``BOM_LINE`` read or write, and no ``DELIVERED`` status transition.**
-    That is Batch 133b (``bom-delivered-transition``), which waits on Batch
-    132a to create ``BOM_LINE`` nodes at all. This module names no BOM table,
-    field or node type.
+  * **No ``BOM_LINE`` read or write, and no ``DELIVERED`` status transition —
+    in the fire above.** That was true of Batch 133 alone; Batch 133b appends
+    :func:`do_advance_bom_line_to_delivered` near the end of this file as a
+    SEPARATE, UNWIRED entry point once Batch 132a's ``bom_line_content`` store
+    landed. It is not called from
+    :func:`do_record_goods_receipt_and_evaluate_match` above, and the fire
+    itself still names no BOM table, field or node type.
   * **No ``nce/config_data/node-ownership.json`` row**, no ``assert_owner``
-    call, no Contract-A grant — nothing here writes a graph node, so there is
-    no ownership to assert.
+    call, no Contract-A grant, in the fire above — nothing in it writes a
+    graph node, so there is no ownership to assert. (Batch 133b's appended
+    entry point below reuses Batch 132a's own guarded writer, which already
+    calls ``assert_owner``; see that function's docstring.)
   * **No migration.** ``goods_receipts.match_result`` and
     ``idx_goods_receipts_namespace_po`` both already exist (migration 052).
   * **No stock movement, no ledger row, no PO record.** The receipt's own
@@ -326,6 +331,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from nce.bom_lines import bom_line_label, update_bom_line_status
 from nce.db_utils import scoped_pg_session
 from nce.vertical_modules.inventory.goods_receipt import (
     _as_ns_uuid,
@@ -974,3 +980,193 @@ async def do_record_goods_receipt_and_evaluate_match(
         match_result["verdict"].get("tier"),
     )
     return {**receipt, "match_fired": True, "match_result": match_result}
+
+
+# ---------------------------------------------------------------------------
+# Batch 133b — flip a fully-received BOM_LINE to DELIVERED. A SEPARATE,
+# UNWIRED entry point: nothing above calls it, and it is not reachable from
+# any surface until a future wave (Batch 138a, surface completion) registers
+# one. It reuses Batch 132a's OWN guarded writer
+# (``nce.bom_lines.update_bom_line_status``) rather than re-implementing the
+# ``assert_owner`` call here — that function already asserts ownership as the
+# first statement before its ``UPDATE`` (rule 10: the guard belongs at the
+# write site, not hoisted into the caller), and a second, independent
+# ``assert_owner`` call in this module would not make the write any safer,
+# only harder to keep in sync with the one true guard.
+# ---------------------------------------------------------------------------
+
+#: This wave's own Contract-A identity — must equal node-ownership.json's
+#: ``{"node_type": "BOM_LINE", "owner_engine": "inventory",
+#: "transition": "status:delivered"}`` row verbatim.
+_OWNER_ENGINE: str = "inventory"
+
+
+def _require_article_id(raw: Any) -> str:
+    """Return a stripped, non-empty ``article_id``, or raise.
+
+    Deliberately NOT :func:`_require_leg_article`: that function's error text
+    names ``MATCH_TOOL_NAME`` (``procurement_evaluate_match``) and a two-key
+    match "leg", neither of which applies to this single scalar field.
+    """
+    article = str(raw or "").strip()
+    if not article:
+        raise ValueError(
+            "do_advance_bom_line_to_delivered: 'article_id' is required and must not be empty"
+        )
+    return article
+
+
+async def _fully_received_quantity(
+    conn: asyncpg.Connection,  # type: ignore[type-arg]
+    ns_uuid: UUID,
+    po_ref: str,
+    article_id: str,
+) -> Decimal:
+    """Cumulative received quantity of *article_id* against *po_ref*, in this
+    namespace.
+
+    Reuses :func:`_total_received_against_po` and :func:`_fold_article`
+    verbatim — the SAME query and the SAME case-fold the match trigger above
+    already uses — rather than restating either, so "received" cannot mean
+    two different things in this one module.
+    """
+    return await _total_received_against_po(conn, ns_uuid, po_ref, {_fold_article(article_id)})
+
+
+async def do_advance_bom_line_to_delivered(
+    engine: NCEEngine, params: dict[str, Any]
+) -> dict[str, Any]:
+    """Flip ONE ``BOM_LINE`` to ``DELIVERED`` — only when it is fully received.
+
+    Batch 133b (``bom-delivered-transition``). A per-line, partial-GR-aware
+    entry point, not a fire hooked to any receipt: the caller supplies both
+    identifiers the line needs — ``quote_id``/``line_ref`` (Batch 132a's
+    ``bom_line_content`` key, via :func:`nce.bom_lines.bom_line_label`) and
+    ``po_ref``/``article_id`` (the goods-receipt leg to sum) — because this
+    repo persists no link table between the two keyspaces:
+    ``bom_line_content`` has no ``article_id``/``po_ref`` column, and
+    ``procurement/po.py::do_generate_po`` takes a single ``bom_line`` per PO
+    without persisting that pairing anywhere queryable. The future caller that
+    wires this (Batch 138a) is the one place that already holds both, exactly
+    as :func:`do_record_goods_receipt_and_evaluate_match` above takes its
+    ``po``/``invoice`` legs from its caller rather than a stored PO table.
+
+    Parameters
+    ----------
+    params:
+        ``namespace_id``, ``quote_id``, ``line_ref`` — identify the BOM line.
+        ``po_ref``, ``article_id`` — identify the goods-receipt leg whose
+        cumulative received quantity is compared against the line's ordered
+        ``qty``.
+
+    Two sources, both namespace-scoped, neither approximated
+    -------------------------------------------------------------
+    Ordered quantity: ``bom_line_content.qty`` (Batch 132a's content store).
+    Cumulative received quantity: ``goods_receipts`` rows, summed by
+    :func:`_fully_received_quantity` (the match trigger's own query, reused).
+
+    The guard is reached, not restated
+    -----------------------------------
+    The write is :func:`nce.bom_lines.update_bom_line_status`, which asserts
+    ``assert_owner(conn, ns, "BOM_LINE", writer_engine,
+    transition="status:delivered")`` as the first statement of its own
+    ``UPDATE`` (verified by name in ``nce/bom_lines.py``). This function calls
+    that entry point instead of issuing its own ``UPDATE bom_line_content``.
+
+    Idempotent: re-running against an already-``DELIVERED`` line is a
+    no-op — ``status`` is read first, inside the same transaction as the
+    eventual write, and a line already at ``DELIVERED`` returns without a
+    second call to the writer.
+
+    Write no other ``BOM_LINE`` field
+    ------------------------------------
+    Only ``update_bom_line_status`` is ever called here — never
+    ``update_bom_line_content`` (Sales/Design's content columns) and never
+    anything touching ``actual_cost`` (Economy's cascade, migration 047).
+
+    Returns
+    -------
+    dict with ``advanced`` (bool), ``reason`` (``"already_delivered"`` /
+    ``"partial"`` / ``None`` on a genuine flip), ``bom_line_label``, and —
+    except on the already-delivered path — ``ordered_qty``/``received_qty``
+    (``str``, Decimal-precise) for observability.
+
+    Raises
+    ------
+    ValueError
+        Missing/blank ``quote_id``, ``line_ref`` or ``article_id``; no
+        ``bom_line_content`` row for the given key in this namespace.
+    OwnershipError
+        Propagated verbatim from :func:`update_bom_line_status` when
+        ``writer_engine`` is not the registered owner of ``status:delivered``
+        for ``BOM_LINE`` in this namespace — deny-by-default, never narrowed
+        here.
+    """
+    ns_uuid = _as_ns_uuid(params.get("namespace_id"), "namespace_id")
+    quote_id = str(params.get("quote_id") or "").strip()
+    line_ref = str(params.get("line_ref") or "").strip()
+    if not quote_id or not line_ref:
+        raise ValueError(
+            "do_advance_bom_line_to_delivered: 'quote_id' and 'line_ref' are both required"
+        )
+    po_ref = _as_po_ref(params.get("po_ref"))
+    article_id = _require_article_id(params.get("article_id"))
+
+    label = bom_line_label(quote_id, line_ref)
+
+    async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
+        row = await conn.fetchrow(
+            "SELECT qty, status FROM bom_line_content "
+            "WHERE namespace_id = $1 AND bom_line_label = $2",
+            ns_uuid,
+            label,
+        )
+        if row is None:
+            raise ValueError(
+                f"do_advance_bom_line_to_delivered: no bom_line_content row for "
+                f"label={label!r} in namespace {ns_uuid}"
+            )
+
+        if row["status"] == "DELIVERED":
+            return {
+                "advanced": False,
+                "reason": "already_delivered",
+                "bom_line_label": label,
+            }
+
+        ordered_qty = Decimal(str(row["qty"]))
+        received_qty = await _fully_received_quantity(conn, ns_uuid, po_ref, article_id)
+
+        if received_qty < ordered_qty:
+            return {
+                "advanced": False,
+                "reason": "partial",
+                "bom_line_label": label,
+                "ordered_qty": str(ordered_qty),
+                "received_qty": str(received_qty),
+            }
+
+        updated = await update_bom_line_status(
+            conn,
+            ns_uuid,
+            writer_engine=_OWNER_ENGINE,
+            quote_id=quote_id,
+            line_ref=line_ref,
+            status="DELIVERED",
+        )
+
+    log.info(
+        "do_advance_bom_line_to_delivered: flipped label=%s ns=%s ordered=%s received=%s",
+        label,
+        ns_uuid,
+        ordered_qty,
+        received_qty,
+    )
+    return {
+        "advanced": True,
+        "reason": None,
+        "bom_line_label": label,
+        "ordered_qty": str(ordered_qty),
+        "received_qty": str(received_qty),
+        "bom_line": updated,
+    }

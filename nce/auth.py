@@ -382,11 +382,10 @@ def enforce_mcp_tool_auth(tool_name: str, arguments: dict[str, Any]) -> None:
     """Enforce admin or tenant scope before MCP tool dispatch in ``server.call_tool``."""
     import os
 
-    if tool_name in MCP_ADMIN_TOOL_NAMES:
-        if not arguments.get("admin_api_key"):
-            env_key = os.environ.get("NCE_ADMIN_API_KEY", "")
-            if env_key:
-                arguments["admin_api_key"] = env_key
+    from nce.tool_registry import TOOL_REGISTRY
+
+    spec = TOOL_REGISTRY.get(tool_name)
+    if tool_name in MCP_ADMIN_TOOL_NAMES or (spec is not None and spec.admin_only):
         _validate_scope("admin", arguments)
     else:
         if not arguments.get("mcp_api_key") and not arguments.get("admin_api_key"):

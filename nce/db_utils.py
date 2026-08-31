@@ -56,6 +56,10 @@ UNMANAGED_PG_AUDITED_SITES: Final[frozenset[str]] = frozenset(
         # namespaces list only (economy.enabled opt-in filter); same shape/blast as
         # the other ``*.namespace_scan`` global reads above.
         "cron.economy_contract_renewal_watcher.namespace_scan",
+        # B134b (M11.W6b): inventory stock watcher tick — reads the namespaces list
+        # only (no opt-in filter, scans all namespaces); same shape/blast as the
+        # other ``*.namespace_scan`` global reads above.
+        "cron.inventory_stock_watcher.namespace_scan",
     }
 )
 

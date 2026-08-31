@@ -5,7 +5,7 @@ Acceptance tests for Batch 116 — Module 8.Wave 1 (match-invoice).
 
 Split per round-2 rule #3, mirroring ``test_procurement_tco.py``:
   (a) ALGORITHM tests — ported from Andreas's ``matching-score.test.ts``, parameterised by
-      a fixture ``_FIXTURE_THRESHOLDS`` dict defined in THIS file — never Example's real
+      a fixture ``_FIXTURE_THRESHOLDS`` dict defined in THIS file — never the tenant's real
       115/70 JSON values reached into directly for the lifted per-pair assertions.
   (b) WAVE tests — this wave's own required cases: shape, worst-line-tier, config-drives-
       behaviour, per-supplier override, three-way-is-read-not-derived, no-lines/no-candidates
@@ -24,7 +24,7 @@ import pytest
 from nce.vertical_modules.economy.matching import do_match_invoice, load_economy_thresholds
 
 # ---------------------------------------------------------------------------
-# Shared fixtures — algorithm tests use THESE thresholds, never Example's JSON values
+# Shared fixtures — algorithm tests use THESE thresholds, never the tenant's JSON values
 # directly (they happen to equal 115/70, matching Andreas's DEFAULT_THRESHOLDS, but they
 # are a literal defined here so a change to the real JSON can never silently break these).
 # ---------------------------------------------------------------------------
@@ -1316,7 +1316,7 @@ def test_real_config_contains_supplier_overrides_map():
 
 
 def test_real_config_default_values_are_115_and_70():
-    """Example's documented defaults — asserted ONLY here against the real JSON, never
+    """The tenant's documented defaults — asserted ONLY here against the real JSON, never
     baked into the algorithm/behaviour tests above."""
     thresholds = load_economy_thresholds()
     assert thresholds["green"] == 115

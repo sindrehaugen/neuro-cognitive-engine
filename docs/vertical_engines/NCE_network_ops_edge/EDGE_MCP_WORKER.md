@@ -86,7 +86,7 @@ installer writes mode file ─► go/launch/run.go
 **Runs on:** an IT-provisioned mini-PC/VM at the customer site (the Veidekke M4350/PR460X LAN is the pilot).
 **Why at the edge:** *data-plane locality* — the resources only exist on the customer network. You cannot SNMP-poll, receive syslog/traps, or packet-capture a customer LAN from the cloud.
 **Flagship tool pack:** `netops` (SNMP / syslog / traps / Zeek / NPCAP capture — see `18b-data-paths.md`) plus any customer-scoped MCP integrations (their on-prem systems).
-**Trust tier:** the **most** untrusted worker in the fleet — third-party premises, physically outside Example's control. Gets the strictest §8 posture.
+**Trust tier:** the **most** untrusted worker in the fleet — third-party premises, physically outside the tenant's control. Gets the strictest §8 posture.
 **Data egress:** raw stays on-site (pcap **never** leaves; syslog/flow summarized). Only events, findings, and scoped metadata cross the uplink. This is both a bandwidth and a legal/privacy control (`18d`).
 **Channel:** outbound only — survives customer NAT/firewall with no inbound rule (the `netbox_nce` push + field-app precedent).
 **Lifecycle:** signed installer, remote-managed via the uplink (pause collectors, rotate device creds, revoke capability), egress-allowlisted to the orchestrator + the customer's own devices.

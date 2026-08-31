@@ -764,6 +764,76 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         mutation=True,
     ),
     # ------------------------------------------------------------------
+    # Batch 138a, M11.W10a — surface completion. The Inventory cores that
+    # did not exist when Batch 131 ran the module's single surface wave.
+    # ------------------------------------------------------------------
+    "inventory_record_goods_receipt": ToolSpec(
+        _h(inventory_mcp_handlers, "handle_inventory_record_goods_receipt"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "inventory_recommend_restock": ToolSpec(
+        _h(inventory_mcp_handlers, "handle_inventory_recommend_restock"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "inventory_forecast_demand": ToolSpec(
+        _h(inventory_mcp_handlers, "handle_inventory_forecast_demand"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "inventory_reserve_stock": ToolSpec(
+        _h(inventory_mcp_handlers, "handle_inventory_reserve_stock"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "inventory_release_stock": ToolSpec(
+        _h(inventory_mcp_handlers, "handle_inventory_release_stock"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "inventory_record_rma": ToolSpec(
+        _h(inventory_mcp_handlers, "handle_inventory_record_rma"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "inventory_valuation": ToolSpec(
+        _h(inventory_mcp_handlers, "handle_inventory_valuation"),
+        cacheable=False,
+        admin_only=True,
+        mutation=False,
+    ),
+    "inventory_record_goods_receipt_and_match": ToolSpec(
+        _h(inventory_mcp_handlers, "handle_inventory_record_goods_receipt_and_match"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "inventory_reconcile_dead_stock": ToolSpec(
+        _h(inventory_mcp_handlers, "handle_inventory_reconcile_dead_stock"),
+        cacheable=False,
+        admin_only=True,
+        mutation=False,
+    ),
+    "inventory_restock_from_rma": ToolSpec(
+        _h(inventory_mcp_handlers, "handle_inventory_restock_from_rma"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "inventory_dispose_rma_weee": ToolSpec(
+        _h(inventory_mcp_handlers, "handle_inventory_dispose_rma_weee"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    # ------------------------------------------------------------------
     # Assets vertical module tools (Batch 141, M9.W1) — skeleton ping
     # ------------------------------------------------------------------
     "assets_ping": ToolSpec(

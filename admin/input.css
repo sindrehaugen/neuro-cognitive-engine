@@ -6,23 +6,23 @@
   --color-surface-elevated: #F8FAFC;
   --color-surface-border: #E2E8F0;
 
-  --color-example-navy: #F1F5F9;
-  --color-example-card: #FFFFFF;
-  --color-example-primary: #0F172A;
-  --color-example-green: #059669;
-  --color-example-green_sm: #10B981;
-  --color-example-pink: #E11D48;
-  --color-example-pink300: #BE123C;
-  --color-example-pink200: #FCE7F3;
-  --color-example-pink100: #FDF2F8;
-  --color-example-blue: #2563EB;
-  --color-example-blue300: #1D4ED8;
-  --color-example-yellow: #D97706;
-  --color-example-yellow300: #B45309;
-  --color-example-ui500: #0F172A;
-  --color-example-ui400: #475569;
-  --color-example-ui300: #94A3B8;
-  --color-example-ui200: #F8FAFC;
+  --color-accent-navy: #F1F5F9;
+  --color-accent-card: #FFFFFF;
+  --color-accent-primary: #0F172A;
+  --color-accent-green: #059669;
+  --color-accent-green_sm: #10B981;
+  --color-accent-pink: #E11D48;
+  --color-accent-pink300: #BE123C;
+  --color-accent-pink200: #FCE7F3;
+  --color-accent-pink100: #FDF2F8;
+  --color-accent-blue: #2563EB;
+  --color-accent-blue300: #1D4ED8;
+  --color-accent-yellow: #D97706;
+  --color-accent-yellow300: #B45309;
+  --color-accent-ui500: #0F172A;
+  --color-accent-ui400: #475569;
+  --color-accent-ui300: #94A3B8;
+  --color-accent-ui200: #F8FAFC;
 
   --font-sans: 'Poppins', sans-serif;
   --font-hanken: '"Hanken Grotesk"', sans-serif;
@@ -80,20 +80,20 @@ h1, h2, h3, h4, .font-hanken, .brand-header {
   font-family: 'Hanken Grotesk', sans-serif !important;
 }
 
-/* Predefined Example Gradients optimized for dark/hypnotic layouts */
-.bg-example-gradient-1 {
+/* Predefined Accent Gradients optimized for dark/hypnotic layouts */
+.bg-accent-gradient-1 {
   background: linear-gradient(135deg, #0F172A 0%, #4C1D95 100%);
 }
-.bg-example-gradient-2 {
+.bg-accent-gradient-2 {
   background: linear-gradient(135deg, #1E1B4B 0%, #831843 100%);
 }
-.bg-example-gradient-3 {
+.bg-accent-gradient-3 {
   background: linear-gradient(135deg, #064E3B 0%, #0F172A 100%);
 }
-.bg-example-gradient-4 {
+.bg-accent-gradient-4 {
   background: linear-gradient(135deg, #4C0519 0%, #312E81 100%);
 }
-.bg-example-gradient-5 {
+.bg-accent-gradient-5 {
   background: linear-gradient(135deg, #172554 0%, #1E1B4B 100%);
 }
 

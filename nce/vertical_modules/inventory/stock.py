@@ -32,7 +32,7 @@ The concurrency contract: ``UPDATE ... WHERE qty_on_hand >= n``
 Every decrement is ONE statement: the guard (enough stock exists) and the
 write (subtract it) happen atomically under the row's own lock — never a
 Python-side "SELECT then check then UPDATE", which races under concurrent
-callers and can oversell the last unit. :func:`_decrement_on_hand` is the
+callers and can oversell the last unit. :func:`decrement_on_hand` is the
 sole implementation of this guard; both public decrementing functions call
 it rather than each writing their own ad-hoc UPDATE.
 
@@ -165,7 +165,7 @@ could contend with resource-for-resource. It never upserts (no
 ``ON CONFLICT``, always a fresh ``gen_random_uuid()`` row, so two concurrent
 inserts never want the SAME row), and the only lock it acquires on shared
 state is a ``FOR KEY SHARE`` on the referenced ``stock_locations`` row (its
-FK) — the identical lock KIND ``_increment_on_hand``'s own INSERT already
+FK) — the identical lock KIND ``increment_on_hand``'s own INSERT already
 takes on that same row, and ``FOR KEY SHARE`` is mutually compatible with
 itself (any number of transactions may hold it concurrently; it only
 conflicts with an UPDATE of the row's key columns or a DELETE, neither of
@@ -190,7 +190,7 @@ does) — and in practice about eight, since the mirror also locks the two
 ``INVENTORY_ITEM`` nodes and two ``kg_edges`` rows, and the increment's
 ``INSERT`` takes ``FOR KEY SHARE`` FK locks on ``stock_locations``. Those
 additional resources are SKU-scoped and are reached THROUGH
-:func:`_mirror_item_at_location`, which is invoked in canonical order and is
+:func:`mirror_item_at_location`, which is invoked in canonical order and is
 internally deterministic, so they inherit the same ordering. It acquires
 ALL of them in ONE order that is a pure function of the RESOURCE PAIR —
 ``sorted((from_location, to_location))`` by UUID, see
@@ -423,7 +423,7 @@ class InsufficientStockError(Exception):
 # ---------------------------------------------------------------------------
 
 
-async def _decrement_on_hand(
+async def decrement_on_hand(
     conn: asyncpg.Connection,  # type: ignore[type-arg]
     ns_uuid: UUID,
     sku: str,
@@ -477,7 +477,7 @@ async def _decrement_on_hand(
     )
 
 
-async def _increment_on_hand(
+async def increment_on_hand(
     conn: asyncpg.Connection,  # type: ignore[type-arg]
     ns_uuid: UUID,
     sku: str,
@@ -608,7 +608,7 @@ async def _upsert_kg_edge(
     )
 
 
-async def _mirror_item_at_location(
+async def mirror_item_at_location(
     conn: asyncpg.Connection,  # type: ignore[type-arg]
     ns_uuid: UUID,
     sku: str,
@@ -768,7 +768,7 @@ async def do_transfer_stock(engine: NCEEngine, params: dict[str, Any]) -> dict[s
 
     async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
         if decrement_first:
-            from_on_hand = await _decrement_on_hand(conn, ns_uuid, sku, from_location, qty)
+            from_on_hand = await decrement_on_hand(conn, ns_uuid, sku, from_location, qty)
             await append_transaction(
                 conn,
                 ns_uuid,
@@ -778,7 +778,7 @@ async def do_transfer_stock(engine: NCEEngine, params: dict[str, Any]) -> dict[s
                 reason_category=REASON_TRANSFER_OUT,
                 ref=str(to_location),
             )
-            to_on_hand = await _increment_on_hand(conn, ns_uuid, sku, to_location, qty)
+            to_on_hand = await increment_on_hand(conn, ns_uuid, sku, to_location, qty)
             await append_transaction(
                 conn,
                 ns_uuid,
@@ -789,7 +789,7 @@ async def do_transfer_stock(engine: NCEEngine, params: dict[str, Any]) -> dict[s
                 ref=str(from_location),
             )
         else:
-            to_on_hand = await _increment_on_hand(conn, ns_uuid, sku, to_location, qty)
+            to_on_hand = await increment_on_hand(conn, ns_uuid, sku, to_location, qty)
             await append_transaction(
                 conn,
                 ns_uuid,
@@ -799,7 +799,7 @@ async def do_transfer_stock(engine: NCEEngine, params: dict[str, Any]) -> dict[s
                 reason_category=REASON_TRANSFER_IN,
                 ref=str(from_location),
             )
-            from_on_hand = await _decrement_on_hand(conn, ns_uuid, sku, from_location, qty)
+            from_on_hand = await decrement_on_hand(conn, ns_uuid, sku, from_location, qty)
             await append_transaction(
                 conn,
                 ns_uuid,
@@ -810,8 +810,8 @@ async def do_transfer_stock(engine: NCEEngine, params: dict[str, Any]) -> dict[s
                 ref=str(to_location),
             )
 
-        await _mirror_item_at_location(conn, ns_uuid, sku, first)
-        await _mirror_item_at_location(conn, ns_uuid, sku, second)
+        await mirror_item_at_location(conn, ns_uuid, sku, first)
+        await mirror_item_at_location(conn, ns_uuid, sku, second)
 
     log.info(
         "do_transfer_stock: ns=%s sku=%s qty=%s from=%s(%s) to=%s(%s)",
@@ -893,7 +893,7 @@ async def do_record_consumption(engine: NCEEngine, params: dict[str, Any]) -> di
         )
 
     async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
-        on_hand = await _decrement_on_hand(conn, ns_uuid, sku, location, qty)
+        on_hand = await decrement_on_hand(conn, ns_uuid, sku, location, qty)
         await append_transaction(
             conn,
             ns_uuid,
@@ -903,7 +903,7 @@ async def do_record_consumption(engine: NCEEngine, params: dict[str, Any]) -> di
             reason_category=REASON_CONSUMPTION,
             ref=work_order,
         )
-        await _mirror_item_at_location(conn, ns_uuid, sku, location)
+        await mirror_item_at_location(conn, ns_uuid, sku, location)
 
     log.info(
         "do_record_consumption: ns=%s sku=%s qty=%s location=%s on_hand=%s work_order=%s",

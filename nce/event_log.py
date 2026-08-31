@@ -305,6 +305,9 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "entity_merge_queue": "namespace_id",
     "source_mode_config": "namespace_id",
     "divergence_log": "namespace_id",
+    # Module 0, Wave 31 (Batch 132a): shared, top-level BOM_LINE content
+    # store -- written by both system_design and sales, never engine-prefixed.
+    "bom_line_content": "namespace_id",
     # Product engine (Module 2): catalog/prices (W2), match feedback (W6),
     # enrichment review log (W7). Each new RLS table MUST be declared here.
     "product_catalog": "namespace_id",

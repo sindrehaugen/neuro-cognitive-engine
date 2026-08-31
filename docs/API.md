@@ -99,9 +99,20 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/gc/trigger` | `trigger_gc` |
 | GET | `/api/health` | `get_health` |
 | GET | `/api/health/v1` | `get_health_v1` |
+| POST | `/api/inventory/dispose-rma-weee` | `api_inventory_dispose_rma_weee` |
+| POST | `/api/inventory/forecast-demand` | `api_inventory_forecast_demand` |
+| POST | `/api/inventory/recommend-restock` | `api_inventory_recommend_restock` |
+| POST | `/api/inventory/reconcile-dead-stock` | `api_inventory_reconcile_dead_stock` |
 | POST | `/api/inventory/record-consumption` | `api_inventory_record_consumption` |
+| POST | `/api/inventory/record-goods-receipt` | `api_inventory_record_goods_receipt` |
+| POST | `/api/inventory/record-goods-receipt-and-match` | `api_inventory_record_goods_receipt_and_match` |
+| POST | `/api/inventory/record-rma` | `api_inventory_record_rma` |
+| POST | `/api/inventory/release-stock` | `api_inventory_release_stock` |
+| POST | `/api/inventory/reserve-stock` | `api_inventory_reserve_stock` |
+| POST | `/api/inventory/restock-from-rma` | `api_inventory_restock_from_rma` |
 | GET | `/api/inventory/stock-levels` | `api_inventory_stock_levels` |
 | POST | `/api/inventory/transfer-stock` | `api_inventory_transfer_stock` |
+| GET | `/api/inventory/valuation` | `api_inventory_valuation` |
 | POST | `/api/procurement/frontier/forecast-rebate` | `api_procurement_forecast_rebate` |
 | POST | `/api/procurement/frontier/recommend-move-spend` | `api_procurement_recommend_move_spend` |
 | POST | `/api/procurement/frontier/whatif-spend` | `api_procurement_whatif_spend` |
@@ -209,9 +220,20 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `graph_search` |  |  | yes |  |
 | `import_snapshot` |  | yes |  |  |
 | `index_code_file` |  | yes |  |  |
+| `inventory_dispose_rma_weee` | yes | yes |  |  |
+| `inventory_forecast_demand` |  |  | yes |  |
+| `inventory_recommend_restock` |  |  | yes |  |
+| `inventory_reconcile_dead_stock` | yes |  |  |  |
 | `inventory_record_consumption` | yes | yes |  |  |
+| `inventory_record_goods_receipt` | yes | yes |  |  |
+| `inventory_record_goods_receipt_and_match` | yes | yes |  |  |
+| `inventory_record_rma` | yes | yes |  |  |
+| `inventory_release_stock` | yes | yes |  |  |
+| `inventory_reserve_stock` | yes | yes |  |  |
+| `inventory_restock_from_rma` | yes | yes |  |  |
 | `inventory_stock_levels` |  |  | yes |  |
 | `inventory_transfer_stock` | yes | yes |  |  |
+| `inventory_valuation` | yes |  |  |  |
 | `list_bridges` |  |  |  |  |
 | `list_contradictions` |  |  |  |  |
 | `list_dlq` |  |  |  |  |
@@ -281,4 +303,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_reliability_radar` |  |  | yes |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 139 REST endpoints, 124 MCP tools._
+_Totals: 150 REST endpoints, 135 MCP tools._

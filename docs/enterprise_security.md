@@ -22,7 +22,7 @@ NCE exposes four distinct communication interfaces, each using an authentication
 │    MCP Stdio     ││            Admin API             ││    A2A Server    ││    Public Customer Quote API  │
 │  (server.py)     ││        (admin_server.py)         ││ (a2a_server.py)  ││       (admin_app.py)          │
 ├──────────────────┤├──────────────────────────────────┤├──────────────────┤├───────────────────────────────┤
-│ - NCE_MCP_API_KEY││ - HMAC-SHA256 (API)              ││ - Bearer JWT     ││ - Stateless HMAC-SHA256 Token │
+│ - Process Parent ││ - HMAC-SHA256 (API)              ││ - Bearer JWT     ││ - Stateless HMAC-SHA256 Token │
 │ - Pin Namespace  ││ - HTTP Basic (UI)                ││ - A2A Grants     ││ - C8 Redactor Projection      │
 │ - Admin API Key  ││ - mTLS (Mandatory in prod)       ││ - mTLS (Mandatory││ - Rate Limited (5 req / 10s)  │
 │                  ││                                  ││   in prod)       ││ - Bypasses HMAC/Basic/mTLS    │
@@ -31,7 +31,7 @@ NCE exposes four distinct communication interfaces, each using an authentication
 
 | Service Surface | Transport | Primary Security Protocol | Configuration Variables |
 | :--- | :--- | :--- | :--- |
-| **MCP Stdio Server** | Standard Process Pipes | Symmetric API Key Validation + Namespace Pinning. Admin-scoped MCP tools additionally require the `NCE_ADMIN_API_KEY` bearer token (`require_scope("admin")`). | `NCE_MCP_API_KEY`, `NCE_MCP_NAMESPACE_ID`, `NCE_ADMIN_API_KEY` (MCP admin-scope bearer token) |
+| **MCP Stdio Server** | Standard Process Pipes | OS Process Boundary (the stdio client spawns the server and supplies its own env, so it already holds any key it would present) + enforced Namespace Pinning (`_bind_mcp_tenant_namespace` rejects a mismatched `NCE_MCP_NAMESPACE_ID` unconditionally). `NCE_MCP_API_KEY` is a configuration/defence-in-depth value, not a check against the caller — tenant *authentication* is not enforced, tenant *isolation* is. Admin-scoped MCP tools additionally require a caller-supplied `NCE_ADMIN_API_KEY` bearer token (`require_scope("admin")`). | `NCE_MCP_API_KEY`, `NCE_MCP_NAMESPACE_ID`, `NCE_ADMIN_API_KEY` (MCP admin-scope bearer token) |
 | **Admin REST API & UI** | HTTP / HTTPS | HMAC-SHA256 Signature (API) / HTTP Basic (UI) + mTLS (**Mandatory in prod**) | `NCE_API_KEY` (HMAC shared secret for Admin HTTP `/api/*`), `NCE_ADMIN_USERNAME`, `NCE_ADMIN_PASSWORD`, `NCE_ADMIN_MTLS_ENABLED`, `NCE_MTLS_ACKNOWLEDGE_DISABLED` |
 | **A2A (Agent-to-Agent)** | HTTP / HTTPS | Asymmetric JWT Bearer Tokens + mTLS (**Mandatory in prod**) + Sharing Grants | `NCE_JWT_SECRET`, `NCE_JWT_PUBLIC_KEY`, `NCE_A2A_MTLS_ENABLED`, `NCE_A2A_JWT_AUDIENCE`, `NCE_MTLS_ACKNOWLEDGE_DISABLED` |
 | **Public Customer Quote API** (`GET /public-api/sales/quotes/{id}`) | HTTP / HTTPS | Stateless Bearer Token `HMAC-SHA256(NCE_MASTER_KEY, quote_id)` + C8 Redactor Projection (`public-quote`) + Sliding-Window Rate Limit (5 req / 10s). Bypasses Basic/HMAC/mTLS auth entirely; no expiry, no revocation. | `NCE_MASTER_KEY` (Customer link signing & verification) |
@@ -63,7 +63,7 @@ When running in production, the client environment must inject the security keys
 
 ### 2b. Namespace Pinning Constraint
 * **Tenant Isolation**: By specifying `NCE_MCP_NAMESPACE_ID`, the stdio server locks all incoming requests to that single namespace. Any payload specifying a different `namespace_id` is rejected at the entry dispatcher boundary.
-* **Key Validation**: Every incoming tool call must include the correct `mcp_api_key` matching the environment's `NCE_MCP_API_KEY`. If the key is missing, invalid, or the `namespace_id` does not match the configured binding, the request fails with JSON-RPC `-32005` (`ScopeError` / scope forbidden). A structurally malformed `namespace_id` UUID also raises `-32005`.
+* **Key & Namespace Validation**: `NCE_MCP_API_KEY` is a configuration/defence-in-depth value, not a check against the caller — the server injects it when a caller supplies none and validates that value against itself, so the OS process boundary (the stdio client spawns the server and already holds any key it would present) is what actually authenticates. `NCE_MCP_NAMESPACE_ID` pinning, by contrast, is enforced unconditionally: a caller-supplied `namespace_id` that does not match the configured binding, or is a structurally malformed UUID, fails the request with JSON-RPC `-32005` (`ScopeError` / scope forbidden).
 
 ---
 
@@ -432,7 +432,7 @@ This checklist defines the storage and rotation rules for system secrets:
 | Secret Name | Purpose | Minimum Length | Storage Recommendation | Rotation Procedure |
 | :--- | :--- | :--- | :--- | :--- |
 | `NCE_MASTER_KEY` | AES-256-GCM master key for PII vault encryption, envelope DEK wrapping, and HMAC-SHA256 customer quote link signing (`generate_public_token`). Environment-only (never sourced from a database or SettingsStore — R3). | 32 UTF-8 bytes | Enterprise Key Management System (KMS) or vault. | Offline re-encryption script of `pii_redactions` and `bridge_subscriptions` tables. **Rotation consequence**: Invalidates all outstanding public customer quote URLs (since tokens are stateless HMAC signatures derived from `NCE_MASTER_KEY` with no expiry/revocation). |
-| `NCE_MCP_API_KEY` | Authenticates incoming MCP stdio tenant tool calls. Required in production. | 64 characters | Client user configuration file (encrypted at rest by OS). | Generate new token, update environment configuration, and restart client. |
+| `NCE_MCP_API_KEY` | Configuration/defence-in-depth value for MCP stdio tenant tools, not a caller-authentication check (the OS process boundary authenticates — see §2b). Required in production. | 64 characters | Client user configuration file (encrypted at rest by OS). | Generate new token, update environment configuration, and restart client. |
 | `NCE_API_KEY` | HMAC-SHA256 shared secret for HTTP Admin API request authentication (`HMACAuthMiddleware`). Required in production. | 64 characters | Secrets management system (KMS). | Update environment variable on NCE and client, followed by rolling restart. |
 | `NCE_ADMIN_API_KEY` | Bearer token for MCP `require_scope("admin")` checks (admin tool calls via stdio). Required in production. | 64 characters | Secrets management system (KMS). | Update environment variable on NCE and client, followed by rolling restart. |
 | `NCE_ADMIN_PASSWORD` | HTTP Basic credential for the admin UI. Must be stored as a `$pbkdf2$` hash in production. | — | Secrets management system (KMS). | Re-hash with PBKDF2 (v4: ≥ 600,000 iterations), update environment variable, restart. |

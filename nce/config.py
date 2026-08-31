@@ -1144,6 +1144,25 @@ class _Config:
         "NCE_AGREEMENTS_COVERAGE_WATCHER_INTERVAL_MINUTES", 1440, minimum=5
     )
 
+    # --- Inventory Stock Watcher (Module 11 Wave 6b) ---
+    # How often to scan all namespaces' inventory_items for low-stock and
+    # dead-stock flags.  Default: 1440 minutes (daily) — an operational
+    # digest, not a freshness scan.  Minimum: 5 minutes.
+    NCE_INVENTORY_STOCK_WATCHER_INTERVAL_MINUTES: int = _int_env(
+        "NCE_INVENTORY_STOCK_WATCHER_INTERVAL_MINUTES", 1440, minimum=5
+    )
+    # Days of inventory_transactions inactivity before a positive-quantity
+    # item is flagged dead stock.  Default: 180 days.
+    NCE_INVENTORY_DEAD_STOCK_DAYS: int = _int_env("NCE_INVENTORY_DEAD_STOCK_DAYS", 180, minimum=1)
+    # Safety interlock — the tick always runs and always logs, but dispatches
+    # no human-facing alert unless this is explicitly turned on.  Deliberately
+    # OFF by default (Batch 128 rollout-hazard shape): turning on unsolicited
+    # alerting for every existing namespace on deploy day is not a decision to
+    # make silently.
+    NCE_INVENTORY_LOW_STOCK_ALERT_ENABLED: bool = _bool_env(
+        "NCE_INVENTORY_LOW_STOCK_ALERT_ENABLED", False
+    )
+
     # --- C6 Shared Pricing Service (Wave 12) ---
     # Maximum age (seconds) before a price row is considered stale.
     # A stale cost is flagged in the resolve_price return, never silently used.

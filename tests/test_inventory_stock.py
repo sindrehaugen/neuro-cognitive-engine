@@ -550,7 +550,7 @@ async def test_repeated_transfers_into_same_location_accumulate_not_overwrite(
     pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
     namespace_id: uuid.UUID,
 ) -> None:
-    """Pins ``_increment_on_hand``'s claim of "ONE upsert statement... no
+    """Pins ``increment_on_hand``'s claim of "ONE upsert statement... no
     read-then-write": a second transfer into an already-populated location
     must ADD, never overwrite. (Mutation-verified — see fix-forward report:
     dropping the '+' in the ON CONFLICT SET makes this go RED.)"""
@@ -1206,13 +1206,17 @@ async def test_four_inventory_ownership_rows_are_seeded(
     per-namespace table on seed. Its discriminating mutation is deleting the
     four rows from `node-ownership.json`, never disarming `assert_owner` —
     do not read a pass here as proof the guard is wired; the tests above
-    prove that."""
+    prove that. Scoped to `transition IS NULL`: inventory may also hold
+    per-transition grants on OTHER engines' node types (e.g. BOM_LINE
+    status:delivered, Batch 132a) alongside these four whole-node-type rows,
+    and this test pins only the latter."""
     await _seed_ownership(pg_pool, namespace_id)
 
     async with pg_pool.acquire() as conn:
         rows = await conn.fetch(
             "SELECT node_type, transition FROM node_ownership_registry "
-            "WHERE namespace_id = $1 AND owner_engine = 'inventory'",
+            "WHERE namespace_id = $1 AND owner_engine = 'inventory' "
+            "AND transition IS NULL",
             namespace_id,
         )
 

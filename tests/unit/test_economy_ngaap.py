@@ -6,7 +6,7 @@ Acceptance tests for Batch 117 — Module 8.Wave 2 (ngaap-buckets).
 Split the same three ways as ``test_economy_match.py``:
   (a) ALGORITHM tests — ported from Andreas's ``tests/finance/cost-engine.test.ts``, run
       against a ``_FIXTURE_CHART``/``_FIXTURE_MAPPING`` defined in THIS file with deliberately
-      fake account numbers, never Example's real JSON. The accrual arithmetic must be provable
+      fake account numbers, never the tenant's real JSON. The accrual arithmetic must be provable
       without touching production config — that is the whole claim of round-2 #5.
   (b) WAVE tests — this wave's own required cases: the seven buckets sum to the input total
       exactly; a cost straddling the period boundary periodises into the correct
@@ -41,7 +41,7 @@ from nce.vertical_modules.economy.ngaap import (
 
 # ---------------------------------------------------------------------------
 # Fixture config — fake account numbers on purpose. The algorithm tests must be immune to a
-# change in Example's real chart, and the config-swap test needs a chart it can vary freely.
+# change in the tenant's real chart, and the config-swap test needs a chart it can vary freely.
 # ---------------------------------------------------------------------------
 
 _FIXTURE_BUCKET_ACCOUNTS = {
@@ -632,7 +632,7 @@ class TestConfigIsAccountsOnly:
                 assert before[role] != after[role], role
 
     def test_real_example_config_produces_the_identical_split(self) -> None:
-        # The strongest form of the claim: Example's REAL chart/mapping and the fixture's fake
+        # The strongest form of the claim: the tenant's REAL chart/mapping and the fixture's fake
         # 9xxx accounts periodise to the same numbers. If any split logic had leaked into the
         # JSON, these two would diverge.
         real = do_compute_bucket_targets(
@@ -1105,7 +1105,7 @@ class TestOneExceptionType:
 # ===========================================================================
 
 
-class TestExampleConfigFiles:
+class TestTenantConfigFiles:
     def test_chart_of_accounts_parses_and_carries_documented_keys(self) -> None:
         chart = load_finago_chart_of_accounts()
         assert chart["country"] == "NO"
@@ -1185,7 +1185,7 @@ class TestExampleConfigFiles:
             assert forbidden.isdisjoint(_all_keys(config))
 
     def test_real_config_reproduces_the_reference_case(self) -> None:
-        # End-to-end with production config: Andreas's negative-WIP case, landing on Example's
+        # End-to-end with production config: Andreas's negative-WIP case, landing on the tenant's
         # real Norwegian accounts.
         entry = _run(
             chart=load_finago_chart_of_accounts(),

@@ -63,7 +63,7 @@ No other module calls `os.getenv()` directly.
 | `NCE_ADMIN_API_KEY` | `str` | `""` | **P1 (prod)** | Admin bearer token checked by `require_scope("admin")` in A2A/MCP (`NCE_ADMIN_API_KEY_FILE` supported). Required in production. |
 | `NCE_ADMIN_USERNAME` | `str` | `""` | **P1 (prod)** | HTTP Basic Auth username for web admin UI routes (`BasicAuthMiddleware`). Required in production. |
 | `NCE_ADMIN_PASSWORD` | `str` | `""` | **P1 (prod)** | HTTP Basic Auth password for web admin UI routes. In production, must be a `$pbkdf2$` hash — plaintext passwords trigger an immediate startup error. |
-| `NCE_MCP_API_KEY` | `str` | `""` | **P1 (prod)** | Shared secret for MCP stdio tenant tools (`NCE_MCP_API_KEY_FILE` supported). Required in production. |
+| `NCE_MCP_API_KEY` | `str` | `""` | **P1 (prod)** | Configuration/defence-in-depth value for MCP stdio tenant tools, **not** a secret validated against a caller: the stdio client spawns the server and supplies its own env, so it already holds this value — the OS process boundary is what authenticates, not this key. Tenant isolation is enforced separately by `NCE_MCP_NAMESPACE_ID` (below). (`NCE_MCP_API_KEY_FILE` supported). Required in production. |
 | `NCE_MCP_NAMESPACE_ID` | `str` | `""` | **P1 (prod)** | Tenant namespace UUID bound to MCP stdio tools. Required in production when `NCE_MCP_API_KEY` is set; must be a valid UUID. |
 | `NCE_ADMIN_OVERRIDE` | `bool` | `false` | **Dev only** | Bypass admin scope checks during development. **Raises `RuntimeError` at module import when `NCE_ENV=prod`.** |
 | `NCE_BYPASS_WORM` | `bool` | `false` | **Dev only** | Bypass WORM / immutability probe during startup. Forbidden in production (raises `RuntimeError`). |
@@ -564,6 +564,6 @@ Processes asynchronous background queues (`nce-tasks`), including source code AS
 - `NCE_API_KEY` absent (admin API inaccessible).
 - Neither `NCE_JWT_SECRET` nor `NCE_JWT_PUBLIC_KEY` configured (A2A sharing disabled).
 - `NCE_JWT_ALGORITHM=HS256` in production (warns to prefer RS256/ES256).
-- `NCE_MCP_API_KEY` absent (MCP tenant tools accept unauthenticated invocations).
+- `NCE_MCP_API_KEY` absent (MCP tenant tools accept unauthenticated invocations; setting it does not add caller authentication either — see `docs/enterprise_security.md` §2b).
 - `NCE_MCP_NAMESPACE_ID` absent when `NCE_MCP_API_KEY` is set (accepts caller-supplied `namespace_id`).
 - Incomplete admin credentials (`NCE_ADMIN_API_KEY`, `NCE_ADMIN_USERNAME`, `NCE_ADMIN_PASSWORD`).

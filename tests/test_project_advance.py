@@ -547,20 +547,32 @@ class TestProjectAdvancePhaseToolRegistry:
         )
 
     def test_mutation_count(self) -> None:
-        """Mutation tools must total 45 (unified realignment registry;
+        """Mutation tools must total 52 (unified realignment registry;
         +2 Batch 131 inventory_transfer_stock/inventory_record_consumption;
         +1 Batch 143 assets_advance_lifecycle, M9.W3;
         +2 Batch 067c system_design_author_topology/
         system_design_author_functional_location, M6.W13b;
         +1 Batch 067h system_design_delete_planned, M6.W17 -- the module's
         first delete path, and the only one of the three that can remove
-        anything)."""
-        assert len(MUTATION_TOOLS) == 45
+        anything);
+        +7 Batch 138a inventory Actor tools, M11.W10a --
+        inventory_record_goods_receipt/inventory_record_goods_receipt_and_match/
+        inventory_reserve_stock/inventory_release_stock/inventory_record_rma/
+        inventory_restock_from_rma/inventory_dispose_rma_weee. That wave
+        registered eleven tools but only seven mutate; inventory_valuation and
+        inventory_reconcile_dead_stock read only, and
+        inventory_recommend_restock/inventory_forecast_demand write nothing."""
+        assert len(MUTATION_TOOLS) == 52
 
     def test_admin_only_count(self) -> None:
-        """Admin-only tools must total 18 (unified realignment registry;
+        """Admin-only tools must total 27 (unified realignment registry;
         +2 Batch 131 inventory_transfer_stock/inventory_record_consumption;
         +1 Batch 067h system_design_delete_planned, M6.W17 -- admin_only is the
         one flag that separates it from the two authoring tools, which are
-        not)."""
-        assert len(ADMIN_ONLY_TOOLS) == 18
+        not);
+        +9 Batch 138a inventory tools, M11.W10a -- the 7 Actor mutations plus
+        inventory_valuation and inventory_reconcile_dead_stock, which are
+        read-only but admin_only for the cost/position data they return. The
+        wave's other two tools, inventory_recommend_restock and
+        inventory_forecast_demand, are Watcher reads and are not admin_only."""
+        assert len(ADMIN_ONLY_TOOLS) == 27

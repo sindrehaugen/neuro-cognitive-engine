@@ -6,7 +6,7 @@ Acceptance tests for Batch 044 — Module 1.Wave 1 (tco-core).
 Split per round-2 rule #3:
   (a) ALGORITHM tests — parameterised by fixture weights injected directly; prove
       that the same algorithm with different weights yields different totals.
-      No Example/tenant weight literals.
+      No tenant weight literals.
   (b) CONFIG tests — assert the two real JSON files load and contain all documented keys.
 
 Covers:
@@ -29,7 +29,7 @@ from __future__ import annotations
 import pytest
 
 # ---------------------------------------------------------------------------
-# Shared fixtures — algorithm tests use THESE weights, never Example's values
+# Shared fixtures — algorithm tests use THESE weights, never the tenant's values
 # ---------------------------------------------------------------------------
 
 _FIXTURE_WEIGHTS_A: dict = {

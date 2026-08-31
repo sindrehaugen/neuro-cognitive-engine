@@ -189,9 +189,7 @@ def main():
     if unstamped:
         print("\n    Details of unstamped/unverified files:")
         for u in unstamped:
-            print(
-                f"       * {u['doc']} (status={u['has_status']}, verified={u['has_verified']})"
-            )
+            print(f"       * {u['doc']} (status={u['has_status']}, verified={u['has_verified']})")
 
     # Overall Verdict
     success = (not local_file_matches) and (not syntax_issues) and (not broken_internal_links)

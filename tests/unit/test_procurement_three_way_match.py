@@ -5,7 +5,7 @@ Acceptance tests for Batch 046 — Module 1.Wave 3 (three-way-match).
 
 Split per round-2 rule #3:
   (a) ALGORITHM tests — parameterised by fixture tolerances injected directly.
-      No Example/tenant threshold literals — thresholds come from fixture dicts.
+      No tenant threshold literals — thresholds come from fixture dicts.
   (b) SUBSTITUTION tests — each of the 4 levels is exercised; valid substitutions
       (EXACT, EQUIVALENT_SKU, COMPATIBLE) are NOT errors; DIFFERENT lands lower tier.
   (c) CONFIG smoke test — the real JSON loads and the function runs end-to-end.

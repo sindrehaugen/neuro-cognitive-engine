@@ -3384,6 +3384,140 @@ discriminator between the two key grains.';
 --     netbox-branching model.
 -- ============================================================================
 
+-- ---------------------------------------------------------------------------
+-- Module 0, Wave 31 (Batch 132a): bom_line_content -- mirror of migration 058.
+-- See that file's header for the full design rationale. Inserted BEFORE the
+-- system_design_node_state block on purpose: that block is asserted elsewhere
+-- (tests/test_system_design_node_state.py) to be the LAST block in this file.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS bom_line_content (
+    id                 UUID          NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id       UUID          NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    bom_line_label     TEXT          NOT NULL,
+    quote_id           TEXT          NOT NULL,
+    line_ref           TEXT          NOT NULL,
+    qty                NUMERIC(14,4) NOT NULL,
+    unit_price         NUMERIC(18,2) NOT NULL,
+    line_total         NUMERIC(18,2) NOT NULL,
+    currency           CHAR(3)       NOT NULL DEFAULT 'NOK',
+    -- Open-by-construction provenance (no CHECK) -- see header comment.
+    -- Trust boundary: set ONLY by nce/bom_lines.py's own flow-to-origin_kind
+    -- mapping, never from a caller-supplied tool argument.
+    origin_kind        TEXT          NOT NULL,
+    origin_ref         TEXT,
+    writer_engine      TEXT          NOT NULL,
+    status             TEXT          NOT NULL DEFAULT 'DRAFT',
+    status_changed_at  TIMESTAMPTZ,
+    -- Immutable once set -- enforced by the trigger below, not by DDL alone
+    -- (a CHECK cannot see OLD).
+    frozen_at          TIMESTAMPTZ,
+    created_at         TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at         TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    PRIMARY KEY (id)
+);
+
+-- Every CHECK/UNIQUE is explicitly named -- an anonymous column CHECK is
+-- auto-named on one path (CREATE TABLE) and can diverge from the name a
+-- second path (e.g. a later ALTER) would pick, which is exactly the
+-- fresh-install-vs-migrated divergence that caused a prior rejection on this
+-- table family (Batch 132's own history).
+ALTER TABLE bom_line_content DROP CONSTRAINT IF EXISTS bom_line_content_natural_key;
+ALTER TABLE bom_line_content
+    ADD CONSTRAINT bom_line_content_natural_key UNIQUE (namespace_id, bom_line_label);
+
+ALTER TABLE bom_line_content DROP CONSTRAINT IF EXISTS bom_line_content_qty_positive_chk;
+ALTER TABLE bom_line_content
+    ADD CONSTRAINT bom_line_content_qty_positive_chk CHECK (qty > 0);
+
+ALTER TABLE bom_line_content DROP CONSTRAINT IF EXISTS bom_line_content_unit_price_nonneg_chk;
+ALTER TABLE bom_line_content
+    ADD CONSTRAINT bom_line_content_unit_price_nonneg_chk CHECK (unit_price >= 0);
+
+ALTER TABLE bom_line_content DROP CONSTRAINT IF EXISTS bom_line_content_line_total_nonneg_chk;
+ALTER TABLE bom_line_content
+    ADD CONSTRAINT bom_line_content_line_total_nonneg_chk CHECK (line_total >= 0);
+
+-- Non-unique: supports both the per-line lookup (namespace_id + bom_line_label,
+-- covered by the natural key above) and the per-quote listing/read
+-- (namespace_id + quote_id) that 132f and Batch 142 will use.
+CREATE INDEX IF NOT EXISTS idx_bom_line_content_namespace_quote
+    ON bom_line_content (namespace_id, quote_id);
+
+-- ----------------------------------------------------------------------------
+-- Freeze semantics: a BEFORE UPDATE trigger, not a GRANT and not the registry.
+-- status / status_changed_at are deliberately OUTSIDE the protected set --
+-- content freezes, status keeps advancing. frozen_at itself is immutable
+-- once set, independent of the content freeze check.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION reject_frozen_bom_line_mutation() RETURNS TRIGGER AS $BODY$
+BEGIN
+    IF OLD.frozen_at IS NOT NULL AND NEW.frozen_at IS DISTINCT FROM OLD.frozen_at THEN
+        RAISE EXCEPTION
+            'bom_line_content.frozen_at is immutable once set (label=%)', OLD.bom_line_label;
+    END IF;
+
+    IF OLD.frozen_at IS NOT NULL THEN
+        IF NEW.quote_id       IS DISTINCT FROM OLD.quote_id
+        OR NEW.line_ref       IS DISTINCT FROM OLD.line_ref
+        OR NEW.qty            IS DISTINCT FROM OLD.qty
+        OR NEW.unit_price     IS DISTINCT FROM OLD.unit_price
+        OR NEW.line_total     IS DISTINCT FROM OLD.line_total
+        OR NEW.currency       IS DISTINCT FROM OLD.currency
+        OR NEW.origin_kind    IS DISTINCT FROM OLD.origin_kind
+        OR NEW.origin_ref     IS DISTINCT FROM OLD.origin_ref
+        OR NEW.writer_engine  IS DISTINCT FROM OLD.writer_engine
+        THEN
+            RAISE EXCEPTION
+                'bom_line_content: content is frozen and cannot be mutated (label=%)',
+                OLD.bom_line_label;
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$BODY$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_reject_frozen_bom_line_mutation ON bom_line_content;
+CREATE TRIGGER trg_reject_frozen_bom_line_mutation
+    BEFORE UPDATE ON bom_line_content
+    FOR EACH ROW EXECUTE FUNCTION reject_frozen_bom_line_mutation();
+
+ALTER TABLE bom_line_content ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bom_line_content FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON bom_line_content;
+CREATE POLICY tenant_isolation_policy ON bom_line_content
+    FOR ALL TO nce_app
+    USING  (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE bom_line_content FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE bom_line_content TO nce_app;
+    END IF;
+END $$;
+
+COMMENT ON TABLE bom_line_content IS
+'Shared, top-level BOM_LINE content store (Module 0, Wave 31 / Batch 132a).
+Written by system_design (content:create:design, content:update:design) and
+by sales (content:create:manual/package/external,
+content:update:manual/package/external, content:freeze) -- guarded per-flow
+by node_ownership_registry via nce/bom_lines.py, never engine-prefixed
+because both engines write it. Natural-keyed (namespace_id, bom_line_label);
+INSERT ... ON CONFLICT DO NOTHING makes a replay of the same
+(namespace, label) a no-op by construction. Content (qty/unit_price/
+line_total/currency/origin_*) freezes via trg_reject_frozen_bom_line_mutation
+once frozen_at is set (from do_freeze_baseline, sales/baseline.py); status
+stays mutable after freeze -- see the header comment for the full field-
+ownership split. actual_cost is NOT this table''s column -- see
+economy_bom_actual_costs (migration 047). FORCE RLS isolates per tenant;
+every query must ALSO carry an explicit namespace_id predicate because the
+owner/superuser pool used by background jobs bypasses FORCE RLS (bitten three
+prior waves: B67, B120, B130).';
+
 CREATE TABLE IF NOT EXISTS system_design_node_state (
     id              UUID        NOT NULL DEFAULT gen_random_uuid(),
     namespace_id    UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,

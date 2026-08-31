@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 124  # 67 base + 23 ml engine tools + 6 rl tools (detect_causal_cycles + 5 diag_* from Batch 77) + 1 sales tool + 10 vendors tools (vendors_get_vendor/vendors_compute_scorecard from Batch 096 + 3 from Batch 098 + 1 from Batch 102 + 2 from Batch 103 + 2 from Batch 104) + 1 agreements tool (agreements_lookup_terms from Batch 109) + 1 sales A2A tool (sales_get_signed_baseline from PR #26) + 3 economy tools (economy_match_invoice/economy_compute_periodisering/economy_emit_event from Batch 119) + 3 inventory tools (inventory_stock_levels/inventory_transfer_stock/inventory_record_consumption from Batch 131, M11.W3) + 1 assets tool (assets_ping from Batch 141, M9.W1) + 3 assets tools (assets_get/assets_list/assets_advance_lifecycle from Batch 143, M9.W3) + 1 system_design tool (system_design_get_topology from Batch 067b, M6.W13a) + 2 system_design authoring tools (system_design_author_topology/system_design_author_functional_location from Batch 067c, M6.W13b — both cacheable=False, so CACHEABLE_TOOLS is unchanged at 46) + 1 system_design validator (system_design_validate_design_graph from Batch 067d, M6.W13c — cacheable=False AND mutation=False, so CACHEABLE_TOOLS stays 46 and MUTATION_TOOLS stays 44; only this total moves) + 1 system_design retire tool (system_design_delete_planned from Batch 067h, M6.W17 -- the module's FIRST delete path: cacheable=False so CACHEABLE_TOOLS stays 46, but mutation=True AND admin_only=True, so MUTATION_TOOLS moves 44 -> 45 and ADMIN_ONLY_TOOLS moves 17 -> 18 alongside this total; MIGRATION_TOOLS stays 5).
+_EXPECTED_TOTAL = 135  # 67 base + 23 ml engine tools + 6 rl tools (detect_causal_cycles + 5 diag_* from Batch 77) + 1 sales tool + 10 vendors tools (vendors_get_vendor/vendors_compute_scorecard from Batch 096 + 3 from Batch 098 + 1 from Batch 102 + 2 from Batch 103 + 2 from Batch 104) + 1 agreements tool (agreements_lookup_terms from Batch 109) + 1 sales A2A tool (sales_get_signed_baseline from PR #26) + 3 economy tools (economy_match_invoice/economy_compute_periodisering/economy_emit_event from Batch 119) + 3 inventory tools (inventory_stock_levels/inventory_transfer_stock/inventory_record_consumption from Batch 131, M11.W3) + 1 assets tool (assets_ping from Batch 141, M9.W1) + 3 assets tools (assets_get/assets_list/assets_advance_lifecycle from Batch 143, M9.W3) + 1 system_design tool (system_design_get_topology from Batch 067b, M6.W13a) + 2 system_design authoring tools (system_design_author_topology/system_design_author_functional_location from Batch 067c, M6.W13b — both cacheable=False, so CACHEABLE_TOOLS is unchanged at 46) + 1 system_design validator (system_design_validate_design_graph from Batch 067d, M6.W13c — cacheable=False AND mutation=False, so CACHEABLE_TOOLS stays 46 and MUTATION_TOOLS stays 44; only this total moves) + 1 system_design retire tool (system_design_delete_planned from Batch 067h, M6.W17 -- the module's FIRST delete path: cacheable=False so CACHEABLE_TOOLS stays 46, but mutation=True AND admin_only=True, so MUTATION_TOOLS moves 44 -> 45 and ADMIN_ONLY_TOOLS moves 17 -> 18 alongside this total; MIGRATION_TOOLS stays 5). + 11 inventory tools (inventory_record_goods_receipt/inventory_recommend_restock/inventory_forecast_demand/inventory_reserve_stock/inventory_release_stock/inventory_record_rma/inventory_valuation/inventory_record_goods_receipt_and_match/inventory_reconcile_dead_stock/inventory_restock_from_rma/inventory_dispose_rma_weee from Batch 138a, M11.W10a -- the surface-completion wave that registers the Inventory cores Batch 131's single surface wave predated; of the 11, SEVEN are mutation=True and admin_only=True, inventory_valuation and inventory_reconcile_dead_stock are admin_only=True with mutation=False, and inventory_recommend_restock/inventory_forecast_demand are the only two cacheable=True -- so MUTATION_TOOLS moves 45 -> 52, CACHEABLE_TOOLS 46 -> 48, ADMIN_ONLY_TOOLS 18 -> 27 and MIGRATION_TOOLS stays 5).
 
 
 def test_registry_has_expected_entries():
@@ -145,6 +145,20 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # just removed. Unlike the two above it is ALSO admin_only — see
         # _EXPECTED_ADMIN_ONLY.
         "system_design_delete_planned",
+        # Batch 138a (M11.W10a) — Inventory surface completion (7 mutations).
+        # The Actor cores Batch 131's single surface wave predated: a goods
+        # receipt and the receipt+three-way-match composition (two contracts,
+        # not one with a wrapper), both reservation legs, the RMA record and
+        # its two settlement legs. All seven are admin_only too — see
+        # _EXPECTED_ADMIN_ONLY. inventory_valuation and
+        # inventory_reconcile_dead_stock are NOT here: both only read.
+        "inventory_record_goods_receipt",
+        "inventory_record_goods_receipt_and_match",
+        "inventory_reserve_stock",
+        "inventory_release_stock",
+        "inventory_record_rma",
+        "inventory_restock_from_rma",
+        "inventory_dispose_rma_weee",
     }
 )
 
@@ -158,11 +172,17 @@ def test_mutation_tools_exact_match():
 
 def test_mutation_tools_count():
     assert (
-        len(MUTATION_TOOLS) == 45
+        len(MUTATION_TOOLS) == 52
     )  # 42 + 2 system_design authoring tools (system_design_author_topology /
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
-    # Batch 067h, M6.W17.
+    # Batch 067h, M6.W17
+    # + 7 Inventory Actor tools from Batch 138a, M11.W10a (surface completion):
+    # inventory_record_goods_receipt, inventory_record_goods_receipt_and_match,
+    # inventory_reserve_stock, inventory_release_stock, inventory_record_rma,
+    # inventory_restock_from_rma, inventory_dispose_rma_weee. The same batch's
+    # inventory_valuation and inventory_reconcile_dead_stock are read-only and
+    # do NOT count here, which is why this moves by 7 and not by 11.
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +253,15 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         # Assets vertical module (Batch 143, M9.W3) — Watcher reads, cacheable
         "assets_get",
         "assets_list",
+        # Inventory vertical module (Batch 138a, M11.W10a) — the only two
+        # cacheable tools of the eleven the surface-completion wave added. Both
+        # cores write nothing and derive from data that does not change per
+        # call. inventory_valuation is deliberately NOT cacheable: it is derived
+        # from the append-only inventory_transactions ledger and changes on
+        # every movement — a stale quantity is a nuisance, a stale money
+        # figure is a wrong number in someone's accounts.
+        "inventory_recommend_restock",
+        "inventory_forecast_demand",
     }
 )
 
@@ -246,8 +275,8 @@ def test_cacheable_tools_exact_match():
 
 def test_cacheable_tools_count():
     assert (
-        len(CACHEABLE_TOOLS) == 46
-    )  # ml +4 product (M2.W3-W5); +3 procurement M1.W4; +3 procurement M1.W12; +1 system_design_ping (M6.W1); +1 sales_ping (Batch 080); +1 project_can_enter_phase (M7.W3); +1 project_suggest_pl (M7.W11); +1 pricing_resolve; +2 resolve/merge_queue_list (C1); +10 vendors tools (Batch 096/098/102/103/104) | rl +3 diag_digest_status/diag_device_health/diag_list_anomalies (Batch 77) | +1 agreements_lookup_terms (Batch 109) | +3 economy tools (Batch 119, M8.W4) | +1 inventory_stock_levels (Batch 131, M11.W3) | +1 assets_ping (Batch 141, M9.W1) | +2 assets_get/assets_list (Batch 143, M9.W3); +1 system_design_get_topology (Batch 067b, M6.W13a)
+        len(CACHEABLE_TOOLS) == 48
+    )  # ml +4 product (M2.W3-W5); +3 procurement M1.W4; +3 procurement M1.W12; +1 system_design_ping (M6.W1); +1 sales_ping (Batch 080); +1 project_can_enter_phase (M7.W3); +1 project_suggest_pl (M7.W11); +1 pricing_resolve; +2 resolve/merge_queue_list (C1); +10 vendors tools (Batch 096/098/102/103/104) | rl +3 diag_digest_status/diag_device_health/diag_list_anomalies (Batch 77) | +1 agreements_lookup_terms (Batch 109) | +3 economy tools (Batch 119, M8.W4) | +1 inventory_stock_levels (Batch 131, M11.W3) | +1 assets_ping (Batch 141, M9.W1) | +2 assets_get/assets_list (Batch 143, M9.W3); +1 system_design_get_topology (Batch 067b, M6.W13a) | +2 inventory_recommend_restock/inventory_forecast_demand (Batch 138a, M11.W10a) -- the only cacheable two of that wave's eleven tools
 
 
 # ---------------------------------------------------------------------------
@@ -288,6 +317,23 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         # Copper calls them as a tenant — and this one deliberately IS: adding
         # and updating is a canvas operation, taking away is not.
         "system_design_delete_planned",
+        # Batch 138a (M11.W10a) — Inventory surface completion. NINE of the
+        # eleven tools are admin_only: the seven Actor mutations, plus two
+        # read-only tools that are admin_only for their DATA rather than their
+        # effect — inventory_valuation returns the money value of stock (cost
+        # data is never a general-audience field) and inventory_reconcile_dead_stock
+        # exposes the whole dead-stock position against the ledger.
+        # inventory_recommend_restock and inventory_forecast_demand are the two
+        # that are NOT admin_only: both are Watcher advisor reads.
+        "inventory_record_goods_receipt",
+        "inventory_record_goods_receipt_and_match",
+        "inventory_reserve_stock",
+        "inventory_release_stock",
+        "inventory_record_rma",
+        "inventory_restock_from_rma",
+        "inventory_dispose_rma_weee",
+        "inventory_valuation",
+        "inventory_reconcile_dead_stock",
     }
 )
 
@@ -300,7 +346,13 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 18
+    # 18 + 9 Inventory tools from Batch 138a, M11.W10a (surface completion):
+    # the 7 Actor mutations plus inventory_valuation and
+    # inventory_reconcile_dead_stock, which are read-only but admin_only for
+    # the data they return. inventory_recommend_restock and
+    # inventory_forecast_demand are the wave's only two non-admin tools, which
+    # is why this moves by 9 and not by 11.
+    assert len(ADMIN_ONLY_TOOLS) == 27
 
 
 # ---------------------------------------------------------------------------

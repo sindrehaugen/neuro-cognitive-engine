@@ -706,6 +706,94 @@ async def _product_eol_watcher_tick(pool: asyncpg.Pool) -> None:
         await release_cron_lock(lock)
 
 
+# Cap how many per-namespace flags are embedded in one alert message —
+# mirrors _AGREEMENTS_ALERT_MAX_DETAILS' alert-storm control (cron.py:714).
+_INVENTORY_STOCK_ALERT_MAX_DETAILS: int = 5
+
+
+async def _inventory_stock_watcher_tick(pool: asyncpg.Pool) -> None:
+    """
+    APScheduler job: scan all namespaces for low-stock and dead-stock flags
+    (Module 11 Wave 6b — restock-watcher, B134b).
+
+    Singleton via CronLock — prevents duplicate runs across replicas.
+    Watcher role: observe + alert only; ``do_flag_stock_alerts`` is
+    return-only and writes nothing (no kg_nodes, no kg_edges, no
+    inventory_items, no event_log).
+
+    No opt-in filter: unlike ``_agreements_coverage_watcher_tick``, this tick
+    scans **every** namespace — Inventory's namespace opt-in gate
+    (``metadata.inventory.enabled``) is B140a, a separate wave, and is not
+    installed here (see the wave brief's OUT OF SCOPE). The safety interlock
+    against unsolicited alerting is instead
+    ``NCE_INVENTORY_LOW_STOCK_ALERT_ENABLED``, checked below: with it False,
+    every namespace is still scanned and logged, but no alert is dispatched.
+
+    Joins ``startup_coros`` (fires once at boot, like the other watcher
+    ticks) — a low-stock/dead-stock digest lagging by up to one full interval
+    after a fresh deploy is the same staleness window the other watchers
+    accept, and there is no reason to special-case this one.
+    """
+    ttl = cfg.NCE_INVENTORY_STOCK_WATCHER_INTERVAL_MINUTES * 60 + 60
+    lock: CronLock | None = await acquire_cron_lock("inventory_stock_watcher", ttl)
+    if lock is None:
+        log.debug("Skipping inventory_stock_watcher — lock held by another instance")
+        return
+    try:
+        from nce.vertical_modules.inventory.watchers import do_flag_stock_alerts
+
+        class _PoolEngine:
+            def __init__(self, p: asyncpg.Pool) -> None:
+                self.pg_pool = p
+
+        engine = _PoolEngine(pool)
+
+        async with unmanaged_pg_connection(
+            pool, site="cron.inventory_stock_watcher.namespace_scan"
+        ) as conn:
+            rows = await conn.fetch("SELECT id FROM namespaces")
+
+        for row in rows:
+            ns_id: UUID = row["id"]
+            try:
+                result = await do_flag_stock_alerts(engine, {"namespace_id": ns_id})
+                flags = result.get("flags", [])
+                log.debug(
+                    "inventory_stock_watcher tick namespace=%s scanned=%s flags=%d",
+                    ns_id,
+                    result.get("scanned"),
+                    len(flags),
+                )
+                if flags and cfg.NCE_INVENTORY_LOW_STOCK_ALERT_ENABLED:
+                    shown = flags[:_INVENTORY_STOCK_ALERT_MAX_DETAILS]
+                    samples = "; ".join(
+                        f"{f.get('flag_type')}:{f.get('sku')}@{f.get('location_id')}" for f in shown
+                    )
+                    await _dispatch_throttled_alert(
+                        f"inventory_stock_watcher.{ns_id}",
+                        f"Inventory stock alert: Namespace {ns_id}",
+                        f"{len(flags)} stock flag(s) in namespace {ns_id}. "
+                        f"First {len(shown)}: {samples}",
+                    )
+            except _CRON_TICK_ERRORS as exc:
+                log.exception("inventory_stock_watcher tick failed for namespace=%s", ns_id)
+                await _dispatch_throttled_alert(
+                    f"cron.inventory_stock_watcher.{ns_id}",
+                    f"Inventory Stock Watcher Failed: Namespace {ns_id}",
+                    f"Inventory stock watcher tick failed for namespace {ns_id}: "
+                    f"{type(exc).__name__}: {exc}",
+                )
+    except _CRON_TICK_ERRORS as exc:
+        log.exception("inventory_stock_watcher tick failed unexpectedly")
+        await _dispatch_throttled_alert(
+            "cron.inventory_stock_watcher.global",
+            "Cron Job Failed: inventory_stock_watcher",
+            f"Inventory stock watcher tick failed unexpectedly: {type(exc).__name__}: {exc}",
+        )
+    finally:
+        await release_cron_lock(lock)
+
+
 # Agreements coverage flags that warrant an alert.  "review" is deliberately
 # excluded — review flags surface in the dashboard/review queue, not as alerts.
 _AGREEMENTS_ALERT_FLAG_TYPES: tuple[str, ...] = ("expiry", "leakage")
@@ -1708,6 +1796,17 @@ async def async_main() -> None:
         replace_existing=True,
     )
 
+    inventory_stock_watcher_minutes = max(5, int(cfg.NCE_INVENTORY_STOCK_WATCHER_INTERVAL_MINUTES))
+    scheduler.add_job(
+        _inventory_stock_watcher_tick,
+        IntervalTrigger(minutes=inventory_stock_watcher_minutes),
+        args=[pool],
+        id="inventory_stock_watcher",
+        coalesce=True,
+        max_instances=1,
+        replace_existing=True,
+    )
+
     agreements_watcher_minutes = max(5, int(cfg.NCE_AGREEMENTS_COVERAGE_WATCHER_INTERVAL_MINUTES))
     scheduler.add_job(
         _agreements_coverage_watcher_tick,
@@ -1805,6 +1904,7 @@ async def async_main() -> None:
         _outbox_relay_tick(pool),
         _decay_prune_tick(pool),
         _product_eol_watcher_tick(pool),
+        _inventory_stock_watcher_tick(pool),
         _agreements_coverage_watcher_tick(pool),
         _economy_recurring_recognition_tick(pool),
         _economy_contract_renewal_watcher_tick(pool),

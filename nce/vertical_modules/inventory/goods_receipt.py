@@ -185,24 +185,54 @@ of the collision properties, and
 pins the pre-change digest as a literal so no future payload-shape change
 can reintroduce the class.
 
+Graph projection + Assets hand-off (Batch 132b)
+------------------------------------------------------------
+This module now upserts a ``GOODS_RECEIPT`` kg_node — guarded by
+``assert_owner`` (Contract A, deny-by-default; B130a's registry row) — plus
+its ``-[against]->PO`` and, per aggregated line, ``-[of]->PRODUCT_SKU:{sku}``
+edges, and hands any captured serials to Assets across an injectable seam.
+All of it runs INSIDE :func:`do_record_goods_receipt`'s existing
+transaction, on the non-duplicate path only, AFTER the stock increments and
+ledger appends — see that function's own docstring and its ``Raises:``
+section for the rollback consequence.
+
 Explicit out of scope — by name, with the batch that owns it
 --------------------------------------------------------------
 Nothing below is a silent omission; each is named so a reader never has to
 wonder whether it was forgotten:
 
-  * **The graph projection** — a ``GOODS_RECEIPT`` kg_node and its
-    ``-[against]->PO`` / ``-[of]->SKU`` edges — is **Batch 132b**'s. This
-    module writes NO ``kg_nodes`` and NO ``kg_edges`` at all, and imports
-    nothing from ``nce.entity_resolution.ownership`` or
-    ``nce.events.emit``.
-  * **The serial→Assets hand-off** is **Batch 132b**'s. Assets (Module 9)
-    does not exist yet; this module persists ``scans`` (including serials)
-    onto the receipt row as the RECORD, but creates no A2A grant and imports
-    nothing from ``nce.a2a``.
   * **The C4 ``GOODS_RECEIPT.created`` publish** is **Batch 132c**'s, and
     132c is currently BLOCKED (``register_automation_subscribers()`` has
     zero production callers on main, so a publish today would look green and
-    deliver nothing). This module never calls ``nce.events.bus.publish``.
+    deliver nothing). This module never calls ``nce.events.bus.publish``,
+    and never re-labels the ``GOODS_RECEIPT.upserted`` event this wave emits
+    into a ``"created"`` op — the two are different selectors with
+    different payload contracts.
+  * **``GOODS_RECEIPT.upserted`` reaching the DLQ, not a subscriber** — a
+    REPO-WIDE, pre-existing condition, not this wave's bug. No handler is
+    registered anywhere in this repo for that event_type (the only
+    ``@outbox_handler`` is ``memory.stored``), so ``nce/outbox_relay.py``
+    fast-fails every ``GOODS_RECEIPT.upserted`` (and every
+    ``STOCK_LOCATION.upserted`` / ``INVENTORY_ITEM.upserted`` ``stock.py``
+    already emits today) to the DLQ before the dedup INSERT. Fixing the
+    relay/subscriber gap is **M0.W20b/W20c/W20d**'s.
+  * **Reconstructing Product's compound ``PRODUCT:{manufacturer}:{mfr_part_no}``
+    label.** ``inventory_items.sku`` (migration 050) is a FLAT string with
+    no manufacturer breakdown, so the ``of`` edge this module writes cannot
+    resolve to Product's canonical label
+    (``nce/vertical_modules/product/graph.py:199``) and instead targets
+    ``PRODUCT_SKU:{sku}`` — a label space DISTINCT from Product's own. **No
+    reader may assume a ``GOODS_RECEIPT -[of]-> PRODUCT_SKU:{sku}`` edge
+    resolves to a ``PRODUCT`` node today.** A future wave needs a
+    sku→(manufacturer, mfr_part_no) lookup to bridge the two label spaces;
+    this wave has no authority to design one and does not guess a split of
+    the sku string.
+  * **Building an ``assets`` package, an ``ASSET`` node, or a live A2A grant
+    to an ``assets`` agent identity.** Assets (Module 9) owns ``ASSET``
+    under Contract A; :func:`_seed_assets_with_serials` is an INJECTABLE
+    SEAM that raises ``NotImplementedError`` until Module 9 exists — see
+    that function's own docstring, the cross-engine contract **Batch 142
+    (M9.W2)** must implement against and prove it consumes.
   * **Procurement's ``procurement_evaluate_match`` fire** and the
     **``match_result`` column's population** are **Batch 133**'s. This
     module creates the column (migration 052) and never writes to it; it
@@ -212,17 +242,23 @@ wonder whether it was forgotten:
   * **MCP tool registration and REST routes** are **Batch 138a**'s.
     :func:`do_record_goods_receipt` is unreachable from any surface when
     this wave lands — nothing in ``nce/tool_registry.py`` or
-    ``nce/admin_app.py`` references it.
+    ``nce/admin_app.py`` references it. B138a must not register this tool
+    while the Assets seam still raises ``NotImplementedError`` — a
+    serial-carrying call would surface that to a caller.
 
 Dependency direction (uncle-bob-craft)
 -----------------------------------------
-This module imports only ``asyncpg``, ``nce.db_utils.scoped_pg_session``, and
-its sibling ``transactions.py``'s typed reason constant + ``append_transaction``
-(imported as a bare module-level name — see the docstring of
-:func:`do_record_goods_receipt` for why that specific import form is
-load-bearing for this wave's own mutation-testing proof) — no web/HTTP/admin
-framework imports. ``NCEEngine`` is imported under ``TYPE_CHECKING`` only,
-matching ``stock.py``'s and ``transactions.py``'s own convention.
+This module imports ``asyncpg``, ``nce.db_utils.scoped_pg_session``, its
+sibling ``transactions.py``'s typed reason constant + ``append_transaction``,
+and (Batch 132b) its two PEER CORES ``nce.entity_resolution.ownership``
+(``assert_owner``) and ``nce.events.emit`` (``emit_graph_write``) — the same
+import direction ``economy/graph.py`` and ``procurement/graph.py`` take, and
+never a web/HTTP/admin/MCP adapter. All four cross-module names are imported
+as bare module-level names (``from X import Y``, never ``import X`` then
+``X.Y``) — load-bearing for this wave's own out-of-tree mutation-testing
+proof, which rebinds a module attribute at runtime. ``NCEEngine`` is
+imported under ``TYPE_CHECKING`` only, matching ``stock.py``'s and
+``transactions.py``'s own convention.
 
 Decimal coercion is duplicated from ``stock.py``/``transactions.py``, not
 imported
@@ -248,6 +284,9 @@ from uuid import UUID
 import asyncpg  # type: ignore[import-untyped]
 
 from nce.db_utils import scoped_pg_session
+from nce.entity_resolution.ownership import assert_owner
+from nce.events.emit import emit_graph_write
+from nce.vertical_modules.assets.seed import do_seed_asset_from_bom
 from nce.vertical_modules.inventory.transactions import (
     REASON_GOODS_RECEIPT,
     append_transaction,
@@ -624,6 +663,282 @@ async def _increment_qty_on_hand(
 
 
 # ---------------------------------------------------------------------------
+# Graph projection (Batch 132b) — GOODS_RECEIPT kg_node, guarded by
+# assert_owner (Contract A), plus its `against`/`of` kg_edges. The guard
+# lives at the write site (_upsert_goods_receipt_node), never hoisted into
+# the public entry point — matches economy/graph.py and procurement/graph.py,
+# and leaves the private writer guarded for B132c's and B133's future call
+# sites (the systemic defect B130a exists to close).
+# ---------------------------------------------------------------------------
+
+_OWNER_ENGINE = "inventory"
+_NODE_TYPE_GOODS_RECEIPT = "GOODS_RECEIPT"
+_CHANGE_ORIGIN = "agent"
+_PRED_AGAINST = "against"
+_PRED_OF = "of"
+_STRUCTURAL_CONFIDENCE = 1.0  # deterministic structural link, never a prediction
+_ASSETS_ENGINE_ID = "assets"
+
+
+def _goods_receipt_label(receipt_id: UUID) -> str:
+    """Canonical kg_nodes label for a GOODS_RECEIPT node: ``GOODS_RECEIPT:<id>``.
+
+    Keyed by the row's own generated UUID, never upper-cased — the
+    ``economy/graph.py::_posting_label`` convention for identity keyed by a
+    generated id rather than a caller-supplied code (a goods receipt has no
+    stable caller-supplied natural key of its own for the NODE; ``po_ref``
+    plus ``receipt_hash`` identify the ROW, not a code to key a node on)."""
+    return f"GOODS_RECEIPT:{receipt_id}"
+
+
+def _po_label(po_ref: str) -> str:
+    """Canonical kg_nodes label for a PO node: ``PO:<PO_REF>`` (upper-cased).
+
+    Byte-identical to ``procurement/graph.py::_po_label`` — verified against
+    that function's current body at wave dispatch (``f"PO:{{x.upper()}}"``).
+    This module never *writes* a PO node — PO is owned by Procurement and an
+    inventory write would be refused by ``assert_owner`` — it only
+    references one by label from the ``against`` edge below."""
+    return f"PO:{po_ref.upper()}"
+
+
+def _sku_label(sku: str) -> str:
+    """Label for the object end of the ``of`` edge: ``PRODUCT_SKU:<SKU>``.
+
+    **Disclosed limitation, not a bug to fix here** (also stated in the
+    module docstring's out-of-scope list). Product's canonical label is the
+    compound ``PRODUCT:{manufacturer}:{mfr_part_no}``
+    (``nce/vertical_modules/product/graph.py:199``), but Wave 1's schema
+    carries only a flat ``sku`` string with no manufacturer breakdown
+    (``nce/migrations/050_inventory_core.sql``, ``inventory_items.sku
+    TEXT``). This function therefore CANNOT reconstruct Product's label and
+    targets ``PRODUCT_SKU:{sku}`` instead — a label space DISTINCT from
+    Product's own. No reader may assume this edge resolves to a ``PRODUCT``
+    node today; bridging the two label spaces needs a future
+    sku->(manufacturer, mfr_part_no) lookup this module has no authority to
+    design."""
+    return f"PRODUCT_SKU:{sku.strip().upper()}"
+
+
+async def _upsert_goods_receipt_node(
+    conn: asyncpg.Connection,  # type: ignore[type-arg]
+    ns_uuid: UUID,
+    label: str,
+) -> None:
+    """Upsert a single GOODS_RECEIPT kg_nodes row, guarded by ``assert_owner``
+    (Contract A, deny-by-default) checked FIRST, BEFORE the INSERT, with no
+    ``transition`` argument (the registry row is whole-node-type,
+    ``transition: null``) — so a refusal writes nothing at all.
+
+    Duplicated from, not imported off, ``stock.py::_upsert_kg_node`` — same
+    SQL shape (rule 4). This is the SECOND occurrence of this upsert shape
+    (the first is ``stock.py``), not the third, so duplicating it here is
+    correct and is not a rule-10 smell: ``stock.py`` is this module's
+    contested file this cycle (B139's ledger appends, B130a's guard both
+    live there) and its ``_canonical_lock_order`` / oversell guard must not
+    be disturbed by an edit from this wave (rule 4a) — this module never
+    imports ``stock.py``'s private helpers and never edits that file.
+
+    ``assert_owner`` is imported as a bare module-level name (not
+    ``ownership.assert_owner``) so an out-of-tree pytest plugin can rebind
+    it at runtime for the discriminating RED/GREEN proof, without editing
+    any file in this repo.
+
+    Note, do not "fix": the ``emit_graph_write`` call below emits event_type
+    ``GOODS_RECEIPT.upserted``, for which no handler is registered anywhere
+    in this repo (the only ``@outbox_handler`` is ``memory.stored``), so the
+    relay fast-fails it to the DLQ — exactly as it already does for every
+    ``STOCK_LOCATION.upserted`` / ``INVENTORY_ITEM.upserted`` event
+    ``stock.py`` emits today. That is a pre-existing, repo-wide condition
+    (M0.W20b/W20c/W20d's to resolve), not this wave's — emitted anyway for
+    consistency with every other engine."""
+    await assert_owner(conn, ns_uuid, _NODE_TYPE_GOODS_RECEIPT, _OWNER_ENGINE)
+
+    await conn.execute(
+        """
+        INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)
+        VALUES ($1, $2, $3::uuid, $4)
+        ON CONFLICT (label, namespace_id) DO UPDATE
+            SET entity_type   = EXCLUDED.entity_type,
+                change_origin = EXCLUDED.change_origin,
+                updated_at    = NOW()
+        """,
+        label,
+        _NODE_TYPE_GOODS_RECEIPT,
+        str(ns_uuid),
+        _CHANGE_ORIGIN,
+    )
+    await emit_graph_write(
+        conn,
+        namespace_id=ns_uuid,
+        node_type=_NODE_TYPE_GOODS_RECEIPT,
+        op="upserted",
+        node_id=label,
+    )
+
+
+async def _upsert_edge(
+    conn: asyncpg.Connection,  # type: ignore[type-arg]
+    ns_uuid: UUID,
+    subject_label: str,
+    predicate: str,
+    object_label: str,
+    confidence: float,
+) -> None:
+    """Upsert a single kg_edges row. ``confidence`` (0-1) lives on the edge
+    only (rule 7) — never on either node.
+
+    Left UNGUARDED, deliberately: ``kg_edges`` has no FK to ``kg_nodes``, so
+    an edge write is safe regardless of which engine owns either endpoint's
+    node type — the identical reasoning in ``economy/graph.py::_upsert_edge``,
+    ``procurement/graph.py::upsert_offers_edge`` and
+    ``stock.py::_upsert_kg_edge``. Duplicated from, not imported off,
+    ``stock.py::_upsert_kg_edge`` (rule 4a) for the same two reasons as
+    :func:`_upsert_goods_receipt_node` above."""
+    await conn.execute(
+        """
+        INSERT INTO kg_edges
+            (subject_label, predicate, object_label, confidence, namespace_id, change_origin)
+        VALUES ($1, $2, $3, $4, $5::uuid, $6)
+        ON CONFLICT (subject_label, predicate, object_label, namespace_id) DO UPDATE
+            SET confidence    = EXCLUDED.confidence,
+                change_origin = EXCLUDED.change_origin,
+                updated_at    = NOW()
+        """,
+        subject_label,
+        predicate,
+        object_label,
+        confidence,
+        str(ns_uuid),
+        _CHANGE_ORIGIN,
+    )
+
+
+# ---------------------------------------------------------------------------
+# The Assets seam (Batch 132b) — a contract, not a hope. Module 9 (Assets)
+# does not exist yet; this function IS the cross-engine hand-off Batch 142
+# (M9.W2) must implement against — same injectable-seam pattern
+# system_design/from_quote.py has used since Batches 59/62.
+# ---------------------------------------------------------------------------
+
+
+async def _seed_assets_with_serials(
+    conn: asyncpg.Connection,  # type: ignore[type-arg]
+    namespace_id: UUID,
+    *,
+    engine: NCEEngine,
+    goods_receipt_id: UUID,
+    goods_receipt_label: str,
+    po_ref: str,
+    location_id: UUID,
+    serials: list[dict[str, str]],  # [{"sku": ..., "serial": ...}], never empty when called
+) -> list[dict[str, Any]]:
+    """Hand serial-carrying receipt lines to the Assets engine (Module 9),
+    one BEST-EFFORT call to :func:`do_seed_asset_from_bom` per captured
+    serial.
+
+    ``bom_line_id`` — declared, not silent. Batch 142's ``assets`` table has
+    no ``BOM_LINE`` node to reference yet (its own module docstring: "Nothing
+    in the program creates BOM_LINE nodes yet"), so ``bom_line_id`` is just a
+    required, non-blank idempotency-key STRING, not a foreign key. This seam
+    constructs one deterministically as
+    ``f"goods-receipt:{goods_receipt_id}:{sku}:{serial}"`` — unique per
+    (receipt, sku, serial), inspectable, and namespaced away from anything a
+    real BOM_LINE authoring wave might mint later. ``functional_location_id``
+    is passed as ``None``: a stock ``location_id`` (a warehouse) is not a
+    FUNCTIONAL_LOCATION (a room) and this seam has no mapping between them —
+    ``do_seed_asset_from_bom``'s own docstring already treats an absent
+    functional location as the normal pre-install-handover case, so ``None``
+    here is the honest value, not a placeholder.
+
+    🔴 FAILURE POSTURE — decided and pinned here (Batch 132j, REVISED in
+    round 2 of the same wave, after round 1's own report showed the first
+    answer was wrong). ROUND 1 chose whole-receipt rollback on any per-serial
+    failure; that was REJECTED because ``do_seed_asset_from_bom`` commits on
+    its OWN ``scoped_pg_session`` (``engine.pg_pool``, see ``assets/seed.py``)
+    — a transaction fully independent of the goods-receipt's own ``conn``.
+    Under rollback-on-failure, assets already committed for EARLIER serials
+    in the same batch could never be undone when a LATER serial failed and
+    the receipt rolled back, producing an orphan asset for a receipt that
+    never came to exist — worse than either clean outcome, and the same
+    defect shape B130 was rejected for: "a projection write that could abort
+    its own source of truth."
+
+    THE RULE, decided here: **a goods receipt is a physical fact that already
+    happened** — stock physically arrived and was counted. Losing that record
+    because a downstream PROJECTION (the asset seed) failed is unrecoverable
+    data loss, because the physical event is not repeatable. A missing asset
+    row is, by contrast, recoverable: the serial is still on the committed
+    receipt and can be re-seeded later. **A projection failure must never be
+    allowed to destroy its own source of truth.**
+
+    Concretely: each ``do_seed_asset_from_bom`` call below is wrapped in its
+    own ``try/except Exception`` — **that ``except`` clause is the line that
+    now makes the choice**, not the outer transaction boundary. A failure is
+    caught, logged at WARNING with the goods-receipt id/sku/serial, and
+    recorded in this function's return value as ``{"ok": False, "sku",
+    "serial", "error"}`` — enough to reconcile later — then the loop
+    CONTINUES to the next serial. Nothing here re-raises. The goods-receipt
+    transaction therefore ALWAYS reaches ``do_record_goods_receipt``'s
+    ``async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:`` block's
+    normal (committing) exit regardless of any asset-seed outcome: the
+    ``goods_receipts`` row, every ``inventory_items`` increment, every
+    ``inventory_transactions`` append and the GOODS_RECEIPT node/edges all
+    commit unconditionally. This also removes round 1's orphan problem
+    entirely: nothing rolls back, so nothing is orphaned by a rollback —
+    the only "orphan" possible now is a serial with no asset row at all,
+    which the ``{"ok": False, ...}`` record makes discoverable, not silent.
+    Pinned by
+    ``tests/test_inventory_gr.py::test_partial_asset_seed_failure_does_not_roll_back_the_receipt``.
+
+    This is NOT a "degrade gracefully by logging and returning" no-op in
+    the sense M0.W20a warns against: that lesson is about a caller believing
+    an EFFECT succeeded when it silently didn't. Here the effect that must
+    succeed is the RECEIPT, not the projection, and the projection's own
+    failure is surfaced explicitly in the return value and the log — never
+    swallowed into an ambiguous success.
+
+    **Same-tenant only.** ``namespace_id`` is pinned to the receipt's own
+    namespace, never a wildcard — a captured serial must never be readable
+    by a different tenant's assets agent.
+
+    Do NOT build an ``assets`` package here, do NOT import ``nce.a2a``, and
+    do NOT call ``create_grant`` — issuing a live sharing token to an agent
+    identity that does not exist is not a seam, it is a dangling
+    credential.
+    """
+    del conn  # accepted per this seam's call shape; see FAILURE POSTURE above
+    del goods_receipt_label, po_ref  # carried per the seam's contract; not needed for bom_line_id
+    results: list[dict[str, Any]] = []
+    for entry in serials:
+        sku = entry["sku"]
+        serial = entry["serial"]
+        try:
+            seeded = await do_seed_asset_from_bom(
+                engine,
+                {
+                    "namespace_id": str(namespace_id),
+                    "bom_line_id": f"goods-receipt:{goods_receipt_id}:{sku}:{serial}",
+                    "serial": serial,
+                    "functional_location_id": None,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 -- best-effort by design, see FAILURE POSTURE above
+            log.warning(
+                "_seed_assets_with_serials: asset seed FAILED goods_receipt_id=%s sku=%s "
+                "serial=%s error=%s -- receipt commits regardless; reconcile from this record",
+                goods_receipt_id,
+                sku,
+                serial,
+                exc,
+            )
+            results.append({"ok": False, "sku": sku, "serial": serial, "error": str(exc)})
+            continue
+        results.append(seeded)
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Public: do_record_goods_receipt
 # ---------------------------------------------------------------------------
 
@@ -695,11 +1010,16 @@ async def do_record_goods_receipt(engine: NCEEngine, params: dict[str, Any]) -> 
         "lines": [{"sku", "qty", "unit_cost", "on_hand"}],
         "ledger_rows": <int>}`` on a fresh receipt, or
         ``{"ok": True, "duplicate": True, "receipt_id"}`` on a replay.
+        When the receipt carried one or more serials, the fresh-receipt
+        dict additionally carries ``"assets_seed"``: whatever
+        :func:`_seed_assets_with_serials` returned (Batch 132b). Absent
+        entirely — never ``None`` — when no serial was captured, so callers
+        can key on presence rather than truthiness.
 
     Raises
     ------
     ValueError
-        The ONLY exception type this function raises. Concretely:
+        Concretely:
 
           * Any required field missing/malformed — empty ``po_ref``,
             non-string ``delivery_note_ref``, empty/absent ``lines``,
@@ -723,6 +1043,25 @@ async def do_record_goods_receipt(engine: NCEEngine, params: dict[str, Any]) -> 
             10^25 — TEN ORDERS OF MAGNITUDE beyond the ``NUMERIC(18,3)``
             column's own 10^15 ceiling (measured, not assumed), so it never
             fires first.
+
+    OwnershipError
+        Raised by the guarded ``GOODS_RECEIPT`` node upsert
+        (:func:`_upsert_goods_receipt_node`) when no
+        ``node_ownership_registry`` row grants ``inventory`` the
+        ``GOODS_RECEIPT`` node type in this namespace, or grants it to a
+        different engine (deny-by-default, Contract A). This ABORTS THE
+        ENTIRE TRANSACTION — the ``goods_receipts`` row just inserted,
+        every ``inventory_items`` increment and every
+        ``inventory_transactions`` append performed above all roll back
+        together. A refusal here costs the whole receipt, not merely the
+        graph mirror.
+    Nothing from Assets
+        A per-serial asset-seed failure inside :func:`_seed_assets_with_serials`
+        does NOT raise and does NOT abort this transaction — see that
+        function's FAILURE POSTURE docstring section. The receipt,
+        increments, ledger rows and graph writes all commit regardless; a
+        failed seed is recorded in ``result["assets_seed"]`` as
+        ``{"ok": False, "sku", "serial", "error"}`` instead.
     """
     ns_uuid = _as_ns_uuid(params.get("namespace_id"), "namespace_id")
     po_ref = _as_po_ref(params.get("po_ref"))
@@ -856,6 +1195,56 @@ async def do_record_goods_receipt(engine: NCEEngine, params: dict[str, Any]) -> 
                 }
             )
 
+        # -------------------------------------------------------------
+        # Graph projection + Assets hand-off (Batch 132b) — still inside
+        # THIS transaction, non-duplicate path only. A refusal from either
+        # step aborts everything above (see this function's Raises:).
+        # -------------------------------------------------------------
+        goods_receipt_label = _goods_receipt_label(receipt_id)
+        await _upsert_goods_receipt_node(conn, ns_uuid, goods_receipt_label)
+        await _upsert_edge(
+            conn,
+            ns_uuid,
+            goods_receipt_label,
+            _PRED_AGAINST,
+            _po_label(po_ref),
+            _STRUCTURAL_CONFIDENCE,
+        )
+        for of_sku, _of_qty, _of_unit_cost in lines:
+            await _upsert_edge(
+                conn,
+                ns_uuid,
+                goods_receipt_label,
+                _PRED_OF,
+                _sku_label(of_sku),
+                _STRUCTURAL_CONFIDENCE,
+            )
+
+        assets_seed: list[dict[str, Any]] | None = None
+        serials: list[dict[str, str]] = []
+        for scan in scans:
+            # Narrow str | None -> str via plain locals (mypy does not
+            # narrow a repeated dict-subscript expression inside a
+            # comprehension's own filter clause, and _validate_scans'
+            # return type is one dict shape shared by sku/serial/barcode).
+            serial = scan["serial"]
+            if serial is None:
+                continue
+            scan_sku = scan["sku"]
+            assert scan_sku is not None  # _validate_scans guarantees a non-empty sku
+            serials.append({"sku": scan_sku, "serial": serial})
+        if serials:
+            assets_seed = await _seed_assets_with_serials(
+                conn,
+                ns_uuid,
+                engine=engine,
+                goods_receipt_id=receipt_id,
+                goods_receipt_label=goods_receipt_label,
+                po_ref=po_ref,
+                location_id=location_id,
+                serials=serials,
+            )
+
     log.info(
         "do_record_goods_receipt: ns=%s po_ref=%s delivery_note_ref=%s receipt_id=%s "
         "location=%s lines=%d",
@@ -866,7 +1255,7 @@ async def do_record_goods_receipt(engine: NCEEngine, params: dict[str, Any]) -> 
         location_id,
         len(result_lines),
     )
-    return {
+    result: dict[str, Any] = {
         "ok": True,
         "duplicate": False,
         "receipt_id": str(receipt_id),
@@ -876,3 +1265,6 @@ async def do_record_goods_receipt(engine: NCEEngine, params: dict[str, Any]) -> 
         "lines": result_lines,
         "ledger_rows": ledger_rows,
     }
+    if assets_seed is not None:
+        result["assets_seed"] = assets_seed
+    return result

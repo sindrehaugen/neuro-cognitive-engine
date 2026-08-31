@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from nce.mcp_args import model_kwargs
 from nce.mcp_errors import mcp_handler
 from nce.models import (
     ArtifactPayload,
@@ -143,7 +144,7 @@ async def handle_forget_memory(engine: NCEEngine, arguments: dict[str, Any]) -> 
 @mcp_handler
 async def handle_shred_memory(engine: NCEEngine, arguments: dict[str, Any]) -> str:
     """[ADMIN] Provably forget a memory across every store, returning a deletion receipt."""
-    req = ShredMemoryRequest(**arguments)
+    req = ShredMemoryRequest(**model_kwargs(arguments))
     result = await engine.shred_memory(
         memory_id=str(req.memory_id),
         namespace_id=str(req.namespace_id),
@@ -155,7 +156,7 @@ async def handle_shred_memory(engine: NCEEngine, arguments: dict[str, Any]) -> s
 @mcp_handler
 async def handle_unredact_memory(engine: NCEEngine, arguments: dict[str, Any]) -> str:
     """Reverse pseudonymisation for a given memory (requires elevated permissions)."""
-    req = UnredactMemoryRequest(**arguments)
+    req = UnredactMemoryRequest(**model_kwargs(arguments))
     result = await engine.unredact_memory(
         memory_id=str(req.memory_id),
         namespace_id=str(req.namespace_id),

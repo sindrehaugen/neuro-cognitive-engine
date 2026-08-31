@@ -13,7 +13,8 @@ Covers:
      payload, raises ``McpError(-32602)`` for a missing ``namespace_id``, and
      returns a structured ``{"error": ...}`` (never a crash) when the core
      raises ``InsufficientStockError``.
-  4. Tool-count assertion reflects the +3 inventory tools (now 115).
+  4. Tool-count assertion reflects the +3 inventory tools (now 115), and
+     since Batch 138a the +11 surface-completion tools (registry now 135).
   5. The three REST routes are mounted in the admin app and return the same
      shape as the cores, including the 409 mapping for
      ``InsufficientStockError`` and 503 when no engine is connected.
@@ -158,12 +159,14 @@ def test_tool_count_updated_for_inventory() -> None:
     assert "inventory_stock_levels" in TOOL_REGISTRY
     assert "inventory_transfer_stock" in TOOL_REGISTRY
     assert "inventory_record_consumption" in TOOL_REGISTRY
-    assert len(TOOL_REGISTRY) == 124, (
-        f"Expected 124 tools (112 + 3 inventory from Batch 131 + 1 assets_ping "
+    assert len(TOOL_REGISTRY) == 135, (
+        f"Expected 135 tools (112 + 3 inventory from Batch 131 + 1 assets_ping "
         f"from Batch 141 + 3 assets tools from Batch 143 + 1 system_design tool "
         f"from Batch 067b + 2 system_design authoring tools from Batch 067c "
         f"+ 1 system_design validator from Batch 067d "
-        f"+ 1 system_design retire tool from Batch 067h), "
+        f"+ 1 system_design retire tool from Batch 067h "
+        f"+ 11 inventory tools from Batch 138a, M11.W10a -- surface completion, "
+        f"registering the Inventory cores Batch 131's single surface wave predated), "
         f"got {len(TOOL_REGISTRY)}: "
         f"{sorted(TOOL_REGISTRY)}"
     )
@@ -603,3 +606,271 @@ def test_inventory_and_economy_share_one_json_safe() -> None:
     assert inventory_mod._json_safe is economy_mod._json_safe is _json_safe
     assert inventory_mod._require_namespace_id is _require_namespace_id
     assert assets_mod._require_namespace_id is _require_namespace_id
+
+
+# ---------------------------------------------------------------------------
+# Batch 138a, M11.W10a — surface completion.
+#
+# Eleven tools registered for cores that did not exist when Batch 131 ran the
+# module's single surface wave. These tests are DISCRIMINATING on purpose:
+# "the tool is in the registry" is not the load-bearing claim. Each flag is
+# asserted individually (so flipping any one goes RED), and each handler is
+# proven to reach the RIGHT core (so a handler wired to the wrong do_* fails
+# even though every registration assertion still passes).
+#
+# NOT asserted here, deliberately: an Inventory-scoped exact tool count
+# (``len([t for t in TOOL_REGISTRY if t.startswith("inventory_")]) == N``).
+# That certification is Batch 140's and must be written in a later commit —
+# a count written in the same commit as the registration it counts ratifies
+# itself.
+# ---------------------------------------------------------------------------
+
+# (tool name, handler name, core symbol as imported by the handler module,
+#  cacheable, admin_only, mutation, REST path, method, REST endpoint fn)
+_B138A_SURFACE: list[tuple[str, str, str, bool, bool, bool, str, str, str]] = [
+    (
+        "inventory_record_goods_receipt",
+        "handle_inventory_record_goods_receipt",
+        "do_record_goods_receipt",
+        False,
+        True,
+        True,
+        "/api/inventory/record-goods-receipt",
+        "POST",
+        "api_inventory_record_goods_receipt",
+    ),
+    (
+        "inventory_recommend_restock",
+        "handle_inventory_recommend_restock",
+        "do_recommend_restock",
+        True,
+        False,
+        False,
+        "/api/inventory/recommend-restock",
+        "POST",
+        "api_inventory_recommend_restock",
+    ),
+    (
+        "inventory_forecast_demand",
+        "handle_inventory_forecast_demand",
+        "do_forecast_demand",
+        True,
+        False,
+        False,
+        "/api/inventory/forecast-demand",
+        "POST",
+        "api_inventory_forecast_demand",
+    ),
+    (
+        "inventory_reserve_stock",
+        "handle_inventory_reserve_stock",
+        "do_reserve_stock",
+        False,
+        True,
+        True,
+        "/api/inventory/reserve-stock",
+        "POST",
+        "api_inventory_reserve_stock",
+    ),
+    (
+        "inventory_release_stock",
+        "handle_inventory_release_stock",
+        "do_release_stock",
+        False,
+        True,
+        True,
+        "/api/inventory/release-stock",
+        "POST",
+        "api_inventory_release_stock",
+    ),
+    (
+        "inventory_record_rma",
+        "handle_inventory_record_rma",
+        "do_record_rma",
+        False,
+        True,
+        True,
+        "/api/inventory/record-rma",
+        "POST",
+        "api_inventory_record_rma",
+    ),
+    (
+        "inventory_valuation",
+        "handle_inventory_valuation",
+        "do_valuation",
+        False,
+        True,
+        False,
+        "/api/inventory/valuation",
+        "GET",
+        "api_inventory_valuation",
+    ),
+    (
+        "inventory_record_goods_receipt_and_match",
+        "handle_inventory_record_goods_receipt_and_match",
+        "do_record_goods_receipt_and_evaluate_match",
+        False,
+        True,
+        True,
+        "/api/inventory/record-goods-receipt-and-match",
+        "POST",
+        "api_inventory_record_goods_receipt_and_match",
+    ),
+    (
+        "inventory_reconcile_dead_stock",
+        "handle_inventory_reconcile_dead_stock",
+        "do_reconcile_dead_stock",
+        False,
+        True,
+        False,
+        "/api/inventory/reconcile-dead-stock",
+        "POST",
+        "api_inventory_reconcile_dead_stock",
+    ),
+    (
+        "inventory_restock_from_rma",
+        "handle_inventory_restock_from_rma",
+        "do_restock_from_rma",
+        False,
+        True,
+        True,
+        "/api/inventory/restock-from-rma",
+        "POST",
+        "api_inventory_restock_from_rma",
+    ),
+    (
+        "inventory_dispose_rma_weee",
+        "handle_inventory_dispose_rma_weee",
+        "do_dispose_rma_weee",
+        False,
+        True,
+        True,
+        "/api/inventory/dispose-rma-weee",
+        "POST",
+        "api_inventory_dispose_rma_weee",
+    ),
+]
+
+_B138A_IDS = [row[0] for row in _B138A_SURFACE]
+
+
+@pytest.mark.parametrize("row", _B138A_SURFACE, ids=_B138A_IDS)
+def test_b138a_tool_registered_with_exact_flags(row: tuple) -> None:
+    """Each flag asserted INDIVIDUALLY, so flipping any one of the three
+    (cacheable / admin_only / mutation) on any one tool goes RED on its own.
+    """
+    from nce.tool_registry import TOOL_REGISTRY
+
+    tool, _handler, _core, cacheable, admin_only, mutation, _path, _m, _fn = row
+    assert tool in TOOL_REGISTRY, f"{tool} is not registered"
+    spec = TOOL_REGISTRY[tool]
+    assert spec.cacheable is cacheable, f"{tool}.cacheable"
+    assert spec.admin_only is admin_only, f"{tool}.admin_only"
+    assert spec.mutation is mutation, f"{tool}.mutation"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("row", _B138A_SURFACE, ids=_B138A_IDS)
+async def test_b138a_registry_entry_dispatches_to_its_own_handler(row: tuple) -> None:
+    """The ToolSpec for this tool must reach THIS handler.
+
+    ``tool_registry._h`` stores a late-binding wrapper, not the function
+    object, so identity cannot be compared directly. Late binding is exactly
+    what makes this assertion possible: patch the module attribute and the
+    registry entry must call the patch. A ToolSpec pointing at a different
+    handler name leaves the probe un-awaited and goes RED.
+    """
+    from nce.tool_registry import TOOL_REGISTRY
+    from nce.vertical_modules.inventory import mcp_handlers as inv_mcp
+
+    tool, handler, *_rest = row
+    engine = MagicMock()
+    arguments = {"namespace_id": _NAMESPACE_ID}
+    probe = AsyncMock(return_value="b138a-registry-probe")
+
+    with patch.object(inv_mcp, handler, probe):
+        assert await TOOL_REGISTRY[tool].handler(engine, arguments) == "b138a-registry-probe"
+
+    probe.assert_awaited_once_with(engine, arguments)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("row", _B138A_SURFACE, ids=_B138A_IDS)
+async def test_b138a_handler_is_a_thin_adapter_over_the_right_core(row: tuple) -> None:
+    """The load-bearing claim: this handler reaches THAT core, exactly once,
+    with the caller's arguments, and serialises what it returned.
+
+    Patching the ``do_*`` symbol AS IMPORTED BY THE HANDLER MODULE is what
+    makes this discriminate: a handler wired to a different core passes every
+    registration assertion above and fails only here.
+    """
+    from nce.vertical_modules.inventory import mcp_handlers as inv_mcp
+
+    _tool, handler_name, core_name, *_rest = row
+    engine = MagicMock()
+    arguments = {"namespace_id": _NAMESPACE_ID, "probe": "b138a"}
+    sentinel = {"ok": True, "probe": "b138a", "qty": Decimal("1.500")}
+
+    core = AsyncMock(return_value=sentinel)
+    with patch.object(inv_mcp, core_name, core):
+        raw = await getattr(inv_mcp, handler_name)(engine, arguments)
+
+    core.assert_awaited_once_with(engine, {"namespace_id": _NAMESPACE_ID, "probe": "b138a"})
+    assert json.loads(raw) == json.loads(json.dumps(sentinel, default=str))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("row", _B138A_SURFACE, ids=_B138A_IDS)
+async def test_b138a_handler_requires_namespace_id(row: tuple) -> None:
+    from nce.mcp_errors import McpError
+    from nce.vertical_modules.inventory import mcp_handlers as inv_mcp
+
+    _tool, handler_name, core_name, *_rest = row
+    core = AsyncMock(return_value={"ok": True})
+    with patch.object(inv_mcp, core_name, core):
+        with pytest.raises(McpError):
+            await getattr(inv_mcp, handler_name)(MagicMock(), {})
+    core.assert_not_awaited()
+
+
+@pytest.mark.parametrize("row", _B138A_SURFACE, ids=_B138A_IDS)
+def test_b138a_rest_route_mounted_with_method_and_endpoint(row: tuple) -> None:
+    """Path + method + endpoint identity. Asserting the path alone would pass
+    for a route mounted with the wrong verb or pointed at another handler.
+    """
+    from nce.admin_app import build_admin_routes
+    from nce.admin_handlers import inventory as inv_rest
+
+    _tool, _handler, _core, _c, _a, _m, path, method, fn_name = row
+    matches = [r for r in build_admin_routes() if getattr(r, "path", None) == path]
+    assert len(matches) == 1, f"expected exactly one route for {path}, got {len(matches)}"
+    route = matches[0]
+    assert method in route.methods, f"{path} is not mounted for {method}: {route.methods}"
+    assert route.endpoint is getattr(inv_rest, fn_name)
+
+
+def test_b138a_deliberately_unregistered_cores_stay_off_the_surface() -> None:
+    """Three Inventory cores are NOT on the surface, each for a stated reason.
+
+    ``do_advance_bom_line_to_delivered``: exposing it would let an admin caller
+    mark a BOM line delivered with no goods receipt behind it.
+    ``do_flag_stock_alerts``: already wired to the cron tick, which holds
+    ``acquire_cron_lock``; a manual twin would sweep outside that lock.
+    ``do_create_restock_po``: it does not take the ``(engine, params)`` core
+    shape at all (open asyncpg connection, keyword-only ``idempotency_key``,
+    a ``confirm`` flag and an optional ``redis_client`` whose absence turns its
+    kill-switch from fail-closed to open), so no thin adapter can call it.
+
+    This test is what makes those three rulings survive a later refactor.
+    """
+    from nce.tool_registry import TOOL_REGISTRY
+
+    for absent in (
+        "inventory_advance_bom_line_to_delivered",
+        "inventory_flag_stock_alerts",
+        "inventory_create_restock_po",
+    ):
+        assert absent not in TOOL_REGISTRY, (
+            f"{absent} was registered; see this test's docstring "
+            f"-- it is an authorization/shape ruling, not an oversight"
+        )

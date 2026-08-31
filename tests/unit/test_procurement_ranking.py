@@ -4,7 +4,7 @@ tests/unit/test_procurement_ranking.py
 Acceptance tests for Batch 045 — Module 1.Wave 2 (rank-suppliers).
 
 Split per round-2 rule #3:
-  (a) ALGORITHM tests — parameterised by fixture weights (never Example's tenant values).
+  (a) ALGORITHM tests — parameterised by fixture weights (never the tenant's real values).
   (b) CONFIG integration — exercises real JSON config via load_procurement_config.
 
 Covers:
@@ -31,7 +31,7 @@ from __future__ import annotations
 import pytest
 
 # ---------------------------------------------------------------------------
-# Fixture weights — algorithm tests use THESE, never Example's tenant values
+# Fixture weights — algorithm tests use THESE, never the tenant's real values
 # ---------------------------------------------------------------------------
 
 _WEIGHTS_A: dict = {

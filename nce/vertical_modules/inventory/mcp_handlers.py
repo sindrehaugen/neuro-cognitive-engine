@@ -19,11 +19,43 @@ Flags mirror the "MCP tools" table in
 | inventory_stock_levels             | Y         | N          | N        |
 | inventory_transfer_stock           | N         | Y          | Y        |
 | inventory_record_consumption       | N         | Y          | Y        |
+| inventory_record_goods_receipt     | N         | Y          | Y        |
+| inventory_recommend_restock        | Y         | N          | N        |
+| inventory_forecast_demand          | Y         | N          | N        |
+| inventory_reserve_stock            | N         | Y          | Y        |
+| inventory_release_stock            | N         | Y          | Y        |
+| inventory_record_rma               | N         | Y          | Y        |
+| inventory_valuation                | N         | Y          | N        |
+| inventory_record_goods_receipt_and_match | N   | Y          | Y        |
+| inventory_reconcile_dead_stock     | N         | Y          | N        |
+| inventory_restock_from_rma         | N         | Y          | Y        |
+| inventory_dispose_rma_weee         | N         | Y          | Y        |
 
-This wave registers ONLY the three stock-core entry points Wave 2 shipped
-(``do_stock_levels`` / ``do_transfer_stock`` / ``do_record_consumption``).
-The remaining Inventory tools (goods-receipt, restock, forecast, reserve,
-RMA) are unbuilt cores and out of scope here — they land in later waves.
+Batch 131 (Wave 3) registered ONLY the three stock-core entry points Wave 2
+had shipped; the plan gives each module a single surface wave, placed before
+most of its cores exist. Batch 138a (M11.W10a, ``inventory-surface-completion``)
+registers the eleven later cores — goods receipt, replenishment, forecast,
+reservation, RMA, valuation, dead-stock reconcile, and the goods-receipt +
+three-way-match composition. It is registration only: no core changed.
+
+Two cores are DELIBERATELY not registered, by orchestrator ruling:
+``do_advance_bom_line_to_delivered`` (registering it would let an admin
+caller mark a BOM line delivered with no goods receipt behind it) and
+``do_flag_stock_alerts`` (already wired to the cron tick, which holds
+``acquire_cron_lock``; a manually invocable twin would sweep outside it).
+
+Both goods-receipt entry points ARE registered, on purpose.
+``do_record_goods_receipt`` remains THE way to record a delivery when no
+invoice is in hand; ``do_record_goods_receipt_and_evaluate_match`` is the
+composition for callers holding all three legs at once. Two contracts, not
+one with a wrapper.
+
+``do_create_restock_po`` is NOT registered by this wave: it does not take the
+``(engine, params)`` core shape. It takes an open ``asyncpg`` connection, a
+keyword-only ``idempotency_key``, a ``confirm`` flag and an optional
+``redis_client`` whose absence turns its kill-switch from fail-closed to
+open. No thin adapter can supply those without holding a transaction and
+deriving policy state, which this layer must not do.
 
 ``InsufficientStockError`` (a business-rule refusal — "not enough stock",
 never a malformed request) is caught explicitly in the two mutation
@@ -46,11 +78,25 @@ from typing import TYPE_CHECKING, Any
 
 from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import mcp_handler
+from nce.vertical_modules.inventory.forecast import do_forecast_demand
+from nce.vertical_modules.inventory.goods_receipt import do_record_goods_receipt
+from nce.vertical_modules.inventory.reconcile import do_reconcile_dead_stock
+from nce.vertical_modules.inventory.replenishment import do_recommend_restock
+from nce.vertical_modules.inventory.reservation import do_release_stock, do_reserve_stock
+from nce.vertical_modules.inventory.rma import (
+    do_dispose_rma_weee,
+    do_record_rma,
+    do_restock_from_rma,
+)
 from nce.vertical_modules.inventory.stock import (
     InsufficientStockError,
     do_record_consumption,
     do_stock_levels,
     do_transfer_stock,
+)
+from nce.vertical_modules.inventory.transactions import do_valuation
+from nce.vertical_modules.inventory.triggers import (
+    do_record_goods_receipt_and_evaluate_match,
 )
 
 if TYPE_CHECKING:
@@ -130,6 +176,202 @@ async def handle_inventory_record_consumption(engine: NCEEngine, arguments: dict
     require_namespace_id(arguments)
     try:
         result = await do_record_consumption(engine, dict(arguments))
+    except InsufficientStockError as exc:
+        return _insufficient_stock_error(exc)
+    return json.dumps(result, default=str)
+
+
+# ---------------------------------------------------------------------------
+# Batch 138a, M11.W10a — surface completion. Eleven thin adapters over cores
+# that did not exist when Batch 131 ran the module's single surface wave.
+# ---------------------------------------------------------------------------
+
+
+@mcp_handler
+async def handle_inventory_record_goods_receipt(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: inventory_record_goods_receipt — record one inbound delivery (Actor).
+
+    Requires ``namespace_id``, ``po_ref``, ``location_id`` and ``lines``;
+    optionally accepts ``delivery_note_ref`` and ``scans``. Actor / admin-only
+    (``mutation=True, admin_only=True``).
+
+    Returns the core's payload, including its ``{"ok": True, "duplicate":
+    True, ...}`` replay shape. Thin adapter — all logic lives in
+    ``goods_receipt.do_record_goods_receipt``.
+    """
+    require_namespace_id(arguments)
+    result = await do_record_goods_receipt(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_inventory_recommend_restock(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: inventory_recommend_restock — per-SKU restock recommendations (Watcher).
+
+    Requires ``namespace_id``; optionally filters by ``location`` and/or
+    ``sku``. Read-only and cacheable (``mutation=False, admin_only=False``);
+    the core writes nothing.
+
+    Returns ``{"ok": True, "recommendations": [...]}``. Thin adapter — all
+    logic lives in ``replenishment.do_recommend_restock``.
+    """
+    require_namespace_id(arguments)
+    result = await do_recommend_restock(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_inventory_forecast_demand(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: inventory_forecast_demand — pipeline-weighted demand forecast (Watcher).
+
+    Requires ``namespace_id``; optionally accepts ``horizon_days`` (which
+    genuinely filters which pipeline lines count, since Batch 135b) and
+    ``sku``. Read-only and cacheable; the core writes nothing.
+
+    Returns ``{"ok": True, "forecasts": [...]}``. Thin adapter — all logic
+    lives in ``forecast.do_forecast_demand``.
+    """
+    require_namespace_id(arguments)
+    result = await do_forecast_demand(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_inventory_reserve_stock(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: inventory_reserve_stock — reserve available stock for a project (Actor).
+
+    Requires ``namespace_id``, ``sku``, ``qty``, ``location`` and
+    ``project_id``. Actor / admin-only (``mutation=True, admin_only=True``).
+    Increments ``qty_reserved`` only — no physical stock moves.
+
+    Thin adapter — all logic lives in ``reservation.do_reserve_stock``.
+    """
+    require_namespace_id(arguments)
+    result = await do_reserve_stock(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_inventory_release_stock(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: inventory_release_stock — release previously-reserved stock (Actor).
+
+    Requires ``namespace_id``, ``sku``, ``qty``, ``location`` and
+    ``project_id``. Actor / admin-only (``mutation=True, admin_only=True``).
+    Decrements ``qty_reserved`` only.
+
+    Thin adapter — all logic lives in ``reservation.do_release_stock``.
+    """
+    require_namespace_id(arguments)
+    result = await do_release_stock(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_inventory_record_rma(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: inventory_record_rma — record a return with its WEEE state (Actor).
+
+    Requires ``namespace_id``, ``rma_ref``, ``sku``, ``location``, ``qty``
+    and ``reason``; optionally ``serial``, ``weee_state`` and
+    ``disposal_ref``. Actor / admin-only (``mutation=True, admin_only=True``).
+    Moves NO stock — ``stock_movement_state`` is written ``'pending'``.
+
+    Thin adapter — all logic lives in ``rma.do_record_rma``.
+    """
+    require_namespace_id(arguments)
+    result = await do_record_rma(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_inventory_valuation(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: inventory_valuation — FIFO/average-cost money value of stock (Watcher).
+
+    Requires ``namespace_id``, ``sku`` and ``location``. Read-only
+    (``mutation=False``) but ``admin_only=True``: it returns cost/money data.
+    NOT cacheable — it is derived from the append-only
+    ``inventory_transactions`` ledger and changes on every movement, and a
+    stale money figure is a wrong number in someone's accounts.
+
+    Thin adapter — all logic lives in ``transactions.do_valuation``.
+    """
+    require_namespace_id(arguments)
+    result = await do_valuation(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_inventory_record_goods_receipt_and_match(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: inventory_record_goods_receipt_and_match — receipt + three-way match.
+
+    Everything ``inventory_record_goods_receipt`` accepts, PLUS the ``po`` and
+    ``invoice`` legs Inventory does not own. Actor / admin-only
+    (``mutation=True, admin_only=True``).
+
+    Distinct from ``inventory_record_goods_receipt``, not a wrapper: a caller
+    with no invoice yet must use the plain tool. Known limitation carried from
+    the core — a receipt recorded through the plain path can never afterwards
+    be matched through this composition once the invoice arrives, silently.
+
+    Thin adapter — all logic lives in
+    ``triggers.do_record_goods_receipt_and_evaluate_match``.
+    """
+    require_namespace_id(arguments)
+    result = await do_record_goods_receipt_and_evaluate_match(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_inventory_reconcile_dead_stock(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: inventory_reconcile_dead_stock — reconcile dead pairs against the ledger.
+
+    Requires ``namespace_id``; optionally ``dead_stock_days``.
+    ``admin_only=True`` and ``mutation=False`` — the core writes nothing at
+    all, on the clean path and the raising path alike.
+
+    Thin adapter — all logic lives in ``reconcile.do_reconcile_dead_stock``.
+    """
+    require_namespace_id(arguments)
+    result = await do_reconcile_dead_stock(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_inventory_restock_from_rma(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: inventory_restock_from_rma — return a repairable unit to stock (Actor).
+
+    Requires ``namespace_id`` and ``rma_ref``; ``sku``, ``location_id`` and
+    ``qty`` are read from the claimed ``inventory_rma`` row, never from the
+    caller. Actor / admin-only (``mutation=True, admin_only=True``).
+
+    Thin adapter — all logic lives in ``rma.do_restock_from_rma``.
+    """
+    require_namespace_id(arguments)
+    result = await do_restock_from_rma(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_inventory_dispose_rma_weee(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: inventory_dispose_rma_weee — WEEE take-back disposal leg (Actor).
+
+    Requires ``namespace_id``, ``rma_ref`` and ``disposal_ref``. Actor /
+    admin-only (``mutation=True, admin_only=True``). Stock leaves and the
+    ledger row is what proves it happened.
+
+    Returns a structured ``{"error": ...}`` payload (see module docstring)
+    when the claimed location does not hold enough stock — the same
+    ``InsufficientStockError`` treatment ``handle_inventory_transfer_stock``
+    already uses. Thin adapter — all logic lives in ``rma.do_dispose_rma_weee``.
+    """
+    require_namespace_id(arguments)
+    try:
+        result = await do_dispose_rma_weee(engine, dict(arguments))
     except InsufficientStockError as exc:
         return _insufficient_stock_error(exc)
     return json.dumps(result, default=str)

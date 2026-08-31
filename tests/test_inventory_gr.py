@@ -76,6 +76,7 @@ import os
 import uuid
 from decimal import Decimal
 from typing import Any
+from unittest.mock import AsyncMock, patch
 from urllib.parse import urlparse, urlunparse
 
 import asyncpg  # type: ignore[import-untyped]
@@ -83,11 +84,15 @@ import pytest
 
 from nce.auth import set_namespace_context
 from nce.config import cfg
+from nce.entity_resolution.ownership import OwnershipError
+from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
+from nce.vertical_modules.inventory import goods_receipt as gr_module
 from nce.vertical_modules.inventory import transactions
 from nce.vertical_modules.inventory.goods_receipt import (
     _as_optional_delivery_note_ref,
     _as_po_ref,
     _compute_receipt_hash,
+    _upsert_goods_receipt_node,
     _validate_and_aggregate_lines,
     _validate_scans,
     do_record_goods_receipt,
@@ -639,6 +644,24 @@ async def _count(
         )
 
 
+async def _seed_ownership(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """Seed the node-ownership registry so the guarded GOODS_RECEIPT graph
+    write (Batch 132b's ``_upsert_goods_receipt_node``) passes for this
+    namespace. Copied in shape from B130a's ``_seed_ownership`` in
+    ``tests/test_inventory_stock.py`` (one idiom, not two) — NOT called from
+    conftest.py's fixtures on purpose, since seeding there would disarm the
+    deliberate deny-by-default proofs elsewhere in this repo (rule 9/out of
+    scope). NOT autouse: every test that now reaches the guarded write calls
+    this explicitly."""
+    async with pg_pool.acquire() as conn:
+        async with conn.transaction():
+            await set_namespace_context(conn, namespace_id)
+            await seed_node_ownership_registry(conn, namespace_id)
+
+
 # ---------------------------------------------------------------------------
 # (a) Costed receipt, happy path.
 # ---------------------------------------------------------------------------
@@ -652,6 +675,7 @@ async def test_costed_receipt_happy_path(
 ) -> None:
     """RED if: the receipt row is not written exactly once, an increment is
     wrong, a ledger row is missing/duplicated, or unit_cost/ref are dropped."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
     engine = _EngineStub(pg_pool)
 
@@ -713,6 +737,7 @@ async def test_replay_is_a_no_op(
 ) -> None:
     """RED if step 6b's replay-gating were removed (a second identical call
     would double the stock and double the ledger rows)."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
     engine = _EngineStub(pg_pool)
     params = {
@@ -754,6 +779,7 @@ async def test_concurrent_identical_receipts_increment_exactly_once(
     through asyncio.gather over separate pool connections. RED if the
     DO-NOTHING gate were replaced by a Python-side check-then-write — that
     shape passes the sequential replay test above and fails ONLY here."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
     engine = _EngineStub(pg_pool)
     params = {
@@ -816,6 +842,7 @@ async def test_overlapping_sku_concurrent_receipts_do_not_deadlock(
     caller-supplied order instead of ascending sku order — receipt A would
     lock (SKU-1, SKU-2) while receipt B locked (SKU-2, SKU-1), the classic
     AB-BA cycle."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
     engine = _EngineStub(pg_pool)
     sku_1, sku_2 = "SKU-OVERLAP-1", "SKU-OVERLAP-2"
@@ -1006,6 +1033,7 @@ async def test_numeric_overflow_is_a_valueerror_at_the_column_boundary(
         branch — the accumulation case no per-line pre-check could catch.
     All three must be ``ValueError``; RED if the translation is removed (the
     raw driver error is not a ValueError and would not be caught here)."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
     engine = _EngineStub(pg_pool)
     sku = "SKU-OVERFLOW"
@@ -1066,6 +1094,7 @@ async def test_stored_po_ref_is_the_same_normal_form_idempotency_uses(
     ``po-store-1`` and ``PO-STORE-1`` were correctly one receipt while
     ``SELECT … WHERE po_ref = 'PO-STORE-1'`` (Batch 133's matcher's query,
     and ``idx_goods_receipts_namespace_po``'s collation) found nothing."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
     engine = _EngineStub(pg_pool)
 
@@ -1116,6 +1145,7 @@ async def test_two_partial_deliveries_with_distinct_delivery_notes_both_land(
 
     The same delivery note resubmitted is still a replay: the fix must not
     buy separation by breaking idempotent retry."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
     engine = _EngineStub(pg_pool)
     sku = "SKU-PARTIAL"
@@ -1171,6 +1201,7 @@ async def test_omitting_the_delivery_note_leaves_behaviour_exactly_as_before(
     submissions are still ONE receipt, and the disclosed collision between two
     genuinely distinct identical partial deliveries still stands for callers
     that supply neither a note nor scans."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
     engine = _EngineStub(pg_pool)
     sku = "SKU-NO-NOTE"
@@ -1351,6 +1382,7 @@ async def test_force_rls_isolates_goods_receipts_through_real_nce_app_connection
     tenant_isolation_policy WITH CHECK refuses the INSERT outright."""
     ns_a = await make_namespace()
     ns_b = await make_namespace()
+    await _seed_ownership(pg_pool, ns_a)
     loc_a = await _seed_location(pg_pool, ns_a, "Warehouse A")
 
     app_pool = await asyncpg.create_pool(_app_dsn(), min_size=1, max_size=2)
@@ -1417,6 +1449,7 @@ async def test_valuation_over_receipt_stock_discriminates_fifo_from_average(
     writer). RED if unit_cost were dropped between params and
     append_transaction: both FIFO and average would then read as 0.00 and
     could never discriminate from each other."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
     engine = _EngineStub(pg_pool)
     sku = "SKU-VALUATION-GR"
@@ -1508,6 +1541,7 @@ async def test_qty_and_cost_are_quantised_via_decimal_str_not_raw_binary_float(
     plain-truncation sanity check — it does NOT discriminate the two paths
     (both give 1.235) and must not be read as proof of anything on its
     own."""
+    await _seed_ownership(pg_pool, namespace_id)
     loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
     engine = _EngineStub(pg_pool)
 
@@ -1553,3 +1587,455 @@ async def test_qty_and_cost_are_quantised_via_decimal_str_not_raw_binary_float(
             r3["receipt_id"],
         )
     assert cost_row["unit_cost"] == Decimal("1.01")
+
+
+# ---------------------------------------------------------------------------
+# (Batch 132b) Graph projection + Assets hand-off — the criterion is a
+# REFUSAL and a hand-off, not a success (see this wave's Acceptance:).
+# ---------------------------------------------------------------------------
+
+
+async def _fetch_node(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+    label: str,
+) -> asyncpg.Record | None:  # type: ignore[type-arg]
+    async with pg_pool.acquire() as conn:
+        return await conn.fetchrow(
+            "SELECT label, entity_type FROM kg_nodes WHERE namespace_id = $1 AND label = $2",
+            namespace_id,
+            label,
+        )
+
+
+async def _fetch_edges(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+    subject_label: str,
+    predicate: str,
+) -> list[Any]:
+    async with pg_pool.acquire() as conn:
+        return await conn.fetch(
+            "SELECT object_label, confidence FROM kg_edges "
+            "WHERE namespace_id = $1 AND subject_label = $2 AND predicate = $3 "
+            "ORDER BY object_label",
+            namespace_id,
+            subject_label,
+            predicate,
+        )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_projection_lands_node_and_edges(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """RED if: the GOODS_RECEIPT node is missing/duplicated, the against
+    edge is wrong, the of edges are not exactly one per sku, or confidence
+    is anything but 1.0 on the edges / present on the node."""
+    await _seed_ownership(pg_pool, namespace_id)
+    loc = await _seed_location(pg_pool, namespace_id, "Warehouse Graph")
+    engine = _EngineStub(pg_pool)
+
+    result = await do_record_goods_receipt(
+        engine,
+        {
+            "namespace_id": namespace_id,
+            "po_ref": "po-graph-1",
+            "location_id": loc,
+            "lines": [
+                {"sku": "sku-graph-a", "qty": 1},
+                {"sku": "SKU-GRAPH-B", "qty": 2},
+                {"sku": "Sku-Graph-C", "qty": 3},
+            ],
+        },
+    )
+    assert result["duplicate"] is False
+    receipt_label = f"GOODS_RECEIPT:{result['receipt_id']}"
+
+    node = await _fetch_node(pg_pool, namespace_id, receipt_label)
+    assert node is not None, "exactly one GOODS_RECEIPT kg_nodes row must exist"
+    assert node["entity_type"] == "GOODS_RECEIPT"
+    assert "confidence" not in node.keys(), "kg_nodes carries no confidence column at all"
+
+    against = await _fetch_edges(pg_pool, namespace_id, receipt_label, "against")
+    assert len(against) == 1
+    assert against[0]["object_label"] == "PO:PO-GRAPH-1"
+    assert against[0]["confidence"] == 1.0
+
+    of_edges = await _fetch_edges(pg_pool, namespace_id, receipt_label, "of")
+    assert len(of_edges) == 3, "exactly one of edge per aggregated sku, never per input row"
+    assert [e["object_label"] for e in of_edges] == [
+        "PRODUCT_SKU:SKU-GRAPH-A",
+        "PRODUCT_SKU:SKU-GRAPH-B",
+        "PRODUCT_SKU:SKU-GRAPH-C",
+    ]
+    assert all(e["confidence"] == 1.0 for e in of_edges)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_unseeded_namespace_denies_and_rolls_back_everything(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    make_namespace: Any,
+) -> None:
+    """Guard-discriminating. RED if OwnershipError is not raised, OR if it
+    is raised but any of the receipt row / ledger row / stock increment
+    survives — this is the blast radius made executable."""
+    ns = await make_namespace()  # deliberately NOT seeded
+    loc = await _seed_location(pg_pool, ns, "Warehouse Unseeded")
+    engine = _EngineStub(pg_pool)
+
+    with pytest.raises(OwnershipError):
+        await do_record_goods_receipt(
+            engine,
+            {
+                "namespace_id": ns,
+                "po_ref": "PO-DENY-1",
+                "location_id": loc,
+                "lines": [{"sku": "SKU-DENY", "qty": 5, "unit_cost": Decimal("1.00")}],
+            },
+        )
+
+    assert await _count(pg_pool, "goods_receipts", ns, po_ref="PO-DENY-1") == 0
+    assert await _count(pg_pool, "inventory_transactions", ns, sku="SKU-DENY") == 0
+    assert await _get_on_hand(pg_pool, ns, "SKU-DENY", loc) == Decimal("0.000")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_wrong_owner_is_refused_at_the_private_writer_call_site(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+    monkeypatch: Any,
+) -> None:
+    """Guard-discriminating, and NOT a bare assert_owner(...) call — this
+    drives goods_receipt.py's OWN private writer (_upsert_goods_receipt_node)
+    with a node type ("PO") owned by a different engine (procurement),
+    by monkeypatching the module's node-type constant for this test only.
+    RED if the writer does not refuse, or refuses without naming
+    'procurement', or a kg_nodes row is written anyway."""
+    await _seed_ownership(pg_pool, namespace_id)
+    monkeypatch.setattr(gr_module, "_NODE_TYPE_GOODS_RECEIPT", "PO")
+    label = "PO:WRONG-OWNER-TEST"
+
+    async with pg_pool.acquire() as conn:
+        async with conn.transaction():
+            await set_namespace_context(conn, namespace_id)
+            with pytest.raises(OwnershipError) as excinfo:
+                await _upsert_goods_receipt_node(conn, namespace_id, label)
+    assert "procurement" in str(excinfo.value)
+    assert await _fetch_node(pg_pool, namespace_id, label) is None
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_assets_seam_fires_exactly_once_with_serials_mocked(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """RED if the seam is not called exactly once for a serial-carrying
+    receipt, is called with the wrong payload, or IS called for a receipt
+    with no serials at all."""
+    await _seed_ownership(pg_pool, namespace_id)
+    loc = await _seed_location(pg_pool, namespace_id, "Warehouse Seam")
+    engine = _EngineStub(pg_pool)
+
+    with patch(
+        "nce.vertical_modules.inventory.goods_receipt._seed_assets_with_serials",
+        new_callable=AsyncMock,
+    ) as mock_seam:
+        mock_seam.return_value = {"seeded": True}
+
+        result = await do_record_goods_receipt(
+            engine,
+            {
+                "namespace_id": namespace_id,
+                "po_ref": "PO-SEAM-1",
+                "location_id": loc,
+                "lines": [{"sku": "SKU-SEAM", "qty": 2}],
+                "scans": [
+                    {"sku": "SKU-SEAM", "serial": "SN-001"},
+                    {"sku": "SKU-SEAM", "serial": "SN-002"},
+                ],
+            },
+        )
+        mock_seam.assert_called_once()
+        call_kwargs = mock_seam.call_args.kwargs
+        assert call_kwargs["goods_receipt_id"] == uuid.UUID(result["receipt_id"])
+        assert call_kwargs["goods_receipt_label"] == f"GOODS_RECEIPT:{result['receipt_id']}"
+        assert call_kwargs["po_ref"] == "PO-SEAM-1"
+        assert call_kwargs["location_id"] == loc
+        assert call_kwargs["serials"] == [
+            {"sku": "SKU-SEAM", "serial": "SN-001"},
+            {"sku": "SKU-SEAM", "serial": "SN-002"},
+        ]
+        assert result["assets_seed"] == {"seeded": True}
+
+    with patch(
+        "nce.vertical_modules.inventory.goods_receipt._seed_assets_with_serials",
+        new_callable=AsyncMock,
+    ) as mock_seam_no_serials:
+        result2 = await do_record_goods_receipt(
+            engine,
+            {
+                "namespace_id": namespace_id,
+                "po_ref": "PO-SEAM-2",
+                "location_id": loc,
+                "lines": [{"sku": "SKU-SEAM-2", "qty": 1}],
+            },
+        )
+        mock_seam_no_serials.assert_not_called()
+        assert "assets_seed" not in result2
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_serial_carrying_receipt_without_mock_seeds_a_real_asset(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """RED if the real (unmocked) call to do_seed_asset_from_bom raises, or
+    if it fails to seed a real ``assets`` row for the captured serial. This
+    replaces the old NotImplementedError-expecting test: Batch 132j wires a
+    real Assets consumer, so the seam no longer raises on this path."""
+    await _seed_ownership(pg_pool, namespace_id)
+    loc = await _seed_location(pg_pool, namespace_id, "Warehouse Seam Real")
+    engine = _EngineStub(pg_pool)
+
+    result = await do_record_goods_receipt(
+        engine,
+        {
+            "namespace_id": namespace_id,
+            "po_ref": "PO-SEAM-REAL-1",
+            "location_id": loc,
+            "lines": [{"sku": "SKU-SEAM-REAL", "qty": 1}],
+            "scans": [{"sku": "SKU-SEAM-REAL", "serial": "SN-REAL-1"}],
+        },
+    )
+
+    assert await _count(pg_pool, "goods_receipts", namespace_id, po_ref="PO-SEAM-REAL-1") == 1
+    assert len(result["assets_seed"]) == 1
+    seeded = result["assets_seed"][0]
+    assert seeded["ok"] is True
+    assert seeded["created"] is True
+    assert seeded["serial"] == "SN-REAL-1"
+    expected_bom_line_id = f"goods-receipt:{result['receipt_id']}:SKU-SEAM-REAL:SN-REAL-1"
+    assert seeded["bom_line_id"] == expected_bom_line_id
+
+    async with pg_pool.acquire() as conn:
+        asset_row = await conn.fetchrow(
+            "SELECT serial, bom_line_id, functional_location_id FROM assets "
+            "WHERE namespace_id = $1 AND bom_line_id = $2",
+            namespace_id,
+            expected_bom_line_id,
+        )
+    assert asset_row is not None
+    assert asset_row["serial"] == "SN-REAL-1"
+    assert asset_row["functional_location_id"] is None
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_partial_asset_seed_failure_does_not_roll_back_the_receipt(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """Pins Batch 132j round-2's failure posture: a goods receipt is a
+    physical fact that already happened, so an asset-projection failure for
+    one serial must NOT roll back the receipt, the stock increment, the
+    ledger append or the graph writes. RED if any of those are lost, if the
+    exception propagates out of do_record_goods_receipt, or if the failed
+    serial is not recorded in ``assets_seed`` for later reconciliation."""
+    await _seed_ownership(pg_pool, namespace_id)
+    loc = await _seed_location(pg_pool, namespace_id, "Warehouse Seam Partial")
+    engine = _EngineStub(pg_pool)
+    real_seed = gr_module.do_seed_asset_from_bom
+
+    async def _flaky_seed(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
+        if params["serial"] == "SN-FAIL-2":
+            raise ValueError("simulated Assets failure")
+        return await real_seed(engine, params)
+
+    with patch(
+        "nce.vertical_modules.inventory.goods_receipt.do_seed_asset_from_bom",
+        new=_flaky_seed,
+    ):
+        result = await do_record_goods_receipt(
+            engine,
+            {
+                "namespace_id": namespace_id,
+                "po_ref": "PO-SEAM-PARTIAL-1",
+                "location_id": loc,
+                "lines": [{"sku": "SKU-SEAM-PARTIAL", "qty": 2}],
+                "scans": [
+                    {"sku": "SKU-SEAM-PARTIAL", "serial": "SN-FAIL-1"},
+                    {"sku": "SKU-SEAM-PARTIAL", "serial": "SN-FAIL-2"},
+                ],
+            },
+        )
+
+    # The receipt, the increment and the ledger append all commit regardless.
+    assert await _count(pg_pool, "goods_receipts", namespace_id, po_ref="PO-SEAM-PARTIAL-1") == 1
+    assert (
+        await _count(pg_pool, "inventory_transactions", namespace_id, sku="SKU-SEAM-PARTIAL") == 1
+    )
+    async with pg_pool.acquire() as conn:
+        node_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM kg_nodes WHERE namespace_id = $1 AND entity_type = 'GOODS_RECEIPT'",
+            namespace_id,
+        )
+    assert node_count == 1
+
+    assert len(result["assets_seed"]) == 2
+    ok_entry, failed_entry = result["assets_seed"]
+    assert ok_entry["ok"] is True
+    assert ok_entry["serial"] == "SN-FAIL-1"
+    assert failed_entry == {
+        "ok": False,
+        "sku": "SKU-SEAM-PARTIAL",
+        "serial": "SN-FAIL-2",
+        "error": "simulated Assets failure",
+    }
+
+    async with pg_pool.acquire() as conn:
+        seeded_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM assets WHERE namespace_id = $1 AND serial = $2",
+            namespace_id,
+            "SN-FAIL-1",
+        )
+        unseeded_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM assets WHERE namespace_id = $1 AND serial = $2",
+            namespace_id,
+            "SN-FAIL-2",
+        )
+    assert seeded_count == 1
+    assert unseeded_count == 0
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_replay_performs_no_graph_write_and_no_seam_call(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """RED if a replay adds any kg_nodes/kg_edges row or re-fires the seam."""
+    await _seed_ownership(pg_pool, namespace_id)
+    loc = await _seed_location(pg_pool, namespace_id, "Warehouse Replay Graph")
+    engine = _EngineStub(pg_pool)
+    params = {
+        "namespace_id": namespace_id,
+        "po_ref": "PO-REPLAY-GRAPH-1",
+        "location_id": loc,
+        "lines": [{"sku": "SKU-REPLAY-GRAPH", "qty": 1}],
+        "scans": [{"sku": "SKU-REPLAY-GRAPH", "serial": "SN-REPLAY-1"}],
+    }
+
+    with patch(
+        "nce.vertical_modules.inventory.goods_receipt._seed_assets_with_serials",
+        new_callable=AsyncMock,
+    ) as mock_seam:
+        first = await do_record_goods_receipt(engine, dict(params))
+        assert first["duplicate"] is False
+        mock_seam.assert_called_once()
+
+        async with pg_pool.acquire() as conn:
+            nodes_before = await conn.fetchval(
+                "SELECT COUNT(*) FROM kg_nodes WHERE namespace_id = $1", namespace_id
+            )
+            edges_before = await conn.fetchval(
+                "SELECT COUNT(*) FROM kg_edges WHERE namespace_id = $1", namespace_id
+            )
+
+        second = await do_record_goods_receipt(engine, dict(params))
+        assert second["duplicate"] is True
+        mock_seam.assert_called_once()  # still exactly 1 — replay did not re-fire it
+
+        async with pg_pool.acquire() as conn:
+            nodes_after = await conn.fetchval(
+                "SELECT COUNT(*) FROM kg_nodes WHERE namespace_id = $1", namespace_id
+            )
+            edges_after = await conn.fetchval(
+                "SELECT COUNT(*) FROM kg_edges WHERE namespace_id = $1", namespace_id
+            )
+    assert nodes_after == nodes_before
+    assert edges_after == edges_before
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_graph_writes_are_namespace_scoped_through_real_nce_app_connection(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    make_namespace: Any,
+) -> None:
+    """Isolation-discriminating, NOT code-discriminating (rule 7g) — proven
+    through a REAL unprivileged nce_app connection, never the owner pool
+    (which bypasses FORCE RLS)."""
+    ns_a = await make_namespace()
+    ns_b = await make_namespace()
+    await _seed_ownership(pg_pool, ns_a)
+    await _seed_ownership(pg_pool, ns_b)
+    loc_a = await _seed_location(pg_pool, ns_a, "Warehouse Iso A")
+    loc_b = await _seed_location(pg_pool, ns_b, "Warehouse Iso B")
+
+    app_pool = await asyncpg.create_pool(_app_dsn(), min_size=1, max_size=2)
+    try:
+        engine = _EngineStub(app_pool)
+        for ns, loc in ((ns_a, loc_a), (ns_b, loc_b)):
+            result = await do_record_goods_receipt(
+                engine,
+                {
+                    "namespace_id": ns,
+                    "po_ref": "PO-ISO-SHARED",
+                    "location_id": loc,
+                    "lines": [{"sku": "SKU-ISO-SHARED", "qty": 1}],
+                },
+            )
+            assert result["duplicate"] is False
+
+        for ns in (ns_a, ns_b):
+            async with app_pool.acquire() as conn, conn.transaction():
+                await set_namespace_context(conn, ns)
+                own_nodes = await conn.fetchval(
+                    "SELECT COUNT(*) FROM kg_nodes WHERE entity_type = 'GOODS_RECEIPT'"
+                )
+                own_edges = await conn.fetchval(
+                    "SELECT COUNT(*) FROM kg_edges WHERE predicate = 'of' "
+                    "AND object_label = 'PRODUCT_SKU:SKU-ISO-SHARED'"
+                )
+            assert own_nodes == 1, f"namespace {ns} must see exactly its own GOODS_RECEIPT node"
+            assert own_edges == 1, f"namespace {ns} must see exactly its own of edge"
+    finally:
+        await app_pool.close()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_of_edge_targets_product_sku_never_product_label(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """Pins a KNOWN LIMITATION (not a desirable property, per this module's
+    docstring): the of edge cannot reconstruct Product's compound label."""
+    await _seed_ownership(pg_pool, namespace_id)
+    loc = await _seed_location(pg_pool, namespace_id, "Warehouse Label Limit")
+    engine = _EngineStub(pg_pool)
+
+    result = await do_record_goods_receipt(
+        engine,
+        {
+            "namespace_id": namespace_id,
+            "po_ref": "PO-LABEL-LIMIT",
+            "location_id": loc,
+            "lines": [{"sku": "ACME-PN-123", "qty": 1}],
+        },
+    )
+    receipt_label = f"GOODS_RECEIPT:{result['receipt_id']}"
+    of_edges = await _fetch_edges(pg_pool, namespace_id, receipt_label, "of")
+    assert len(of_edges) == 1
+    assert of_edges[0]["object_label"] == "PRODUCT_SKU:ACME-PN-123"
+    assert not of_edges[0]["object_label"].startswith("PRODUCT:"), (
+        "must never emit a PRODUCT:{manufacturer}:{mfr_part_no} label — "
+        "this module cannot reconstruct it from a flat sku (known limitation)"
+    )

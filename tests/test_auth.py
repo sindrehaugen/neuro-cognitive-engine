@@ -1405,6 +1405,7 @@ class TestValidateScope:
             _validate_scope("superadmin", {})
 
 
+@pytest.mark.real_mcp_auth
 class TestEnforceMcpToolAuth:
     """stdio MCP dispatch gate — admin vs tenant tools."""
 
@@ -1424,11 +1425,14 @@ class TestEnforceMcpToolAuth:
             enforce_mcp_tool_auth("semantic_search", {"mcp_api_key": "   "})
 
     def test_admin_tool_requires_admin_key(self, monkeypatch) -> None:
-        # 1. When NCE_ADMIN_API_KEY is set, calling with no args falls back to env key and passes.
+        # 1. Pins the closed hole: the server's own NCE_ADMIN_API_KEY is no longer
+        #    injected as a fallback. Calling with no admin_api_key must raise, and
+        #    arguments must not be mutated to contain one.
         monkeypatch.setenv("NCE_ADMIN_API_KEY", "admin-secret")
         args: dict = {}
-        enforce_mcp_tool_auth("manage_namespace", args)
-        assert args.get("admin_api_key") == "admin-secret"
+        with pytest.raises(ScopeError, match="missing admin_api_key"):
+            enforce_mcp_tool_auth("manage_namespace", args)
+        assert "admin_api_key" not in args
 
         # 2. When NCE_ADMIN_API_KEY is set, calling with wrong admin_api_key fails with "invalid admin_api_key".
         with pytest.raises(ScopeError, match="invalid admin_api_key"):
@@ -1468,6 +1472,69 @@ class TestEnforceMcpToolAuth:
         args = {"admin_api_key": "admin-secret"}
         enforce_mcp_tool_auth("manage_namespace", args)
         assert "namespace_id" not in args
+
+    def test_tenant_key_alone_does_not_admit_admin_tool(self, monkeypatch) -> None:
+        """A/B probe: a tenant-only caller must not reach admin tools.
+
+        Simulates the real dispatch chain a tenant-only caller takes --
+        ``enforce_mcp_tool_auth``, then for admin tools
+        ``nce.mcp_stdio_rpc._check_admin`` -- holding only a valid tenant
+        ``mcp_api_key`` and no ``admin_api_key`` anywhere. Before the fix,
+        ``manage_quotas`` was ADMITTED because the admin branch injected the
+        server's own ``NCE_ADMIN_API_KEY`` and validated it against itself.
+        """
+        from nce.mcp_errors import McpError
+        from nce.mcp_stdio_rpc import _check_admin
+
+        monkeypatch.setenv("NCE_ADMIN_API_KEY", "admin-secret")
+        monkeypatch.setenv("NCE_MCP_API_KEY", "tenant-secret")
+        monkeypatch.delenv("NCE_ADMIN_OVERRIDE", raising=False)
+
+        def _dispatch_admitted(tool_name: str, arguments: dict) -> bool:
+            try:
+                enforce_mcp_tool_auth(tool_name, arguments)
+            except ScopeError:
+                return False
+            if tool_name in MCP_ADMIN_TOOL_NAMES:
+                try:
+                    _check_admin(arguments)
+                except McpError:
+                    return False
+            return True
+
+        assert _dispatch_admitted("manage_quotas", {"mcp_api_key": "tenant-secret"}) is False
+        assert _dispatch_admitted("semantic_search", {"mcp_api_key": "tenant-secret"}) is True
+
+    def test_registry_admin_only_tool_accepted_with_admin_key(self, monkeypatch) -> None:
+        # system_design_delete_planned: admin_only=True in the registry, absent from
+        # MCP_ADMIN_TOOL_NAMES. The union predicate must take the admin branch, which
+        # validates admin_api_key only. NCE_MCP_API_KEY is set with no mcp_api_key
+        # supplied so a tenant-branch misroute would raise "missing mcp_api_key".
+        monkeypatch.setenv("NCE_ADMIN_API_KEY", "admin-secret")
+        monkeypatch.setenv("NCE_MCP_API_KEY", "tenant-secret")
+        args = {"admin_api_key": "admin-secret"}
+        enforce_mcp_tool_auth("system_design_delete_planned", args)
+
+    def test_registry_admin_only_tool_refused_with_only_mcp_key(self, monkeypatch) -> None:
+        monkeypatch.setenv("NCE_ADMIN_API_KEY", "admin-secret")
+        monkeypatch.setenv("NCE_MCP_API_KEY", "mcp-secret")
+        with pytest.raises(ScopeError, match="missing admin_api_key"):
+            enforce_mcp_tool_auth(
+                "system_design_delete_planned",
+                {"mcp_api_key": "mcp-secret", "admin_api_key": "   "},
+            )
+
+    def test_hardcoded_admin_tool_not_registry_admin_only_still_gated(self, monkeypatch) -> None:
+        # manage_namespace: in MCP_ADMIN_TOOL_NAMES but not admin_only in the registry.
+        # Anti-regression pin for the 16 — the union must not drop these.
+        monkeypatch.setenv("NCE_ADMIN_API_KEY", "admin-secret")
+        args = {"admin_api_key": "admin-secret"}
+        enforce_mcp_tool_auth("manage_namespace", args)
+
+    def test_plain_tenant_tool_unaffected(self, monkeypatch) -> None:
+        monkeypatch.setenv("NCE_MCP_API_KEY", "mcp-secret")
+        args = {"mcp_api_key": "mcp-secret"}
+        enforce_mcp_tool_auth("semantic_search", args)
 
 
 class TestRequireScopeDecorator:
