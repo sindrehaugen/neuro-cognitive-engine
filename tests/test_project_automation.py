@@ -690,7 +690,7 @@ async def test_c4_handler_absent_project_value_sends_none() -> None:
         side_effect=_fake_enqueue,
     ):
         ns_id = str(uuid.uuid4())
-        await _handle_po_status_changed(
+        action = await _handle_po_status_changed(
             MagicMock(),
             {
                 "namespace_id": ns_id,
@@ -702,6 +702,11 @@ async def test_c4_handler_absent_project_value_sends_none() -> None:
                 },
             },
         )
+        # The enqueue is now a POST-COMMIT action (M0.W20d): the handler
+        # returns it and the relay fires it after its transaction commits,
+        # so the assertions below need it invoked here, inside the patch.
+        assert action is not None, "handler must return a post-commit action"
+        action()
 
     assert len(captured_kwargs) == 1, "Handler must have enqueued exactly one task"
     assert captured_kwargs[0]["project_value"] is None, (
@@ -728,7 +733,7 @@ async def test_c4_handler_explicit_zero_project_value_passes_zero() -> None:
         side_effect=_fake_enqueue,
     ):
         ns_id = str(uuid.uuid4())
-        await _handle_po_status_changed(
+        action = await _handle_po_status_changed(
             MagicMock(),
             {
                 "namespace_id": ns_id,
@@ -740,6 +745,11 @@ async def test_c4_handler_explicit_zero_project_value_passes_zero() -> None:
                 },
             },
         )
+        # The enqueue is now a POST-COMMIT action (M0.W20d): the handler
+        # returns it and the relay fires it after its transaction commits,
+        # so the assertions below need it invoked here, inside the patch.
+        assert action is not None, "handler must return a post-commit action"
+        action()
 
     assert len(captured_kwargs) == 1
     assert captured_kwargs[0]["project_value"] == 0.0, (

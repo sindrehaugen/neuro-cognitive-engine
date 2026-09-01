@@ -489,88 +489,112 @@ async def run_outbox_relay_once(
     delivered = 0
     post_commit_actions: list[PostCommitAction] = []
 
-    async with pool.acquire(timeout=10.0) as conn:
-        async with conn.transaction():
-            events = await poll_outbox(conn, batch_size=batch_size)
+    committed = False
 
-            for event in events:
-                try:
-                    actions = await deliver_one(conn, event)
-                    if isinstance(actions, _AlreadyProcessed):
-                        # Dedup: event was already successfully processed.
-                        # Mark published now so the relay won't re-poll it.
-                        await mark_published(conn, event["id"])
-                        continue
-                except Exception as exc:
-                    error_message = f"{type(exc).__name__}: {exc}"
-                    log.exception(
-                        "[outbox] delivery failed event_id=%s event_type=%s",
-                        event["id"],
-                        event["event_type"],
-                    )
-                    await _dispatch_throttled_alert(
-                        f"outbox.delivery_failed.{event['event_type']}",
-                        f"Outbox Delivery Failed: {event['event_type']}",
-                        f"Outbox event delivery failed for event_id {event['id']}: {error_message}",
-                    )
+    try:
+        async with pool.acquire(timeout=10.0) as conn:
+            async with conn.transaction():
+                events = await poll_outbox(conn, batch_size=batch_size)
+
+                for event in events:
                     try:
-                        from nce.observability import OUTBOX_DELIVERY_FAILURES_TOTAL
-
-                        OUTBOX_DELIVERY_FAILURES_TOTAL.labels(
-                            event_type=str(event["event_type"])
-                        ).inc()
-                    except Exception:
-                        pass
-                    if isinstance(exc, OutboxDeliveryError):
-                        await conn.execute(
-                            """
-                            UPDATE outbox_events
-                            SET attempt_count = $1,
-                                error_message = left($2, 2048)
-                            WHERE id = $3
-                            """,
-                            MAX_OUTBOX_ATTEMPTS,
-                            error_message,
+                        actions = await deliver_one(conn, event)
+                        if isinstance(actions, _AlreadyProcessed):
+                            # Dedup: event was already successfully processed.
+                            # Mark published now so the relay won't re-poll it.
+                            await mark_published(conn, event["id"])
+                            continue
+                    except Exception as exc:
+                        error_message = f"{type(exc).__name__}: {exc}"
+                        log.exception(
+                            "[outbox] delivery failed event_id=%s event_type=%s",
                             event["id"],
+                            event["event_type"],
                         )
-                        event_copy = dict(event)
-                        event_copy["attempt_count"] = MAX_OUTBOX_ATTEMPTS - 1
-                        await move_to_dead_letter_if_exhausted(conn, event_copy, error_message)
+                        await _dispatch_throttled_alert(
+                            f"outbox.delivery_failed.{event['event_type']}",
+                            f"Outbox Delivery Failed: {event['event_type']}",
+                            f"Outbox event delivery failed for event_id {event['id']}: {error_message}",
+                        )
                         try:
-                            from nce.observability import OUTBOX_DLQ_TOTAL
+                            from nce.observability import OUTBOX_DELIVERY_FAILURES_TOTAL
 
-                            OUTBOX_DLQ_TOTAL.labels(event_type=str(event["event_type"])).inc()
+                            OUTBOX_DELIVERY_FAILURES_TOTAL.labels(
+                                event_type=str(event["event_type"])
+                            ).inc()
                         except Exception:
                             pass
-                    else:
-                        await mark_failed(conn, event["id"], error_message)
-                        prior_attempts = int(event["attempt_count"])
-                        await move_to_dead_letter_if_exhausted(conn, event, error_message)
-                        if prior_attempts + 1 >= MAX_OUTBOX_ATTEMPTS:
+                        if isinstance(exc, OutboxDeliveryError):
+                            await conn.execute(
+                                """
+                                UPDATE outbox_events
+                                SET attempt_count = $1,
+                                    error_message = left($2, 2048)
+                                WHERE id = $3
+                                """,
+                                MAX_OUTBOX_ATTEMPTS,
+                                error_message,
+                                event["id"],
+                            )
+                            event_copy = dict(event)
+                            event_copy["attempt_count"] = MAX_OUTBOX_ATTEMPTS - 1
+                            await move_to_dead_letter_if_exhausted(conn, event_copy, error_message)
                             try:
                                 from nce.observability import OUTBOX_DLQ_TOTAL
 
                                 OUTBOX_DLQ_TOTAL.labels(event_type=str(event["event_type"])).inc()
                             except Exception:
                                 pass
-                    continue
+                        else:
+                            await mark_failed(conn, event["id"], error_message)
+                            prior_attempts = int(event["attempt_count"])
+                            await move_to_dead_letter_if_exhausted(conn, event, error_message)
+                            if prior_attempts + 1 >= MAX_OUTBOX_ATTEMPTS:
+                                try:
+                                    from nce.observability import OUTBOX_DLQ_TOTAL
 
-                await mark_published(conn, event["id"])
-                delivered += 1
-                post_commit_actions.extend(actions)
+                                    OUTBOX_DLQ_TOTAL.labels(
+                                        event_type=str(event["event_type"])
+                                    ).inc()
+                                except Exception:
+                                    pass
+                        continue
+
+                    await mark_published(conn, event["id"])
+                    delivered += 1
+                    post_commit_actions.extend(actions)
+                    try:
+                        from nce.observability import OUTBOX_DELIVERED_TOTAL
+
+                        OUTBOX_DELIVERED_TOTAL.labels(event_type=str(event["event_type"])).inc()
+                    except Exception:
+                        pass
+            # Transaction committed.  Fire external work outside the DB connection.
+            committed = True
+    finally:
+        # Synchronous, and in a finally, DELIBERATELY (M0.W20d).
+        #
+        # Synchronous: asyncio only cancels at an await, so a drain with no
+        # await points cannot be cancelled part-way. Round 2 of this wave
+        # rebuilt this loop WITH awaits, and because mcp_stdio_main cancels
+        # the relay task on every graceful SIGTERM, a cancel mid-drain lost
+        # already-published events' actions with no DLQ row (measured then:
+        # actions_fired=1, published=5, DLQ=0). Do not add an await here.
+        #
+        # In a finally: the drain used to sit after the `async with`, whose
+        # __aexit__ awaits while releasing the connection. A cancel delivered
+        # there skipped the drain while the events were already marked
+        # published -- the same loss, one frame earlier.
+        #
+        # Gated on `committed`: if the transaction rolled back, the
+        # mark_published rows went with it and the events will be re-polled,
+        # so firing their actions here would double-enqueue.
+        if committed:
+            for action in post_commit_actions:
                 try:
-                    from nce.observability import OUTBOX_DELIVERED_TOTAL
-
-                    OUTBOX_DELIVERED_TOTAL.labels(event_type=str(event["event_type"])).inc()
-                except Exception:
-                    pass
-        # Transaction committed.  Fire external work outside the DB connection.
-
-    for action in post_commit_actions:
-        try:
-            action()
-        except Exception as exc:
-            log.warning("[outbox] post-commit action failed: %s", exc)
+                    action()
+                except Exception as exc:
+                    log.warning("[outbox] post-commit action failed: %s", exc)
 
     log.debug("[outbox] relay pass complete: delivered=%d", delivered)
     return delivered
