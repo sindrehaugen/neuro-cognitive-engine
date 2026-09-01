@@ -90,13 +90,15 @@ The file states its own boundary explicitly: it is "the value axis ONLY" — cei
 Both enqueue an RQ task (rather than executing inline) so the C4 relay's transaction commits first; if RQ/Redis is unavailable the handler logs and returns, relying on the outbox's at-least-once redelivery.
 
 ### 3.3 Operational wiring checklist
-Three registration calls must happen once at worker startup, in this order, or the automation path is inert:
+Three registration calls must happen once at worker startup, in this order, or the automation path is inert. **As of M0.W20d the first and third are made automatically** in both relay-running processes (`nce/mcp_stdio_main.py`, `nce/cron.py`); only `register_redis_client()` still needs a worker entrypoint to call it.
 1. `nce.vertical_modules.project.tasks.register_engine(engine)` and `automation.register_engine(engine)` — both maintain separate internal registries; both must be called.
 2. `nce.vertical_modules.project.automation.register_redis_client(redis_client)` — without this, the kill-switch gate (`nce:tools:disabled`) is **skipped** with a warning log rather than enforced. Production workers must call this.
 3. `nce.vertical_modules.project.automation.register_automation_subscribers()` (and `nce.vertical_modules.project.tasks.register_bom_task_subscriber()`) — subscribes the C4 bus handlers.
 
 > [!IMPORTANT]
-> None of these three calls were found wired into any startup/bootstrap module in this snapshot — only test files call them. Confirm your deployment's worker entrypoint actually calls all three before relying on BOM→task automation in production; otherwise Procurement/Warehouse events will be silently ignored (or, if RQ enqueue itself fails, logged and dropped pending outbox redelivery).
+> **Updated 2026-09-01.** Calls 1 and 3 are now wired in both relay-running processes (M0.W20d), and `tests/test_c4_w20d_registration_and_drain.py` fails if that regresses. Call 2 (`register_redis_client`) is still the worker entrypoint's job — without it the kill-switch gate is skipped with a warning rather than enforced.
+>
+> Two corrections to what this box used to say. First, a failed RQ enqueue is **not** "dropped pending outbox redelivery" — the enqueue runs post-commit, so the event is already marked published and will never be re-delivered; the log line is the only signal. Second, the automation path is **dormant by decision** (2026-09-01) rather than merely unwired: nothing emits `PO_LINE.status_changed` or `GOODS_RECEIPT.created`, so there is no traffic to ignore. Waking it up needs a `PO_LINE` status model in Procurement, which is a feature, not configuration.
 
 ---
 
