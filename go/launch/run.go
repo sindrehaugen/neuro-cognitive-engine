@@ -69,7 +69,9 @@ func Run(ctx context.Context, n UserNotifier, log *slog.Logger) error {
 			"rocm", h.ROCm,
 			"intel_npu", h.IntelNPU,
 			"intel_xpu", h.IntelXPU,
-			"mps", h.MPS)
+			"mps", h.MPS,
+			"container_runtime", h.ContainerRuntime,
+			"accel_reachable", h.AccelReachable)
 	}
 
 	appRoot, err := AppRoot()
