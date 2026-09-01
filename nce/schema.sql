@@ -1050,7 +1050,8 @@ END $$;
 -- consumers, and marks published_at.
 CREATE TABLE IF NOT EXISTS outbox_events (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    namespace_id   UUID NOT NULL,
+    namespace_id   UUID NOT NULL
+                   REFERENCES namespaces(id) ON DELETE CASCADE,
     aggregate_type TEXT NOT NULL,
     aggregate_id   TEXT NOT NULL,
     event_type     TEXT NOT NULL,
@@ -1065,6 +1066,12 @@ CREATE TABLE IF NOT EXISTS outbox_events (
 CREATE INDEX IF NOT EXISTS idx_outbox_unpublished
     ON outbox_events (created_at)
     WHERE published_at IS NULL;
+
+-- 59 of the 62 cascading tables carry a leading namespace_id index; without
+-- one, every namespace DELETE sequentially scans this table for its cascade
+-- targets. See migration 062.
+CREATE INDEX IF NOT EXISTS idx_outbox_events_namespace_id
+    ON outbox_events (namespace_id);
 
 ALTER TABLE outbox_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE outbox_events FORCE ROW LEVEL SECURITY;
@@ -1110,7 +1117,8 @@ CREATE INDEX IF NOT EXISTS idx_active_learning_queue_ns_status
 CREATE TABLE IF NOT EXISTS saga_execution_log (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     saga_type    TEXT NOT NULL,           -- 'store_memory', 'forget_memory', etc.
-    namespace_id UUID NOT NULL,
+    namespace_id UUID NOT NULL
+                 REFERENCES namespaces(id) ON DELETE CASCADE,
     agent_id     TEXT NOT NULL,
     state        TEXT NOT NULL
                  CHECK (state IN ('started', 'pg_committed', 'completed', 'rolled_back', 'recovery_needed')),
@@ -1122,6 +1130,10 @@ CREATE TABLE IF NOT EXISTS saga_execution_log (
 CREATE INDEX IF NOT EXISTS idx_saga_state_created
     ON saga_execution_log (state, created_at)
     WHERE state IN ('started', 'pg_committed', 'recovery_needed');
+
+-- Cascade-target lookup for namespace deletion. See migration 062.
+CREATE INDEX IF NOT EXISTS idx_saga_execution_log_namespace_id
+    ON saga_execution_log (namespace_id);
 
 ALTER TABLE saga_execution_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE saga_execution_log FORCE ROW LEVEL SECURITY;

@@ -36,16 +36,28 @@ Error mapping:
   ``InsufficientStockError``         -> 409 (business-rule refusal — not
                                         enough stock; distinct from a
                                         malformed request)
+  any ``refusals.BUSINESS_REFUSALS`` -> 409 with a machine-readable
+                                        ``reason`` (see below)
   anything else                      -> 500 via ``admin_error_response``
 
-KNOWN GAP, filed by Batch 138a and NOT resolved here: the Batch 138a cores
-raise domain refusals this module has no precedent status code for —
-``InsufficientAvailableError`` (reserve), ``OverReleaseError`` (release),
-``RmaNotFoundError`` / ``RmaAlreadySettledError`` / ``RmaNotWeeeScopeError``
-(RMA legs) and ``LedgerDivergenceError`` (dead-stock reconcile). All are bare
-``Exception`` subclasses, so none is absorbed by the ``ValueError`` arm, and
-each currently falls to ``admin_error_response`` (500). Choosing a 4xx for
-them is an error-contract decision the orchestrator owns, not this wave.
+That gap is CLOSED (debt item **D38**). Batch 138a filed six domain refusals
+this module had no precedent status code for — ``InsufficientAvailableError``
+(reserve), ``OverReleaseError`` (release), ``RmaNotFoundError`` /
+``RmaAlreadySettledError`` / ``RmaNotWeeeScopeError`` (RMA legs) and
+``LedgerDivergenceError`` (dead-stock reconcile). All are bare ``Exception``
+subclasses, so none was absorbed by the ``ValueError`` arm and each fell to
+``admin_error_response`` (500) — indistinguishable, to a client, from "the
+backend is down", so the rational response was to retry a call that could
+only ever fail the same way.
+
+The orchestrator owned that error-contract decision and took option (b) of
+``FE_UPDATE_2026-08-31_ADDENDUM.md``: ONE shared refusal status carrying a
+machine-readable ``reason``. The mapping is declared exactly once, in
+``inventory/refusals.py`` (D18 precedent: three instances of one defect class
+means one shared mapping, not a sixth bespoke ``except``), and every affected
+route carries a single ``except BUSINESS_REFUSALS`` clause that delegates to
+it. Adding a seventh refusal is a row in that table, not an edit on two
+surfaces.
 """
 
 from __future__ import annotations
@@ -64,6 +76,11 @@ from nce.admin_handlers._shared import (
 from nce.vertical_modules.inventory.forecast import do_forecast_demand
 from nce.vertical_modules.inventory.goods_receipt import do_record_goods_receipt
 from nce.vertical_modules.inventory.reconcile import do_reconcile_dead_stock
+from nce.vertical_modules.inventory.refusals import (
+    BUSINESS_REFUSALS,
+    REST_BUSINESS_REFUSED_STATUS,
+    refusal_payload,
+)
 from nce.vertical_modules.inventory.replenishment import do_recommend_restock
 from nce.vertical_modules.inventory.reservation import do_release_stock, do_reserve_stock
 from nce.vertical_modules.inventory.rma import (
@@ -477,6 +494,11 @@ async def api_inventory_reserve_stock(request) -> JSONResponse:
         # mutation has committed.
         await bump_mcp_cache_generation(admin_state.engine, route="api_inventory_reserve_stock")
         return JSONResponse(_json_safe(result))
+    except BUSINESS_REFUSALS as exc:
+        return JSONResponse(
+            _json_safe(refusal_payload(exc)),
+            status_code=REST_BUSINESS_REFUSED_STATUS,
+        )
     except (ValueError, KeyError, TypeError) as exc:
         return JSONResponse({"error": str(exc)}, status_code=422)
     except Exception as exc:
@@ -529,6 +551,11 @@ async def api_inventory_release_stock(request) -> JSONResponse:
         # mutation has committed.
         await bump_mcp_cache_generation(admin_state.engine, route="api_inventory_release_stock")
         return JSONResponse(_json_safe(result))
+    except BUSINESS_REFUSALS as exc:
+        return JSONResponse(
+            _json_safe(refusal_payload(exc)),
+            status_code=REST_BUSINESS_REFUSED_STATUS,
+        )
     except (ValueError, KeyError, TypeError) as exc:
         return JSONResponse({"error": str(exc)}, status_code=422)
     except Exception as exc:
@@ -734,6 +761,11 @@ async def api_inventory_reconcile_dead_stock(request) -> JSONResponse:
     try:
         result = await do_reconcile_dead_stock(admin_state.engine, params)
         return JSONResponse(_json_safe(result))
+    except BUSINESS_REFUSALS as exc:
+        return JSONResponse(
+            _json_safe(refusal_payload(exc)),
+            status_code=REST_BUSINESS_REFUSED_STATUS,
+        )
     except (ValueError, KeyError, TypeError) as exc:
         return JSONResponse({"error": str(exc)}, status_code=422)
     except Exception as exc:
@@ -784,6 +816,11 @@ async def api_inventory_restock_from_rma(request) -> JSONResponse:
         # mutation has committed.
         await bump_mcp_cache_generation(admin_state.engine, route="api_inventory_restock_from_rma")
         return JSONResponse(_json_safe(result))
+    except BUSINESS_REFUSALS as exc:
+        return JSONResponse(
+            _json_safe(refusal_payload(exc)),
+            status_code=REST_BUSINESS_REFUSED_STATUS,
+        )
     except (ValueError, KeyError, TypeError) as exc:
         return JSONResponse({"error": str(exc)}, status_code=422)
     except Exception as exc:
@@ -837,6 +874,11 @@ async def api_inventory_dispose_rma_weee(request) -> JSONResponse:
         return JSONResponse(_json_safe(result))
     except InsufficientStockError as exc:
         return _insufficient_stock_response(exc)
+    except BUSINESS_REFUSALS as exc:
+        return JSONResponse(
+            _json_safe(refusal_payload(exc)),
+            status_code=REST_BUSINESS_REFUSED_STATUS,
+        )
     except (ValueError, KeyError, TypeError) as exc:
         return JSONResponse({"error": str(exc)}, status_code=422)
     except Exception as exc:

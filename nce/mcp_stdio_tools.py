@@ -2076,6 +2076,334 @@ TOOLS = [
             "required": ["namespace_id", "design_id", "node_labels"],
         },
     ),
+    # -----------------------------------------------------------------
+    # Inventory (Module 11). Registered in TOOL_REGISTRY since B138a but
+    # advertised only from 2026-08-31: list_tools() returns TOOLS verbatim,
+    # so the whole MCP half of this module was undiscoverable while being
+    # callable. See tests/unit/test_mcp_tool_surface_ratchet.py.
+    #
+    # Advertised UNCONDITIONALLY on purpose. Inventory's gate is per-namespace
+    # (metadata.inventory.enabled), enforced in the handler, which refuses with
+    # McpError(-32005) + data.reason. A config flag would hide the tool from
+    # namespaces that ARE entitled to it.
+    #
+    # qty is NUMERIC(18,3) and cost figures are money: the schema accepts a
+    # string so an exact decimal survives, because coercing through float is
+    # forbidden (money-module briefing #2; see inventory/stock.py).
+    # -----------------------------------------------------------------
+    Tool(
+        name="inventory_stock_levels",
+        description=(
+            "Live per-SKU-per-location stock. Watcher; read-only, cacheable. "
+            "Reads the authoritative inventory_items row, never the graph mirror."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "sku": {"type": "string", "description": "Optional; filter to one SKU."},
+                "location": {
+                    "type": "string",
+                    "description": "Optional; filter to one location.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="inventory_transfer_stock",
+        description=(
+            "Warehouse<->van / van<->van stock move. Actor; mutation, admin_only. "
+            "Physical stock moves between two locations."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "sku": {"type": "string", "description": "SKU being moved."},
+                "qty": {
+                    "type": ["string", "number"],
+                    "description": (
+                        "Quantity, NUMERIC(18,3). Send a string to keep the exact decimal."
+                    ),
+                },
+                "from_location": {"type": "string", "description": "Source location."},
+                "to_location": {"type": "string", "description": "Destination location."},
+            },
+            "required": ["namespace_id", "sku", "qty", "from_location", "to_location"],
+        },
+    ),
+    Tool(
+        name="inventory_record_consumption",
+        description=(
+            "Pick/use stock for a job. Actor; mutation, admin_only. Decrements on-hand stock."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "sku": {"type": "string", "description": "SKU consumed."},
+                "qty": {
+                    "type": ["string", "number"],
+                    "description": (
+                        "Quantity, NUMERIC(18,3). Send a string to keep the exact decimal."
+                    ),
+                },
+                "location": {"type": "string", "description": "Location consumed from."},
+                "work_order": {
+                    "type": "string",
+                    "description": "Optional; echoed back for traceability only.",
+                },
+            },
+            "required": ["namespace_id", "sku", "qty", "location"],
+        },
+    ),
+    Tool(
+        name="inventory_record_goods_receipt",
+        description=(
+            "Record one inbound delivery. Actor; mutation, admin_only. Use this "
+            "when no invoice is in hand."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "po_ref": {"type": "string", "description": "Purchase-order reference."},
+                "location_id": {"type": "string", "description": "Receiving location UUID."},
+                "lines": {"type": "array", "description": "Received lines."},
+                "delivery_note_ref": {
+                    "type": "string",
+                    "description": "Optional delivery-note reference.",
+                },
+                "scans": {"type": "array", "description": "Optional scan records."},
+            },
+            "required": ["namespace_id", "po_ref", "location_id", "lines"],
+        },
+    ),
+    Tool(
+        name="inventory_recommend_restock",
+        description="Per-SKU restock recommendations. Watcher; read-only, cacheable.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "location": {
+                    "type": "string",
+                    "description": "Optional; filter to one location.",
+                },
+                "sku": {"type": "string", "description": "Optional; filter to one SKU."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="inventory_forecast_demand",
+        description="Pipeline-weighted demand forecast. Watcher; read-only, cacheable.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "horizon_days": {
+                    "type": "integer",
+                    "description": "Optional; filters which pipeline lines count.",
+                },
+                "sku": {"type": "string", "description": "Optional; filter to one SKU."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="inventory_reserve_stock",
+        description=(
+            "Reserve available stock for a project. Actor; mutation, admin_only. "
+            "Increments qty_reserved only; no physical stock moves. Refuses with "
+            "reason=insufficient_available when the request exceeds availability."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "sku": {"type": "string", "description": "SKU to reserve."},
+                "qty": {
+                    "type": ["string", "number"],
+                    "description": (
+                        "Quantity, NUMERIC(18,3). Send a string to keep the exact decimal."
+                    ),
+                },
+                "location": {"type": "string", "description": "Location holding the stock."},
+                "project_id": {
+                    "type": "string",
+                    "description": "Project the reservation is for.",
+                },
+            },
+            "required": ["namespace_id", "sku", "qty", "location", "project_id"],
+        },
+    ),
+    Tool(
+        name="inventory_release_stock",
+        description=(
+            "Release previously-reserved stock. Actor; mutation, admin_only. "
+            "Decrements qty_reserved only. Refuses with reason=over_release when "
+            "releasing more than is currently reserved."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "sku": {"type": "string", "description": "SKU to release."},
+                "qty": {
+                    "type": ["string", "number"],
+                    "description": (
+                        "Quantity, NUMERIC(18,3). Send a string to keep the exact decimal."
+                    ),
+                },
+                "location": {
+                    "type": "string",
+                    "description": "Location holding the reservation.",
+                },
+                "project_id": {
+                    "type": "string",
+                    "description": "Project the reservation belongs to.",
+                },
+            },
+            "required": ["namespace_id", "sku", "qty", "location", "project_id"],
+        },
+    ),
+    Tool(
+        name="inventory_record_rma",
+        description=(
+            "Record a return with its WEEE state. Actor; mutation, admin_only. "
+            "Moves NO stock: stock_movement_state is written 'pending'."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "rma_ref": {
+                    "type": "string",
+                    "description": "RMA reference; unique per namespace.",
+                },
+                "sku": {"type": "string", "description": "Returned SKU."},
+                "location": {
+                    "type": "string",
+                    "description": "Location the return is booked to.",
+                },
+                "qty": {
+                    "type": ["string", "number"],
+                    "description": (
+                        "Quantity, NUMERIC(18,3). Send a string to keep the exact decimal."
+                    ),
+                },
+                "reason": {"type": "string", "description": "Why the item was returned."},
+                "serial": {"type": "string", "description": "Optional serial number."},
+                "weee_state": {"type": "string", "description": "Optional WEEE scope state."},
+                "disposal_ref": {
+                    "type": "string",
+                    "description": "Optional disposal reference.",
+                },
+            },
+            "required": ["namespace_id", "rma_ref", "sku", "location", "qty", "reason"],
+        },
+    ),
+    Tool(
+        name="inventory_valuation",
+        description=(
+            "FIFO/average-cost money value of stock. Watcher; read-only but "
+            "admin_only, and NOT cacheable: it is derived from the append-only "
+            "inventory_transactions ledger and changes on every movement, and a "
+            "stale money figure is a wrong number in someone's accounts."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "sku": {"type": "string", "description": "SKU to value."},
+                "location": {"type": "string", "description": "Location to value."},
+            },
+            "required": ["namespace_id", "sku", "location"],
+        },
+    ),
+    Tool(
+        name="inventory_record_goods_receipt_and_match",
+        description=(
+            "Goods receipt plus three-way match. Actor; mutation, admin_only. "
+            "Everything inventory_record_goods_receipt accepts, PLUS the po and "
+            "invoice legs Inventory does not own. Not a wrapper: a caller with no "
+            "invoice yet must use the plain tool."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "po_ref": {"type": "string", "description": "Purchase-order reference."},
+                "location_id": {"type": "string", "description": "Receiving location UUID."},
+                "lines": {"type": "array", "description": "Received lines."},
+                "po": {"type": "object", "description": "Purchase-order leg."},
+                "invoice": {"type": "object", "description": "Invoice leg."},
+                "delivery_note_ref": {
+                    "type": "string",
+                    "description": "Optional delivery-note reference.",
+                },
+                "scans": {"type": "array", "description": "Optional scan records."},
+            },
+            "required": ["namespace_id", "po_ref", "location_id", "lines", "po", "invoice"],
+        },
+    ),
+    Tool(
+        name="inventory_reconcile_dead_stock",
+        description=(
+            "Reconcile dead (sku, location) pairs against the transaction ledger. "
+            "admin_only, mutation=False: the core writes nothing at all, on the "
+            "clean path and the raising path alike. Refuses with "
+            "reason=ledger_divergence when inventory_items disagrees with the ledger."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "dead_stock_days": {
+                    "type": "integer",
+                    "description": "Optional; days of no movement that count as dead.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="inventory_restock_from_rma",
+        description=(
+            "Return a repairable unit to stock. Actor; mutation, admin_only. sku, "
+            "location_id and qty are read from the claimed inventory_rma row, never "
+            "from the caller."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "rma_ref": {"type": "string", "description": "RMA reference to claim."},
+            },
+            "required": ["namespace_id", "rma_ref"],
+        },
+    ),
+    Tool(
+        name="inventory_dispose_rma_weee",
+        description=(
+            "WEEE take-back disposal leg. Actor; mutation, admin_only. Stock leaves "
+            "and the ledger row is what proves it happened."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "rma_ref": {"type": "string", "description": "RMA reference to claim."},
+                "disposal_ref": {
+                    "type": "string",
+                    "description": "Disposal reference documenting the take-back.",
+                },
+            },
+            "required": ["namespace_id", "rma_ref", "disposal_ref"],
+        },
+    ),
 ]
 
 # Conditionally include migration tools based on operator config.

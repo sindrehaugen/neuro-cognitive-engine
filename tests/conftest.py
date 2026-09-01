@@ -56,6 +56,12 @@ def _inject_mcp_tenant_api_key_for_tool_calls(request, monkeypatch):
     if request.node.get_closest_marker("real_mcp_auth"):
         return
     from nce.auth import MCP_ADMIN_TOOL_NAMES, enforce_mcp_tool_auth
+
+    # live_*_api_key(), not os.environ: these keys may be mounted as
+    # NCE_*_API_KEY_FILE, which a direct env read resolves to "". The harness
+    # carried the same defect as the production path it stands in for, so a
+    # file-mounted key was invisible to every test that goes through here.
+    from nce.config import live_admin_api_key, live_mcp_api_key
     from nce.tool_registry import TOOL_REGISTRY
 
     _real = enforce_mcp_tool_auth
@@ -64,9 +70,9 @@ def _inject_mcp_tenant_api_key_for_tool_calls(request, monkeypatch):
         args = dict(arguments)
         spec = TOOL_REGISTRY.get(tool_name)
         if tool_name in MCP_ADMIN_TOOL_NAMES or (spec is not None and spec.admin_only):
-            args.setdefault("admin_api_key", os.environ.get("NCE_ADMIN_API_KEY", ""))
+            args.setdefault("admin_api_key", live_admin_api_key())
         elif not args.get("admin_api_key"):
-            args.setdefault("mcp_api_key", os.environ.get("NCE_MCP_API_KEY", ""))
+            args.setdefault("mcp_api_key", live_mcp_api_key())
         return _real(tool_name, args)
 
     monkeypatch.setattr("nce.auth.enforce_mcp_tool_auth", _enforce_with_test_keys)
