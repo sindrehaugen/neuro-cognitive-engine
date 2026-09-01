@@ -11,6 +11,10 @@
 
 NCE provides a clean extension interface allowing any external host application, BFF (Backend for Frontend), or web UI to consume NCE services, mount custom routes, register domain-specific tools, and query cognitive state **without modifying NCE core source code**.
 
+> [!WARNING]
+> **Critical Auth Boundary (BFF Requirement)**
+> The NCE `/api/*` surface expects HMAC three-header (+ optional mTLS) **machine** identity. Tenancy comes *solely* from `namespace_id` in the argument bag. **NCE cannot distinguish two users inside one namespace.** Therefore, a BFF (Backend for Frontend) or host application is necessarily the *only* user-auth and permission boundary. Allowing an authenticated end-user direct network access to NCE means that user can read or write any namespace the host's machine identity can access.
+
 When a host vendors or consumes NCE as a backend engine, NCE is treated as an immutable core. All host-specific extensions are attached via explicit extension hooks rather than in-tree edits.
 
 ```
@@ -90,11 +94,14 @@ When a host vendors or consumes NCE as a backend engine, NCE is treated as an im
 * **Current Reality:** `nce/jwt_auth.py` and `nce/a2a_server.py` log warnings and reject general browser client tokens when authenticating as agent principals:
   * `jwt_auth.py`: `logger.warning("Rejecting token with aud=%s; tokens issued for other services (web frontend, admin UI, etc.) must not authenticate as agent", aud)`
   * `a2a_server.py`: validates tokens with `expected_audience=cfg.NCE_A2A_JWT_AUDIENCE`.
-* **Status:** The audience verification infrastructure is already configurable on the A2A side (`NCE_A2A_JWT_AUDIENCE`). What is missing is a dedicated front-end JWT audience setting (`NCE_FRONTEND_JWT_AUDIENCE`) and native CORS configuration (`NCE_ADMIN_CORS`, `NCE_CORS_ORIGINS`) in the admin server. (Hosts currently mount CORS via FE-1 `extra_middleware`).
+* **Status:** The audience verification infrastructure is already configurable on the A2A side (`NCE_A2A_JWT_AUDIENCE`). What is missing is a dedicated front-end JWT audience setting (`NCE_FRONTEND_JWT_AUDIENCE`) and native CORS configuration (`NCE_ADMIN_CORS`, `NCE_CORS_ORIGINS`) in the admin server.
 * **Target Architecture:** Document and provide a native, configurable front-end auth surface — formalizing CORS allow-origins settings and defining a structured JWT audience/issuer policy for browser-issued session tokens without relaxing agent/MCP authentication.
 * **Acceptance Criteria:**
   - [ ] A browser front end can authenticate against a configured audience with native CORS support.
   - [ ] Default configuration preserves strict agent/mTLS/HMAC isolation.
+
+> [!WARNING]
+> **Interim CORS Requirement:** Until NCE-FE-4 is delivered, CORS **must** be mounted by the host through the FE-1 `build_app(extra_middleware=…)` hook. The configuration keys `NCE_FRONTEND_JWT_AUDIENCE`, `NCE_ADMIN_CORS`, and `NCE_CORS_ORIGINS` **do not exist in `nce/config.py`** (verified, not inferred).
 
 ---
 
@@ -140,7 +147,7 @@ When a host vendors or consumes NCE as a backend engine, NCE is treated as an im
 
 ## Vertical Modules as First-Class NCE Capabilities
 
-NCE ships **12 vertical engines** under `nce/vertical_modules/*` that expose capabilities through the unified NCE API surface (112 MCP tools in `TOOL_REGISTRY` + 128 admin routes):
+NCE ships **12 vertical engines** under `nce/vertical_modules/*` that expose capabilities through the unified NCE API surface (135 MCP tools in `TOOL_REGISTRY` + 134 admin routes):
 * **NetBox & Dynamics 365** (core network & CRM integration)
 * **Sales & Agreements** (deal rooms, contract OCR, signed-baseline freeze)
 * **Procurement & Product** (BOM line matching, ETIM lookup, supplier ranking)

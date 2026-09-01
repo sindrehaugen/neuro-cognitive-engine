@@ -1,12 +1,12 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 7e97efe (main) · **Last-audited:** 2026-09-01
 
 # NCE Vertical Engines — Build & Production Status
 
-> **For frontend planning.** 18 core modules (+2 Operations-axis extensions, unscheduled) · 229 build waves · Verified-against: `7304330`.
-> Source of truth: `nce/tool_registry.py` (112 MCP tools registered), `nce/admin_app.py` (REST routes), and the Module Ledger (`vertical_modules/dev/prompts/ML.md`).
+> **For frontend planning.** 18 core modules (+2 Operations-axis extensions, unscheduled) · 229 build waves · Verified-against: `7e97efe`.
+> Source of truth: `nce/tool_registry.py` (135 MCP tools registered), `nce/admin_app.py` (REST routes), and the Module Ledger (`vertical_modules/dev/prompts/ML.md`).
 
 > [!NOTE]
-> **Production & Main Status:** Vertical engines M0–M8 (Shared Core, Product, Procurement, System Design, Project, Sales, Vendors, Agreements, Economy) along with Dynamics 365, Diagnostics, and NetBox integrations are merged to `main` at commit `7304330`. Total MCP tools in registry: **112** (46 domain/vertical tools + 66 shared/admin/platform tools).
+> **Production & Main Status:** Vertical engines M0–M8 (Shared Core, Product, Procurement, System Design, Project, Sales, Vendors, Agreements, Economy) along with Dynamics 365, Diagnostics, and NetBox integrations are merged to `main` at commit `7e97efe`. Total MCP tools in registry: **135** (and 134 REST routes).
 
 **Status legend**
 
@@ -49,8 +49,8 @@
 
 | Engine | Module | Waves (Batches) | Build | Status | What it owns / does |
 |---|---|---|---|---|---|
-| Warehouse & Inventory | M11 | 1 of 12 · B129 | 🟡 In progress | Main (`7304330`) | Owns `STOCK_LOCATION`/`GOODS_RECEIPT`. Wave 1 shipped (migration 050 stock tables). Waves 2–12 (stock levels, goods receipt, reservation/kitting, restock) in active build. 0 tools / 0 routes currently exposed. |
-| Assets | M9 | 12 · B141–B152 | ⬜ Planned | Not started | Owns `ASSET`/`TELEMETRY`. 14-state lifecycle, health scoring, warranty/EOL (extends NetBox integration). |
+| Warehouse & Inventory | M11 | 12 · B129–B140a | ✅ Complete | Main (`7e97efe`) | Owns `STOCK_LOCATION`/`GOODS_RECEIPT`. Migrations 050–053, 3 tools, and 3 routes shipped. Includes 11 entry points and opt-in gate. |
+| Assets | M9 | 12 · B141–B152 | ✅ Complete | Main (`7e97efe`) | Owns `ASSET`/`TELEMETRY`. 14-state lifecycle, health scoring, warranty/EOL. `054_assets.sql` + 4 tools + 3 routes (`/api/assets`, `/api/assets/{id}`, `/api/assets/{id}/lifecycle`) shipped. |
 | Support | M10 | 11 · B153–B163 | ⬜ Planned | Not started | Owns `TICKET` + SLA clock. Grounded troubleshooter, customer-health scoring. |
 | Staff & Resources | M15 | 12 · B164–B175 | ⬜ Planned | Not started | Owns `RESOURCE`/`ALLOCATION`. Capacity calendar, conflict-free scheduling, travel/per-diem. |
 | Field Tech | M12 | 12 · B176–B187 | ⬜ Planned | Not started | Owns `WORK_ORDER`. Offline-sync mobile capture, dispatch, partner access (dual RLS). |
@@ -76,10 +76,11 @@ The following table provides the ground truth of all exposed MCP tools and mount
 | Engine | Tools (Flags) | Routes | Cores (`do_*` unwired) | Frontend Build Guidance |
 |---|---|---|---|---|
 | **agreements** (M3) | **1 tool:**<br>`agreements_lookup_terms` *(cacheable)* | **5 routes:**<br>`POST /api/agreements`<br>`POST /api/agreements/coverage`<br>`GET /api/agreements/{id}`<br>`POST /api/agreements/extract`<br>`POST /api/agreements/review` | — | Build FE against the 5 REST routes for agreement lifecycle, extraction, coverage analysis, and review. |
+| **assets** (M9) | **4 tools** | **3 routes:**<br>`/api/assets`<br>`/api/assets/{id}`<br>`/api/assets/{id}/lifecycle` | — | Live. 14-state lifecycle and health scoring available. |
 | **diagnostics** | **5 tools:**<br>`diag_ingest_bundle` *(mutation)*<br>`diag_commit_bundle` *(mutation)*<br>`diag_digest_status` *(cacheable)*<br>`diag_device_health` *(cacheable)*<br>`diag_list_anomalies` *(cacheable)* | — | — | Diagnostic bundle ingestion and anomaly inspection available via MCP tools. |
 | **dynamics365** | **6 tools:**<br>`d365_query_case` *(cacheable)*<br>`d365_sync_now` *(admin_only, mutation)*<br>`d365_case_stress_report` *(cacheable)*<br>`d365_list_sla_breaches` *(admin_only)*<br>`d365_netbox_mappings` *(cacheable)*<br>`d365_sync_status` | Admin routes under `/api/admin/d365/*` | — | D365 case queries and SLA monitoring available via MCP and admin REST API. |
 | **economy** (M8) | **3 tools:**<br>`economy_match_invoice` *(cacheable)*<br>`economy_compute_periodisering` *(cacheable)*<br>`economy_emit_event` *(cacheable)* | **3 routes:**<br>`POST /api/economy/match-invoice`<br>`POST /api/economy/periodisering`<br>`POST /api/economy/emit-event` | `do_compute_bucket_targets`<br>`do_compute_dunning`<br>`do_compute_recognition_schedule`<br>`do_emit_financial_event`<br>`do_forecast_cashflow`<br>`do_generate_kid`<br>`do_match_invoice`<br>`do_snapshot_mrr_arr_churn`<br>`do_validate_kid` | Build FE against the 3 exposed REST routes. Note that 9 internal `do_*` domain cores are not yet wired to HTTP/MCP surfaces. |
-| **inventory** (M11) | — | — | — | **In progress (Wave 1 of 12).** Stock schema defined in migration 050; tools and REST endpoints are pending subsequent waves. Do not build FE against unexposed endpoints. |
+| **inventory** (M11) | **3 tools**<br>(Plus 11 entry points from PR #152) | **3 routes** | — | Fully stable. Stock tables and stock-level operations live with opt-in gate. |
 | **netbox** | **1 tool:**<br>`evaluate_circuit_impact` | Admin routes under `/api/admin/d365/netbox-*` | — | NetBox circuit impact assessment tool available. |
 | **procurement** (M1) | **6 tools:**<br>`procurement_calculate_tco` *(cacheable)*<br>`procurement_rank_suppliers` *(cacheable)*<br>`procurement_evaluate_match` *(cacheable)*<br>`procurement_forecast_rebate` *(cacheable)*<br>`procurement_recommend_move_spend` *(cacheable)*<br>`procurement_whatif_spend` *(cacheable)* | **8 routes:**<br>`POST /api/procurement/tco`<br>`POST /api/procurement/rank`<br>`POST /api/procurement/match`<br>`POST /api/procurement/sync`<br>`GET /api/procurement/sync/status`<br>`POST /api/procurement/frontier/forecast-rebate`<br>`POST /api/procurement/frontier/recommend-move-spend`<br>`POST /api/procurement/frontier/whatif-spend` | `do_calculate_tco`<br>`do_evaluate_three_way_match`<br>`do_rank_suppliers` | Stable for FE integration across all 8 REST routes and 6 MCP calculation tools. |
 | **product** (M2) | **6 tools:**<br>`product_search` *(cacheable)*<br>`product_get` *(cacheable)*<br>`product_price` *(cacheable)*<br>`product_related` *(cacheable)*<br>`product_match_bom_line`<br>`product_enrich` *(mutation)* | **3 routes:**<br>`GET /api/product/search`<br>`POST /api/product/enrichment/review`<br>`GET /api/product/{id}` | — | Fully stable. Catalog search, detail, and enrichment review routes are live. |
@@ -95,7 +96,11 @@ The following table provides the ground truth of all exposed MCP tools and mount
 
 > [!WARNING]
 > ### System Design (M6) Surface Constraint
-> System Design is marked ✅ Complete in terms of wave milestones (B56–B67), and its **exposed HTTP/MCP surface is now COMPLETE** (7 MCP tools, 5 REST routes). All interactive topological design, CAD layout, and functional location authoring can be invoked over the network.
+> System Design is marked ✅ Complete in terms of wave milestones (B56–B67), but its nine internal modules (`from_quote`, `to_quote`, `validate`, `devices`, `propose`, `lucid`, `netbox_bridge`, `sharepoint`, `sow`) are currently **unmounted**. The exposed HTTP/MCP surface is strictly limited to 2 MCP tools and 1 REST route:
+> - MCP: `system_design_ping` and `system_design_publish_design_docs`.
+> - REST: `POST /api/system-design/publish-design-docs`.
+>
+> Frontend developers **must not** assume the existence of interactive design-canvas endpoints, BOM-sync routes, or NetBox/Lucid direct REST APIs. *Note: ML wave 230a will mount these capabilities to the network.*
 
 > [!IMPORTANT]
 > ### Economy (M8) Built vs. Exposed Cores

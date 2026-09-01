@@ -4,9 +4,9 @@
 
 This document provides the definitive, synchronized API specification for the Neuro-Cognitive Engine (NCE) platform at baseline commit `7304330`. It reconciles the dual API surface of NCE:
 
-1. **Admin REST HTTP Surface**: 128 mounted routes served by the Starlette application (`nce/admin_app.py::build_admin_routes()`), authenticated via HMAC-SHA256 signature verification and mutual TLS (mTLS).
-2. **Model Context Protocol (MCP) Tool Surface**: 112 tools registered in `nce/tool_registry.py::TOOL_REGISTRY` (46 domain/vertical tools + 66 shared/platform tools) backed by declarative `ToolSpec` dispatch metadata.
-3. **Stdio Discovery Gap**: An architectural audit of the 41-tool gap between registered MCP tools (112) and stdio-exposed tools (71 in `nce/mcp_stdio_tools.py::TOOLS`), referencing [`FINDINGS_OQ3_tool_surface.md`](https://github.com/sindrehaugen/NCE/blob/main/FINDINGS_OQ3_tool_surface.md).
+1. **Admin REST HTTP Surface**: Generated routes served by the Starlette application (`nce/admin_app.py::build_admin_routes()`), authenticated via HMAC-SHA256 signature verification and mutual TLS (mTLS). (See [API.md](API.md) for generated routes).
+2. **Model Context Protocol (MCP) Tool Surface**: 135 tools registered in `nce/tool_registry.py::TOOL_REGISTRY` backed by declarative `ToolSpec` dispatch metadata.
+3. **Stdio Discovery Gap**: An architectural audit of the tool gap between registered MCP tools and stdio-exposed tools (`nce/mcp_stdio_tools.py::TOOLS`), referencing [`FINDINGS_OQ3_tool_surface.md`](https://github.com/sindrehaugen/NCE/blob/main/FINDINGS_OQ3_tool_surface.md).
 
 ---
 
@@ -17,10 +17,10 @@ This document provides the definitive, synchronized API specification for the Ne
   - [1.2 Authentication & Authorization Protocols](#12-authentication--authorization-protocols)
   - [1.3 MCP Dispatch Loop & ToolSpec Metadata](#13-mcp-dispatch-loop--toolspec-metadata)
 - [2. Surface of Truth Matrix](#2-surface-of-truth-matrix)
-- [3. MCP Tool Registry Reference (112 Tools)](#3-mcp-tool-registry-reference-112-tools)
+- [3. MCP Tool Registry Reference (135 Tools)](#3-mcp-tool-registry-reference-135-tools)
   - [3.1 Shared & Platform Core Tools (66 Tools)](#31-shared--platform-core-tools-66-tools)
   - [3.2 Vertical & Domain Engine Tools (46 Tools)](#32-vertical--domain-engine-tools-46-tools)
-- [4. Admin REST Routes Reference (128 Endpoints)](#4-admin-rest-routes-reference-128-endpoints)
+- [4. Admin REST Routes Reference (134 Endpoints)](#4-admin-rest-routes-reference-134-endpoints)
   - [4.1 Shared Platform & Administration Routes (84 Routes)](#41-shared-platform--administration-routes-84-routes)
   - [4.2 Vertical Domain Engine Routes (44 Routes)](#42-vertical-domain-engine-routes-44-routes)
 - [5. Stdio Tool Discovery Gap Analysis (OQ-3)](#5-stdio-tool-discovery-gap-analysis-oq-3)
@@ -39,8 +39,8 @@ NCE exposes capabilities across two primary access interfaces tailored for disti
 
 | Surface Interface | Transport & Format | Target Consumers | Authentication & Guards | Single Source of Truth |
 |---|---|---|---|---|
-| **Admin REST API** | HTTP/1.1 JSON over TCP | Web BFF, Admin Dashboards, Cron Jobs, Automation Scripts | HMAC-SHA256, NonceStore (Redis SETNX), mTLS (`ADMIN_PRINCIPAL_KIND=employee`), Rate Limiter | `nce.admin_app.build_admin_routes()` (128 routes) |
-| **MCP Agent Surface** | JSON-RPC 2.0 (stdio / WebSocket / SSE) | Autonomous AI Agents, Claude Desktop, Antigravity Swarms | API Keys, Tenant Namespace RLS, Dispatch Gating (`admin_only`, `mutation`, `cacheable`, `migration`) | `nce.tool_registry.TOOL_REGISTRY` (112 tools) |
+| **Admin REST API** | HTTP/1.1 JSON over TCP | Web BFF, Admin Dashboards, Cron Jobs, Automation Scripts | HMAC-SHA256, NonceStore (Redis SETNX), mTLS (`ADMIN_PRINCIPAL_KIND=employee`), Rate Limiter | `nce.admin_app.build_admin_routes()` (see [docs/API.md](API.md) for generated routes) |
+| **MCP Agent Surface** | JSON-RPC 2.0 (stdio / WebSocket / SSE) | Autonomous AI Agents, Claude Desktop, Antigravity Swarms | API Keys, Tenant Namespace RLS, Dispatch Gating (`admin_only`, `mutation`, `cacheable`, `migration`) | `nce.tool_registry.TOOL_REGISTRY` (135 tools) |
 
 ### 1.2 Authentication & Authorization Protocols
 
@@ -70,7 +70,7 @@ The MCP dispatch server (`nce/mcp_stdio_dispatch.py`) utilizes declarative metad
 
 ## 2. Surface of Truth Matrix
 
-Reconciled against `docs/_generated/surface.md` and codebase commit `7304330`:
+Reconciled against codebase commit `7e97efe`:
 
 | Engine / Domain | MCP Tools Count | Mounted REST Routes Count | Cores (`do_*`) / Handlers | Status |
 |---|---|---|---|---|
@@ -87,13 +87,13 @@ Reconciled against `docs/_generated/surface.md` and codebase commit `7304330`:
 | **system_design** | 2 | 1 | System design verification, Lucidchart design doc export | Shipped |
 | **vendors** | 10 | 2 | Vendor scorecards, tier status, contractor matching, reliability radar | Shipped |
 | **shared / core** | 66 | 84 | Tri-Stack memory, GraphRAG, A2A grants, entity resolution, migrations, admin | Shipped |
-| **Total Surface** | **112 Tools** | **128 Routes** | **Core Domain Engine Operations** | **Baseline 7304330** |
+| **Total Surface** | **135 Tools** | **134 Routes** | **Core Domain Engine Operations** | **Baseline 7304330** |
 
 ---
 
-## 3. MCP Tool Registry Reference (112 Tools)
+## 3. MCP Tool Registry Reference (135 Tools)
 
-The `TOOL_REGISTRY` contains 112 tools divided into 66 shared/platform core tools and 46 vertical domain engine tools.
+The `TOOL_REGISTRY` contains 135 Tools divided into 66 shared/platform core tools and 46 vertical domain engine tools.
 
 ### 3.1 Shared & Platform Core Tools (66 Tools)
 
@@ -381,9 +381,9 @@ The `TOOL_REGISTRY` contains 112 tools divided into 66 shared/platform core tool
 
 ---
 
-## 4. Admin REST Routes Reference (128 Endpoints)
+## 4. Admin REST Routes Reference (134 Endpoints)
 
-All 128 routes are mounted in `nce/admin_app.py::build_admin_routes()` and served by the Starlette application.
+All 134 Routes are mounted in `nce/admin_app.py::build_admin_routes()` and served by the Starlette application.
 
 ### 4.1 Shared Platform & Administration Routes (84 Routes)
 
@@ -534,7 +534,7 @@ All 128 routes are mounted in `nce/admin_app.py::build_admin_routes()` and serve
 An architectural desynchronization exists between NCE's execution layer and presentation layer:
 
 1. **Backend Execution Layer (`TOOL_REGISTRY` in `nce/tool_registry.py`)**:
-   - Registers **112 tools** complete with dispatch coroutine wrappers (`_h()`) and metadata flags (`admin_only`, `mutation`, `cacheable`, `migration`).
+   - Registers **135 Tools** complete with dispatch coroutine wrappers (`_h()`) and metadata flags (`admin_only`, `mutation`, `cacheable`, `migration`).
    - The dispatch engine (`mcp_stdio_dispatch.py`) routes incoming JSON-RPC calls via `TOOL_REGISTRY.get(tool_name)`.
 2. **Presentation / Discovery Layer (`TOOLS` in `nce/mcp_stdio_tools.py`)**:
    - Declares static `mcp.types.Tool` schema definitions (input properties, types, descriptions) for **71 tools** (66 platform/shared + 5 diagnostics).
