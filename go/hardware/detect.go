@@ -10,9 +10,32 @@ import (
 )
 
 // Budget for the full detectHardware snapshot (wall clock). Individual probes use probeTimeout.
+//
+// These were 5s/4s and that silently broke Windows detection. Measured on the dev host
+// (Core Ultra 7 258V, Win 11): `powershell -NoProfile -NonInteractive -Command Get-PnpDevice`
+// takes ~5.2s, and narrowing the query to -Class ComputeAccelerator does NOT help (5.15s) —
+// the cost is PowerShell process start, not device enumeration. So every PnP-based probe was
+// cancelled before it returned and reported false. The host has an Intel NPU (Intel(R) AI Boost)
+// and an Arc iGPU, and DetectHardware() reported intel_npu=false, intel_xpu=false, backend=cpu.
+// A budget that reliably expires is not a safety margin, it is a false negative.
+//
+// Probes run in parallel, so wall clock is the slowest probe (~5.3s here), not the sum; the
+// budget only bounds the pathological case where a driver call wedges.
+//
+// Sizing, measured end to end with a cross-compiled probe run natively on that host:
+// the full snapshot completes in ~9.3s warm, and a COLD run did not finish inside 12s.
+// 30s/25s is therefore ~3x the warm cost, chosen so a cold boot cannot produce a false
+// negative. With 90s (i.e. effectively unbounded) the host correctly reports
+// intel_npu=true, intel_xpu=true, accel_reachable=false, topology=host_sidecar; with the
+// old 5s/4s it reported no accelerator at all and even cpu_model was empty.
+//
+// TRADE-OFF, stated plainly: a wedged driver call now delays startup up to 30s instead of
+// 5s. That is the price of correctness here, and it is bounded. The separate problem is
+// that this runs on EVERY launch even when NCE_BACKEND is already set — recorded as debt,
+// not fixed here, because it is a different concern.
 const (
-	overallBudget = 5 * time.Second
-	probeTimeout  = 4 * time.Second
+	overallBudget = 30 * time.Second
+	probeTimeout  = 25 * time.Second
 )
 
 // HardwareInfo mirrors §8.4 (detectHardware / HardwareInfo) and maps to NCE_BACKEND in .env.

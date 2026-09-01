@@ -57,11 +57,16 @@ func Run(ctx context.Context, n UserNotifier, log *slog.Logger) error {
 		return err
 	}
 
-	h, backend, hwErr := hardware.DetectAndPersistBackendIfUnset(envPath)
+	h, backend, hwErr := hardware.DetectAndPersistBackendIfUnset(envPath, string(mode))
 	if hwErr != nil && log != nil {
 		log.Warn("nce_backend_env", "err", hwErr)
 	}
-	env = UpsertEnv(env, "NCE_BACKEND", backend)
+	// Same reason env.go does not persist it: on the host_sidecar path a set
+	// NCE_BACKEND beats NCE_COGNITIVE_BASE_URL on the Python side, so injecting it
+	// into the child environment would undo leaving it out of the .env.
+	if hardware.SuggestedTopology(h) != "host_sidecar" {
+		env = UpsertEnv(env, "NCE_BACKEND", backend)
+	}
 	if log != nil {
 		log.Info("hardware_snapshot",
 			"nce_backend", backend,
