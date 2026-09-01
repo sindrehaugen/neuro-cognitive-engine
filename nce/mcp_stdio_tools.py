@@ -2534,6 +2534,63 @@ TOOLS = [
             "required": ["namespace_id", "quote_id", "signed_by", "signature_ref"],
         },
     ),
+    # -----------------------------------------------------------------
+    # OQ-3 tranche 3 (2026-09-01) — the two tools whose CORE raises an
+    # explicit "'x' is required", so the required/optional split is read
+    # from a raise rather than inferred:
+    #   do_get_product      raise ValueError("'mfr_part_no' is required")
+    #   do_search_products  raise ValueError("'query' is required and must
+    #                                        be a non-empty string")
+    # `limit`'s default (20) and cap (50) are likewise taken from the core,
+    # not guessed. See tests/unit/test_mcp_tool_surface_ratchet.py for why
+    # the other six REST-derivable tools are still not authored.
+    # -----------------------------------------------------------------
+    Tool(
+        name="product_get",
+        description=(
+            "Fetch one product with live prices and graph edges. Watcher; read-only, cacheable."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "mfr_part_no": {
+                    "type": "string",
+                    "description": "Manufacturer part number identifying the product.",
+                },
+                "manufacturer": {
+                    "type": "string",
+                    "description": (
+                        "Optional; disambiguates when the same part number exists "
+                        "for more than one manufacturer."
+                    ),
+                },
+            },
+            "required": ["namespace_id", "mfr_part_no"],
+        },
+    ),
+    Tool(
+        name="product_search",
+        description=("Keyword search over the product catalog. Watcher; read-only, cacheable."),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "query": {
+                    "type": "string",
+                    "description": "Search terms; must be a non-empty string.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 20,
+                    "minimum": 1,
+                    "maximum": 50,
+                    "description": "Optional; rows to return. Defaults to 20, capped at 50.",
+                },
+            },
+            "required": ["namespace_id", "query"],
+        },
+    ),
 ]
 
 # Conditionally include migration tools based on operator config.

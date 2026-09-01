@@ -20,9 +20,9 @@ The honest split is
 NOT the raw runtime difference:
 
     registered in TOOL_REGISTRY                                     135
-    have a Tool(...) definition in mcp_stdio_tools.py                 98
+    have a Tool(...) definition in mcp_stdio_tools.py                100
       ...of which are behind a config flag (see below)                11
-    NO definition anywhere -> undiscoverable under ANY config         37
+    NO definition anywhere -> undiscoverable under ANY config         35
 
 **Why this file compares against the FILE, not against ``TOOLS``.**
 ``TOOLS`` is assembled conditionally at import time -- ``NCE_DISABLE_MIGRATION_MCP``,
@@ -56,6 +56,25 @@ pass-throughs, so the required/optional split lives in the cores. Marking a
 field optional that the core needs gives a client a confusing server error
 it trusted the schema not to cause, so those wait for a core-level pass
 rather than a guess.
+
+**Tranche 3 (2026-09-01) did that core-level pass, and it only settled TWO of
+the eight.** ``do_get_product`` and ``do_search_products`` raise an explicit
+``"'x' is required"``, so their split is read from a raise; ``limit``'s default
+(20) and cap (50) come from the core too. The other six do NOT extract their
+arguments from a ``params`` mapping at all, so there is no requiredness signal
+to read: the only guards are structural (``event`` must be a dict,
+``candidates`` must be non-empty, ``bom_line['unit_price']`` must not be
+negative), and two are worse than silent — ``economy_compute_periodisering``
+takes a NESTED ``params`` object whose own keys are optional-looking, and
+``economy_match_invoice``'s core guards ``lines`` while the route sends
+``invoice``/``candidates``.
+
+🔴 **So the blocker for the remaining six is not schema authoring, it is an
+UNDOCUMENTED CONTRACT.** More archaeology will not settle it. The cheap durable
+fix is for each module owner to state the contract in the handler docstring the
+way the tranche-2 six already do ("Requires ``a``, ``b``; optionally ``c``") —
+one sentence per tool, written by whoever knows the answer, after which the
+schema is mechanical.
 
 Same shape as ``TENANT_TABLES_WITHOUT_NAMESPACE_FK`` in
 ``tests/test_namespace_fk_cascade.py``: an allowlist plus a reverse assertion
@@ -113,13 +132,12 @@ TOOLS_WITH_NO_DEFINITION: frozenset[str] = frozenset(
         "procurement_rank_suppliers",
         "procurement_recommend_move_spend",
         "procurement_whatif_spend",
-        # product (6)
+        # product (4) -- product_get and product_search authored in tranche 3;
+        # their cores raise an explicit "'x' is required".
         "product_enrich",
-        "product_get",
         "product_match_bom_line",
         "product_price",
         "product_related",
-        "product_search",
         # project (2) -- advance_phase and convert_signed_quote authored in
         # tranche 2.
         "project_can_enter_phase",
@@ -339,7 +357,7 @@ def test_the_recorded_gap_matches_what_is_measured() -> None:
     conditionally-assembled ``TOOLS``. Treat an INCREASE in the first number as
     the gate above having been bypassed.
     """
-    assert len(TOOLS_WITH_NO_DEFINITION) == 37
+    assert len(TOOLS_WITH_NO_DEFINITION) == 35
     assert len(_registered()) == 135
-    assert len(_defined_in_file()) == 98
+    assert len(_defined_in_file()) == 100
     assert len(_registered()) == len(_defined_in_file()) + len(TOOLS_WITH_NO_DEFINITION)
