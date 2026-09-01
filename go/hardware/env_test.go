@@ -60,7 +60,7 @@ func linuxNPU() HardwareInfo {
 func TestPersistIfUnset_HostSidecarWritesNoBackendKey(t *testing.T) {
 	withHardware(t, winNPU())
 	p := tempEnvPath(t)
-	if _, _, err := DetectAndPersistBackendIfUnset(p, "multiuser"); err != nil {
+	if _, _, _, err := DetectAndPersistBackendIfUnset(p, "multiuser"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if got := readEnvFile(t, p); strings.Contains(got, "NCE_BACKEND") {
@@ -72,7 +72,7 @@ func TestPersistIfUnset_HostSidecarWritesNoBackendKey(t *testing.T) {
 func TestPersistIfUnset_InContainerWritesBackend(t *testing.T) {
 	withHardware(t, linuxNPU())
 	p := tempEnvPath(t)
-	if _, _, err := DetectAndPersistBackendIfUnset(p, "multiuser"); err != nil {
+	if _, _, _, err := DetectAndPersistBackendIfUnset(p, "multiuser"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if got := readEnvFile(t, p); !strings.Contains(got, "NCE_BACKEND=openvino_npu") {
@@ -85,7 +85,7 @@ func TestPersistIfUnset_InContainerWritesBackend(t *testing.T) {
 func TestPersistIfUnset_LocalModeIsNotContainerised(t *testing.T) {
 	withHardware(t, winNPU())
 	p := tempEnvPath(t)
-	if _, _, err := DetectAndPersistBackendIfUnset(p, "local"); err != nil {
+	if _, _, _, err := DetectAndPersistBackendIfUnset(p, "local"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if got := readEnvFile(t, p); !strings.Contains(got, "NCE_BACKEND=openvino_npu") {
@@ -97,7 +97,7 @@ func TestPersistIfUnset_LocalModeIsNotContainerised(t *testing.T) {
 func TestPersistIfUnset_NoAcceleratorWritesCPU(t *testing.T) {
 	withHardware(t, snapshot(HardwareInfo{OS: "linux", Arch: "amd64"}, "docker-linux", LinuxDeviceEvidence{}))
 	p := tempEnvPath(t)
-	if _, _, err := DetectAndPersistBackendIfUnset(p, "multiuser"); err != nil {
+	if _, _, _, err := DetectAndPersistBackendIfUnset(p, "multiuser"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if got := readEnvFile(t, p); !strings.Contains(got, "NCE_BACKEND=cpu") {
@@ -112,7 +112,7 @@ func TestPersistIfUnset_ExistingBackendPreservedHostSidecar(t *testing.T) {
 	if err := os.WriteFile(p, []byte("NCE_BACKEND=cuda\n"), 0o600); err != nil {
 		t.Fatalf("seed .env: %v", err)
 	}
-	_, got, err := DetectAndPersistBackendIfUnset(p, "multiuser")
+	_, got, _, err := DetectAndPersistBackendIfUnset(p, "multiuser")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestPersistIfUnset_ExistingBackendPreservedInContainer(t *testing.T) {
 	if err := os.WriteFile(p, []byte("NCE_BACKEND=cuda\n"), 0o600); err != nil {
 		t.Fatalf("seed .env: %v", err)
 	}
-	_, _, err := DetectAndPersistBackendIfUnset(p, "multiuser")
+	_, _, _, err := DetectAndPersistBackendIfUnset(p, "multiuser")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -141,10 +141,196 @@ func TestPersistIfUnset_ExistingBackendPreservedInContainer(t *testing.T) {
 func TestPersistIfUnset_CreatesMissingEnvFile(t *testing.T) {
 	withHardware(t, snapshot(HardwareInfo{OS: "linux", Arch: "amd64"}, "docker-linux", LinuxDeviceEvidence{}))
 	p := tempEnvPath(t)
-	if _, _, err := DetectAndPersistBackendIfUnset(p, "multiuser"); err != nil {
+	if _, _, _, err := DetectAndPersistBackendIfUnset(p, "multiuser"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if _, err := os.Stat(p); err != nil {
 		t.Fatalf(".env was not created: %v", err)
+	}
+}
+
+// countingHardware installs a fixture snapshot and returns a live counter of how
+// many times the probe seam was invoked, so a test can assert it never ran.
+func countingHardware(t *testing.T, h HardwareInfo) *int {
+	t.Helper()
+	prev := detectHardwareFn
+	calls := 0
+	detectHardwareFn = func() HardwareInfo { calls++; return h }
+	t.Cleanup(func() { detectHardwareFn = prev })
+	return &calls
+}
+
+// seedEnv writes a .env carrying exactly the given content.
+func seedEnv(t *testing.T, path string, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("seed .env: %v", err)
+	}
+}
+
+// Row 7 (H8) - the defect. When .env already carries NCE_BACKEND the ~8-10s host
+// probe must not run at all, because its result is discarded.
+func TestPersistIfUnset_ExistingBackendSkipsProbe(t *testing.T) {
+	calls := countingHardware(t, linuxNPU())
+	p := tempEnvPath(t)
+	seedEnv(t, p, "NCE_BACKEND=cuda\n")
+	if _, _, _, err := DetectAndPersistBackendIfUnset(p, "multiuser"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if *calls != 0 {
+		t.Fatalf("detectHardwareFn must not be called when NCE_BACKEND is already set, called %d times", *calls)
+	}
+}
+
+// Row 8 (H8) - the skipped path still returns the on-disk backend.
+func TestPersistIfUnset_SkippedProbeReturnsExistingBackend(t *testing.T) {
+	countingHardware(t, linuxNPU())
+	p := tempEnvPath(t)
+	seedEnv(t, p, "NCE_BACKEND=cuda\n")
+	_, got, _, err := DetectAndPersistBackendIfUnset(p, "multiuser")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "cuda" {
+		t.Fatalf("existing NCE_BACKEND must win, got %q", got)
+	}
+}
+
+// Row 9 (H8) - and it reports detected=false so run.go cannot log a snapshot of
+// zero values as if the hardware had been measured.
+func TestPersistIfUnset_SkippedProbeReportsNotDetected(t *testing.T) {
+	countingHardware(t, linuxNPU())
+	p := tempEnvPath(t)
+	seedEnv(t, p, "NCE_BACKEND=cuda\n")
+	_, _, detected, err := DetectAndPersistBackendIfUnset(p, "multiuser")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if detected {
+		t.Fatalf("detected must be false when the probe was skipped")
+	}
+}
+
+// Row 10 (H8) - no NCE_BACKEND in an existing .env: the probe runs exactly once.
+func TestPersistIfUnset_UnsetBackendProbesOnce(t *testing.T) {
+	calls := countingHardware(t, linuxNPU())
+	p := tempEnvPath(t)
+	seedEnv(t, p, "NCE_LOG_LEVEL=info\n")
+	if _, _, _, err := DetectAndPersistBackendIfUnset(p, "multiuser"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if *calls != 1 {
+		t.Fatalf("probe must run exactly once when NCE_BACKEND is unset, called %d times", *calls)
+	}
+}
+
+// Row 11 (H8) - and that path reports detected=true.
+func TestPersistIfUnset_UnsetBackendReportsDetected(t *testing.T) {
+	countingHardware(t, linuxNPU())
+	p := tempEnvPath(t)
+	seedEnv(t, p, "NCE_LOG_LEVEL=info\n")
+	_, _, detected, err := DetectAndPersistBackendIfUnset(p, "multiuser")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !detected {
+		t.Fatalf("detected must be true when the probe ran")
+	}
+}
+
+// Row 12 (H8) - a missing .env is not an "already set" answer: probe once.
+func TestPersistIfUnset_MissingEnvFileProbesOnce(t *testing.T) {
+	calls := countingHardware(t, linuxNPU())
+	p := tempEnvPath(t)
+	if _, _, _, err := DetectAndPersistBackendIfUnset(p, "multiuser"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if *calls != 1 {
+		t.Fatalf("probe must run once when .env does not exist, called %d times", *calls)
+	}
+}
+
+// Row 13 (H8) - and the missing file is still created by the detected path.
+func TestPersistIfUnset_MissingEnvFileStillCreated(t *testing.T) {
+	countingHardware(t, linuxNPU())
+	p := tempEnvPath(t)
+	_, _, detected, err := DetectAndPersistBackendIfUnset(p, "multiuser")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !detected {
+		t.Fatalf("detected must be true when .env does not exist")
+	}
+	if got := readEnvFile(t, p); !strings.Contains(got, "NCE_BACKEND=openvino_npu") {
+		t.Fatalf(".env was not created with the detected backend, contains: %q", got)
+	}
+}
+
+// Row 14 (H8) - an empty NCE_BACKEND value is unset, so the probe runs.
+func TestPersistIfUnset_EmptyBackendValueProbes(t *testing.T) {
+	calls := countingHardware(t, linuxNPU())
+	p := tempEnvPath(t)
+	seedEnv(t, p, "NCE_BACKEND=\n")
+	if _, _, _, err := DetectAndPersistBackendIfUnset(p, "multiuser"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if *calls != 1 {
+		t.Fatalf("an empty NCE_BACKEND is unset and must probe once, called %d times", *calls)
+	}
+}
+
+// Row 15 (H8) - a whitespace-only NCE_BACKEND is unset too (TrimSpace, pinned).
+func TestPersistIfUnset_WhitespaceBackendValueProbes(t *testing.T) {
+	calls := countingHardware(t, linuxNPU())
+	p := tempEnvPath(t)
+	seedEnv(t, p, "NCE_BACKEND=   \n")
+	if _, _, _, err := DetectAndPersistBackendIfUnset(p, "multiuser"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if *calls != 1 {
+		t.Fatalf("a whitespace NCE_BACKEND is unset and must probe once, called %d times", *calls)
+	}
+}
+
+// Row 16 (H8) - H6's host_sidecar rule must survive the reorder: with detection
+// running, a host-visible but container-unreachable NPU still writes no key.
+func TestPersistIfUnset_HostSidecarStillWritesNoKeyAfterReorder(t *testing.T) {
+	countingHardware(t, winNPU())
+	p := tempEnvPath(t)
+	if _, _, _, err := DetectAndPersistBackendIfUnset(p, "multiuser"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := readEnvFile(t, p); strings.Contains(got, "NCE_BACKEND") {
+		t.Fatalf("host_sidecar must still leave NCE_BACKEND unset, .env contains: %q", got)
+	}
+}
+
+// Row 17 (H8) - and the host_sidecar path reports detected=true, because it did
+// probe; run.go relies on that to keep logging a real snapshot there.
+func TestPersistIfUnset_HostSidecarReportsDetected(t *testing.T) {
+	countingHardware(t, winNPU())
+	p := tempEnvPath(t)
+	_, _, detected, err := DetectAndPersistBackendIfUnset(p, "multiuser")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !detected {
+		t.Fatalf("detected must be true on the host_sidecar path")
+	}
+}
+
+// Row 18 (H8) - run.go's guard: when detection is skipped h is zero-valued, so the
+// topology resolves to in_process and the manual backend is injected into the child
+// environment rather than suppressed. Assert it instead of assuming it.
+func TestPersistIfUnset_SkippedProbeTopologyIsInProcess(t *testing.T) {
+	countingHardware(t, winNPU())
+	p := tempEnvPath(t)
+	seedEnv(t, p, "NCE_BACKEND=cuda\n")
+	h, _, _, err := DetectAndPersistBackendIfUnset(p, "multiuser")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := SuggestedTopology(h); got != "in_process" {
+		t.Fatalf("skipped detection must resolve to in_process so run.go injects the manual backend, got %q", got)
 	}
 }

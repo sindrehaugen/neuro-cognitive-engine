@@ -1,0 +1,39 @@
+# Optional overlay: give the worker an Intel NPU on a LINUX host.
+#
+#   docker compose -p <project> #     -f deploy/multiuser/docker-compose.yml #     -f deploy/multiuser/docker-compose.npu.yml up -d worker
+#
+# 🔴 UNVERIFIED AT RUNTIME. This file's SYNTAX is validated (`docker compose config`
+# merges it cleanly), and nothing else about it has been exercised. It was authored on a
+# Windows/WSL2 host where `/dev/accel` DOES NOT EXIST, so the device passthrough, the group
+# permissions and the in-container OpenVINO device enumeration have never been run. Do not
+# report this path as working until it has been started on a Linux host that exposes
+# /dev/accel/accel0 with the intel_vpu driver loaded. Treat the values below as a starting
+# point to debug from, not a known-good configuration.
+#
+# Why an overlay instead of editing docker-compose.yml: device passthrough is host-specific
+# and must not be imposed on hosts without an NPU, where it makes the worker fail to start.
+#
+# WHY THIS IS LINUX-ONLY: the Intel NPU is invisible to containers under Docker Desktop on
+# Windows and macOS (no /dev/accel, no Metal passthrough). On those hosts the supported
+# route is the host-native sidecar in deploy/cognitive-sidecar/, reached over
+# NCE_COGNITIVE_BASE_URL. Do not attempt this overlay there.
+#
+# PREREQUISITES on the Linux host:
+#   - intel_vpu driver loaded and /dev/accel/accel0 present
+#   - an OpenVINO IR exported with scripts/export_jina_to_openvino.py, in NCE_IR_HOST_DIR
+#   - the `openvino` package in the image (in requirements.txt)
+#   - the container user must be able to read /dev/accel/accel0 (see group_add below; the
+#     numeric GID of the `render` group is host-specific, hence the variable)
+
+services:
+  worker:
+    devices:
+      - "/dev/accel:/dev/accel"
+    group_add:
+      - "${NCE_RENDER_GID:-110}"
+    volumes:
+      - "${NCE_IR_HOST_DIR:?set NCE_IR_HOST_DIR to the exported OpenVINO IR directory}:/opt/nce/models/ir:ro"
+    environment:
+      NCE_BACKEND: openvino_npu
+      NCE_OPENVINO_MODEL_DIR: /opt/nce/models/ir
+      NCE_OPENVINO_SEQ_LEN: "${NCE_OPENVINO_SEQ_LEN:-512}"

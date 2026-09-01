@@ -57,7 +57,7 @@ func Run(ctx context.Context, n UserNotifier, log *slog.Logger) error {
 		return err
 	}
 
-	h, backend, hwErr := hardware.DetectAndPersistBackendIfUnset(envPath, string(mode))
+	h, backend, detected, hwErr := hardware.DetectAndPersistBackendIfUnset(envPath, string(mode))
 	if hwErr != nil && log != nil {
 		log.Warn("nce_backend_env", "err", hwErr)
 	}
@@ -67,7 +67,14 @@ func Run(ctx context.Context, n UserNotifier, log *slog.Logger) error {
 	if hardware.SuggestedTopology(h) != "host_sidecar" {
 		env = UpsertEnv(env, "NCE_BACKEND", backend)
 	}
-	if log != nil {
+	if log != nil && !detected {
+		// The probe never ran, so every field of h is a zero value. Logging the
+		// snapshot here would report "false" for hardware that was never measured.
+		log.Info("hardware_detection_skipped",
+			"reason", "NCE_BACKEND already set",
+			"nce_backend", backend)
+	}
+	if log != nil && detected {
 		log.Info("hardware_snapshot",
 			"nce_backend", backend,
 			"cuda", h.CUDA,
