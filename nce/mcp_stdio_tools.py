@@ -2404,6 +2404,136 @@ TOOLS = [
             "required": ["namespace_id", "rma_ref", "disposal_ref"],
         },
     ),
+    # -----------------------------------------------------------------
+    # OQ-3 tranche 2 (2026-09-01) — the six registered tools whose argument
+    # contract is stated EXPLICITLY in their handler docstring, so nothing
+    # here is inferred. Derived from the docstring's "Requires ..." sentence
+    # cross-checked against the REST route that calls the same core.
+    #
+    # The eight other REST-derivable tools (economy_*, procurement_*,
+    # product_get, product_search) are deliberately NOT here: their handlers
+    # are thin pass-throughs with no requiredness signal, so the required/
+    # optional split lives in the cores and would have to be guessed. Marking
+    # a field optional when the core needs it produces a confusing server
+    # error for a client that trusted the schema. See
+    # tests/unit/test_mcp_tool_surface_ratchet.py.
+    # -----------------------------------------------------------------
+    Tool(
+        name="assets_get",
+        description=("Fetch one asset register row. Watcher; read-only, cacheable."),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "asset_id": {"type": "string", "description": "Asset identifier."},
+            },
+            "required": ["namespace_id", "asset_id"],
+        },
+    ),
+    Tool(
+        name="assets_list",
+        description=(
+            "List asset register rows. Watcher; read-only, cacheable. Optionally "
+            "filters by functional location and/or lifecycle state."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "functional_location_id": {
+                    "type": "string",
+                    "description": "Optional; filter to one functional location.",
+                },
+                "lifecycle_state": {
+                    "type": "string",
+                    "description": "Optional; filter to one of the 14 lifecycle states.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="assets_advance_lifecycle",
+        description=("Advance an asset through the 14-state lifecycle. Actor; mutation."),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "asset_id": {"type": "string", "description": "Asset to advance."},
+                "target_state": {
+                    "type": "string",
+                    "description": "Destination lifecycle state.",
+                },
+            },
+            "required": ["namespace_id", "asset_id", "target_state"],
+        },
+    ),
+    Tool(
+        name="vendors_get_vendor",
+        description="Fetch a single vendor. Watcher; read-only, cacheable.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "vendor_id": {"type": "string", "description": "Vendor identifier."},
+            },
+            "required": ["namespace_id", "vendor_id"],
+        },
+    ),
+    Tool(
+        name="project_advance_phase",
+        description=(
+            "Phase-transition Actor: advance a project to a target phase. "
+            "admin_only; mutation. Reads the current phase, evaluates the gate, "
+            "and records the transition against the named actor."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "project_id": {"type": "string", "description": "Project to advance."},
+                "target_phase": {"type": "string", "description": "Destination phase."},
+                "actor": {
+                    "type": "string",
+                    "description": (
+                        "The human this transition is attributed to. The API key "
+                        "authenticates the service; actor attributes the person."
+                    ),
+                },
+                "criteria_met": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "default": [],
+                    "description": "Optional; gate criteria the caller asserts are met.",
+                },
+            },
+            "required": ["namespace_id", "project_id", "target_phase", "actor"],
+        },
+    ),
+    Tool(
+        name="project_convert_signed_quote",
+        description=(
+            "Sales->Project bridge: materialise a project from a signed quote. "
+            "admin_only; mutation. Reads the Sales-frozen baseline over the A2A "
+            "seam, then creates the PROJECT, its G0 gate and its tasks."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "quote_id": {"type": "string", "description": "Signed quote to convert."},
+                "signed_by": {
+                    "type": "string",
+                    "description": "Who signed the quote.",
+                },
+                "signature_ref": {
+                    "type": "string",
+                    "description": "Reference to the signature evidence.",
+                },
+            },
+            "required": ["namespace_id", "quote_id", "signed_by", "signature_ref"],
+        },
+    ),
 ]
 
 # Conditionally include migration tools based on operator config.

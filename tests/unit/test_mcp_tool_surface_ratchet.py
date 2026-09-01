@@ -20,9 +20,9 @@ The honest split is
 NOT the raw runtime difference:
 
     registered in TOOL_REGISTRY                                     135
-    have a Tool(...) definition in mcp_stdio_tools.py                 92
+    have a Tool(...) definition in mcp_stdio_tools.py                 98
       ...of which are behind a config flag (see below)                11
-    NO definition anywhere -> undiscoverable under ANY config         43
+    NO definition anywhere -> undiscoverable under ANY config         37
 
 **Why this file compares against the FILE, not against ``TOOLS``.**
 ``TOOLS`` is assembled conditionally at import time -- ``NCE_DISABLE_MIGRATION_MCP``,
@@ -40,9 +40,22 @@ the tree holding any ``inputSchema``. Auto-advertising 43 permissive schemas
 would satisfy a naive gate while making clients *worse* off -- it invites
 malformed calls instead of no calls.
 
-Module 11's 14 ``inventory_*`` tools were authored on 2026-08-31 (the first
-tranche, taken because that surface had just shipped and the FE is being
-pointed at it), which is why the list below is 43 and not 57.
+Module 11's 14 ``inventory_*`` tools were authored on 2026-08-31 (tranche 1,
+taken because that surface had just shipped and the FE is being pointed at
+it), and six more on 2026-09-01 (tranche 2 -- ``assets_get``,
+``assets_list``, ``assets_advance_lifecycle``, ``vendors_get_vendor``,
+``project_advance_phase``, ``project_convert_signed_quote``), which is why
+the list below is 37 and not 57.
+
+**Tranche 2 took only the tools whose argument contract is stated EXPLICITLY**
+in the handler docstring's "Requires ..." sentence, cross-checked against the
+REST route that calls the same core. Eight further tools (``economy_*``,
+``procurement_*``, ``product_get``, ``product_search``) have REST-derivable
+argument NAMES but no requiredness signal -- their handlers are thin
+pass-throughs, so the required/optional split lives in the cores. Marking a
+field optional that the core needs gives a client a confusing server error
+it trusted the schema not to cause, so those wait for a core-level pass
+rather than a guess.
 
 Same shape as ``TENANT_TABLES_WITHOUT_NAMESPACE_FK`` in
 ``tests/test_namespace_fk_cascade.py``: an allowlist plus a reverse assertion
@@ -74,10 +87,8 @@ TOOLS_WITH_NO_DEFINITION: frozenset[str] = frozenset(
     {
         # agreements (1)
         "agreements_lookup_terms",
-        # assets (4)
-        "assets_advance_lifecycle",
-        "assets_get",
-        "assets_list",
+        # assets (1) -- the other three were authored in tranche 2; assets_ping
+        # has no argument contract stated anywhere.
         "assets_ping",
         # d365 (1) -- its five siblings ARE defined, behind NCE_D365_ENABLED.
         # This one was simply missed, so the d365 block is short by one.
@@ -109,22 +120,20 @@ TOOLS_WITH_NO_DEFINITION: frozenset[str] = frozenset(
         "product_price",
         "product_related",
         "product_search",
-        # project (4)
-        "project_advance_phase",
+        # project (2) -- advance_phase and convert_signed_quote authored in
+        # tranche 2.
         "project_can_enter_phase",
-        "project_convert_signed_quote",
         "project_suggest_pl",
         # sales (2)
         "sales_get_signed_baseline",
         "sales_ping",
-        # vendors (10)
+        # vendors (9) -- get_vendor authored in tranche 2.
         "vendors_calibrate_weights",
         "vendors_check_tier_at_risk",
         "vendors_compute_performance",
         "vendors_compute_scorecard",
         "vendors_detect_reliability_degradation",
         "vendors_get_tier_status",
-        "vendors_get_vendor",
         "vendors_match_contractor",
         "vendors_recall_similar_jobs",
         "vendors_reliability_radar",
@@ -330,7 +339,7 @@ def test_the_recorded_gap_matches_what_is_measured() -> None:
     conditionally-assembled ``TOOLS``. Treat an INCREASE in the first number as
     the gate above having been bypassed.
     """
-    assert len(TOOLS_WITH_NO_DEFINITION) == 43
+    assert len(TOOLS_WITH_NO_DEFINITION) == 37
     assert len(_registered()) == 135
-    assert len(_defined_in_file()) == 92
+    assert len(_defined_in_file()) == 98
     assert len(_registered()) == len(_defined_in_file()) + len(TOOLS_WITH_NO_DEFINITION)
