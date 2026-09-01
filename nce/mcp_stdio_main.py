@@ -93,6 +93,8 @@ async def run_stdio_server(*, app: Server | None = None, engine: NCEEngine | Non
         log.info("Re-embedder background task started.")
 
         from nce.outbox_relay import run_outbox_relay_once
+        from nce.vertical_modules.project import automation as project_automation
+        from nce.vertical_modules.project import tasks as project_tasks
         from nce.vertical_modules.system_design.subscribers import (
             register_system_design_subscribers,
         )
@@ -103,6 +105,20 @@ async def run_stdio_server(*, app: Server | None = None, engine: NCEEngine | Non
         # never marked published either, so it also stays in
         # idx_outbox_unpublished, which every tenant's relay poll reads.
         register_system_design_subscribers()
+
+        # Module 7's three C4 selectors (M0.W20d). Same reason, same ordering:
+        # PO_LINE.status_changed, GOODS_RECEIPT.created and
+        # BOM_LINE.status_changed had handlers that NO process registered, so
+        # each would fast-fail to the DLQ the moment a producer exists.
+        #
+        # The engine registries are written FIRST and are not optional:
+        # tasks._handle_bom_line_status_changed reads one at delivery time and
+        # raises EngineNotRegisteredError without it. Module-qualified because
+        # automation and tasks each define a DIFFERENT register_engine.
+        project_tasks.register_engine(engine)
+        project_automation.register_engine(engine)
+        project_tasks.register_bom_task_subscriber()
+        project_automation.register_automation_subscribers()
 
         interval_s = max(1, int(cfg.OUTBOX_RELAY_INTERVAL_SECONDS))
 

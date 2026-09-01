@@ -17,6 +17,7 @@ import json
 import logging
 import random
 import time
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
 
@@ -1720,11 +1721,31 @@ async def async_main() -> None:
     # second process that runs the relay (the first is nce/mcp_stdio_main.py), and
     # OUTBOX_HANDLERS is per-process state -- registering in only one of them
     # leaves the other dead-lettering every System Design authoring event it polls.
+    from nce.vertical_modules.project import automation as project_automation
+    from nce.vertical_modules.project import tasks as project_tasks
     from nce.vertical_modules.system_design.subscribers import (
         register_system_design_subscribers,
     )
 
     register_system_design_subscribers()
+
+    # Module 7's three C4 selectors (M0.W20d) -- PO_LINE.status_changed,
+    # GOODS_RECEIPT.created and BOM_LINE.status_changed. Their handlers were
+    # registered by NO process, so each would fast-fail to the DLQ the moment a
+    # producer exists. Registered in cron too, for the same per-process reason
+    # as the block above.
+    #
+    # tasks._handle_bom_line_status_changed reads an engine registry at delivery
+    # time and raises EngineNotRegisteredError without one. cron has no
+    # NCEEngine, only the pool -- and the handler path touches exactly
+    # ``engine.pg_pool`` (verified), which is the same duck-type the cron ticks
+    # already build for their own core calls. Module-qualified because
+    # automation and tasks each define a DIFFERENT register_engine.
+    _relay_engine = SimpleNamespace(pg_pool=pool)
+    project_tasks.register_engine(_relay_engine)
+    project_automation.register_engine(_relay_engine)
+    project_tasks.register_bom_task_subscriber()
+    project_automation.register_automation_subscribers()
 
     outbox_seconds = max(1, int(cfg.OUTBOX_RELAY_INTERVAL_SECONDS))
     scheduler.add_job(

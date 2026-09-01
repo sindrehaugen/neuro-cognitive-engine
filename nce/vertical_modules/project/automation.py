@@ -81,7 +81,7 @@ import asyncpg  # type: ignore[import-untyped]
 
 from nce.autonomy.governor import governed
 from nce.db_utils import scoped_pg_session
-from nce.events.bus import subscribe
+from nce.events.bus import PostCommitAction, subscribe
 from nce.vertical_modules.project.tasks import do_sync_bom_tasks
 
 log = logging.getLogger("nce.vertical_modules.project.automation")
@@ -522,7 +522,7 @@ def rq_sync_bom_on_goods_receipt(
 async def _handle_po_status_changed(
     conn: asyncpg.Connection,  # type: ignore[type-arg]
     event: dict[str, Any],
-) -> None:
+) -> PostCommitAction | None:
     """Outbox handler: PO_LINE.status_changed → enqueue RQ task.
 
     We enqueue rather than execute inline so the relay's transaction commits
@@ -553,7 +553,11 @@ async def _handle_po_status_changed(
         )
         return None
 
-    _enqueue_rq_task(
+    # Captured in the closure and fired by the relay AFTER its transaction
+    # commits (M0.W20d). Enqueuing here would do blocking Redis I/O while
+    # the relay still holds its DB connection open -- measured at 21.06s of
+    # event-loop starvation before round 2 moved it off the transaction.
+    return lambda: _enqueue_rq_task(
         rq_sync_bom_on_po,
         namespace_id=namespace_id,
         project_id=project_id,
@@ -561,13 +565,12 @@ async def _handle_po_status_changed(
         status=status,
         project_value=project_value,
     )
-    return None
 
 
 async def _handle_goods_receipt_created(
     conn: asyncpg.Connection,  # type: ignore[type-arg]
     event: dict[str, Any],
-) -> None:
+) -> PostCommitAction | None:
     """Outbox handler: GOODS_RECEIPT.created → enqueue RQ task."""
     payload = _extract_payload(event)
     namespace_id = str(event.get("namespace_id") or payload.get("namespace", ""))
@@ -587,7 +590,8 @@ async def _handle_goods_receipt_created(
         )
         return None
 
-    _enqueue_rq_task(
+    # Post-commit, for the reason in _handle_po_status_changed above.
+    return lambda: _enqueue_rq_task(
         rq_sync_bom_on_goods_receipt,
         namespace_id=namespace_id,
         project_id=project_id,
@@ -595,7 +599,6 @@ async def _handle_goods_receipt_created(
         status=status,
         project_value=project_value,
     )
-    return None
 
 
 # ---------------------------------------------------------------------------
