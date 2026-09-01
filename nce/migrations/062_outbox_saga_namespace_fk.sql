@@ -80,6 +80,23 @@
 -- the record of what this migration destroyed, and they should be reviewed
 -- before this is applied there.
 --
+-- NEW LOCK CONTENTION, and it is the point rather than a side effect. This
+-- migration puts outbox_events into the namespace-DELETE cascade set for the
+-- FIRST time. In PostgreSQL an FK insert takes FOR KEY SHARE on the parent
+-- namespaces row, and DELETE FROM namespaces takes FOR UPDATE on it -- those
+-- two conflict. So from here on:
+--
+--   * deleting a tenant WAITS for in-flight transactions that are inserting
+--     outbox rows for that tenant, and
+--   * those writers wait for a tenant deletion already in progress.
+--
+-- That is correct -- it is exactly what makes tenant deletion consistent, and
+-- what closes D1 -- but it is a real change in lock dynamics that shows up
+-- during tenant deprovisioning, not in a unit test. The namespace_id index
+-- added above reduces the cascade SCAN cost; it does not reduce this
+-- contention. Deprovision a busy tenant when its writers are quiet, and do
+-- not hold a namespaces DELETE open across other work.
+--
 -- Idempotent: the purge is a no-op once no orphans remain, and each constraint
 -- and index is created only when absent.
 
