@@ -380,8 +380,6 @@ MCP_ADMIN_TOOL_NAMES: frozenset[str] = frozenset(
 
 def enforce_mcp_tool_auth(tool_name: str, arguments: dict[str, Any]) -> None:
     """Enforce admin or tenant scope before MCP tool dispatch in ``server.call_tool``."""
-    import os
-
     from nce.tool_registry import TOOL_REGISTRY
 
     spec = TOOL_REGISTRY.get(tool_name)
@@ -389,7 +387,12 @@ def enforce_mcp_tool_auth(tool_name: str, arguments: dict[str, Any]) -> None:
         _validate_scope("admin", arguments)
     else:
         if not arguments.get("mcp_api_key") and not arguments.get("admin_api_key"):
-            env_key = os.environ.get("NCE_MCP_API_KEY", "")
+            # _mcp_server_api_key(), not os.environ: the key may be mounted as
+            # NCE_MCP_API_KEY_FILE, which a direct env read resolves to "".
+            # This injection itself is DELIBERATE -- D30 was closed by decision
+            # (PR #137 / B67P) documenting MCP stdio as a trusted local pipe.
+            # Do not remove it; that is re-litigating D30, not fixing a bug.
+            env_key = _mcp_server_api_key()
             if env_key:
                 arguments["mcp_api_key"] = env_key
         try:

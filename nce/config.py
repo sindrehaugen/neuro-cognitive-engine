@@ -326,11 +326,29 @@ def live_admin_override_enabled() -> bool:
 
 
 def live_admin_api_key() -> str:
-    return live_env_str("NCE_ADMIN_API_KEY")
+    """The admin API key, resolved LIVE and honouring the ``*_FILE`` mount.
+
+    Delegates to :func:`secret_env` rather than :func:`live_env_str`. That is
+    the whole point: ``secret_env`` checks ``NCE_ADMIN_API_KEY_FILE`` first and
+    fails closed, and it re-reads on every call, so this stays as live as the
+    plain accessor was (``monkeypatch.setenv``/``delenv`` still behave).
+
+    Before this, the key was DECLARED with ``secret_env`` on the ``cfg`` class
+    but READ here through ``os.getenv``, so a Docker/K8s file-mounted secret
+    resolved to ``""`` on the live auth path -- fail-closed, but a silent
+    availability trap: tenant tools stop answering the moment you mount the
+    secret the way the docs tell you to.
+    """
+    return (secret_env("NCE_ADMIN_API_KEY", "") or "").strip()
 
 
 def live_mcp_api_key() -> str:
-    return live_env_str("NCE_MCP_API_KEY")
+    """The MCP API key, resolved LIVE and honouring the ``*_FILE`` mount.
+
+    See :func:`live_admin_api_key` -- same defect, same fix, one shared
+    resolution in :func:`secret_env` so the two cannot drift apart.
+    """
+    return (secret_env("NCE_MCP_API_KEY", "") or "").strip()
 
 
 def live_mcp_namespace_id() -> str:
