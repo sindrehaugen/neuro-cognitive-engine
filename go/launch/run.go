@@ -57,19 +57,33 @@ func Run(ctx context.Context, n UserNotifier, log *slog.Logger) error {
 		return err
 	}
 
-	h, backend, hwErr := hardware.DetectAndPersistBackendIfUnset(envPath)
+	h, backend, detected, hwErr := hardware.DetectAndPersistBackendIfUnset(envPath, string(mode))
 	if hwErr != nil && log != nil {
 		log.Warn("nce_backend_env", "err", hwErr)
 	}
-	env = UpsertEnv(env, "NCE_BACKEND", backend)
-	if log != nil {
+	// Same reason env.go does not persist it: on the host_sidecar path a set
+	// NCE_BACKEND beats NCE_COGNITIVE_BASE_URL on the Python side, so injecting it
+	// into the child environment would undo leaving it out of the .env.
+	if hardware.SuggestedTopology(h) != "host_sidecar" {
+		env = UpsertEnv(env, "NCE_BACKEND", backend)
+	}
+	if log != nil && !detected {
+		// The probe never ran, so every field of h is a zero value. Logging the
+		// snapshot here would report "false" for hardware that was never measured.
+		log.Info("hardware_detection_skipped",
+			"reason", "NCE_BACKEND already set",
+			"nce_backend", backend)
+	}
+	if log != nil && detected {
 		log.Info("hardware_snapshot",
 			"nce_backend", backend,
 			"cuda", h.CUDA,
 			"rocm", h.ROCm,
 			"intel_npu", h.IntelNPU,
 			"intel_xpu", h.IntelXPU,
-			"mps", h.MPS)
+			"mps", h.MPS,
+			"container_runtime", h.ContainerRuntime,
+			"accel_reachable", h.AccelReachable)
 	}
 
 	appRoot, err := AppRoot()

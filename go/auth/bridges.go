@@ -21,9 +21,9 @@ type BridgesFile struct {
 
 // CloudAzure holds Entra ID app registration metadata — not tokens.
 type CloudAzure struct {
-	TenantID     string   `json:"tenant_id"`
-	ClientID     string   `json:"client_id"`
-	Scopes       []string `json:"scopes"`
+	TenantID string   `json:"tenant_id"`
+	ClientID string   `json:"client_id"`
+	Scopes   []string `json:"scopes"`
 	// MsalCacheFile relative to NCE data dir unless absolute (e.g. msal_cache.bin).
 	MsalCacheFile string `json:"msal_cache_file,omitempty"`
 	// MirrorMSALToKeychain duplicates the opaque MSAL blob to the OS credential store when true.
