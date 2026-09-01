@@ -66,6 +66,22 @@ uncaught it would fall through ``@mcp_handler``'s generic ``Exception``
 branch and be mis-filed as ``MCP_INTERNAL_ERROR`` (-32603) — a normal
 "not enough stock" outcome is not a server bug.
 
+The six OTHER business refusals the Batch 138a cores raise —
+``InsufficientAvailableError`` (reserve), ``OverReleaseError`` (release),
+``RmaNotFoundError`` / ``RmaAlreadySettledError`` / ``RmaNotWeeeScopeError``
+(the RMA claim legs) and ``LedgerDivergenceError`` (dead-stock reconcile) —
+were ALSO bare ``Exception`` subclasses falling through to
+``MCP_INTERNAL_ERROR``. That is debt item **D38**, closed by mapping all six
+through ONE shared table, ``inventory/refusals.py``, to ``McpError(-32005)``
+with a machine-readable ``data.reason``. Each affected handler carries a
+single ``except BUSINESS_REFUSALS`` clause that delegates; none names an
+individual refusal class (D18 precedent).
+
+Note the deliberate asymmetry that remains: ``InsufficientStockError`` is
+still returned as a 200-shaped payload, while these six are raised as typed
+errors. Unifying them is an FE-visible breaking change to a shipped surface,
+so it needs the FE's sign-off and follows this wave rather than joining it.
+
 Registered in ``nce/tool_registry.py`` via
 ``_h(inventory_mcp_handlers, "handle_inventory_*")``.
 """
@@ -81,6 +97,7 @@ from nce.mcp_errors import mcp_handler
 from nce.vertical_modules.inventory.forecast import do_forecast_demand
 from nce.vertical_modules.inventory.goods_receipt import do_record_goods_receipt
 from nce.vertical_modules.inventory.reconcile import do_reconcile_dead_stock
+from nce.vertical_modules.inventory.refusals import BUSINESS_REFUSALS, mcp_refusal
 from nce.vertical_modules.inventory.replenishment import do_recommend_restock
 from nce.vertical_modules.inventory.reservation import do_release_stock, do_reserve_stock
 from nce.vertical_modules.inventory.rma import (
@@ -249,7 +266,10 @@ async def handle_inventory_reserve_stock(engine: NCEEngine, arguments: dict[str,
     Thin adapter — all logic lives in ``reservation.do_reserve_stock``.
     """
     require_namespace_id(arguments)
-    result = await do_reserve_stock(engine, dict(arguments))
+    try:
+        result = await do_reserve_stock(engine, dict(arguments))
+    except BUSINESS_REFUSALS as exc:
+        raise mcp_refusal(exc) from exc
     return json.dumps(result, default=str)
 
 
@@ -264,7 +284,10 @@ async def handle_inventory_release_stock(engine: NCEEngine, arguments: dict[str,
     Thin adapter — all logic lives in ``reservation.do_release_stock``.
     """
     require_namespace_id(arguments)
-    result = await do_release_stock(engine, dict(arguments))
+    try:
+        result = await do_release_stock(engine, dict(arguments))
+    except BUSINESS_REFUSALS as exc:
+        raise mcp_refusal(exc) from exc
     return json.dumps(result, default=str)
 
 
@@ -337,7 +360,10 @@ async def handle_inventory_reconcile_dead_stock(
     Thin adapter — all logic lives in ``reconcile.do_reconcile_dead_stock``.
     """
     require_namespace_id(arguments)
-    result = await do_reconcile_dead_stock(engine, dict(arguments))
+    try:
+        result = await do_reconcile_dead_stock(engine, dict(arguments))
+    except BUSINESS_REFUSALS as exc:
+        raise mcp_refusal(exc) from exc
     return json.dumps(result, default=str)
 
 
@@ -352,7 +378,10 @@ async def handle_inventory_restock_from_rma(engine: NCEEngine, arguments: dict[s
     Thin adapter — all logic lives in ``rma.do_restock_from_rma``.
     """
     require_namespace_id(arguments)
-    result = await do_restock_from_rma(engine, dict(arguments))
+    try:
+        result = await do_restock_from_rma(engine, dict(arguments))
+    except BUSINESS_REFUSALS as exc:
+        raise mcp_refusal(exc) from exc
     return json.dumps(result, default=str)
 
 
@@ -374,4 +403,6 @@ async def handle_inventory_dispose_rma_weee(engine: NCEEngine, arguments: dict[s
         result = await do_dispose_rma_weee(engine, dict(arguments))
     except InsufficientStockError as exc:
         return _insufficient_stock_error(exc)
+    except BUSINESS_REFUSALS as exc:
+        raise mcp_refusal(exc) from exc
     return json.dumps(result, default=str)
