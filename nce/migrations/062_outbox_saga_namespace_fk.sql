@@ -1,0 +1,144 @@
+-- 062_outbox_saga_namespace_fk.sql
+--
+-- Give outbox_events and saga_execution_log the foreign key to namespaces they
+-- never had. Debt item D1, extended by TD-1's new catalog ratchet.
+--
+-- Migration 055 made every tenant-scoped FK to namespaces ON DELETE CASCADE so
+-- a tenant could actually be deleted. It could not fix these two, because they
+-- have no FK to namespaces AT ALL -- a table with no constraint never enters
+-- the catalog query 055 and its ratchet operate on, so both were invisible to
+-- it. TD-1 closed that blind spot by checking the required half
+-- (EXPECTED_TENANT_RLS_TABLES) rather than only the allowlist half, and these
+-- two tables are what it found: 2 of 64 tenant-scoped RLS tables, each with a
+-- NOT NULL namespace_id that references nothing.
+--
+-- Why it matters beyond tidiness (D1's recorded downstream effect): an orphaned
+-- outbox row survives its tenant's deletion, and the next relay pass that tries
+-- to dead-letter it raises ForeignKeyViolationError -- because
+-- dead_letter_queue.namespace_id IS ON DELETE CASCADE, so the namespace it
+-- needs is already gone -- which ABORTS THE WHOLE PASS. One deleted tenant can
+-- therefore stall event delivery for every other tenant.
+--
+-- ON DELETE semantics -- decided, not defaulted:
+--
+--   outbox_events      -- CASCADE. Undelivered events belong to a tenant that
+--       no longer exists; relaying them onward after deletion is useless at
+--       best and a data-protection problem at worst. RESTRICT would make
+--       tenant deletion fail whenever any unpublished row exists, which is
+--       precisely the pre-055 defect ("nothing could delete a tenant") being
+--       reintroduced on a new table. The sibling table dead_letter_queue is
+--       already ON DELETE CASCADE, so CASCADE is also the consistent choice.
+--
+--   saga_execution_log -- CASCADE. This is operational recovery state, not an
+--       audit trail: payload is documented as "enough to re-drive rollback",
+--       the row carries a mutable state machine (started / pg_committed /
+--       completed / rolled_back / recovery_needed) and an updated_at, and the
+--       partial index targets the in-flight states. So audit_log's retention
+--       argument for staying NO ACTION does not transfer. A recovery_needed
+--       saga whose namespace is gone can never complete; leaving it orphaned
+--       means the recovery sweeper repeatedly picks up work that cannot
+--       succeed -- the same defect shape as the outbox relay above.
+--
+-- Both tables therefore stay OUT of EXPECTED_NON_CASCADE, whose assertion in
+-- tests/test_namespace_fk_cascade.py they now satisfy: every FK to namespaces
+-- must be ON DELETE CASCADE unless it is a documented exclusion.
+--
+-- NOTE for this repo: TD-1's REQUIRED-half check -- the
+-- TENANT_TABLES_WITHOUT_NAMESPACE_FK allowlist that found these two tables in
+-- the first place -- has NOT been ported here yet. So this repo has only the
+-- allowlist half of the ratchet, which is blind to a table that has NO FK at
+-- all: such a table never enters the catalog query, so the file stays green
+-- while the gap exists. That is exactly how these two survived migration 055.
+-- Until the required half lands, adding a tenant-scoped RLS table without a
+-- namespaces FK is UNGATED here. On the private repo this migration also
+-- removed both names from that allowlist in the same commit.
+--
+-- PRE-EXISTING ORPHANS -- this migration DELETES DATA, deliberately.
+--
+-- ADD CONSTRAINT validates existing rows, so it fails outright while orphans
+-- exist. On the shared dev database on 2026-08-31 this migration purged:
+--
+--     outbox_events        21 orphaned row(s)
+--     saga_execution_log   22 orphaned row(s)
+--
+-- Do NOT read those as production estimates. An earlier count on the same
+-- database read 342 orphaned outbox rows out of 2852 total, but it was taken
+-- while the test suite was running: most of that was transient test data, and
+-- outbox_events settled at 1 row once the run finished. The shared dev
+-- database is not a population sample -- re-count on the target before
+-- applying this anywhere that matters.
+--
+-- Those rows are purged below. An orphan is unreachable and unprocessable by
+-- construction: FORCE ROW LEVEL SECURITY plus a tenant policy means no tenant
+-- session can ever select it, and per D1 the relay's attempt to dead-letter it
+-- is what aborts delivery for everyone. Keeping them has no upside and one
+-- large downside. The alternative -- ADD CONSTRAINT ... NOT VALID -- would
+-- leave the D1 defect live indefinitely behind a constraint that looks present,
+-- which is worse than either fixing or not fixing it.
+--
+-- The purge emits its row counts as NOTICEs. Read them: on production they are
+-- the record of what this migration destroyed, and they should be reviewed
+-- before this is applied there.
+--
+-- Idempotent: the purge is a no-op once no orphans remain, and each constraint
+-- and index is created only when absent.
+
+DO $$
+DECLARE
+    purged_outbox BIGINT;
+    purged_saga   BIGINT;
+BEGIN
+    ----------------------------------------------------------------------
+    -- 1. Purge pre-existing orphans (see header -- this deletes data).
+    ----------------------------------------------------------------------
+    DELETE FROM outbox_events x
+     WHERE NOT EXISTS (SELECT 1 FROM namespaces n WHERE n.id = x.namespace_id);
+    GET DIAGNOSTICS purged_outbox = ROW_COUNT;
+
+    DELETE FROM saga_execution_log x
+     WHERE NOT EXISTS (SELECT 1 FROM namespaces n WHERE n.id = x.namespace_id);
+    GET DIAGNOSTICS purged_saga = ROW_COUNT;
+
+    RAISE NOTICE '062: purged % orphaned outbox_events row(s) and % orphaned saga_execution_log row(s) before adding the FKs',
+                 purged_outbox, purged_saga;
+
+    ----------------------------------------------------------------------
+    -- 2. Supporting indexes. 59 of the 62 cascading tables already carry a
+    --    leading namespace_id index; without one, every parent DELETE
+    --    sequentially scans the child to find its cascade targets.
+    ----------------------------------------------------------------------
+    CREATE INDEX IF NOT EXISTS idx_outbox_events_namespace_id
+        ON outbox_events (namespace_id);
+    CREATE INDEX IF NOT EXISTS idx_saga_execution_log_namespace_id
+        ON saga_execution_log (namespace_id);
+
+    ----------------------------------------------------------------------
+    -- 3. The foreign keys.
+    ----------------------------------------------------------------------
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conname = 'outbox_events_namespace_id_fkey'
+           AND conrelid = 'outbox_events'::regclass
+    ) THEN
+        ALTER TABLE outbox_events
+            ADD CONSTRAINT outbox_events_namespace_id_fkey
+            FOREIGN KEY (namespace_id) REFERENCES namespaces(id) ON DELETE CASCADE;
+        RAISE NOTICE '062: added outbox_events_namespace_id_fkey (ON DELETE CASCADE)';
+    ELSE
+        RAISE NOTICE '062: outbox_events_namespace_id_fkey already present';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conname = 'saga_execution_log_namespace_id_fkey'
+           AND conrelid = 'saga_execution_log'::regclass
+    ) THEN
+        ALTER TABLE saga_execution_log
+            ADD CONSTRAINT saga_execution_log_namespace_id_fkey
+            FOREIGN KEY (namespace_id) REFERENCES namespaces(id) ON DELETE CASCADE;
+        RAISE NOTICE '062: added saga_execution_log_namespace_id_fkey (ON DELETE CASCADE)';
+    ELSE
+        RAISE NOTICE '062: saga_execution_log_namespace_id_fkey already present';
+    END IF;
+END
+$$;
