@@ -9,6 +9,33 @@ Subscribes to Procurement (``PO_LINE.status_changed``) and Warehouse
 (``GOODS_RECEIPT.created``) graph events via the C4 outbox bus and fires an RQ
 task that calls W6's ``do_sync_bom_tasks``.
 
+🔴 **DORMANT BY DECISION (Sindre, 2026-09-01) — not broken, and not a TODO.**
+Nothing in this repository emits either selector, so these handlers are
+registered and never invoked. That is now an accepted state rather than a
+defect awaiting a wave:
+
+* The only ops emitted anywhere in ``nce/`` are ``upserted`` (27 sites),
+  ``deleted``, ``edge_realized_as``, ``expiry`` and ``retired``.
+  ``status_changed`` is emitted **nowhere**.
+* Procurement's node type is ``PO`` (``procurement/graph.py``), **not**
+  ``PO_LINE``, and it emits ``op="upserted"``. There is no ``PO_LINE`` node
+  type, no PO status column and no PO status-write path.
+* Warehouse emits ``GOODS_RECEIPT.upserted``, a different selector with a
+  different payload contract — ``inventory/goods_receipt.py`` says so and says
+  not to "fix" it by re-labelling.
+
+Waking it up is a **feature** (Procurement needs a ``PO_LINE`` node with a
+status model), not wiring. Was ML.md's **M0.W20c**; parked by that decision.
+**Do not "repair" this module by inventing a write site or by re-pointing the
+selectors at ``*.upserted``** — the base four-key payload carries no
+``project_id``, so every handler below would take its ``log.warning; return``
+branch, which the relay reads as SUCCESS. That is a silent permanent drop, and
+it is strictly worse than dormancy.
+
+The subscribers ARE registered at both relay-running processes as of M0.W20d,
+deliberately: an unregistered ``event_type`` fast-fails to the DLQ, so
+registration is what stops the first real producer manufacturing DLQ rows.
+
 Autonomy gating (Contract B §9.5)
 ----------------------------------
 The BOM sync is a *mutating* act.  Autonomy is **tier-gated**:
@@ -620,8 +647,16 @@ def _extract_payload(event: dict[str, Any]) -> dict[str, Any]:
 def _enqueue_rq_task(fn: Any, **kwargs: Any) -> None:
     """Enqueue *fn* on the default RQ queue.
 
-    Gracefully degrades when RQ / Redis is unavailable — logs the error and
-    returns (the relay's at-least-once delivery will retry via the outbox).
+    Gracefully degrades when RQ / Redis is unavailable: logs the error and
+    returns.
+
+    🔴 It does NOT get retried. This used to claim "the relay's at-least-once
+    delivery will retry via the outbox", which is false: since M0.W20d the
+    enqueue runs as a POST-COMMIT action, so by the time it can fail the event
+    is already marked published and the outbox will never re-deliver it. It was
+    misleading before that too — this function swallows the exception, so the
+    handler returned success and the dedup row committed either way. A dropped
+    enqueue is logged and lost; treat the log line as the only signal.
     """
     try:
         from rq import Queue  # type: ignore[import-untyped]

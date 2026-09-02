@@ -175,7 +175,10 @@ Because auto-tasking is a mutating act, `automation.py` gates it by the project'
 
 If a publisher omits `project_value` entirely, the resolver **fails closed to Tier 4** (confirm required) rather than defaulting to `0.0`/Tier 1 — a deliberate fix for a prior bug. A negative value is rejected outright. The idempotency key is `bom_sync:{namespace_id}:{bom_line_label}:{status}`.
 
-This whole path (subscribing to Procurement `PO_LINE.status_changed` and Warehouse `GOODS_RECEIPT.created`) is fully implemented and unit-tested, but `register_automation_subscribers()` is not observably called from any startup/bootstrap module in this snapshot — an operator wiring this up should confirm it is called once at worker start alongside `register_engine()` and `register_redis_client()`.
+This whole path (subscribing to Procurement `PO_LINE.status_changed` and Warehouse `GOODS_RECEIPT.created`) is fully implemented and unit-tested, and **as of M0.W20d the subscribers and both engine registries ARE called** at startup in both relay-running processes (`nce/mcp_stdio_main.py` and `nce/cron.py`). The earlier note here — that `register_automation_subscribers()` was not observably called — is no longer true.
+
+> [!NOTE]
+> **The automation is nevertheless DORMANT BY DECISION (2026-09-01), and that is not a defect.** Nothing in the repository emits either selector: `status_changed` is emitted nowhere, Procurement's node type is `PO` rather than `PO_LINE` and it emits `upserted`, and Warehouse emits `GOODS_RECEIPT.upserted` — a different selector with a different payload contract. So these handlers are registered and never invoked. Waking the path up requires Procurement to grow a `PO_LINE` node with a status model, which is a feature rather than wiring. Registration is still correct and deliberate: an unregistered `event_type` fast-fails to the dead-letter queue, so being registered is what stops the first real producer manufacturing DLQ rows.
 
 ---
 

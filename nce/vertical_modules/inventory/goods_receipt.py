@@ -202,12 +202,20 @@ Nothing below is a silent omission; each is named so a reader never has to
 wonder whether it was forgotten:
 
   * **The C4 ``GOODS_RECEIPT.created`` publish** is **Batch 132c**'s, and
-    132c is currently BLOCKED (``register_automation_subscribers()`` has
-    zero production callers on main, so a publish today would look green and
-    deliver nothing). This module never calls ``nce.events.bus.publish``,
-    and never re-labels the ``GOODS_RECEIPT.upserted`` event this wave emits
-    into a ``"created"`` op — the two are different selectors with
-    different payload contracts.
+    132c is **PARKED** as of 2026-09-01. 🔴 **Two things this used to say are
+    no longer true.** It said ``register_automation_subscribers()`` has "zero
+    production callers on main" — it has callers in both relay-running
+    processes since **M0.W20d**. And it said 132c is BLOCKED, implying it is
+    waiting on wiring; it is parked, because Sindre accepted Module 7's
+    reactive automation as **dormant** (W20c option (c)). Nothing emits
+    ``GOODS_RECEIPT.created``, and giving it a producer needs a ``PO_LINE``
+    status model in Procurement — a feature, not wiring. This module still
+    never calls ``nce.events.bus.publish``, and still never re-labels the
+    ``GOODS_RECEIPT.upserted`` event this wave emits into a ``"created"`` op —
+    the two are different selectors with different payload contracts, and
+    re-labelling them would drop every event silently (the base payload
+    carries no ``project_id``, so Module 7's handler returns early and the
+    relay reads that as success).
   * **``GOODS_RECEIPT.upserted`` reaching the DLQ, not a subscriber** — a
     REPO-WIDE, pre-existing condition, not this wave's bug. No handler is
     registered anywhere in this repo for that event_type (the only
