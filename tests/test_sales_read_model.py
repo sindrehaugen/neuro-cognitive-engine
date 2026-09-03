@@ -19,6 +19,7 @@ import asyncpg  # type: ignore[import-untyped]
 import pytest
 
 from nce.auth import set_namespace_context
+from nce.config import cfg
 from nce.vertical_modules.sales.read_model import (
     classify_it_av,
     do_agreement_detail,
@@ -43,13 +44,13 @@ from nce.vertical_modules.sales.read_model import (
 
 def test_classify_it_av() -> None:
     # Test via subject display formatted value
-    sj1 = {"example_subject@OData.Community.Display.V1.FormattedValue": "av; smartbygg"}
+    sj1 = {f"{_TEST_PREFIX}_subject@OData.Community.Display.V1.FormattedValue": "av; smartbygg"}
     assert classify_it_av(sj1) == "av"
 
-    sj2 = {"example_subject@OData.Community.Display.V1.FormattedValue": "it"}
+    sj2 = {f"{_TEST_PREFIX}_subject@OData.Community.Display.V1.FormattedValue": "it"}
     assert classify_it_av(sj2) == "it"
 
-    sj3 = {"example_subject@OData.Community.Display.V1.FormattedValue": "av; it"}
+    sj3 = {f"{_TEST_PREFIX}_subject@OData.Community.Display.V1.FormattedValue": "av; it"}
     assert classify_it_av(sj3) == "begge"
 
     # Test via owner title
@@ -62,7 +63,7 @@ def test_classify_it_av() -> None:
     sj5 = {"description": "Azure migration licenses and firewall installation"}
     assert classify_it_av(sj5) == "it"
 
-    sj6 = {"example_customerneeds": "Microsoft 365 setup and neat meeting screen"}
+    sj6 = {f"{_TEST_PREFIX}_customerneeds": "Microsoft 365 setup and neat meeting screen"}
     assert classify_it_av(sj6) == "begge"
 
     sj7 = {"name": "Custom setup"}
@@ -159,7 +160,11 @@ async def test_sales_read_model_crud_and_rls(
                 "accounts",
                 acc_id_1,
                 "Acme Corp",
-                {"accountid": acc_id_1, "address1_city": "Oslo", "example_industry": "NACE (62)"},
+                {
+                    "accountid": acc_id_1,
+                    "address1_city": "Oslo",
+                    f"{_TEST_PREFIX}_industry": "NACE (62)",
+                },
             )
             await _insert_sales_record(
                 conn,
@@ -170,7 +175,7 @@ async def test_sales_read_model_crud_and_rls(
                 {
                     "accountid": acc_id_2,
                     "address1_city": "Trondheim",
-                    "example_industry": "NACE (55)",
+                    f"{_TEST_PREFIX}_industry": "NACE (55)",
                 },
             )
 
@@ -185,7 +190,7 @@ async def test_sales_read_model_crud_and_rls(
                 {
                     "accountid": acc_id_other,
                     "address1_city": "Bergen",
-                    "example_industry": "NACE (85)",
+                    f"{_TEST_PREFIX}_industry": "NACE (85)",
                 },
             )
 
@@ -627,7 +632,7 @@ async def test_sales_stats_trend_and_classification(
                     "opportunityid": opp_av_id,
                     "statecode": "0",
                     "estimatedvalue": "200000",
-                    "example_customerneeds": "Videobar neatly installed in room",
+                    f"{_TEST_PREFIX}_customerneeds": "Videobar neatly installed in room",
                     "_ownerid_value": user_guid,
                 },
             )
@@ -720,3 +725,14 @@ async def test_sales_agreements_and_quotes(
         engine, {"namespace_id": str(namespace_id), "quoteid": quote_id}
     )
     assert quote_detail["name"] == "Quote for AV system design"
+
+
+# ── D34a: the D365 publisher prefix is configuration, not a source literal ──
+# Deliberately NOT the old hardcoded value, so these fixtures fail if the seam
+# is reverted to a literal (§6.4 positive control).
+_TEST_PREFIX = "zzq"
+
+
+@pytest.fixture(autouse=True)
+def _d34a_publisher_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cfg, "NCE_D365_PUBLISHER_PREFIX", _TEST_PREFIX)

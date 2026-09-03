@@ -21,6 +21,7 @@ from nce.source_mode.divergence import record_divergence
 from nce.vertical_modules.dynamics365.auth import DataverseTokenManager
 from nce.vertical_modules.dynamics365.client import DataverseClient
 from nce.vertical_modules.sales import read_model
+from nce.vertical_modules.sales.source_adapters.d365 import prefixed_field
 
 log = logging.getLogger("nce.vertical_modules.sales.source_mode")
 
@@ -122,7 +123,13 @@ async def do_list_customers(engine: NCEEngine, params: dict[str, Any]) -> dict[s
                 records = []
                 async for rec in client.paginate(
                     "accounts",
-                    select=["accountid", "name", "address1_city", "example_industry", "modifiedon"],
+                    select=[
+                        "accountid",
+                        "name",
+                        "address1_city",
+                        prefixed_field("industry"),
+                        "modifiedon",
+                    ],
                     filter_expr=filter_expr,
                     page_size=size,
                 ):

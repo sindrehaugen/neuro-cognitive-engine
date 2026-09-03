@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -19,6 +20,51 @@ from nce.config import cfg
 from nce.vertical_modules.dynamics365.client import CURSOR_OVERLAP_SECONDS, DataverseClient
 
 log = logging.getLogger("nce.vertical_modules.sales.source_adapters.d365")
+
+
+# ── D365 publisher-prefix seam (D34a) ────────────────────────────────────────
+# Dataverse custom fields are named <publisher prefix>_<field>, and lookups as
+# _<publisher prefix>_<field>_value. The prefix differs per D365 organisation, so
+# it is configuration. It is also interpolated into SQL and OData query text, so it
+# is validated here at the boundary and fails CLOSED: never sanitised, never
+# defaulted, never silently repaired (a repaired prefix queries fields that do not
+# exist and returns no rows, which is the defect this seam exists to remove).
+_PUBLISHER_PREFIX_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+
+
+def _validate_prefix(raw: str) -> str:
+    """Return ``raw`` if it is a usable publisher prefix, else raise ``ValueError``."""
+    if not raw:
+        raise ValueError(
+            "NCE_D365_PUBLISHER_PREFIX is not set. The Dynamics 365 sales read path needs "
+            "your Dataverse publisher prefix to build custom field names; refusing to "
+            "query with an empty prefix (that would silently return no rows)."
+        )
+    if not _PUBLISHER_PREFIX_RE.fullmatch(raw):
+        raise ValueError(
+            f"NCE_D365_PUBLISHER_PREFIX is invalid: {raw!r}. It must match "
+            f"{_PUBLISHER_PREFIX_RE.pattern}. The prefix is interpolated into SQL and "
+            "OData query text, so it is rejected rather than sanitised."
+        )
+    return raw
+
+
+def publisher_prefix() -> str:
+    """The validated configured D365 publisher prefix. Raises when unset/malformed."""
+    return _validate_prefix(cfg.NCE_D365_PUBLISHER_PREFIX)
+
+
+def prefixed_field(suffix: str, *, lookup: bool = False, prefix: str | None = None) -> str:
+    """Build a publisher-prefixed Dataverse field name.
+
+    ``prefixed_field("industry")`` -> ``"<prefix>_industry"``
+    ``prefixed_field("opportunityid_value", lookup=True)`` -> ``"_<prefix>_opportunityid_value"``
+
+    ``lookup`` covers the second shape, where the prefix is INFIXED after a leading
+    underscore rather than prepended.
+    """
+    p = publisher_prefix() if prefix is None else _validate_prefix(prefix)
+    return f"_{p}_{suffix}" if lookup else f"{p}_{suffix}"
 
 
 def parse_datetime(val: Any) -> datetime | None:
@@ -72,71 +118,81 @@ _ENTITY_NAME_FIELDS = {
     "functionallocations": "msdyn_name",
 }
 
-_SELECT_FIELDS = {
-    "accounts": ["accountid", "name", "address1_city", "example_industry", "modifiedon"],
-    "contacts": ["contactid", "fullname", "_parentcustomerid_value", "modifiedon"],
-    "opportunities": [
-        "opportunityid",
-        "name",
-        "statecode",
-        "estimatedvalue",
-        "estimatedvalue_base",
-        "salesstagecode",
-        "stepname",
-        "estimatedclosedate",
-        "actualclosedate",
-        "createdon",
-        "_ownerid_value",
-        "_ownerid_value@OData.Community.Display.V1.FormattedValue",
-        "_customerid_value",
-        "_customerid_value@OData.Community.Display.V1.FormattedValue",
-        "example_estrecurringmonthly",
-        "example_estrecurringmonthly_base",
-        "example_customerneeds",
-        "example_jobdescription",
-        "description",
-        "example_subject@OData.Community.Display.V1.FormattedValue",
-        "modifiedon",
-    ],
-    "quotes": ["quoteid", "name", "statecode", "modifiedon"],
-    "agreements": ["msdyn_agreementid", "msdyn_name", "modifiedon"],
-    "systemusers": ["systemuserid", "fullname", "isdisabled", "title", "modifiedon"],
-    "incidents": [
-        "incidentid",
-        "statecode",
-        "title",
-        "prioritycode",
-        "ticketnumber",
-        "createdon",
-        "_ownerid_value",
-        "_customerid_value",
-        "_example_opportunityid_value",
-        "modifiedon",
-    ],
-    "appointments": [
-        "activityid",
-        "statecode",
-        "scheduledstart",
-        "_ownerid_value",
-        "subject",
-        "modifiedon",
-    ],
-    "customerassets": [
-        "msdyn_customerassetid",
-        "msdyn_name",
-        "_msdyn_account_value",
-        "_msdyn_functionallocation_value",
-        "modifiedon",
-    ],
-    "functionallocations": [
-        "msdyn_functionallocationid",
-        "msdyn_name",
-        "msdyn_address1",
-        "msdyn_city",
-        "_msdyn_parentfunctionallocation_value@OData.Community.Display.V1.FormattedValue",
-        "modifiedon",
-    ],
-}
+
+def _select_fields() -> dict[str, list[str]]:
+    """Per-entity OData ``$select`` lists, with publisher-prefixed fields resolved."""
+    p = publisher_prefix()
+    return {
+        "accounts": [
+            "accountid",
+            "name",
+            "address1_city",
+            prefixed_field("industry", prefix=p),
+            "modifiedon",
+        ],
+        "contacts": ["contactid", "fullname", "_parentcustomerid_value", "modifiedon"],
+        "opportunities": [
+            "opportunityid",
+            "name",
+            "statecode",
+            "estimatedvalue",
+            "estimatedvalue_base",
+            "salesstagecode",
+            "stepname",
+            "estimatedclosedate",
+            "actualclosedate",
+            "createdon",
+            "_ownerid_value",
+            "_ownerid_value@OData.Community.Display.V1.FormattedValue",
+            "_customerid_value",
+            "_customerid_value@OData.Community.Display.V1.FormattedValue",
+            prefixed_field("estrecurringmonthly", prefix=p),
+            prefixed_field("estrecurringmonthly_base", prefix=p),
+            prefixed_field("customerneeds", prefix=p),
+            prefixed_field("jobdescription", prefix=p),
+            "description",
+            prefixed_field("subject@OData.Community.Display.V1.FormattedValue", prefix=p),
+            "modifiedon",
+        ],
+        "quotes": ["quoteid", "name", "statecode", "modifiedon"],
+        "agreements": ["msdyn_agreementid", "msdyn_name", "modifiedon"],
+        "systemusers": ["systemuserid", "fullname", "isdisabled", "title", "modifiedon"],
+        "incidents": [
+            "incidentid",
+            "statecode",
+            "title",
+            "prioritycode",
+            "ticketnumber",
+            "createdon",
+            "_ownerid_value",
+            "_customerid_value",
+            prefixed_field("opportunityid_value", lookup=True, prefix=p),
+            "modifiedon",
+        ],
+        "appointments": [
+            "activityid",
+            "statecode",
+            "scheduledstart",
+            "_ownerid_value",
+            "subject",
+            "modifiedon",
+        ],
+        "customerassets": [
+            "msdyn_customerassetid",
+            "msdyn_name",
+            "_msdyn_account_value",
+            "_msdyn_functionallocation_value",
+            "modifiedon",
+        ],
+        "functionallocations": [
+            "msdyn_functionallocationid",
+            "msdyn_name",
+            "msdyn_address1",
+            "msdyn_city",
+            "_msdyn_parentfunctionallocation_value@OData.Community.Display.V1.FormattedValue",
+            "modifiedon",
+        ],
+    }
 
 
 class SalesD365SyncEngine:
@@ -251,7 +307,7 @@ class SalesD365SyncEngine:
         entity_set = _ENTITY_SETS[entity_name]
         pk_field = _ENTITY_PK_FIELDS[entity_name]
         name_field = _ENTITY_NAME_FIELDS[entity_name]
-        select = _SELECT_FIELDS[entity_name]
+        select = _select_fields()[entity_name]
 
         watermark = await self._load_watermark(entity_name)
         upserted_count = 0

@@ -15,12 +15,14 @@ import logging
 import re
 import unicodedata
 from datetime import date, datetime, timedelta
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import asyncpg  # type: ignore[import-untyped]
 
 from nce.db_utils import scoped_pg_session
+from nce.vertical_modules.sales.source_adapters.d365 import prefixed_field, publisher_prefix
 
 if TYPE_CHECKING:
     from nce.orchestrator import NCEEngine
@@ -38,21 +40,43 @@ _AV_RE = re.compile(
     r"møtesenter|motesenter|trådløs deling|tradlos deling|bordmic|\bdante\b|kontrollrom",
     re.IGNORECASE,
 )
-_IT_RE = re.compile(
-    r"microsoft 365|example 365|\bm365\b|\bo365\b|azure|brannmur|firewall|\bswitch\b|"
+# The IT pattern matches the operator's own branded "<prefix> 365" offering, so it is
+# a template resolved against the validated publisher prefix at classification time
+# rather than a module constant carrying one tenant's brand name (D34a).
+_IT_RE_SRC = (
+    r"microsoft 365|{p} 365|\bm365\b|\bo365\b|azure|brannmur|firewall|\bswitch\b|"
     r"\bserver\b|migrering|it-drift|driftsavtale|nettverk|\bvpn\b|\bwifi\b|lisens|"
     r"\bsccm\b|intune|endpoint|backup|sharepoint|\bnce\b|"
     r"microsoft|windows|office 365|\bpc\b|pc-park|scanner|skanner|docking|laptop|"
     r"asset management|datasenter|tilgangskontroll|licens|\bdator\b|datorer|datamaskin|"
-    r"cisco|meraki|\bdaas\b|fortinet|\bnis ?2\b|aksesspunkt",
-    re.IGNORECASE,
+    r"cisco|meraki|\bdaas\b|fortinet|\bnis ?2\b|aksesspunkt"
 )
-_TEXT_FIELDS = ("name", "example_customerneeds", "example_jobdescription", "description")
-_SUBJECT_FV = "example_subject@OData.Community.Display.V1.FormattedValue"
+
+
+@lru_cache(maxsize=8)
+def _it_re(prefix: str) -> re.Pattern[str]:
+    """IT-classification regex resolved for a validated publisher ``prefix``."""
+    return re.compile(_IT_RE_SRC.format(p=prefix), re.IGNORECASE)
+
+
+def _text_fields(prefix: str) -> tuple[str, ...]:
+    """Opportunity free-text fields scanned for IT/AV classification."""
+    return (
+        "name",
+        prefixed_field("customerneeds", prefix=prefix),
+        prefixed_field("jobdescription", prefix=prefix),
+        "description",
+    )
+
+
+def _subject_fv(prefix: str) -> str:
+    """The prefixed ``subject`` lookup's OData formatted-value field name."""
+    return prefixed_field("subject@OData.Community.Display.V1.FormattedValue", prefix=prefix)
 
 
 def classify_it_av(sj: dict[str, Any], owner_title: str | None = None) -> str:
-    subj = sj.get(_SUBJECT_FV)
+    prefix = publisher_prefix()
+    subj = sj.get(_subject_fv(prefix))
     if subj:
         parts = {p.strip().lower() for p in str(subj).split(";")}
         av_subj = "av" in parts or "smartbygg" in parts
@@ -65,9 +89,9 @@ def classify_it_av(sj: dict[str, Any], owner_title: str | None = None) -> str:
             return "it"
     if owner_title and "lead it" in owner_title.lower():
         return "it"
-    text = " ".join(str(sj.get(k) or "") for k in _TEXT_FIELDS)
+    text = " ".join(str(sj.get(k) or "") for k in _text_fields(prefix))
     has_av = bool(_AV_RE.search(text))
-    has_it = bool(_IT_RE.search(text))
+    has_it = bool(_it_re(prefix).search(text))
     name = str(sj.get("name") or "")
     if re.search(r"\bAV\b", name):
         has_av = True
@@ -174,8 +198,21 @@ _VAL = r"coalesce(nullif(source_json->>'estimatedvalue',''), nullif(source_json-
 _VAL_NUM = rf"(CASE WHEN {_VAL} ~ '^-?[0-9]+(\.[0-9]+)?$' THEN ({_VAL})::numeric END)"
 _STAGE = r"coalesce(nullif(source_json->>'stepname',''), nullif(source_json->>'salesstagecode',''), 'Uten fase')"
 _ACCT_NAME = r"source_json->>'_customerid_value@OData.Community.Display.V1.FormattedValue'"
-_REC = r"coalesce(nullif(source_json->>'example_estrecurringmonthly',''), nullif(source_json->>'example_estrecurringmonthly_base',''))"
-_REC_NUM = rf"(CASE WHEN {_REC} ~ '^-?[0-9]+(\.[0-9]+)?$' THEN ({_REC})::numeric END)"
+
+
+def _rec_sql(prefix: str) -> str:
+    """SQL expression for the prefixed recurring-monthly amount."""
+    rec = prefixed_field("estrecurringmonthly", prefix=prefix)
+    base = prefixed_field("estrecurringmonthly_base", prefix=prefix)
+    return f"coalesce(nullif(source_json->>'{rec}',''), nullif(source_json->>'{base}',''))"
+
+
+def _rec_num_sql(prefix: str) -> str:
+    """Numeric-cast form of :func:`_rec_sql`."""
+    rec = _rec_sql(prefix)
+    return rf"(CASE WHEN {rec} ~ '^-?[0-9]+(\.[0-9]+)?$' THEN ({rec})::numeric END)"
+
+
 _OWNER_FV = "source_json->>'_ownerid_value@OData.Community.Display.V1.FormattedValue'"
 
 
@@ -632,12 +669,14 @@ async def manager_dashboard_helper(
     iso_today = d0.isoformat()
     warnings: list[str] = []
 
+    p = publisher_prefix()
+
     async def _pipe():
         return await conn.fetch(
             f"""SELECT source_json->>'_ownerid_value' AS owner,
                        max({_OWNER_FV}) AS name,
                        coalesce(sum({_VAL_NUM}),0) AS project,
-                       coalesce(sum({_REC_NUM}),0) AS recurring,
+                       coalesce(sum({_rec_num_sql(p)}),0) AS recurring,
                        count(*) AS open_count
                 FROM sales_read_model
                 WHERE namespace_id = $1 AND entity='opportunities' AND is_deleted=false
@@ -1030,11 +1069,11 @@ async def manager_dashboard_helper(
         owner_arr3 = list(sales_owners)
         try:
             inc_rows = await conn.fetch(
-                """SELECT DISTINCT lower(source_json->>'_example_opportunityid_value') AS oid
+                f"""SELECT DISTINCT lower(source_json->>'_{p}_opportunityid_value') AS oid
                     FROM sales_read_model
                     WHERE namespace_id = $1 AND entity='incidents' AND is_deleted=false
                       AND source_json->>'statecode'='0'
-                      AND nullif(source_json->>'_example_opportunityid_value','') IS NOT NULL""",
+                      AND nullif(source_json->>'_{p}_opportunityid_value','') IS NOT NULL""",
                 ns_str,
             )
             blocker_oids = [r["oid"] for r in inc_rows if r["oid"]]
@@ -1088,6 +1127,7 @@ async def stats_dashboard_helper(
     key, start, end = _period_range(period, d0, offset)
     warnings: list[str] = []
 
+    p = publisher_prefix()
     try:
         su_rows = await conn.fetch(
             "SELECT source_json->>'systemuserid' AS guid, source_json->>'title' AS title "
@@ -1095,7 +1135,7 @@ async def stats_dashboard_helper(
             ns_str,
         )
         acc_rows = await conn.fetch(
-            "SELECT source_json->>'accountid' AS aid, source_json->>'example_industry' AS ind, name "
+            f"SELECT source_json->>'accountid' AS aid, source_json->>'{p}_industry' AS ind, name "
             "FROM sales_read_model WHERE namespace_id = $1 AND entity='accounts' AND is_deleted=false",
             ns_str,
         )
@@ -1115,14 +1155,14 @@ async def stats_dashboard_helper(
 
     try:
         rows = await conn.fetch(
-            f"""SELECT source_json->>'statecode' AS st, {_VAL_NUM} AS val, {_REC_NUM} AS rec,
+            f"""SELECT source_json->>'statecode' AS st, {_VAL_NUM} AS val, {_rec_num_sql(p)} AS rec,
                        source_json->>'_ownerid_value' AS owner,
                        source_json->>'_customerid_value' AS cust, {_ACCT_NAME} AS cust_name,
                        source_json->>'name' AS nm,
-                       source_json->>'example_customerneeds' AS needs,
-                       source_json->>'example_jobdescription' AS jobdesc,
+                       source_json->>'{p}_customerneeds' AS needs,
+                       source_json->>'{p}_jobdescription' AS jobdesc,
                        source_json->>'description' AS descr,
-                       source_json->>'example_subject@OData.Community.Display.V1.FormattedValue' AS subj
+                       source_json->>'{p}_subject@OData.Community.Display.V1.FormattedValue' AS subj
                 FROM sales_read_model
                 WHERE namespace_id = $1 AND entity='opportunities' AND is_deleted=false
                   AND source_json->>'statecode' IN ('0','1')""",
@@ -1135,10 +1175,10 @@ async def stats_dashboard_helper(
     for r in rows:
         sj = {
             "name": r["nm"],
-            "example_customerneeds": r["needs"],
-            "example_jobdescription": r["jobdesc"],
+            prefixed_field("customerneeds", prefix=p): r["needs"],
+            prefixed_field("jobdescription", prefix=p): r["jobdesc"],
             "description": r["descr"],
-            "example_subject@OData.Community.Display.V1.FormattedValue": r["subj"],
+            _subject_fv(p): r["subj"],
         }
         itav = classify_it_av(sj, owner_title.get(r["owner"]))
         ind, aname = acc_map.get(r["cust"], (None, None))
