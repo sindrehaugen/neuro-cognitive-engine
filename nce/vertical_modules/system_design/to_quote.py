@@ -22,6 +22,11 @@ Sales owns the ``QUOTE`` node.  This engine:
     a QUOTE label in an edge is safe; upsert-QUOTE-into-kg_nodes is NOT).
   - After freeze the design loses write authority over the frozen lines
     (Correction #3 — freeze is the hand-off point to Sales).
+  - Authors the ``BOM_LINE`` CONTENT rows for the frozen design lines via
+    ``nce/bom_lines.py`` (Batch 132e).  BOM_LINE is JOINTLY owned and split
+    per transition: this engine owns only ``content:*:design``, every other
+    transition is ``assert_owner``-denied, and provenance is per LINE — a
+    mixed-origin quote is normal.
 
 A2A seam
 --------
@@ -47,9 +52,11 @@ Design invariants (uncle-bob-craft)
 from __future__ import annotations
 
 import logging
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+from nce.bom_lines import CreateFlow, create_bom_line
 from nce.db_utils import scoped_pg_session
 from nce.vertical_modules.system_design.graph import (
     _design_label,
@@ -67,6 +74,30 @@ _QUOTE_LABEL_PREFIX: str = "QUOTE:"
 
 # Confidence for the design→quote freeze edge.
 _BECOMES_CONFIDENCE: float = 0.95
+
+# BOM_LINE write contract (Batch 132e) — origination path 2 of 5.
+# ``nce.bom_lines`` derives BOTH the ownership transition
+# (``content:create:design``) and the stored ``origin_kind`` from this one
+# literal; neither is a parameter anywhere in that module, so a line's
+# recorded provenance cannot disagree with the guard that admitted it.
+_BOM_FLOW: CreateFlow = "design"
+
+# Must match node-ownership.json's owner_engine verbatim for the row
+# {BOM_LINE, system_design, content:create:design}.
+_WRITER_ENGINE: str = "system_design"
+
+# DESIGN_LINE label shape authored by graph.py::_design_line_label —
+# ``DESIGN_LINE:<DESIGN_ID>:<LINE_REF>``.
+_DESIGN_LINE_PREFIX: str = "DESIGN_LINE:"
+_DESIGN_LINE_LABEL_PARTS: int = 3
+
+# DECLARED OMISSION — qty/price are not in the design graph (kg_nodes has no
+# such column for DESIGN_LINE; enrichment.py records the same wall).  Since
+# bom_line_content declares them NOT NULL, a design-generated line lands
+# STRUCTURALLY COMPLETE and UNPRICED and pricing is a pre-freeze content edit:
+# a fabricated price is indistinguishable from an authored one downstream.
+_DEFAULT_QTY: Decimal = Decimal("1")
+_UNPRICED: Decimal = Decimal("0.00")
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +183,63 @@ async def _read_design_bom_lines(
     return [{"label": r["label"]} for r in rows]
 
 
+def _line_ref_from_design_line_label(design_line_label: str) -> str | None:
+    """Extract ``LINE_REF`` from ``DESIGN_LINE:<DESIGN_ID>:<LINE_REF>``.
+
+    ``None`` when the label does not match ``graph.py::_design_line_label``.
+    line_ref is half the BOM line's natural key, so an unparseable label is
+    skipped rather than guessed at.
+    """
+    if not design_line_label.startswith(_DESIGN_LINE_PREFIX):
+        return None
+    parts = design_line_label.split(":", _DESIGN_LINE_LABEL_PARTS - 1)
+    if len(parts) != _DESIGN_LINE_LABEL_PARTS:
+        return None
+    return parts[2].strip() or None
+
+
+async def _write_quote_bom_lines(
+    conn: Any,
+    ns_uuid: UUID,
+    quote_id: str,
+    design_bom_lines: list[dict[str, Any]],
+) -> int:
+    """Author one ``BOM_LINE`` per frozen design line; return the count.
+
+    Contract A §9.1: this engine owns only BOM_LINE's ``design`` content flow,
+    so the write goes through ``create_bom_line(flow="design")`` — the only
+    producer of the ``content:create:design`` transition ``assert_owner``
+    admits for ``writer_engine="system_design"``.  Idempotent:
+    ``bom_line_label(quote_id, line_ref)`` is the natural key.  Runs on the
+    caller's connection, inside the caller's transaction.
+    """
+    written = 0
+    for entry in design_bom_lines:
+        design_line_label = str(entry.get("label", ""))
+        line_ref = _line_ref_from_design_line_label(design_line_label)
+        if line_ref is None:
+            log.warning(
+                "do_design_to_quote: skipping unparseable DESIGN_LINE label %r "
+                "(expected DESIGN_LINE:<DESIGN_ID>:<LINE_REF>)",
+                design_line_label,
+            )
+            continue
+        await create_bom_line(
+            conn,
+            ns_uuid,
+            flow=_BOM_FLOW,
+            writer_engine=_WRITER_ENGINE,
+            quote_id=quote_id,
+            line_ref=line_ref,
+            qty=_DEFAULT_QTY,
+            unit_price=_UNPRICED,
+            line_total=_UNPRICED,
+            origin_ref=design_line_label,
+        )
+        written += 1
+    return written
+
+
 # ---------------------------------------------------------------------------
 # Public: do_design_to_quote
 # ---------------------------------------------------------------------------
@@ -193,6 +281,7 @@ async def do_design_to_quote(
             "design_version": int,         # frozen version number
             "becomes_edge": str,           # "DESIGN:... -[becomes]-> QUOTE:..."
             "bom_line_count": int,         # number of frozen BOM lines
+            "bom_lines_written": int,      # BOM_LINE content rows authored
             "proposal_sent": bool,         # True when A2A accepted the proposal
         }``
 
@@ -239,8 +328,12 @@ async def do_design_to_quote(
         "bom_lines": bom_lines,
     }
 
-    # 4. Write the DESIGN -[becomes]-> QUOTE edge inside a scoped session.
-    #    This is the freeze hand-off: after this point Sales owns the quote.
+    # 4. Write the DESIGN -[becomes]-> QUOTE edge inside a scoped session,
+    #    then author the BOM_LINE content rows in the SAME transaction: the
+    #    hand-off and the lines it hands over land together or not at all.
+    #    quote_id comes off the QUOTE label rather than being re-derived, so
+    #    the BOM line keys cannot drift from _quote_label().
+    quote_id = quote_lbl[len(_QUOTE_LABEL_PREFIX) :]
     async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
         await _upsert_edge(
             conn,
@@ -250,6 +343,12 @@ async def do_design_to_quote(
             quote_lbl,
             _BECOMES_CONFIDENCE,
             source_id,
+        )
+        bom_lines_written = await _write_quote_bom_lines(
+            conn,
+            ns_uuid,
+            quote_id,
+            bom_lines,
         )
 
     becomes_desc = f"{design_lbl} -[{_PRED_BECOMES}]-> {quote_lbl}"
@@ -268,11 +367,13 @@ async def do_design_to_quote(
         )
 
     log.info(
-        "do_design_to_quote: ns=%s design=%s version=%d bom_lines=%d edge=%s proposal=%s",
+        "do_design_to_quote: ns=%s design=%s version=%d bom_lines=%d "
+        "bom_lines_written=%d edge=%s proposal=%s",
         ns_uuid,
         design_id_raw,
         frozen_version,
         len(bom_lines),
+        bom_lines_written,
         becomes_desc,
         proposal_accepted,
     )
@@ -284,5 +385,6 @@ async def do_design_to_quote(
         "design_version": frozen_version,
         "becomes_edge": becomes_desc,
         "bom_line_count": len(bom_lines),
+        "bom_lines_written": bom_lines_written,
         "proposal_sent": proposal_accepted,
     }

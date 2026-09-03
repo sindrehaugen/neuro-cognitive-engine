@@ -14,9 +14,7 @@ DL raised this as **OQ-3** on 2026-08-17 (112 registered vs 71 advertised) and
 flagged it as *"if it is a bug, it outranks the entire documentation effort"*.
 It was never answered, and it grew -- because nothing failed when it grew.
 
-Measured 2026-08-31 against the private repo's ``origin/main@7e97efe`` and
-re-measured on this repo at ``124b80b`` -- the numbers are IDENTICAL in both.
-The honest split is
+Measured 2026-08-31 against ``origin/main@7e97efe``, and the honest split is
 NOT the raw runtime difference:
 
     registered in TOOL_REGISTRY                                     135
@@ -104,57 +102,20 @@ from nce.tool_registry import TOOL_REGISTRY
 # ---------------------------------------------------------------------------
 TOOLS_WITH_NO_DEFINITION: frozenset[str] = frozenset(
     {
-        # agreements (1)
-        "agreements_lookup_terms",
-        # assets (1) -- the other three were authored in tranche 2; assets_ping
-        # has no argument contract stated anywhere.
+        # DELIBERATE, with reasons. OQ-3 tranches 3-6 authored the rest; these
+        # two are the whole remaining list, so a diff here is one line and its
+        # justification has to arrive with it.
+        #
+        # No argument contract is stated anywhere -- not in the handler, not in a
+        # core. Authoring a schema would mean inventing one, and a guessed
+        # contract in a document the FE codes against is worse than a documented
+        # gap. Needs one sentence from the Assets owner, then it can move.
         "assets_ping",
-        # d365 (1) -- its five siblings ARE defined, behind NCE_D365_ENABLED.
-        # This one was simply missed, so the d365 block is short by one.
+        # DEPRIORITISED at Copper's request, not missed. Copper renders no D365
+        # at all (Contract-H) and will never call it, and its five siblings are
+        # already defined behind NCE_D365_ENABLED. Left out so the exemption is
+        # a decision on the record rather than an oversight.
         "d365_sync_status",
-        # cognitive / graph one-offs (2)
-        "detect_causal_cycles",
-        "resolve",
-        # economy (3)
-        "economy_compute_periodisering",
-        "economy_emit_event",
-        "economy_match_invoice",
-        # merge queue (3)
-        "merge_queue_confirm",
-        "merge_queue_list",
-        "merge_queue_reject",
-        # pricing (1)
-        "pricing_resolve",
-        # procurement (6)
-        "procurement_calculate_tco",
-        "procurement_evaluate_match",
-        "procurement_forecast_rebate",
-        "procurement_rank_suppliers",
-        "procurement_recommend_move_spend",
-        "procurement_whatif_spend",
-        # product (4) -- product_get and product_search authored in tranche 3;
-        # their cores raise an explicit "'x' is required".
-        "product_enrich",
-        "product_match_bom_line",
-        "product_price",
-        "product_related",
-        # project (2) -- advance_phase and convert_signed_quote authored in
-        # tranche 2.
-        "project_can_enter_phase",
-        "project_suggest_pl",
-        # sales (2)
-        "sales_get_signed_baseline",
-        "sales_ping",
-        # vendors (9) -- get_vendor authored in tranche 2.
-        "vendors_calibrate_weights",
-        "vendors_check_tier_at_risk",
-        "vendors_compute_performance",
-        "vendors_compute_scorecard",
-        "vendors_detect_reliability_degradation",
-        "vendors_get_tier_status",
-        "vendors_match_contractor",
-        "vendors_recall_similar_jobs",
-        "vendors_reliability_radar",
     }
 )
 
@@ -357,7 +318,7 @@ def test_the_recorded_gap_matches_what_is_measured() -> None:
     conditionally-assembled ``TOOLS``. Treat an INCREASE in the first number as
     the gate above having been bypassed.
     """
-    assert len(TOOLS_WITH_NO_DEFINITION) == 35
-    assert len(_registered()) == 135
-    assert len(_defined_in_file()) == 100
+    assert len(TOOLS_WITH_NO_DEFINITION) == 2
+    assert len(_registered()) == 142
+    assert len(_defined_in_file()) == 140
     assert len(_registered()) == len(_defined_in_file()) + len(TOOLS_WITH_NO_DEFINITION)

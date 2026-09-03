@@ -2591,6 +2591,931 @@ TOOLS = [
             "required": ["namespace_id", "query"],
         },
     ),
+    Tool(
+        name="product_match_bom_line",
+        description=(
+            "Resolve a free-text BOM line to the best catalog SKU, ranked by the C1 "
+            "resolve() primitive. Read-only in the match branch; when 'decision' is "
+            "supplied it records accept/override feedback instead of returning matches."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "bom_line": {
+                    "type": "string",
+                    "description": "Raw free-text BOM line to resolve.",
+                },
+                "manufacturer": {
+                    "type": "string",
+                    "description": "Optional; parsed manufacturer hint.",
+                },
+                "mfr_part_no": {
+                    "type": "string",
+                    "description": "Optional; parsed part-number hint.",
+                },
+                "decision": {
+                    "type": "string",
+                    "enum": ["accept", "override"],
+                    "description": (
+                        "Optional; switches the call to the FEEDBACK branch, which "
+                        "records the decision and returns a feedback_id instead of matches."
+                    ),
+                },
+                "chosen_sku": {
+                    "type": "string",
+                    "description": "Feedback branch; the SKU the user accepted or chose.",
+                },
+                "rejected_sku": {
+                    "type": "string",
+                    "description": "Feedback branch; the SKU the user rejected.",
+                },
+                "matched_score": {
+                    "type": "number",
+                    "description": "Feedback branch; the score at decision time.",
+                },
+            },
+            "required": ["namespace_id", "bom_line"],
+        },
+    ),
+    Tool(
+        name="product_price",
+        description=(
+            "Resolve the sales price for a (product, customer) pair via the C6 shared "
+            "pricing service. Read-only; returns the winning tier (bid > supplier list "
+            "> base) and a staleness signal."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "product": {
+                    "type": "object",
+                    "description": (
+                        "Product row. Optional price keys: supplier_list_price, "
+                        "supplier_list_as_of, base_price, base_as_of."
+                    ),
+                },
+                "customer": {
+                    "type": "object",
+                    "default": {},
+                    "description": (
+                        "Optional customer row. Optional BID keys: bid_price, bid_as_of."
+                    ),
+                },
+            },
+            "required": ["namespace_id", "product"],
+        },
+    ),
+    Tool(
+        name="product_related",
+        description=(
+            "Derive and persist related-product graph edges (accessory_of, warranty_for, "
+            "mounts, replaced_by) for one subject product. Mutating: writes kg_edges rows "
+            "with confidence on the edge."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
+                "mfr_part_no": {
+                    "type": "string",
+                    "description": "Part number of the subject product.",
+                },
+                "manufacturer": {
+                    "type": "string",
+                    "description": "Manufacturer of the subject product.",
+                },
+            },
+            "required": ["namespace_id", "mfr_part_no", "manufacturer"],
+        },
+    ),
+    Tool(
+        name="product_enrich",
+        description=(
+            "On-demand enrichment of ONE product's missing fields. Behind the C2 governed "
+            "gate: without confirm=true it returns {'status': 'pending_approval'} and "
+            "writes nothing. With confirm=true it runs once, idempotent on replay."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "product_id": {
+                    "type": "string",
+                    "description": "UUID of exactly ONE product. Never a list.",
+                },
+                "trigger_context": {
+                    "type": "object",
+                    "description": (
+                        "Provenance for the enrichment: "
+                        "{kind, ref_id, missing_fields, source_watermark}."
+                    ),
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "Optional; must be true for the side effect to run. Defaults to "
+                        "false, which returns pending_approval."
+                    ),
+                },
+                "idempotency_key": {
+                    "type": "string",
+                    "description": (
+                        "Optional override. When absent a stable hash of "
+                        "(product_id, missing_fields, source_watermark) is derived."
+                    ),
+                },
+            },
+            "required": ["namespace_id", "product_id", "trigger_context"],
+        },
+    ),
+    Tool(
+        name="resolve",
+        description=(
+            "RANK AND SCORE existing kg_nodes against a candidate. Read-only: this tool "
+            "ranks only and never merges, writes or modifies any node or edge. Returns "
+            "matches highest-score first, or an empty list."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Target namespace UUID."},
+                "candidate": {
+                    "type": "object",
+                    "description": "Raw entity data to match against existing nodes.",
+                },
+                "keys": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Key names to compare when scoring.",
+                },
+                "node_type": {
+                    "type": "string",
+                    "description": "Entity type to filter candidates on.",
+                },
+            },
+            "required": ["namespace_id", "candidate", "keys", "node_type"],
+        },
+    ),
+    Tool(
+        name="merge_queue_list",
+        description=(
+            "List all pending rows in entity_merge_queue for a namespace, oldest-first so "
+            "reviewers work the backlog in arrival order. Read-only."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Target namespace UUID."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="merge_queue_confirm",
+        description=(
+            "Mark one queue row as confirmed. NO-AUTO-MERGE: sets status only and never "
+            "touches kg_nodes or kg_edges -- node survivorship is a later wave. Fails if "
+            "the row is absent or not pending."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Target namespace UUID."},
+                "queue_id": {
+                    "type": "string",
+                    "description": "UUID of the queue row to confirm.",
+                },
+                "decided_by": {
+                    "type": "string",
+                    "description": "Identifier of the human or agent deciding.",
+                },
+            },
+            "required": ["namespace_id", "queue_id", "decided_by"],
+        },
+    ),
+    Tool(
+        name="merge_queue_reject",
+        description=(
+            "Mark one queue row as rejected. NO-AUTO-MERGE: sets status only and never "
+            "touches kg_nodes or kg_edges. Fails if the row is absent or not pending."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Target namespace UUID."},
+                "queue_id": {
+                    "type": "string",
+                    "description": "UUID of the queue row to reject.",
+                },
+                "decided_by": {
+                    "type": "string",
+                    "description": "Identifier of the human or agent deciding.",
+                },
+            },
+            "required": ["namespace_id", "queue_id", "decided_by"],
+        },
+    ),
+    Tool(
+        name="procurement_calculate_tco",
+        description=(
+            "Total cost of ownership for one supplier against one BOM line. Read-only, advisory."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "supplier": {
+                    "type": "object",
+                    "description": "Supplier candidate; must contain unit_price (number).",
+                },
+                "bom_line": {
+                    "type": "object",
+                    "description": "BOM line; must contain quantity (integer).",
+                },
+            },
+            "required": ["namespace_id", "supplier", "bom_line"],
+        },
+    ),
+    Tool(
+        name="procurement_evaluate_match",
+        description=(
+            "Three-way match across purchase order, goods receipt and invoice. "
+            "Read-only; returns the discrepancies rather than resolving them."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "po": {
+                    "type": "object",
+                    "description": "Purchase order with article_id, quantity, unit_price.",
+                },
+                "goods_receipt": {
+                    "type": "object",
+                    "description": "Goods receipt with quantity.",
+                },
+                "invoice": {
+                    "type": "object",
+                    "description": "Invoice with article_id, quantity, unit_price.",
+                },
+            },
+            "required": ["namespace_id", "po", "goods_receipt", "invoice"],
+        },
+    ),
+    Tool(
+        name="procurement_forecast_rebate",
+        description=(
+            "Forecast kickback/rebate attainment from current BOM spend against tier "
+            "thresholds. Read-only, advisory."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "supplier_id": {
+                    "type": "string",
+                    "description": "Optional; restricts BOM rows and tiers to one supplier.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="procurement_rank_suppliers",
+        description=(
+            "Rank supplier candidates for one BOM line on the configured procurement "
+            "weights. Read-only, advisory; does not place or modify any order."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "bom_line": {
+                    "type": "object",
+                    "description": "BOM line; must contain quantity (integer).",
+                },
+                "candidates": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": "Candidate suppliers; each must contain unit_price (number).",
+                },
+            },
+            "required": ["namespace_id", "bom_line", "candidates"],
+        },
+    ),
+    Tool(
+        name="procurement_recommend_move_spend",
+        description=(
+            "Recommend where shifting spend would improve rebate attainment. "
+            "Read-only, advisory -- it recommends and never moves anything."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="procurement_whatif_spend",
+        description=(
+            "Model the effect of shifting a fraction of spend from one supplier to "
+            "another. Read-only simulation; writes nothing."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "from_supplier": {
+                    "type": "string",
+                    "description": "supplier_id to shift spend away from.",
+                },
+                "to_supplier": {
+                    "type": "string",
+                    "description": "supplier_id to shift spend toward.",
+                },
+                "shift_fraction": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Fraction of current spend to shift, 0-1.",
+                },
+            },
+            "required": [
+                "namespace_id",
+                "from_supplier",
+                "to_supplier",
+                "shift_fraction",
+            ],
+        },
+    ),
+    Tool(
+        name="vendors_compute_scorecard",
+        description="Compute the scorecard for one vendor. Read-only.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "vendor_id": {
+                    "type": "string",
+                    "description": "Vendor label, ID, or source ID.",
+                },
+            },
+            "required": ["namespace_id", "vendor_id"],
+        },
+    ),
+    Tool(
+        name="vendors_get_tier_status",
+        description="Current kickback-tier status for one vendor. Read-only.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "vendor_id": {
+                    "type": "string",
+                    "description": "Vendor label, ID, or source ID.",
+                },
+            },
+            "required": ["namespace_id", "vendor_id"],
+        },
+    ),
+    Tool(
+        name="vendors_check_tier_at_risk",
+        description=(
+            "Check whether one vendor's kickback tier is at risk of being lost. Read-only."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "vendor_id": {
+                    "type": "string",
+                    "description": "Vendor label, ID, or source ID.",
+                },
+            },
+            "required": ["namespace_id", "vendor_id"],
+        },
+    ),
+    Tool(
+        name="vendors_detect_reliability_degradation",
+        description="Detect reliability degradation signals for one vendor. Read-only.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "vendor_id": {
+                    "type": "string",
+                    "description": "Vendor label, ID, or source ID.",
+                },
+            },
+            "required": ["namespace_id", "vendor_id"],
+        },
+    ),
+    Tool(
+        name="vendors_reliability_radar",
+        description=(
+            "Namespace-wide supplier-risk and contractor-burnout signals. Read-only, advisory."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="vendors_calibrate_weights",
+        description=(
+            "Recalibrate vendor scorecard weights from observed outcomes. Mutating: "
+            "updates the stored weighting used by future scorecards."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="vendors_match_contractor",
+        description=(
+            "Match and rank contractors for a job. Read-only. NOT available to "
+            "contractor principals: an A2A contractor session is restricted to "
+            "vendors_partner_view and is refused this skill."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "job": {
+                    "type": "object",
+                    "description": (
+                        'Job specification, e.g. {"skills": ["dsp"], "location": "Oslo"}.'
+                    ),
+                },
+            },
+            "required": ["namespace_id", "job"],
+        },
+    ),
+    Tool(
+        name="vendors_compute_performance",
+        description=(
+            "Compute a contractor's performance score from work-order ratings and update "
+            "contractor_profiles. Mutating. NOT available to contractor principals: an "
+            "A2A contractor session is restricted to vendors_partner_view and is refused "
+            "this skill."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "contractor_id": {
+                    "type": "string",
+                    "description": (
+                        "Contractor identifier. A bare id is normalised to CONTRACTOR:<UPPERCASE>."
+                    ),
+                },
+                "window": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Optional; rolling window in days for the rating average.",
+                },
+            },
+            "required": ["namespace_id", "contractor_id"],
+        },
+    ),
+    Tool(
+        name="vendors_recall_similar_jobs",
+        description="Recall contractor jobs similar to a query. Read-only.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "query": {
+                    "type": "string",
+                    "description": "Free-text description of the job to match against.",
+                },
+                "contractor_id": {
+                    "type": "string",
+                    "description": "Optional; restrict recall to one contractor.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 5,
+                    "minimum": 1,
+                    "description": "Optional; rows to return. Defaults to 5.",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Optional; candidate pool size before ranking.",
+                },
+            },
+            "required": ["namespace_id", "query"],
+        },
+    ),
+    Tool(
+        name="pricing_resolve",
+        description=(
+            "Resolve pricing for a (product, customer) pair via the C6 shared pricing "
+            "service. Read-only; returns the winning cost tier and a freshness signal."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "product": {
+                    "type": "object",
+                    "description": (
+                        "Optional product data. Optional keys: supplier_list_price, "
+                        "supplier_list_as_of, base_price, base_as_of."
+                    ),
+                },
+                "customer": {
+                    "type": "object",
+                    "description": "Optional customer data. Optional keys: bid_price, bid_as_of.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="project_can_enter_phase",
+        description=(
+            "Phase-gate readiness check. A pure read: no DB, no HTTP, no side effects. "
+            "Returns {ok, missing_criteria}."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "project": {
+                    "type": "object",
+                    "description": "Project with current_phase and criteria_met.",
+                },
+                "target_phase": {
+                    "type": "string",
+                    "description": "The phase the caller wants to enter.",
+                },
+            },
+            "required": ["namespace_id", "project", "target_phase"],
+        },
+    ),
+    Tool(
+        name="project_suggest_pl",
+        description="Suggest a project lead for one project. Read-only, advisory.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "project_id": {"type": "string", "description": "Project identifier."},
+            },
+            "required": ["namespace_id", "project_id"],
+        },
+    ),
+    Tool(
+        name="agreements_lookup_terms",
+        description=(
+            "READ-ONLY agreement term lookup. Without a filter returns the 50 most "
+            "recently flagged agreements. Every row carries review_status plus per-field "
+            "confidence and review state -- unconfirmed rows are NOT silently filtered, "
+            "so the caller judges trust."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "agreement_id": {
+                    "type": "string",
+                    "description": "Optional; return the single matching agreement.",
+                },
+                "supplier": {
+                    "type": "string",
+                    "description": "Optional; filter on the extracted supplierId term.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="sales_get_signed_baseline",
+        description=(
+            "Read the Sales-frozen SIGNED_BASELINE for one quote. Read-only, and the "
+            "ONLY seam through which other engines may read it -- Sales owns and freezes "
+            "it exactly once."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "quote_id": {
+                    "type": "string",
+                    "description": "The Sales QUOTE identifier.",
+                },
+            },
+            "required": ["namespace_id", "quote_id"],
+        },
+    ),
+    Tool(
+        name="sales_get_quote_lines",
+        description=(
+            "Read every BOM_LINE on one Sales quote, ordered by line_ref. Read-only, "
+            "namespace-scoped in SQL, and the seam System Design's from-quote design "
+            "flow reads through. An unknown quote_id returns an empty list. Known "
+            "limitation (D37): bom_line_content has no SKU, manufacturer, part-number "
+            "or functional-location column, so those fields are absent -- callers "
+            "apply their own defaults and nothing here fabricates one."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "quote_id": {
+                    "type": "string",
+                    "description": "The Sales QUOTE identifier.",
+                },
+            },
+            "required": ["namespace_id", "quote_id"],
+        },
+    ),
+    Tool(
+        name="sales_add_quote_line",
+        description=(
+            "Add ONE manually picked line to a Sales quote. The manual-pick origination "
+            "path for BOM_LINE: writes a single row through the sales-owned "
+            "content:create:manual transition. Provenance is NOT caller-writable -- the "
+            "stored origin_kind comes from the writer module's own mapping, so an "
+            "origin_kind argument is never read. Idempotent on (quote_id, line_ref)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "quote_id": {
+                    "type": "string",
+                    "description": "The Sales QUOTE identifier.",
+                },
+                "line_ref": {
+                    "type": "string",
+                    "description": "Line reference, unique within the quote.",
+                },
+                "qty": {
+                    "type": ["number", "string"],
+                    "description": "Quantity; NUMERIC(18,3). Send a decimal string to stay exact.",
+                },
+                "unit_price": {
+                    "type": ["number", "string"],
+                    "description": "Unit price; NUMERIC. Send a decimal string to stay exact.",
+                },
+                "line_total": {
+                    "type": ["number", "string"],
+                    "description": "Optional; defaults to qty * unit_price.",
+                },
+                "currency": {
+                    "type": "string",
+                    "description": "Optional ISO-4217 code; defaults to NOK.",
+                },
+                "origin_ref": {
+                    "type": "string",
+                    "description": "Optional pointer to what the human picked.",
+                },
+            },
+            "required": ["namespace_id", "quote_id", "line_ref", "qty", "unit_price"],
+        },
+    ),
+    Tool(
+        name="sales_ping",
+        description=(
+            'Liveness probe for the Sales vertical. Returns {"ok": true, "engine": "sales"}.'
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="economy_match_invoice",
+        description=(
+            "READ-ONLY ADVISOR: invoice-match triage. Scores an invoice against candidate "
+            "purchase records and returns the triage result; writes nothing. Thresholds "
+            "always come from server config, never from caller arguments."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "invoice": {
+                    "type": "object",
+                    "description": "Invoice to triage; see matching.do_match_invoice for the shape.",
+                },
+                "candidates": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": (
+                        "Optional candidate pool. An absent or empty pool still scores "
+                        "header and context components against a synthetic empty candidate."
+                    ),
+                },
+            },
+            "required": ["namespace_id", "invoice"],
+        },
+    ),
+    Tool(
+        name="economy_compute_periodisering",
+        description=(
+            "READ-ONLY ADVISOR: NGAAP bucket periodisering. Computes bucket targets and "
+            "returns them; writes nothing. The chart of accounts and account mapping are "
+            "always loaded server-side, never taken from caller arguments."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "params": {
+                    "type": "object",
+                    "description": (
+                        "Computation input: buckets, project_id, period_end. See "
+                        "ngaap.do_compute_bucket_targets for the exact shape."
+                    ),
+                },
+            },
+            "required": ["namespace_id", "params"],
+        },
+    ),
+    Tool(
+        name="economy_emit_event",
+        description=(
+            "READ-ONLY ADVISOR, DRY RUN: validates a financial event's balance and "
+            "returns its normalised/hashed form. It NEVER persists anything. An "
+            "unbalanced event returns a structured error and is never auto-balanced, "
+            "repaired or re-ordered."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "event": {
+                    "type": "object",
+                    "description": (
+                        "Financial event with type and optional postings. See "
+                        "events.do_emit_financial_event for the exact shape."
+                    ),
+                },
+            },
+            "required": ["namespace_id", "event"],
+        },
+    ),
+    Tool(
+        name="detect_causal_cycles",
+        description=(
+            "[ADMIN] Detect cycles in the event_parents causal DAG for a namespace. "
+            "Read-only: walks the DAG and reports cycles, never mutating it."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "depth_cap": {
+                    "type": "integer",
+                    "default": 50,
+                    "minimum": 1,
+                    "description": "Optional; traversal depth limit. Defaults to 50.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="system_design_from_quote",
+        description=(
+            "Realise a Sales QUOTE into a DESIGN proposal. MUTATING: lifts each quote "
+            "line into a DESIGN plus one DESIGN_LINE, gap-fills missing "
+            "accessories/infra/labour, and writes the cross-engine edge "
+            "QUOTE -[realized_as]-> DESIGN."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "quote_id": {
+                    "type": "string",
+                    "description": "The Sales QUOTE identifier to realise.",
+                },
+                "design_id": {
+                    "type": "string",
+                    "description": "Optional; defaults to DESIGN-<quote_id>.",
+                },
+                "namespace_slug": {
+                    "type": "string",
+                    "description": "Optional; prefix for the functional-location label.",
+                },
+                "source_id": {
+                    "type": "string",
+                    "description": "Optional; system_design source id.",
+                },
+            },
+            "required": ["namespace_id", "quote_id"],
+        },
+    ),
+    Tool(
+        name="system_design_to_quote",
+        description=(
+            "Derive quote lines back from a DESIGN. MUTATING: writes the cross-engine "
+            "edge linking the design to the quote it produces. Sales still owns pricing "
+            "and signing -- this returns the lines, it does not price or freeze them."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "design_id": {"type": "string", "description": "The DESIGN node id."},
+                "source_id": {
+                    "type": "string",
+                    "description": "Optional; system_design source id.",
+                },
+            },
+            "required": ["namespace_id", "design_id"],
+        },
+    ),
+    Tool(
+        name="system_design_generate_sow",
+        description=(
+            "Generate the statement of work for a DESIGN. Read-only. Freeze-on-issue: "
+            "version_number is derived deterministically from the design state, so "
+            "re-issuing against an unchanged design returns the same version."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "design_id": {"type": "string", "description": "The DESIGN node id."},
+                "version_number": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": (
+                        "Optional; overrides the derived version and marks the result frozen."
+                    ),
+                },
+            },
+            "required": ["namespace_id", "design_id"],
+        },
+    ),
+    Tool(
+        name="system_design_enrich_design_lines",
+        description=(
+            "Fire scoped Product enrichment and Procurement TCO for a design's lines. "
+            "SIDE-EFFECTING: writes no graph rows itself but QUEUES enrichment work, "
+            "once per unique referenced product."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "design_id": {
+                    "type": "string",
+                    "description": "The DESIGN whose lines should be enriched.",
+                },
+                "missing_fields": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "default": ["etim_specs"],
+                    "description": 'Optional; fields to request. Defaults to ["etim_specs"].',
+                },
+            },
+            "required": ["namespace_id", "design_id"],
+        },
+    ),
+    Tool(
+        name="system_design_propose_design",
+        description=(
+            "Recall-driven BOM proposal for a room brief. PROPOSE-ONLY: it never "
+            "auto-accepts, freezes or applies a line -- every proposed line carries "
+            "validated=false and must be confirmed before it is authored into the graph."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "room_brief": {
+                    "type": "string",
+                    "description": (
+                        "Natural-language description of the room or design requirement "
+                        "to match against past designs."
+                    ),
+                },
+            },
+            "required": ["namespace_id", "room_brief"],
+        },
+    ),
 ]
 
 # Conditionally include migration tools based on operator config.

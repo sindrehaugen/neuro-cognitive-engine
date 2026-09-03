@@ -94,7 +94,23 @@ def _insufficient_stock_error() -> InsufficientStockError:
 
 
 def _make_engine() -> MagicMock:
-    return MagicMock()
+    """An engine whose namespace HAS opted in to the Inventory vertical.
+
+    Batch 140a put a deny-by-default ``metadata.inventory.enabled`` gate on
+    every ``handle_inventory_*`` handler and every ``api_inventory_*`` route.
+    A bare ``MagicMock()`` pool would refuse every call here, so the mock
+    pool returns the opted-in row the guard reads. No assertion below is
+    changed, weakened or removed -- only the fixture namespace opts in.
+    """
+    conn = MagicMock()
+    conn.fetchrow = AsyncMock(return_value={"inventory_enabled": True})
+    pool = MagicMock()
+    ctx = pool.acquire.return_value
+    ctx.__aenter__.return_value = conn
+    ctx.__aexit__.return_value = False
+    engine = MagicMock()
+    engine.pg_pool = pool
+    return engine
 
 
 def _make_request(
@@ -159,7 +175,7 @@ def test_tool_count_updated_for_inventory() -> None:
     assert "inventory_stock_levels" in TOOL_REGISTRY
     assert "inventory_transfer_stock" in TOOL_REGISTRY
     assert "inventory_record_consumption" in TOOL_REGISTRY
-    assert len(TOOL_REGISTRY) == 135, (
+    assert len(TOOL_REGISTRY) == 142, (
         f"Expected 135 tools (112 + 3 inventory from Batch 131 + 1 assets_ping "
         f"from Batch 141 + 3 assets tools from Batch 143 + 1 system_design tool "
         f"from Batch 067b + 2 system_design authoring tools from Batch 067c "
@@ -320,7 +336,7 @@ async def test_api_inventory_stock_levels_returns_ok_shape() -> None:
     from nce import admin_state
     from nce.admin_handlers import inventory as inventory_mod
 
-    with patch.object(admin_state, "engine", MagicMock()):
+    with patch.object(admin_state, "engine", _make_engine()):
         with patch.object(
             inventory_mod, "do_stock_levels", AsyncMock(return_value=_STOCK_LEVELS_RESULT)
         ):
@@ -337,7 +353,7 @@ async def test_api_inventory_transfer_stock_returns_ok_shape() -> None:
     from nce import admin_state
     from nce.admin_handlers import inventory as inventory_mod
 
-    with patch.object(admin_state, "engine", MagicMock()):
+    with patch.object(admin_state, "engine", _make_engine()):
         with patch.object(
             inventory_mod, "do_transfer_stock", AsyncMock(return_value=_TRANSFER_RESULT)
         ):
@@ -361,7 +377,7 @@ async def test_api_inventory_transfer_stock_insufficient_stock_returns_409() -> 
     from nce import admin_state
     from nce.admin_handlers import inventory as inventory_mod
 
-    with patch.object(admin_state, "engine", MagicMock()):
+    with patch.object(admin_state, "engine", _make_engine()):
         with patch.object(
             inventory_mod, "do_transfer_stock", AsyncMock(side_effect=_insufficient_stock_error())
         ):
@@ -385,7 +401,7 @@ async def test_api_inventory_record_consumption_returns_ok_shape() -> None:
     from nce import admin_state
     from nce.admin_handlers import inventory as inventory_mod
 
-    with patch.object(admin_state, "engine", MagicMock()):
+    with patch.object(admin_state, "engine", _make_engine()):
         with patch.object(
             inventory_mod, "do_record_consumption", AsyncMock(return_value=_CONSUMPTION_RESULT)
         ):
@@ -409,7 +425,7 @@ async def test_api_inventory_record_consumption_insufficient_stock_returns_409()
     from nce import admin_state
     from nce.admin_handlers import inventory as inventory_mod
 
-    with patch.object(admin_state, "engine", MagicMock()):
+    with patch.object(admin_state, "engine", _make_engine()):
         with patch.object(
             inventory_mod,
             "do_record_consumption",
@@ -438,7 +454,7 @@ async def test_api_inventory_routes_missing_namespace_id_returns_422() -> None:
         api_inventory_transfer_stock,
     )
 
-    with patch.object(admin_state, "engine", MagicMock()):
+    with patch.object(admin_state, "engine", _make_engine()):
         resp = await api_inventory_stock_levels(_make_request(query={}))
         assert resp.status_code == 422
 
@@ -521,7 +537,7 @@ async def test_api_inventory_stock_levels_non_finite_float_serialises_successful
         ],
     }
 
-    with patch.object(admin_state, "engine", MagicMock()):
+    with patch.object(admin_state, "engine", _make_engine()):
         with patch.object(inventory_mod, "do_stock_levels", AsyncMock(return_value=poisoned)):
             req = _make_request(query={"namespace_id": _NAMESPACE_ID, "sku": "SKU-1"})
             resp = await inventory_mod.api_inventory_stock_levels(req)
@@ -542,7 +558,7 @@ async def test_api_inventory_record_consumption_non_finite_float_serialises_succ
 
     poisoned: dict[str, Any] = {**_CONSUMPTION_RESULT, "on_hand": float("nan")}
 
-    with patch.object(admin_state, "engine", MagicMock()):
+    with patch.object(admin_state, "engine", _make_engine()):
         with patch.object(inventory_mod, "do_record_consumption", AsyncMock(return_value=poisoned)):
             req = _make_request(
                 body={
@@ -574,7 +590,7 @@ async def test_api_inventory_insufficient_stock_non_finite_float_serialises_succ
         available_on_hand=float("-inf"),
     )
 
-    with patch.object(admin_state, "engine", MagicMock()):
+    with patch.object(admin_state, "engine", _make_engine()):
         with patch.object(inventory_mod, "do_record_consumption", AsyncMock(side_effect=exc)):
             req = _make_request(
                 body={
@@ -784,7 +800,7 @@ async def test_b138a_registry_entry_dispatches_to_its_own_handler(row: tuple) ->
     from nce.vertical_modules.inventory import mcp_handlers as inv_mcp
 
     tool, handler, *_rest = row
-    engine = MagicMock()
+    engine = _make_engine()
     arguments = {"namespace_id": _NAMESPACE_ID}
     probe = AsyncMock(return_value="b138a-registry-probe")
 
@@ -807,7 +823,7 @@ async def test_b138a_handler_is_a_thin_adapter_over_the_right_core(row: tuple) -
     from nce.vertical_modules.inventory import mcp_handlers as inv_mcp
 
     _tool, handler_name, core_name, *_rest = row
-    engine = MagicMock()
+    engine = _make_engine()
     arguments = {"namespace_id": _NAMESPACE_ID, "probe": "b138a"}
     sentinel = {"ok": True, "probe": "b138a", "qty": Decimal("1.500")}
 

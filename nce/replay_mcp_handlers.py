@@ -164,7 +164,15 @@ async def handle_get_event_provenance(engine: NCEEngine, arguments: dict[str, An
 
 @mcp_handler
 async def handle_detect_causal_cycles(engine: NCEEngine, arguments: dict[str, Any]) -> str:
-    """[ADMIN] Detect cycles in the event_parents causal DAG for a namespace."""
+    """[ADMIN] Detect cycles in the event_parents causal DAG for a namespace.
+
+    Required arguments:
+        namespace_id (str, UUID)
+    Optional arguments:
+        depth_cap    (int, default 50) -- traversal depth limit.
+
+    Read-only: walks event_parents and reports cycles, never mutating the DAG.
+    """
     import uuid as _uuid
 
     from nce.admin_handlers.fleet import detect_causal_cycles

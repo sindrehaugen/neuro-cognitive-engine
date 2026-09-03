@@ -149,9 +149,13 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | PUT | `/api/sales/targets` | `api_admin_sales_targets_put` |
 | POST | `/api/search` | `api_search` |
 | POST | `/api/snapshot/export` | `api_snapshot_export` |
+| POST | `/api/system-design/enrich-design-lines` | `api_system_design_enrich_design_lines` |
+| POST | `/api/system-design/from-quote` | `api_system_design_from_quote` |
 | POST | `/api/system-design/functional-location` | `api_system_design_author_functional_location` |
 | DELETE | `/api/system-design/planned` | `api_system_design_delete_planned` |
 | POST | `/api/system-design/publish-design-docs` | `api_system_design_publish_design_docs` |
+| POST | `/api/system-design/sow` | `api_system_design_generate_sow` |
+| POST | `/api/system-design/to-quote` | `api_system_design_to_quote` |
 | GET | `/api/system-design/topology` | `api_system_design_get_topology` |
 | POST | `/api/system-design/topology` | `api_system_design_author_topology` |
 | POST | `/api/system-design/validate` | `api_system_design_validate_design_graph` |
@@ -271,6 +275,8 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `resolve` |  |  | yes |  |
 | `resolve_contradiction` |  | yes |  |  |
 | `rotate_signing_key` |  | yes |  |  |
+| `sales_add_quote_line` |  | yes |  |  |
+| `sales_get_quote_lines` |  |  |  |  |
 | `sales_get_signed_baseline` |  |  |  |  |
 | `sales_ping` |  |  | yes |  |
 | `search_codebase` |  |  | yes |  |
@@ -284,9 +290,14 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `system_design_author_functional_location` |  | yes |  |  |
 | `system_design_author_topology` |  | yes |  |  |
 | `system_design_delete_planned` | yes | yes |  |  |
+| `system_design_enrich_design_lines` |  | yes |  |  |
+| `system_design_from_quote` |  | yes |  |  |
+| `system_design_generate_sow` |  |  |  |  |
 | `system_design_get_topology` |  |  | yes |  |
 | `system_design_ping` |  |  | yes |  |
+| `system_design_propose_design` |  |  |  |  |
 | `system_design_publish_design_docs` |  | yes |  |  |
+| `system_design_to_quote` |  | yes |  |  |
 | `system_design_validate_design_graph` |  |  |  |  |
 | `trigger_consolidation` |  | yes |  |  |
 | `unredact_memory` | yes | yes |  |  |
@@ -303,4 +314,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_reliability_radar` |  |  | yes |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 150 REST endpoints, 135 MCP tools._
+_Totals: 154 REST endpoints, 142 MCP tools._

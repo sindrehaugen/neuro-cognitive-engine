@@ -95,6 +95,43 @@ _EXPECTED_TOOLS: dict[str, dict[str, bool]] = {
         "admin_only": True,
         "mutation": True,
     },
+    # M6.W26 (Batch 230a) -- the COMMERCIAL half of the design loop. Four cores
+    # that had no route and no tool. Flags come from each core's call graph:
+    #   from_quote           _upsert_edge + do_author_functional_location +
+    #                        emit_graph_write            -> mutation=True
+    #   to_quote             _upsert_edge                -> mutation=True
+    #   enrich_design_lines  _fire_product_enrichment -> enqueue_product_enrichment
+    #                        writes no graph row but QUEUES work -> mutation=True
+    #   generate_sow         only _read_* helpers         -> mutation=False
+    # cacheable=False on all four for validate_design_graph's stated reason: a
+    # design under active canvas editing must not be served a stale answer.
+    "system_design_from_quote": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": True,
+    },
+    "system_design_to_quote": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": True,
+    },
+    "system_design_generate_sow": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": False,
+    },
+    "system_design_enrich_design_lines": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": True,
+    },
+    # M6.W27 (Batch 230a2) -- propose-only, so mutation=False. Exposed separately
+    # because this core already has two internal callers.
+    "system_design_propose_design": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": False,
+    },
 }
 
 

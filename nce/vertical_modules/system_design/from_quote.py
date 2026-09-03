@@ -88,38 +88,33 @@ async def _read_quote_lines(
     namespace_id: UUID,
     quote_id: str,
 ) -> list[dict[str, Any]]:
-    """Read quote lines from the Sales engine via A2A tool delegation.
+    """Read quote lines from the Sales engine (tool ``sales_get_quote_lines``).
 
-    This is the **loose-coupling seam** between System Design and Sales.
-    At runtime the call is resolved via the generic A2A transport (tool name
-    ``sales_get_quote_lines``).  In tests this function is replaced with a
-    mock via ``unittest.mock.patch``.
+    This is the **loose-coupling seam** between System Design and Sales. Until
+    Batch 132f it raised ``NotImplementedError`` unconditionally, which made
+    ``POST /api/system-design/from-quote`` return 500 on every call once Batch
+    230a mounted it (ledger defect **D47**). It now delegates to the Sales
+    read, which is namespace-scoped in SQL.
 
-    Each returned dict must have the shape::
+    Signature is load-bearing: ``from_quote`` calls it positionally and tests
+    patch it by this path. Do not change it.
 
-        {
-            "line_ref": str,           # unique reference within this quote
-            "fl_path": list[str],      # [site, building, floor, room, ...] path
-            "manufacturer": str,       # product manufacturer
-            "mfr_part_no": str,        # manufacturer part number
-            "qty": int | float,        # quantity
-            "confidence": float,       # 0–1, default 1.0
-        }
+    Returned dicts are ``bom_line_content`` rows, so each carries ``line_ref``
+    and ``qty`` -- the only fields ``do_design_from_quote`` needs. The other
+    four fields this seam once documented (``fl_path``, ``manufacturer``,
+    ``mfr_part_no``, ``confidence``) have **no column in the store**; that is
+    ledger defect **D37**, tracked separately. ``do_design_from_quote`` already
+    supplies ``"UNKNOWN"``/``[]``/``1.0`` for them via ``.get()``. Nothing here
+    fabricates a value -- a fabricated attribute is indistinguishable
+    downstream from an authored one.
 
-    The Sales engine is NOT built yet.  Until it ships, this function must be
-    mocked in tests.  Do NOT add a direct import of any Sales module here.
-
-    A2A tool name (resolved at runtime): ``sales_get_quote_lines``
+    A2A tool name (advertised for external callers): ``sales_get_quote_lines``
     """
-    # Lazy import avoids hard coupling to the A2A transport at module load.
-    # When the Sales engine is built, this block becomes the live path.
-    # For now it raises NotImplementedError so any test that forgets to mock
-    # it fails loudly rather than silently returning empty lines.
-    raise NotImplementedError(
-        "_read_quote_lines: Sales engine (Module 5) is not built yet. "
-        "Mock this function in integration tests: "
-        "patch('nce.vertical_modules.system_design.from_quote._read_quote_lines', ...)"
-    )
+    # Lazy import: System Design must not hard-import a Sales module at module
+    # load. Deferring it here keeps the two verticals independently importable.
+    from nce.vertical_modules.sales.lines import do_get_quote_lines
+
+    return await do_get_quote_lines(engine, namespace_id, quote_id)
 
 
 # ---------------------------------------------------------------------------
