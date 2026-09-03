@@ -755,7 +755,7 @@ def _alpha_devices() -> list[dict[str, Any]]:
     ]
 
 
-def _example_devices() -> list[dict[str, Any]]:
+def _beta_devices() -> list[dict[str, Any]]:
     """Tenant BETA: the same labels throughout, but a clean design."""
     return [
         _source_device(
@@ -765,14 +765,14 @@ def _example_devices() -> list[dict[str, Any]]:
             heat=23885.0,
             signal_format="HDMI",
             signal_version="2.1",
-            extra={"tenant": "example"},
+            extra={"tenant": "beta"},
         ),
         _sink_device(
             manufacturer="BETA-CORP",
             model_number="BETA-SINK",
             power=3000.0,
             heat=10236.0,
-            extra={"tenant": "example"},
+            extra={"tenant": "beta"},
             ports=[
                 {
                     "port_ref": ref,
@@ -806,7 +806,7 @@ def _alpha_expected_reasons() -> list[str]:
     ]
 
 
-def _example_expected_reasons() -> list[str]:
+def _beta_expected_reasons() -> list[str]:
     return [
         _power_reason(10000.0, 2),
         _heat_reason(34121.0),
@@ -843,7 +843,7 @@ class TestOwnerPoolIsolation:
         self,
         pg_pool: Any,
         ns_alpha: uuid.UUID,
-        ns_example: uuid.UUID,
+        ns_beta: uuid.UUID,
     ) -> None:
         await _seed(
             pg_pool,
@@ -856,11 +856,11 @@ class TestOwnerPoolIsolation:
         )
         await _seed(
             pg_pool,
-            ns_example,
+            ns_beta,
             namespace_slug=_ISO_SLUG,
             design_id=_ISO_DESIGN_ID,
             site_name=_ISO_SITE,
-            devices=_example_devices(),
+            devices=_beta_devices(),
             connections=[_link("P1", "P1"), _link("P1", "P2"), _link("P1", "P3")],
         )
 
@@ -881,12 +881,12 @@ class TestOwnerPoolIsolation:
         monkeypatch.setattr("nce.quotas.cfg.NCE_QUOTAS_ENABLED", False)
 
         ns_alpha: uuid.UUID = await make_namespace()
-        ns_example: uuid.UUID = await make_namespace()
-        await self._seed_both(pg_pool, ns_alpha, ns_example)
+        ns_beta: uuid.UUID = await make_namespace()
+        await self._seed_both(pg_pool, ns_alpha, ns_beta)
 
         engine = _EngineStub(pg_pool)
         alpha = await _validate_through_dispatch(engine, ns_alpha, _ISO_DESIGN_ID)
-        example = await _validate_through_dispatch(engine, ns_example, _ISO_DESIGN_ID)
+        beta = await _validate_through_dispatch(engine, ns_beta, _ISO_DESIGN_ID)
 
         assert alpha["reasons"] == _alpha_expected_reasons(), (
             "tenant ALPHA's verdict was influenced by tenant BETA's rows.\n"
@@ -895,12 +895,12 @@ class TestOwnerPoolIsolation:
         )
         assert alpha["passed"] is False
 
-        assert example["reasons"] == _example_expected_reasons(), (
+        assert beta["reasons"] == _beta_expected_reasons(), (
             "tenant BETA's verdict was influenced by tenant ALPHA's rows.\n"
-            f"got:      {example['reasons']}\n"
-            f"expected: {_example_expected_reasons()}"
+            f"got:      {beta['reasons']}\n"
+            f"expected: {_beta_expected_reasons()}"
         )
-        assert example["passed"] is True
+        assert beta["passed"] is True
 
     async def test_the_two_tenants_really_do_share_every_label(
         self,
@@ -917,8 +917,8 @@ class TestOwnerPoolIsolation:
         from nce.db_utils import scoped_pg_session
 
         ns_alpha: uuid.UUID = await make_namespace()
-        ns_example: uuid.UUID = await make_namespace()
-        await self._seed_both(pg_pool, ns_alpha, ns_example)
+        ns_beta: uuid.UUID = await make_namespace()
+        await self._seed_both(pg_pool, ns_alpha, ns_beta)
 
         async def _labels(ns_id: uuid.UUID) -> set[str]:
             async with scoped_pg_session(pg_pool, ns_id) as conn:
@@ -929,14 +929,14 @@ class TestOwnerPoolIsolation:
             return {r["label"] for r in rows}
 
         labels_alpha = await _labels(ns_alpha)
-        labels_example = await _labels(ns_example)
+        labels_beta = await _labels(ns_beta)
 
         assert labels_alpha, "tenant ALPHA seeded no nodes"
-        assert labels_alpha == labels_example, (
+        assert labels_alpha == labels_beta, (
             "the two tenants no longer share every node label, so the isolation "
             "test above could pass on fixture uniqueness alone.\n"
-            f"ALPHA only: {sorted(labels_alpha - labels_example)}\n"
-            f"BETA only: {sorted(labels_example - labels_alpha)}"
+            f"ALPHA only: {sorted(labels_alpha - labels_beta)}\n"
+            f"BETA only: {sorted(labels_beta - labels_alpha)}"
         )
         # The DESIGN node and both devices and all four ports are in there.
         assert f"DESIGN:{_ISO_DESIGN_ID}" in labels_alpha

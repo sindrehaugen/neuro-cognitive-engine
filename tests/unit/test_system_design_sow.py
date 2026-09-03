@@ -31,7 +31,6 @@ import pytest
 # D35 positive control: a DISTINCTIVE value, deliberately NOT the old hardcoded
 # name. Asserting the old name would pass whether or not the seam exists.
 _SUPPLIER = "Kontrollverdi Leverandoer AS"
-_OLD_SUPPLIER = "Example Integrator AS"
 
 
 @pytest.fixture(autouse=True)
@@ -575,9 +574,20 @@ async def test_caller_supplied_version_is_used() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _string_leaves(node: Any) -> list[str]:
+    """Every string leaf of a nested JSON-ish structure, in document order."""
+    if isinstance(node, dict):
+        return [s for v in node.values() for s in _string_leaves(v)]
+    if isinstance(node, list):
+        return [s for v in node for s in _string_leaves(v)]
+    return [node] if isinstance(node, str) else []
+
+
 def test_generated_sow_carries_configured_supplier_everywhere() -> None:
-    """Summary prose and the Terms title-retention clause name the CONFIGURED
-    supplier, and no trace of the old hardcoded name survives in the document.
+    """Every party-naming clause in the document names the CONFIGURED supplier.
+
+    Stated positively on purpose: an absence assertion is satisfied by a clause
+    that went missing altogether, and by any hardcode other than the one named.
     """
     from nce.vertical_modules.system_design.sow import generate_sow
 
@@ -586,8 +596,12 @@ def test_generated_sow_carries_configured_supplier_everywhere() -> None:
 
     assert f"{_SUPPLIER} leverer " in blob
     assert f"{_SUPPLIER} beholder eierskap til leveranser inntil full betaling er mottatt." in blob
-    assert _OLD_SUPPLIER not in blob
-    assert "example" not in blob.lower()
+
+    # Document-wide: each clause that names the delivering party leads with the
+    # configured supplier, so no clause carries a second, hardcoded identity.
+    party_clauses = [s for s in _string_leaves(doc) if "leverer " in s or "beholder eierskap" in s]
+    assert len(party_clauses) == 2, party_clauses
+    assert all(s.startswith(_SUPPLIER) for s in party_clauses), party_clauses
 
 
 def test_assembled_bom_line_ownership_is_the_configured_supplier() -> None:
@@ -603,7 +617,6 @@ def test_assembled_bom_line_ownership_is_the_configured_supplier() -> None:
     )
 
     assert [line["ownership"] for line in sow_input["bomLines"]] == [_SUPPLIER]
-    assert "BETA" not in json.dumps(sow_input["bomLines"], ensure_ascii=False)
 
 
 def test_generate_sow_fails_closed_when_supplier_unset(
@@ -634,10 +647,10 @@ async def test_do_generate_sow_fails_closed_when_supplier_unset(
 
 
 def test_renamed_profile_key_resolves() -> None:
-    """D35 renamed ``example_standard`` -> ``standard`` (no live data)."""
+    """D35 renamed the vendor-scoped profile key to plain ``standard``."""
     from nce.vertical_modules.system_design.sow import _PROFILE_LABEL, generate_sow
 
-    assert "example_standard" not in _PROFILE_LABEL
+    assert set(_PROFILE_LABEL) == {"standard", "anbud_30_30_30_10", "custom"}
     assert _PROFILE_LABEL["standard"] == "Standard (100% HW signing, 50/50 services)"
 
     doc = generate_sow(copy.deepcopy(_MINIMAL_SOW_INPUT), version_number=1)

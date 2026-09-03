@@ -657,9 +657,9 @@ async def test_the_sweep_does_not_cross_the_tenant_boundary(
     ONLY thing keeping it is that the sweep was not asked for that namespace.
     """
     alpha = await make_namespace()
-    example = await make_namespace()
+    beta = await make_namespace()
 
-    for ns, tag in ((alpha, "ALPHA"), (example, "BETA")):
+    for ns, tag in ((alpha, "ALPHA"), (beta, "BETA")):
         await _seed_node(pg_pool, ns, _RETIRED_LABEL, tag=tag, status=SWEEP_STATUS, age_days=400)
 
     minio = _FakeMinio()
@@ -668,7 +668,7 @@ async def test_the_sweep_does_not_cross_the_tenant_boundary(
     assert result["archived"] == 1
     assert _RETIRED_LABEL not in await _surviving(pg_pool, alpha)
 
-    left = await _surviving(pg_pool, example)
+    left = await _surviving(pg_pool, beta)
     assert _RETIRED_LABEL in left
     # Content, not identity: a predicate that filtered by label would have taken
     # this row too and the label assertion alone could not tell.

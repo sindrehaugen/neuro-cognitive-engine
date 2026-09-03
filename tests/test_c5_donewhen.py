@@ -110,8 +110,8 @@ async def test_above_threshold_divergence_dispatches_alert(
             engine="alert-engine",
             entity="account:abc",
             field="name",
-            nce_value="Example Integrator AS",
-            ext_value="Example Corp",
+            nce_value="Acme AS",
+            ext_value="Acme Corp",
             materiality=0.5,
         )
 

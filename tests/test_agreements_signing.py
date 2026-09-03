@@ -158,7 +158,7 @@ async def test_request_signature_opens_session_writes_node_edge_and_ledger(
     await _seed_ownership(pg_pool, namespace_id)
 
     agreement_id = uuid.uuid4()
-    document = "Frame agreement between Example Integrator AS and Vendor AS — terms v1."
+    document = "Frame agreement between Acme AS and Vendor AS — terms v1."
     engine = _EngineStub(pg_pool)
 
     result = await do_request_signature(
@@ -433,7 +433,7 @@ async def test_record_signature_promotes_review_queue_to_auto_green(
             100.0,
         )
 
-    document = "Frame agreement — Example Integrator AS × Vendor AS — authored draft."
+    document = "Frame agreement — Acme AS × Vendor AS — authored draft."
     engine = _EngineStub(pg_pool)
     requested = await do_request_signature(
         engine,

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import re
 from typing import Any
 
 import pytest
@@ -26,7 +27,7 @@ MALFORMED = [
     "a'--",
     "a;DROP TABLE sales_read_model",
     "two words",
-    "Example",
+    "Contoso",
     "has-dash",
     "9leading",
     "dollar$",
@@ -76,14 +77,29 @@ def test_select_fields_use_the_configured_prefix(prefix: str) -> None:
     assert "zzq_estrecurringmonthly" in fields["opportunities"]
     assert "zzq_subject@OData.Community.Display.V1.FormattedValue" in fields["opportunities"]
     flat = [f for fs in fields.values() for f in fs]
-    assert [f for f in flat if "example" in f] == []
+    # Positive form: the publisher-scoped fields in the whole $select map are
+    # exactly these seven, every one of them built from the configured prefix.
+    assert {f for f in flat if TEST_PREFIX in f} == {
+        f"{TEST_PREFIX}_industry",
+        f"{TEST_PREFIX}_estrecurringmonthly",
+        f"{TEST_PREFIX}_estrecurringmonthly_base",
+        f"{TEST_PREFIX}_customerneeds",
+        f"{TEST_PREFIX}_jobdescription",
+        f"{TEST_PREFIX}_subject@OData.Community.Display.V1.FormattedValue",
+        f"_{TEST_PREFIX}_opportunityid_value",
+    }
 
 
 def test_sql_expressions_use_the_configured_prefix(prefix: str) -> None:
     sql = read_model._rec_num_sql(prefix)
     assert "source_json->>'zzq_estrecurringmonthly'" in sql
     assert "source_json->>'zzq_estrecurringmonthly_base'" in sql
-    assert "example" not in sql
+    # Positive form: every JSON key the expression reaches into is prefixed.
+    refs = re.findall(r"source_json->>'([^']*)'", sql)
+    assert set(refs) == {
+        f"{TEST_PREFIX}_estrecurringmonthly",
+        f"{TEST_PREFIX}_estrecurringmonthly_base",
+    }, refs
     assert read_model._subject_fv(prefix).startswith("zzq_subject@OData")
 
 

@@ -14,12 +14,12 @@ The **capacity + scheduling brain**. It plans and allocates every *schedulable* 
   - modulkart **07 Technical/Installation** — AI dispatch by *skill/location/load/history*, GPS time-tracking, the shared install+service tech pool.
   - modulkart **10 Logistics** — van-restocking + materials flow to site (the warehouse→project bridge).
   - modulkart **11 External Techs** — elastic contractor capacity with restricted access.
-- **No single Portal sidecar** — greenfield like Field Tech (Example has no resource-planning system today; allocation lives in PLs' heads). This is a build, not a lift.
+- **No single Portal sidecar** — greenfield like Field Tech (the tenant has no resource-planning system today; allocation lives in PLs' heads). This is a build, not a lift.
 - **Lysning surfaces served:** `Kalender.jsx` (the planning calendar/board), `MinManed.jsx` ("My Day"/"My Month" — a tech's personal schedule), `Mobil.jsx` (the mobile/field stub). These + Field Tech's work-order screens become the field webapp.
 
 ## Classification
 **internal + AI (scheduling/optimisation).** No external system of its own; it composes over the cognitive graph and the other engines via A2A. Two **optional** outbound integrations, both config-gated and abstracted behind thin adapters (so the engine ships fully usable without them):
-- **Calendar sync** (Outlook/M365 — Example already integrates M365) for two-way push of allocations to staff calendars.
+- **Calendar sync** (Outlook/M365 — the tenant already integrates M365) for two-way push of allocations to staff calendars.
 - **Travel & hospitality booking** (`travel.py` adapter): start with *internally-planned* travel/lodging records; a later adapter can call a booking provider (flights/hotels). The data model is provider-agnostic.
 
 ## Graph contribution
