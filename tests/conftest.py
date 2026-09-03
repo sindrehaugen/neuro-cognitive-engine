@@ -592,3 +592,40 @@ def _mock_embeddings_globally():
 
     with patch("nce.embeddings._load_sentence_transformer", return_value=None):
         yield
+
+
+# ---------------------------------------------------------------------------
+# D35 — supplier identity for the test 'deployment'.
+#
+# ``nce/vertical_modules/system_design/sow.py`` now FAILS CLOSED when
+# ``NCE_SUPPLIER_NAME`` is unset: it refuses to generate a customer-facing SoW
+# rather than emit a title-retention clause naming no party. The test suite is
+# a deployment like any other, so it gets a configured identity here. Tests
+# that exercise the unset path monkeypatch ``cfg.NCE_SUPPLIER_NAME`` back to
+# blank themselves (tests/unit/test_system_design_sow.py).
+# ---------------------------------------------------------------------------
+os.environ.setdefault("NCE_SUPPLIER_NAME", "Test Supplier AS")
+
+# ---------------------------------------------------------------------------
+# D34a — D365 publisher prefix for the test 'deployment'.
+#
+# ``sales/source_adapters/d365.py`` now FAILS CLOSED when
+# ``NCE_D365_PUBLISHER_PREFIX`` is unset: it refuses to build custom field
+# names from an empty prefix, because that would query the wrong fields and
+# silently return no rows. The D365 sync tests exercise that read path and
+# never had to supply a prefix before, when it was hardcoded. The test suite
+# is a deployment like any other, so it gets one here.
+#
+# Tests that exercise the unset path monkeypatch ``cfg`` back to blank
+# themselves (tests/test_sales_d365_publisher_prefix.py), so this default
+# does not weaken them.
+# ---------------------------------------------------------------------------
+os.environ.setdefault("NCE_D365_PUBLISHER_PREFIX", "zzq")
+
+from nce.config import cfg as _d35_cfg  # noqa: E402
+
+if not _d35_cfg.NCE_SUPPLIER_NAME:
+    _d35_cfg.NCE_SUPPLIER_NAME = os.environ["NCE_SUPPLIER_NAME"]
+
+if not _d35_cfg.NCE_D365_PUBLISHER_PREFIX:
+    _d35_cfg.NCE_D365_PUBLISHER_PREFIX = os.environ["NCE_D365_PUBLISHER_PREFIX"]

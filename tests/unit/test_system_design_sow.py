@@ -18,6 +18,7 @@ All tests are pure unit tests — DB reads are mocked (no asyncpg / Postgres).
 from __future__ import annotations
 
 import copy
+import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -26,6 +27,20 @@ import pytest
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------
+
+# D35 positive control: a DISTINCTIVE value, deliberately NOT the old hardcoded
+# name. Asserting the old name would pass whether or not the seam exists.
+_SUPPLIER = "Kontrollverdi Leverandoer AS"
+_OLD_SUPPLIER = "Example Integrator AS"
+
+
+@pytest.fixture(autouse=True)
+def _configured_supplier(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every test in this module runs with a configured supplier identity."""
+    from nce.config import cfg
+
+    monkeypatch.setattr(cfg, "NCE_SUPPLIER_NAME", _SUPPLIER, raising=False)
+
 
 _NS = "00000000-0000-4000-8000-000000000099"
 _DESIGN_ID = "D-001"
@@ -52,7 +67,7 @@ _MINIMAL_SOW_INPUT: dict[str, Any] = {
             "sellPrice": 25_000.0,
             "roomId": "FL:ACME:OSLO:BYGGA:F1:BOARDROOM",
             "roomName": "BOARDROOM",
-            "ownership": "BETA",
+            "ownership": _SUPPLIER,
         },
         {
             "id": "DL-2",
@@ -62,7 +77,7 @@ _MINIMAL_SOW_INPUT: dict[str, Any] = {
             "sellPrice": 18_000.0,
             "roomId": "FL:ACME:OSLO:BYGGA:F1:BOARDROOM",
             "roomName": "BOARDROOM",
-            "ownership": "BETA",
+            "ownership": _SUPPLIER,
         },
         {
             "id": "DL-3",
@@ -72,7 +87,7 @@ _MINIMAL_SOW_INPUT: dict[str, Any] = {
             "sellPrice": 3_000.0,
             "roomId": "FL:ACME:OSLO:BYGGA:F2:LOUNGE",
             "roomName": "LOUNGE",
-            "ownership": "BETA",
+            "ownership": _SUPPLIER,
         },
     ],
     "rooms": [
@@ -101,7 +116,7 @@ _MINIMAL_SOW_INPUT: dict[str, Any] = {
     "serviceContracts": [
         {
             "id": "SC-1",
-            "name": "Example Gold",
+            "name": "Acme Gold",
             "tier": "COMPLETE",
             "coverageLevel": "FULL",
             "responseSpeed": "4H",
@@ -110,7 +125,7 @@ _MINIMAL_SOW_INPUT: dict[str, Any] = {
         }
     ],
     "invoiceSchedule": {
-        "profile": "example_standard",
+        "profile": "standard",
         "paymentTermsDays": 30,
         "hwSigningPct": 100,
         "hwDeliveryPct": 0,
@@ -553,3 +568,78 @@ async def test_caller_supplied_version_is_used() -> None:
     # into a customer-facing SoW deliverable). Matches the pure-transform
     # contract "<project.id>-v<version>".
     assert result["sow"]["documentRef"] == "D-001-v77"
+
+
+# ---------------------------------------------------------------------------
+# 8. D35 — supplier identity: ONE seam, configured, fail-closed
+# ---------------------------------------------------------------------------
+
+
+def test_generated_sow_carries_configured_supplier_everywhere() -> None:
+    """Summary prose and the Terms title-retention clause name the CONFIGURED
+    supplier, and no trace of the old hardcoded name survives in the document.
+    """
+    from nce.vertical_modules.system_design.sow import generate_sow
+
+    doc = generate_sow(copy.deepcopy(_MINIMAL_SOW_INPUT), version_number=1)
+    blob = json.dumps(doc, ensure_ascii=False, default=str)
+
+    assert f"{_SUPPLIER} leverer " in blob
+    assert f"{_SUPPLIER} beholder eierskap til leveranser inntil full betaling er mottatt." in blob
+    assert _OLD_SUPPLIER not in blob
+    assert "example" not in blob.lower()
+
+
+def test_assembled_bom_line_ownership_is_the_configured_supplier() -> None:
+    """The per-line ``ownership`` field goes through the same resolver."""
+    from nce.vertical_modules.system_design.sow import _assemble_sow_input
+
+    sow_input = _assemble_sow_input(
+        design_label=_DESIGN_LABEL,
+        design_meta={"updated_at": "2026-06-01T10:00:00Z"},
+        design_lines=[{"label": "DESIGN_LINE:D-001:L1"}],
+        fl_nodes=[{"label": "FL:ACME:OSLO:BYGGA:F1:BOARDROOM"}],
+        fl_to_lines={"FL:ACME:OSLO:BYGGA:F1:BOARDROOM": [{"label": "DESIGN_LINE:D-001:L1"}]},
+    )
+
+    assert [line["ownership"] for line in sow_input["bomLines"]] == [_SUPPLIER]
+    assert "BETA" not in json.dumps(sow_input["bomLines"], ensure_ascii=False)
+
+
+def test_generate_sow_fails_closed_when_supplier_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Blank NCE_SUPPLIER_NAME must raise, not emit a party-less legal clause."""
+    from nce.config import cfg
+    from nce.vertical_modules.system_design.sow import generate_sow
+
+    monkeypatch.setattr(cfg, "NCE_SUPPLIER_NAME", "   ", raising=False)
+    with pytest.raises(ValueError) as exc:
+        generate_sow(copy.deepcopy(_MINIMAL_SOW_INPUT), version_number=1)
+    assert "NCE_SUPPLIER_NAME" in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_do_generate_sow_fails_closed_when_supplier_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The adapter refuses to generate the document at all, naming the key."""
+    from nce.config import cfg
+    from nce.vertical_modules.system_design.sow import do_generate_sow
+
+    monkeypatch.setattr(cfg, "NCE_SUPPLIER_NAME", "", raising=False)
+    with pytest.raises(ValueError) as exc:
+        await do_generate_sow(_make_engine(), {"namespace_id": _NS, "design_id": _DESIGN_ID})
+    assert "NCE_SUPPLIER_NAME" in str(exc.value)
+
+
+def test_renamed_profile_key_resolves() -> None:
+    """D35 renamed ``example_standard`` -> ``standard`` (no live data)."""
+    from nce.vertical_modules.system_design.sow import _PROFILE_LABEL, generate_sow
+
+    assert "example_standard" not in _PROFILE_LABEL
+    assert _PROFILE_LABEL["standard"] == "Standard (100% HW signing, 50/50 services)"
+
+    doc = generate_sow(copy.deepcopy(_MINIMAL_SOW_INPUT), version_number=1)
+    blob = json.dumps(doc, ensure_ascii=False, default=str)
+    assert "Standard (100% HW signing, 50/50 services)" in blob

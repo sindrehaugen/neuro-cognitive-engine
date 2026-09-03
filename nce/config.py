@@ -481,6 +481,23 @@ class _Config:
     IS_TEST: bool = ENVIRONMENT in {"test", "testing", "ci"}
     IS_DEV: bool = not IS_PROD and not IS_TEST
 
+    # Legal entity name of the operator running this deployment. Appears in
+    # generated Statement-of-Work text, including the Norwegian title-retention
+    # clause. Deliberately has NO default and NO placeholder: SoW generation
+    # fails closed when this is unset rather than naming a wrong or blank party
+    # in a contract (D35).
+    NCE_SUPPLIER_NAME: str = os.getenv("NCE_SUPPLIER_NAME", "").strip()
+
+    # Dynamics 365 / Dataverse publisher prefix of the CRM organisation this
+    # deployment reads from. Every D365 org has its own, so the sales read model
+    # cannot carry one tenant's prefix in source. Resolved through the single seam
+    # nce/vertical_modules/sales/source_adapters/d365.py::publisher_prefix(), which
+    # validates it against ^[a-z][a-z0-9_]{0,31}$ and raises on first use when unset
+    # or malformed -- the value is interpolated into SQL and OData, so it is never
+    # sanitised, repaired or defaulted (D34a). Deployments with no D365 integration
+    # leave it unset and are unaffected.
+    NCE_D365_PUBLISHER_PREFIX: str = os.getenv("NCE_D365_PUBLISHER_PREFIX", "").strip().lower()
+
     # --- Database connections ---
     # ``DATABASE_URL`` is accepted as a 12-factor alias for ``PG_DSN`` (same precedence: explicit PG_DSN wins).
     # DB role password used by RLS session setup. Honours NCE_APP_PASSWORD_FILE

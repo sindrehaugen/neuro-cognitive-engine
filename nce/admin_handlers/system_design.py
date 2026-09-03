@@ -70,6 +70,8 @@ from nce.admin_handlers._shared import (
     bump_mcp_cache_generation,
 )
 from nce.entity_resolution.ownership import OwnershipError
+from nce.vertical_modules.system_design.enrichment import do_enrich_design_lines
+from nce.vertical_modules.system_design.from_quote import do_design_from_quote
 from nce.vertical_modules.system_design.geometry import VersionConflictError
 from nce.vertical_modules.system_design.lucid import do_publish_design_docs
 from nce.vertical_modules.system_design.mcp_handlers import (
@@ -79,6 +81,8 @@ from nce.vertical_modules.system_design.mcp_handlers import (
 )
 from nce.vertical_modules.system_design.read import do_get_topology
 from nce.vertical_modules.system_design.retire import RetireDeniedError
+from nce.vertical_modules.system_design.sow import do_generate_sow
+from nce.vertical_modules.system_design.to_quote import do_design_to_quote
 from nce.vertical_modules.system_design.validation_queries import validate_design_graph
 
 log = logging.getLogger("nce.admin_handlers.system_design")
@@ -605,3 +609,171 @@ async def api_system_design_delete_planned(request) -> JSONResponse:
             "version": result.get("version"),
         }
     )
+
+
+# ---------------------------------------------------------------------------
+# M6.W26 (Batch 230a) -- the commercial half of the design loop, REST twins of
+# the four MCP tools registered in the same batch.
+#
+# Cache generation: from_quote and to_quote write graph rows, so a write over
+# HTTP would otherwise leave the cacheable ``system_design_get_topology`` MCP
+# entry readable for the full MCP_CACHE_TTL_S. enrich_design_lines writes no
+# graph row -- it queues Product enrichment -- so its bump is not strictly
+# required; it bumps anyway because a spurious bump costs one cache miss while a
+# missing one serves stale topology. generate_sow is a read and does not bump.
+# ---------------------------------------------------------------------------
+
+
+async def api_system_design_from_quote(request) -> JSONResponse:
+    """POST /api/system-design/from-quote
+
+    JSON body (mirrors the ``system_design_from_quote`` MCP tool):
+        namespace_id (str, required), quote_id (str, required),
+        design_id (str, optional -- defaults to ``DESIGN-<quote_id>``),
+        namespace_slug (str, optional), source_id (str, optional).
+
+    Response (JSON):
+        200 the core's result, unchanged.
+        422 on a missing/malformed argument.
+        503 when the engine is not connected.
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+    body, body_err = await _read_json_body(request)
+    if body_err is not None:
+        return body_err
+    assert body is not None
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
+    if not body.get("quote_id"):
+        return JSONResponse({"error": "quote_id is required"}, status_code=422)
+    arguments = dict(body)
+    arguments["namespace_id"] = namespace_id
+    try:
+        result = await do_design_from_quote(admin_state.engine, arguments)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response("Failed to realise the quote into a design", exc)
+    await bump_mcp_cache_generation(admin_state.engine, route="api_system_design_from_quote")
+    return JSONResponse(result)
+
+
+async def api_system_design_to_quote(request) -> JSONResponse:
+    """POST /api/system-design/to-quote
+
+    JSON body (mirrors the ``system_design_to_quote`` MCP tool):
+        namespace_id (str, required), design_id (str, required),
+        source_id (str, optional).
+
+    Sales still owns pricing and signing: this returns the lines, it does not
+    price or freeze them.
+
+    Response (JSON):
+        200 the core's result, unchanged.
+        422 on a missing/malformed argument.
+        503 when the engine is not connected.
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+    body, body_err = await _read_json_body(request)
+    if body_err is not None:
+        return body_err
+    assert body is not None
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
+    if not body.get("design_id"):
+        return JSONResponse({"error": "design_id is required"}, status_code=422)
+    arguments = dict(body)
+    arguments["namespace_id"] = namespace_id
+    try:
+        result = await do_design_to_quote(admin_state.engine, arguments)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response("Failed to derive quote lines from the design", exc)
+    await bump_mcp_cache_generation(admin_state.engine, route="api_system_design_to_quote")
+    return JSONResponse(result)
+
+
+async def api_system_design_generate_sow(request) -> JSONResponse:
+    """POST /api/system-design/sow
+
+    JSON body (mirrors the ``system_design_generate_sow`` MCP tool):
+        namespace_id (str, required), design_id (str, required),
+        version_number (int, optional -- overrides the derived version and marks
+        the result frozen).
+
+    POST, but a PURE READ: it writes nothing and therefore does not bump the MCP
+    cache generation. ``version_number`` is derived deterministically from the
+    design state, so re-issuing against an unchanged design returns the same
+    version.
+
+    Response (JSON):
+        200 the core's result, unchanged.
+        422 on a missing/malformed argument.
+        503 when the engine is not connected.
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+    body, body_err = await _read_json_body(request)
+    if body_err is not None:
+        return body_err
+    assert body is not None
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
+    if not body.get("design_id"):
+        return JSONResponse({"error": "design_id is required"}, status_code=422)
+    arguments = dict(body)
+    arguments["namespace_id"] = namespace_id
+    try:
+        result = await do_generate_sow(admin_state.engine, arguments)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response("Failed to generate the statement of work", exc)
+    return JSONResponse(result)
+
+
+async def api_system_design_enrich_design_lines(request) -> JSONResponse:
+    """POST /api/system-design/enrich-design-lines
+
+    JSON body (mirrors the ``system_design_enrich_design_lines`` MCP tool):
+        namespace_id (str, required), design_id (str, required),
+        missing_fields (list[str], optional -- defaults to ``["etim_specs"]``).
+
+    SIDE-EFFECTING: writes no graph row but QUEUES Product enrichment, once per
+    unique referenced product. See the block comment above on why it bumps the
+    cache generation anyway.
+
+    Response (JSON):
+        200 the core's result, unchanged.
+        422 on a missing/malformed argument.
+        503 when the engine is not connected.
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+    body, body_err = await _read_json_body(request)
+    if body_err is not None:
+        return body_err
+    assert body is not None
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
+    if not body.get("design_id"):
+        return JSONResponse({"error": "design_id is required"}, status_code=422)
+    arguments = dict(body)
+    arguments["namespace_id"] = namespace_id
+    try:
+        result = await do_enrich_design_lines(admin_state.engine, arguments)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response("Failed to enrich the design lines", exc)
+    await bump_mcp_cache_generation(
+        admin_state.engine, route="api_system_design_enrich_design_lines"
+    )
+    return JSONResponse(result)

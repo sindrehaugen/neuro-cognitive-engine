@@ -555,6 +555,57 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # System Design vertical module tools (M6.W26, Batch 230a) -- the COMMERCIAL
+    # half of the design loop. Four cores that had no route and no tool.
+    #
+    # Flags come from reading each core's call graph, not from its name:
+    #   from_quote           _upsert_edge + do_author_functional_location +
+    #                        emit_graph_write   -> mutation=True
+    #   to_quote             _upsert_edge                          -> mutation=True
+    #   enrich_design_lines  _fire_product_enrichment (line 396) ->
+    #                        enqueue_product_enrichment            -> mutation=True
+    #                        It writes no graph row itself, but it QUEUES work, and
+    #                        a caller must be able to tell that invoking it causes
+    #                        something to happen.
+    #   generate_sow         only _read_* helpers                  -> mutation=False
+    #
+    # cacheable=False on all four, for validate_design_graph's stated reason: a
+    # design under active canvas editing must not be served a stale answer, and
+    # for the read there is no write whose cache bump would refresh it.
+    "system_design_from_quote": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_from_quote"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    "system_design_to_quote": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_to_quote"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    "system_design_generate_sow": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_generate_sow"),
+        cacheable=False,
+        admin_only=False,
+        mutation=False,
+    ),
+    "system_design_enrich_design_lines": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_enrich_design_lines"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    # M6.W27 (Batch 230a2) -- do_propose_design, exposed SEPARATELY because it is
+    # the one core in this group with existing internal callers
+    # (sales/commission.py:189, from_quote.py:231). mutation=False: it is
+    # propose-only and authors nothing.
+    "system_design_propose_design": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_propose_design"),
+        cacheable=False,
+        admin_only=False,
+        mutation=False,
+    ),
     # System Design vertical module tools (M6.W17) — retire planned nodes, and
     # THE FIRST DELETE PATH IN THIS CODEBASE.
     #
@@ -648,6 +699,32 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         cacheable=False,
         admin_only=False,
         mutation=False,
+    ),
+    # Sales vertical module tools (M5.W16, Batch 132f) -- the cross-engine
+    # READ seam for a quote's BOM_LINE rows, consumed by System Design's
+    # from_quote flow. cacheable=False is DELIBERATE and not an oversight:
+    # quote lines change as lines are added, the read is a single indexed
+    # equality query, and caching it would require reasoning about cache-
+    # generation bumps on both the REST and MCP write paths. Cheap read, no
+    # staleness question. mutation=False (it writes nothing) and
+    # admin_only=False (a salesperson reads their own quote).
+    "sales_get_quote_lines": ToolSpec(
+        _h(sales_mcp_handlers, "handle_sales_get_quote_lines"),
+        cacheable=False,
+        admin_only=False,
+        mutation=False,
+    ),
+    # Sales vertical module tools (M5.W15, Batch 132d) -- the MANUAL-PICK
+    # origination path for BOM_LINE, and the first real caller of the guarded
+    # store in nce/bom_lines.py. A tenant write: mutation=True (so the MCP
+    # cache generation bumps and no cacheable reader serves a quote without
+    # its newest line), admin_only=False (a salesperson picks articles), and
+    # cacheable=False (it writes).
+    "sales_add_quote_line": ToolSpec(
+        _h(sales_mcp_handlers, "handle_sales_add_quote_line"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
     ),
     # ------------------------------------------------------------------
     # Vendors vertical module tools (Batch 096)

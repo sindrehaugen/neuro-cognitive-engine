@@ -57,6 +57,8 @@ from nce.event_log import append_event
 from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import McpError, mcp_handler
 from nce.vertical_modules.system_design.devices import do_author_device_topology
+from nce.vertical_modules.system_design.enrichment import do_enrich_design_lines
+from nce.vertical_modules.system_design.from_quote import do_design_from_quote
 from nce.vertical_modules.system_design.geometry import (
     BIGINT_MAX,
     VersionConflictError,
@@ -66,11 +68,14 @@ from nce.vertical_modules.system_design.geometry import (
 )
 from nce.vertical_modules.system_design.graph import do_author_functional_location
 from nce.vertical_modules.system_design.lucid import do_publish_design_docs
+from nce.vertical_modules.system_design.propose import do_propose_design
 from nce.vertical_modules.system_design.read import do_get_topology
 from nce.vertical_modules.system_design.retire import (
     RetireDeniedError,
     do_retire_planned,
 )
+from nce.vertical_modules.system_design.sow import do_generate_sow
+from nce.vertical_modules.system_design.to_quote import do_design_to_quote
 from nce.vertical_modules.system_design.validation_queries import validate_design_graph
 
 if TYPE_CHECKING:
@@ -1003,3 +1008,140 @@ async def handle_system_design_delete_planned(engine: NCEEngine, arguments: dict
     except RetireDeniedError as exc:
         raise retire_denied_mcp_error(exc) from exc
     return json.dumps(result)
+
+
+# ---------------------------------------------------------------------------
+# M6.W26 -- the commercial half of the design loop (Batch 230a).
+#
+# Four cores existed with no route and no tool: AST-verified at zero callers for
+# three of them, and do_propose_design excluded from this wave precisely because
+# it has two (sales/commission.py:189, from_quote.py:231) and its return shape is
+# load-bearing for commission -- it gets its own wave with a regression test.
+#
+# These adapters add nothing and subtract nothing. If a core needs changing to
+# make one of these work, that is a different wave.
+# ---------------------------------------------------------------------------
+
+
+@mcp_handler
+async def handle_system_design_from_quote(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: system_design_from_quote -- realise a Sales QUOTE into a DESIGN.
+
+    MUTATING (``cacheable=False, admin_only=False, mutation=True``): the core
+    lifts each quote line into a DESIGN plus one DESIGN_LINE, gap-fills missing
+    accessories/infra/labour, and writes the cross-engine edge
+    ``QUOTE -[realized_as]-> DESIGN``.
+
+    Requires ``namespace_id`` and ``quote_id`` in *arguments*. Optional:
+    ``design_id`` (defaults to ``DESIGN-<quote_id>``), ``namespace_slug`` (FL
+    label prefix) and ``source_id``.
+
+    The ``@mcp_handler`` decorator converts a missing-namespace ``ValueError``
+    into an ``McpError(-32602)`` at call-site.
+    """
+    require_namespace_id(arguments)
+    if not arguments.get("quote_id"):
+        raise ValueError("quote_id is required")
+    result = await do_design_from_quote(engine, arguments)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_system_design_to_quote(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: system_design_to_quote -- derive quote lines back from a DESIGN.
+
+    MUTATING (``cacheable=False, admin_only=False, mutation=True``): the core
+    writes the cross-engine edge linking the DESIGN to the quote it produces.
+    Sales still owns pricing and signing; this returns the lines, it does not
+    price or freeze them.
+
+    Requires ``namespace_id`` and ``design_id`` in *arguments*. Optional:
+    ``source_id``.
+    """
+    require_namespace_id(arguments)
+    if not arguments.get("design_id"):
+        raise ValueError("design_id is required")
+    result = await do_design_to_quote(engine, arguments)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_system_design_generate_sow(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: system_design_generate_sow -- statement of work for a DESIGN.
+
+    READ-ONLY (``cacheable=False, admin_only=False, mutation=False``). The core
+    only reads: design meta, design lines and the FL nodes. ``cacheable=False``
+    on a read follows ``system_design_validate_design_graph``'s precedent -- a
+    design under active canvas editing must not be served a stale SOW, and there
+    is no write here whose cache-generation bump would refresh it.
+
+    Freeze-on-issue: ``version_number`` is derived deterministically from the
+    design state, so re-issuing against an unchanged design returns the same
+    version. Supplying ``version_number`` overrides it and marks the result
+    frozen.
+
+    Requires ``namespace_id`` and ``design_id`` in *arguments*. Optional:
+    ``version_number``.
+    """
+    require_namespace_id(arguments)
+    if not arguments.get("design_id"):
+        raise ValueError("design_id is required")
+    result = await do_generate_sow(engine, arguments)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_system_design_enrich_design_lines(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_enrich_design_lines -- fire enrichment for a design.
+
+    SIDE-EFFECTING (``cacheable=False, admin_only=False, mutation=True``). The
+    core reads the graph to find DESIGN_LINEs and their PRODUCTs, then fires
+    scoped Product enrichment once per unique product UUID via
+    ``_fire_product_enrichment`` -> ``enqueue_product_enrichment``, and attempts a
+    Procurement TCO. It writes no graph rows itself, but it QUEUES work, so it is
+    registered ``mutation=True`` rather than as a read: a caller must be able to
+    tell that invoking it causes something to happen.
+
+    Requires ``namespace_id`` and ``design_id`` in *arguments*. Optional:
+    ``missing_fields`` (defaults to ``["etim_specs"]``).
+    """
+    require_namespace_id(arguments)
+    if not arguments.get("design_id"):
+        raise ValueError("design_id is required")
+    result = await do_enrich_design_lines(engine, arguments)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_system_design_propose_design(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: system_design_propose_design -- recall-driven BOM proposal.
+
+    PROPOSE-ONLY (``cacheable=False, admin_only=False, mutation=False``). The core
+    embeds the room brief, recalls the most similar past designs and returns
+    proposed DESIGN_LINE dicts. It never auto-accepts, freezes or applies a line:
+    every returned line carries ``validated: False``, and a human or a downstream
+    tool must confirm each one before it is authored into the graph.
+
+    Requires ``namespace_id`` and ``room_brief`` in *arguments*.
+
+    Exposed SEPARATELY from its four M6.W26 siblings because, unlike them, this
+    core is NOT orphaned: ``sales/commission.py:189`` and
+    ``system_design/from_quote.py:231`` already call it, and commission embeds the
+    result whole under ``system_design_proposal``. So this adapter must return the
+    core's payload verbatim -- an envelope, a rename or a dropped key would break
+    sales commission silently. Pinned by
+    ``tests/unit/test_propose_design_surface_passthrough.py``.
+
+    NOTE: ``top_k`` is deliberately NOT accepted. ``commission.py`` passes it and
+    the core ignores it -- ``do_propose_design`` reads only ``namespace_id`` and
+    ``room_brief`` from params and takes its recall width from
+    ``cfg.NCE_SYSTEM_DESIGN_RECALL_TOP_K``. Advertising ``top_k`` here would
+    publish a knob that does nothing.
+    """
+    require_namespace_id(arguments)
+    if not arguments.get("room_brief"):
+        raise ValueError("room_brief is required")
+    result = await do_propose_design(engine, arguments)
+    return json.dumps(result, default=str)

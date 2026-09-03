@@ -699,6 +699,30 @@ def build_admin_routes() -> list[Route]:
             endpoint=system_design_handlers.api_system_design_delete_planned,
             methods=["DELETE"],
         ),
+        # System Design vertical module endpoints (M6.W26, Batch 230a) -- the
+        # commercial half of the design loop. from-quote and to-quote write the
+        # graph; enrich-design-lines queues work; sow is a pure read despite the
+        # POST, exactly like /validate above.
+        Route(
+            "/api/system-design/from-quote",
+            endpoint=system_design_handlers.api_system_design_from_quote,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/system-design/to-quote",
+            endpoint=system_design_handlers.api_system_design_to_quote,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/system-design/sow",
+            endpoint=system_design_handlers.api_system_design_generate_sow,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/system-design/enrich-design-lines",
+            endpoint=system_design_handlers.api_system_design_enrich_design_lines,
+            methods=["POST"],
+        ),
         # ------------------------------------------------------------------
         # Vendors vertical module endpoints (M4.W3)
         # ------------------------------------------------------------------

@@ -562,7 +562,7 @@ class TestProjectAdvancePhaseToolRegistry:
         registered eleven tools but only seven mutate; inventory_valuation and
         inventory_reconcile_dead_stock read only, and
         inventory_recommend_restock/inventory_forecast_demand write nothing."""
-        assert len(MUTATION_TOOLS) == 52
+        assert len(MUTATION_TOOLS) == 56
 
     def test_admin_only_count(self) -> None:
         """Admin-only tools must total 27 (unified realignment registry;

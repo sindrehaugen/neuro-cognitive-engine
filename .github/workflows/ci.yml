@@ -362,6 +362,30 @@ jobs:
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/test_bom_line_store.py -m integration -q --tb=short
 
+      # Module 5, Waves 15-16 (Batches 132d + 132f): the Sales BOM_LINE
+      # origination path and its read seam. There is NO test_sales_* glob in
+      # this workflow -- the globs are test_economy_*, test_inventory_*,
+      # test_assets_* and test_system_design_*, and Sales appears elsewhere
+      # only as one hardcoded filename -- so without this step both files
+      # would run in NO job, which is exactly what
+      # tests/test_ci_integration_coverage.py exists to catch.
+      # What it gates: that a guarded write actually reaches bom_line_content
+      # with origin_kind='manual'/writer_engine='sales'; that the deny path
+      # fires for an unregistered transition AND for the wrong engine; that a
+      # caller-supplied origin_kind cannot reach the store; idempotency on
+      # bom_line_label; tenant isolation on the read; and the D47 proof --
+      # do_design_from_quote called with the A2A seam UNMOCKED, which is the
+      # only test in the tree that would have caught the from-quote route
+      # returning 500 on every call.
+      - name: Integration — M5 Sales BOM_LINE origination + read seam
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: >-
+          pytest tests/test_sales_lines_manual.py tests/test_sales_get_quote_lines.py
+          -m integration -q --tb=short
+
       # M9 Assets (tests/test_assets_*.py). FIRST integration job for Module 9;
       # Wave 1 (Batch 141) was a pure state machine with no DB surface to
       # integrate against. Proves FORCE RLS on `assets` via a real nce_app

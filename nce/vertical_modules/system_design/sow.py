@@ -41,6 +41,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
+from nce.config import cfg
 from nce.db_utils import scoped_pg_session
 
 log = logging.getLogger("nce.vertical_modules.system_design.sow")
@@ -84,10 +85,41 @@ _SERVICE_TIER_LABEL: dict[str, str] = {
 }
 
 _PROFILE_LABEL: dict[str, str] = {
-    "example_standard": "Example-standard (100% HW signing, 50/50 services)",
+    "standard": "Standard (100% HW signing, 50/50 services)",
     "anbud_30_30_30_10": "Anbud 30/30/30/10",
     "custom": "Tilpasset",
 }
+
+
+def _supplier_name() -> str:
+    """Legal entity name of the operator running this deployment.
+
+    **The single seam** through which every supplier-identity string in this
+    module is resolved (summary prose, the Terms title-retention clause and
+    the per-line ``ownership`` field).  Upgrading this to a per-namespace
+    lookup later changes one function body, not four string literals buried
+    in a document generator.
+
+    **Fails closed.**  When ``NCE_SUPPLIER_NAME`` is unset this raises rather
+    than substituting ``""`` or a plausible placeholder: the generated SoW
+    carries a Norwegian title-retention clause naming a legal entity, and a
+    blank or wrong party there is a defective contract, not a cosmetic bug.
+    An operator who has not configured their own company name has not
+    finished deploying, and the first SoW is the right place to find out.
+
+    Raises:
+        ValueError: when ``NCE_SUPPLIER_NAME`` is unset or blank.  Matches
+            what ``do_generate_sow`` already raises for a missing required
+            input, so the admin route maps it to 422 (caller-fixable), not 500.
+    """
+    name = (cfg.NCE_SUPPLIER_NAME or "").strip()
+    if not name:
+        raise ValueError(
+            "NCE_SUPPLIER_NAME is not configured: refusing to generate a SoW that names no supplier. "
+            "Set NCE_SUPPLIER_NAME to the legal entity name of the operator running this deployment."
+        )
+    return name
+
 
 _ACCEPTANCE_CLAUSES: list[str] = [
     "Akseptanse skjer via gate-overgang G4_HANDOVER → G5_ACCEPTANCE "
@@ -306,8 +338,9 @@ def generate_sow(sow_input: SoWInput, version_number: int = 1) -> SoWDoc:
     # ── §1 Summary ───────────────────────────────────────────────────────────
     total_rooms = len(deliverables)
     total_lines = len(sow_input.get("bomLines", []))
+    supplier = _supplier_name()
     summary_parts: list[str] = [
-        f"Example Integrator AS leverer {total_lines} komponenter fordelt over {total_rooms} rom "
+        f"{supplier} leverer {total_lines} komponenter fordelt over {total_rooms} rom "
         f"for {project['customerName']}, med en kontraktsverdi på {_format_nok(project['contractValue'])}.",
         f"Estimert arbeidsmengde er {labor_total_hours:.0f} timer over {len(labor_by_category)} kategorier.",
     ]
@@ -346,7 +379,7 @@ def generate_sow(sow_input: SoWInput, version_number: int = 1) -> SoWDoc:
         "Alle priser er oppgitt eks. mva. (25 %) i NOK.",
         f"Betalingsbetingelser: {payment_days} dager netto fra fakturadato.",
         "Forsinkelsesrente etter forsinkelsesrentelovens sats.",
-        "Example Integrator AS beholder eierskap til leveranser inntil full betaling er mottatt.",
+        f"{supplier} beholder eierskap til leveranser inntil full betaling er mottatt.",
         "Tvister søkes løst i minnelighet; verneting er Oslo tingrett.",
     ]
 
@@ -614,6 +647,7 @@ def _assemble_sow_input(
 
     # BOM lines — one entry per DESIGN_LINE.
     bom_lines: list[dict[str, Any]] = []
+    supplier = _supplier_name()
     for dl in design_lines:
         dl_lbl: str = dl["label"]
         parsed = _parse_design_line_label(dl_lbl)
@@ -627,7 +661,7 @@ def _assemble_sow_input(
                 "sellPrice": 0.0,
                 "roomId": room_fl,
                 "roomName": _parse_fl_label(room_fl)["name"] if room_fl else None,
-                "ownership": "BETA",
+                "ownership": supplier,
             }
         )
 
@@ -687,6 +721,10 @@ async def do_generate_sow(
     ns_raw = params.get("namespace_id")
     if not ns_raw:
         raise ValueError("do_generate_sow: 'namespace_id' is required in params")
+    # D35 fail-closed: resolve the operator identity BEFORE any DB read, so an
+    # unconfigured deployment is told what is missing instead of producing a
+    # contract that names no party. Raises ValueError naming NCE_SUPPLIER_NAME.
+    _supplier_name()
     ns_uuid = UUID(str(ns_raw)) if not isinstance(ns_raw, UUID) else ns_raw
 
     design_id_raw: str = params.get("design_id", "")
