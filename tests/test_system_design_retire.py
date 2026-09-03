@@ -1613,18 +1613,18 @@ class TestOwnerPoolTenantIsolation:
         self, pg_pool: Any, make_namespace: Any
     ) -> None:
         alpha = await make_namespace()
-        example = await make_namespace()
-        assert alpha != example
-        for ns in (alpha, example):
+        beta = await make_namespace()
+        assert alpha != beta
+        for ns in (alpha, beta):
             await _seed_ownership(pg_pool, ns)
         engine = _EngineStub(pg_pool)
 
         await _author(engine, alpha, "ALPHA")
-        await _author(engine, example, "BETA")
+        await _author(engine, beta, "BETA")
 
         # Same labels in both tenants — that is the point of the fixture.
         assert _DEVICE_LABEL in await _state_rows(pg_pool, alpha)
-        assert _DEVICE_LABEL in await _state_rows(pg_pool, example)
+        assert _DEVICE_LABEL in await _state_rows(pg_pool, beta)
 
         await _dispatch_ok(
             engine,
@@ -1632,17 +1632,17 @@ class TestOwnerPoolTenantIsolation:
             _retire_args(alpha, [_DEVICE_LABEL, _RACK_LABEL, _CABLE_LABEL], actor="ada@alpha.test"),
         )
 
-        example_rows = await _state_rows(pg_pool, example)
-        assert example_rows[_DEVICE_LABEL]["status"] == "planned", (
+        beta_rows = await _state_rows(pg_pool, beta)
+        assert beta_rows[_DEVICE_LABEL]["status"] == "planned", (
             "tenant ALPHA's retire changed tenant BETA's device"
         )
-        assert example_rows[_RACK_LABEL]["status"] == "planned"
-        assert example_rows[_CABLE_LABEL]["status"] == "planned"
-        assert example_rows[_DEVICE_LABEL]["revision"] == _TENANT_CONTENT["BETA"]["revision"], (
+        assert beta_rows[_RACK_LABEL]["status"] == "planned"
+        assert beta_rows[_CABLE_LABEL]["status"] == "planned"
+        assert beta_rows[_DEVICE_LABEL]["revision"] == _TENANT_CONTENT["BETA"]["revision"], (
             "content differs only per tenant; the wrong value here means the read "
             "crossed the boundary"
         )
-        assert float(example_rows[_DEVICE_LABEL]["salience"]) > 0, (
+        assert float(beta_rows[_DEVICE_LABEL]["salience"]) > 0, (
             "tenant BETA's salience was floored by tenant ALPHA's retire"
         )
 
@@ -1650,19 +1650,19 @@ class TestOwnerPoolTenantIsolation:
         self, pg_pool: Any, make_namespace: Any
     ) -> None:
         alpha = await make_namespace()
-        example = await make_namespace()
-        for ns in (alpha, example):
+        beta = await make_namespace()
+        for ns in (alpha, beta):
             await _seed_ownership(pg_pool, ns)
         engine = _EngineStub(pg_pool)
 
         await _author(engine, alpha, "ALPHA")
-        await _author(engine, example, "BETA")
-        example_before = {
-            "nodes": await _node_labels(pg_pool, example),
-            "edges": await _edges(pg_pool, example),
-            "caps": await _capability_labels(pg_pool, example),
-            "geom": await _geometry_rows(pg_pool, example),
-            "state": set(await _state_rows(pg_pool, example)),
+        await _author(engine, beta, "BETA")
+        beta_before = {
+            "nodes": await _node_labels(pg_pool, beta),
+            "edges": await _edges(pg_pool, beta),
+            "caps": await _capability_labels(pg_pool, beta),
+            "geom": await _geometry_rows(pg_pool, beta),
+            "state": set(await _state_rows(pg_pool, beta)),
         }
 
         await _dispatch_ok(
@@ -1674,13 +1674,13 @@ class TestOwnerPoolTenantIsolation:
         assert _DEVICE_LABEL not in await _node_labels(pg_pool, alpha), (
             "positive control: the delete must actually have happened in ALPHA"
         )
-        assert await _node_labels(pg_pool, example) == example_before["nodes"], (
+        assert await _node_labels(pg_pool, beta) == beta_before["nodes"], (
             "tenant ALPHA's delete removed tenant BETA's nodes"
         )
-        assert await _edges(pg_pool, example) == example_before["edges"]
-        assert await _capability_labels(pg_pool, example) == example_before["caps"]
-        assert await _geometry_rows(pg_pool, example) == example_before["geom"]
-        assert set(await _state_rows(pg_pool, example)) == example_before["state"]
+        assert await _edges(pg_pool, beta) == beta_before["edges"]
+        assert await _capability_labels(pg_pool, beta) == beta_before["caps"]
+        assert await _geometry_rows(pg_pool, beta) == beta_before["geom"]
+        assert set(await _state_rows(pg_pool, beta)) == beta_before["state"]
 
     async def test_the_port_expansion_does_not_cross_the_tenant_boundary(
         self, pg_pool: Any, make_namespace: Any
@@ -1704,15 +1704,15 @@ class TestOwnerPoolTenantIsolation:
         reporting that it removed a port that only exists in BETA.
         """
         alpha = await make_namespace()
-        example = await make_namespace()
-        for ns in (alpha, example):
+        beta = await make_namespace()
+        for ns in (alpha, beta):
             await _seed_ownership(pg_pool, ns)
         engine = _EngineStub(pg_pool)
 
         await _author(engine, alpha, "ALPHA")
-        await _author(engine, example, "BETA", extra_port=True)
+        await _author(engine, beta, "BETA", extra_port=True)
 
-        assert _EXTRA_PORT_LABEL in await _node_labels(pg_pool, example)
+        assert _EXTRA_PORT_LABEL in await _node_labels(pg_pool, beta)
         assert _EXTRA_PORT_LABEL not in await _node_labels(pg_pool, alpha), (
             "fixture is wrong: the probe port must exist in BETA only"
         )
@@ -1726,7 +1726,7 @@ class TestOwnerPoolTenantIsolation:
             "ALPHA's port expansion saw BETA's port: the has_port read crossed the "
             "namespace boundary"
         )
-        assert _EXTRA_PORT_LABEL in await _node_labels(pg_pool, example)
+        assert _EXTRA_PORT_LABEL in await _node_labels(pg_pool, beta)
 
     async def test_a_tenant_cannot_reach_a_node_that_only_the_other_tenant_has(
         self, pg_pool: Any, make_namespace: Any
@@ -1739,12 +1739,12 @@ class TestOwnerPoolTenantIsolation:
         ALPHA never had.
         """
         alpha = await make_namespace()
-        example = await make_namespace()
-        for ns in (alpha, example):
+        beta = await make_namespace()
+        for ns in (alpha, beta):
             await _seed_ownership(pg_pool, ns)
         engine = _EngineStub(pg_pool)
 
-        await _author(engine, example, "BETA")  # ALPHA authors NOTHING.
+        await _author(engine, beta, "BETA")  # ALPHA authors NOTHING.
 
         payload = await _dispatch(engine, _RETIRE_TOOL, _retire_args(alpha, [_DEVICE_LABEL]))
         error = payload.get("error")
@@ -1752,7 +1752,7 @@ class TestOwnerPoolTenantIsolation:
         assert error["data"]["denials"] == [
             {"node_label": _DEVICE_LABEL, "reason": DENY_NODE_ABSENT, "status": None}
         ]
-        assert (await _state_rows(pg_pool, example))[_DEVICE_LABEL]["status"] == "planned"
+        assert (await _state_rows(pg_pool, beta))[_DEVICE_LABEL]["status"] == "planned"
 
 
 # ===========================================================================

@@ -17,14 +17,14 @@ A deep dive on **Huma (huma.no)** + the Nordic-HR landscape (Simployer, Hailey, 
 - **⚖️ LEGAL RED LINE (EU AI Act Article 5, in force 2 Feb 2025) — re-scope the burnout Watcher.** The Act **prohibits AI that infers emotions in the workplace** (fines to €35M/7%); guidance explicitly does **not** exempt stress/burnout/depression monitoring. So the spec's "burnout signal (load × hours × **low coaching-sentiment**)" is non-compliant as worded. **Drop the sentiment term**; rebuild it as a **"sustained-overload flag" from objective signals only** (assigned load, scheduled hours, absence), surfaced privately as a workload/capacity flag — never an emotional state. Document the Article-5 boundary in `config.py` next to `NCE_HR_RANKING_DISABLED`. The NEVER-ranking line is now a **legal floor, not a preference** — a moat (incumbents bolting on "engagement scoring" walk into Article-5 exposure).
 
 ## Inspiration & triage
-- **Andreas source:** `04-virksomhets-modulkart.md` module **16 — HR & Performance (Example Academy)** — Platform axis; core objects: profilkort, skills-matrise, sertifiserings-lifecycle, kapasitet, Example Academy, onboarding-quest, leave. Module map §note: "Platform-modulene tjener alle andre … HR/Academy mater assignment"; "Delt ressurs-pool — 07 og 12 deler teknikere; 11 (eksterne) utvider med restricted access; 16 driver hvem som dispatches/assignes."
+- **Andreas source:** `04-virksomhets-modulkart.md` module **16 — HR & Performance (Academy)** — Platform axis; core objects: profilkort, skills-matrise, sertifiserings-lifecycle, kapasitet, Academy, onboarding-quest, leave. Module map §note: "Platform-modulene tjener alle andre … HR/Academy mater assignment"; "Delt ressurs-pool — 07 og 12 deler teknikere; 11 (eksterne) utvider med restricted access; 16 driver hvem som dispatches/assignes."
 - **Portal sidecar to lift (`backend/portal_hr/`):** triage each into the clean vertical —
   - `employees.py:EmployeeRegistry` (in-memory dict + `semantic_skills_search`) → `hr/employees.py` + `employees` table; the naïve keyword search becomes a real `memories`/graph skills-match.
   - `absence.py:AbsenceManager` (incl. the Norwegian NLP **Smart Leave Assistant** `parse_natural_language`) → `hr/absence.py` + `absences` table; keep the NLP parser as a pure helper.
   - `checklists.py:SmartChecklistBuilder` (role/department-driven onboarding + offboarding) → `hr/onboarding.py` (the 90-day quest).
   - `performance.py:PerformanceManager.log_one_on_one` (already writes `MemoryPayload` episodic → NCE) → `hr/ingestion.py`; this is the seed of push+semantic, but **PII-hardened** (see Classification).
   - `compliance.py:GDPRComplianceAuditor.scan_text` (fødselsnummer/bank/phone regex) → `hr/redaction.py`, promoted from a passive auditor to an **enforced redaction gate** on every memory write.
-- **Lysning pages served:** `PortalHr.jsx` (HR dashboard), `Brukere.jsx` (employee list), `BrukerDetalj.jsx` (profile card / skills / certs / absence), `Onboarding.jsx` (the quest) — all consume the no-model REST surface.
+- **Lysning pages served:** the HR dashboard page, `Brukere.jsx` (employee list), `BrukerDetalj.jsx` (profile card / skills / certs / absence), `Onboarding.jsx` (the quest) — all consume the no-model REST surface.
 
 ## Classification
 **push + semantic — with the strictest PII posture of any engine.** **No external HR SaaS (build-vs-buy directive, roadmap §2.10):** the source of truth is internal (employee/skill/cert/absence rows) and **compliance is encoded natively** (we copy Simployer's content discipline, we don't pay for it — the law is public). The **only** external touch is **statutory reporting to NAV** (sykefravær follow-up), not a paid HR vendor. Semantic track: 1-on-1 notes, reviews, coaching observations → `memories`. **Auth/privacy model:** every semantic write passes the `redaction.py` gate (fødselsnummer/bank/phone stripped before embedding); memories are written agent-scoped (`hr_private_coach`) and **never** surfaced to ranking/aggregate queries. Resilience for the NAV reporting adapter: `httpx.AsyncClient` (30s) via `nce.http_resilience.request_with_retry()`, token Redis-cached in `auth.py`.
@@ -68,7 +68,7 @@ Registered in `nce/tool_registry.py` via `_h(...)` late-binding. AI-role tag per
 | `hr_sync_now` | ✘ | ✔ | ✔ | — (operator) |
 
 ## REST routes
-No-model path for the BFF (`PortalHr.jsx`, `Brukere.jsx`, `BrukerDetalj.jsx`, `Onboarding.jsx`), cron, scripts. Mounted via `build_app(extra_routes=...)`; HMAC/mTLS-authed in `nce/admin_handlers/hr.py`. **Every route enforces the access-scope check before returning PII.**
+No-model path for the BFF (the HR dashboard, `Brukere.jsx`, `BrukerDetalj.jsx`, `Onboarding.jsx`), cron, scripts. Mounted via `build_app(extra_routes=...)`; HMAC/mTLS-authed in `nce/admin_handlers/hr.py`. **Every route enforces the access-scope check before returning PII.**
 - `api_hr_employees` (GET) — list (`Brukere.jsx`), field-scoped by caller role.
 - `api_hr_employee` (GET) — profile card (`BrukerDetalj.jsx`).
 - `api_hr_match_skills` (POST) — assignment fit for Project/Field Tech screens.

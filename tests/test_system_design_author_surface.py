@@ -105,7 +105,7 @@ _DESIGN_ID = "DESIGN-W13B-AUTH-001"
 _DESIGN_LABEL = f"DESIGN:{_DESIGN_ID}"
 _NS_SLUG = "w13b-author"
 
-_SITE = "SiteExample"
+_SITE = "SiteAcme"
 _BUILDING = "BuildingNorth"
 _FLOOR = "FloorThree"
 _ROOM = "RoomThreeOhSeven"

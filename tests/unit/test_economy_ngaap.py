@@ -631,7 +631,7 @@ class TestConfigIsAccountsOnly:
             for role in before:
                 assert before[role] != after[role], role
 
-    def test_real_example_config_produces_the_identical_split(self) -> None:
+    def test_real_tenant_config_produces_the_identical_split(self) -> None:
         # The strongest form of the claim: the tenant's REAL chart/mapping and the fixture's fake
         # 9xxx accounts periodise to the same numbers. If any split logic had leaked into the
         # JSON, these two would diverge.
