@@ -316,7 +316,7 @@ $$ LANGUAGE plpgsql STABLE;
 ```
 
 ### 8b. Default Table Policy Pattern
-For all 57 tenant-scoped tables (`EXPECTED_TENANT_RLS_TABLES` in `nce/event_log.py`), RLS is enabled and enforced:
+For all 64 tenant-scoped tables (`EXPECTED_TENANT_RLS_TABLES` in `nce/event_log.py`), RLS is enabled and enforced:
 
 ```sql
 ALTER TABLE memories ENABLE ROW LEVEL SECURITY;
