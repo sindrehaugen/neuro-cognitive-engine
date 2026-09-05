@@ -154,6 +154,10 @@ KNOWN_DYNAMIC_EMIT_SITES: dict[str, str] = {
         "Pass-through helper: ``event_type`` is its own parameter, forwarded to "
         "append_event. Callers supply literals, which the census sees."
     ),
+    "nce/vertical_modules/marketing/events.py::emit_marketing_event": (
+        "Pass-through helper: ``event_type`` is forwarded to append_event. Callers "
+        "supply module constants or string literals, which the census discovers."
+    ),
 }
 
 

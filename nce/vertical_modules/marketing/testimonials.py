@@ -125,6 +125,18 @@ async def do_request_testimonial(
         except Exception as exc:
             log.warning("do_request_testimonial DB write error: %s", exc)
 
+    from nce.vertical_modules.marketing.events import (
+        EVENT_MARKETING_TESTIMONIAL_REQUESTED,
+        emit_marketing_event,
+    )
+
+    await emit_marketing_event(
+        engine,
+        ns_str,
+        EVENT_MARKETING_TESTIMONIAL_REQUESTED,
+        {"customer_id": customer_id, "project_id": str(project_id or "")},
+    )
+
     return {
         "ok": True,
         "testimonial_id": testimonial_id,
@@ -252,6 +264,18 @@ async def do_capture_testimonial(
         except Exception as exc:
             log.warning("do_capture_testimonial DB write error: %s", exc)
 
+    from nce.vertical_modules.marketing.events import (
+        EVENT_MARKETING_TESTIMONIAL_CAPTURED,
+        emit_marketing_event,
+    )
+
+    await emit_marketing_event(
+        engine,
+        ns_str,
+        EVENT_MARKETING_TESTIMONIAL_CAPTURED,
+        {"testimonial_id": testimonial_id, "consent_tier": consent_tier},
+    )
+
     return {
         "ok": True,
         "testimonial_id": testimonial_id,
@@ -322,6 +346,18 @@ async def do_retract_testimonial(
                     )
         except Exception as exc:
             log.warning("do_retract_testimonial DB write error: %s", exc)
+
+    from nce.vertical_modules.marketing.events import (
+        EVENT_MARKETING_TESTIMONIAL_RETRACTED,
+        emit_marketing_event,
+    )
+
+    await emit_marketing_event(
+        engine,
+        ns_str,
+        EVENT_MARKETING_TESTIMONIAL_RETRACTED,
+        {"testimonial_id": testimonial_id, "reason": reason},
+    )
 
     return {
         "ok": True,

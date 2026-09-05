@@ -182,6 +182,18 @@ async def api_marketing_draft_case_study(request: Any) -> JSONResponse:
             except Exception as exc:
                 log.warning("api_marketing_draft_case_study DB save warning: %s", exc)
 
+        from nce.vertical_modules.marketing.events import (
+            EVENT_MARKETING_CASE_STUDY_DRAFTED,
+            emit_marketing_event,
+        )
+
+        await emit_marketing_event(
+            admin_state.engine,
+            ns,
+            EVENT_MARKETING_CASE_STUDY_DRAFTED,
+            {"project_id": project_id},
+        )
+
         await bump_mcp_cache_generation(admin_state.engine, route="api_marketing_draft_case_study")
         return JSONResponse(_json_safe(draft), status_code=200)
     except (

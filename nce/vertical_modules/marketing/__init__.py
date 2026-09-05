@@ -19,6 +19,10 @@ from nce.vertical_modules.marketing.advisor import (
     do_suggest_content,
 )
 from nce.vertical_modules.marketing.approval import do_approve_content
+from nce.vertical_modules.marketing.brief import (
+    do_query_marketing_a2a,
+    get_marketing_morning_brief_slice,
+)
 from nce.vertical_modules.marketing.candidates import do_find_case_study_candidates
 from nce.vertical_modules.marketing.drafting import (
     do_draft_case_study,
@@ -51,9 +55,11 @@ __all__ = [
     "do_draft_case_study",
     "do_find_case_study_candidates",
     "do_publish_content",
+    "do_query_marketing_a2a",
     "do_request_testimonial",
     "do_retract_testimonial",
     "do_suggest_content",
+    "get_marketing_morning_brief_slice",
     "redact_for_marketing_draft",
     "require_marketing_enabled",
     "validate_draft_grounding",

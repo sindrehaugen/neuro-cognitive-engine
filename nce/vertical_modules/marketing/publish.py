@@ -200,6 +200,18 @@ async def do_publish_content(
         except Exception as exc:
             log.warning("do_publish_content DB update error: %s", exc)
 
+    from nce.vertical_modules.marketing.events import (
+        EVENT_MARKETING_CONTENT_PUBLISHED,
+        emit_marketing_event,
+    )
+
+    await emit_marketing_event(
+        engine,
+        ns_str,
+        EVENT_MARKETING_CONTENT_PUBLISHED,
+        {"artifact_id": artifact_id_str, "transport": transport_raw},
+    )
+
     export_payload = {
         "artifact_id": artifact_id_str,
         "title": title,

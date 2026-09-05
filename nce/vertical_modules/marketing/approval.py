@@ -135,6 +135,18 @@ async def do_approve_content(
         except Exception as exc:
             log.warning("do_approve_content DB write error: %s", exc)
 
+    from nce.vertical_modules.marketing.events import (
+        EVENT_MARKETING_CONTENT_APPROVED,
+        emit_marketing_event,
+    )
+
+    await emit_marketing_event(
+        engine,
+        ns_str,
+        EVENT_MARKETING_CONTENT_APPROVED,
+        {"artifact_id": artifact_id_str, "approver": approver, "decision": decision},
+    )
+
     return {
         "ok": True,
         "artifact_id": artifact_id_str,
