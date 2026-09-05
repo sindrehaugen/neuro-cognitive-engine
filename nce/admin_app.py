@@ -1217,7 +1217,6 @@ def build_admin_routes() -> list[Route]:
     ]
 
 
-
 def build_app(
     *,
     extra_routes: Sequence[Route] = (),

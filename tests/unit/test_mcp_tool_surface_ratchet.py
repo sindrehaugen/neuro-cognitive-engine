@@ -322,4 +322,3 @@ def test_the_recorded_gap_matches_what_is_measured() -> None:
     assert len(_registered()) == 187
     assert len(_defined_in_file()) == 185
     assert len(_registered()) == len(_defined_in_file()) + len(TOOLS_WITH_NO_DEFINITION)
-

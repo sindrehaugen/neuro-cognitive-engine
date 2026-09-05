@@ -591,4 +591,3 @@ class TestProjectAdvancePhaseToolRegistry:
         +2 ML10b-P2/P3 support tools -- support_dispatch_work_order, support_sync_now;
         +1 ML15-B7 resources tool -- resources_plan_material_flow)."""
         assert len(ADMIN_ONLY_TOOLS) == 42
-
