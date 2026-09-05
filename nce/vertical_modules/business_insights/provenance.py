@@ -92,6 +92,29 @@ def make_edge(
     }
 
 
+def make_scenario_node(
+    namespace_id: str | UUID,
+    name: str,
+    assumptions: dict[str, Any],
+    results: dict[str, Any],
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Construct a SCENARIO cognitive graph node dictionary."""
+    node_id = str(uuid4())
+    return {
+        "id": node_id,
+        "namespace_id": str(namespace_id),
+        "label": f"scenario:{node_id[:8]}",
+        "entity_type": "BUSINESS_INSIGHTS_SCENARIO",
+        "name": name,
+        "assumptions": assumptions,
+        "results": results,
+        "business_insights_source_id": f"bi:scenario:{node_id[:8]}",
+        "metadata": metadata or {},
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 async def record_ledger_audit(
     conn: Any,
     namespace_id: str | UUID,

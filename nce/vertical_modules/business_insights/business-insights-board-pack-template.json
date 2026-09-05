@@ -1,0 +1,70 @@
+{
+  "template_version": "1.0",
+  "title": "Quarterly Board of Directors Executive Pack",
+  "sections": [
+    {
+      "id": "executive_summary",
+      "name": "Executive Summary & CEO Narrative",
+      "required": true,
+      "fields": [
+        "period",
+        "headline",
+        "strategic_highlights"
+      ]
+    },
+    {
+      "id": "financial_pulse",
+      "name": "Financial Pulse & Margin Health",
+      "required": true,
+      "engine": "economy",
+      "fields": [
+        "revenue",
+        "gross_margin_pct",
+        "mrr",
+        "arr",
+        "cash_runway_months"
+      ]
+    },
+    {
+      "id": "sales_pipeline",
+      "name": "Commercial Pipeline & Win-Loss",
+      "required": true,
+      "engine": "sales",
+      "fields": [
+        "pipeline_total_value",
+        "pipeline_growth_pct",
+        "top_deals",
+        "conversion_rate_pct"
+      ]
+    },
+    {
+      "id": "operational_capacity",
+      "name": "Delivery Capacity & Utilization",
+      "required": true,
+      "engine": "resources",
+      "fields": [
+        "team_utilization_pct",
+        "capacity_headroom",
+        "staffing_constraints"
+      ]
+    },
+    {
+      "id": "risk_radar_summary",
+      "name": "Top Cross-Engine Risks & Watchpoints",
+      "required": true,
+      "fields": [
+        "surfaced_collisions",
+        "mitigations"
+      ]
+    },
+    {
+      "id": "forward_scenarios",
+      "name": "Forward What-If & Capital Scenarios",
+      "required": false,
+      "fields": [
+        "scenario_outcomes",
+        "monte_carlo_confidence_p50_p90"
+      ]
+    }
+  ]
+}
