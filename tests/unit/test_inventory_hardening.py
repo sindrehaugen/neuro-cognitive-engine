@@ -52,11 +52,12 @@ _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
 # --- MEASURED on branch vm-b140-m11-w12-hardening, base 039fdd1 -------------
-_TOTAL_TOOLS = 178  # 166 baseline + 4 support tools + 8 hr tools
-_MUTATION_TOOLS = 77  # 71 baseline + 3 support tools + 3 hr tools
-_CACHEABLE_TOOLS = 63  # 57 baseline + 1 support tool + 5 hr tools
-_ADMIN_ONLY_TOOLS = 41  # 37 baseline + 2 support tools + 2 hr tools
+_TOTAL_TOOLS = 187  # 178 baseline + 9 resources tools (Module 15)
+_MUTATION_TOOLS = 81  # 77 baseline + 4 resources tools (reserve, release, material-flow, travel)
+_CACHEABLE_TOOLS = 67  # 63 baseline + 4 resources tools (capacity, conflicts, forecast, field-schedule)
+_ADMIN_ONLY_TOOLS = 42  # 41 baseline + 1 resources tool (plan-material-flow)
 _MIGRATION_TOOLS = 5
+
 
 
 # The Inventory vertical's tools, read from ``TOOL_REGISTRY`` itself.  14, not

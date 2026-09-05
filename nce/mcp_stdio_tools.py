@@ -4625,6 +4625,146 @@ TOOLS = [
             "required": ["namespace_id", "artifact_id"],
         },
     ),
+    # --- Staff & Resources Engine (Module 15) ---
+    Tool(
+        name="resources_resolve_capacity",
+        description="Resolve capacity calendar and utilization for resources in a namespace.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
+                "starts_at": {"type": "string", "description": "ISO start timestamp."},
+                "ends_at": {"type": "string", "description": "ISO end timestamp."},
+                "resource_id": {"type": "string", "description": "Optional specific resource UUID."},
+                "kind": {"type": "string", "description": "Optional filter by kind ('employee', 'contractor', 'vehicle', 'tool')."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="resources_plan_allocation",
+        description="AI allocation advisor: multi-objective skill matching and cognitive recall from ledger.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
+                "demand_kind": {"type": "string", "description": "Demand kind (e.g. 'project', 'work_order', 'service')."},
+                "demand_id": {"type": "string", "description": "Optional demand identifier."},
+                "starts_at": {"type": "string", "description": "Required window start timestamp."},
+                "ends_at": {"type": "string", "description": "Required window end timestamp."},
+                "required_skills": {"type": "array", "items": {"type": "string"}, "description": "Optional list of required skills."},
+                "required_role": {"type": "string", "description": "Optional required role or kind."},
+                "functional_location_id": {"type": "string", "description": "Optional site location UUID."},
+            },
+            "required": ["namespace_id", "demand_kind", "starts_at", "ends_at"],
+        },
+    ),
+    Tool(
+        name="resources_detect_conflicts",
+        description="Detect overlapping double-bookings and schedule clashes across resources.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
+                "resource_id": {"type": "string", "description": "Optional resource UUID."},
+                "starts_at": {"type": "string", "description": "Optional window start."},
+                "ends_at": {"type": "string", "description": "Optional window end."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="resources_forecast_demand",
+        description="Forecast staff & resource demand vs capacity across planning horizons; hire/contractor signals.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
+                "horizon_days": {"type": "integer", "description": "Forecast horizon in days (default: 30)."},
+                "role": {"type": "string", "description": "Optional role or kind filter."},
+                "skills": {"type": "array", "items": {"type": "string"}, "description": "Optional skill filters."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="resources_field_schedule",
+        description="Field webapp mobile read model: composed technician schedule, travel, lodging, van stock, and work orders.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
+                "resource_id": {"type": "string", "description": "Technician resource UUID."},
+                "starts_at": {"type": "string", "description": "Optional start window."},
+                "ends_at": {"type": "string", "description": "Optional end window."},
+            },
+            "required": ["namespace_id", "resource_id"],
+        },
+    ),
+    Tool(
+        name="resources_reserve",
+        description="Reserve time window for a resource; DB-enforced against double-booking via btree_gist (RS-3).",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
+                "resource_id": {"type": "string", "description": "Resource UUID to reserve."},
+                "starts_at": {"type": "string", "description": "Window start timestamp."},
+                "ends_at": {"type": "string", "description": "Window end timestamp."},
+                "demand_kind": {"type": "string", "description": "Demand kind (e.g. 'project', 'work_order')."},
+                "demand_id": {"type": "string", "description": "Optional demand identifier."},
+                "functional_location_id": {"type": "string", "description": "Optional site location UUID."},
+                "attrs": {"type": "object", "description": "Optional arbitrary allocation attributes."},
+            },
+            "required": ["namespace_id", "resource_id", "starts_at", "ends_at", "demand_kind"],
+        },
+    ),
+    Tool(
+        name="resources_release",
+        description="Release an active resource allocation, freeing capacity and lifting exclusion.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
+                "allocation_id": {"type": "string", "description": "Allocation UUID to release."},
+            },
+            "required": ["namespace_id", "allocation_id"],
+        },
+    ),
+    Tool(
+        name="resources_plan_material_flow",
+        description="Coordinate material staging: warehouse pick, van loading (RS-2), transport, and delivery.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
+                "project_id": {"type": "string", "description": "Project UUID."},
+                "van_resource_id": {"type": "string", "description": "Van resource UUID (RS-2)."},
+                "destination_location_id": {"type": "string", "description": "Delivery destination location ID."},
+                "staging_start": {"type": "string", "description": "Material pick/stage start timestamp."},
+                "delivery_deadline": {"type": "string", "description": "Delivery deadline timestamp."},
+                "bom_line_ids": {"type": "array", "items": {"type": "string"}, "description": "Optional BOM line identifiers."},
+            },
+            "required": ["namespace_id", "project_id", "van_resource_id", "destination_location_id", "staging_start", "delivery_deadline"],
+        },
+    ),
+    Tool(
+        name="resources_plan_travel",
+        description="Plan or book technician travel & lodging behind Contract-B spend gate (RS-5) with Norwegian diett.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
+                "allocation_id": {"type": "string", "description": "Allocation UUID."},
+                "action": {"type": "string", "enum": ["plan", "book"], "description": "Action: 'plan' (advisor) or 'book' (actor)."},
+                "idempotency_key": {"type": "string", "description": "Required for 'book' action."},
+                "spend_ceiling_nok": {"type": "number", "description": "Optional spend ceiling (default 10,000 NOK)."},
+                "confirm": {"type": "boolean", "description": "Explicit confirmation if booking exceeds ceiling."},
+                "itinerary": {"type": "object", "description": "Travel itinerary including travel_legs, stays, per_diems."},
+            },
+            "required": ["namespace_id", "allocation_id", "itinerary"],
+        },
+    ),
 ]
 
 

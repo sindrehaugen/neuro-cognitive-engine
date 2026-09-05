@@ -23,6 +23,10 @@ from nce.vertical_modules.resources.allocations import (
 )
 from nce.vertical_modules.resources.capacity import do_resolve_capacity
 from nce.vertical_modules.resources.field_schedule import do_field_schedule
+from nce.vertical_modules.resources.forecast import (
+    do_forecast_demand,
+    get_morning_brief_capacity_pulse,
+)
 from nce.vertical_modules.resources.material_flow import do_plan_material_flow
 from nce.vertical_modules.resources.planner import (
     do_plan_allocation,
@@ -41,6 +45,10 @@ from nce.vertical_modules.resources.travel import (
     do_plan_travel,
     load_travel_policy,
 )
+from nce.vertical_modules.resources.watcher import (
+    handle_hr_cert_change,
+    register_resources_event_subscribers,
+)
 
 __all__ = [
     "CONTRACTOR_ALLOWED_ALLOCATION_FIELDS",
@@ -55,6 +63,7 @@ __all__ = [
     "do_create_resource",
     "do_detect_conflicts",
     "do_field_schedule",
+    "do_forecast_demand",
     "do_get_resource",
     "do_list_resources",
     "do_plan_allocation",
@@ -65,8 +74,11 @@ __all__ = [
     "do_reserve",
     "do_resolve_capacity",
     "do_update_resource",
+    "get_morning_brief_capacity_pulse",
+    "handle_hr_cert_change",
     "load_allocation_weights",
     "load_travel_policy",
     "redact_contractor_view",
+    "register_resources_event_subscribers",
     "require_resources_enabled",
 ]

@@ -569,8 +569,9 @@ class TestProjectAdvancePhaseToolRegistry:
         +3 ML13-B3 HR tools, M13.W3;
         +5 ML14-B3 marketing tools, M14.W3;
         +1 ML10b-P1 support tool;
-        +2 ML10b-P2/P3 support tools (support_dispatch_work_order, support_sync_now)."""
-        assert len(MUTATION_TOOLS) == 77
+        +2 ML10b-P2/P3 support tools (support_dispatch_work_order, support_sync_now);
+        +4 ML15-B7 resources tools (reserve, release, material-flow, travel)."""
+        assert len(MUTATION_TOOLS) == 81
 
     def test_admin_only_count(self) -> None:
         """Admin-only tools must total 32 (unified realignment registry;
@@ -587,5 +588,7 @@ class TestProjectAdvancePhaseToolRegistry:
         +3 ML12-B5 field_tech tools, M12.W5 -- field_tech_create_work_order, field_tech_assign, field_tech_record_outcome;
         +2 ML13-B3 HR tools, M13.W3 -- hr_build_onboarding_quest, hr_log_one_on_one;
         +5 ML14-B3 marketing tools, M14.W3;
-        +2 ML10b-P2/P3 support tools -- support_dispatch_work_order, support_sync_now)."""
-        assert len(ADMIN_ONLY_TOOLS) == 41
+        +2 ML10b-P2/P3 support tools -- support_dispatch_work_order, support_sync_now;
+        +1 ML15-B7 resources tool -- resources_plan_material_flow)."""
+        assert len(ADMIN_ONLY_TOOLS) == 42
+
