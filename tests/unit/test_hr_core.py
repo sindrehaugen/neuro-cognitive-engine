@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -488,6 +488,113 @@ async def test_do_record_certification():
     assert res["cert_id"] == "cts"
     assert res["authority"] == "AVIXA"
     assert res["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_do_record_certification_date_coercion():
+    """do_record_certification must parse date strings into date/datetime objects and validate malformed dates."""
+    conn = AsyncMock()
+    now_dt = datetime.now(timezone.utc)
+    conn.fetchrow.return_value = {
+        "id": "33333333-3333-4000-8000-333333333333",
+        "cert_id": "cts",
+        "employee_id": "EMP-ALPHA",
+        "namespace_id": _NS_A,
+        "authority": "AVIXA",
+        "name": "CTS",
+        "issued": now_dt,
+        "valid_to": now_dt,
+        "status": "active",
+        "hr_source_id": "SRC-CERT-01",
+    }
+    pool = _make_mock_pool(conn)
+
+    # 1. With ISO strings: should bind datetime.date objects to conn.fetchrow, NOT str
+    await do_record_certification(
+        pool,
+        {
+            "namespace_id": _NS_A,
+            "employee_id": "EMP-ALPHA",
+            "cert_id": "cts",
+            "authority": "AVIXA",
+            "name": "CTS",
+            "issued": "2026-09-01",
+            "valid_to": "2029-09-01",
+        },
+    )
+    bound_args = conn.fetchrow.call_args[0]
+    bound_issued = bound_args[6]
+    bound_valid_to = bound_args[7]
+    assert isinstance(bound_issued, (date, datetime)), (
+        f"Expected date/datetime for issued, got {type(bound_issued)}"
+    )
+    assert isinstance(bound_valid_to, (date, datetime)), (
+        f"Expected date/datetime for valid_to, got {type(bound_valid_to)}"
+    )
+
+    # 2. With real date objects: both forms must work
+    d_issued = date(2026, 9, 1)
+    d_valid = date(2029, 9, 1)
+    await do_record_certification(
+        pool,
+        {
+            "namespace_id": _NS_A,
+            "employee_id": "EMP-ALPHA",
+            "cert_id": "cts",
+            "authority": "AVIXA",
+            "name": "CTS",
+            "issued": d_issued,
+            "valid_to": d_valid,
+        },
+    )
+    bound_args_dt = conn.fetchrow.call_args[0]
+    assert bound_args_dt[6] == d_issued
+    assert bound_args_dt[7] == d_valid
+
+    # 3. Malformed date raises clean ValueError, not asyncpg DataError
+    with pytest.raises(ValueError, match="Invalid ISO date for issued"):
+        await do_record_certification(
+            pool,
+            {
+                "namespace_id": _NS_A,
+                "employee_id": "EMP-ALPHA",
+                "cert_id": "cts",
+                "authority": "AVIXA",
+                "name": "CTS",
+                "issued": "not-a-date",
+            },
+        )
+
+    with pytest.raises(ValueError, match="Invalid ISO date for valid_to"):
+        await do_record_certification(
+            pool,
+            {
+                "namespace_id": _NS_A,
+                "employee_id": "EMP-ALPHA",
+                "cert_id": "cts",
+                "authority": "AVIXA",
+                "name": "CTS",
+                "valid_to": "not-a-valid-date",
+            },
+        )
+
+    # 4. Default issued (when omitted) must be a date, and valid_to omitted/None must be None
+    await do_record_certification(
+        pool,
+        {
+            "namespace_id": _NS_A,
+            "employee_id": "EMP-ALPHA",
+            "cert_id": "cts",
+            "authority": "AVIXA",
+            "name": "CTS",
+            "valid_to": None,
+        },
+    )
+    bound_args2 = conn.fetchrow.call_args[0]
+    assert isinstance(bound_args2[6], (date, datetime)), (
+        f"Expected date/datetime for default issued, got {type(bound_args2[6])}"
+    )
+    assert bound_args2[7] is None, f"Expected None for omitted valid_to, got {bound_args2[7]}"
 
 
 # =========================================================================

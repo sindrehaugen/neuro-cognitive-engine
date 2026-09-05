@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -43,6 +44,20 @@ def _parse_uuid(val: Any, name: str) -> UUID:
         return UUID(str(val).strip())
     except (ValueError, AttributeError) as exc:
         raise ValueError(f"Invalid UUID for {name}: {val!r}") from exc
+
+
+def _parse_date(val: Any, name: str) -> date:
+    if isinstance(val, datetime):
+        return val.date()
+    if isinstance(val, date):
+        return val
+    s = str(val).strip()
+    try:
+        if "T" in s or " " in s:
+            return datetime.fromisoformat(s.replace("Z", "+00:00")).date()
+        return date.fromisoformat(s)
+    except Exception as exc:
+        raise ValueError(f"Invalid ISO date for {name}: {val!r}") from exc
 
 
 async def do_record_skill(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
@@ -159,13 +174,22 @@ async def do_record_certification(engine: Any, params: dict[str, Any]) -> dict[s
     if not name:
         raise ValueError("name is required")
 
-    issued = params.get("issued")
-    if not issued:
-        from datetime import date
+    issued_raw = params.get("issued")
+    if issued_raw is None or str(issued_raw).strip() == "":
+        issued_date = date.today()
+    elif isinstance(issued_raw, (date, datetime)):
+        issued_date = issued_raw.date() if isinstance(issued_raw, datetime) else issued_raw
+    else:
+        issued_date = _parse_date(issued_raw, "issued")
 
-        issued = date.today().isoformat()
+    valid_to_raw = params.get("valid_to")
+    if valid_to_raw is None or str(valid_to_raw).strip() == "":
+        valid_to_date = None
+    elif isinstance(valid_to_raw, (date, datetime)):
+        valid_to_date = valid_to_raw.date() if isinstance(valid_to_raw, datetime) else valid_to_raw
+    else:
+        valid_to_date = _parse_date(valid_to_raw, "valid_to")
 
-    valid_to = params.get("valid_to")
     status = str(params.get("status") or "active").strip()
     hr_source_id = params.get("hr_source_id")
     raw = params.get("raw") or {}
@@ -196,8 +220,8 @@ async def do_record_certification(engine: Any, params: dict[str, Any]) -> dict[s
             ns_uuid,
             authority,
             name,
-            issued,
-            valid_to,
+            issued_date,
+            valid_to_date,
             status,
             raw_json,
             hr_source_id,
