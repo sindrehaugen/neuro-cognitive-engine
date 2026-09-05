@@ -4188,6 +4188,244 @@ TOOLS = [
             "required": ["namespace_id", "work_order_id"],
         },
     ),
+    # -----------------------------------------------------------------------
+    # Module 13 — HR Engine (ML13-B3)
+    # -----------------------------------------------------------------------
+    Tool(
+        name="hr_get_employee",
+        description=(
+            "Read-only: retrieve an employee profile card, skills matrix, "
+            "active certifications, and leave balance (scoped by caller role)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "employee_id": {"type": "string", "description": "Unique employee identifier."},
+                "caller_role": {
+                    "type": "string",
+                    "description": "Optional caller role (admin, manager, hr, peer).",
+                    "default": "peer",
+                },
+                "caller_id": {
+                    "type": "string",
+                    "description": "Optional caller employee ID for self-lookup privileges.",
+                },
+            },
+            "required": ["namespace_id", "employee_id"],
+        },
+    ),
+    Tool(
+        name="hr_match_skills",
+        description=(
+            "Read-only: match candidates against required skills and certifications with "
+            "plain-language rationale. Enforces RL-1 NEVER ranking: returns requirement fit, not a leaderboard."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "required_skills": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of required technical skill names.",
+                },
+                "required_certs": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of required certification names.",
+                },
+                "candidates": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": "Optional candidate list; when omitted queries active employees.",
+                },
+                "standing_ranking": {
+                    "type": "boolean",
+                    "description": "Prohibited by RL-1; passing true will cause an error.",
+                },
+                "leaderboard": {
+                    "type": "boolean",
+                    "description": "Prohibited by RL-1; passing true will cause an error.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="hr_capacity",
+        description=(
+            "Read-only: compute employee or team workload utilization over a forecast horizon "
+            "from assigned work orders and approved absences."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "employee_id": {"type": "string", "description": "Optional employee ID filter."},
+                "department": {"type": "string", "description": "Optional department filter."},
+                "horizon_days": {
+                    "type": "integer",
+                    "default": 14,
+                    "description": "Forecast window in calendar days [1 - 90].",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="hr_cert_status",
+        description=(
+            "Read-only: check certification lifecycle status and impending expiration alerts "
+            "across employees (Watcher surface)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "employee_id": {"type": "string", "description": "Optional employee ID filter."},
+                "warn_days": {
+                    "type": "integer",
+                    "default": 90,
+                    "description": "Warning horizon in days for impending expirations.",
+                },
+                "status": {
+                    "type": "string",
+                    "description": "Optional status filter ('active', 'expiring', 'expired', 'all').",
+                    "default": "all",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="hr_register_absence",
+        description=(
+            "Mutation: register or update an employee leave or absence event (Actor with confirmation)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "employee_id": {"type": "string", "description": "Target employee identifier."},
+                "absence_type": {
+                    "type": "string",
+                    "description": "Type of absence: vacation, sick_leave, parental, training, compassionate, other.",
+                },
+                "start_date": {
+                    "type": "string",
+                    "description": "Start date in ISO format (YYYY-MM-DD).",
+                },
+                "end_date": {
+                    "type": "string",
+                    "description": "End date in ISO format (YYYY-MM-DD).",
+                },
+                "days": {"type": "number", "description": "Optional duration in days."},
+                "reason": {"type": "string", "description": "Optional reason (confidential PII)."},
+                "status": {
+                    "type": "string",
+                    "description": "Approval status.",
+                    "default": "approved",
+                },
+                "absence_id": {"type": "string", "description": "Optional unique absence ID."},
+                "hr_source_id": {
+                    "type": "string",
+                    "description": "Optional upstream source ID for GDPR hard retirement.",
+                },
+            },
+            "required": ["namespace_id", "employee_id", "absence_type", "start_date", "end_date"],
+        },
+    ),
+    Tool(
+        name="hr_build_onboarding_quest",
+        description=(
+            "Mutation: generate or retrieve a structured 90-day onboarding checklist for an employee. Admin-only."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "employee_id": {"type": "string", "description": "Target employee identifier."},
+                "role": {
+                    "type": "string",
+                    "description": "Role specialization.",
+                    "default": "technician",
+                },
+                "department": {
+                    "type": "string",
+                    "description": "Department.",
+                    "default": "operations",
+                },
+                "start_date": {"type": "string", "description": "Start date (YYYY-MM-DD)."},
+            },
+            "required": ["namespace_id", "employee_id"],
+        },
+    ),
+    Tool(
+        name="hr_log_one_on_one",
+        description=(
+            "Mutation: record a confidential 1-on-1 coaching or review note through the GDPR PII "
+            "redaction gate into an agent-scoped memory. Admin-only."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "employee_id": {"type": "string", "description": "Target employee identifier."},
+                "interviewer_id": {
+                    "type": "string",
+                    "description": "Manager or interviewer employee identifier.",
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Discussion notes (PII stripped via redaction gate).",
+                },
+                "action_items": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional list of agreed follow-up tasks.",
+                },
+                "session_date": {"type": "string", "description": "Date of session (YYYY-MM-DD)."},
+                "hr_source_id": {
+                    "type": "string",
+                    "description": "Optional upstream source ID for GDPR hard retirement.",
+                },
+            },
+            "required": ["namespace_id", "employee_id", "interviewer_id", "notes"],
+        },
+    ),
+    Tool(
+        name="hr_coach",
+        description=(
+            "Read-only: individual skill advancement advisor recommending targeted training for skill gaps. "
+            "Enforces RL-1: strictly individual; comparative ranking or leaderboards are prohibited."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "employee_id": {"type": "string", "description": "Target employee identifier."},
+                "target_role": {
+                    "type": "string",
+                    "description": "Optional desired career target role.",
+                },
+                "focus_areas": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional technical domains (e.g. audio, video, control, network).",
+                },
+                "standing_ranking": {
+                    "type": "boolean",
+                    "description": "Prohibited by RL-1; passing true will cause an error.",
+                },
+                "compare_peers": {
+                    "type": "boolean",
+                    "description": "Prohibited by RL-1; passing true will cause an error.",
+                },
+            },
+            "required": ["namespace_id", "employee_id"],
+        },
+    ),
     # -------------------------------------------------------------------
     # Module 14: Marketing Engine (ML14)
     # -------------------------------------------------------------------

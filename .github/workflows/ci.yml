@@ -504,6 +504,15 @@ jobs:
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/test_field_tech_hardening.py -m integration -q --tb=short
 
+      # M13 HR Engine (Module 13, Wave 8). Proves employee profiles, skills matching,
+      # tenant isolation, RL-1 never-ranking, certifications, and absences.
+      - name: Integration — M13 HR Engine (tests/test_hr_hardening.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/test_hr_hardening.py -m integration -q --tb=short
+
       # M14 Marketing Engine (Module 14). Proves case study & testimonial
       # lifecycle, tenant isolation on case_studies / testimonials / content_assets,
       # and the five Red Lines (MK-1 human gate, MK-2 grounded claims, MK-3 redaction,

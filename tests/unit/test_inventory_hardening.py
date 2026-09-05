@@ -52,12 +52,10 @@ _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
 # --- MEASURED on branch vm-b140-m11-w12-hardening, base 039fdd1 -------------
-_TOTAL_TOOLS = 170  # +2 support tools (ML10b-P2/P3, M10.W2/W3)
-_MUTATION_TOOLS = 74  # +2 mutating support tools (support_dispatch_work_order, support_sync_now)
-_CACHEABLE_TOOLS = 58  # unchanged
-_ADMIN_ONLY_TOOLS = (
-    39  # +2 admin-only support tools (support_dispatch_work_order, support_sync_now)
-)
+_TOTAL_TOOLS = 178  # 166 baseline + 4 support tools + 8 hr tools
+_MUTATION_TOOLS = 77  # 71 baseline + 3 support tools + 3 hr tools
+_CACHEABLE_TOOLS = 63  # 57 baseline + 1 support tool + 5 hr tools
+_ADMIN_ONLY_TOOLS = 41  # 37 baseline + 2 support tools + 2 hr tools
 _MIGRATION_TOOLS = 5
 
 

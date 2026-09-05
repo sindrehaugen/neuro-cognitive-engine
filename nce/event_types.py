@@ -87,6 +87,11 @@ EventType = Literal[
     "field_tech_serial_scanned",
     "field_tech_time_logged",
     "field_tech_outcome_recorded",
+    # HR_EVENTS — Module 13 HR Engine lifecycle & audit trail (Charter M13.W7)
+    "hr_employee_created",
+    "hr_absence_registered",
+    "hr_compliance_milestone_recorded",
+    "hr_quest_progressed",
     # MARKETING_EVENTS — Module 14 Marketing Engine lifecycle & audit trail (Charter M14.W7)
     "marketing_case_study_drafted",
     "marketing_testimonial_requested",
@@ -198,6 +203,11 @@ EVENT_REQUIRED_PARAM_KEYS: Final[dict[str, frozenset[str]]] = {
     "consolidation_requeue": frozenset(
         {"contradiction_id", "deleted_consolidated_id", "requeued_source_ids"}
     ),
+    # Module 13: HR Engine lifecycle signals
+    "hr_employee_created": frozenset({"employee_id", "role", "department"}),
+    "hr_absence_registered": frozenset({"absence_id", "employee_id", "type"}),
+    "hr_compliance_milestone_recorded": frozenset({"absence_id", "milestone", "completed"}),
+    "hr_quest_progressed": frozenset({"employee_id", "progress_pct"}),
 }
 
 EVENT_FORBIDDEN_PARAM_KEYS: Final[dict[str, frozenset[str]]] = {
@@ -216,6 +226,11 @@ EVENT_FORBIDDEN_PARAM_KEYS: Final[dict[str, frozenset[str]]] = {
     "quarantine_rejected": frozenset(
         {"payload", "raw_payload", "content", "summary", "heavy_payload"}
     ),
+    # Module 13 (HR Engine) — strictly enforce RL-1 (NEVER ranking) and RL-3 (GDPR) in event log
+    "hr_employee_created": frozenset({"ranking", "score", "leaderboard"}),
+    "hr_absence_registered": frozenset({"ranking", "score", "diagnosis"}),
+    "hr_compliance_milestone_recorded": frozenset({"ranking", "score"}),
+    "hr_quest_progressed": frozenset({"ranking", "score", "leaderboard"}),
     # MK-3: Sensitive financial fields must never enter marketing audit events
     "marketing_case_study_drafted": frozenset({"margin", "cost", "internal_cost"}),
     "marketing_testimonial_requested": frozenset({"margin", "cost", "internal_cost"}),

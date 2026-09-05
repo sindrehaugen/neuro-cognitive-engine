@@ -44,6 +44,7 @@ from nce.vertical_modules.diagnostics import mcp_handlers as diag_mcp_handlers
 from nce.vertical_modules.dynamics365 import mcp_handlers as d365_mcp_handlers
 from nce.vertical_modules.economy import mcp_handlers as economy_mcp_handlers
 from nce.vertical_modules.field_tech import mcp_handlers as field_tech_mcp_handlers
+from nce.vertical_modules.hr import mcp_handlers as hr_mcp_handlers
 from nce.vertical_modules.inventory import mcp_handlers as inventory_mcp_handlers
 from nce.vertical_modules.marketing import mcp_handlers as marketing_mcp_handlers
 from nce.vertical_modules.netbox import circuits as netbox_circuits
@@ -1072,7 +1073,60 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=True,
         mutation=True,
     ),
-    # Marketing vertical module tools (ML14-B3, M14.W3)
+    # -----------------------------------------------------------------------
+    # Module 13 — HR Engine (ML13-B3)
+    # -----------------------------------------------------------------------
+    "hr_get_employee": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_get_employee"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "hr_match_skills": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_match_skills"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "hr_capacity": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_capacity"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "hr_cert_status": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_cert_status"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "hr_register_absence": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_register_absence"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    "hr_build_onboarding_quest": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_build_onboarding_quest"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "hr_log_one_on_one": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_log_one_on_one"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "hr_coach": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_coach"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    # -------------------------------------------------------------------
+    # Module 14: Marketing Engine (ML14-B3, M14.W3)
+    # -------------------------------------------------------------------
     "marketing_find_case_study_candidates": ToolSpec(
         _h(marketing_mcp_handlers, "handle_marketing_find_case_study_candidates"),
         cacheable=True,

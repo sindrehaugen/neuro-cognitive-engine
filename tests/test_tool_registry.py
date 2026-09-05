@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 170  # +2 support tools (ML10b-P2/P3, M10.W2/W3)
+_EXPECTED_TOTAL = 178  # 166 baseline + 4 support tools + 8 HR Engine tools
 
 
 def test_registry_has_expected_entries():
@@ -181,6 +181,10 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "field_tech_attach_photo",
         "field_tech_sync",
         "field_tech_record_outcome",
+        # ML13-B3 (M13.W3) -- HR Engine mutations (3 tools)
+        "hr_register_absence",
+        "hr_build_onboarding_quest",
+        "hr_log_one_on_one",
         # ML14-B3 (M14.W3) -- Marketing Engine mutations (5 tools)
         "marketing_draft_case_study",
         "marketing_request_testimonial",
@@ -204,7 +208,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 74  # 72 previous + 2 support tools from ML10b-P2/P3
+    assert len(MUTATION_TOOLS) == 77  # 71 baseline + 3 support tools + 3 hr tools
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -301,6 +305,12 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         # ML12-B5 (M12.W5) -- Field Tech Engine Advisor reads (cacheable)
         "field_tech_dispatch",
         "field_tech_partner_view",
+        # ML13-B3 (M13.W3) -- HR Engine Advisor/Watcher reads (5 cacheable tools)
+        "hr_get_employee",
+        "hr_match_skills",
+        "hr_capacity",
+        "hr_cert_status",
+        "hr_coach",
         # ML14-B3 (M14.W3) -- Marketing Engine cacheable reads (3 tools)
         "marketing_find_case_study_candidates",
         "marketing_suggest_content",
@@ -319,7 +329,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 58  # 57 previous + 1 support tool from ML10b-P1
+    assert len(CACHEABLE_TOOLS) == 63  # 57 baseline + 1 support tool + 5 hr tools
 
 
 # ---------------------------------------------------------------------------
@@ -384,6 +394,9 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "field_tech_create_work_order",
         "field_tech_assign",
         "field_tech_record_outcome",
+        # ML13-B3 (M13.W3) -- HR Engine admin_only tools (2 tools)
+        "hr_build_onboarding_quest",
+        "hr_log_one_on_one",
         # ML14-B3 (M14.W3) -- Marketing Engine admin_only tools (5 tools)
         "marketing_draft_case_study",
         "marketing_request_testimonial",
@@ -405,7 +418,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 39  # 37 previous + 2 support tools from ML10b-P2/P3
+    assert len(ADMIN_ONLY_TOOLS) == 41  # 37 baseline + 2 support tools + 2 hr tools
 
 
 # ---------------------------------------------------------------------------

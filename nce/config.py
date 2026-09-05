@@ -1303,6 +1303,33 @@ class _Config:
         "NCE_SUPPORT_AUTONOMY_AUTOCLOSE_CONFIDENCE", 0.95
     )
 
+    # --- HR Engine (Module 13) ---
+    NCE_HR_ENABLED: bool = _bool_env("NCE_HR_ENABLED", True)
+    NCE_HR_SIMPLOYER_URL: str = os.getenv("NCE_HR_SIMPLOYER_URL", "").rstrip("/")
+    NCE_HR_SIMPLOYER_TOKEN: str = secret_env("NCE_HR_SIMPLOYER_TOKEN", "")
+    NCE_HR_CERT_EXPIRY_WARN_DAYS: int = _int_env("NCE_HR_CERT_EXPIRY_WARN_DAYS", 90, minimum=1)
+    NCE_HR_CAPACITY_HORIZON_DAYS: int = _int_env("NCE_HR_CAPACITY_HORIZON_DAYS", 30, minimum=1)
+    NCE_HR_SICK_LEAVE_PATTERN_THRESHOLD: int = _int_env(
+        "NCE_HR_SICK_LEAVE_PATTERN_THRESHOLD", 3, minimum=1
+    )
+    NCE_HR_COACH_ENABLED: bool = _bool_env("NCE_HR_COACH_ENABLED", True)
+    NCE_HR_SYNC_INTERVAL_MINUTES: int = _int_env("NCE_HR_SYNC_INTERVAL_MINUTES", 60, minimum=1)
+
+    # 🔴 Engine 13 Red Lines & EU AI Act Article 5 Legal Boundary:
+    # 1. RL-1: NEVER ranking. Hard-pinned True and NOT operator-clearable.
+    #    No leaderboard, no peer comparison, no standing per-person score.
+    #    do_match_skills and do_coach evaluate fit-to-requirements only.
+    # 2. RL-2: EU AI Act Article 5 (in force 2 Feb 2025). AI that infers emotions
+    #    in the workplace is strictly prohibited (fines up to EUR 35M or 7% of
+    #    global turnover). Guidance does NOT exempt stress/burnout monitoring.
+    #    Workload monitoring uses OBJECTIVE operational signals ONLY (assigned load,
+    #    scheduled hours, absence duration). No sentiment analysis or emotional
+    #    state inference is ever permitted.
+    # 3. RL-3: GDPR PII erasure & redaction gate. Derived rows carry hr_source_id.
+    #    1-on-1 and coaching notes pass the redaction gate before embedding.
+    #    Coaching memories are scoped to agent "hr_private_coach".
+    NCE_HR_RANKING_DISABLED: bool = True
+
     # --- External Tamper Anchor (Batch 124) ---
     # Object-locked (WORM) MinIO bucket that receives per-namespace Merkle chain heads.
     # The bucket MUST be created with versioning + object-lock enabled at creation time.

@@ -18,6 +18,7 @@ from nce.admin_handlers import assets as assets_handlers
 from nce.admin_handlers import economy as economy_handlers
 from nce.admin_handlers import entity_resolution as entity_resolution_handlers
 from nce.admin_handlers import field_tech as field_tech_handlers
+from nce.admin_handlers import hr as hr_handlers
 from nce.admin_handlers import inventory as inventory_handlers
 from nce.admin_handlers import marketing as marketing_handlers
 from nce.admin_handlers import pricing as pricing_handlers
@@ -1049,6 +1050,69 @@ def build_admin_routes() -> list[Route]:
             "/api/field-tech/partner-view",
             endpoint=field_tech_handlers.api_field_tech_partner_view,
             methods=["GET"],
+        ),
+        # -------------------------------------------------------------------
+        # Module 13 — HR Engine (ML13-B4)
+        # -------------------------------------------------------------------
+        Route(
+            "/api/hr/employees",
+            endpoint=hr_handlers.api_hr_employees,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/hr/employees",
+            endpoint=hr_handlers.api_hr_create_employee,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/hr/employees/{id}",
+            endpoint=hr_handlers.api_hr_employee,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/hr/match-skills",
+            endpoint=hr_handlers.api_hr_match_skills,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/hr/capacity",
+            endpoint=hr_handlers.api_hr_capacity,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/hr/cert-status",
+            endpoint=hr_handlers.api_hr_cert_status,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/hr/absences",
+            endpoint=hr_handlers.api_hr_register_absence,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/hr/onboarding/{id}",
+            endpoint=hr_handlers.api_hr_onboarding_get,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/hr/onboarding/{id}",
+            endpoint=hr_handlers.api_hr_onboarding_build,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/hr/coach",
+            endpoint=hr_handlers.api_hr_coach,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/hr/sync/status",
+            endpoint=hr_handlers.api_hr_sync_status,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/hr/sync/now",
+            endpoint=hr_handlers.api_hr_sync_now,
+            methods=["POST"],
         ),
         # ------------------------------------------------------------------
         # Marketing vertical module endpoints (Module 14, Wave 6, ML14-B6)
