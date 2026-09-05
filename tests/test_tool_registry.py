@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 187  # 178 baseline + 9 Resources Engine tools
+_EXPECTED_TOTAL = 196  # 187 baseline + 9 Customer Portal Engine tools
 
 
 def test_registry_has_expected_entries():
@@ -201,6 +201,9 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "resources_release",
         "resources_plan_material_flow",
         "resources_plan_travel",
+        # ML17-B5 (M17.W5) -- Customer Portal Engine mutations (2 tools)
+        "customer_portal_raise_service_request",
+        "customer_portal_register_expansion_interest",
     }
 )
 
@@ -213,7 +216,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 81  # 77 baseline + 4 resources tools
+    assert len(MUTATION_TOOLS) == 83  # 81 baseline + 2 customer portal tools
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -327,6 +330,13 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "resources_detect_conflicts",
         "resources_forecast_demand",
         "resources_field_schedule",
+        # ML17-B5 (M17.W5) -- Customer Portal Engine cacheable reads (6 tools)
+        "customer_portal_room_tracker",
+        "customer_portal_room_overview",
+        "customer_portal_asset_register",
+        "customer_portal_list_documents",
+        "customer_portal_sla_status",
+        "customer_portal_list_invoices",
     }
 )
 
@@ -339,7 +349,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 67  # 63 baseline + 4 resources tools
+    assert len(CACHEABLE_TOOLS) == 73  # 67 baseline + 6 customer portal tools
 
 
 # ---------------------------------------------------------------------------

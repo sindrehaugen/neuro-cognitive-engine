@@ -1,0 +1,137 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "version": "1.0.0",
+  "description": "Module 17 Customer Portal Engine: Explicit Allow-List Field Redaction Rules (Charter Layer 2). Never leak margin, cost, supplier terms, internal status, or slip.",
+  "projections": {
+    "room_tracker": {
+      "allowed_fields": [
+        "room_id",
+        "room_name",
+        "site_id",
+        "site_name",
+        "stage",
+        "percent_ready",
+        "status",
+        "summary",
+        "last_updated_at",
+        "estimated_readiness"
+      ],
+      "forbidden_fields": [
+        "margin",
+        "cost",
+        "our_cost",
+        "supplier_terms",
+        "internal_status",
+        "internal_slip",
+        "churn_risk",
+        "health_score"
+      ]
+    },
+    "room_overview": {
+      "allowed_fields": [
+        "site_id",
+        "site_name",
+        "total_rooms",
+        "overall_percent_ready",
+        "rooms"
+      ],
+      "forbidden_fields": [
+        "internal_project_id",
+        "internal_budget_cost",
+        "margin",
+        "slip_status"
+      ]
+    },
+    "asset_register": {
+      "allowed_fields": [
+        "asset_id",
+        "room_id",
+        "name",
+        "category",
+        "manufacturer",
+        "model",
+        "serial_number",
+        "status",
+        "installed_at",
+        "warranty_expires_at",
+        "coverage_tier"
+      ],
+      "forbidden_fields": [
+        "purchase_price",
+        "supplier_name",
+        "vendor_id",
+        "distributor",
+        "margin",
+        "actual_cost"
+      ]
+    },
+    "document_share": {
+      "allowed_fields": [
+        "share_id",
+        "document_ref",
+        "document_kind",
+        "title",
+        "expires_at",
+        "created_at"
+      ],
+      "forbidden_fields": [
+        "internal_cost",
+        "markup",
+        "supplier_notes",
+        "margin"
+      ]
+    },
+    "sla_status": {
+      "allowed_fields": [
+        "sla_id",
+        "tier_name",
+        "response_target_hours",
+        "resolution_target_hours",
+        "current_clock_hours",
+        "is_breached",
+        "period_start",
+        "period_end"
+      ],
+      "forbidden_fields": [
+        "contract_value",
+        "mrr",
+        "penalty_amount",
+        "internal_cost"
+      ]
+    },
+    "invoices": {
+      "allowed_fields": [
+        "invoice_id",
+        "invoice_number",
+        "amount_ex_vat",
+        "vat_amount",
+        "amount_inc_vat",
+        "currency",
+        "due_date",
+        "status",
+        "issued_at"
+      ],
+      "forbidden_fields": [
+        "internal_margin",
+        "our_cost",
+        "rebate_percentage"
+      ]
+    },
+    "service_request": {
+      "allowed_fields": [
+        "request_id",
+        "room_id",
+        "customer_status",
+        "summary",
+        "created_at",
+        "updated_at"
+      ],
+      "forbidden_fields": [
+        "internal_priority",
+        "assigned_internal_tech",
+        "internal_notes",
+        "escalation_level"
+      ]
+    }
+  }
+}

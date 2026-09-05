@@ -51,13 +51,15 @@ _NAMESPACE_ID = "00000000-0000-4000-8000-000000000001"
 _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
-# --- MEASURED on branch vm-b140-m11-w12-hardening, base 039fdd1 -------------
-_TOTAL_TOOLS = 187  # 178 baseline + 9 resources tools (Module 15)
-_MUTATION_TOOLS = 81  # 77 baseline + 4 resources tools (reserve, release, material-flow, travel)
-_CACHEABLE_TOOLS = (
-    67  # 63 baseline + 4 resources tools (capacity, conflicts, forecast, field-schedule)
+# --- MEASURED on branch ml17/customer-portal-engine --------------------------
+_TOTAL_TOOLS = 196  # 187 baseline + 9 customer portal tools (Module 17)
+_MUTATION_TOOLS = (
+    83  # 81 baseline + 2 customer portal tools (raise_service_request, register_expansion_interest)
 )
-_ADMIN_ONLY_TOOLS = 42  # 41 baseline + 1 resources tool (plan-material-flow)
+_CACHEABLE_TOOLS = (
+    73  # 67 baseline + 6 customer portal tools (tracker, overview, assets, docs, sla, invoices)
+)
+_ADMIN_ONLY_TOOLS = 42  # 42 baseline + 0 customer portal tools
 _MIGRATION_TOOLS = 5
 
 

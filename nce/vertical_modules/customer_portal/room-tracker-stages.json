@@ -1,0 +1,114 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "version": "1.0.0",
+  "description": "Module 17 Customer Portal Engine: Domino's Room Tracker Stage Mappings & Messy Reality Rules",
+  "stages": [
+    {
+      "id": "planned",
+      "display_name": "Planned",
+      "weight_pct": 10,
+      "description": "Room design and bill of materials finalised."
+    },
+    {
+      "id": "ordered",
+      "display_name": "Ordered",
+      "weight_pct": 25,
+      "description": "Equipment ordered from certified manufacturers."
+    },
+    {
+      "id": "delivered",
+      "display_name": "Delivered",
+      "weight_pct": 50,
+      "description": "Hardware received and verified on site."
+    },
+    {
+      "id": "installed",
+      "display_name": "Installed",
+      "weight_pct": 75,
+      "description": "Equipment mounted, cabled, and powered."
+    },
+    {
+      "id": "tested",
+      "display_name": "Tested",
+      "weight_pct": 90,
+      "description": "System commissioning and acoustic tuning in progress."
+    },
+    {
+      "id": "ready",
+      "display_name": "Ready",
+      "weight_pct": 100,
+      "description": "Room fully operational and ready for handover."
+    }
+  ],
+  "bom_status_to_stage": {
+    "draft": "planned",
+    "planned": "planned",
+    "approved": "planned",
+    "ordered": "ordered",
+    "allocated": "ordered",
+    "in_transit": "ordered",
+    "received": "delivered",
+    "delivered": "delivered",
+    "staging": "delivered",
+    "installing": "installed",
+    "installed": "installed",
+    "commissioning": "tested",
+    "tested": "tested",
+    "operational": "ready",
+    "handover": "ready",
+    "closed": "ready"
+  },
+  "asset_lifecycle_to_stage": {
+    "planned": "planned",
+    "procured": "ordered",
+    "delivered": "delivered",
+    "staged": "delivered",
+    "installed": "installed",
+    "commissioned": "tested",
+    "active": "ready",
+    "operational": "ready"
+  },
+  "messy_reality_rules": {
+    "delay": {
+      "customer_safe_status": "In progress",
+      "customer_safe_narrative": "Room deployment is in progress. Delivery and installation schedules are being coordinated.",
+      "redact_fields": [
+        "internal_slip_days",
+        "delay_reason",
+        "supplier_delay",
+        "escalation_level",
+        "internal_notes"
+      ]
+    },
+    "change_order": {
+      "customer_safe_status": "Scope updated",
+      "customer_safe_narrative": "Room hardware configuration updated per agreed scope revision. Progression calibrated to updated equipment baseline.",
+      "allow_regression_display": false,
+      "redact_fields": [
+        "churn_type",
+        "variance_cost",
+        "dispute_flag",
+        "change_order_margin_delta"
+      ]
+    },
+    "partial_delivery": {
+      "customer_safe_status": "Partial delivery on site",
+      "customer_safe_narrative": "Initial hardware batches received and staged on site. Remaining components in transit.",
+      "redact_fields": [
+        "backorder_flag",
+        "supplier_stockout",
+        "carrier_delay_code"
+      ]
+    },
+    "frozen": {
+      "customer_safe_status": "Verification in progress",
+      "customer_safe_narrative": "Technical quality and site readiness verification in progress.",
+      "redact_fields": [
+        "stalled_since",
+        "defect_ticket_count",
+        "blocker_summary",
+        "churn_risk_score"
+      ]
+    }
+  }
+}
