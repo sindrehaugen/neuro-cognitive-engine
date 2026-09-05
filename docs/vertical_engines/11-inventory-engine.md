@@ -2,7 +2,7 @@
 
 # 11 — Warehouse & Inventory Engine  (nce/vertical_modules/inventory)
 
-<!-- BLOCKED ON OQ-2 / OQ-4: SPEC PROPOSAL VOICE. This document is an architectural design specification. At baseline 7304330, Inventory has Wave 1 of 12 shipped (migration 050, 2 FORCE-RLS tables: stock_locations, inventory_items). 0 MCP tools and 0 REST routes are currently exposed on main. Refer to docs/engines/inventory-user.md and docs/engines/inventory-admin.md for shipped reality. Verified-against: 7304330 -->
+<!-- STATUS (Verified-against: 6ae61ee): SHIPPED, and this engine now EXCEEDS the surface this document proposes. Measured on main: 17 do_* cores, 14 MCP tools registered in TOOL_REGISTRY, 14 REST routes in nce/admin_handlers/inventory.py, build phases B1-B5 all implemented. The previous marker here claimed '0 MCP tools and 0 REST routes' against baseline 7304330; that was true then and is false now. Refer to docs/engines/inventory-user.md and inventory-admin.md for the operator view. -->
 
 
 **Status:** spec (Tier 3 — Operations axis) · **Owner:** NCE core (Sindre)
@@ -41,7 +41,7 @@ Node `entity_type` prefixes: `INVENTORY_*`, plus shared spine nodes `PO`, `PRODU
 - **memories/ledger:** no large unstructured-text track (inventory is structured). Consumption events + forecast decisions → `v3_cognitive_ledger` so the restock/forecast Advisor is auditable ("why did it recommend +4 of this SKU to van-3"). Tag every derived row with `inventory_source_id` for hard-retirement on delete (D365 retirement pattern).
 
 ## Core functions
-<!-- BLOCKED ON OQ-2 / OQ-4: do_stock_levels, do_transfer_stock, do_record_consumption, do_record_goods_receipt, do_recommend_restock, do_forecast_demand, do_reserve_stock, do_create_restock_po, do_record_rma are prospective design functions; no do_* functions are implemented in nce/vertical_modules/inventory/ at baseline 7304330. -->
+<!-- STATUS (Verified-against: 6ae61ee): ALL NINE cores listed below are implemented in nce/vertical_modules/inventory/, plus eight more the spec never named (do_release_stock, do_valuation, do_reconcile_dead_stock, do_restock_from_rma, do_dispose_rma_weee, do_flag_stock_alerts, do_advance_bom_line_to_delivered, do_record_goods_receipt_and_evaluate_match) -- 17 in total. The previous marker claimed none were implemented at baseline 7304330. -->
 Pure-ish `do_<action>(engine, params) -> dict`; reads write the graph, forecasts are pure over consumption history + pipeline.
 - `do_stock_levels(engine, params) -> dict` — `{sku?, location?}` → live qty per SKU per location (warehouse + each van). The "own stock first" source of truth.
 - `do_record_goods_receipt(engine, params) -> dict` — `{po, lines[], location, scans[]}` → creates `GOODS_RECEIPT` + `-against->PO` / `-of->SKU` edges, increments `INVENTORY_ITEM` at the receiving location. **Then fires Procurement** (see A2A). Actor; writes graph.
@@ -54,7 +54,19 @@ Pure-ish `do_<action>(engine, params) -> dict`; reads write the graph, forecasts
 - `do_create_restock_po(engine, params) -> dict` — orchestrates `recommend_restock` → emits a restock-PO **request to Procurement** (`procurement_generate_po`); does NOT source/order itself. Actor (Autonomous under threshold).
 
 ## MCP tools
-<!-- BLOCKED ON OQ-2 / OQ-4: Historical proposal listed 8 tools. Baseline 7304330 registers 0 MCP tools for Inventory in TOOL_REGISTRY. -->
+<!-- STATUS (Verified-against: 6ae61ee): 14 inventory_* tools are registered in TOOL_REGISTRY.
+     🔴 THREE cores are DELIBERATELY NOT REGISTERED, and this is a safety boundary, not a gap.
+     tests/unit/test_inventory_surface.py asserts the exclusion so the ruling survives a refactor:
+       * do_create_restock_po -- does not take the (engine, params) core shape at all. It takes an
+         open asyncpg connection, a keyword-only idempotency_key, a confirm flag, and an optional
+         redis_client WHOSE ABSENCE TURNS ITS KILL-SWITCH FROM FAIL-CLOSED TO OPEN. No thin adapter
+         can supply those without holding a transaction and deriving policy state, which the MCP
+         layer must not do. The `inventory_create_restock_po` row in the table below is therefore
+         a SPEC PROPOSAL THAT MUST NOT BE IMPLEMENTED as written.
+       * do_advance_bom_line_to_delivered -- exposing it would let an admin caller mark a BOM line
+         delivered with no goods receipt behind it.
+       * do_flag_stock_alerts -- already wired to the cron tick, which holds acquire_cron_lock; a
+         manual twin would sweep outside that lock. -->
 Registered in `nce/tool_registry.py` via `_h(...)` late-binding. AI-role tag per roadmap §2 taxonomy.
 
 | Tool | cacheable | admin_only | mutation | AI-role |
@@ -70,7 +82,7 @@ Registered in `nce/tool_registry.py` via `_h(...)` late-binding. AI-role tag per
 | `inventory_create_restock_po` | ✘ | ✔ | ✔ | Actor (Autonomous under threshold) |
 
 ## REST routes
-<!-- BLOCKED ON OQ-2 / OQ-4: Historical proposal listed 8 REST routes. Baseline 7304330 mounts 0 REST routes for Inventory in admin_app.py. -->
+<!-- STATUS (Verified-against: 6ae61ee): 14 api_inventory_* routes are implemented in nce/admin_handlers/inventory.py and mounted in admin_app.py -- every route this document proposes, plus six more. The previous marker claimed zero at baseline 7304330. -->
 No-model path for the BFF (warehouse/van-stock + GR screen), scanners, cron. Mounted via `build_app(extra_routes=...)`; HMAC/mTLS-authed in `nce/admin_handlers/inventory.py`:
 - `api_inventory_stock_levels` (GET) — live stock per SKU per location (the screen + the "own stock first" read Procurement scoring calls).
 - `api_inventory_recommend_restock` (POST) — van restock recommendation.
@@ -123,7 +135,7 @@ Inventory mostly **confirms §9** and is the **producer that unblocks two Tier-1
 4. **Compounding cross-engine autonomy → real spend (roadmap §9.5).** `do_create_restock_po` (Autonomous under `RESTOCK_CEILING`) emits a PO request; Procurement's `submit_po` (its own gate) places the order — **two gates in series ending in money out.** Requires an **end-to-end idempotency key propagated across the boundary** (an auto-restock retry must not create a duplicate PO request *or* a duplicate order) and a **single audit trail spanning both decisions.**
 
 ## Build phases
-<!-- BLOCKED ON OQ-2 / OQ-4: Wave 1 (schema seed) is shipped at 7304330 (migration 050). Waves 2-12 (goods receipt, replenishment, demand forecast, RMA/WEEE) are planned future work. -->
+<!-- STATUS (Verified-against: 6ae61ee): 🔴 B1-B5 ARE ALL IMPLEMENTED. The previous marker said waves 2-12 (goods receipt, replenishment, demand forecast, RMA/WEEE) were 'planned future work'; every one of them has shipped -- goods_receipt.py, replenishment.py, forecast.py, reservation.py, restock_po.py, rma.py, reconcile.py, watchers.py. AUTONOMY_RESTOCK_CEILING is wired to NCE_PROCUREMENT_AUTONOMY_PO_CEILING in restock_po.py. Do not rebuild these phases. -->
 - **B1 — Locations + stock core + RLS:** `stock_locations` / `inventory_items` tables (FORCE RLS) + seed warehouse + N vans; `do_stock_levels`, `do_transfer_stock`, `do_record_consumption`; graph mirror (`STOCK_LOCATION`, `INVENTORY_ITEM -[at]->`). MCP + REST for the reads. This alone replaces "alt i én persons hode".
 - **B2 — Goods-receipt + the A2A trigger:** `goods_receipts` table; `do_record_goods_receipt` with scan capture; `GOODS_RECEIPT -[against]->PO / -[of]->SKU` edges; **fire `procurement_evaluate_match`** (Receive→Match→Cascade). This is the cross-engine keystone.
 - **B3 — Predictive replenishment:** `do_recommend_restock` (consumption velocity + work-order demand), `inventory-reorder-points.json`, low-stock/dead-stock/expiring Watcher, ledger-backed rationale.
