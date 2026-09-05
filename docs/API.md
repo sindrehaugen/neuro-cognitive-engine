@@ -125,6 +125,15 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/inventory/stock-levels` | `api_inventory_stock_levels` |
 | POST | `/api/inventory/transfer-stock` | `api_inventory_transfer_stock` |
 | GET | `/api/inventory/valuation` | `api_inventory_valuation` |
+| POST | `/api/marketing/approve` | `api_marketing_approve_content` |
+| GET | `/api/marketing/assets` | `api_marketing_assets` |
+| POST | `/api/marketing/audit-seo` | `api_marketing_audit_seo` |
+| GET | `/api/marketing/candidates` | `api_marketing_candidates` |
+| POST | `/api/marketing/draft` | `api_marketing_draft_case_study` |
+| POST | `/api/marketing/publish` | `api_marketing_publish_content` |
+| POST | `/api/marketing/suggest-content` | `api_marketing_suggest_content` |
+| GET | `/api/marketing/testimonials` | `api_marketing_testimonials` |
+| POST | `/api/marketing/testimonials/capture` | `api_marketing_capture_testimonial` |
 | POST | `/api/procurement/frontier/forecast-rebate` | `api_procurement_forecast_rebate` |
 | POST | `/api/procurement/frontier/recommend-move-spend` | `api_procurement_recommend_move_spend` |
 | POST | `/api/procurement/frontier/whatif-spend` | `api_procurement_whatif_spend` |
@@ -357,4 +366,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_reliability_radar` |  |  | yes |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 173 REST endpoints, 166 MCP tools._
+_Totals: 182 REST endpoints, 166 MCP tools._

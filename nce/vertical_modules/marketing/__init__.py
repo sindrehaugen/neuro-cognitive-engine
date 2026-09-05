@@ -14,6 +14,10 @@ from nce.vertical_modules.marketing._guard import (
     MarketingUngroundedClaimError,
     require_marketing_enabled,
 )
+from nce.vertical_modules.marketing.advisor import (
+    do_audit_seo,
+    do_suggest_content,
+)
 from nce.vertical_modules.marketing.approval import do_approve_content
 from nce.vertical_modules.marketing.candidates import do_find_case_study_candidates
 from nce.vertical_modules.marketing.drafting import (
@@ -42,12 +46,14 @@ __all__ = [
     "MarketingUngroundedClaimError",
     "PublishTransport",
     "do_approve_content",
+    "do_audit_seo",
     "do_capture_testimonial",
     "do_draft_case_study",
     "do_find_case_study_candidates",
     "do_publish_content",
     "do_request_testimonial",
     "do_retract_testimonial",
+    "do_suggest_content",
     "redact_for_marketing_draft",
     "require_marketing_enabled",
     "validate_draft_grounding",
