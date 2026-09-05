@@ -570,8 +570,9 @@ class TestProjectAdvancePhaseToolRegistry:
         +5 ML14-B3 marketing tools, M14.W3;
         +1 ML10b-P1 support tool;
         +2 ML10b-P2/P3 support tools (support_dispatch_work_order, support_sync_now);
-        +4 ML15-B7 resources tools (reserve, release, material-flow, travel)."""
-        assert len(MUTATION_TOOLS) == 81
+        +4 ML15-B7 resources tools (reserve, release, material-flow, travel);
+        +2 ML17-B5 customer portal tools (raise_service_request, register_expansion_interest)."""
+        assert len(MUTATION_TOOLS) == 83
 
     def test_admin_only_count(self) -> None:
         """Admin-only tools must total 32 (unified realignment registry;

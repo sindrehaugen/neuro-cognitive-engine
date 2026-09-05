@@ -18,6 +18,7 @@ from nce.vertical_modules.customer_portal.actions import (
     do_raise_service_request,
     do_register_expansion_interest,
 )
+from nce.vertical_modules.customer_portal.advisor import do_advisor_answer
 from nce.vertical_modules.customer_portal.documents import (
     do_get_document,
     do_list_documents,
@@ -31,6 +32,7 @@ from nce.vertical_modules.customer_portal.rooms import (
 from nce.vertical_modules.customer_portal.sla import do_sla_status
 
 __all__ = [
+    "do_advisor_answer",
     "do_asset_register",
     "do_get_document",
     "do_list_documents",

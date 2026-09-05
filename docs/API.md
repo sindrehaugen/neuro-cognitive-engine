@@ -248,6 +248,15 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `connect_bridge` |  | yes |  |  |
 | `consolidation_status` |  |  |  |  |
 | `create_snapshot` |  | yes |  |  |
+| `customer_portal_advisor_answer` |  |  |  |  |
+| `customer_portal_asset_register` |  |  | yes |  |
+| `customer_portal_list_documents` |  |  | yes |  |
+| `customer_portal_list_invoices` |  |  | yes |  |
+| `customer_portal_raise_service_request` |  | yes |  |  |
+| `customer_portal_register_expansion_interest` |  | yes |  |  |
+| `customer_portal_room_overview` |  |  | yes |  |
+| `customer_portal_room_tracker` |  |  | yes |  |
+| `customer_portal_sla_status` |  |  | yes |  |
 | `d365_case_stress_report` |  |  | yes |  |
 | `d365_list_sla_breaches` | yes |  |  |  |
 | `d365_netbox_mappings` |  |  | yes |  |
@@ -414,4 +423,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_reliability_radar` |  |  | yes |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 209 REST endpoints, 187 MCP tools._
+_Totals: 209 REST endpoints, 196 MCP tools._

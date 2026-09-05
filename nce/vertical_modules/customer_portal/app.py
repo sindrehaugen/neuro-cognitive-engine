@@ -300,6 +300,33 @@ async def api_portal_expansion_interest(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(exc)}, status_code=403)
 
 
+async def api_portal_advisor(request: Request) -> JSONResponse:
+    """Sandboxed AI customer advisor endpoint."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    cust_scope = request.headers.get("X-Customer-Scope-ID", body.get("customer_scope_id"))
+    ns_id = request.headers.get("X-Namespace-ID", body.get("namespace_id"))
+
+    if not cust_scope:
+        return JSONResponse({"error": "Unauthorized: customer scope required"}, status_code=401)
+
+    params = {
+        "namespace_id": ns_id,
+        "customer_scope_id": cust_scope,
+        **body,
+    }
+    try:
+        from nce.vertical_modules.customer_portal.advisor import do_advisor_answer
+
+        result = await do_advisor_answer(request.app.state.engine, params)
+        return JSONResponse(result)
+    except PermissionError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=403)
+
+
 def build_customer_portal_app(engine: Any = None) -> Starlette:
     """Construct the isolated Customer Portal application."""
     routes = [
@@ -314,6 +341,7 @@ def build_customer_portal_app(engine: Any = None) -> Starlette:
         Route("/api/portal/invoices", api_portal_invoices, methods=["GET"]),
         Route("/api/portal/service-requests", api_portal_service_requests, methods=["POST"]),
         Route("/api/portal/expansion-interest", api_portal_expansion_interest, methods=["POST"]),
+        Route("/api/portal/advisor", api_portal_advisor, methods=["POST"]),
     ]
 
     middleware = [

@@ -40,6 +40,9 @@ from nce.entity_resolution import mcp_handlers as entity_resolution_mcp_handlers
 from nce.pricing import mcp_handlers as pricing_mcp_handlers
 from nce.vertical_modules.agreements import mcp_handlers as agreements_mcp_handlers
 from nce.vertical_modules.assets import mcp_handlers as assets_mcp_handlers
+from nce.vertical_modules.customer_portal import (
+    mcp_handlers as customer_portal_mcp_handlers,
+)
 from nce.vertical_modules.diagnostics import mcp_handlers as diag_mcp_handlers
 from nce.vertical_modules.dynamics365 import mcp_handlers as d365_mcp_handlers
 from nce.vertical_modules.economy import mcp_handlers as economy_mcp_handlers
@@ -1214,6 +1217,45 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
     ),
     "resources_plan_travel": ToolSpec(
         _h(resources_mcp_handlers, "handle_resources_plan_travel"),
+        cacheable=False,
+        mutation=True,
+    ),
+    # ML17-B5 (M17.W5) -- Customer Portal Engine (9 tools)
+    "customer_portal_room_tracker": ToolSpec(
+        _h(customer_portal_mcp_handlers, "handle_customer_portal_room_tracker"),
+        cacheable=True,
+    ),
+    "customer_portal_room_overview": ToolSpec(
+        _h(customer_portal_mcp_handlers, "handle_customer_portal_room_overview"),
+        cacheable=True,
+    ),
+    "customer_portal_asset_register": ToolSpec(
+        _h(customer_portal_mcp_handlers, "handle_customer_portal_asset_register"),
+        cacheable=True,
+    ),
+    "customer_portal_list_documents": ToolSpec(
+        _h(customer_portal_mcp_handlers, "handle_customer_portal_list_documents"),
+        cacheable=True,
+    ),
+    "customer_portal_sla_status": ToolSpec(
+        _h(customer_portal_mcp_handlers, "handle_customer_portal_sla_status"),
+        cacheable=True,
+    ),
+    "customer_portal_list_invoices": ToolSpec(
+        _h(customer_portal_mcp_handlers, "handle_customer_portal_list_invoices"),
+        cacheable=True,
+    ),
+    "customer_portal_advisor_answer": ToolSpec(
+        _h(customer_portal_mcp_handlers, "handle_customer_portal_advisor_answer"),
+        cacheable=False,
+    ),
+    "customer_portal_raise_service_request": ToolSpec(
+        _h(customer_portal_mcp_handlers, "handle_customer_portal_raise_service_request"),
+        cacheable=False,
+        mutation=True,
+    ),
+    "customer_portal_register_expansion_interest": ToolSpec(
+        _h(customer_portal_mcp_handlers, "handle_customer_portal_register_expansion_interest"),
         cacheable=False,
         mutation=True,
     ),
