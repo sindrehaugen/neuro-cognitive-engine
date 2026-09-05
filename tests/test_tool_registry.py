@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 158  # 148 previous + 10 field_tech tools from ML12-B5, M12.W5.
+_EXPECTED_TOTAL = 166  # 158 previous + 8 marketing tools from ML14-B3, M14.W3.
 
 
 def test_registry_has_expected_entries():
@@ -181,6 +181,12 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "field_tech_attach_photo",
         "field_tech_sync",
         "field_tech_record_outcome",
+        # ML14-B3 (M14.W3) -- Marketing Engine mutations (5 tools)
+        "marketing_draft_case_study",
+        "marketing_request_testimonial",
+        "marketing_capture_testimonial",
+        "marketing_approve_content",
+        "marketing_publish_content",
     }
 )
 
@@ -193,7 +199,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 66  # 58 previous + 8 field_tech tools from ML12-B5
+    assert len(MUTATION_TOOLS) == 71  # 66 previous + 5 marketing tools from ML14-B3
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -290,6 +296,10 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         # ML12-B5 (M12.W5) -- Field Tech Engine Advisor reads (cacheable)
         "field_tech_dispatch",
         "field_tech_partner_view",
+        # ML14-B3 (M14.W3) -- Marketing Engine cacheable reads (3 tools)
+        "marketing_find_case_study_candidates",
+        "marketing_suggest_content",
+        "marketing_audit_seo",
     }
 )
 
@@ -302,7 +312,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 54  # 52 previous + 2 field_tech tools from ML12-B5
+    assert len(CACHEABLE_TOOLS) == 57  # 54 previous + 3 marketing tools from ML14-B3
 
 
 # ---------------------------------------------------------------------------
@@ -367,6 +377,12 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "field_tech_create_work_order",
         "field_tech_assign",
         "field_tech_record_outcome",
+        # ML14-B3 (M14.W3) -- Marketing Engine admin_only tools (5 tools)
+        "marketing_draft_case_study",
+        "marketing_request_testimonial",
+        "marketing_capture_testimonial",
+        "marketing_approve_content",
+        "marketing_publish_content",
     }
 )
 
@@ -379,7 +395,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 32  # 29 previous + 3 field_tech tools from ML12-B5
+    assert len(ADMIN_ONLY_TOOLS) == 37  # 32 previous + 5 marketing tools from ML14-B3
 
 
 # ---------------------------------------------------------------------------

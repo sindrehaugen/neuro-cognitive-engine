@@ -273,6 +273,14 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `list_snapshots` |  |  |  |  |
 | `manage_namespace` |  | yes |  |  |
 | `manage_quotas` |  | yes |  |  |
+| `marketing_approve_content` | yes | yes |  |  |
+| `marketing_audit_seo` |  |  | yes |  |
+| `marketing_capture_testimonial` | yes | yes |  |  |
+| `marketing_draft_case_study` | yes | yes |  |  |
+| `marketing_find_case_study_candidates` |  |  | yes |  |
+| `marketing_publish_content` | yes | yes |  |  |
+| `marketing_request_testimonial` | yes | yes |  |  |
+| `marketing_suggest_content` |  |  | yes |  |
 | `merge_queue_confirm` | yes | yes |  |  |
 | `merge_queue_list` |  |  | yes |  |
 | `merge_queue_reject` | yes | yes |  |  |
@@ -349,4 +357,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_reliability_radar` |  |  | yes |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 173 REST endpoints, 158 MCP tools._
+_Totals: 173 REST endpoints, 166 MCP tools._

@@ -45,6 +45,7 @@ from nce.vertical_modules.dynamics365 import mcp_handlers as d365_mcp_handlers
 from nce.vertical_modules.economy import mcp_handlers as economy_mcp_handlers
 from nce.vertical_modules.field_tech import mcp_handlers as field_tech_mcp_handlers
 from nce.vertical_modules.inventory import mcp_handlers as inventory_mcp_handlers
+from nce.vertical_modules.marketing import mcp_handlers as marketing_mcp_handlers
 from nce.vertical_modules.netbox import circuits as netbox_circuits
 from nce.vertical_modules.procurement import mcp_handlers as procurement_mcp_handlers
 from nce.vertical_modules.product import mcp_handlers as product_mcp_handlers
@@ -1043,6 +1044,55 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
     ),
     "field_tech_record_outcome": ToolSpec(
         _h(field_tech_mcp_handlers, "handle_field_tech_record_outcome"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    # Marketing vertical module tools (ML14-B3, M14.W3)
+    "marketing_find_case_study_candidates": ToolSpec(
+        _h(marketing_mcp_handlers, "handle_marketing_find_case_study_candidates"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "marketing_draft_case_study": ToolSpec(
+        _h(marketing_mcp_handlers, "handle_marketing_draft_case_study"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "marketing_request_testimonial": ToolSpec(
+        _h(marketing_mcp_handlers, "handle_marketing_request_testimonial"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "marketing_capture_testimonial": ToolSpec(
+        _h(marketing_mcp_handlers, "handle_marketing_capture_testimonial"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "marketing_suggest_content": ToolSpec(
+        _h(marketing_mcp_handlers, "handle_marketing_suggest_content"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "marketing_audit_seo": ToolSpec(
+        _h(marketing_mcp_handlers, "handle_marketing_audit_seo"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "marketing_approve_content": ToolSpec(
+        _h(marketing_mcp_handlers, "handle_marketing_approve_content"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "marketing_publish_content": ToolSpec(
+        _h(marketing_mcp_handlers, "handle_marketing_publish_content"),
         cacheable=False,
         admin_only=True,
         mutation=True,

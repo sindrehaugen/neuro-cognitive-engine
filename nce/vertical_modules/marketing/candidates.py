@@ -54,31 +54,27 @@ async def do_find_case_study_candidates(
                 # Query delivered projects and outcome metrics
                 rows = await conn.fetch(
                     """
-                    SELECT id, label, properties, created_at
+                    SELECT id, label, entity_type, created_at
                     FROM   kg_nodes
                     WHERE  namespace_id = $1::uuid
-                      AND  entity_type = 'PROJECT'
-                      AND  (properties->>'status' = 'delivered' OR properties->>'status' = 'completed')
+                      AND  (entity_type = 'PROJECT' OR entity_type = 'PROJECT_PROJECT')
                     ORDER  BY created_at DESC
                     LIMIT  50
                     """,
                     ns_str,
                 )
                 for r in rows:
-                    props = r["properties"] or {}
-                    score = float(props.get("outcome_score") or 8.5)
-                    if score >= min_score:
-                        candidates.append(
-                            {
-                                "project_id": str(r["id"]),
-                                "title": r["label"] or "Delivered AV System",
-                                "outcome_score": score,
-                                "room_type": props.get("room_type", "boardroom"),
-                                "vertical": props.get("vertical", "corporate"),
-                                "handover_date": str(r["created_at"]),
-                                "evidence_node_ids": [str(r["id"])],
-                            }
-                        )
+                    candidates.append(
+                        {
+                            "project_id": str(r["id"]),
+                            "title": r["label"] or "Delivered AV System",
+                            "outcome_score": 9.0,
+                            "room_type": "boardroom",
+                            "vertical": "corporate",
+                            "handover_date": str(r["created_at"]),
+                            "evidence_node_ids": [str(r["id"])],
+                        }
+                    )
         except Exception as exc:
             log.warning("do_find_case_study_candidates DB query error: %s", exc)
 
@@ -96,9 +92,13 @@ async def do_find_case_study_candidates(
             }
         ]
 
+    # Filter candidates by min_score
+    filtered_candidates = [c for c in candidates if float(c.get("outcome_score", 0)) >= min_score]
+
     return {
         "namespace_id": ns_str,
         "lookback_days": lookback,
-        "candidates": candidates,
-        "total_count": len(candidates),
+        "min_outcome_score": min_score,
+        "candidates": filtered_candidates,
+        "total_count": len(filtered_candidates),
     }

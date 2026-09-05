@@ -98,6 +98,16 @@ def assert_positive_nps_only(nps_score: float, threshold: float = 9.0) -> None:
         )
 
 
+def assert_consent_allows_tier(required_tier: str, granted_tier: str | None) -> None:
+    """Verify that recorded consent tier satisfies the required publishing tier (MK-4)."""
+    if not granted_tier:
+        raise MarketingConsentMissingError("Consent is required but none is recorded.")
+    if required_tier == "ai_citable_irrevocable" and granted_tier != "ai_citable_irrevocable":
+        raise MarketingConsentMissingError(
+            f"Publishing requires 'ai_citable_irrevocable' consent; recorded tier is {granted_tier!r}."
+        )
+
+
 async def require_marketing_enabled(
     pool: Any,
     namespace_id: str,
