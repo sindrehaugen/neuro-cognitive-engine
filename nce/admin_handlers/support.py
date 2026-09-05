@@ -61,6 +61,7 @@ from nce.vertical_modules.support.health import do_health_score, do_record_touch
 from nce.vertical_modules.support.sla import do_sla_clock
 from nce.vertical_modules.support.sync import do_sync_now, do_sync_status
 from nce.vertical_modules.support.tickets import (
+    AutocloseConfidenceRefusalError,
     InvalidTicketStatusError,
     TicketAlreadyResolvedError,
     TicketNotFoundError,
@@ -516,6 +517,16 @@ async def api_support_tickets_resolve(request: Any) -> JSONResponse:
                 "status": exc.status,
             },
             status_code=409,
+        )
+    except AutocloseConfidenceRefusalError as exc:
+        return JSONResponse(
+            {
+                "error": str(exc),
+                "reason": "autoclose_confidence_refusal",
+                "confidence": exc.confidence,
+                "threshold": exc.threshold,
+            },
+            status_code=422,
         )
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=422)

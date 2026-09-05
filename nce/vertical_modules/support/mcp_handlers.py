@@ -50,6 +50,7 @@ from nce.vertical_modules.support.health import do_health_score, do_record_touch
 from nce.vertical_modules.support.sla import do_sla_clock
 from nce.vertical_modules.support.sync import do_sync_now
 from nce.vertical_modules.support.tickets import (
+    AutocloseConfidenceRefusalError,
     InvalidTicketStatusError,
     TicketAlreadyResolvedError,
     TicketNotFoundError,
@@ -211,6 +212,16 @@ async def handle_support_resolve_ticket(engine: Any, arguments: dict[str, Any]) 
                 "reason": "invalid_ticket_status",
                 "ticket_id": exc.ticket_id,
                 "status": exc.status,
+            },
+        ) from exc
+    except AutocloseConfidenceRefusalError as exc:
+        raise McpError(
+            _MCP_BUSINESS_REFUSED_CODE,
+            str(exc),
+            data={
+                "reason": "autoclose_confidence_refusal",
+                "confidence": exc.confidence,
+                "threshold": exc.threshold,
             },
         ) from exc
     return json.dumps({"ok": True, **result}, default=str)
