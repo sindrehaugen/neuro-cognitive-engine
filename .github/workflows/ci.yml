@@ -524,6 +524,19 @@ jobs:
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/test_marketing_*.py -m integration -q --tb=short
 
+      # M16 Business Insights Engine (Module 16). Proves executive morning brief,
+      # cross-engine risk radar collisions (the moat), scenario modeling (Monte-Carlo),
+      # board pack draft staging, tenant isolation on business_insights_kpi_snapshots,
+      # and the four Engine Requirements (BI-1 person barrier, BI-2 coverage,
+      # BI-3 third-party egress boundary, BI-4 grace degradation).
+      - name: Integration — M16 Business Insights Engine (tests/test_business_insights_*.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/test_business_insights_*.py -m integration -q --tb=short
+
+
 
   # REST-surface mutations must invalidate the MCP response cache.
   # `bump_cache_generation` is called from the MCP dispatch loop only, so a

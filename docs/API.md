@@ -93,6 +93,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/assets` | `api_assets_list` |
 | GET | `/api/assets/{id}` | `api_assets_get` |
 | POST | `/api/assets/{id}/lifecycle` | `api_assets_advance_lifecycle` |
+| POST | `/api/business-insights/ask` | `api_business_insights_ask` |
+| GET,POST | `/api/business-insights/board-pack` | `api_business_insights_board_pack` |
+| GET | `/api/business-insights/kpi-dashboard` | `api_business_insights_kpi_dashboard` |
+| GET | `/api/business-insights/morning-brief` | `api_business_insights_morning_brief` |
+| GET | `/api/business-insights/risk-radar` | `api_business_insights_risk_radar` |
+| POST | `/api/business-insights/run-scenario` | `api_business_insights_run_scenario` |
 | POST | `/api/economy/emit-event` | `api_economy_emit_event` |
 | POST | `/api/economy/match-invoice` | `api_economy_match_invoice` |
 | POST | `/api/economy/periodisering` | `api_economy_periodisering` |
@@ -231,6 +237,12 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `assets_ping` |  |  | yes |  |
 | `boost_memory` |  | yes |  |  |
 | `bridge_status` |  |  |  |  |
+| `business_insights_ask_business` | yes |  |  |  |
+| `business_insights_generate_board_pack` | yes |  |  |  |
+| `business_insights_kpi_dashboard` | yes |  | yes |  |
+| `business_insights_morning_brief` | yes |  | yes |  |
+| `business_insights_risk_radar` | yes |  | yes |  |
+| `business_insights_run_scenario` | yes |  |  |  |
 | `check_indexing_status` |  |  |  |  |
 | `commit_migration` |  | yes |  | yes |
 | `compare_states` |  |  |  |  |
@@ -395,4 +407,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_reliability_radar` |  |  | yes |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 199 REST endpoints, 178 MCP tools._
+_Totals: 205 REST endpoints, 184 MCP tools._

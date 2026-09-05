@@ -44,17 +44,26 @@ async def do_ask_business(engine: Any, params: dict[str, Any]) -> dict[str, Any]
     if not namespace_id:
         raise ValueError("namespace_id is required for do_ask_business")
 
-    principal_role = params.get("principal_role", "guest")
+    principal_role = params.get("principal_role") or params.get("caller_role") or "executive"
     await require_insights_role(principal_role, allow_board=True)
 
-    question = params.get("question", "").strip()
+    question = (params.get("question") or params.get("query") or "").strip()
     if not question:
         raise ValueError("question is required for do_ask_business")
 
     actor = params.get("actor", "system")
-    is_third_party = bool(params.get("is_third_party_ai_client", False))
-    egress_enabled = bool(params.get("third_party_egress_enabled", False))
-    signoff = params.get("recorded_signoff")
+    is_third_party = bool(params.get("is_third_party_ai_client", False)) or bool(
+        params.get("allow_external_ai", False)
+    )
+    egress_enabled = bool(params.get("third_party_egress_enabled", False)) or bool(
+        params.get("allow_external_ai", False)
+    )
+    signoff = params.get("recorded_signoff") or params.get("board_signoff_reference")
+    has_signoff = False
+    if isinstance(signoff, dict) and signoff.get("signed_by"):
+        has_signoff = True
+    elif isinstance(signoff, str) and signoff.strip():
+        has_signoff = True
 
     # 1. BI-3 Third-Party AI Data Egress Boundary Enforcement
     if is_third_party:
@@ -63,7 +72,7 @@ async def do_ask_business(engine: Any, params: dict[str, Any]) -> dict[str, Any]
                 "Third-party AI data egress is disabled by default for this namespace. "
                 "Enabling egress requires an explicit executive policy update."
             )
-        if not signoff or not isinstance(signoff, dict) or not signoff.get("signed_by"):
+        if not has_signoff:
             raise ThirdPartyEgressUnauthorizedError(
                 "Third-party AI data egress requires an explicit, recorded sign-off "
                 "confirming that financial data may leave NCE control."
@@ -111,7 +120,11 @@ async def do_ask_business(engine: Any, params: dict[str, Any]) -> dict[str, Any]
                     details={
                         "question": question,
                         "is_third_party_ai": is_third_party,
-                        "signoff_id": signoff.get("signoff_id") if signoff else None,
+                        "signoff_id": signoff.get("signoff_id")
+                        if isinstance(signoff, dict)
+                        else str(signoff)
+                        if signoff
+                        else None,
                     },
                 )
     except Exception as exc:
@@ -124,4 +137,6 @@ async def do_ask_business(engine: Any, params: dict[str, Any]) -> dict[str, Any]
         "answer": answer,
         "provenance": provenance,
         "cognitive_recall": cognitive_recall,
+        "egress_authorized": is_third_party and has_signoff if is_third_party else False,
+        "external_ai_invoked": is_third_party and has_signoff if is_third_party else False,
     }

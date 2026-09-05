@@ -80,3 +80,40 @@ async def require_insights_role(
         if allow_board:
             allowed_roles.add("board")
     assert_exec_or_board_role(principal_role, allowed_roles=allowed_roles)
+
+
+async def require_business_insights_enabled(
+    pool: Any,
+    namespace_id: str,
+) -> None:
+    """Assert that metadata.business_insights.enabled is true for namespace_id.
+
+    Applied at the MCP handler / REST route boundary only -- never inside a do_* core.
+    """
+    try:
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT COALESCE(
+                           (metadata->'business_insights'->>'enabled')::boolean,
+                           false
+                       ) AS bi_enabled
+                FROM   namespaces
+                WHERE  id = $1::uuid
+                """,
+                namespace_id,
+            )
+    except Exception as exc:
+        log.info(
+            "require_business_insights_enabled: error checking namespace %r: %s",
+            namespace_id,
+            exc,
+        )
+        raise BusinessInsightsDisabledError(
+            f"Namespace {namespace_id!r} is invalid or has not enabled Business Insights."
+        ) from exc
+
+    if not row or not row["bi_enabled"]:
+        raise BusinessInsightsDisabledError(
+            f"Namespace {namespace_id!r} has not enabled the Business Insights Engine (metadata.business_insights.enabled is not true)."
+        )

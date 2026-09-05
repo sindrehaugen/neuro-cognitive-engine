@@ -43,29 +43,33 @@ async def emit_business_insights_event(
             # Explicitly pass string literals to satisfy test_producer_coverage AST analysis
             if event_type == "business_insights_briefing_generated":
                 await append_event(
-                    conn,
+                    conn=conn,
                     namespace_id=ns_uuid,
+                    agent_id="business_insights_engine",
                     event_type="business_insights_briefing_generated",
                     params=params,
                 )
             elif event_type == "business_insights_finding_surfaced":
                 await append_event(
-                    conn,
+                    conn=conn,
                     namespace_id=ns_uuid,
+                    agent_id="business_insights_engine",
                     event_type="business_insights_finding_surfaced",
                     params=params,
                 )
             elif event_type == "business_insights_scenario_executed":
                 await append_event(
-                    conn,
+                    conn=conn,
                     namespace_id=ns_uuid,
+                    agent_id="business_insights_engine",
                     event_type="business_insights_scenario_executed",
                     params=params,
                 )
             elif event_type == "business_insights_board_pack_drafted":
                 await append_event(
-                    conn,
+                    conn=conn,
                     namespace_id=ns_uuid,
+                    agent_id="business_insights_engine",
                     event_type="business_insights_board_pack_drafted",
                     params=params,
                 )

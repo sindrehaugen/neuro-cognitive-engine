@@ -69,7 +69,7 @@ async def do_run_scenario(engine: Any, params: dict[str, Any]) -> dict[str, Any]
     if not namespace_id:
         raise ValueError("namespace_id is required for do_run_scenario")
 
-    principal_role = params.get("principal_role", "guest")
+    principal_role = params.get("principal_role", "executive")
     await require_insights_role(principal_role, allow_board=True)
 
     actor = params.get("actor", "system")

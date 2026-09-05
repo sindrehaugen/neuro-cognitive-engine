@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 178  # 166 baseline + 4 support tools + 8 HR Engine tools
+_EXPECTED_TOTAL = 184  # 178 baseline + 6 Business Insights tools (Module 16)
 
 
 def test_registry_has_expected_entries():
@@ -317,6 +317,10 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "marketing_audit_seo",
         # ML10b-P1 -- Support Engine triage advisor (cacheable)
         "support_triage_ticket",
+        # ML16 (Business Insights Engine) -- executive watcher reads (3 cacheable tools)
+        "business_insights_morning_brief",
+        "business_insights_risk_radar",
+        "business_insights_kpi_dashboard",
     }
 )
 
@@ -329,7 +333,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 63  # 57 baseline + 1 support tool + 5 hr tools
+    assert len(CACHEABLE_TOOLS) == 66  # 63 baseline + 3 business insights tools
 
 
 # ---------------------------------------------------------------------------
@@ -406,6 +410,13 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         # ML10b-P2/P3 -- Support Engine dispatch and sync mutations
         "support_dispatch_work_order",
         "support_sync_now",
+        # ML16 (Business Insights Engine) -- executive/board admin-only tools (6 tools)
+        "business_insights_morning_brief",
+        "business_insights_risk_radar",
+        "business_insights_run_scenario",
+        "business_insights_generate_board_pack",
+        "business_insights_kpi_dashboard",
+        "business_insights_ask_business",
     }
 )
 
@@ -418,7 +429,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 41  # 37 baseline + 2 support tools + 2 hr tools
+    assert len(ADMIN_ONLY_TOOLS) == 47  # 41 baseline + 6 business insights tools
 
 
 # ---------------------------------------------------------------------------

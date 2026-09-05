@@ -15,6 +15,7 @@ from nce import admin_http_handlers as h
 from nce import admin_state
 from nce.admin_handlers import agreements as agreements_handlers
 from nce.admin_handlers import assets as assets_handlers
+from nce.admin_handlers import business_insights as business_insights_handlers
 from nce.admin_handlers import economy as economy_handlers
 from nce.admin_handlers import entity_resolution as entity_resolution_handlers
 from nce.admin_handlers import field_tech as field_tech_handlers
@@ -1160,6 +1161,36 @@ def build_admin_routes() -> list[Route]:
         Route(
             "/api/marketing/publish",
             endpoint=marketing_handlers.api_marketing_publish_content,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/business-insights/morning-brief",
+            endpoint=business_insights_handlers.api_business_insights_morning_brief,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/business-insights/risk-radar",
+            endpoint=business_insights_handlers.api_business_insights_risk_radar,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/business-insights/run-scenario",
+            endpoint=business_insights_handlers.api_business_insights_run_scenario,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/business-insights/board-pack",
+            endpoint=business_insights_handlers.api_business_insights_board_pack,
+            methods=["GET", "POST"],
+        ),
+        Route(
+            "/api/business-insights/kpi-dashboard",
+            endpoint=business_insights_handlers.api_business_insights_kpi_dashboard,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/business-insights/ask",
+            endpoint=business_insights_handlers.api_business_insights_ask,
             methods=["POST"],
         ),
     ]

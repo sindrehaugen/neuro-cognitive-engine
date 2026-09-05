@@ -4620,6 +4620,160 @@ TOOLS = [
             "required": ["namespace_id", "artifact_id"],
         },
     ),
+    # Module 16: Business Insights Engine
+    Tool(
+        name="business_insights_morning_brief",
+        description=(
+            "Generate executive 12-minute morning brief across operational pillars (economy, project, support, sales, resources) with provenance tracing."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "lookback_hours": {
+                    "type": "integer",
+                    "default": 24,
+                    "description": "Lookback window in hours for briefing signals.",
+                },
+                "as_of": {
+                    "type": "string",
+                    "description": "Optional ISO timestamp for bi-temporal retrospective briefings.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="business_insights_risk_radar",
+        description=(
+            "Cross-engine collision detection (risk radar) identifying systemic multi-domain operational and financial risks."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "lookback_days": {
+                    "type": "integer",
+                    "default": 30,
+                    "description": "Lookback window in days for detecting signal correlations.",
+                },
+                "as_of": {
+                    "type": "string",
+                    "description": "Optional ISO timestamp for retrospective analysis.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="business_insights_run_scenario",
+        description=(
+            "Forward scenario modeling with Monte-Carlo cashflow simulation and capacity impact analysis."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "name": {
+                    "type": "string",
+                    "description": "Scenario name or identifier.",
+                },
+                "simulation_runs": {
+                    "type": "integer",
+                    "default": 500,
+                    "description": "Number of Monte-Carlo simulation iterations.",
+                },
+                "assumptions": {
+                    "type": "object",
+                    "description": "Scenario assumption parameters (delays, cost multipliers, revenue shocks).",
+                },
+                "horizon_days": {
+                    "type": "integer",
+                    "default": 90,
+                    "description": "Forecast time horizon in days.",
+                },
+            },
+            "required": ["namespace_id", "name"],
+        },
+    ),
+    Tool(
+        name="business_insights_generate_board_pack",
+        description=(
+            "Generate draft quarterly board pack with executive summary and multi-domain KPIs staged for human review."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "quarter": {
+                    "type": "string",
+                    "description": "Fiscal quarter identifier (e.g. 'Q3-2026').",
+                },
+                "meeting_date": {
+                    "type": "string",
+                    "description": "Optional scheduled board meeting date.",
+                },
+                "as_of": {
+                    "type": "string",
+                    "description": "Optional ISO timestamp for snapshot data.",
+                },
+            },
+            "required": ["namespace_id", "quarter"],
+        },
+    ),
+    Tool(
+        name="business_insights_kpi_dashboard",
+        description=(
+            "Retrieve multi-domain KPI cockpit metrics and snapshot trends across all operational engines."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "period": {
+                    "type": "string",
+                    "default": "30d",
+                    "description": "Rolling trend window period (e.g. '30d', '90d').",
+                },
+                "as_of": {
+                    "type": "string",
+                    "description": "Optional ISO timestamp for point-in-time calculation.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="business_insights_ask_business",
+        description=(
+            "Role-scoped natural language query answering with EU AI Act Art 5 person barrier and third-party egress gating."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "query": {
+                    "type": "string",
+                    "description": "Natural language business question.",
+                },
+                "caller_role": {
+                    "type": "string",
+                    "default": "viewer",
+                    "description": "Role of the calling principal (e.g. 'viewer', 'executive', 'board').",
+                },
+                "allow_external_ai": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Explicit opt-in flag for third-party AI egress.",
+                },
+                "board_signoff_reference": {
+                    "type": "string",
+                    "description": "Recorded board authorization reference required if allow_external_ai is true.",
+                },
+            },
+            "required": ["namespace_id", "query"],
+        },
+    ),
 ]
 
 
