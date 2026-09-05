@@ -1132,6 +1132,13 @@ _additional_fork_provenance_types: tuple[str, ...] = (
     "support_ticket_resolved",
     "support_touchpoint_recorded",
     "support_diagnosis_authored",
+    # Module 12 Field Tech Engine events (provenance-only fork projection per Charter M12.W7)
+    "field_tech_work_order_created",
+    "field_tech_work_order_assigned",
+    "field_tech_checklist_completed",
+    "field_tech_serial_scanned",
+    "field_tech_time_logged",
+    "field_tech_outcome_recorded",
 )
 for _fork_et in _additional_fork_provenance_types:
     assert _fork_et not in _HANDLER_REGISTRY, (

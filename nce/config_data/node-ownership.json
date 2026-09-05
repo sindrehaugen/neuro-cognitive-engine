@@ -60,7 +60,17 @@
     { "node_type": "SUPPORT_HEALTH_SCORE",  "owner_engine": "support",       "transition": null,
       "_note": "Module 10 (Support Engine) customer health rolling score." },
     { "node_type": "SUPPORT_DIAGNOSIS",     "owner_engine": "support",       "transition": null,
-      "_note": "Module 10 (Support Engine) AI Troubleshooter diagnosis and proposed fix." }
+      "_note": "Module 10 (Support Engine) AI Troubleshooter diagnosis and proposed fix." },
+    { "node_type": "WORK_ORDER",            "owner_engine": "field_tech",    "transition": null,
+      "_note": "Module 12 (Field Tech Engine) primary spine node: work orders, assignments, lifecycle status." },
+    { "node_type": "FIELD_TECH_CHECKLIST",  "owner_engine": "field_tech",    "transition": null,
+      "_note": "Module 12 (Field Tech Engine) ISO9001 compliance verification checklists." },
+    { "node_type": "FIELD_TECH_TIME_ENTRY", "owner_engine": "field_tech",    "transition": null,
+      "_note": "Module 12 (Field Tech Engine) labor timesheet entries with GPS verification." },
+    { "node_type": "FIELD_TECH_SCAN",       "owner_engine": "field_tech",    "transition": null,
+      "_note": "Module 12 (Field Tech Engine) serial number capture seeding BOM_LINE to ASSET edges." },
+    { "node_type": "FIELD_TECH_PHOTO",      "owner_engine": "field_tech",    "transition": null,
+      "_note": "Module 12 (Field Tech Engine) work order photographic documentation attachments." }
   ]
 }
 

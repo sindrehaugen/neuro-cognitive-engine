@@ -85,13 +85,6 @@ INFRA_MODULES = {
     "nce.temporal",
     "nce.background_task_manager",
     "nce.admin_handlers._shared",
-    # append_event is the WORM audit write -- shared by every surface that records
-    # anything, exactly like scoped_pg_session / set_namespace_context below.
-    # Sharing it implies nothing about MCP cache staleness, so it is plumbing and
-    # not a domain core. Latent until 2026-09-04, when signing_key_rotated became
-    # the first mutation=True tool to call it directly from a handler and three
-    # unrelated REST routes were implicated purely for also writing audit rows.
-    "nce.event_log",
 }
 INFRA_NAMES = {
     "UUID",

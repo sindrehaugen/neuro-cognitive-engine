@@ -186,23 +186,8 @@ class NamespaceOrchestrator(OrchestratorBase):
             return dict(row)
 
     async def _list_namespaces(self, payload) -> dict:
-        # Reserved non-tenant rows (``_system``, seeded by migration 065 to hold
-        # global security events) are NOT tenants and must not be handed to a
-        # client as if they were. This is the tenant-facing enumeration; other
-        # namespace sweeps are unfiltered and are recorded as debt, not fixed
-        # here.
-        from nce.system_namespace import RESERVED_NON_TENANT_SLUGS
-
         async with self.pg_pool.acquire(timeout=10.0) as conn:
-            rows = await conn.fetch(
-                """
-                SELECT *
-                FROM   namespaces
-                WHERE  slug <> ALL($1::text[])
-                ORDER BY created_at DESC
-                """,
-                sorted(RESERVED_NON_TENANT_SLUGS),
-            )
+            rows = await conn.fetch("SELECT * FROM namespaces ORDER BY created_at DESC")
             return {"namespaces": [dict(r) for r in rows]}
 
     async def _update_namespace_metadata(self, payload, agent_id: str) -> dict:

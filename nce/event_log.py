@@ -361,6 +361,10 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "service_tickets": "namespace_id",
     "sla_clocks": "namespace_id",
     "customer_health": "namespace_id",
+    # Field Tech engine (Module 12, Wave 1): work orders, checklists, time entries.
+    "work_orders": "namespace_id",
+    "checklists": "namespace_id",
+    "time_entries": "namespace_id",
 }
 
 

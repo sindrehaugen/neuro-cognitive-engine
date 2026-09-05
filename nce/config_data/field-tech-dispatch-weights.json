@@ -1,0 +1,7 @@
+{
+  "_comment": "Config-as-IP: Field Tech dispatch weights (skill/cert x location x load x outcome-history). Namespace-scoped.",
+  "skill_cert_weight": 0.4,
+  "location_weight": 0.25,
+  "load_weight": 0.15,
+  "history_weight": 0.2
+}

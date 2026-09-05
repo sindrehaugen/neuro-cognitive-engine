@@ -564,11 +564,12 @@ class TestProjectAdvancePhaseToolRegistry:
         inventory_restock_from_rma/inventory_dispose_rma_weee. That wave
         registered eleven tools but only seven mutate; inventory_valuation and
         inventory_reconcile_dead_stock read only, and
-        inventory_recommend_restock/inventory_forecast_demand write nothing."""
-        assert len(MUTATION_TOOLS) == 58
+        inventory_recommend_restock/inventory_forecast_demand write nothing;
+        +8 ML12-B5 field_tech tools, M12.W5."""
+        assert len(MUTATION_TOOLS) == 66
 
     def test_admin_only_count(self) -> None:
-        """Admin-only tools must total 27 (unified realignment registry;
+        """Admin-only tools must total 32 (unified realignment registry;
         +2 Batch 131 inventory_transfer_stock/inventory_record_consumption;
         +1 Batch 067h system_design_delete_planned, M6.W17 -- admin_only is the
         one flag that separates it from the two authoring tools, which are
@@ -578,5 +579,6 @@ class TestProjectAdvancePhaseToolRegistry:
         read-only but admin_only for the cost/position data they return. The
         wave's other two tools, inventory_recommend_restock and
         inventory_forecast_demand, are Watcher reads and are not admin_only;
-        +2 ML10-B5 support tools, M10.W5 -- support_open_ticket, support_resolve_ticket)."""
-        assert len(ADMIN_ONLY_TOOLS) == 29
+        +2 ML10-B5 support tools, M10.W5 -- support_open_ticket, support_resolve_ticket;
+        +3 ML12-B5 field_tech tools, M12.W5 -- field_tech_create_work_order, field_tech_assign, field_tech_record_outcome)."""
+        assert len(ADMIN_ONLY_TOOLS) == 32
