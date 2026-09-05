@@ -375,6 +375,8 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "case_studies": "namespace_id",
     "testimonials": "namespace_id",
     "content_assets": "namespace_id",
+    # Business Insights engine (Module 16, Wave 1): KPI snapshots & roll-up trends.
+    "business_insights_kpi_snapshots": "namespace_id",
 }
 
 

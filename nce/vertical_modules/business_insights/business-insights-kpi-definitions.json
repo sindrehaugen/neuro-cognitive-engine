@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "kpis": {
+    "economy_revenue_mrr": {
+      "name": "Monthly Recurring Revenue (MRR)",
+      "domain": "economy",
+      "engine": "economy",
+      "source_tool": "economy_compute_periodisering",
+      "format": "currency",
+      "unit": "NOK",
+      "aggregation": "sum",
+      "description": "Monthly recurring revenue calculated from active recurring contracts."
+    },
+    "economy_gross_margin_pct": {
+      "name": "Gross Margin Percentage",
+      "domain": "economy",
+      "engine": "economy",
+      "source_tool": "economy_suggest_pl",
+      "format": "percentage",
+      "unit": "%",
+      "target": 35.0,
+      "description": "Overall gross margin percentage across executed projects and recurring services."
+    },
+    "sales_weighted_pipeline": {
+      "name": "Weighted Sales Pipeline",
+      "domain": "sales",
+      "engine": "sales",
+      "source_tool": "sales_get_quote_lines",
+      "format": "currency",
+      "unit": "NOK",
+      "description": "Risk-weighted sales pipeline value based on deal stage probability."
+    },
+    "project_on_time_delivery_rate": {
+      "name": "On-Time Project Delivery Rate",
+      "domain": "project",
+      "engine": "project",
+      "source_tool": "project_can_enter_phase",
+      "format": "percentage",
+      "unit": "%",
+      "target": 90.0,
+      "description": "Percentage of active project milestones completed within baseline schedule."
+    },
+    "support_sla_compliance_rate": {
+      "name": "Support SLA Compliance Rate",
+      "domain": "support",
+      "engine": "support",
+      "source_tool": "support_get_ticket",
+      "format": "percentage",
+      "unit": "%",
+      "target": 98.0,
+      "description": "Percentage of service tickets resolved within guaranteed SLA response and resolution time."
+    },
+    "procurement_savings_realized": {
+      "name": "Realized Procurement Savings",
+      "domain": "procurement",
+      "engine": "procurement",
+      "source_tool": "procurement_forecast_rebate",
+      "format": "currency",
+      "unit": "NOK",
+      "description": "Cumulative cost savings achieved through volume rebates and optimized supplier pricing."
+    },
+    "inventory_dead_stock_value": {
+      "name": "Dead Stock Value",
+      "domain": "inventory",
+      "engine": "inventory",
+      "source_tool": "inventory_stock_levels",
+      "format": "currency",
+      "unit": "NOK",
+      "threshold_max": 50000.0,
+      "description": "Total carrying valuation of inventory with zero turns over the preceding 180 days."
+    },
+    "agreements_expiring_90d": {
+      "name": "Agreements Expiring in 90 Days",
+      "domain": "agreements",
+      "engine": "agreements",
+      "source_tool": "agreements_lookup_terms",
+      "format": "count",
+      "unit": "contracts",
+      "description": "Count of customer and vendor agreements reaching renewal/termination within 90 days."
+    },
+    "assets_critical_health_pct": {
+      "name": "Installed Asset Operational Health",
+      "domain": "assets",
+      "engine": "assets",
+      "source_tool": "assets_get",
+      "format": "percentage",
+      "unit": "%",
+      "target": 99.0,
+      "description": "Percentage of customer-installed equipment operating without critical telemetry alarms."
+    },
+    "resources_capacity_utilization": {
+      "name": "Field Engineering Capacity Utilization",
+      "domain": "resources",
+      "engine": "resources",
+      "source_tool": "resources_capacity_overview",
+      "format": "percentage",
+      "unit": "%",
+      "target": 82.0,
+      "description": "Scheduled field technician billable hours versus total available capacity (Module 15)."
+    },
+    "hr_headcount_turnover_rate": {
+      "name": "Annualized Team Turnover Rate",
+      "domain": "hr",
+      "engine": "hr",
+      "source_tool": "hr_team_metrics",
+      "format": "percentage",
+      "unit": "%",
+      "description": "Aggregated organizational retention rate at department grain (Module 13)."
+    }
+  }
+}
