@@ -35,10 +35,9 @@ VALID_RESOURCE_KINDS: frozenset[str] = frozenset({"employee", "contractor", "veh
 
 
 def _extract_pool(engine_or_pool: Any) -> Any:
-    if hasattr(engine_or_pool, "pg_pool") and (
-        "pg_pool" in getattr(engine_or_pool, "__dict__", {})
-        or hasattr(type(engine_or_pool), "pg_pool")
-    ):
+    if isinstance(engine_or_pool, dict) and "pg_pool" in engine_or_pool:
+        return engine_or_pool["pg_pool"]
+    if hasattr(engine_or_pool, "pg_pool"):
         return engine_or_pool.pg_pool
     return engine_or_pool
 

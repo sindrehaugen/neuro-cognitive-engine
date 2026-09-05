@@ -13,6 +13,14 @@ from nce.vertical_modules.resources._guard import (
     ResourceValidationError,
     require_resources_enabled,
 )
+from nce.vertical_modules.resources.allocations import (
+    CONTRACTOR_ALLOWED_ALLOCATION_FIELDS,
+    VALID_ALLOCATION_STATUSES,
+    do_detect_conflicts,
+    do_release,
+    do_reserve,
+    redact_contractor_view,
+)
 from nce.vertical_modules.resources.capacity import do_resolve_capacity
 from nce.vertical_modules.resources.registry import (
     VALID_RESOURCE_KINDS,
@@ -23,16 +31,22 @@ from nce.vertical_modules.resources.registry import (
 )
 
 __all__ = [
+    "CONTRACTOR_ALLOWED_ALLOCATION_FIELDS",
     "ResourceConcurrencyError",
     "ResourceNotFoundError",
     "ResourceValidationError",
     "ResourcesDisabledError",
     "ResourcesError",
+    "VALID_ALLOCATION_STATUSES",
     "VALID_RESOURCE_KINDS",
     "do_create_resource",
+    "do_detect_conflicts",
     "do_get_resource",
     "do_list_resources",
+    "do_release",
+    "do_reserve",
     "do_resolve_capacity",
     "do_update_resource",
+    "redact_contractor_view",
     "require_resources_enabled",
 ]
