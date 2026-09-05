@@ -237,22 +237,25 @@ wonder whether it was forgotten:
     the sku string.
   * **Building an ``assets`` package, an ``ASSET`` node, or a live A2A grant
     to an ``assets`` agent identity.** Assets (Module 9) owns ``ASSET``
-    under Contract A; :func:`_seed_assets_with_serials` is an INJECTABLE
-    SEAM that raises ``NotImplementedError`` until Module 9 exists — see
-    that function's own docstring, the cross-engine contract **Batch 142
-    (M9.W2)** must implement against and prove it consumes.
+    under Contract A; :func:`_seed_assets_with_serials` WAS an INJECTABLE
+    SEAM that raised ``NotImplementedError`` until Module 9 existed.
+    **RESOLVED (6ae61ee): Module 9 (Assets) has shipped and the seam is
+    IMPLEMENTED** — it now makes one best-effort ``do_seed_asset_from_bom``
+    call per captured serial, keyed by a deterministic idempotency string.
+    The paragraph below about tool registration is therefore also satisfied.
   * **Procurement's ``procurement_evaluate_match`` fire** and the
     **``match_result`` column's population** are **Batch 133**'s. This
     module creates the column (migration 052) and never writes to it; it
     imports nothing from ``nce.vertical_modules.procurement``.
   * **The ``BOM_LINE`` → ``DELIVERED`` status flip** is **Batch 133b**'s.
     This module never reads or writes ``BOM_LINE``.
-  * **MCP tool registration and REST routes** are **Batch 138a**'s.
-    :func:`do_record_goods_receipt` is unreachable from any surface when
-    this wave lands — nothing in ``nce/tool_registry.py`` or
-    ``nce/admin_app.py`` references it. B138a must not register this tool
-    while the Assets seam still raises ``NotImplementedError`` — a
-    serial-carrying call would surface that to a caller.
+  * **MCP tool registration and REST routes** WERE **Batch 138a**'s.
+    **RESOLVED (6ae61ee):** ``inventory_record_goods_receipt`` IS now registered
+    in ``nce/tool_registry.py`` and routed via
+    ``nce/admin_handlers/inventory.py``. The precondition B138a had to wait
+    for — the Assets seam no longer raising ``NotImplementedError`` — is
+    satisfied, so a serial-carrying call no longer surfaces that error to a
+    caller.
 
 Dependency direction (uncle-bob-craft)
 -----------------------------------------
