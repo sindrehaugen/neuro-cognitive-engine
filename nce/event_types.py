@@ -87,6 +87,13 @@ EventType = Literal[
     "field_tech_serial_scanned",
     "field_tech_time_logged",
     "field_tech_outcome_recorded",
+    # MARKETING_EVENTS — Module 14 Marketing Engine lifecycle & audit trail (Charter M14.W7)
+    "marketing_case_study_drafted",
+    "marketing_testimonial_requested",
+    "marketing_testimonial_captured",
+    "marketing_testimonial_retracted",
+    "marketing_content_approved",
+    "marketing_content_published",
 ]
 
 VALID_EVENT_TYPES: Final[frozenset[str]] = frozenset(get_args(EventType))
@@ -209,6 +216,13 @@ EVENT_FORBIDDEN_PARAM_KEYS: Final[dict[str, frozenset[str]]] = {
     "quarantine_rejected": frozenset(
         {"payload", "raw_payload", "content", "summary", "heavy_payload"}
     ),
+    # MK-3: Sensitive financial fields must never enter marketing audit events
+    "marketing_case_study_drafted": frozenset({"margin", "cost", "internal_cost"}),
+    "marketing_testimonial_requested": frozenset({"margin", "cost", "internal_cost"}),
+    "marketing_testimonial_captured": frozenset({"margin", "cost", "internal_cost"}),
+    "marketing_testimonial_retracted": frozenset({"margin", "cost", "internal_cost"}),
+    "marketing_content_approved": frozenset({"margin", "cost"}),
+    "marketing_content_published": frozenset({"margin", "cost"}),
 }
 
 

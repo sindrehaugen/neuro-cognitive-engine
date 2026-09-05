@@ -366,6 +366,10 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "work_orders": "namespace_id",
     "checklists": "namespace_id",
     "time_entries": "namespace_id",
+    # Marketing engine (Module 14, Wave 1): case studies, testimonials, content assets.
+    "case_studies": "namespace_id",
+    "testimonials": "namespace_id",
+    "content_assets": "namespace_id",
 }
 
 
