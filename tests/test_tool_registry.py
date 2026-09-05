@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 174  # 158 previous + 8 HR Engine tools + 8 marketing tools.
+_EXPECTED_TOTAL = 178  # 166 baseline + 4 support tools + 8 HR Engine tools
 
 
 def test_registry_has_expected_entries():
@@ -191,6 +191,11 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "marketing_capture_testimonial",
         "marketing_approve_content",
         "marketing_publish_content",
+        # ML10b-P1 -- Support Engine touchpoint record mutation
+        "support_record_touchpoint",
+        # ML10b-P2/P3 -- Support Engine dispatch and sync mutations
+        "support_dispatch_work_order",
+        "support_sync_now",
     }
 )
 
@@ -203,7 +208,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 74  # 66 previous + 3 hr tools + 5 marketing tools
+    assert len(MUTATION_TOOLS) == 77  # 71 baseline + 3 support tools + 3 hr tools
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -310,6 +315,8 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "marketing_find_case_study_candidates",
         "marketing_suggest_content",
         "marketing_audit_seo",
+        # ML10b-P1 -- Support Engine triage advisor (cacheable)
+        "support_triage_ticket",
     }
 )
 
@@ -322,7 +329,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 62  # 54 previous + 5 hr tools + 3 marketing tools
+    assert len(CACHEABLE_TOOLS) == 63  # 57 baseline + 1 support tool + 5 hr tools
 
 
 # ---------------------------------------------------------------------------
@@ -396,6 +403,9 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "marketing_capture_testimonial",
         "marketing_approve_content",
         "marketing_publish_content",
+        # ML10b-P2/P3 -- Support Engine dispatch and sync mutations
+        "support_dispatch_work_order",
+        "support_sync_now",
     }
 )
 
@@ -408,7 +418,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 39  # 32 previous + 2 hr tools + 5 marketing tools
+    assert len(ADMIN_ONLY_TOOLS) == 41  # 37 baseline + 2 support tools + 2 hr tools
 
 
 # ---------------------------------------------------------------------------
