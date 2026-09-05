@@ -1,5 +1,5 @@
 {
-  "_comment": "Config-as-IP: TCO component weights + supplier scoring weights. Namespace-scoped — each tenant tunes its own copy. No weight constants live in tco.py.",
+  "_comment": "NOTE: 'rebate_proximity' was named 'kickback_proximity' until 2026-09-05; the legacy key is still read so existing namespace overrides keep working. See the Terminology section of README.md. Config-as-IP: TCO component weights + supplier scoring weights. Namespace-scoped — each tenant tunes its own copy. No weight constants live in tco.py.",
   "TCO_WEIGHTS": {
     "freight": 0.05,
     "warranty": 0.08,
