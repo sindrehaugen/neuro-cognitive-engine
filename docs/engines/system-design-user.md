@@ -152,7 +152,7 @@ result = await do_generate_sow(engine, {
 ```
 
 The generator is split into a pure transform and a graph adapter:
-- `generate_sow(sow_input, version_number=1)` (`sow.py:130-389`) is a **zero-DB, deterministic** function lifted near-1:1 from Andreas's `lib/sow/generator.ts:183`. It produces the summary, per-room deliverables, labor-by-category, managed services, invoicing breakdown, timeline, acceptance clauses, and terms sections of the SoW.
+- `generate_sow(sow_input, version_number=1)` (`sow.py:130-389`) is a **zero-DB, deterministic** function lifted near-1:1 from the reference implementation. It produces the summary, per-room deliverables, labor-by-category, managed services, invoicing breakdown, timeline, acceptance clauses, and terms sections of the SoW.
 - `do_generate_sow` reads the `DESIGN`/`DESIGN_LINE`/`FUNCTIONAL_LOCATION` subgraph in one scoped session, assembles a `SoWInput` dict (`_assemble_sow_input`, `sow.py:562-643`), then calls the pure transform outside the session.
 
 **Freeze-on-issue:** if you don't pass `version_number`, it is derived deterministically from `SHA256(design_label|design_meta.updated_at) % 100_000 + 1` (`sow.py:542-559`). Re-issuing a SoW for a design whose `updated_at` hasn't changed returns the identical version number; any mutation that bumps `updated_at` (e.g. `do_validate_design`) yields a new version. `frozen: true` in the response means you supplied `version_number` explicitly.

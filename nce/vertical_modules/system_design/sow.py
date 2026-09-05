@@ -6,7 +6,7 @@ Statement-of-Work generator for the System Design vertical (Wave 5).
 Two concerns, separated by a clean boundary:
 
 1. ``generate_sow(SoWInput, version_number) -> SoWDoc``
-   Pure transform lifted near-1:1 from ``lib/sow/generator.ts:183``.
+   Pure transform lifted near-1:1 from the reference implementation.
    **Zero DB reads** — caller is responsible for assembling *SoWInput*
    before calling.  Deterministic for identical inputs.
 
@@ -164,7 +164,7 @@ def _format_nok(amount: float) -> str:
 
 
 def generate_sow(sow_input: SoWInput, version_number: int = 1) -> SoWDoc:
-    """Pure, 0-DB SoW transform — lifted near-1:1 from ``lib/sow/generator.ts``.
+    """Pure, 0-DB SoW transform — lifted near-1:1 from the reference implementation.
 
     Maps ``SoWInput`` → ``SoWDoc``.  Deterministic for identical inputs.
     No IO, no side effects.

@@ -49,7 +49,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("nce.vertical_modules.inventory.schema_seed")
 
-# Andreas's module-10 handoff: "1 logistics-person, 1 warehouse, 6 vans"
+# the reference implementation's module-10 handoff: "1 logistics-person, 1 warehouse, 6 vans"
 # (docs/handoff/04-virksomhets-modulkart.md:59) — the default shape a fresh
 # namespace seeds, overridable per call.
 DEFAULT_VAN_COUNT = 6
@@ -136,7 +136,7 @@ async def seed_warehouse_and_vans(
     namespace_id:
         The tenant namespace to seed.
     van_count:
-        Number of van locations to create (default 6, Andreas's module-10
+        Number of van locations to create (default 6, the reference implementation's module-10
         handoff shape). Must be ``>= 0``.
     warehouse_name:
         Name for the single warehouse row.

@@ -3,13 +3,13 @@ nce/vertical_modules/economy/matching.py
 =========================================
 Pure invoice-match scoring — zero DB, zero HTTP, zero web/admin imports.
 
-Reconstructed near-1:1 from Andreas's ``lib/finance/matching/score.ts:computeMatchScore``
+Reconstructed near-1:1 from the reference implementation
 (tests: ``tests/finance/matching-score.test.ts``). Per PFT v1 design §6.3.2 / docs
 ``vertical_engines/08-economy-engine.md`` §9.1 and ``00-ENGINES-ROADMAP.md`` §9.1/§2.9.
 
 Score shape
 -----------
-Andreas's reference scores **one invoice line against one candidate**. This module lifts
+the reference implementation scores **one invoice line against one candidate**. This module lifts
 that per-pair scorer 1:1 and adds one thin layer on top: an **invoice** carries multiple
 lines, and each line is scored against every element of a candidate pool. That outer layer
 is *not* part of the ported algorithm — it is this wave's own design (see module docstring
@@ -45,7 +45,7 @@ Score scale — 130-pt name, true max 180, NOT clamped
 ------------------------------------------------------
 The classical 100-pt match (supplier 40 + amount 30 + article 20 + project 10) plus the
 30-pt PFT context bonus (bomLine 15 + poExpected 10 + supplierPattern 5) sum to the
-"130-point" scale the engine is historically named after — Andreas's reference test asserts
+"130-point" scale the engine is historically named after — the reference implementation test asserts
 exactly 130 for a perfect match. The PO-nr bonus (50 pts, Plan-D 2026-04-25) was added
 *additively on top* of that 130-pt scale, not folded into it — the reference test asserts
 ``withPo.score - baseline.score === 50``, i.e. a true max of 180, and does **not** clamp.
@@ -124,7 +124,7 @@ def load_economy_thresholds() -> dict[str, Any]:
 # Tokenizer — ported 1:1 from score.ts
 # ---------------------------------------------------------------------------
 
-# Note: Andreas's TS STOPWORDS literal contains 'for' twice — a Python set naturally
+# Note: the reference implementation's TS STOPWORDS literal contains 'for' twice — a Python set naturally
 # dedupes duplicate literals, which is not a behaviour change (membership is identical).
 _STOPWORDS = {
     "the",

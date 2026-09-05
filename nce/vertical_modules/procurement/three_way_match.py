@@ -3,8 +3,7 @@ nce/vertical_modules/procurement/three_way_match.py
 ====================================================
 Pure three-way match evaluation — zero DB, zero HTTP, zero web/admin imports.
 
-Reconstructed near-1:1 from Andreas's
-``lib/procurement/three-way-match.ts:evaluateThreeWayMatch`` +
+Reconstructed near-1:1 from the reference implementation +
 ``detectSubstitution:395``.
 
 Three-way match
@@ -313,7 +312,7 @@ def _resolve_tier(
     Thresholds are clamped to the confidence scale [0, 100].  A GREEN_THRESHOLD
     above 100 (e.g. the real config value of 115, which means "invoice may be up to
     115 % of PO value") is treated as requiring the highest possible confidence — any
-    confidence == 100.0 maps to GREEN.  This preserves Andreas's original intent that
+    confidence == 100.0 maps to GREEN.  This preserves the reference implementation's original intent that
     perfect matches are always GREEN, while keeping thresholds fully config-driven.
     """
     match_tol: dict[str, Any] = tolerances.get("MATCH_TOLERANCE", {})

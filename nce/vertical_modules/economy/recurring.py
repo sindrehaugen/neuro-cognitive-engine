@@ -6,7 +6,7 @@ the idempotent recognition cron (M8.Wave 9, ``finagoRef``-keyed).
 
 Per ``docs/vertical_engines/08-economy-engine.md`` (core function
 ``do_recognize_recurring``, Build phase B4) and ``00-ENGINES-ROADMAP.md`` §9.1/§9.2.
-Inspired by Andreas's ``lib/finance/managed-services/engine.ts`` (MRR/ARR/churn +
+Inspired by the reference implementation (MRR/ARR/churn +
 ratable recognition + recurring cron) — lifted as a **pattern**, not a
 transliteration (the reference is outside this repo; no differential harness was
 run against it, unlike Batch 116's port).

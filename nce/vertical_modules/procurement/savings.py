@@ -3,7 +3,7 @@ nce/vertical_modules/procurement/savings.py
 ============================================
 Savings aggregation and leakage detection — Module 1 Wave 9.
 
-Reconstructed from Andreas's ``lib/procurement/savings-aggregator.ts``
+Reconstructed from the reference implementation
 (reference IP, not in repo).
 
 Architecture

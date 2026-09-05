@@ -3,7 +3,7 @@ nce/vertical_modules/economy/ngaap.py
 ======================================
 Pure NGAAP periodisering — zero DB, zero HTTP, zero web/admin imports.
 
-Ported near-1:1 from Andreas's ``lib/finance/periodisering/cost-engine.ts:computeBucketTargets``
+Ported near-1:1 from the reference implementation
 (tests: ``tests/finance/cost-engine.test.ts``). Per ``docs/vertical_engines/08-economy-engine.md``
 "Core functions" / "Config keys" / round-2 hardening #5, and ``00-ENGINES-ROADMAP.md`` §2.9.
 
@@ -42,7 +42,7 @@ halfway through a period earns nothing, no matter how much time has passed. ``pe
 
 The seven buckets
 ------------------
-``hardware, materials, freight`` (HW) + ``pm, tek, programming, travel`` (soft) — Andreas's
+``hardware, materials, freight`` (HW) + ``pm, tek, programming, travel`` (soft) — the reference implementation's
 ``HW_BUCKETS`` then ``SOFT_BUCKETS``, in that order. This module always iterates that canonical
 tuple, never the caller's dict order, so the output ordering is deterministic regardless of how
 ``params["buckets"]`` was built. A bucket the caller omits is computed from all-zero inputs
@@ -174,7 +174,7 @@ def _load_config(filename: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Canonical shape — buckets and roles. Order is Andreas's HW_BUCKETS + SOFT_BUCKETS.
+# Canonical shape — buckets and roles. Order is the reference implementation's HW_BUCKETS + SOFT_BUCKETS.
 # ---------------------------------------------------------------------------
 
 HW_BUCKETS: tuple[str, ...] = ("hardware", "materials", "freight")

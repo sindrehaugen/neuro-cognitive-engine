@@ -13,7 +13,7 @@ Covers:
   1. Result has exactly the 6 documented keys.
   2. ``total`` equals the sum of the five components.
   3. Config drives behaviour: different weights → different totals (same inputs).
-  4. ``warranty > 0`` for a non-zero bom_line (gap closed — warrantyCost was 0 in Andreas).
+  4. ``warranty > 0`` for a non-zero bom_line (gap closed — warrantyCost was 0 in the reference implementation).
   5. ``price`` = supplier unit_price × quantity.
   6. Missing required keys raise ValueError.
   7. Negative values raise ValueError.

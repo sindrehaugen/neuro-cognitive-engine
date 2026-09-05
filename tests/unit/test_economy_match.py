@@ -4,7 +4,7 @@ tests/unit/test_economy_match.py
 Acceptance tests for Batch 116 — Module 8.Wave 1 (match-invoice).
 
 Split per round-2 rule #3, mirroring ``test_procurement_tco.py``:
-  (a) ALGORITHM tests — ported from Andreas's ``matching-score.test.ts``, parameterised by
+  (a) ALGORITHM tests — ported from the reference implementation's ``matching-score.test.ts``, parameterised by
       a fixture ``_FIXTURE_THRESHOLDS`` dict defined in THIS file — never the tenant's real
       115/70 JSON values reached into directly for the lifted per-pair assertions.
   (b) WAVE tests — this wave's own required cases: shape, worst-line-tier, config-drives-
@@ -25,7 +25,7 @@ from nce.vertical_modules.economy.matching import do_match_invoice, load_economy
 
 # ---------------------------------------------------------------------------
 # Shared fixtures — algorithm tests use THESE thresholds, never the tenant's JSON values
-# directly (they happen to equal 115/70, matching Andreas's DEFAULT_THRESHOLDS, but they
+# directly (they happen to equal 115/70, matching the reference implementation's DEFAULT_THRESHOLDS, but they
 # are a literal defined here so a change to the real JSON can never silently break these).
 # ---------------------------------------------------------------------------
 
@@ -72,7 +72,7 @@ def _run(
 ) -> dict:
     """Build a one-line, one-(or-more)-candidate invoice and run do_match_invoice.
 
-    Mirrors Andreas's ``makeInput(overrides)`` fixture shape for the per-pair building
+    Mirrors the reference implementation's ``makeInput(overrides)`` fixture shape for the per-pair building
     blocks: ``line`` / ``bom_line`` / ``context``, when supplied, REPLACE the whole
     default sub-dict (no deep merge) — exactly like the TS spread-override pattern.
     ``invoice_header`` is the one exception: it is layered onto the defaults with

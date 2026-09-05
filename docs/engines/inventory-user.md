@@ -18,7 +18,7 @@ The **Inventory Engine** (`nce/vertical_modules/inventory/`) provides the enterp
 
 ## 1. Architectural Mission & Cross-Engine Role
 
-Historically, operations ran with no digital inventory tracking ("alt i én persons hode" — Andreas module 10 Logistics). The Inventory Engine is a greenfield operational subsystem designed to manage physical stock in real time across the primary warehouse and all mobile service vans.
+Historically, operations ran with no digital inventory tracking ("alt i én persons hode" — planning module 10 Logistics). The Inventory Engine is a greenfield operational subsystem designed to manage physical stock in real time across the primary warehouse and all mobile service vans.
 
 ```mermaid
 flowchart TD
@@ -61,7 +61,7 @@ Two tables are active with strict Row-Level Security (`ENABLE` and `FORCE ROW LE
 ### 2.2 Warehouse and Van Fleet Seeding (`schema_seed.py`)
 The idempotent helper `seed_warehouse_and_vans(engine, namespace_id, van_count=6)` creates the default logistics profile for a tenant:
 *   Creates 1 central warehouse (`"Main Warehouse"`).
-*   Creates $N$ service vans (`"Van-1"` through `f"Van-{van_count}"`), defaulting to Andreas's baseline of 6 vans.
+*   Creates $N$ service vans (`"Van-1"` through `f"Van-{van_count}"`), defaulting to the reference implementation's baseline of 6 vans.
 *   Idempotency is guaranteed by the partial unique index `uq_stock_locations_top_level_name` (`ON stock_locations (namespace_id, kind, name) WHERE parent_id IS NULL`). Re-running the seed creates no duplicate locations.
 
 ### 2.3 Reservation Algebra & Available Stock

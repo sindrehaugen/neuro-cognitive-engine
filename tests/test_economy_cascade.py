@@ -935,7 +935,7 @@ async def test_bom_line_status_and_content_are_never_written(
 ) -> None:
     """Proves the §9.1 audit-bug guard: if do_cascade_on_approval ever wrote a
     `has_status` edge or mutated the BOM_LINE node's entity_type (the way
-    Andreas's reference advances `orderStatusEnum`), this test goes red."""
+    the reference implementation advances `orderStatusEnum`), this test goes red."""
     quote_id = f"B120-T4-{uuid.uuid4().hex[:8]}"
     label = _bom_line_label(quote_id, "RACK01")
     await _seed_bom_line(pg_pool, namespace_id, label)

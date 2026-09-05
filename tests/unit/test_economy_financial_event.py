@@ -4,8 +4,8 @@ tests/unit/test_economy_financial_event.py
 Acceptance tests for Batch 118 — Module 8.Wave 3 (financial-event).
 
 Split the same way as ``test_economy_match.py``:
-  (a) REFERENCE tests — lifted from Andreas's ``tests/finance/events.test.ts`` and from the
-      ``assertBalanced`` contract in ``lib/finance/events/emit.ts``. The reference cases are
+  (a) REFERENCE tests — lifted from the reference implementation's ``tests/finance/events.test.ts`` and from the
+      ``assertBalanced`` contract in the reference implementation. The reference cases are
       DB-backed (they assert on the persisted row); the persistence half belongs to Wave 6,
       so each case is lifted to the half this wave owns: the balance verdict, the normalised
       shape, and the canonical hash.

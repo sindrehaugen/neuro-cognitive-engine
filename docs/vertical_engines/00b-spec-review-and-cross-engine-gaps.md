@@ -54,13 +54,13 @@ Highest blast radius: Procurement auto-submit PO (real money) — ship **human-c
 
 ### Recurring theme A — Grace-degradation (engines depend on not-yet-built engines)
 A Tier-1 "done" engine often can't run on real data because an input-producing engine isn't live:
-- **System Design** outcome-weighted recall needs **Project + Support** to have written outcomes (and the 450 historical projects live in Andreas's Prisma DB, not NCE's ledger → cold start).
+- **System Design** outcome-weighted recall needs **Project + Support** to have written outcomes (and the 450 historical projects live in the reference implementation's Prisma DB, not NCE's ledger → cold start).
 - **Procurement** 3-way match needs **goods-receipt (Warehouse)** + **invoice (Economy/Finago)**.
 - **Project** gate criteria ("BOM ordered", "PL assigned") need **Procurement** + **HR (Tier 4)**; auto-tasking needs status from Procurement/Warehouse/Field-Tech.
 **Rule:** pure functions ship day one (they're pure over inputs); the *wired* feature degrades gracefully (criterion = "unknown/waived" + flag; recall by similarity-only until outcomes exist) so nothing deadlocks. State each engine's "works standalone vs needs-X-live" line explicitly.
 
 ### Recurring theme B — Don't bake in auto-trust percentages
-"~80% auto / 20% human-validate" (System Design) and confidence-threshold auto-accept (Product enrichment, PDF→structured) are **marketing numbers from Andreas's concept**, applied to high-stakes outputs (BOM correctness, product specs). Ship **propose-only / human-confirms** first; let auto-accept thresholds *rise* only after the validation feedback loop (which every spec already captures) **measures** real override rates. The mechanism is right; the default posture must be conservative.
+"~80% auto / 20% human-validate" (System Design) and confidence-threshold auto-accept (Product enrichment, PDF→structured) are **marketing numbers from the reference implementation's concept**, applied to high-stakes outputs (BOM correctness, product specs). Ship **propose-only / human-confirms** first; let auto-accept thresholds *rise* only after the validation feedback loop (which every spec already captures) **measures** real override rates. The mechanism is right; the default posture must be conservative.
 
 ### Recurring theme C — One shared pricing service
 DG-pricing (`salgspris = kostpris / (1 − DG%)`) and the inline-`*0.7` bug recur in Sales, System Design, and Product. There must be **one** pricing computation (`product_price` / `do_price_product`), consuming **resolved** cost (BID > supplier list > base, with a staleness signal). Sales/Design **call** it, never reimplement. A third copy = the bug again.
@@ -88,7 +88,7 @@ Three engines maintain a **mirror of an external source-of-truth and must reconc
 - **Outcome-weighted recall has a hard upstream dependency** on Project/Support (which may not exist) + cold start. Degrade: similarity-recall day one, outcome-weighting switches on as the ledger fills.
 - **Don't bake in 80/20** — propose-only first, measure via `do_validate_design`.
 - **Integrations off the critical path:** the recall→BOM→SoW core needs zero external systems; NetBox/SharePoint/Lucid are independently-sequenced adapters. Cut **Lucid import** (fuzzy diagram parsing) from early scope; keep export.
-- **SoW lift:** the transform is free; the **input adapter** (graph → Andreas's `SoWInput` schema) is the work. SoW is a versioned legal deliverable → freeze on issue.
+- **SoW lift:** the transform is free; the **input adapter** (graph → the reference implementation's `SoWInput` schema) is the work. SoW is a versioned legal deliverable → freeze on issue.
 
 ### 02 — Product (Tier 1, spine root)
 - **The dedup key is the foundational risk** (see contradiction table) — entity resolution must be a measured, reviewable subsystem, not a key tuple. More important than any AI feature.
@@ -150,7 +150,7 @@ Three engines maintain a **mirror of an external source-of-truth and must reconc
 - **Scope discipline:** owns terms+coverage+extraction; defers GL reader (Economy) + counterparty identity (Vendors); Procurement consumes terms.
 
 ### 09 — Assets (Tier 3, Operations / extends the `netbox` vertical)
-- **Reuses NetBox (incl. the existing `mtbf.py`) rather than duplicating DCIM;** mock-now/swap-ready telemetry adapters ship usable before any vendor key; **builds the healthScore *writer* Andreas left as a passive field** (the real value gap). SLA-per-ROOM = the recurring-revenue differentiator; `failure_pattern` edge → Product closes the service→product silence.
+- **Reuses NetBox (incl. the existing `mtbf.py`) rather than duplicating DCIM;** mock-now/swap-ready telemetry adapters ship usable before any vendor key; **builds the healthScore *writer* the reference implementation left as a passive field** (the real value gap). SLA-per-ROOM = the recurring-revenue differentiator; `failure_pattern` edge → Product closes the service→product silence.
 - **Push — same `FUNCTIONAL_LOCATION` foundation gap as System Design, confirmed in code** (the `netbox` vertical has no site/location tree — only circuits/contacts/discovery/mtbf/graphql_activation). Assets is the node's **3rd toucher** and exactly where the **design-intent→as-built promotion** model lands (a Field-Tech install promotes the intent location). Resolve the FL lifecycle as shared infra before either engine works.
 - **Push — codebase catch:** an existing `backend/netbox-plugins/netbox_nce/` plugin (`signals.py`/`mcp_bridge.py`) likely already **pushes** NetBox changes into NCE. The spec models a *pull* bridge (copy of D365's). Investigate the plugin first — a signal push is the better reactive sync and partially answers the FL-sync gap + shared-infra item 5 (reactive mechanism).
 - **Push — two competing state machines:** the 14-state ASSET lifecycle overlaps `BOM_LINE.status` (Project's auto-tasking) on the install path — define the hand-off (asset lifecycle begins where BOM-line delivery ends) or get two "installed" truths. See the updated `BOM_LINE` table row.
@@ -168,7 +168,7 @@ Three engines maintain a **mirror of an external source-of-truth and must reconc
 - **Scope discipline:** consumes Assets, gets SLA terms from Agreements, dispatches to Field Tech (owns only the `dispatched_as` edge), wraps shipped D365 ingestion (no rebuild).
 
 ### 12 — Field Tech (Tier 3, Delivery / mostly confirms §9; offline-sync is the novel risk)
-- **Mostly validates the contracts** — Partner Access Model (delegates to Vendors, §9.6), `WORK_ORDER` ownership (§9.1), `BOM_LINE -[installed_as]-> ASSET` hand-off (§9.1), autonomy (§9.5). Good convergence sign. Honest greenfield (no Andreas code to lift).
+- **Mostly validates the contracts** — Partner Access Model (delegates to Vendors, §9.6), `WORK_ORDER` ownership (§9.1), `BOM_LINE -[installed_as]-> ASSET` hand-off (§9.1), autonomy (§9.5). Good convergence sign. Honest greenfield (no the reference implementation code to lift).
 - **Push (engine-internal) — `do_sync` "last-writer-wins per field by device clock" is unsafe.** LWW is fine for a photo/note, but a stale offline replay can silently clobber a **safety/quality-critical field** (checklist verification, S/N scan); device clocks can't be trusted (skew/tamper). Order by **server-receive sequence or a logical/Lamport clock**, and **surface conflicts** on verification fields rather than silent LWW. The genuinely hard part; the spec undersells it.
 - **Push — Contract-B idempotency must hold at *sync-replay* time**, not just creation: offline-generated autonomous acts (GPS auto-timesheet, auto-assign) are queued then replayed — the §9.5 idempotency key + autonomy gate apply across the sync boundary. `do_sync` is where Contract B meets the offline queue.
 - **Push — the app↔engine sync protocol is a versioned external client-server contract** (op envelope + conflict protocol), not just a server endpoint — the one place NCE's pristine backend meets a bespoke client; version it like an API.

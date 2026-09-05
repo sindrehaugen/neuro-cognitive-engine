@@ -207,7 +207,7 @@ def test_illegal_transition_never_sets_warranty() -> None:
 
 # ---------------------------------------------------------------------------
 # 3. Idempotency — replaying the current state is a safe no-op, not an error
-#    (Andreas's source explicitly calls the enrichment idempotent).
+#    (the reference source explicitly calls the enrichment idempotent).
 # ---------------------------------------------------------------------------
 
 

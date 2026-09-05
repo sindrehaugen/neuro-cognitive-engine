@@ -56,7 +56,7 @@ Each idea names the concrete change to `11-inventory-engine.md` (which `do_*` / 
 
 **A1. Serial number as a first-class resource, captured at goods-receipt → asset-seed** *(the highest-leverage AV idea)*
 Rackbeat registers a serial **the moment goods are received**, carries it to the customer/invoice, and uses it for warranty + recall + where-located lookup. For an AV integrator this is the **birth event of an installed asset**. Capture serial in `do_record_goods_receipt` `scans[]`, store on the `GOODS_RECEIPT -[of]-> SKU` edge, and **emit the serial→Assets engine as the seed of an `ASSET` node** when stock is consumed/installed on a work-order.
-- *Touches:* `do_record_goods_receipt` (serial capture), new `serials` concept on `inventory_items`/`goods_receipts`; A2A hand-off Inventory→Assets at consumption (the `serienr→asset` spine note, `11` Andreas `:128`); `INVENTORY_ITEM` carries serial for serialized SKUs.
+- *Touches:* `do_record_goods_receipt` (serial capture), new `serials` concept on `inventory_items`/`goods_receipts`; A2A hand-off Inventory→Assets at consumption (the `serienr→asset` spine note, `11` the reference implementation `:128`); `INVENTORY_ITEM` carries serial for serialized SKUs.
 - *Why it's our edge:* Rackbeat stops at warranty/recall; **we turn the serial into the asset graph** that Support/Field Tech reason over. This is the AV-specific compounding move.
 
 **A2. The reservation algebra: `available = physical − reserved − blocked`** *(adopt verbatim)*

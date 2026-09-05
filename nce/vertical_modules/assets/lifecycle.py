@@ -4,8 +4,8 @@ nce/vertical_modules/assets/lifecycle.py
 Pure 14-state ASSET lifecycle state machine — zero DB, zero HTTP, zero
 web/admin imports. Genuinely pure: every dependency below is stdlib.
 
-Ported near-1:1 from Andreas's idempotent lifecycle enrichment
-(``lib/asset/lifecycle.ts:37``, ``RECEIVED -> INSTALLED -> VERIFIED``, sets
+Ported near-1:1 from the reference implementation's idempotent lifecycle enrichment
+(the reference implementation, ``RECEIVED -> INSTALLED -> VERIFIED``, sets
 warranty) and extended to the full 14-state machine named in
 ``docs/vertical_engines/09-assets-engine.md``'s ``do_advance_lifecycle``
 spec::
@@ -26,7 +26,7 @@ State-machine rules
   state-machine modules.
 - Re-applying the *current* state (``target_state == current_state``) is a
   no-op success, not an error. This is the "idempotent enrichment" property
-  Andreas's source names explicitly: replaying the same install-completion
+  the reference source names explicitly: replaying the same install-completion
   event twice must never fail or double-set warranty. (This is the one
   place this module's contract diverges from ``phase_gates``, whose G-gates
   treat a self-transition as illegal — asset lifecycle events are commonly

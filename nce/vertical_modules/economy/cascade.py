@@ -3,8 +3,7 @@ nce/vertical_modules/economy/cascade.py
 =========================================
 ``do_cascade_on_approval`` — the 7-effect Stage-2 approval cascade (B2).
 
-Lifted as a **pattern** (not a transliteration) from Andreas's
-``lib/finance/cascade/supplier-invoice-approved.ts:cascadeOnApproval`` (546 LOC;
+Lifted as a **pattern** (not a transliteration) from the reference implementation (546 LOC;
 tests: ``tests/finance/supplier-invoice-cascade.test.ts``). Per
 ``docs/vertical_engines/08-economy-engine.md`` (core function
 ``do_cascade_on_approval``, Build phase B2, Review round-2 #2/#7) and
@@ -20,7 +19,7 @@ Decimal/NaN/bool boundary discipline this cascade inherits for free).
 1. **This cascade is the ONLY writer of ``BOM_LINE.actual_cost`` and writes
    NOTHING else on the line.** It must NOT advance ``BOM_LINE.status``
    (Warehouse owns ``DELIVERED``; Field Tech owns ``INSTALLED``/``TESTED``).
-   Andreas's reference *does* advance ``bom.orderStatusEnum`` in this cascade
+   the reference implementation *does* advance ``bom.orderStatusEnum`` in this cascade
    (see ``advanceToAtLeast`` / the ``bom.line.status.advanced`` effect in the
    reference) — the wave names that a **known audit bug** and this port does
    not copy it. ``BOM_LINE`` has no ``status`` column at all in this schema;

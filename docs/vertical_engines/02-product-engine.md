@@ -26,9 +26,9 @@ Deferred (in `02a` backlog, graduate on trigger): AI-proposed typed **compatibil
 
 ## Inspiration & triage
 
-**Andreas sources (READ):**
+**the planning sources (READ):**
 - Module 03 *Product & Løsningsdesign* (`handoff/04-virksomhets-modulkart.md`) — product knowledge as org asset, failure-patterns, EOL warning, manufacturer-API enrichment (Cisco/Microsoft/Neat/Poly/Shure/Biamp/Crestron/QSC/Huddly), Icecat/XTEN-AV considered.
-- `handoff/02-...§1 Produkt/katalog (Netset)` — 🟢 **netset-matcher** fuzzy/learned BOM→SKU (`lib/integrations/netset-matcher.ts:297 findBestNetsetMatch`, learns over time); 🟢 **DG-pricing** (`lib/pricing/index.ts`, salgspris = kost / (1 − DG%)) — a real engine the solution-builder bypasses with inline `*0.7` (**re-wire opportunity**).
+- `handoff/02-...§1 Produkt/katalog (Netset)` — 🟢 **netset-matcher** fuzzy/learned BOM→SKU (`the reference implementation:297 findBestNetsetMatch`, learns over time); 🟢 **DG-pricing** (the reference implementation, salgspris = kost / (1 − DG%)) — a real engine the solution-builder bypasses with inline `*0.7` (**re-wire opportunity**).
 - `_audit/manifest.json secondary_tier` — confirms netset-matcher + DG-pricing as real, liftable IP; the inline-`*0.7` bypass is called out explicitly.
 
 **Portal sidecar `backend/steps_product/` to lift (the seed):**
@@ -55,7 +55,7 @@ Deferred (in `02a` backlog, graduate on trigger): AI-proposed typed **compatibil
 - `PRODUCT -[accessory_of | warranty_for | mounts]-> PRODUCT` (derived from `related.py` token/classifier logic, `confidence`-scored).
 - `PRODUCT -[replaced_by]-> PRODUCT` (EOL successor chain, from `find_replacements`).
 - `PRODUCT -[supplied_by]-> VENDOR` (price-source → Vendors(4)/Procurement(1)).
-- **Failure-pattern edges back in:** `TICKET/ASSET -[failure_pattern]-> PRODUCT` (written by Support(10)/Assets(9), *read* here) — this closes the "service→product silence" gap Andreas flags; the Product Engine surfaces it in BOM advice and feeds Sales upsell.
+- **Failure-pattern edges back in:** `TICKET/ASSET -[failure_pattern]-> PRODUCT` (written by Support(10)/Assets(9), *read* here) — this closes the "service→product silence" gap the reference implementation flags; the Product Engine surfaces it in BOM advice and feeds Sales upsell.
 
 **What hits memories/ledger:** product **specs/datasheets** (and manufacturer-API descriptions) are embedded into `memories` (embedding + `content_fts`) at enrichment time — so cognitive recall can answer "which similar products had this spec / this failure". Each enrichment writes a `v3_cognitive_ledger` entry recording source, confidence, and trigger — auditable.
 
@@ -66,7 +66,7 @@ Dual-surface: each `do_<action>(engine, params) -> dict` is exposed once as an M
 - `do_search_products(engine, params)` — hybrid lexical + semantic (Tier-1 lexical floor, Tier-2 `nce.embeddings`; degrades to lexical if embeddings unavailable — `semantic.py` pattern). Read-only.
 - `do_get_product(engine, params)` — single product, merged master + live price, accessory/warranty/replacement edges.
 - `do_related_products(engine, params)` — accessory/warranty/mount/replacement groups (`related.py` logic over the graph).
-- `do_match_bom_line(engine, params)` — **netset-matcher**: free-text BOM line → best catalog `SKU` with a match score; learned (records accepted/rejected matches, recalibrates over time — event-sourced, per Andreas's learning pattern). Read-only but writes a learning event on feedback.
+- `do_match_bom_line(engine, params)` — **netset-matcher**: free-text BOM line → best catalog `SKU` with a match score; learned (records accepted/rejected matches, recalibrates over time — event-sourced, per the reference implementation's learning pattern). Read-only but writes a learning event on feedback.
 - `do_price_product(engine, params)` — **DG-pricing** engine: `sales_price = cost / (1 − DG%)`, DG% from namespace config-as-IP (`product-dg.json`). The one true price computation (replaces the inline `*0.7` bypass). Cost/margin are internal — never returned on customer-facing surfaces (ADR-0017).
 - `do_enrich_product(engine, params)` — **the centerpiece on-demand enrichment** (see AI features). Mutating, idempotent, scoped to one `product_id`.
 - `do_ingest_source(engine, params)` — run one source adapter's pull (admin/cron only); streaming idempotent upsert + soft-delete of vanished rows.
@@ -172,5 +172,5 @@ RL-batch-sized increments:
 5. **Hardening** — tool-count test, ruff/format/mypy/pytest green, BID secret-leak guards, namespace opt-in (`metadata.product.enabled`), config-as-IP JSON externalized.
 
 ## Change log
-- 2026-06-17 — Initial spec. Tier-1 Product Engine: multi-source pull + the on-demand (quote/design-triggered, never-bulk) enrichment rule as centerpiece; lifts steps_product (semantic/related/bidprices/sync) + nettailer_client + Andreas's netset-matcher and DG-pricing; failure-pattern feedback edges close the service→product silence.
+- 2026-06-17 — Initial spec. Tier-1 Product Engine: multi-source pull + the on-demand (quote/design-triggered, never-bulk) enrichment rule as centerpiece; lifts steps_product (semantic/related/bidprices/sync) + nettailer_client + the reference implementation's netset-matcher and DG-pricing; failure-pattern feedback edges close the service→product silence.
 - 2026-06-17 — Added "Research-informed direction" from the Icecat/PIM deep-dive (`02a`): ETIM-coded schema (A1), field-level golden record/survivorship (A2), two-score quality model (A3), Claude verbalized-confidence not logprobs (A4); positioned as AI-native ETIM-coded MCP-exposed PDF→structured engine vs the bulk-catalog incumbents. Idea backlog (compatibility graph, EOL, BOM gap-audit, etc.) in `02a`.

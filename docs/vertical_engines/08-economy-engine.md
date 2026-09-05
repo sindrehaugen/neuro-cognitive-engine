@@ -11,18 +11,18 @@
 > **DECISION (roadmap §8.3 — state it up front): NCE Economy mirrors + periodises internally; Finago stays the GL / legal system-of-record.** Economy is **NOT** a GL replacement. It periodises **BEFORE** GL-commit because Finago cannot emit pre-booking vouchers (confirmed by Finago support — manifest `ngaap-periodisering`). Economy computes the correct internal numbers (match, cascade, accruals, projections, balanced postings) and *mirrors* the legal book; the real hovedbok-posting stays in Finago, behind a deliberately locked door (see Dependencies).
 
 ## Mission
-Turn "did we get the invoice right, what does it do to the project, and when do we recognise it" into a cognitive capability. Economy lifts Andreas's **deepest** module — PFT (~17.3k LOC, 80+ test files, 6/6 phases code-complete): the **130-pt contextual invoice match**, the **7-effect approval cascade** (the single BOM-cost write-path), **NGAAP periodisering**, the **balance-guarantee**, the **margin-trinity**, and the **recurring-revenue** stack — onto the NCE graph spine. The deep-AI angle: every financial event is a balanced, hashed ledger entry, so the engine answers "why did this invoice triage YELLOW", "why did margin erode on this project", and "what does close look like" from auditable memory — and the cross-engine "sales celebrates, operations cries" radar emerges for free because the cascade writes the same graph Sales and Project read.
+Turn "did we get the invoice right, what does it do to the project, and when do we recognise it" into a cognitive capability. Economy lifts the reference implementation's **deepest** module — PFT (~17.3k LOC, 80+ test files, 6/6 phases code-complete): the **130-pt contextual invoice match**, the **7-effect approval cascade** (the single BOM-cost write-path), **NGAAP periodisering**, the **balance-guarantee**, the **margin-trinity**, and the **recurring-revenue** stack — onto the NCE graph spine. The deep-AI angle: every financial event is a balanced, hashed ledger entry, so the engine answers "why did this invoice triage YELLOW", "why did margin erode on this project", and "what does close look like" from auditable memory — and the cross-engine "sales celebrates, operations cries" radar emerges for free because the cascade writes the same graph Sales and Project read.
 
 ## Inspiration & triage
-- **Andreas sources (lift near-1:1 / as a pattern):**
-  - `lib/finance/matching/score.ts:computeMatchScore` — **130-pt** contextual match (manifest `bilag-match-130pt`, angerkost 5). Pure function. Lift 1:1.
-  - `lib/finance/cascade/supplier-invoice-approved.ts:cascadeOnApproval` — **7-effect** idempotent cascade (manifest `supplier-invoice-cascade`, 546 LOC). Lift as a **pattern** (centralise your writes the same way).
-  - `lib/finance/periodisering/cost-engine.ts:computeBucketTargets` — **NGAAP** 7-bucket accrual (manifest `ngaap-periodisering`). Pure; re-map accounts.
-  - `lib/finance/events/emit.ts:UnbalancedPostingsError` — **balance-guarantee** (manifest `balanse-garanti`). Lift 1:1.
-  - `lib/finance/matching/learning.ts:recalibrateThresholds` — per-supplier threshold learning (manifest `per-supplier-learning`, N=100, auditor-queryable).
-  - `lib/finance/managed-services/engine.ts` — MRR/ARR/churn + ratable recognition + recurring cron; `contract-validator.ts` (CPI cap 5%), `lib/quote/renewal.ts:85` (90d scan). (handoff §8.)
+- **the planning sources (lift near-1:1 / as a pattern):**
+  - the reference implementation — **130-pt** contextual match (manifest `bilag-match-130pt`, angerkost 5). Pure function. Lift 1:1.
+  - the reference implementation — **7-effect** idempotent cascade (manifest `supplier-invoice-cascade`, 546 LOC). Lift as a **pattern** (centralise your writes the same way).
+  - the reference implementation — **NGAAP** 7-bucket accrual (manifest `ngaap-periodisering`). Pure; re-map accounts.
+  - the reference implementation — **balance-guarantee** (manifest `balanse-garanti`). Lift 1:1.
+  - the reference implementation — per-supplier threshold learning (manifest `per-supplier-learning`, N=100, auditor-queryable).
+  - the reference implementation — MRR/ARR/churn + ratable recognition + recurring cron; `contract-validator.ts` (CPI cap 5%), the reference implementation (90d scan). (handoff §8.)
   - `app/lab/.../_shared-enhancements.tsx:DunningTimeline` — Norwegian dunning/credit policy (manifest `lab-revenue-recognition-dunning`, showcase-gold). **Do not delete as "lab-pynt" — the production Wizard imports it LIVE.**
-  - `lib/finance/kid/generator.ts` (KID mod-10/11 — **mod-10 shipped Batch 128; mod-11 still pending a bank-arrangement decision, see Build phases B5**), `lib/finance/forecasting/monte-carlo.ts` (cashflow sim), `ehf-generator.ts` (outbound EHF).
+  - the reference implementation (KID mod-10/11 — **mod-10 shipped Batch 128; mod-11 still pending a bank-arrangement decision, see Build phases B5**), the reference implementation (cashflow sim), `ehf-generator.ts` (outbound EHF).
   - **Tests are the runnable spec — lift verbatim:** `tests/finance/matching-score.test.ts`, `supplier-invoice-cascade.test.ts`, `cost-engine.test.ts`, `events.test.ts`, `matching-learning.test.ts`.
 - **Portal sidecars to lift:** finance flows + the Finago client surface (the GL *reader* used for reconciliation).
 - **Lysning page served:** financial pulse / close screens; feeds the **Morning-brief (#19)** financial slice.
@@ -39,7 +39,7 @@ Node `entity_type` prefixes: `ECONOMY_*`, plus shared spine nodes `INVOICE`, `PE
   - `INVOICE -[recognized_in]-> PERIOD` (the periodisering output — accrued/deferred/WIP allocation).
   - `PROJECT -[has]-> MARGIN` (the margin-trinity snapshot the cascade updates — except `marginSignedPct`).
   - `INVOICE -[matched_by]-> ECONOMY_MATCH`; `CONTRACT -[recognized_in]-> PERIOD` (ratable 1/12).
-- **memories/ledger:** invoice OCR/EHF text → `memories` (embedding + `content_fts`) for "find similar invoices / disputes" recall. **Learning lives on the ledger:** every match decision, every cascade run, every balanced posting → `v3_cognitive_ledger` (this is where per-supplier recalibration and close-narrative recall live — event-sourced, auditor-queryable, replacing Andreas's bespoke learning table). Tag every derived row with `economy_source_id` for hard-retirement.
+- **memories/ledger:** invoice OCR/EHF text → `memories` (embedding + `content_fts`) for "find similar invoices / disputes" recall. **Learning lives on the ledger:** every match decision, every cascade run, every balanced posting → `v3_cognitive_ledger` (this is where per-supplier recalibration and close-narrative recall live — event-sourced, auditor-queryable, replacing the reference implementation's bespoke learning table). Tag every derived row with `economy_source_id` for hard-retirement.
 
 ## Core functions
 <!-- BLOCKED ON OQ-2 / OQ-4: 9 domain cores exist in nce/vertical_modules/economy/ (do_compute_bucket_targets, do_compute_dunning, do_compute_recognition_schedule, do_emit_financial_event, do_forecast_cashflow, do_generate_kid, do_match_invoice, do_snapshot_mrr_arr_churn, do_validate_kid). Only 3 are exposed via MCP/REST as read-only advisor tools. Mutation cascades and direct GL posting remain unwired by policy. -->
@@ -132,7 +132,7 @@ Mirror all DDL into `schema.sql` + numbered migrations.
 
 ## Build phases
 <!-- BLOCKED ON OQ-2 / OQ-4: Historical build phases B1-B5. Refer to docs/engines/economy-admin.md for shipped milestone status. -->
-- **B1 — Pure cores + tests:** `do_match_invoice` (130-pt), `do_compute_bucket_targets` (NGAAP), `do_emit_financial_event` (balance-guarantee). Lift Andreas tests verbatim. Wire `economy-match-thresholds.json` + `finago-chart-of-accounts.json`/`finago-account-mapping.json`. MCP tools + REST routes for the three.
+- **B1 — Pure cores + tests:** `do_match_invoice` (130-pt), `do_compute_bucket_targets` (NGAAP), `do_emit_financial_event` (balance-guarantee). Lift the reference tests verbatim. Wire `economy-match-thresholds.json` + `finago-chart-of-accounts.json`/`finago-account-mapping.json`. MCP tools + REST routes for the three.
 - **B2 — Cascade + graph:** `do_cascade_on_approval` (idempotent, single BOM-write-path, 7 effects, one transaction) + margin-trinity snapshot (`marginSignedPct` immutable). Graph upserts (INVOICE/POSTING/PERIOD/MARGIN, consume the Procurement boundary edge, `economy_source_id`). `economy_postings` table (RLS, sum=0 guard).
 - **B3 — Ingest + reconciliation:** invoice ingest (EHF parser OR Claude Vision OCR) → `memories`; incremental watermark; Finago **GL reader** + `do_reconcile_gl` + sync status/coverage report.
 - **B4 — Recurring revenue:** MRR/ARR/churn snapshot, ratable 1/12 recognition, idempotent recurring cron (`finagoRef`), contract-validator (CPI cap 5%), renewal-engine (90d scan). `economy_contracts` table.

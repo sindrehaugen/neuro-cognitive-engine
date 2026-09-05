@@ -3,7 +3,7 @@ nce/vertical_modules/procurement/ranking.py
 ============================================
 Pure supplier-ranking core — zero DB, zero HTTP, zero web/admin imports.
 
-Reconstructed near-1:1 from Andreas's ``lib/procurement/scoring.ts:scoreSupplier`` /
+Reconstructed near-1:1 from the reference implementation /
 ``rankSuppliers``.
 
 5-step DELIBERATE order
@@ -21,7 +21,7 @@ Steps run in this fixed order; each step narrows / re-scores the candidate set:
       cheapest candidate (lower price → higher score, config-weighted).
 
       MILESTONE — priceScore gap closed (round-2 #4):
-        BEFORE: Andreas's original had ``priceScore=3`` (a hardcoded placeholder that did
+        BEFORE: the reference implementation's original had ``priceScore=3`` (a hardcoded placeholder that did
                 not respond to price at all — every candidate got the same flat score of 3
                 regardless of what they charged).
         AFTER:  priceScore = (min_price / candidate_price) × bid_price_weight so a

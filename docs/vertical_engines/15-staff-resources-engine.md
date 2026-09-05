@@ -9,7 +9,7 @@
 The **capacity + scheduling brain**. It plans and allocates every *schedulable* resource — **people** (from HR), **contractors** (from Vendors), **vehicles/cars**, and **tools/equipment** — against the **Project** install pipeline and the **Support** service pipeline, over time. It also coordinates **warehouse→project material flow** (kit a project's BOM, reserve stock, schedule a van + driver to site) and plans the **travel & hospitality** that a crew needs to reach and stay at a job. It is the layer *between demand* (Project/Support want a crew at a functional location in a window) *and execution* (Field Tech runs the work order). The deep-AI angle: optimal allocation is **cognitive recall** — *"which crew/vehicle/tool-set delivered jobs like this well"* weighted by outcome (margin held, few tickets, on-time) — not a static rota. Together with **Field Tech** it forms the unified backend for a future **field webapp** (one surface: my schedule · my travel · my lodging · my work orders · my van stock).
 
 ## Inspiration & triage
-- **Andreas sources (concept, build-not-lift — these are 🔵/🟡 in his repo):**
+- **the planning sources (concept, build-not-lift — these are 🔵/🟡 in his repo):**
   - modulkart **04 Project** — the *kapasitetsmotor* (capacity engine, listed built) + tiered automation (Tier 1 <50K autonomous → Tier 4 senior-PL).
   - modulkart **07 Technical/Installation** — AI dispatch by *skill/location/load/history*, GPS time-tracking, the shared install+service tech pool.
   - modulkart **10 Logistics** — van-restocking + materials flow to site (the warehouse→project bridge).

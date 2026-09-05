@@ -3,8 +3,8 @@ nce/vertical_modules/economy/events.py
 =======================================
 The **balance guarantee** — pure domain core. Zero DB, zero HTTP, zero web/admin imports.
 
-Ported from Andreas's ``lib/finance/events/emit.ts`` (``UnbalancedPostingsError`` +
-``assertBalanced``) and ``lib/finance/events/hash.ts`` (``canonicalHash``); reference tests
+Ported from the reference implementation (``UnbalancedPostingsError`` +
+``assertBalanced``) and the reference implementation (``canonicalHash``); reference tests
 ``tests/finance/events.test.ts``. Per ``docs/vertical_engines/08-economy-engine.md`` (core
 function ``do_emit_financial_event``, build phase B1) and ``00-ENGINES-ROADMAP.md`` §9.1
 (Economy owns POSTING).

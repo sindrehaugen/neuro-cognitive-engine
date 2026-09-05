@@ -3,7 +3,7 @@ nce/vertical_modules/procurement/tco.py
 =========================================
 Pure TCO (Total Cost of Ownership) calculation — zero DB, zero HTTP, zero web/admin imports.
 
-Reconstructed near-1:1 from Andreas's ``lib/procurement/engine.ts:calculateTCO``.
+Reconstructed near-1:1 from the reference implementation.
 
 TCO formula
 -----------

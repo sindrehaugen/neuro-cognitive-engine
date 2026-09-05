@@ -4,7 +4,7 @@ tests/unit/test_economy_ngaap.py
 Acceptance tests for Batch 117 — Module 8.Wave 2 (ngaap-buckets).
 
 Split the same three ways as ``test_economy_match.py``:
-  (a) ALGORITHM tests — ported from Andreas's ``tests/finance/cost-engine.test.ts``, run
+  (a) ALGORITHM tests — ported from the reference implementation's ``tests/finance/cost-engine.test.ts``, run
       against a ``_FIXTURE_CHART``/``_FIXTURE_MAPPING`` defined in THIS file with deliberately
       fake account numbers, never the tenant's real JSON. The accrual arithmetic must be provable
       without touching production config — that is the whole claim of round-2 #5.
@@ -129,7 +129,7 @@ def _run(
 ) -> dict:
     """Periodise one bucket and return that bucket's result entry.
 
-    Mirrors Andreas's ``makeInput(overrides)`` fixture: every field defaults to 0/False, and a
+    Mirrors the reference implementation's ``makeInput(overrides)`` fixture: every field defaults to 0/False, and a
     keyword argument overrides exactly that field.
     """
     result = do_compute_bucket_targets(
@@ -1185,7 +1185,7 @@ class TestTenantConfigFiles:
             assert forbidden.isdisjoint(_all_keys(config))
 
     def test_real_config_reproduces_the_reference_case(self) -> None:
-        # End-to-end with production config: Andreas's negative-WIP case, landing on the tenant's
+        # End-to-end with production config: the reference implementation's negative-WIP case, landing on the tenant's
         # real Norwegian accounts.
         entry = _run(
             chart=load_finago_chart_of_accounts(),

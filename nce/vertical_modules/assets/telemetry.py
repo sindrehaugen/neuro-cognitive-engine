@@ -38,7 +38,7 @@ dependency anywhere in this file. :class:`MockTelemetryAdapter` is the only
 adapter with real behaviour.
 
 This is the "mock-now / swap-ready" architecture the engine doc calls for
-(``NCE_ASSETS_TELEMETRY_<PLATFORM>_REAL``, mirroring Andreas's
+(``NCE_ASSETS_TELEMETRY_<PLATFORM>_REAL``, mirroring the reference implementation's
 ``CRESTRON_FUSION_REAL=1``): the engine is fully usable **before** any vendor
 key lands, and flipping one env var is the whole swap. The flag's meaning is
 therefore inverted from what a reader might assume — **unset means mock**, set
