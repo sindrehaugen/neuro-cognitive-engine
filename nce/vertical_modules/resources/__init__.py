@@ -22,6 +22,7 @@ from nce.vertical_modules.resources.allocations import (
     redact_contractor_view,
 )
 from nce.vertical_modules.resources.capacity import do_resolve_capacity
+from nce.vertical_modules.resources.field_schedule import do_field_schedule
 from nce.vertical_modules.resources.material_flow import do_plan_material_flow
 from nce.vertical_modules.resources.planner import (
     do_plan_allocation,
@@ -53,6 +54,7 @@ __all__ = [
     "calculate_norwegian_diett",
     "do_create_resource",
     "do_detect_conflicts",
+    "do_field_schedule",
     "do_get_resource",
     "do_list_resources",
     "do_plan_allocation",
