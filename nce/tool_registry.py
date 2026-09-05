@@ -44,6 +44,7 @@ from nce.vertical_modules.diagnostics import mcp_handlers as diag_mcp_handlers
 from nce.vertical_modules.dynamics365 import mcp_handlers as d365_mcp_handlers
 from nce.vertical_modules.economy import mcp_handlers as economy_mcp_handlers
 from nce.vertical_modules.field_tech import mcp_handlers as field_tech_mcp_handlers
+from nce.vertical_modules.hr import mcp_handlers as hr_mcp_handlers
 from nce.vertical_modules.inventory import mcp_handlers as inventory_mcp_handlers
 from nce.vertical_modules.netbox import circuits as netbox_circuits
 from nce.vertical_modules.procurement import mcp_handlers as procurement_mcp_handlers
@@ -1046,6 +1047,57 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         cacheable=False,
         admin_only=True,
         mutation=True,
+    ),
+    # -----------------------------------------------------------------------
+    # Module 13 — HR Engine (ML13-B3)
+    # -----------------------------------------------------------------------
+    "hr_get_employee": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_get_employee"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "hr_match_skills": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_match_skills"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "hr_capacity": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_capacity"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "hr_cert_status": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_cert_status"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "hr_register_absence": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_register_absence"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    "hr_build_onboarding_quest": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_build_onboarding_quest"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "hr_log_one_on_one": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_log_one_on_one"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "hr_coach": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_coach"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
     ),
 }
 

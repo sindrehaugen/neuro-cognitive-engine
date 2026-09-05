@@ -251,6 +251,14 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `get_health` |  |  |  |  |
 | `get_recent_context` |  |  |  |  |
 | `graph_search` |  |  | yes |  |
+| `hr_build_onboarding_quest` | yes | yes |  |  |
+| `hr_capacity` |  |  | yes |  |
+| `hr_cert_status` |  |  | yes |  |
+| `hr_coach` |  |  | yes |  |
+| `hr_get_employee` |  |  | yes |  |
+| `hr_log_one_on_one` | yes | yes |  |  |
+| `hr_match_skills` |  |  | yes |  |
+| `hr_register_absence` |  | yes |  |  |
 | `import_snapshot` |  | yes |  |  |
 | `index_code_file` |  | yes |  |  |
 | `inventory_dispose_rma_weee` | yes | yes |  |  |
@@ -349,4 +357,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_reliability_radar` |  |  | yes |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 173 REST endpoints, 158 MCP tools._
+_Totals: 173 REST endpoints, 166 MCP tools._

@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 158  # 148 previous + 10 field_tech tools from ML12-B5, M12.W5.
+_EXPECTED_TOTAL = 166  # 158 previous + 8 HR Engine tools from ML13-B3.
 
 
 def test_registry_has_expected_entries():
@@ -181,6 +181,10 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "field_tech_attach_photo",
         "field_tech_sync",
         "field_tech_record_outcome",
+        # ML13-B3 (M13.W3) -- HR Engine mutations (3 tools)
+        "hr_register_absence",
+        "hr_build_onboarding_quest",
+        "hr_log_one_on_one",
     }
 )
 
@@ -193,7 +197,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 66  # 58 previous + 8 field_tech tools from ML12-B5
+    assert len(MUTATION_TOOLS) == 69  # 66 previous + 3 hr tools from ML13-B3
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -290,6 +294,12 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         # ML12-B5 (M12.W5) -- Field Tech Engine Advisor reads (cacheable)
         "field_tech_dispatch",
         "field_tech_partner_view",
+        # ML13-B3 (M13.W3) -- HR Engine Advisor/Watcher reads (5 cacheable tools)
+        "hr_get_employee",
+        "hr_match_skills",
+        "hr_capacity",
+        "hr_cert_status",
+        "hr_coach",
     }
 )
 
@@ -302,7 +312,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 54  # 52 previous + 2 field_tech tools from ML12-B5
+    assert len(CACHEABLE_TOOLS) == 59  # 54 previous + 5 hr tools from ML13-B3
 
 
 # ---------------------------------------------------------------------------
@@ -367,6 +377,9 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "field_tech_create_work_order",
         "field_tech_assign",
         "field_tech_record_outcome",
+        # ML13-B3 (M13.W3) -- HR Engine admin_only tools (2 tools)
+        "hr_build_onboarding_quest",
+        "hr_log_one_on_one",
     }
 )
 
@@ -379,7 +392,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 32  # 29 previous + 3 field_tech tools from ML12-B5
+    assert len(ADMIN_ONLY_TOOLS) == 34  # 32 previous + 2 hr tools from ML13-B3
 
 
 # ---------------------------------------------------------------------------
