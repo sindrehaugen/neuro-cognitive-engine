@@ -27,6 +27,21 @@
         "health_score"
       ]
     },
+    "room_overview": {
+      "allowed_fields": [
+        "site_id",
+        "site_name",
+        "total_rooms",
+        "overall_percent_ready",
+        "rooms"
+      ],
+      "forbidden_fields": [
+        "internal_project_id",
+        "internal_budget_cost",
+        "margin",
+        "slip_status"
+      ]
+    },
     "asset_register": {
       "allowed_fields": [
         "asset_id",

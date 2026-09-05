@@ -72,11 +72,90 @@ async def portal_login(request: Request) -> JSONResponse:
     )
 
 
+async def api_portal_room_tracker(request: Request) -> JSONResponse:
+    """Domino's tracker endpoint for a specific room."""
+    room_id = request.path_params["room_id"]
+    cust_scope = request.headers.get(
+        "X-Customer-Scope-ID", request.query_params.get("customer_scope_id")
+    )
+    ns_id = request.headers.get("X-Namespace-ID", request.query_params.get("namespace_id"))
+
+    if not cust_scope:
+        return JSONResponse({"error": "Unauthorized: customer scope required"}, status_code=401)
+
+    params = {
+        "namespace_id": ns_id,
+        "customer_scope_id": cust_scope,
+        "room_id": room_id,
+        **dict(request.query_params),
+    }
+    try:
+        from nce.vertical_modules.customer_portal.rooms import do_room_tracker
+
+        result = await do_room_tracker(request.app.state.engine, params)
+        return JSONResponse(result)
+    except PermissionError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=403)
+
+
+async def api_portal_room_overview(request: Request) -> JSONResponse:
+    """Room overview rollup endpoint for customer functional locations."""
+    cust_scope = request.headers.get(
+        "X-Customer-Scope-ID", request.query_params.get("customer_scope_id")
+    )
+    ns_id = request.headers.get("X-Namespace-ID", request.query_params.get("namespace_id"))
+
+    if not cust_scope:
+        return JSONResponse({"error": "Unauthorized: customer scope required"}, status_code=401)
+
+    params = {
+        "namespace_id": ns_id,
+        "customer_scope_id": cust_scope,
+        **dict(request.query_params),
+    }
+    try:
+        from nce.vertical_modules.customer_portal.rooms import do_room_overview
+
+        result = await do_room_overview(request.app.state.engine, params)
+        return JSONResponse(result)
+    except PermissionError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=403)
+
+
+async def api_portal_asset_register(request: Request) -> JSONResponse:
+    """Room-centric asset register endpoint with commercial redactions."""
+    room_id = request.path_params["room_id"]
+    cust_scope = request.headers.get(
+        "X-Customer-Scope-ID", request.query_params.get("customer_scope_id")
+    )
+    ns_id = request.headers.get("X-Namespace-ID", request.query_params.get("namespace_id"))
+
+    if not cust_scope:
+        return JSONResponse({"error": "Unauthorized: customer scope required"}, status_code=401)
+
+    params = {
+        "namespace_id": ns_id,
+        "customer_scope_id": cust_scope,
+        "room_id": room_id,
+        **dict(request.query_params),
+    }
+    try:
+        from nce.vertical_modules.customer_portal.rooms import do_asset_register
+
+        result = await do_asset_register(request.app.state.engine, params)
+        return JSONResponse(result)
+    except PermissionError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=403)
+
+
 def build_customer_portal_app(engine: Any = None) -> Starlette:
     """Construct the isolated Customer Portal application."""
     routes = [
         Route("/health", portal_health, methods=["GET"]),
         Route("/api/portal/login", portal_login, methods=["POST"]),
+        Route("/api/portal/rooms/overview", api_portal_room_overview, methods=["GET"]),
+        Route("/api/portal/rooms/{room_id}/tracker", api_portal_room_tracker, methods=["GET"]),
+        Route("/api/portal/rooms/{room_id}/assets", api_portal_asset_register, methods=["GET"]),
     ]
 
     middleware = [

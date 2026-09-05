@@ -29,12 +29,25 @@ def load_customer_redaction_rules() -> dict[str, Any]:
     return data.get("projections", {})
 
 
-def project_customer_safe(projection_name: str, data: dict[str, Any]) -> dict[str, Any]:
+def project_customer_safe(
+    projection_name_or_data: str | dict[str, Any],
+    data_or_projection_name: dict[str, Any] | str,
+) -> dict[str, Any]:
     """Project a raw dictionary through the explicit allow-list for projection_name.
 
     Fails closed: Any field NOT explicitly listed in allowed_fields is excluded.
     Guards against leaks: Asserts forbidden fields never pass through.
+    Supports either (projection_name, data) or (data, projection_name).
     """
+    if isinstance(projection_name_or_data, str) and isinstance(data_or_projection_name, dict):
+        projection_name = projection_name_or_data
+        data = data_or_projection_name
+    elif isinstance(projection_name_or_data, dict) and isinstance(data_or_projection_name, str):
+        data = projection_name_or_data
+        projection_name = data_or_projection_name
+    else:
+        return {}
+
     rules = load_customer_redaction_rules()
     projection_rule = rules.get(projection_name)
 

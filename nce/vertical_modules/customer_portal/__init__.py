@@ -13,3 +13,15 @@ Security Architecture (Charter §2):
 """
 
 __version__ = "0.1.0"
+
+from nce.vertical_modules.customer_portal.rooms import (
+    do_asset_register,
+    do_room_overview,
+    do_room_tracker,
+)
+
+__all__ = [
+    "do_asset_register",
+    "do_room_overview",
+    "do_room_tracker",
+]
