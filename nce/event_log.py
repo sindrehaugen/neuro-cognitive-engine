@@ -382,6 +382,10 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "travel_legs": "namespace_id",
     "stays": "namespace_id",
     "per_diems": "namespace_id",
+    # Customer Portal engine (Module 17, Wave 1): users, document shares, service requests.
+    "portal_users": "namespace_id",
+    "portal_document_shares": "namespace_id",
+    "portal_service_requests": "namespace_id",
 }
 
 
