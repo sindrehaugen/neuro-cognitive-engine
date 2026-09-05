@@ -22,6 +22,7 @@ import logging
 from typing import Any
 from uuid import UUID, uuid4
 
+from nce.config import cfg
 from nce.db_utils import scoped_pg_session
 
 log = logging.getLogger("nce.vertical_modules.support.tickets")
@@ -36,6 +37,8 @@ _ALLOWED_CHANGE_ORIGINS = frozenset(
         "operator",
         "consolidation",
         "replay",
+        "proactive_telemetry",
+        "proactive_health",
         "unknown",
     }
 )
@@ -100,6 +103,17 @@ class InvalidTicketStatusError(Exception):
         self.ticket_id = ticket_id
         self.status = status
         super().__init__(f"ticket_id={ticket_id!r} with status={status!r} cannot be resolved")
+
+
+class AutocloseConfidenceRefusalError(Exception):
+    """Refusal when autonomous ticket resolution confidence is below the required threshold."""
+
+    def __init__(self, *, confidence: float, threshold: float) -> None:
+        self.confidence = confidence
+        self.threshold = threshold
+        super().__init__(
+            f"Autoclose refused: confidence {confidence:.4f} is below autonomous threshold {threshold:.4f}"
+        )
 
 
 def _extract_pool(engine_or_pool: Any) -> Any:
@@ -184,7 +198,7 @@ async def do_open_ticket(
     if source not in _ALLOWED_SOURCES:
         raise ValueError(f"source must be one of {sorted(_ALLOWED_SOURCES)}, got {source!r}")
 
-    change_origin = str(params.get("change_origin") or "agent").lower()
+    change_origin = str(params.get("change_origin") or params.get("origin") or "agent").lower()
     if change_origin not in _ALLOWED_CHANGE_ORIGINS:
         raise ValueError(
             f"change_origin must be one of {sorted(_ALLOWED_CHANGE_ORIGINS)}, got {change_origin!r}"
@@ -430,6 +444,22 @@ async def do_resolve_ticket(
     resolution_text = str(params.get("resolution_text") or "").strip()
     if not resolution_text:
         raise ValueError("resolution_text is required and cannot be blank")
+
+    # Autonomy Guard (Charter §6 & Spec §9.5):
+    # Auto-closing a ticket without sufficient confidence is refused.
+    autonomous = bool(params.get("autonomous", False))
+    if autonomous:
+        raw_threshold = params.get("autoclose_confidence")
+        if raw_threshold is not None:
+            threshold = float(raw_threshold)
+        else:
+            threshold = float(getattr(cfg, "NCE_SUPPORT_AUTONOMY_AUTOCLOSE_CONFIDENCE", 0.95))
+        confidence = float(params.get("confidence", 0.0))
+        if confidence < threshold:
+            raise AutocloseConfidenceRefusalError(
+                confidence=confidence,
+                threshold=threshold,
+            )
 
     was_fix = bool(params.get("was_fix", True))
     resolution_category = str(params.get("resolution_category") or "other")

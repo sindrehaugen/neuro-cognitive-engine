@@ -988,6 +988,30 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=True,
         mutation=True,
     ),
+    "support_triage_ticket": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_triage_ticket"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "support_record_touchpoint": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_record_touchpoint"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    "support_dispatch_work_order": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_dispatch_work_order"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "support_sync_now": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_sync_now"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
     # Field Tech vertical module tools (ML12-B5, M12.W5)
     "field_tech_dispatch": ToolSpec(
         _h(field_tech_mcp_handlers, "handle_field_tech_dispatch"),

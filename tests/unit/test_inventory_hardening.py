@@ -52,11 +52,10 @@ _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
 # --- MEASURED on branch vm-b140-m11-w12-hardening, base 039fdd1 -------------
-# python -c "import nce.tool_registry as tr; print(len(tr.TOOL_REGISTRY))"
-_TOTAL_TOOLS = 174  # +8 hr tools (ML13, M13 HR engine) + 8 marketing tools (ML14-B3, M14.W3)
-_MUTATION_TOOLS = 74  # +3 mutating hr tools + 5 mutating marketing tools
-_CACHEABLE_TOOLS = 62  # +5 cacheable hr tools + 3 cacheable marketing tools
-_ADMIN_ONLY_TOOLS = 39  # +2 admin_only hr tools + 5 admin_only marketing tools
+_TOTAL_TOOLS = 178  # 166 baseline + 4 support tools + 8 hr tools
+_MUTATION_TOOLS = 77  # 71 baseline + 3 support tools + 3 hr tools
+_CACHEABLE_TOOLS = 63  # 57 baseline + 1 support tool + 5 hr tools
+_ADMIN_ONLY_TOOLS = 41  # 37 baseline + 2 support tools + 2 hr tools
 _MIGRATION_TOOLS = 5
 
 

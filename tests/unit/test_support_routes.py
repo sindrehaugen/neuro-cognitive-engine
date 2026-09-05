@@ -81,6 +81,11 @@ def test_support_routes_mounted_in_admin_app() -> None:
     assert ("/api/support/customers/{id}/health", ("GET",)) in route_table
     assert ("/api/support/troubleshoot", ("POST",)) in route_table
     assert ("/api/support/tickets/{id}/resolve", ("POST",)) in route_table
+    assert ("/api/support/tickets/{id}/triage", ("POST",)) in route_table
+    assert ("/api/support/touchpoints", ("POST",)) in route_table
+    assert ("/api/support/tickets/{id}/dispatch", ("POST",)) in route_table
+    assert ("/api/support/sync/now", ("POST",)) in route_table
+    assert ("/api/support/sync/status", ("GET",)) in route_table
 
 
 # ---------------------------------------------------------------------------
@@ -370,3 +375,195 @@ async def test_invalid_ticket_status_returns_409():
         assert resp.status_code == 409
         body = json.loads(bytes(resp.body).decode("utf-8"))
         assert body["reason"] == "invalid_ticket_status"
+
+
+@pytest.mark.asyncio
+async def test_support_tickets_triage_happy_path():
+    mock_data = {
+        "recommended_priority": "high",
+        "suggested_skill": "systems_engineer",
+        "suggested_route": "tier_1_remote_triage",
+    }
+    with (
+        patch("nce.admin_handlers.support.require_support_enabled", new=AsyncMock()),
+        patch(
+            "nce.admin_handlers.support.do_triage_ticket",
+            new=AsyncMock(return_value=mock_data),
+        ) as mock_core,
+    ):
+        req = _make_request(
+            path_params={"id": _TICKET_ID},
+            body={"namespace_id": _NAMESPACE_ID},
+        )
+        resp = await support_mod.api_support_tickets_triage(req)
+        assert resp.status_code == 200
+        body = json.loads(bytes(resp.body).decode("utf-8"))
+        assert body["ok"] is True
+        assert body["recommended_priority"] == "high"
+        mock_core.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_support_touchpoints_record_happy_path():
+    mock_data = {
+        "customer_id": _CUSTOMER_ID,
+        "score": 95.0,
+        "churn_risk": "low",
+    }
+    with (
+        patch("nce.admin_handlers.support.require_support_enabled", new=AsyncMock()),
+        patch(
+            "nce.admin_handlers.support.do_record_touchpoint",
+            new=AsyncMock(return_value=mock_data),
+        ) as mock_core,
+        patch(
+            "nce.admin_handlers.support.bump_mcp_cache_generation",
+            new=AsyncMock(),
+        ) as mock_bump,
+    ):
+        req = _make_request(
+            body={
+                "namespace_id": _NAMESPACE_ID,
+                "customer_id": _CUSTOMER_ID,
+                "answer": "Very satisfied",
+                "score": 10.0,
+            },
+        )
+        resp = await support_mod.api_support_touchpoints_record(req)
+        assert resp.status_code == 200
+        body = json.loads(bytes(resp.body).decode("utf-8"))
+        assert body["ok"] is True
+        assert body["score"] == 95.0
+        mock_core.assert_awaited_once()
+        mock_bump.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_ticket_not_found_triage_returns_404():
+    with (
+        patch("nce.admin_handlers.support.require_support_enabled", new=AsyncMock()),
+        patch(
+            "nce.admin_handlers.support.do_triage_ticket",
+            new=AsyncMock(side_effect=TicketNotFoundError(ticket_id=_TICKET_ID)),
+        ),
+    ):
+        req = _make_request(
+            path_params={"id": _TICKET_ID},
+            body={"namespace_id": _NAMESPACE_ID},
+        )
+        resp = await support_mod.api_support_tickets_triage(req)
+        assert resp.status_code == 404
+        body = json.loads(bytes(resp.body).decode("utf-8"))
+        assert body["not_found"] is True
+
+
+@pytest.mark.asyncio
+async def test_support_tickets_dispatch_happy_path():
+    mock_data = {
+        "dispatched": True,
+        "idempotent_replay": False,
+        "ticket_id": _TICKET_ID,
+        "work_order_id": str(uuid4()),
+        "edge": f"TICKET:{_TICKET_ID} -[dispatched_as]-> WORK_ORDER:wo-123",
+    }
+    with (
+        patch("nce.admin_handlers.support.require_support_enabled", new=AsyncMock()),
+        patch(
+            "nce.admin_handlers.support.do_dispatch_work_order",
+            new=AsyncMock(return_value=mock_data),
+        ) as mock_core,
+        patch(
+            "nce.admin_handlers.support.bump_mcp_cache_generation",
+            new=AsyncMock(),
+        ) as mock_bump,
+    ):
+        req = _make_request(
+            path_params={"id": _TICKET_ID},
+            body={"namespace_id": _NAMESPACE_ID, "estimated_cost": 50.0},
+        )
+        resp = await support_mod.api_support_tickets_dispatch(req)
+        assert resp.status_code == 200
+        body = json.loads(bytes(resp.body).decode("utf-8"))
+        assert body["ok"] is True
+        assert body["dispatched"] is True
+        mock_core.assert_awaited_once()
+        mock_bump.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_support_tickets_dispatch_ceiling_refused_returns_409():
+    from nce.vertical_modules.support.dispatch import DispatchCeilingExceededError
+
+    with (
+        patch("nce.admin_handlers.support.require_support_enabled", new=AsyncMock()),
+        patch(
+            "nce.admin_handlers.support.do_dispatch_work_order",
+            new=AsyncMock(
+                side_effect=DispatchCeilingExceededError(estimated_cost=500.0, ceiling=200.0)
+            ),
+        ),
+    ):
+        req = _make_request(
+            path_params={"id": _TICKET_ID},
+            body={"namespace_id": _NAMESPACE_ID, "estimated_cost": 500.0},
+        )
+        resp = await support_mod.api_support_tickets_dispatch(req)
+        assert resp.status_code == 409
+        body = json.loads(bytes(resp.body).decode("utf-8"))
+        assert body["reason"] == "dispatch_ceiling_exceeded"
+
+
+@pytest.mark.asyncio
+async def test_support_sync_now_happy_path():
+    mock_data = {
+        "status": "completed",
+        "mode": "both",
+        "d365_sync": {"status": "completed"},
+        "proactive_sweep": {"status": "completed"},
+    }
+    with (
+        patch("nce.admin_handlers.support.require_support_enabled", new=AsyncMock()),
+        patch(
+            "nce.admin_handlers.support.do_sync_now",
+            new=AsyncMock(return_value=mock_data),
+        ) as mock_core,
+        patch(
+            "nce.admin_handlers.support.bump_mcp_cache_generation",
+            new=AsyncMock(),
+        ) as mock_bump,
+    ):
+        req = _make_request(
+            body={"namespace_id": _NAMESPACE_ID, "mode": "both"},
+        )
+        resp = await support_mod.api_support_sync_now(req)
+        assert resp.status_code == 200
+        body = json.loads(bytes(resp.body).decode("utf-8"))
+        assert body["ok"] is True
+        assert body["status"] == "completed"
+        mock_core.assert_awaited_once()
+        mock_bump.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_support_sync_status_happy_path():
+    mock_data = {
+        "status": "healthy",
+        "source_mode": "both",
+        "last_sync": "2026-09-05T12:00:00Z",
+    }
+    with (
+        patch("nce.admin_handlers.support.require_support_enabled", new=AsyncMock()),
+        patch(
+            "nce.admin_handlers.support.do_sync_status",
+            new=AsyncMock(return_value=mock_data),
+        ) as mock_core,
+    ):
+        req = _make_request(
+            query={"namespace_id": _NAMESPACE_ID, "mode": "both"},
+        )
+        resp = await support_mod.api_support_sync_status(req)
+        assert resp.status_code == 200
+        body = json.loads(bytes(resp.body).decode("utf-8"))
+        assert body["ok"] is True
+        assert body["status"] == "healthy"
+        mock_core.assert_awaited_once()
