@@ -14,6 +14,10 @@ Security Architecture (Charter §2):
 
 __version__ = "0.1.0"
 
+from nce.vertical_modules.customer_portal.actions import (
+    do_raise_service_request,
+    do_register_expansion_interest,
+)
 from nce.vertical_modules.customer_portal.documents import (
     do_get_document,
     do_list_documents,
@@ -31,6 +35,8 @@ __all__ = [
     "do_get_document",
     "do_list_documents",
     "do_list_invoices",
+    "do_raise_service_request",
+    "do_register_expansion_interest",
     "do_room_overview",
     "do_room_tracker",
     "do_sla_status",
