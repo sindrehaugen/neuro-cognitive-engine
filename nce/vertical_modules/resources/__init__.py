@@ -35,6 +35,11 @@ from nce.vertical_modules.resources.registry import (
     do_list_resources,
     do_update_resource,
 )
+from nce.vertical_modules.resources.travel import (
+    calculate_norwegian_diett,
+    do_plan_travel,
+    load_travel_policy,
+)
 
 __all__ = [
     "CONTRACTOR_ALLOWED_ALLOCATION_FIELDS",
@@ -45,18 +50,21 @@ __all__ = [
     "ResourcesError",
     "VALID_ALLOCATION_STATUSES",
     "VALID_RESOURCE_KINDS",
+    "calculate_norwegian_diett",
     "do_create_resource",
     "do_detect_conflicts",
     "do_get_resource",
     "do_list_resources",
     "do_plan_allocation",
     "do_plan_material_flow",
+    "do_plan_travel",
     "do_record_allocation_outcome",
     "do_release",
     "do_reserve",
     "do_resolve_capacity",
     "do_update_resource",
     "load_allocation_weights",
+    "load_travel_policy",
     "redact_contractor_view",
     "require_resources_enabled",
 ]

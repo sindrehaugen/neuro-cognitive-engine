@@ -1,0 +1,28 @@
+{
+  "version": "1.0",
+  "jurisdiction": "NO",
+  "currency": "NOK",
+  "rules": {
+    "statutory_rates_2026": {
+      "day_trip_short_6_to_12h": 360.0,
+      "day_trip_long_over_12h": 680.0,
+      "overnight_hotel": 940.0,
+      "overnight_unspecified": 450.0
+    },
+    "meal_deductions_pct": {
+      "breakfast": 0.20,
+      "lunch": 0.30,
+      "dinner": 0.50
+    },
+    "lodging_standard_cap_nok": 2200.0,
+    "flight_economy_standard_cap_nok": 4500.0,
+    "distance_threshold_km_for_travel": 75.0,
+    "overnight_distance_threshold_km": 150.0
+  },
+  "spend_gate": {
+    "default_max_autonomous_spend_nok": 10000.0,
+    "requires_idempotency_key": true,
+    "multi_jurisdiction_supported": false,
+    "note": "Multi-jurisdiction is future work; strictly Norwegian tax law (Statens satser) supported in v1."
+  }
+}
