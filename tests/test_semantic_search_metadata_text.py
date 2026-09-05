@@ -1,6 +1,6 @@
 """``semantic_search`` must accept ``namespaces.metadata`` arriving as text.
 
-Ported from the steps-ai fork of NCE (backend/nce/semantic_search.py, commit
+Ported from a downstream product fork of NCE (backend/nce/semantic_search.py, commit
 3cbb4bce9, 2026-08-19).
 
 No jsonb codec is registered on the asyncpg pool (``set_type_codec`` appears

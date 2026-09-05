@@ -1,6 +1,6 @@
 """Empty ``entity_types`` scans everything; overlapping spans resolve by score.
 
-Ported from the steps-ai fork of NCE (backend/nce/pii.py, commit b6c78c66a,
+Ported from a downstream product fork of NCE (backend/nce/pii.py, commit b6c78c66a,
 2026-08-20). Two defects in ``nce/pii.py``:
 
 1. ``_scan_sync`` returned ``[]`` when ``config.entity_types`` was empty, and every
