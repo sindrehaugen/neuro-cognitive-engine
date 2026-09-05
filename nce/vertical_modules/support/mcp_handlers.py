@@ -42,8 +42,13 @@ from nce.vertical_modules.support._guard import (
     SupportDisabledError,
     require_support_enabled,
 )
+from nce.vertical_modules.support.dispatch import (
+    DispatchCeilingExceededError,
+    do_dispatch_work_order,
+)
 from nce.vertical_modules.support.health import do_health_score, do_record_touchpoint
 from nce.vertical_modules.support.sla import do_sla_clock
+from nce.vertical_modules.support.sync import do_sync_now
 from nce.vertical_modules.support.tickets import (
     InvalidTicketStatusError,
     TicketAlreadyResolvedError,
@@ -237,4 +242,54 @@ async def handle_support_record_touchpoint(engine: Any, arguments: dict[str, Any
     """
     await _check_support_enabled(engine, arguments)
     result = await do_record_touchpoint(engine, dict(arguments))
+    return json.dumps({"ok": True, **result}, default=str)
+
+
+@mcp_handler
+async def handle_support_dispatch_work_order(engine: Any, arguments: dict[str, Any]) -> str:
+    """MCP tool: support_dispatch_work_order — dispatch ticket to Field Tech work order.
+
+    Actor (Autonomous under threshold); mutation, admin_only.
+    Requires ``namespace_id`` and ``ticket_id``.
+    """
+    await _check_support_enabled(engine, arguments)
+    try:
+        result = await do_dispatch_work_order(engine, dict(arguments))
+    except DispatchCeilingExceededError as exc:
+        raise McpError(
+            _MCP_BUSINESS_REFUSED_CODE,
+            str(exc),
+            data={
+                "reason": "dispatch_ceiling_exceeded",
+                "estimated_cost": exc.estimated_cost,
+                "ceiling": exc.ceiling,
+            },
+        ) from exc
+    except TicketNotFoundError as exc:
+        raise McpError(
+            _MCP_BUSINESS_REFUSED_CODE,
+            str(exc),
+            data={"reason": "ticket_not_found", "ticket_id": exc.ticket_id},
+        ) from exc
+    except InvalidTicketStatusError as exc:
+        raise McpError(
+            _MCP_BUSINESS_REFUSED_CODE,
+            str(exc),
+            data={
+                "reason": "invalid_ticket_status",
+                "ticket_id": exc.ticket_id,
+                "status": exc.status,
+            },
+        ) from exc
+    return json.dumps({"ok": True, **result}, default=str)
+
+
+@mcp_handler
+async def handle_support_sync_now(engine: Any, arguments: dict[str, Any]) -> str:
+    """MCP tool: support_sync_now — incremental D365 case sync and proactive sweep.
+
+    Actor / operator; mutation, admin_only. Requires ``namespace_id``.
+    """
+    await _check_support_enabled(engine, arguments)
+    result = await do_sync_now(engine, dict(arguments))
     return json.dumps({"ok": True, **result}, default=str)

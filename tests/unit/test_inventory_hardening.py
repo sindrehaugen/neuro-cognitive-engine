@@ -52,11 +52,12 @@ _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
 # --- MEASURED on branch vm-b140-m11-w12-hardening, base 039fdd1 -------------
-# python -c "import nce.tool_registry as tr; print(len(tr.TOOL_REGISTRY))"
-_TOTAL_TOOLS = 168  # +2 support tools (ML10b-P1, M10.W1)
-_MUTATION_TOOLS = 72  # +1 mutating support tool (support_record_touchpoint)
-_CACHEABLE_TOOLS = 58  # +1 cacheable support tool (support_triage_ticket)
-_ADMIN_ONLY_TOOLS = 37  # unchanged
+_TOTAL_TOOLS = 170  # +2 support tools (ML10b-P2/P3, M10.W2/W3)
+_MUTATION_TOOLS = 74  # +2 mutating support tools (support_dispatch_work_order, support_sync_now)
+_CACHEABLE_TOOLS = 58  # unchanged
+_ADMIN_ONLY_TOOLS = (
+    39  # +2 admin-only support tools (support_dispatch_work_order, support_sync_now)
+)
 _MIGRATION_TOOLS = 5
 
 

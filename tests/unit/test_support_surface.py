@@ -27,13 +27,16 @@ from nce.tool_registry import (
     TOOL_REGISTRY,
 )
 from nce.vertical_modules.support._guard import SupportDisabledError
+from nce.vertical_modules.support.dispatch import DispatchCeilingExceededError
 from nce.vertical_modules.support.mcp_handlers import (
+    handle_support_dispatch_work_order,
     handle_support_health_score,
     handle_support_open_ticket,
     handle_support_query_ticket,
     handle_support_record_touchpoint,
     handle_support_resolve_ticket,
     handle_support_sla_clock,
+    handle_support_sync_now,
     handle_support_triage_ticket,
     handle_support_troubleshoot,
 )
@@ -69,6 +72,8 @@ def test_all_support_tools_registered():
         "support_resolve_ticket",
         "support_triage_ticket",
         "support_record_touchpoint",
+        "support_dispatch_work_order",
+        "support_sync_now",
     }
     for tool_name in expected_tools:
         assert tool_name in TOOL_REGISTRY, f"Tool {tool_name} missing from TOOL_REGISTRY"
@@ -114,6 +119,16 @@ def test_support_tools_flags():
         "support_record_touchpoint": {
             "cacheable": False,
             "admin_only": False,
+            "mutation": True,
+        },
+        "support_dispatch_work_order": {
+            "cacheable": False,
+            "admin_only": True,
+            "mutation": True,
+        },
+        "support_sync_now": {
+            "cacheable": False,
+            "admin_only": True,
             "mutation": True,
         },
     }
@@ -192,6 +207,14 @@ def test_support_tools_flags():
                 "question_id": "q1",
                 "answer": "Great service",
             },
+        ),
+        (
+            handle_support_dispatch_work_order,
+            {"namespace_id": _NAMESPACE_ID, "ticket_id": _TICKET_ID},
+        ),
+        (
+            handle_support_sync_now,
+            {"namespace_id": _NAMESPACE_ID},
         ),
     ],
 )
@@ -559,3 +582,95 @@ async def test_ticket_not_found_mapped_to_mcp_error_triage(mock_engine):
         assert exc_info.value.code == MCP_SCOPE_FORBIDDEN
         assert exc_info.value.data.get("reason") == "ticket_not_found"
         assert exc_info.value.data.get("ticket_id") == _TICKET_ID
+
+
+@pytest.mark.asyncio
+async def test_handle_support_dispatch_work_order_success(mock_engine):
+    mock_data = {
+        "dispatched": True,
+        "idempotent_replay": False,
+        "ticket_id": _TICKET_ID,
+        "work_order_id": str(uuid4()),
+        "edge": f"TICKET:{_TICKET_ID} -[dispatched_as]-> WORK_ORDER:wo-1",
+    }
+    with (
+        patch(
+            "nce.vertical_modules.support.mcp_handlers.require_support_enabled",
+            new=AsyncMock(),
+        ),
+        patch(
+            "nce.vertical_modules.support.mcp_handlers.do_dispatch_work_order",
+            new=AsyncMock(return_value=mock_data),
+        ) as mock_core,
+    ):
+        raw_res = await handle_support_dispatch_work_order(
+            mock_engine,
+            {
+                "namespace_id": _NAMESPACE_ID,
+                "ticket_id": _TICKET_ID,
+                "estimated_cost": 50.0,
+            },
+        )
+        res = json.loads(raw_res)
+        assert res["ok"] is True
+        assert res["dispatched"] is True
+        mock_core.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_support_dispatch_ceiling_refusal(mock_engine):
+    with (
+        patch(
+            "nce.vertical_modules.support.mcp_handlers.require_support_enabled",
+            new=AsyncMock(),
+        ),
+        patch(
+            "nce.vertical_modules.support.mcp_handlers.do_dispatch_work_order",
+            new=AsyncMock(
+                side_effect=DispatchCeilingExceededError(estimated_cost=500.0, ceiling=200.0)
+            ),
+        ),
+    ):
+        with pytest.raises(McpError) as exc_info:
+            await handle_support_dispatch_work_order(
+                mock_engine,
+                {
+                    "namespace_id": _NAMESPACE_ID,
+                    "ticket_id": _TICKET_ID,
+                    "estimated_cost": 500.0,
+                },
+            )
+        assert exc_info.value.code == MCP_SCOPE_FORBIDDEN
+        assert exc_info.value.data.get("reason") == "dispatch_ceiling_exceeded"
+        assert exc_info.value.data.get("estimated_cost") == 500.0
+
+
+@pytest.mark.asyncio
+async def test_handle_support_sync_now_success(mock_engine):
+    mock_data = {
+        "status": "completed",
+        "mode": "both",
+        "d365_sync": {"status": "completed"},
+        "proactive_sweep": {"status": "completed"},
+    }
+    with (
+        patch(
+            "nce.vertical_modules.support.mcp_handlers.require_support_enabled",
+            new=AsyncMock(),
+        ),
+        patch(
+            "nce.vertical_modules.support.mcp_handlers.do_sync_now",
+            new=AsyncMock(return_value=mock_data),
+        ) as mock_core,
+    ):
+        raw_res = await handle_support_sync_now(
+            mock_engine,
+            {
+                "namespace_id": _NAMESPACE_ID,
+                "mode": "both",
+            },
+        )
+        res = json.loads(raw_res)
+        assert res["ok"] is True
+        assert res["status"] == "completed"
+        mock_core.assert_awaited_once()

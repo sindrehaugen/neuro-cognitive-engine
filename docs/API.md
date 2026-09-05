@@ -171,9 +171,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/search` | `api_search` |
 | POST | `/api/snapshot/export` | `api_snapshot_export` |
 | GET | `/api/support/customers/{id}/health` | `api_support_customer_health` |
+| POST | `/api/support/sync/now` | `api_support_sync_now` |
+| GET | `/api/support/sync/status` | `api_support_sync_status` |
 | GET | `/api/support/tickets` | `api_support_tickets_list` |
 | POST | `/api/support/tickets` | `api_support_tickets_open` |
 | GET | `/api/support/tickets/{id}` | `api_support_tickets_get` |
+| POST | `/api/support/tickets/{id}/dispatch` | `api_support_tickets_dispatch` |
 | POST | `/api/support/tickets/{id}/resolve` | `api_support_tickets_resolve` |
 | GET | `/api/support/tickets/{id}/sla-clock` | `api_support_ticket_sla_clock` |
 | POST | `/api/support/tickets/{id}/triage` | `api_support_tickets_triage` |
@@ -335,12 +338,14 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `store_media` |  | yes |  |  |
 | `store_memory` |  | yes |  |  |
 | `suggest_queries` |  |  |  |  |
+| `support_dispatch_work_order` | yes | yes |  |  |
 | `support_health_score` |  |  | yes |  |
 | `support_open_ticket` | yes | yes |  |  |
 | `support_query_ticket` |  |  | yes |  |
 | `support_record_touchpoint` |  | yes |  |  |
 | `support_resolve_ticket` | yes | yes |  |  |
 | `support_sla_clock` |  |  | yes |  |
+| `support_sync_now` | yes | yes |  |  |
 | `support_triage_ticket` |  |  | yes |  |
 | `support_troubleshoot` |  |  | yes |  |
 | `system_design_author_functional_location` |  | yes |  |  |
@@ -370,4 +375,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_reliability_radar` |  |  | yes |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 184 REST endpoints, 168 MCP tools._
+_Totals: 187 REST endpoints, 170 MCP tools._

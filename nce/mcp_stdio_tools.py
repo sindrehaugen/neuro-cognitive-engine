@@ -3821,6 +3821,68 @@ TOOLS = [
             "required": ["namespace_id", "customer_id", "answer"],
         },
     ),
+    Tool(
+        name="support_dispatch_work_order",
+        description=(
+            "Dispatch an open service ticket as a Field Tech work order (creates "
+            "TICKET -[dispatched_as]-> WORK_ORDER boundary edge). "
+            "Actor (Autonomous under threshold); mutation, admin-only."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "ticket_id": {
+                    "type": "string",
+                    "description": "Ticket UUID to dispatch as a work order.",
+                },
+                "estimated_cost": {
+                    "type": "number",
+                    "default": 0.0,
+                    "description": "Optional estimated dispatch cost evaluated against DISPATCH_CEILING.",
+                },
+                "dispatch_ceiling": {
+                    "type": "number",
+                    "description": "Optional ceiling override threshold.",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Human confirmation override for over-ceiling dispatch.",
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Optional dispatch notes for technician.",
+                },
+            },
+            "required": ["namespace_id", "ticket_id"],
+        },
+    ),
+    Tool(
+        name="support_sync_now",
+        description=(
+            "Trigger an incremental D365 case sync and proactive telemetry sweep for Support. "
+            "Actor / operator; mutation, admin-only."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "mode": {
+                    "type": "string",
+                    "enum": ["d365", "both", "nce"],
+                    "default": "both",
+                    "description": "Data source mode ('d365', 'both', or 'nce').",
+                },
+                "run_proactive_sweep": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Whether to run proactive telemetry sweep.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
     # Field Tech vertical module tools (ML12-B5, M12.W5)
     Tool(
         name="field_tech_dispatch",

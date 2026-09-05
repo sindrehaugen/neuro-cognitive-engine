@@ -1289,6 +1289,20 @@ class _Config:
         "NCE_PROCUREMENT_AUTONOMY_PO_CEILING", 0.0
     )
 
+    # --- Support Module 10 B4 — Autonomy gates ---
+    # Maximum estimated dispatch cost (inclusive) for autonomous dispatch to
+    # Field Tech. Above ceiling: refuses autonomous execution without human confirm.
+    # Default: 0.0 (safest — all dispatches require human confirm by default).
+    NCE_SUPPORT_AUTONOMY_DISPATCH_CEILING: float = _float_env(
+        "NCE_SUPPORT_AUTONOMY_DISPATCH_CEILING", 0.0
+    )
+    # Minimum AI confidence required for autonomous ticket auto-close.
+    # Below this threshold, ticket resolution requires human confirmation.
+    # Default: 0.95 (conservative posture — avoids closing unresolved issues).
+    NCE_SUPPORT_AUTONOMY_AUTOCLOSE_CONFIDENCE: float = _float_env(
+        "NCE_SUPPORT_AUTONOMY_AUTOCLOSE_CONFIDENCE", 0.95
+    )
+
     # --- External Tamper Anchor (Batch 124) ---
     # Object-locked (WORM) MinIO bucket that receives per-namespace Merkle chain heads.
     # The bucket MUST be created with versioning + object-lock enabled at creation time.

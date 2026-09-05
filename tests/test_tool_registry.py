@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 168  # +2 support tools (ML10b-P1, M10.W1)
+_EXPECTED_TOTAL = 170  # +2 support tools (ML10b-P2/P3, M10.W2/W3)
 
 
 def test_registry_has_expected_entries():
@@ -189,6 +189,9 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "marketing_publish_content",
         # ML10b-P1 -- Support Engine touchpoint record mutation
         "support_record_touchpoint",
+        # ML10b-P2/P3 -- Support Engine dispatch and sync mutations
+        "support_dispatch_work_order",
+        "support_sync_now",
     }
 )
 
@@ -201,7 +204,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 72  # 71 previous + 1 support tool from ML10b-P1
+    assert len(MUTATION_TOOLS) == 74  # 72 previous + 2 support tools from ML10b-P2/P3
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -387,6 +390,9 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "marketing_capture_testimonial",
         "marketing_approve_content",
         "marketing_publish_content",
+        # ML10b-P2/P3 -- Support Engine dispatch and sync mutations
+        "support_dispatch_work_order",
+        "support_sync_now",
     }
 )
 
@@ -399,7 +405,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 37  # 32 previous + 5 marketing tools from ML14-B3
+    assert len(ADMIN_ONLY_TOOLS) == 39  # 37 previous + 2 support tools from ML10b-P2/P3
 
 
 # ---------------------------------------------------------------------------

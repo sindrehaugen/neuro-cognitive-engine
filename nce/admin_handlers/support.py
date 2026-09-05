@@ -14,11 +14,15 @@ Exports:
   ``api_support_tickets_resolve``  — POST /api/support/tickets/{id}/resolve
   ``api_support_tickets_triage``   — POST /api/support/tickets/{id}/triage
   ``api_support_touchpoints_record`` — POST /api/support/touchpoints
+  ``api_support_tickets_dispatch`` — POST /api/support/tickets/{id}/dispatch
+  ``api_support_sync_now``         — POST /api/support/sync/now
+  ``api_support_sync_status``      — GET  /api/support/sync/status
 
 All handlers are thin REST wrappers over the vertical module cores in
 ``nce/vertical_modules/support/**`` (``do_open_ticket``, ``do_query_ticket``,
 ``do_sla_clock``, ``do_health_score``, ``do_troubleshoot``, ``do_resolve_ticket``,
-``do_triage_ticket``, ``do_record_touchpoint``)
+``do_triage_ticket``, ``do_record_touchpoint``, ``do_dispatch_work_order``,
+``do_sync_now``, ``do_sync_status``)
 — adhering to the "one core function, two surfaces" pattern.
 
 Mutating routes invalidate the MCP response cache via ``bump_mcp_cache_generation``.
@@ -27,8 +31,9 @@ Error mapping:
   missing/invalid ``namespace_id`` or path ``id``    -> 422
   ``ValueError`` from a core                         -> 422
   support vertical not enabled                       -> 409
-  ticket absent (GET/resolve/troubleshoot)           -> 404
+  ticket absent (GET/resolve/troubleshoot/dispatch)  -> 404
   ticket already resolved / invalid status           -> 409
+  dispatch ceiling exceeded                          -> 409
   anything else                                      -> 500 via ``admin_error_response``
 """
 
@@ -48,8 +53,13 @@ from nce.vertical_modules.support._guard import (
     SupportDisabledError,
     require_support_enabled,
 )
+from nce.vertical_modules.support.dispatch import (
+    DispatchCeilingExceededError,
+    do_dispatch_work_order,
+)
 from nce.vertical_modules.support.health import do_health_score, do_record_touchpoint
 from nce.vertical_modules.support.sla import do_sla_clock
+from nce.vertical_modules.support.sync import do_sync_now, do_sync_status
 from nce.vertical_modules.support.tickets import (
     InvalidTicketStatusError,
     TicketAlreadyResolvedError,
@@ -645,4 +655,193 @@ async def api_support_touchpoints_record(request: Any) -> JSONResponse:
         )
 
     await bump_mcp_cache_generation(admin_state.engine, route="api_support_touchpoints_record")
+    return JSONResponse({"ok": True, **result})
+
+
+# ---------------------------------------------------------------------------
+# POST /api/support/tickets/{id}/dispatch
+# ---------------------------------------------------------------------------
+
+
+async def api_support_tickets_dispatch(request: Any) -> JSONResponse:
+    """POST /api/support/tickets/{id}/dispatch — dispatch ticket to Field Tech work order.
+
+    Path parameter:
+        id (str): Ticket UUID.
+
+    Request body (JSON):
+        namespace_id (str, required): Active namespace UUID.
+        estimated_cost (float, optional): Estimated cost to evaluate against DISPATCH_CEILING.
+        dispatch_ceiling (float, optional): Ceiling override.
+        confirm (bool, optional): Human confirmation override for over-ceiling dispatch.
+        notes (str, optional): Dispatch notes.
+
+    Response (JSON):
+        {"ok": True, "dispatched": True, "ticket_id": str, "work_order_id": str, ...}
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    ticket_id = (request.path_params.get("id") or "").strip()
+    if not ticket_id:
+        return JSONResponse({"error": "Missing path parameter: id"}, status_code=422)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    namespace_id, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_support_enabled(pool, namespace_id)
+    except SupportDisabledError as exc:
+        return JSONResponse({"error": str(exc), "reason": "support_disabled"}, status_code=409)
+
+    params = dict(body)
+    params["namespace_id"] = namespace_id
+    params["ticket_id"] = ticket_id
+
+    try:
+        result = await do_dispatch_work_order(admin_state.engine, params)
+    except DispatchCeilingExceededError as exc:
+        return JSONResponse(
+            {
+                "error": str(exc),
+                "reason": "dispatch_ceiling_exceeded",
+                "estimated_cost": exc.estimated_cost,
+                "ceiling": exc.ceiling,
+            },
+            status_code=409,
+        )
+    except TicketNotFoundError as exc:
+        return JSONResponse(
+            {"error": str(exc), "not_found": True, "ticket_id": exc.ticket_id},
+            status_code=404,
+        )
+    except InvalidTicketStatusError as exc:
+        return JSONResponse(
+            {
+                "error": str(exc),
+                "reason": "invalid_ticket_status",
+                "ticket_id": exc.ticket_id,
+                "status": exc.status,
+            },
+            status_code=409,
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Support ticket dispatch error",
+            exc,
+            status_code=500,
+            log_event="api_support_tickets_dispatch",
+        )
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_support_tickets_dispatch")
+    return JSONResponse({"ok": True, **result})
+
+
+# ---------------------------------------------------------------------------
+# POST /api/support/sync/now (and /api/support/sync-now)
+# ---------------------------------------------------------------------------
+
+
+async def api_support_sync_now(request: Any) -> JSONResponse:
+    """POST /api/support/sync/now — trigger incremental D365 case sync and proactive sweep.
+
+    Request body (JSON):
+        namespace_id (str, required): Active namespace UUID.
+        mode (str, optional): 'd365', 'both', or 'nce'.
+        run_proactive_sweep (bool, optional): whether to run proactive sweep (default True).
+
+    Response (JSON):
+        {"ok": True, "status": "completed", "d365_sync": {...}, "proactive_sweep": {...}}
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    namespace_id, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_support_enabled(pool, namespace_id)
+    except SupportDisabledError as exc:
+        return JSONResponse({"error": str(exc), "reason": "support_disabled"}, status_code=409)
+
+    params = dict(body)
+    params["namespace_id"] = namespace_id
+
+    try:
+        result = await do_sync_now(admin_state.engine, params)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Support sync now error",
+            exc,
+            status_code=500,
+            log_event="api_support_sync_now",
+        )
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_support_sync_now")
+    return JSONResponse({"ok": True, **result})
+
+
+# ---------------------------------------------------------------------------
+# GET /api/support/sync/status (and /api/support/sync-status)
+# ---------------------------------------------------------------------------
+
+
+async def api_support_sync_status(request: Any) -> JSONResponse:
+    """GET /api/support/sync/status — check D365 feed health and sync status.
+
+    Query parameters:
+        namespace_id (str, required): Active namespace UUID.
+        mode (str, optional): data source mode.
+
+    Response (JSON):
+        {"ok": True, "status": "healthy", "last_sync": str, "source_mode": str}
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
+    if err is not None:
+        return err
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_support_enabled(pool, namespace_id)
+    except SupportDisabledError as exc:
+        return JSONResponse({"error": str(exc), "reason": "support_disabled"}, status_code=409)
+
+    params = {
+        "namespace_id": namespace_id,
+        "mode": request.query_params.get("mode", "both"),
+    }
+
+    try:
+        result = await do_sync_status(admin_state.engine, params)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Support sync status error",
+            exc,
+            status_code=500,
+            log_event="api_support_sync_status",
+        )
+
     return JSONResponse({"ok": True, **result})
