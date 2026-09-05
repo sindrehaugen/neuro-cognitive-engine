@@ -14,14 +14,24 @@ Security Architecture (Charter §2):
 
 __version__ = "0.1.0"
 
+from nce.vertical_modules.customer_portal.documents import (
+    do_get_document,
+    do_list_documents,
+)
+from nce.vertical_modules.customer_portal.invoices import do_list_invoices
 from nce.vertical_modules.customer_portal.rooms import (
     do_asset_register,
     do_room_overview,
     do_room_tracker,
 )
+from nce.vertical_modules.customer_portal.sla import do_sla_status
 
 __all__ = [
     "do_asset_register",
+    "do_get_document",
+    "do_list_documents",
+    "do_list_invoices",
     "do_room_overview",
     "do_room_tracker",
+    "do_sla_status",
 ]

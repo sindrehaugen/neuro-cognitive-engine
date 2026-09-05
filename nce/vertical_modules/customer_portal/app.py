@@ -148,6 +148,104 @@ async def api_portal_asset_register(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(exc)}, status_code=403)
 
 
+async def api_portal_documents(request: Request) -> JSONResponse:
+    """Document shares listing endpoint."""
+    cust_scope = request.headers.get(
+        "X-Customer-Scope-ID", request.query_params.get("customer_scope_id")
+    )
+    ns_id = request.headers.get("X-Namespace-ID", request.query_params.get("namespace_id"))
+
+    if not cust_scope:
+        return JSONResponse({"error": "Unauthorized: customer scope required"}, status_code=401)
+
+    params = {
+        "namespace_id": ns_id,
+        "customer_scope_id": cust_scope,
+        **dict(request.query_params),
+    }
+    try:
+        from nce.vertical_modules.customer_portal.documents import do_list_documents
+
+        result = await do_list_documents(request.app.state.engine, params)
+        return JSONResponse(result)
+    except PermissionError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=403)
+
+
+async def api_portal_document(request: Request) -> JSONResponse:
+    """Single document share access endpoint."""
+    share_id = request.path_params["share_id"]
+    cust_scope = request.headers.get(
+        "X-Customer-Scope-ID", request.query_params.get("customer_scope_id")
+    )
+    ns_id = request.headers.get("X-Namespace-ID", request.query_params.get("namespace_id"))
+
+    if not cust_scope:
+        return JSONResponse({"error": "Unauthorized: customer scope required"}, status_code=401)
+
+    params = {
+        "namespace_id": ns_id,
+        "customer_scope_id": cust_scope,
+        "share_id": share_id,
+        **dict(request.query_params),
+    }
+    try:
+        from nce.vertical_modules.customer_portal.documents import do_get_document
+
+        result = await do_get_document(request.app.state.engine, params)
+        return JSONResponse(result)
+    except PermissionError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=403)
+
+
+async def api_portal_sla_status(request: Request) -> JSONResponse:
+    """SLA self-service status endpoint."""
+    cust_scope = request.headers.get(
+        "X-Customer-Scope-ID", request.query_params.get("customer_scope_id")
+    )
+    ns_id = request.headers.get("X-Namespace-ID", request.query_params.get("namespace_id"))
+
+    if not cust_scope:
+        return JSONResponse({"error": "Unauthorized: customer scope required"}, status_code=401)
+
+    params = {
+        "namespace_id": ns_id,
+        "customer_scope_id": cust_scope,
+        **dict(request.query_params),
+    }
+    try:
+        from nce.vertical_modules.customer_portal.sla import do_sla_status
+
+        result = await do_sla_status(request.app.state.engine, params)
+        return JSONResponse(result)
+    except PermissionError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=403)
+
+
+async def api_portal_invoices(request: Request) -> JSONResponse:
+    """Invoices listing endpoint."""
+    cust_scope = request.headers.get(
+        "X-Customer-Scope-ID", request.query_params.get("customer_scope_id")
+    )
+    ns_id = request.headers.get("X-Namespace-ID", request.query_params.get("namespace_id"))
+
+    if not cust_scope:
+        return JSONResponse({"error": "Unauthorized: customer scope required"}, status_code=401)
+
+    params = {
+        "namespace_id": ns_id,
+        "customer_scope_id": cust_scope,
+        **dict(request.query_params),
+    }
+    try:
+        from nce.vertical_modules.customer_portal.invoices import do_list_invoices
+
+        result = await do_list_invoices(request.app.state.engine, params)
+        return JSONResponse(result)
+    except PermissionError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=403)
+
+
 def build_customer_portal_app(engine: Any = None) -> Starlette:
     """Construct the isolated Customer Portal application."""
     routes = [
@@ -156,6 +254,10 @@ def build_customer_portal_app(engine: Any = None) -> Starlette:
         Route("/api/portal/rooms/overview", api_portal_room_overview, methods=["GET"]),
         Route("/api/portal/rooms/{room_id}/tracker", api_portal_room_tracker, methods=["GET"]),
         Route("/api/portal/rooms/{room_id}/assets", api_portal_asset_register, methods=["GET"]),
+        Route("/api/portal/documents", api_portal_documents, methods=["GET"]),
+        Route("/api/portal/documents/{share_id}", api_portal_document, methods=["GET"]),
+        Route("/api/portal/sla", api_portal_sla_status, methods=["GET"]),
+        Route("/api/portal/invoices", api_portal_invoices, methods=["GET"]),
     ]
 
     middleware = [
