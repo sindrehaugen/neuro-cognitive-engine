@@ -44,7 +44,7 @@ _FIXTURE_WEIGHTS_A: dict = {
         "delivery_reliability": 0.25,
         "bid_price": 0.20,
         "tier_bundling": 0.10,
-        "kickback_proximity": 0.05,
+        "rebate_proximity": 0.05,
     },
 }
 
@@ -61,7 +61,7 @@ _FIXTURE_WEIGHTS_B: dict = {
         "delivery_reliability": 0.20,
         "bid_price": 0.15,
         "tier_bundling": 0.10,
-        "kickback_proximity": 0.05,
+        "rebate_proximity": 0.05,
     },
 }
 
@@ -331,7 +331,7 @@ def test_weights_json_scoring_weights_contains_required_sub_keys():
     weights, _ = load_procurement_config()
     scoring_w = weights["SCORING_WEIGHTS"]
 
-    for key in ("tco", "delivery_reliability", "bid_price", "tier_bundling", "kickback_proximity"):
+    for key in ("tco", "delivery_reliability", "bid_price", "tier_bundling", "rebate_proximity"):
         assert key in scoring_w, f"SCORING_WEIGHTS must contain '{key}'"
 
 

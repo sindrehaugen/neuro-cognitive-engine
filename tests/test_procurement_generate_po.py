@@ -62,7 +62,7 @@ _WEIGHTS: dict = {
         "delivery_reliability": 0.20,
         "bid_price": 0.20,
         "tier_bundling": 0.15,
-        "kickback_proximity": 0.15,
+        "rebate_proximity": 0.15,
     },
 }
 
@@ -76,7 +76,7 @@ _CANDIDATES: list[dict] = [
         "lead_time_days": 3,
         "delivery_reliability": 0.95,
         "supplier_tier": 1,
-        "kickback_proximity": 0.8,
+        "rebate_proximity": 0.8,
         "bundles_well": True,
     },
     {
@@ -86,7 +86,7 @@ _CANDIDATES: list[dict] = [
         "lead_time_days": 7,
         "delivery_reliability": 0.80,
         "supplier_tier": 2,
-        "kickback_proximity": 0.5,
+        "rebate_proximity": 0.5,
         "bundles_well": False,
     },
 ]

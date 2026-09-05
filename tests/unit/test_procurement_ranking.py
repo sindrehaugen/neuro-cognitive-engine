@@ -28,6 +28,8 @@ All tests are plain unit tests (no DB, no Redis, no HTTP).
 
 from __future__ import annotations
 
+import copy
+
 import pytest
 
 # ---------------------------------------------------------------------------
@@ -46,7 +48,7 @@ _WEIGHTS_A: dict = {
         "delivery_reliability": 0.25,
         "bid_price": 0.20,
         "tier_bundling": 0.10,
-        "kickback_proximity": 0.05,
+        "rebate_proximity": 0.05,
     },
 }
 
@@ -63,7 +65,7 @@ _WEIGHTS_B: dict = {
         "delivery_reliability": 0.50,
         "bid_price": 0.15,
         "tier_bundling": 0.10,
-        "kickback_proximity": 0.05,
+        "rebate_proximity": 0.05,
     },
 }
 
@@ -77,7 +79,7 @@ _CANDIDATE_CHEAP = {
     "own_stock": False,
     "lead_time_days": 5,
     "supplier_tier": 2,
-    "kickback_proximity": 0.4,
+    "rebate_proximity": 0.4,
     "bundles_well": False,
 }
 
@@ -88,7 +90,7 @@ _CANDIDATE_EXPENSIVE = {
     "own_stock": False,
     "lead_time_days": 7,
     "supplier_tier": 3,
-    "kickback_proximity": 0.3,
+    "rebate_proximity": 0.3,
     "bundles_well": False,
 }
 
@@ -168,7 +170,7 @@ def test_different_weights_can_produce_different_winner():
         "own_stock": False,
         "lead_time_days": 3,
         "supplier_tier": 1,
-        "kickback_proximity": 0.1,
+        "rebate_proximity": 0.1,
         "bundles_well": False,
     }
     # Candidate with low price but poor delivery
@@ -179,7 +181,7 @@ def test_different_weights_can_produce_different_winner():
         "own_stock": False,
         "lead_time_days": 14,
         "supplier_tier": 4,
-        "kickback_proximity": 0.1,
+        "rebate_proximity": 0.1,
         "bundles_well": False,
     }
 
@@ -226,7 +228,7 @@ def test_lower_price_improves_rank():
         "own_stock": False,
         "lead_time_days": 5,
         "supplier_tier": 2,
-        "kickback_proximity": 0.3,
+        "rebate_proximity": 0.3,
         "bundles_well": False,
     }
     c_higher_price = {
@@ -236,7 +238,7 @@ def test_lower_price_improves_rank():
         "own_stock": False,
         "lead_time_days": 5,
         "supplier_tier": 2,
-        "kickback_proximity": 0.3,
+        "rebate_proximity": 0.3,
         "bundles_well": False,
     }
 
@@ -291,7 +293,7 @@ def test_rebate_override_fires_when_step5_changes_winner():
         "own_stock": False,
         "lead_time_days": 10,
         "supplier_tier": 4,
-        "kickback_proximity": 0.0,
+        "rebate_proximity": 0.0,
         "bundles_well": False,
     }
     # Governance-steered candidate: higher price but huge tier/kickback/bundling bonus
@@ -302,7 +304,7 @@ def test_rebate_override_fires_when_step5_changes_winner():
         "own_stock": True,
         "lead_time_days": 3,
         "supplier_tier": 1,
-        "kickback_proximity": 1.0,
+        "rebate_proximity": 1.0,
         "bundles_well": True,
     }
 
@@ -319,7 +321,7 @@ def test_rebate_override_fires_when_step5_changes_winner():
             "delivery_reliability": 0.10,
             "bid_price": 0.10,
             "tier_bundling": 0.45,
-            "kickback_proximity": 0.25,
+            "rebate_proximity": 0.25,
         },
     }
 
@@ -352,7 +354,7 @@ def test_no_rebate_override_when_tco_winner_also_composite_winner():
         "own_stock": True,
         "lead_time_days": 2,
         "supplier_tier": 1,
-        "kickback_proximity": 0.9,
+        "rebate_proximity": 0.9,
         "bundles_well": True,
     }
     c_weak = {
@@ -362,7 +364,7 @@ def test_no_rebate_override_when_tco_winner_also_composite_winner():
         "own_stock": False,
         "lead_time_days": 12,
         "supplier_tier": 4,
-        "kickback_proximity": 0.1,
+        "rebate_proximity": 0.1,
         "bundles_well": False,
     }
 
@@ -502,7 +504,7 @@ def test_real_config_produces_valid_ranking():
         "own_stock": True,
         "lead_time_days": 3,
         "supplier_tier": 1,
-        "kickback_proximity": 0.6,
+        "rebate_proximity": 0.6,
         "bundles_well": True,
     }
     c2 = {
@@ -512,7 +514,7 @@ def test_real_config_produces_valid_ranking():
         "own_stock": False,
         "lead_time_days": 7,
         "supplier_tier": 3,
-        "kickback_proximity": 0.2,
+        "rebate_proximity": 0.2,
         "bundles_well": False,
     }
 
@@ -525,3 +527,82 @@ def test_real_config_produces_valid_ranking():
     for entry in result["ranked"]:
         assert "tco" in entry
         assert entry["tco"]["total"] > 0
+
+
+# ---------------------------------------------------------------------------
+# 15-16. Legacy "kickback_proximity" key (renamed to "rebate_proximity"
+#        on 2026-09-05). The rename must not silently change behaviour for a
+#        namespace or caller that has not migrated: a dropped key would fall
+#        back to the neutral 0.5 default, or to a zero weight, with no error.
+# ---------------------------------------------------------------------------
+
+
+def test_legacy_kickback_proximity_weight_key_is_still_honoured() -> None:
+    """A namespace still overriding the OLD weight key keeps its tuning.
+
+    Guard-the-guard: the third ranking uses neither key, and must differ from
+    both — otherwise this test would pass even if the legacy lookup were dead.
+    """
+    from nce.vertical_modules.procurement.ranking import do_rank_suppliers
+
+    legacy = copy.deepcopy(_WEIGHTS_A)
+    legacy["SCORING_WEIGHTS"]["kickback_proximity"] = legacy["SCORING_WEIGHTS"].pop(
+        "rebate_proximity"
+    )
+    assert "rebate_proximity" not in legacy["SCORING_WEIGHTS"]
+
+    heavy_new = copy.deepcopy(_WEIGHTS_A)
+    heavy_new["SCORING_WEIGHTS"]["rebate_proximity"] = 0.90
+
+    heavy_legacy = copy.deepcopy(heavy_new)
+    heavy_legacy["SCORING_WEIGHTS"]["kickback_proximity"] = heavy_legacy["SCORING_WEIGHTS"].pop(
+        "rebate_proximity"
+    )
+
+    cands = [dict(_CANDIDATE_CHEAP), dict(_CANDIDATE_EXPENSIVE)]
+
+    baseline = do_rank_suppliers(_WEIGHTS_A, _BOM_LINE, cands)
+    via_legacy = do_rank_suppliers(legacy, _BOM_LINE, cands)
+    weighted = do_rank_suppliers(heavy_legacy, _BOM_LINE, cands)
+
+    def scores(res: dict) -> list[float]:
+        return [e["composite_score"] for e in res["ranked"]]
+
+    # the legacy key reproduces the new key exactly
+    assert scores(via_legacy) == scores(baseline)
+    # ...and the weight is genuinely READ, not defaulted: raising it moves scores
+    assert scores(weighted) != scores(baseline)
+
+
+def test_legacy_kickback_proximity_candidate_field_is_still_honoured() -> None:
+    """A caller still sending the OLD candidate field keeps its value.
+
+    Guard-the-guard: a candidate carrying NEITHER field falls back to the
+    neutral 0.5 and must score differently from one carrying 0.0.
+    """
+    from nce.vertical_modules.procurement.ranking import do_rank_suppliers
+
+    base = dict(_CANDIDATE_CHEAP)
+    base.pop("rebate_proximity", None)
+
+    legacy_zero = dict(base)
+    legacy_zero["kickback_proximity"] = 0.0
+
+    new_zero = dict(base)
+    new_zero["rebate_proximity"] = 0.0
+
+    heavy = copy.deepcopy(_WEIGHTS_A)
+    heavy["SCORING_WEIGHTS"]["rebate_proximity"] = 0.90
+
+    other = dict(_CANDIDATE_EXPENSIVE)
+
+    def score_of(cand: dict) -> float:
+        res = do_rank_suppliers(heavy, _BOM_LINE, [cand, other])
+        return next(
+            e["composite_score"] for e in res["ranked"] if e["supplier_id"] == cand["supplier_id"]
+        )
+
+    # legacy field is read and equals the new field
+    assert score_of(legacy_zero) == score_of(new_zero)
+    # ...and omitting BOTH gives the neutral 0.5 default, which differs from 0.0
+    assert score_of(base) != score_of(new_zero)
