@@ -1,7 +1,8 @@
 """
 nce/vertical_modules/hr/absences.py
 ==================================
-Absence and leave registration for Module 13 (HR Engine).
+Absence, leave registration, and Norwegian statutory compliance integration
+for Module 13 (HR Engine).
 
 Functions:
   - do_register_absence: Register or update an absence record (Actor with confirmation).
@@ -17,11 +18,12 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from nce.db_utils import scoped_pg_session
+from nce.vertical_modules.hr.compliance import evaluate_absence_compliance
 
 log = logging.getLogger("nce.vertical_modules.hr.absences")
 
 _VALID_ABSENCE_TYPES = frozenset(
-    {"vacation", "sick_leave", "parental", "compassionate", "training", "other"}
+    {"vacation", "sick_leave", "sick", "parental", "compassionate", "training", "other"}
 )
 
 
@@ -78,11 +80,12 @@ async def do_register_absence(engine: Any, params: dict[str, Any]) -> dict[str, 
     if not employee_id:
         raise ValueError("employee_id is required")
 
-    absence_type = str(params.get("absence_type") or "").strip().lower()
-    if absence_type not in _VALID_ABSENCE_TYPES:
+    raw_type = str(params.get("absence_type") or params.get("type") or "").strip().lower()
+    if raw_type not in _VALID_ABSENCE_TYPES:
         raise ValueError(
-            f"absence_type must be one of {sorted(_VALID_ABSENCE_TYPES)}, got {absence_type!r}"
+            f"absence_type must be one of {sorted(_VALID_ABSENCE_TYPES)}, got {raw_type!r}"
         )
+    absence_type = "sick_leave" if raw_type == "sick" else raw_type
 
     start_d = _parse_date(params.get("start_date"), "start_date")
     end_d = _parse_date(params.get("end_date"), "end_date")
@@ -94,35 +97,49 @@ async def do_register_absence(engine: Any, params: dict[str, Any]) -> dict[str, 
     if days_val is not None:
         days = float(days_val)
     else:
-        # Simple calendar day difference inclusive + 1
         days = float((end_d - start_d).days + 1)
 
     reason = params.get("reason")
     status = str(params.get("status") or "approved").strip().lower()
     hr_source_id = params.get("hr_source_id")
-    raw = params.get("raw") or {}
-    raw_json = json.dumps(raw) if not isinstance(raw, str) else raw
+
+    raw = dict(params.get("raw") or {})
+
+    # Evaluate Norwegian statutory compliance if sick leave
+    comp_eval = evaluate_absence_compliance(
+        absence_type=absence_type,
+        start_date=start_d,
+        as_of_date=date.today(),
+        existing_compliance=raw.get("compliance"),
+    )
+    compliance_state = comp_eval["compliance_state"]
+    raw["compliance"] = {
+        "milestones": comp_eval.get("milestones", {}),
+        "last_evaluation": comp_eval,
+    }
+    raw_json = json.dumps(raw)
 
     async with scoped_pg_session(pool, ns_uuid) as conn:
         row = await conn.fetchrow(
             """
             INSERT INTO absences (
-                absence_id, employee_id, namespace_id, absence_type,
-                start_date, end_date, days, reason, status, hr_source_id, raw
+                absence_id, employee_id, namespace_id, type,
+                start_date, end_date, days, reason, status, compliance_state, hr_source_id, raw
             )
-            VALUES ($1, $2, $3::uuid, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+            VALUES ($1, $2, $3::uuid, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
             ON CONFLICT (absence_id, namespace_id) DO UPDATE
-            SET absence_type = EXCLUDED.absence_type,
+            SET type = EXCLUDED.type,
                 start_date = EXCLUDED.start_date,
                 end_date = EXCLUDED.end_date,
                 days = EXCLUDED.days,
                 reason = EXCLUDED.reason,
                 status = EXCLUDED.status,
+                compliance_state = EXCLUDED.compliance_state,
                 hr_source_id = COALESCE(EXCLUDED.hr_source_id, absences.hr_source_id),
                 raw = EXCLUDED.raw,
                 updated_at = now()
-            RETURNING id, absence_id, employee_id, namespace_id, absence_type,
-                      start_date, end_date, days, reason, status, hr_source_id, created_at
+            RETURNING id, absence_id, employee_id, namespace_id, type,
+                      start_date, end_date, days, reason, status, compliance_state, hr_source_id, raw, created_at
             """,
             absence_id,
             employee_id,
@@ -133,20 +150,111 @@ async def do_register_absence(engine: Any, params: dict[str, Any]) -> dict[str, 
             days,
             reason,
             status,
+            compliance_state,
             hr_source_id,
             raw_json,
         )
+
+    res_raw = json.loads(row["raw"]) if isinstance(row["raw"], str) else dict(row["raw"] or {})
 
     return {
         "id": str(row["id"]),
         "absence_id": row["absence_id"],
         "employee_id": row["employee_id"],
         "namespace_id": str(row["namespace_id"]),
-        "absence_type": row["absence_type"],
+        "absence_type": row["type"],
+        "type": row["type"],
         "start_date": row["start_date"].isoformat() if row["start_date"] else None,
         "end_date": row["end_date"].isoformat() if row["end_date"] else None,
         "days": float(row["days"]),
         "status": row["status"],
+        "compliance_state": row["compliance_state"],
+        "compliance": res_raw.get("compliance"),
         "hr_source_id": row["hr_source_id"],
         "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+    }
+
+
+async def do_query_absences(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
+    """Query employee absences with caller-role privacy scoping.
+
+    Parameters
+    ----------
+    params : dict[str, Any]
+        - namespace_id: (required) Tenant UUID.
+        - employee_id: (optional) Filter by employee.
+        - absence_type: (optional) Filter by absence type.
+        - caller_role: (optional, default 'peer') Role of calling agent.
+        - caller_employee_id: (optional) ID of caller if individual.
+    """
+    pool = _extract_pool(engine)
+    ns_uuid = _parse_uuid(params.get("namespace_id"), "namespace_id")
+
+    caller_role = str(params.get("caller_role") or "peer").strip().lower()
+    caller_emp_id = str(params.get("caller_employee_id") or "").strip()
+    target_emp_id = params.get("employee_id")
+    absence_type = params.get("absence_type") or params.get("type")
+
+    # Only HR, manager, verneombud, or self can view sensitive reasons
+    is_privileged = caller_role in ("hr", "manager", "verneombud", "admin", "system")
+
+    conditions = ["namespace_id = $1::uuid"]
+    query_args: list[Any] = [ns_uuid]
+    idx = 2
+
+    if target_emp_id:
+        conditions.append(f"employee_id = ${idx}")
+        query_args.append(str(target_emp_id).strip())
+        idx += 1
+
+    if absence_type:
+        conditions.append(f"type = ${idx}")
+        query_args.append(str(absence_type).strip().lower())
+        idx += 1
+
+    where_clause = " AND ".join(conditions)
+
+    async with scoped_pg_session(pool, ns_uuid) as conn:
+        rows = await conn.fetch(
+            f"""
+            SELECT id, absence_id, employee_id, namespace_id, type,
+                   start_date, end_date, days, reason, status, compliance_state,
+                   hr_source_id, raw, created_at
+            FROM absences
+            WHERE {where_clause}
+            ORDER BY start_date DESC
+            """,
+            *query_args,
+        )
+
+    out = []
+    for r in rows:
+        is_self = caller_emp_id and r["employee_id"] == caller_emp_id
+        can_read_reason = is_privileged or is_self
+
+        st_d = r["start_date"]
+        en_d = r["end_date"]
+        raw_dict = json.loads(r["raw"]) if isinstance(r["raw"], str) else dict(r["raw"] or {})
+
+        out.append(
+            {
+                "absence_id": r["absence_id"],
+                "employee_id": r["employee_id"],
+                "absence_type": r["type"],
+                "type": r["type"],
+                "start_date": st_d.isoformat() if st_d else None,
+                "end_date": en_d.isoformat() if en_d else None,
+                "days": float(r["days"]),
+                "status": r["status"],
+                "compliance_state": r["compliance_state"],
+                "reason": r["reason"] if can_read_reason else None,
+                "compliance": raw_dict.get("compliance") if can_read_reason else None,
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            }
+        )
+
+    return {
+        "namespace_id": str(ns_uuid),
+        "count": len(out),
+        "absences": out,
     }
