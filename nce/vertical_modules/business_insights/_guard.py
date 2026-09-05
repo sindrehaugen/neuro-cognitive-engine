@@ -60,3 +60,23 @@ def assert_exec_or_board_role(
             f"Access denied: principal role {principal_role!r} is not authorized for "
             "Business Insights executive surfaces."
         )
+
+
+def is_engine_landed(engine_name: str) -> bool:
+    """Check if an upstream engine is landed and available."""
+    from nce.vertical_modules.business_insights.kpi import LIVE_ENGINES
+
+    return engine_name.lower() in LIVE_ENGINES
+
+
+async def require_insights_role(
+    principal_role: str | None,
+    allow_board: bool = True,
+    allowed_roles: set[str] | None = None,
+) -> None:
+    """Validate executive or board authorization asynchronously."""
+    if allowed_roles is None:
+        allowed_roles = {"admin", "executive", "finance_director", "managing_director"}
+        if allow_board:
+            allowed_roles.add("board")
+    assert_exec_or_board_role(principal_role, allowed_roles=allowed_roles)

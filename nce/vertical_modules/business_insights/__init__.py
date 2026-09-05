@@ -16,8 +16,10 @@ from __future__ import annotations
 
 from nce.vertical_modules.business_insights.brief import do_morning_brief
 from nce.vertical_modules.business_insights.kpi import do_kpi_dashboard
+from nce.vertical_modules.business_insights.radar import do_risk_radar
 
 __all__ = [
     "do_kpi_dashboard",
     "do_morning_brief",
+    "do_risk_radar",
 ]
