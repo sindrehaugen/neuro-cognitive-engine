@@ -1208,6 +1208,25 @@ class NCEEngine(OrchestratorBase):
             health["databases"]["rls_read"] = "failed"
             health["status"] = "degraded"
 
+        # (d) RLS role-capability posture — WARN + degraded only, never raises (Sindre's ruling)
+        try:
+            if self.pg_pool:
+                from nce.event_log import verify_rls_role_capability
+
+                async with self.pg_pool.acquire(timeout=10.0) as conn:
+                    role_findings = await verify_rls_role_capability(conn)
+                if role_findings:
+                    health["security"]["rls_role_posture"] = role_findings
+                    health["status"] = "degraded"
+                else:
+                    health["security"]["rls_role_posture"] = "ok"
+            else:
+                health["status"] = "degraded"
+        except Exception:
+            log.exception("Health probe (d) verify RLS role capability failed")
+            health["security"]["rls_role_posture"] = "failed"
+            health["status"] = "degraded"
+
         # 3. Redis
         try:
             if self.redis_client:

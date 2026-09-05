@@ -154,6 +154,7 @@ __all__ = [
     "_WORM_TABLES",
     "verify_rls_enforcement",
     "verify_rls_catalog_consistency",
+    "verify_rls_role_capability",
     "EXPECTED_TENANT_RLS_TABLES",
     "EXPECTED_SPECIAL_RLS_TABLES",
     "EXPECTED_GLOBAL_TABLES",
@@ -607,6 +608,101 @@ async def verify_rls_catalog_consistency(conn: asyncpg.Connection) -> None:
         raise RuntimeError(
             "RLS catalog consistency check failed:\n" + "\n".join(f"  - {e}" for e in errors)
         )
+
+
+# Findings already logged at ERROR once this process — check #2's finding
+# fires on every current deployment, and check_health polls every 10-30s;
+# without this, the posture warning would drown real errors forever. The
+# return value stays complete every call; only the logging is deduped.
+_LOGGED_RLS_POSTURE_FINDINGS: set[str] = set()
+
+
+async def verify_rls_role_capability(conn: asyncpg.Connection) -> list[str]:
+    """
+    Report whether the connecting role can actually be bound by RLS.
+
+    Unlike :func:`verify_rls_catalog_consistency`, this NEVER raises — it
+    returns a list of findings (empty when the posture is correct) so callers
+    can WARN and mark themselves degraded instead of refusing to boot.  A
+    superuser or bypassrls role trips every deployment's `mcp_user`
+    connection, which is expected and must not be fatal.
+
+    Findings reported (each also logged at ERROR, at most once per process,
+    with a `[rls-posture]` prefix — the returned list is always complete
+    regardless of what has already been logged):
+
+    0. The connecting role has no matching row in ``pg_roles`` — the role
+       could not be determined, so check #2 below cannot be answered and is
+       skipped entirely rather than run against a placeholder role name.
+    1. The connecting role holds ``rolsuper`` or ``rolbypassrls`` — it can
+       read past RLS regardless of policy correctness.
+    2. Among tables in :data:`EXPECTED_TENANT_RLS_TABLES` that have at least
+       one RLS policy, none of those policies' role list
+       (``pg_policies.roles``) includes the connecting role (or ``public``)
+       — reported as a single count + bounded sample, not one finding per
+       table. A table with zero policies is not this check's business: it is
+       already fatal via :func:`verify_rls_catalog_consistency`.
+    """
+    findings: list[str] = []
+
+    def _log_once(finding: str) -> None:
+        if finding not in _LOGGED_RLS_POSTURE_FINDINGS:
+            _LOGGED_RLS_POSTURE_FINDINGS.add(finding)
+            log.error("[rls-posture] %s", finding)
+
+    role_row = await conn.fetchrow(
+        "SELECT cu.role_name, r.rolsuper, r.rolbypassrls "
+        "FROM (SELECT current_user AS role_name) cu "
+        "LEFT JOIN pg_roles r ON r.rolname = cu.role_name"
+    )
+    role_name = role_row["role_name"] if role_row is not None else "unknown"
+
+    if role_row is None or role_row["rolsuper"] is None:
+        finding = (
+            "could not determine RLS role posture: connecting role "
+            f"{role_name!r} has no matching row in pg_roles"
+        )
+        findings.append(finding)
+        _log_once(finding)
+        return findings
+
+    if role_row["rolsuper"] or role_row["rolbypassrls"]:
+        finding = (
+            f"connecting role {role_name!r} can bypass RLS "
+            f"(rolsuper={role_row['rolsuper']}, rolbypassrls={role_row['rolbypassrls']})"
+        )
+        findings.append(finding)
+        _log_once(finding)
+
+    declared_tables = list(EXPECTED_TENANT_RLS_TABLES)
+    match_rows = await conn.fetch(
+        """
+        SELECT tablename,
+               bool_or(current_user = ANY(roles) OR 'public' = ANY(roles)) AS role_matches
+        FROM   pg_policies
+        WHERE  schemaname = 'public'
+          AND  tablename  = ANY($1::text[])
+        GROUP BY tablename
+        """,
+        declared_tables,
+    )
+    # Only tables with >=1 policy row appear here at all (GROUP BY over a
+    # filtered pg_policies) — a table with zero policies is excluded rather
+    # than counted as non-conforming (fix 1).
+    tables_with_policies = {r["tablename"]: r["role_matches"] for r in match_rows}
+    non_conforming = sorted(t for t, matches in tables_with_policies.items() if not matches)
+    if non_conforming:
+        sample = non_conforming[:10]
+        remainder = len(non_conforming) - len(sample)
+        finding = (
+            f"{len(non_conforming)} tenant table(s) have no RLS policy targeting "
+            f"connecting role {role_name!r}: {', '.join(sample)}"
+            + (f" (+{remainder} more)" if remainder > 0 else "")
+        )
+        findings.append(finding)
+        _log_once(finding)
+
+    return findings
 
 
 # ---------------------------------------------------------------------------
