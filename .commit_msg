@@ -1,0 +1,9 @@
+feat: implement v2.2 enterprise capabilities (bridges, extractors, cloud IaC)
+
+- Add FastAPI webhook receiver with secure HMAC/token validation for Dropbox, MS Graph, and Google Drive
+- Implement universal file format extractors and structured chunking logic
+- Add comprehensive unit tests for webhook receiver and core extractors
+- Remove deprecated HTTP/SSE MCP transport and legacy AST line splitter
+- Add Go shim (`trimcp-launch`) for native multi-platform installation
+- Add Terraform/Bicep IaC modules for AWS, Azure, and GCP deployments
+- Update README.md and generate comprehensive enterprise documentation

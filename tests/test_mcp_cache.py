@@ -312,6 +312,44 @@ async def test_mutation_bumps_generation(mock_engine):
 
 
 @pytest.mark.asyncio
+async def test_redis_failure_after_a_committed_mutation_does_not_fail_the_call(mock_engine):
+    """D3: the write has LANDED -- a Redis blip must not tell the caller it failed.
+
+    ``bump_cache_generation`` runs AFTER the handler returns, inside the same
+    ``try`` whose ``except BaseException`` rolls back quota and re-raises. So a
+    Redis outage on that line turned a committed mutation into ``-32603``, and
+    a client that retries on an internal error would write it twice.
+
+    The REST twin already argues this exact case in its own docstring
+    (``admin_handlers/_shared.py``: *"failing the HTTP response would invite the
+    caller to retry a write that already landed"*). Same reasoning, two answers,
+    one codebase -- until now.
+    """
+    from server import call_tool
+
+    mock_engine.redis_client.incr.side_effect = ConnectionError("redis is down")
+
+    args = {
+        "namespace_id": TEST_NS,
+        "agent_id": "u1",
+        "content": "new memory content",
+        "summary": "new memory",
+        "heavy_payload": "full content",
+    }
+    res = await call_tool("store_memory", args)
+
+    # The mutation must have happened, and the caller must be told it happened.
+    mock_engine.store_memory.assert_called_once()
+    assert res, "dispatch returned nothing for a committed mutation"
+    body = res[0].text
+    assert "-32603" not in body, (
+        "a committed mutation was reported as an internal error because the "
+        f"post-success cache bump raised: {body[:400]}"
+    )
+    assert "error" not in body.lower(), body[:400]
+
+
+@pytest.mark.asyncio
 async def test_forget_memory_triggers_document_purge(mock_engine):
     """``forget_memory`` must trigger document-level cache purge."""
     from server import call_tool

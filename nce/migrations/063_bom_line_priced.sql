@@ -1,0 +1,33 @@
+-- 063_bom_line_priced.sql
+-- ============================================================================
+-- D48: "unpriced is a state, not a value".
+--
+-- nce/vertical_modules/system_design/to_quote.py writes unit_price/line_total
+-- = 0.00 for every design-generated BOM_LINE (qty/price are not in the design
+-- graph -- see that module's DECLARED OMISSION comment). Nothing downstream
+-- could tell that placeholder zero apart from a line genuinely priced at
+-- zero, so freeze_bom_lines_for_quote (nce/bom_lines.py) could freeze an
+-- unpriced line into a signed baseline with nothing objecting.
+--
+-- unit_price / line_total stay NOT NULL NUMERIC(18,2) (migration 058) -- a
+-- nullable column would describe a minority state in every row and would
+-- force `IS NULL OR` into both existing `>= 0` CHECK constraints. Instead,
+-- this column is the discriminator: the number stays 0.00, and this column
+-- says whether that zero means anything.
+--
+-- DEFAULT TRUE is deliberate: every existing row was authored with a real
+-- price, so the default states the truth about history rather than
+-- retro-labelling it unknown.
+--
+-- Idempotent DDL, and the reason is NOT "everything re-runs every boot" -- that
+-- claim is false and was corrected before this file landed. There IS a ledger:
+-- applied_migrations (nce/migration_ledger.py, documented at
+-- nce/orchestrator.py:432), keyed on filename with a line-ending-normalised
+-- checksum, and the boot path SKIPS a file already recorded at the same
+-- checksum. IF NOT EXISTS is here for the databases that predate the ledger --
+-- applied_checksums() treats a missing table as an empty ledger and re-applies
+-- everything once -- and for the shared dev DB, where this ALTER was applied by
+-- hand before the ledger ever saw the file.
+-- ============================================================================
+
+ALTER TABLE bom_line_content ADD COLUMN IF NOT EXISTS priced BOOLEAN NOT NULL DEFAULT TRUE;

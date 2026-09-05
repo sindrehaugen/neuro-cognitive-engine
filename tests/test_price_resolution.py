@@ -235,3 +235,52 @@ async def test_result_has_required_keys() -> None:
     )
 
     assert set(result.keys()) >= {"cost", "source", "as_of", "stale"}
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_naive_as_of_is_read_as_utc_not_rejected() -> None:
+    """A NAIVE ``as_of`` must resolve, because MongoDB hands datetimes back naive.
+
+    ``sales/dealroom.py`` reads its price tiers out of MongoDB and BSON drops the
+    timezone, so every dated price arriving by that route reached ``_is_stale``
+    naive and raised
+
+        TypeError: can't subtract offset-naive and offset-aware datetimes
+
+    It was invisible because dealroom caught the exception and substituted a
+    fabricated price. PR #187 removed the fabrication and the crash surfaced as
+    ``price_resolution_failed`` on a line whose price was perfectly well recorded.
+
+    This module's own contract says ``as_of (datetime, UTC)``; a naive UTC stamp
+    satisfies it, so it is normalised rather than refused.
+    """
+    naive_recent = datetime.datetime.utcnow()  # noqa: DTZ003 - naive ON PURPOSE
+    assert naive_recent.tzinfo is None, "fixture must be naive or this proves nothing"
+
+    result = await resolve_price(
+        _fake_conn(),
+        namespace_id=_namespace(),
+        product={"base_price": 300.0, "base_as_of": naive_recent},
+        customer={},
+    )
+
+    assert result["cost"] == 300.0
+    assert result["source"] == "base"
+    assert result["stale"] is False
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_naive_as_of_is_still_judged_for_staleness() -> None:
+    """The sibling: normalising must not make every naive price look fresh."""
+    naive_old = datetime.datetime.utcnow() - datetime.timedelta(days=3650)  # noqa: DTZ003
+
+    result = await resolve_price(
+        _fake_conn(),
+        namespace_id=_namespace(),
+        product={"base_price": 300.0, "base_as_of": naive_old},
+        customer={},
+    )
+
+    assert result["stale"] is True

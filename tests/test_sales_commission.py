@@ -140,6 +140,9 @@ class TestSalesCommissionAndA2A:
 
         # Seed product catalog row and design memory
         product_id = str(uuid.uuid4())
+        # product_catalog is global now: (manufacturer, mfr_part_no) is the
+        # unique identity, so a fixed literal would collide across runs.
+        part_no = f"PART-{product_id[:8]}"
 
         async with pg_pool.acquire() as conn:
             async with conn.transaction():
@@ -147,11 +150,12 @@ class TestSalesCommissionAndA2A:
                 # Seed product catalog so that do_enrich_product succeeds
                 await conn.execute(
                     """
-                    INSERT INTO product_catalog (id, namespace_id, manufacturer, mfr_part_no, product_source_id)
-                    VALUES ($1::uuid, $2::uuid, 'Test Mfg', 'PART-1', 'src-part-1')
+                    INSERT INTO product_catalog (id, manufacturer, mfr_part_no, product_source_id)
+                    VALUES ($1::uuid, 'Test Mfg', $2, $3)
                     """,
                     uuid.UUID(product_id),
-                    ns,
+                    part_no,
+                    f"src-{part_no}",
                 )
                 await _seed_memory(
                     conn,

@@ -344,7 +344,16 @@ async def _require_append_event_schema(pool: asyncpg.Pool) -> None:
 
 
 async def _ensure_active_signing_key(pool: asyncpg.Pool) -> None:
-    """Ensure ``get_active_key`` succeeds (rotate when empty / optionally on decrypt mismatch)."""
+    """Ensure ``get_active_key`` succeeds; both rotation paths are opt-in.
+
+    ``rotate_key`` writes an active signing key encrypted with **this shell's**
+    ``NCE_MASTER_KEY``. Against a shared database that orphans every deployment
+    holding a different master key — the deployment then fails to decrypt the
+    key a test run seeded, indefinitely, while its containers stay up. So the
+    empty-table path is gated exactly like the decrypt-mismatch path rather than
+    rotating unconditionally: a missing active key is a fact about the operator's
+    database, not something a test run may silently fix.
+    """
 
     from nce.signing import (
         NoActiveSigningKeyError,
@@ -358,8 +367,16 @@ async def _ensure_active_signing_key(pool: asyncpg.Pool) -> None:
             await get_active_key(conn)
             return
         except NoActiveSigningKeyError:
-            await rotate_key(conn)
-            return
+            if _refresh_signing_when_decrypt_fails():
+                await rotate_key(conn)
+                return
+            pytest.skip(
+                "signing_keys has no active key in this database. Seeding one writes a "
+                "key encrypted with this shell's NCE_MASTER_KEY, which orphans any "
+                "deployment using a different master key. Set "
+                "NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL=1 to seed one "
+                "(use only on disposable databases).",
+            )
         except SigningKeyDecryptionError:
             if _refresh_signing_when_decrypt_fails():
                 await rotate_key(conn)

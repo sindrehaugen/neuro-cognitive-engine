@@ -1249,7 +1249,8 @@ async def _chain_verification_tick(pool: asyncpg.Pool) -> None:
                     depth = cfg.NCE_CHAIN_VERIFY_STARTUP_DEPTH
                     if depth > 0:
                         max_seq = await conn.fetchval(
-                            "SELECT COALESCE(max(event_seq), 0) FROM event_log"
+                            "SELECT COALESCE(max(event_seq), 0) FROM event_log WHERE namespace_id = $1",
+                            ns_id,
                         )
                         start_seq = max(1, max_seq - depth + 1)
                     else:

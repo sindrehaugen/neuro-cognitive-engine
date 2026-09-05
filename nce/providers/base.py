@@ -114,12 +114,28 @@ def validate_base_url(
         except ValueError:
             continue  # not a recognised IP family, skip
 
-        # Link-local (incl. the cloud metadata endpoint 169.254.169.254),
-        # reserved, and multicast are never legitimate provider endpoints —
-        # reject them BEFORE the allow_loopback shortcut: ipaddress counts
-        # link-local as is_private, so checking allow_loopback first would
-        # whitelist the metadata host for local-infrastructure callers.
-        if ip.is_link_local or ip.is_reserved or ip.is_multicast:
+        # Link-local (incl. the cloud metadata endpoint 169.254.169.254) and
+        # multicast are never legitimate provider endpoints — reject them BEFORE
+        # the allow_loopback shortcut: ipaddress counts link-local as is_private,
+        # so checking allow_loopback first would whitelist the metadata host for
+        # local-infrastructure callers.
+        #
+        # `is_reserved` carries an EXEMPTION FOR LOOPBACK, and without it this
+        # guard broke its own documented contract. In Python,
+        # `ip_address("::1").is_reserved` is **True** while
+        # `ip_address("127.0.0.1").is_reserved` is **False**. So IPv6 loopback was
+        # rejected here, before `allow_loopback` was ever consulted, while the
+        # docstring above promises `allow_loopback` permits "loopback
+        # (127.0.0.1, ::1)". On a dual-stack host `localhost` resolves to `::1`
+        # first, so the local cognitive sidecar at http://localhost:11435 was
+        # unreachable.
+        #
+        # The exemption cannot widen anything: it applies only to addresses that
+        # are ALREADY loopback, and a loopback address still has to get past
+        # `allow_loopback` below. With allow_loopback=False, `::1` is is_private
+        # and the next branch refuses it. The metadata host is link-local, not
+        # loopback, so it stays rejected unconditionally.
+        if ip.is_link_local or ip.is_multicast or (ip.is_reserved and not ip.is_loopback):
             raise LLMProviderError(
                 f"SSRF guard: {base_url!r} resolves to non-public IP {ip_str} (hostname={hostname!r})"
             )
@@ -189,10 +205,15 @@ async def validate_base_url_async(
         except ValueError:
             continue
 
-        # Mirror validate_base_url exactly: link-local/reserved/multicast are
-        # rejected unconditionally (the old `if allow_loopback: continue`
-        # skipped EVERY IP check, whitelisting even the metadata endpoint).
-        if ip.is_link_local or ip.is_reserved or ip.is_multicast:
+        # Mirror validate_base_url exactly: link-local/multicast are rejected
+        # unconditionally (the old `if allow_loopback: continue` skipped EVERY IP
+        # check, whitelisting even the metadata endpoint), and `is_reserved`
+        # exempts loopback because ipaddress calls `::1` reserved while
+        # `127.0.0.1` is not. See the sync twin for the full reasoning. The two
+        # MUST agree, and tests/test_ssrf_guard.py now asserts they do for every
+        # row of the scenario table -- "mirror exactly" was a comment, not a gate,
+        # and this bug lived in both copies.
+        if ip.is_link_local or ip.is_multicast or (ip.is_reserved and not ip.is_loopback):
             raise LLMProviderError(
                 f"SSRF guard: {base_url!r} resolves to non-public IP {ip_str} (hostname={hostname!r})"
             )

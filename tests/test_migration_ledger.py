@@ -22,7 +22,7 @@ import pytest
 
 from nce import migration_ledger
 from nce.migration_ledger import migration_checksum, should_skip
-from nce.orchestrator import NCEEngine
+from nce.orchestrator import _ADVISORY_LOCK_SQL, NCEEngine
 
 
 class _FakeConn:
@@ -110,13 +110,30 @@ def _migration_files() -> list[Path]:
     return sorted(root.glob("*.sql"))
 
 
+#: The three statements ``_apply_pg_migrations`` issues that are NOT migration
+#: bodies.  Matched by IDENTITY, not by substring.
+#:
+#: 🔴 This used to be ``"applied_migrations" not in sql and
+#: "pg_advisory_xact_lock" not in sql``, and that shape was silenceable by a
+#: COMMENT: migration ``063`` gained a header sentence naming the
+#: ``applied_migrations`` table, its whole body stopped counting as a migration
+#: body, and every count assertion below quietly measured one file fewer.  It
+#: was caught only because the counts are compared against the file list --
+#: which is the guard-the-guard that made the hole visible instead of vacuous.
+#: A filter that decides what a statement IS by looking for a word inside it
+#: will always be defeatable by prose that happens to contain the word.
+_BOOKKEEPING_SQL: frozenset[str] = frozenset(
+    {
+        migration_ledger.LEDGER_DDL.strip(),
+        migration_ledger._UPSERT_SQL.strip(),
+        _ADVISORY_LOCK_SQL.strip(),
+    }
+)
+
+
 def _applied_bodies(conn: _FakeConn) -> list[str]:
     """Statements that are migration bodies, not ledger/lock bookkeeping."""
-    return [
-        sql
-        for sql in conn.executed
-        if "applied_migrations" not in sql and "pg_advisory_xact_lock" not in sql
-    ]
+    return [sql for sql in conn.executed if sql.strip() not in _BOOKKEEPING_SQL]
 
 
 async def _run(pool: _FakePool) -> _FakeConn:

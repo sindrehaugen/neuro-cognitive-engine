@@ -150,3 +150,14 @@ docs/research/
 research/
 *research*.md
 
+
+# debhelper build artifacts (never commit; source files under debian/ are tracked explicitly)
+debian/.debhelper/
+debian/nce-server/
+debian/files
+debian/*.substvars
+debian/*.debhelper.log
+debian/debhelper-build-stamp
+debian/*.debhelper
+debian/tmp/
+build/linux/dist/

@@ -213,7 +213,10 @@ class NamespacePIIConfig(BaseModel):
 
     entity_types: list[str] = Field(
         default_factory=list,
-        description="Presidio entity types to detect (e.g. PERSON, EMAIL, PHONE)",
+        description=(
+            "Presidio entity types to detect (e.g. PERSON, EMAIL, PHONE). "
+            "Empty means every type the installation recognises."
+        ),
     )
     policy: PIIPolicy = Field(
         default=PIIPolicy.redact,

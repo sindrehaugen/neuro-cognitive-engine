@@ -1,0 +1,6 @@
+nce-server (3.0.0-1) stable; urgency=medium
+
+  * Initial Debian package release for Ubuntu and Debian server targets.
+  * Packaged containerised compose stack, hardened systemd service, and nce-launch shim.
+
+ -- Sindre Løvlie Haugen <sindre.haugen@gmail.com>  Mon, 17 Aug 2026 18:00:00 +0200

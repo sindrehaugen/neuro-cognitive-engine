@@ -163,6 +163,13 @@ def _flag(value: Any) -> bool:
     return value is True or value == 1
 
 
+def _is_numeric_amount(value: Any) -> bool:
+    """True when ``value`` is a money number we can actually read. Mirrors the
+    accept-list of ``_as_amount`` below, so a caller can distinguish *absent /
+    unreadable* from a genuine ``0`` instead of scoring a fabricated zero."""
+    return not isinstance(value, bool) and isinstance(value, (int, float, Decimal))
+
+
 def _as_amount(value: Any) -> float:
     """Coerce a documented-numeric money field. Decimal/int/float -> float (restores the
     reference's float arithmetic exactly). Anything else (None, str, bool) -> 0.0, so the
@@ -171,7 +178,7 @@ def _as_amount(value: Any) -> float:
     Deliberately conservative in the untyped direction: a string "30000" now scores 0
     where a loosely-typed reference would parse and score 30. That is the safe direction
     for money code and must stay — never add string-parsing here."""
-    if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+    if not _is_numeric_amount(value):
         return 0.0
     try:
         return float(value)
@@ -205,7 +212,15 @@ def _score_amount(context: dict[str, Any], line: dict[str, Any], reasons: list[s
     if expected_amount <= 0:
         reasons.append("amount: no expected baseline")
         return 0
-    line_total = _as_amount(line.get("line_total", 0))
+    # A missing (or unreadable) line total is NOT zero. Defaulting it to 0 makes
+    # ``diff = abs(0 - expected)`` and ``pct`` exactly 1.0 — a confident "100%
+    # discrepancy" on an invoice three-way match that gates a payment — when the
+    # truth is "no amount to compare" (no-fabricated-money-defaults).
+    raw_line_total = line.get("line_total")
+    if not _is_numeric_amount(raw_line_total):
+        reasons.append("amount: no line total to compare")
+        return 0
+    line_total = _as_amount(raw_line_total)
     diff = abs(line_total - expected_amount)
     pct = diff / expected_amount
     if pct <= 0.02:

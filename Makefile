@@ -2,7 +2,7 @@
 #
 # Standard workflows for developers and operators.
 
-.PHONY: help up down restart status logs clean build verify typecheck lint fmt fmt-check ruff
+.PHONY: help up down restart status logs clean build verify typecheck lint fmt fmt-check ruff linux-shim
 
 help:
 	@echo "TriMCP v1.0 — Infrastructure Orchestration"
@@ -12,10 +12,11 @@ help:
 	@echo "Targets:"
 	@echo "  up       Start the complete v1.0 stack (Caddy, Admin, Workers, Tri-Stack)"
 	@echo "  down     Stop all services and keep data"
-	@echo "  restart  Restart the application services (worker, admin, a2a, webhooks)"
+	@echo "  restart  Restart the application services (worker, admin, a2a, webhook-receiver)"
 	@echo "  status   Show container health and status"
 	@echo "  logs     Tail application logs"
 	@echo "  build    Force rebuild of application images"
+	@echo "  linux-shim Build reproducible nce-launch Linux binaries (amd64 + arm64)"
 	@echo "  clean    Stop services and REMOVE all data volumes (CAUTION)"
 	@echo "  verify   Run the v1.0 launch verification script"
 	@echo "  typecheck  Run mypy static type checking on trimcp/ (strict mode)"
@@ -77,3 +78,7 @@ local-up:
 
 local-down:
 	docker compose -f docker-compose.local.yml down
+
+linux-shim:
+	bash build/linux/build.sh
+

@@ -461,6 +461,33 @@ def resolve_secret(name: str, *, default: str | None = None) -> str | None:
     return value
 
 
+class DeploymentConfigurationError(Exception):
+    """A required deployment configuration key is unset or malformed (**D49b**).
+
+    Raised where the *operator*, not the caller, is the only party who can fix
+    the failure.  No argument any client can send will set an unset key, so a
+    client that routes on status must be told to **escalate, never retry**.
+
+    🔴 Deliberately derives from ``Exception`` and **not** from ``ValueError``.
+    ``ValueError`` is the caller-error channel in this codebase: ``mcp_errors``
+    maps it to ``-32602 Invalid parameters`` and
+    ``admin_handlers/system_design.py`` maps it to ``422``, both *before* their
+    generic handlers.  Subclassing ``ValueError`` would leave both wire surfaces
+    saying "you sent something wrong" — i.e. would leave the defect in place
+    while appearing to fix it.  ``OwnershipError`` derives from ``Exception``
+    for the same reason.
+
+    ``config_key`` carries the **name** of the offending key so an operator
+    reading a log or an error payload learns which one to set.  The key's
+    **value** is never carried: it may be a secret, and the payload is returned
+    to a caller.
+    """
+
+    def __init__(self, config_key: str, message: str) -> None:
+        super().__init__(message)
+        self.config_key = config_key
+
+
 class _EmbeddingConfig:
     """
     Embedding / pgvector dimension. Must stay aligned with ``memories.embedding`` and
@@ -481,7 +508,8 @@ class _Config:
     IS_TEST: bool = ENVIRONMENT in {"test", "testing", "ci"}
     IS_DEV: bool = not IS_PROD and not IS_TEST
 
-    # Legal entity name of the operator running this deployment. Appears in
+    # --- Supplier identity (customer-facing generated documents) ---
+    # Legal entity name of the operator running this deployment. Emitted into
     # generated Statement-of-Work text, including the Norwegian title-retention
     # clause. Deliberately has NO default and NO placeholder: SoW generation
     # fails closed when this is unset rather than naming a wrong or blank party
@@ -625,8 +653,17 @@ class _Config:
     EMBEDDING_MAX_WORKERS: int = _int_env("EMBEDDING_MAX_WORKERS", 1, minimum=1)
     EMBED_BATCH_CHUNK: int = _int_env("EMBED_BATCH_CHUNK", 64, minimum=1)
     # Model identity — configurable so operators can swap the embedding model without a code change.
+    # Default must load on this repo's pinned transformers with
+    # NCE_EMBEDDING_TRUST_REMOTE_CODE=False (D42). The former default,
+    # jinaai/jina-embeddings-v2-base-code, could not: as shipped it raised
+    # ValueError(attn_implementation="torch" is not supported), and with
+    # trust_remote_code=True its custom modeling code imports
+    # find_pruneable_heads_and_indices, removed in transformers 5.x.
+    # all-mpnet-base-v2 is 768-dim, matching VECTOR_DIM and the halfvec(768)
+    # columns, so this is not a schema change. The code-specialised Jina model
+    # stays available via the OpenVINO IR path (NCE_OPENVINO_MODEL_DIR).
     NCE_EMBEDDING_MODEL_ID: str = os.getenv(
-        "NCE_EMBEDDING_MODEL_ID", "jinaai/jina-embeddings-v2-base-code"
+        "NCE_EMBEDDING_MODEL_ID", "sentence-transformers/all-mpnet-base-v2"
     )
     # Pin model revision for supply-chain safety; empty string means "latest" (not recommended in prod).
     NCE_EMBEDDING_MODEL_REVISION: str = os.getenv("NCE_EMBEDDING_MODEL_REVISION", "")

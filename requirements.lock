@@ -227,6 +227,7 @@ numpy==2.4.6
     #   -r requirements.txt
     #   blis
     #   ezdxf
+    #   openvino
     #   psd-tools
     #   scikit-learn
     #   scipy
@@ -335,6 +336,10 @@ opentelemetry-util-http==0.65b0
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
+openvino==2026.3.1
+    # via -r requirements.txt
+openvino-telemetry==2025.2.0
+    # via openvino
 packaging==26.3
     # via
     #   deprecation

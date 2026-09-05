@@ -106,7 +106,10 @@ def forecast_rebate(
     Returns
     -------
     dict with:
-        ``annual_spend``  — float, projected annual spend across all BOM rows.
+        ``annual_spend``  — float, projected annual spend across all *priced* BOM rows.
+        ``unpriced_rows`` — int, BOM rows with no ``unit_price``; their spend is NOT
+                            in ``annual_spend``, so a non-zero count means the figure
+                            is a floor, not an estimate, and confidence drops to "low".
         ``matched_tier``  — dict | None, highest tier matched (or None).
         ``rebate_amount`` — float, point-estimate rebate (0 if no tier matched).
         ``rebate_low``    — float, lower bound of ±10 % band.
@@ -114,13 +117,20 @@ def forecast_rebate(
         ``confidence``    — str, "low" when no data, "medium" when tiers present.
         ``rationale``     — str, human-readable explanation.
     """
+    # A BOM row with no unit_price is not a free row. Defaulting it to 0.0 silently
+    # UNDERSTATES annual spend, and this figure drives rebate-band forecasting, so the
+    # omission would never surface. Price only what is priced, and report how many rows
+    # were left out (no-fabricated-money-defaults).
+    priced_rows = [r for r in bom_rows if r.get("unit_price") is not None]
+    unpriced_rows: int = len(bom_rows) - len(priced_rows)
     annual_spend: float = sum(
-        float(r.get("unit_price", 0.0)) * float(r.get("quantity", 0.0)) for r in bom_rows
+        float(r["unit_price"]) * float(r.get("quantity", 0.0)) for r in priced_rows
     )
 
     if not bom_rows:
         return {
             "annual_spend": 0.0,
+            "unpriced_rows": 0,
             "matched_tier": None,
             "rebate_amount": 0.0,
             "rebate_low": 0.0,
@@ -143,7 +153,8 @@ def forecast_rebate(
 
     rebate_low = rebate_amount * _REBATE_BAND_FACTOR_LOW
     rebate_high = rebate_amount * _REBATE_BAND_FACTOR_HIGH
-    confidence = "medium" if matched_tier else "low"
+    # Unpriced rows make annual_spend a floor, so any tier match is unproven.
+    confidence = "medium" if (matched_tier and not unpriced_rows) else "low"
 
     if matched_tier:
         rationale = (
@@ -158,8 +169,15 @@ def forecast_rebate(
             f"tier minimum.  No rebate expected at current run-rate."
         )
 
+    if unpriced_rows:
+        rationale += (
+            f"  NOTE: {unpriced_rows} BOM row(s) carry no unit_price and are "
+            "excluded - projected spend is a lower bound, not an estimate."
+        )
+
     return {
         "annual_spend": annual_spend,
+        "unpriced_rows": unpriced_rows,
         "matched_tier": matched_tier,
         "rebate_amount": rebate_amount,
         "rebate_low": rebate_low,

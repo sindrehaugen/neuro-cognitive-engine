@@ -34,6 +34,14 @@ async def do_open_dealroom(
 
     Returns:
       dict: DealRoom payload containing quote details, lines list, and recomputed total price.
+
+    A price is never invented.  A line whose price cannot be established is
+    returned with ``priced: False``, ``unit_price``/``total_price``/``base_cost``
+    set to ``None`` and an ``unpriced_reason`` of either ``"no_price_on_record"``
+    (nothing was ever recorded for it) or ``"price_resolution_failed"`` (a price
+    existed but resolving it raised).  Because such a line carries money of an
+    unknown amount, ``total_price_nok`` is ``None`` whenever any *toggled* line
+    is unpriced; ``unpriced_line_count`` reports how many toggled lines that is.
     """
     ns_raw = params.get("namespace_id")
     if not ns_raw:
@@ -102,6 +110,7 @@ async def do_open_dealroom(
 
         lines_list = []
         total_price_nok = 0.0
+        unpriced_toggled_count = 0
 
         for r in rows:
             label = r["label"]
@@ -148,9 +157,30 @@ async def do_open_dealroom(
                 except Exception as e:
                     log.warning("Failed to fetch mongo payload for BOM line %s: %s", label, e)
 
-            # Fallback prices if missing
-            if not product.get("base_price") and not customer.get("bid_price"):
-                product["base_price"] = 100.0
+            # A price must be ON RECORD.  Never substitute a plausible number
+            # for a missing one -- carry the absence instead.
+            #
+            # "On record" means what ``resolve_price`` means by it, and that is a
+            # PAIR: every tier builder in ``nce/pricing/resolver.py``
+            # (``_build_bid_tier``, ``_build_supplier_list_tier``, ``_build_base_tier``)
+            # returns None unless BOTH the amount and its ``*_as_of`` are present --
+            # an undated price cannot be judged stale, so it is not a usable tier.
+            #
+            # This check used to test the amounts alone. A record carrying
+            # ``base_price`` and no ``base_as_of`` therefore passed the guard, went
+            # into ``resolve_price``, and came back "no price tier available" --
+            # reported as ``price_resolution_failed``, i.e. as a SERVER fault, when
+            # the truth is that the record is incomplete. Two answers to one question
+            # in one codebase; the guard now asks the resolver's question instead of
+            # its own.
+            has_price_on_record = bool(
+                (product.get("base_price") is not None and product.get("base_as_of") is not None)
+                or (
+                    product.get("supplier_list_price") is not None
+                    and product.get("supplier_list_as_of") is not None
+                )
+                or (customer.get("bid_price") is not None and customer.get("bid_as_of") is not None)
+            )
 
             # Determine toggle override from params
             line_ref = label.split(":")[-1]
@@ -171,21 +201,29 @@ async def do_open_dealroom(
                     except Exception as e:
                         log.warning("Failed to update toggled state in mongo for %s: %s", label, e)
 
-            # Price line through C6 Pricing Service
-            try:
-                price_result = await resolve_price(
-                    conn,
-                    namespace_id=str(ns_uuid),
-                    product=product,
-                    customer=customer,
-                )
-                cost = price_result["cost"]
-            except Exception as e:
-                log.warning("Price resolution failed for line %s: %s", label, e)
-                cost = float(product.get("base_price") or 100.0)
+            # Price line through C6 Pricing Service.  Two different operator
+            # problems are kept distinguishable: nothing was ever recorded, vs
+            # a recorded price whose resolution failed.
+            cost: float | None = None
+            unpriced_reason: str | None = None
+            if not has_price_on_record:
+                unpriced_reason = "no_price_on_record"
+                log.warning("No price on record for line %s; returning it unpriced", label)
+            else:
+                try:
+                    price_result = await resolve_price(
+                        conn,
+                        namespace_id=str(ns_uuid),
+                        product=product,
+                        customer=customer,
+                    )
+                    cost = float(price_result["cost"])
+                except Exception as e:
+                    log.warning("Price resolution failed for line %s: %s", label, e)
+                    unpriced_reason = "price_resolution_failed"
 
-            unit_price = dg_price(cost, dg_pct)
-            total_price = unit_price * quantity
+            unit_price = dg_price(cost, dg_pct) if cost is not None else None
+            total_price = unit_price * quantity if unit_price is not None else None
 
             lines_list.append(
                 {
@@ -196,18 +234,24 @@ async def do_open_dealroom(
                     "base_cost": cost,
                     "unit_price": unit_price,
                     "total_price": total_price,
+                    "priced": unpriced_reason is None,
+                    "unpriced_reason": unpriced_reason,
                     "is_optional": is_optional,
                     "toggled": toggled,
                 }
             )
 
             if toggled:
-                total_price_nok += total_price
+                if total_price is None:
+                    unpriced_toggled_count += 1
+                else:
+                    total_price_nok += total_price
 
         return {
             "quote_id": quote_id,
             "name": quote_name,
             "description": quote_desc,
-            "total_price_nok": total_price_nok,
+            "total_price_nok": None if unpriced_toggled_count else total_price_nok,
+            "unpriced_line_count": unpriced_toggled_count,
             "lines": lines_list,
         }

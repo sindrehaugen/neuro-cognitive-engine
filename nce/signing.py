@@ -778,6 +778,43 @@ def decrypt_signing_key(encrypted_key: bytes, master_key: MasterKey) -> bytes:
 # ---------------------------------------------------------------------------
 
 
+def master_key_fingerprint(master_key: MasterKey) -> str:
+    """
+    Return a non-secret fingerprint of *master_key*: ``sha256(key)[:16]`` hex.
+
+    A SHA-256 of a >=32-byte random key does not yield the key, so this value is
+    safe to log and to store next to an escrow copy.  It exists so an operator
+    can answer "is this deployment holding the same key as escrow?" in one
+    glance -- the question that went unanswered for 26 hours during the
+    2026-09-02 rotation incident.
+
+    Never log ``master_key.key_bytes`` itself.
+    """
+    return hashlib.sha256(bytes(master_key.key_bytes)).hexdigest()[:16]
+
+
+def rewrap_signing_key(
+    encrypted_key: bytes,
+    old_master_key: MasterKey,
+    new_master_key: MasterKey,
+) -> bytes:
+    """
+    Re-wrap an ``encrypted_key`` blob from *old_master_key* to *new_master_key*.
+
+    Unwraps with the old key and re-wraps with the new one, producing a blob in
+    the current wire format.  The raw signing key material is held in a
+    ``SecureKeyBuffer`` and zeroed before returning.
+
+    ``SigningKeyDecryptionError`` propagates unchanged when *old_master_key* is
+    not the key the blob was written under; callers must treat that as "abort",
+    never as "skip this row" -- re-wrapping a blob you cannot open destroys it.
+
+    Exposed for ``scripts/rekey_master.py``.  No new crypto, no format change.
+    """
+    with SecureKeyBuffer(decrypt_signing_key(encrypted_key, old_master_key)) as raw:
+        return encrypt_signing_key(bytes(raw), new_master_key)
+
+
 def require_master_key() -> MasterKey:
     """
     Return a ``MasterKey`` wrapping ``NCE_MASTER_KEY``.
@@ -1110,3 +1147,17 @@ async def rotate_key(conn: asyncpg.Connection) -> str:
     _key_cache.clear()
     log.info("Signing key rotated.  New key_id=%s.", new_key_id)
     return new_key_id
+
+
+def key_fingerprint(raw_key: bytes) -> str:
+    """Return a short, NON-SECRET fingerprint of signing-key material.
+
+    ``sha256(key)[:16]`` (hex). A SHA-256 of a key is not secret; the key is.
+    The fingerprint exists so an audit event can answer *"which key was the data
+    written under after time T"* without ever recording key material -- the
+    question that cost hours of trial-decrypting stored signing-key blobs during
+    the 2026-09-02 incident.
+
+    Never log, store, or emit *raw_key* itself.
+    """
+    return hashlib.sha256(raw_key).hexdigest()[:16]

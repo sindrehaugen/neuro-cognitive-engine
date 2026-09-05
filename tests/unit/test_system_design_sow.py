@@ -623,13 +623,15 @@ def test_generate_sow_fails_closed_when_supplier_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Blank NCE_SUPPLIER_NAME must raise, not emit a party-less legal clause."""
-    from nce.config import cfg
+    from nce.config import DeploymentConfigurationError, cfg
     from nce.vertical_modules.system_design.sow import generate_sow
 
     monkeypatch.setattr(cfg, "NCE_SUPPLIER_NAME", "   ", raising=False)
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(DeploymentConfigurationError) as exc:
         generate_sow(copy.deepcopy(_MINIMAL_SOW_INPUT), version_number=1)
     assert "NCE_SUPPLIER_NAME" in str(exc.value)
+    # D49b: an operator fault, so deliberately not a ValueError.
+    assert not isinstance(exc.value, ValueError)
 
 
 @pytest.mark.asyncio
@@ -637,13 +639,15 @@ async def test_do_generate_sow_fails_closed_when_supplier_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The adapter refuses to generate the document at all, naming the key."""
-    from nce.config import cfg
+    from nce.config import DeploymentConfigurationError, cfg
     from nce.vertical_modules.system_design.sow import do_generate_sow
 
     monkeypatch.setattr(cfg, "NCE_SUPPLIER_NAME", "", raising=False)
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(DeploymentConfigurationError) as exc:
         await do_generate_sow(_make_engine(), {"namespace_id": _NS, "design_id": _DESIGN_ID})
     assert "NCE_SUPPLIER_NAME" in str(exc.value)
+    assert not isinstance(exc.value, ValueError)
+    assert exc.value.config_key == "NCE_SUPPLIER_NAME"
 
 
 def test_renamed_profile_key_resolves() -> None:

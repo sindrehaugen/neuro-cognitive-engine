@@ -16,7 +16,7 @@ from typing import Any
 
 import asyncpg  # type: ignore[import-untyped]
 
-from nce.config import cfg
+from nce.config import DeploymentConfigurationError, cfg
 from nce.vertical_modules.dynamics365.client import CURSOR_OVERLAP_SECONDS, DataverseClient
 
 log = logging.getLogger("nce.vertical_modules.sales.source_adapters.d365")
@@ -33,18 +33,25 @@ _PUBLISHER_PREFIX_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
 
 def _validate_prefix(raw: str) -> str:
-    """Return ``raw`` if it is a usable publisher prefix, else raise ``ValueError``."""
+    """Return ``raw`` if it is a usable publisher prefix, else refuse.
+
+    D49b: refuses with ``DeploymentConfigurationError`` — an unset or malformed
+    deployment key is the operator's to fix, never the caller's, so it must not
+    reach the wire as ``-32602``/``422``.
+    """
     if not raw:
-        raise ValueError(
+        raise DeploymentConfigurationError(
+            "NCE_D365_PUBLISHER_PREFIX",
             "NCE_D365_PUBLISHER_PREFIX is not set. The Dynamics 365 sales read path needs "
             "your Dataverse publisher prefix to build custom field names; refusing to "
-            "query with an empty prefix (that would silently return no rows)."
+            "query with an empty prefix (that would silently return no rows).",
         )
     if not _PUBLISHER_PREFIX_RE.fullmatch(raw):
-        raise ValueError(
+        raise DeploymentConfigurationError(
+            "NCE_D365_PUBLISHER_PREFIX",
             f"NCE_D365_PUBLISHER_PREFIX is invalid: {raw!r}. It must match "
             f"{_PUBLISHER_PREFIX_RE.pattern}. The prefix is interpolated into SQL and "
-            "OData query text, so it is rejected rather than sanitised."
+            "OData query text, so it is rejected rather than sanitised.",
         )
     return raw
 

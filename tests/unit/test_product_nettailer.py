@@ -23,6 +23,7 @@ from typing import Any
 
 import pytest
 
+from nce.config import DeploymentConfigurationError
 from nce.vertical_modules.product.sources.nettailer import (
     _INTERNAL_FIELDS,
     FIELD_ALIAS_MAP,
@@ -292,6 +293,6 @@ async def test_stream_raises_value_error_when_no_url_configured(
     """stream_nettailer_rows must raise ValueError when no URL is configured."""
     monkeypatch.delenv("NCE_PRODUCT_NETTAILER_PRODUCT_URL", raising=False)
 
-    with pytest.raises(ValueError, match="NCE_PRODUCT_NETTAILER_PRODUCT_URL"):
+    with pytest.raises(DeploymentConfigurationError, match="NCE_PRODUCT_NETTAILER_PRODUCT_URL"):
         async for _ in stream_nettailer_rows(url=""):
             pass

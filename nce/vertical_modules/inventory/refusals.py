@@ -30,27 +30,23 @@ The wire contract — option (b), one code plus a machine-readable ``reason``
 --------------------------------------------------------------------------
 ``FE_UPDATE_2026-08-31_ADDENDUM.md`` asked the FE to choose between (a) a
 distinct code per refusal and (b) one shared business-refusal code carrying a
-machine-readable ``reason``, as the namespace opt-in gate does on the private
-repo (``McpError(-32005)`` with ``data={"reason": "inventory_disabled"}``).
-The addendum was unanswered when this landed, and the standing default is
-**(b)** — it extends without a new code per future refusal.
-
-NOTE for this repo: that opt-in gate (B140a) is **not ported here**, so the
-``inventory_disabled`` precedent it cites lives on the private tree. The shape
-is unchanged either way, and ``409`` is already this module's status for
-``InsufficientStockError``, which is the local precedent.
+machine-readable ``reason``, as ``inventory_disabled`` already does on the
+opt-in gate (``McpError(-32005)`` with ``data.reason``). The addendum was
+unanswered when this landed, and the plan's standing default is **(b)** — it
+matches what already ships and extends without a new code per future refusal.
 
 So:
 
-* **MCP** — ``McpError(-32005)`` with ``data={"reason": <slug>, ...fields}``.
+* **MCP** — ``McpError(-32005)`` with ``data={"reason": <slug>, ...fields}``,
+  exactly the shape B140a's opt-in gate already emits.
 * **REST** — ``409``, the status this module already returns for
-  ``InsufficientStockError``.
+  ``InsufficientStockError`` and ``InventoryDisabledError``.
 
 Note ``-32005`` is spelled ``MCP_SCOPE_FORBIDDEN`` in ``nce/mcp_errors.py``.
 Reusing it for "not enough available stock" is a **semantic stretch**, accepted
 here deliberately: it introduces no new contract element the FE has not already
-been shown, and ``409`` is already this module's status for a business-rule
-refusal that is not a scope failure. If the FE would rather have a
+been shown, and this module already pairs ``-32005`` with ``409`` for a
+non-scope refusal (``inventory_disabled``). If the FE would rather have a
 dedicated business-refusal code, that is a one-line change to
 :data:`MCP_BUSINESS_REFUSED` plus a doc update — the ``reason`` slugs do not
 move.

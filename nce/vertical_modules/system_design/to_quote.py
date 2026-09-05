@@ -93,11 +93,14 @@ _DESIGN_LINE_LABEL_PARTS: int = 3
 
 # DECLARED OMISSION — qty/price are not in the design graph (kg_nodes has no
 # such column for DESIGN_LINE; enrichment.py records the same wall).  Since
-# bom_line_content declares them NOT NULL, a design-generated line lands
-# STRUCTURALLY COMPLETE and UNPRICED and pricing is a pre-freeze content edit:
-# a fabricated price is indistinguishable from an authored one downstream.
+# bom_line_content declares unit_price/line_total NOT NULL, a design-generated
+# line still lands with a numeric 0.00 placeholder, but is marked
+# ``priced=False`` (D48: unpriced is a STATE carried by that column, not a
+# value the number itself can represent) so it is distinguishable from a line
+# genuinely priced at zero and freeze_bom_lines_for_quote refuses to freeze it
+# until pricing is a pre-freeze content edit.
 _DEFAULT_QTY: Decimal = Decimal("1")
-_UNPRICED: Decimal = Decimal("0.00")
+_PLACEHOLDER_PRICE: Decimal = Decimal("0.00")
 
 
 # ---------------------------------------------------------------------------
@@ -232,9 +235,10 @@ async def _write_quote_bom_lines(
             quote_id=quote_id,
             line_ref=line_ref,
             qty=_DEFAULT_QTY,
-            unit_price=_UNPRICED,
-            line_total=_UNPRICED,
+            unit_price=_PLACEHOLDER_PRICE,
+            line_total=_PLACEHOLDER_PRICE,
             origin_ref=design_line_label,
+            priced=False,
         )
         written += 1
     return written

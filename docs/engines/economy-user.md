@@ -247,7 +247,7 @@ Registered in `nce/tool_registry.py:678-683`.
 ```
 
 ### 3.3 Mounted REST Route: `/api/economy/emit-event`
-- **Method & Path:** `POST /api/economy/emit-event` (`nce/admin_handlers/economy.py:196-270`)
+- **Method & Path:** `POST /api/economy/emit-event` (`nce/admin_handlers/economy.py:182-260`)
 - **Headers:** `Content-Type: application/json`, `Authorization: Bearer <token>`
 - **Request Body:** `{"namespace_id": "...", "event": {...}}`
 - **Response:** `{...normalised_event, "status": "ok"}` on 200; `422` on unbalanced postings or validation failure.

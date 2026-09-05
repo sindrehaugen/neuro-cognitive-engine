@@ -52,12 +52,13 @@ only ever fail the same way.
 
 The orchestrator owned that error-contract decision and took option (b) of
 ``FE_UPDATE_2026-08-31_ADDENDUM.md``: ONE shared refusal status carrying a
-machine-readable ``reason``. The mapping is declared exactly once, in
-``inventory/refusals.py`` (D18 precedent: three instances of one defect class
-means one shared mapping, not a sixth bespoke ``except``), and every affected
-route carries a single ``except BUSINESS_REFUSALS`` clause that delegates to
-it. Adding a seventh refusal is a row in that table, not an edit on two
-surfaces.
+machine-readable ``reason``, mirroring the ``-32005``/``409`` pair this module
+already used for ``inventory_disabled``. The mapping is declared exactly once,
+in ``inventory/refusals.py`` (D18 precedent: three instances of one defect
+class means one shared mapping, not a sixth bespoke ``except``), and every
+affected route carries a single ``except BUSINESS_REFUSALS`` clause that
+delegates to it. Adding a seventh refusal is a row in that table, not an edit
+on two surfaces.
 """
 
 from __future__ import annotations
@@ -72,6 +73,10 @@ from nce.admin_handlers._shared import (
     admin_error_response,
     admin_state,
     bump_mcp_cache_generation,
+)
+from nce.vertical_modules.inventory._guard import (
+    InventoryDisabledError,
+    require_inventory_enabled,
 )
 from nce.vertical_modules.inventory.forecast import do_forecast_demand
 from nce.vertical_modules.inventory.goods_receipt import do_record_goods_receipt
@@ -100,6 +105,32 @@ from nce.vertical_modules.inventory.triggers import (
 )
 
 log = logging.getLogger("nce.admin_handlers.inventory")
+
+
+# ---------------------------------------------------------------------------
+# Shared opt-in guard -- applied at REST route boundary (not inside do_* cores)
+# ---------------------------------------------------------------------------
+
+
+async def _check_inventory_enabled_rest(namespace_id: str) -> JSONResponse | None:
+    """Return a 409 JSONResponse when inventory vertical is not enabled; else None.
+
+    Called by every ``api_inventory_*`` route AFTER ``_require_namespace_id``
+    and BEFORE the core call. That ordering is load-bearing: the shared
+    helper's ``uuid.UUID(...)`` parse is the real UUID check, and without it
+    ``require_inventory_enabled`` would hand a malformed string to asyncpg's
+    ``::uuid`` cast, which raises ``asyncpg.exceptions.DataError`` (not
+    ``ValueError``) and escapes the ASGI handler bypassing
+    ``admin_error_response`` entirely.
+    """
+    try:
+        await require_inventory_enabled(admin_state.engine.pg_pool, namespace_id)
+        return None
+    except InventoryDisabledError as exc:
+        return JSONResponse(
+            {"error": "Inventory vertical is not enabled for this namespace", "detail": str(exc)},
+            status_code=409,
+        )
 
 
 def _insufficient_stock_response(exc: InsufficientStockError) -> JSONResponse:
@@ -143,6 +174,13 @@ async def api_inventory_stock_levels(request) -> JSONResponse:
     namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
     if err is not None:
         return err
+    # _require_namespace_id's contract: err is None => namespace_id is set.
+    # mypy cannot correlate the two tuple slots, so state the invariant.
+    assert namespace_id is not None
+
+    disabled = await _check_inventory_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
 
     params: dict[str, Any] = {"namespace_id": namespace_id}
     sku = request.query_params.get("sku")
@@ -201,6 +239,13 @@ async def api_inventory_transfer_stock(request) -> JSONResponse:
     namespace_id, err = _require_namespace_id(body.get("namespace_id"))
     if err is not None:
         return err
+    # _require_namespace_id's contract: err is None => namespace_id is set.
+    # mypy cannot correlate the two tuple slots, so state the invariant.
+    assert namespace_id is not None
+
+    disabled = await _check_inventory_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
 
     params: dict[str, Any] = {
         "namespace_id": namespace_id,
@@ -264,6 +309,13 @@ async def api_inventory_record_consumption(request) -> JSONResponse:
     namespace_id, err = _require_namespace_id(body.get("namespace_id"))
     if err is not None:
         return err
+    # _require_namespace_id's contract: err is None => namespace_id is set.
+    # mypy cannot correlate the two tuple slots, so state the invariant.
+    assert namespace_id is not None
+
+    disabled = await _check_inventory_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
 
     params: dict[str, Any] = {
         "namespace_id": namespace_id,
@@ -327,6 +379,13 @@ async def api_inventory_record_goods_receipt(request) -> JSONResponse:
     namespace_id, err = _require_namespace_id(body.get("namespace_id"))
     if err is not None:
         return err
+    # _require_namespace_id's contract: err is None => namespace_id is set.
+    # mypy cannot correlate the two tuple slots, so state the invariant.
+    assert namespace_id is not None
+
+    disabled = await _check_inventory_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
 
     params: dict[str, Any] = {
         "namespace_id": namespace_id,
@@ -383,6 +442,13 @@ async def api_inventory_recommend_restock(request) -> JSONResponse:
     namespace_id, err = _require_namespace_id(body.get("namespace_id"))
     if err is not None:
         return err
+    # _require_namespace_id's contract: err is None => namespace_id is set.
+    # mypy cannot correlate the two tuple slots, so state the invariant.
+    assert namespace_id is not None
+
+    disabled = await _check_inventory_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
 
     params: dict[str, Any] = {
         "namespace_id": namespace_id,
@@ -431,6 +497,13 @@ async def api_inventory_forecast_demand(request) -> JSONResponse:
     namespace_id, err = _require_namespace_id(body.get("namespace_id"))
     if err is not None:
         return err
+    # _require_namespace_id's contract: err is None => namespace_id is set.
+    # mypy cannot correlate the two tuple slots, so state the invariant.
+    assert namespace_id is not None
+
+    disabled = await _check_inventory_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
 
     params: dict[str, Any] = {
         "namespace_id": namespace_id,
@@ -479,6 +552,13 @@ async def api_inventory_reserve_stock(request) -> JSONResponse:
     namespace_id, err = _require_namespace_id(body.get("namespace_id"))
     if err is not None:
         return err
+    # _require_namespace_id's contract: err is None => namespace_id is set.
+    # mypy cannot correlate the two tuple slots, so state the invariant.
+    assert namespace_id is not None
+
+    disabled = await _check_inventory_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
 
     params: dict[str, Any] = {
         "namespace_id": namespace_id,
@@ -536,6 +616,13 @@ async def api_inventory_release_stock(request) -> JSONResponse:
     namespace_id, err = _require_namespace_id(body.get("namespace_id"))
     if err is not None:
         return err
+    # _require_namespace_id's contract: err is None => namespace_id is set.
+    # mypy cannot correlate the two tuple slots, so state the invariant.
+    assert namespace_id is not None
+
+    disabled = await _check_inventory_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
 
     params: dict[str, Any] = {
         "namespace_id": namespace_id,
@@ -594,6 +681,13 @@ async def api_inventory_record_rma(request) -> JSONResponse:
     namespace_id, err = _require_namespace_id(body.get("namespace_id"))
     if err is not None:
         return err
+    # _require_namespace_id's contract: err is None => namespace_id is set.
+    # mypy cannot correlate the two tuple slots, so state the invariant.
+    assert namespace_id is not None
+
+    disabled = await _check_inventory_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
 
     params: dict[str, Any] = {
         "namespace_id": namespace_id,
@@ -646,6 +740,13 @@ async def api_inventory_valuation(request) -> JSONResponse:
     namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
     if err is not None:
         return err
+    # _require_namespace_id's contract: err is None => namespace_id is set.
+    # mypy cannot correlate the two tuple slots, so state the invariant.
+    assert namespace_id is not None
+
+    disabled = await _check_inventory_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
 
     params: dict[str, Any] = {"namespace_id": namespace_id}
     params["sku"] = request.query_params.get("sku")
@@ -694,6 +795,13 @@ async def api_inventory_record_goods_receipt_and_match(request) -> JSONResponse:
     namespace_id, err = _require_namespace_id(body.get("namespace_id"))
     if err is not None:
         return err
+    # _require_namespace_id's contract: err is None => namespace_id is set.
+    # mypy cannot correlate the two tuple slots, so state the invariant.
+    assert namespace_id is not None
+
+    disabled = await _check_inventory_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
 
     params: dict[str, Any] = {
         "namespace_id": namespace_id,
@@ -752,6 +860,13 @@ async def api_inventory_reconcile_dead_stock(request) -> JSONResponse:
     namespace_id, err = _require_namespace_id(body.get("namespace_id"))
     if err is not None:
         return err
+    # _require_namespace_id's contract: err is None => namespace_id is set.
+    # mypy cannot correlate the two tuple slots, so state the invariant.
+    assert namespace_id is not None
+
+    disabled = await _check_inventory_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
 
     params: dict[str, Any] = {
         "namespace_id": namespace_id,
@@ -804,6 +919,13 @@ async def api_inventory_restock_from_rma(request) -> JSONResponse:
     namespace_id, err = _require_namespace_id(body.get("namespace_id"))
     if err is not None:
         return err
+    # _require_namespace_id's contract: err is None => namespace_id is set.
+    # mypy cannot correlate the two tuple slots, so state the invariant.
+    assert namespace_id is not None
+
+    disabled = await _check_inventory_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
 
     params: dict[str, Any] = {
         "namespace_id": namespace_id,
@@ -859,6 +981,13 @@ async def api_inventory_dispose_rma_weee(request) -> JSONResponse:
     namespace_id, err = _require_namespace_id(body.get("namespace_id"))
     if err is not None:
         return err
+    # _require_namespace_id's contract: err is None => namespace_id is set.
+    # mypy cannot correlate the two tuple slots, so state the invariant.
+    assert namespace_id is not None
+
+    disabled = await _check_inventory_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
 
     params: dict[str, Any] = {
         "namespace_id": namespace_id,

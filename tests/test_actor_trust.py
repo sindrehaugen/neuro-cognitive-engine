@@ -16,7 +16,7 @@ from __future__ import annotations
 import math
 import uuid
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import asyncpg
 import pytest
@@ -37,6 +37,37 @@ from nce.models import AssertionType, MemoryType, StoreMemoryRequest
 _HIGH_TRUST_AGENT = "batch113-high-trust-agent"
 _LOW_TRUST_AGENT = "batch113-low-trust-agent"
 _OPERATOR_ID = "batch113-operator"
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_cron_lock() -> Any:
+    """Let ``_actor_trust_tick`` run its body regardless of Redis state.
+
+    The tick acquires a Redis lock and, when it is already held, logs at debug
+    level and returns **having written nothing**. A lock left behind by any other
+    process therefore turns every trust assertion in this module into a read of
+    the default score, with no visible cause. These tests are about trust
+    computation; lock behaviour belongs to ``tests/test_scoped_locks.py``.
+    """
+    with (
+        patch("nce.cron.acquire_cron_lock", new=AsyncMock(return_value=object())),
+        patch("nce.cron.release_cron_lock", new=AsyncMock()),
+    ):
+        yield
+
+
+def _expected_trust(*, confirms: int, rejections: int) -> float:
+    """The trust score the cron tick must compute, derived from the seeded counts.
+
+    Mirrors ``_actor_trust_tick``'s Laplace-smoothed formula **independently of
+    the database**, so assertions compare the stored value against one the
+    system under test did not produce. Deriving the expectation from
+    ``get_actor_trust`` instead is self-confirming: when the tick writes nothing
+    and the getter returns its default, both sides of the comparison move
+    together and the assertion cannot fail. The contradiction term is zero
+    because ``_seed_events`` seeds no contradictions.
+    """
+    return max(0.1, min(0.95, (confirms + 1) / (confirms + rejections + 2)))
 
 
 def _make_payload(ns_id: uuid.UUID, agent_id: str, confidence: float) -> StoreMemoryRequest:
@@ -232,22 +263,29 @@ def test_quarantine_threshold_pure() -> None:
 async def test_high_trust_agent_bypasses_quarantine(pg_pool: asyncpg.Pool, make_namespace) -> None:
     """
     After the cron tick computes a high trust score, the high-trust agent's
-    mid-confidence assertion (R at the quarantine boundary) must NOT be quarantined.
+    mid-confidence assertion must NOT be quarantined.
 
-    We pick confidence = 0.75 — comfortably above the low-trust threshold (~0.53)
-    and above the high-trust threshold (~0.785 at trust≈0.833). Wait — at trust=0.833
-    the threshold is 0.5 + 0.3*0.833 ≈ 0.75 so 0.75 is borderline.
-    Use 0.76 to be safely above the high-trust threshold.
+    At confirms=9/rejections=1 the tick must store trust = 10/12 ≈ 0.833, giving
+    a threshold of ``0.5 + 0.3 * 0.833`` ≈ 0.75 (clamped to
+    ``cfg.NCE_TRUST_QUARANTINE_BYPASS``). Confidence is set above that.
     """
     ns_id: uuid.UUID = await make_namespace()
     await _seed_events(pg_pool, ns_id, _HIGH_TRUST_AGENT, confirms=9, rejections=1)
     await _actor_trust_tick(pg_pool)
 
+    # Expectation comes from the seeded counts, never from get_actor_trust — see
+    # _expected_trust. THIS assertion is what fails if the tick wrote nothing.
+    expected_trust = _expected_trust(confirms=9, rejections=1)
     trust = await get_actor_trust(pg_pool, ns_id, _HIGH_TRUST_AGENT)
-    threshold = quarantine_threshold(trust)
+    assert abs(trust - expected_trust) < 1e-4, (
+        f"cron tick must store trust={expected_trust:.4f} for the high-trust agent, "
+        f"got {trust:.4f} — a default here means the tick did not run"
+    )
 
-    # Confidence above this agent's threshold → no quarantine.
-    confidence = threshold + 0.05  # safely above
+    # Threshold is derived from the INDEPENDENT expectation, so confidence cannot
+    # be positioned relative to whatever the database happened to return.
+    threshold = quarantine_threshold(expected_trust)
+    confidence = min(1.0, threshold + 0.05)
 
     payload = _make_payload(ns_id, _HIGH_TRUST_AGENT, confidence)
 
@@ -278,11 +316,19 @@ async def test_low_trust_agent_is_quarantined(pg_pool: asyncpg.Pool, make_namesp
     await _seed_events(pg_pool, ns_id, _LOW_TRUST_AGENT, confirms=1, rejections=9)
     await _actor_trust_tick(pg_pool)
 
+    # Expectation comes from the seeded counts, never from get_actor_trust — see
+    # _expected_trust. THIS assertion is what fails if the tick wrote nothing.
+    expected_trust = _expected_trust(confirms=1, rejections=9)
     trust = await get_actor_trust(pg_pool, ns_id, _LOW_TRUST_AGENT)
-    threshold = quarantine_threshold(trust)
+    assert abs(trust - expected_trust) < 1e-4, (
+        f"cron tick must store trust={expected_trust:.4f} for the low-trust agent, "
+        f"got {trust:.4f} — a default here means the tick did not run"
+    )
 
-    # Confidence BELOW the low-trust agent's threshold but >= 0.5 — mid-confidence zone.
-    # Use a small gap so it always lands strictly below threshold regardless of exact trust.
+    # Threshold is derived from the INDEPENDENT expectation. Deriving confidence
+    # from the observed threshold made this land below it by construction, so the
+    # test passed whether or not the tick had computed anything.
+    threshold = quarantine_threshold(expected_trust)
     confidence = threshold - 0.02
     assert confidence >= 0.5, "Test confidence must be at or above the hard lower bound"
 

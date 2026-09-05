@@ -83,7 +83,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from nce.auth import NamespaceContext, jsonrpc_error_response, validate_agent_id
-from nce.config import cfg
+from nce.config import DeploymentConfigurationError, cfg
 
 log = logging.getLogger("nce.jwt_auth")
 
@@ -155,7 +155,7 @@ def _load_public_key(raw: str) -> str:
     path traversal.
 
     Returns the PEM string.
-    Raises ``ValueError`` on unresolvable input.
+    Raises ``DeploymentConfigurationError`` on unresolvable input.
     """
     from pathlib import Path
 
@@ -171,16 +171,24 @@ def _load_public_key(raw: str) -> str:
         try:
             allowed_base = Path(allowed_dir_raw).resolve(strict=True)
         except FileNotFoundError as exc:
-            raise ValueError(f"NCE_JWT_KEY_DIR does not exist: {allowed_dir_raw!r}") from exc
+            raise DeploymentConfigurationError(
+                "NCE_JWT_KEY_DIR", f"NCE_JWT_KEY_DIR does not exist: {allowed_dir_raw!r}"
+            ) from exc
 
         if not key_path.is_relative_to(allowed_base):
-            raise ValueError(f"NCE_JWT_PUBLIC_KEY path escapes allowed directory: {path_str!r}")
+            raise DeploymentConfigurationError(
+                "NCE_JWT_PUBLIC_KEY",
+                f"NCE_JWT_PUBLIC_KEY path escapes allowed directory: {path_str!r}",
+            )
 
         if not key_path.is_file():
-            raise ValueError(f"NCE_JWT_PUBLIC_KEY file not found: {path_str!r}")
+            raise DeploymentConfigurationError(
+                "NCE_JWT_PUBLIC_KEY", f"NCE_JWT_PUBLIC_KEY file not found: {path_str!r}"
+            )
         return key_path.read_text(encoding="utf-8").strip()
-    raise ValueError(
-        f"NCE_JWT_PUBLIC_KEY must be a PEM string or a file:// URI; got: {stripped[:40]!r}…"
+    raise DeploymentConfigurationError(
+        "NCE_JWT_PUBLIC_KEY",
+        f"NCE_JWT_PUBLIC_KEY must be a PEM string or a file:// URI; got: {stripped[:40]!r}…",
     )
 
 
@@ -264,11 +272,12 @@ def decode_agent_token(
         JWTDecodeError: On any validation failure; carries JSON-RPC code +
                         human-readable message + machine-readable reason.
         RuntimeError:   On server misconfiguration (missing key).
+        DeploymentConfigurationError: On server misconfiguration (bad/missing key file).
     """
     algorithm = cfg.NCE_JWT_ALGORITHM
     try:
         key = _build_jwt_key(algorithm)
-    except RuntimeError as exc:
+    except (RuntimeError, DeploymentConfigurationError) as exc:
         log.error("JWT key build failed (server misconfiguration): %s", exc)
         raise JWTDecodeError(
             _CODE_JWT_INVALID,
@@ -458,7 +467,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         # Eagerly check key availability; log once at startup rather than per-request.
         try:
             _build_jwt_key(cfg.NCE_JWT_ALGORITHM)
-        except RuntimeError as exc:
+        except (RuntimeError, DeploymentConfigurationError) as exc:
             log.warning(
                 "JWTAuthMiddleware: %s — all protected routes under %r will "
                 "return 401 until the key is configured.",

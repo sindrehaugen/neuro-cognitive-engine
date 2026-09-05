@@ -77,7 +77,12 @@ _SEARCH_MAX_ROWS: int = 50
 
 
 async def do_search_products(engine: NCEEngine, params: dict[str, Any]) -> dict[str, Any]:
-    """Hybrid lexical search over product_catalog, namespace-scoped.
+    """Hybrid lexical search over product_catalog, which is global by design.
+
+    The product catalogue is shared across every tenant -- its ``namespace_id``
+    is vestigial and no query filters on it. Per-tenant product data is the
+    pricing and graph data (``product_prices``, ``kg_edges``), which *is*
+    namespace-scoped -- see ``do_get_product``.
 
     Uses PostgreSQL full-text search (``to_tsvector`` + ``plainto_tsquery``) for
     the query term; falls back to a ``ILIKE`` floor when the query is too short
@@ -225,9 +230,11 @@ async def do_get_product(engine: NCEEngine, params: dict[str, Any]) -> dict[str,
             """
             SELECT supplier, list_price, updated_at
             FROM   product_prices
-            WHERE  mfr_part_no = $1
+            WHERE  namespace_id = $1
+              AND  mfr_part_no  = $2
             ORDER  BY supplier
             """,
+            namespace_id,
             mfr_part_no,
         )
 
@@ -237,10 +244,12 @@ async def do_get_product(engine: NCEEngine, params: dict[str, Any]) -> dict[str,
             """
             SELECT predicate, object_label, confidence, updated_at
             FROM   kg_edges
-            WHERE  subject_label = $1
+            WHERE  namespace_id  = $1
+              AND  subject_label = $2
             ORDER  BY predicate, object_label
             LIMIT  200
             """,
+            namespace_id,
             kg_label,
         )
 

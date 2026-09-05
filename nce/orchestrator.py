@@ -184,6 +184,7 @@ class NCEEngine(OrchestratorBase):
         # the skew first turns 13 lines of "add to EXPECTED_TENANT_RLS_TABLES"
         # into "this image is older than this database".
         await self._verify_schema_version()
+        await self._verify_master_key_matches_data()
         await self._verify_worm_enforcement()
         await self._verify_rls_enforcement()
         await self._seed_node_ownership_all()
@@ -605,6 +606,116 @@ class NCEEngine(OrchestratorBase):
         if cfg.IS_PROD and not acknowledged:
             raise RuntimeError("FATAL: " + message)
         log.critical("%s%s", message, " (acknowledged)" if acknowledged else "")
+
+    async def _verify_master_key_matches_data(self) -> None:
+        """Report (and in production, refuse) a master key that cannot open its data.
+
+        The 2026-09-02/03 failure was a *rotation*, not a loss: the blob in
+        ``signing_keys`` was re-wrapped under a new master key while the
+        deployment kept the old one.  3,470 errors over 26h with every container
+        reporting ``healthy``, because nothing at boot ever asked whether
+        ``NCE_MASTER_KEY`` agrees with the data it is supposed to open.  This
+        asks, once, in milliseconds.
+
+        Two conditions that look alike must not be conflated:
+
+        * ``NoActiveSigningKeyError`` -- no active key exists at all.  That is a
+          legitimately **fresh** deployment: nothing seeds a signing key at boot
+          (``rotate_key`` is the only writer and only the admin tool calls it).
+          **WARN only; never refuse.**
+        * ``SigningKeyDecryptionError`` -- a key exists and this master key
+          cannot unwrap it.  That is the rotation-left-behind failure: log
+          CRITICAL naming that cause, and refuse in production.
+
+        Advisory outside production, raising in production unless
+        ``NCE_ALLOW_MASTER_KEY_MISMATCH`` acknowledges it -- deliberately the
+        same shape and the same escape hatch as
+        ``_verify_schema_version``/``NCE_ALLOW_SCHEMA_SKEW``.
+
+        No recovery is attempted and none is possible: content is encrypted
+        under per-memory DEKs wrapped by this key (``nce.envelope``), which is
+        the same property that lets the system prove deletion.  This check makes
+        the *wrong* key obvious in seconds; it cannot make a *lost* key
+        survivable, and must never try.
+        """
+        import os
+
+        from nce.signing import (
+            MasterKeyMissingError,
+            NoActiveSigningKeyError,
+            SigningKeyDecryptionError,
+            decrypt_signing_key,
+            master_key_fingerprint,
+            require_master_key,
+        )
+
+        key_id = "<unknown>"
+        fingerprint = "<unavailable>"
+        try:
+            with require_master_key() as master_key:
+                fingerprint = master_key_fingerprint(master_key)
+                # A sha256 of the key is not the key.  This one line lets an
+                # operator compare a deployment against escrow at a glance.
+                log.info(
+                    "[key] NCE_MASTER_KEY fingerprint=%s (sha256[:16] of the key, "
+                    "not the key). Compare against the escrow copy.",
+                    fingerprint,
+                )
+                async with self.pg_pool.acquire(timeout=10.0) as conn:
+                    row = await conn.fetchrow("""
+                        SELECT key_id, encrypted_key
+                        FROM   signing_keys
+                        WHERE  status = 'active'
+                        ORDER  BY created_at DESC
+                        LIMIT  1
+                        """)
+                if row is None:
+                    raise NoActiveSigningKeyError("no active row in signing_keys")
+                key_id = row["key_id"]
+                decrypt_signing_key(bytes(row["encrypted_key"]), master_key)
+        except NoActiveSigningKeyError:
+            log.warning(
+                "[key] no active signing key exists yet (master key fingerprint=%s). "
+                "This is the normal state for a fresh deployment -- nothing seeds a "
+                "signing key at boot; the admin key-rotation tool creates the first "
+                "one. Not refusing startup.",
+                fingerprint,
+            )
+            return
+        except SigningKeyDecryptionError:
+            message = (
+                f"master-key mismatch: the master key this deployment holds "
+                f"(fingerprint={fingerprint}) does not unwrap the active signing key "
+                f"(key_id={key_id}). This key was most likely rotated without updating "
+                "this deployment -- that is the 2026-09-02 incident, where the signing "
+                "blob was re-wrapped under a new key and the containers kept the old one "
+                "for 26h while reporting healthy. This is not a code bug and not database "
+                "corruption: nothing is lost while the correct key still exists. Point "
+                "this deployment at the key whose fingerprint matches escrow, or re-run "
+                "scripts/rekey_master.py from the key this data was written under. Do NOT "
+                "rotate the signing key to make this go away -- that re-wraps the data "
+                "under the wrong key and makes the loss permanent."
+            )
+            acknowledged = os.environ.get("NCE_ALLOW_MASTER_KEY_MISMATCH", "").strip().lower() in {
+                "1",
+                "true",
+                "yes",
+            }
+            if cfg.IS_PROD and not acknowledged:
+                raise RuntimeError("FATAL: " + message) from None
+            log.critical("%s%s", message, " (acknowledged)" if acknowledged else "")
+            return
+        except MasterKeyMissingError as exc:
+            log.critical("[key] master-key/data agreement unverifiable: %s", exc)
+            return
+        except Exception as exc:
+            log.warning("[key] master-key/data agreement check skipped: %s", exc)
+            return
+        log.info(
+            "[key] master key (fingerprint=%s) unwraps the active signing key (key_id=%s).",
+            fingerprint,
+            key_id,
+        )
 
     async def _seed_node_ownership_all(self) -> None:
         """Backfill node_ownership_registry for all existing namespaces.

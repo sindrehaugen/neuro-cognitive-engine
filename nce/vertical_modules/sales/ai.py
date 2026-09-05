@@ -198,7 +198,10 @@ async def do_draft_quote(
                         {
                             "product_ref": line.get("product_ref"),
                             "qty": line.get("qty", 1),
-                            "suggested_unit_price": line.get("unit_price", 100.0),
+                            # No price in the recalled memory means "unknown", not 100.0.
+                            # None carries the absence so a consumer can tell it from a real
+                            # price (no-fabricated-money-defaults).
+                            "suggested_unit_price": line.get("unit_price"),
                         }
                     )
             margin_pct = meta.get("margin_pct") or meta.get("signed_margin_pct")

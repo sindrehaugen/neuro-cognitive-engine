@@ -57,7 +57,14 @@ jobs:
             requirements-dev.txt
 
       - name: Install dependencies
-        run: pip install -r requirements.txt -r requirements-dev.txt
+        run: |
+          # CI has no GPU. torch is pinned >=2.13.0 and floated to 2.14.0, whose
+          # default wheels pull nvidia_cudnn_cu13 (553 MB), nvidia_nccl_cu13
+          # (216 MB) and triton (248 MB) on top of torch itself (555 MB) -- about
+          # 3.2 GB of downloads, which exhausts the runner disk (ENOSPC). The CPU
+          # index drops the CUDA wheels entirely; nothing here runs on a GPU.
+          pip install --index-url https://download.pytorch.org/whl/cpu torch
+          pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Check Citus extension availability
         id: citus_check

@@ -11,3 +11,10 @@
 Dockerfile text eol=lf
 *.Dockerfile text eol=lf
 entrypoint.sh text eol=lf
+
+# Debian packaging (wave L4). Same hazard, sharper: dpkg-buildpackage execs
+# debian/rules directly and runs the maintainer scripts, so a CRLF checkout
+# yields `#!/bin/sh^M: not found` and the build or the install fails. The
+# maintainer scripts carry no .sh suffix, so the *.sh pin above does not reach
+# them. Blobs are already LF; this only stops a Windows checkout corrupting them.
+debian/** text eol=lf

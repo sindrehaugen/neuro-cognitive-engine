@@ -19,7 +19,7 @@ Sales does not (yet) run a fully independent pipeline UI. Its primary data sourc
 The **D365 `quotes` sync only pulls four fields**: `quoteid`, `name`, `statecode`, `modifiedon` (`nce/vertical_modules/sales/source_adapters/d365.py:101`). Any commercial detail you see on a quote (price, manufacturer, line items) comes from `manual` enrichment written locally (e.g. via DealRoom or signing), not from the D365 mirror itself.
 
 ### 1.2 Native graph writes
-Sales also writes a small pipeline graph directly (`nce/vertical_modules/sales/graph.py`): `CUSTOMER -[has]-> LEAD -[qualifies_into]-> OPPORTUNITY -[becomes]-> DEAL -[priced_as]-> QUOTE`, plus `QUOTE -[freezes]-> SIGNED_BASELINE` (label only — the freeze itself lives in a dedicated table, see §3). `do_create_deal` / `do_edit_deal` (`nce/vertical_modules/sales/write_routing.py:26-178`) drive these upserts. Every node/edge write asserts ownership via `assert_owner()` before touching `kg_nodes`/`kg_edges` (`nce/vertical_modules/sales/graph.py:93`).
+Sales also writes a small pipeline graph directly (`nce/vertical_modules/sales/graph.py`): `CUSTOMER -[has]-> LEAD -[qualifies_into]-> OPPORTUNITY -[becomes]-> DEAL -[priced_as]-> QUOTE`, plus `QUOTE -[freezes]-> SIGNED_BASELINE` (label only — the freeze itself lives in a dedicated table, see §3). `do_create_deal` / `do_edit_deal` (`nce/vertical_modules/sales/write_routing.py:26-177`) drive these upserts. Every node/edge write asserts ownership via `assert_owner()` before touching `kg_nodes`/`kg_edges` (`nce/vertical_modules/sales/graph.py:93`).
 
 ### 1.3 Source-mode-aware reads
 Every list/detail read goes through the C5 source-mode resolver (`nce/vertical_modules/sales/source_mode.py`), which picks `d365` | `both` | `nce` per `(namespace, function)` — see §2 of the admin guide for how modes are configured. In `both` mode, the resolver diffs the native and D365 answers and logs any mismatch to `divergence_log` (`nce/vertical_modules/sales/source_mode.py:32-69`, `log_sales_divergence`).
@@ -44,17 +44,17 @@ Unknown lookups fail closed with structured errors rather than empty success, e.
 
 ## 2. DealRoom (`dealroom.py`)
 
-`do_open_dealroom(engine, params)` (`nce/vertical_modules/sales/dealroom.py:24-202`) materialises a live quote view with toggle-able option lines.
+`do_open_dealroom(engine, params)` (`nce/vertical_modules/sales/dealroom.py:24-240`) materialises a live quote view with toggle-able option lines.
 
 **Params:** `namespace_id` (required), `quote_id` (required), `toggled_options` (optional `dict[str, bool]` keyed by BOM line label or line-ref suffix).
 
 **What it does, in order:**
-1. Reads the quote's `name`/`description` from `sales_read_model` (merged `source_json` + `manual`), falling back to `"DealRoom Quote"` if the quote isn't found (`:63-75`).
-2. **Fetches BOM lines from `kg_nodes` using literal prefix matching** (`:78-95`): queries `WHERE entity_type = 'BOM_LINE' AND namespace_id = $1::uuid AND starts_with(label, $2)` with parameter `f"BOM_LINE:{quote_id.upper()}:"`. **Postgres `starts_with()` is used instead of SQL `LIKE`** (PR #67). Because `quote_id` is caller-supplied and DealRoom is customer-facing, SQL `LIKE` metacharacters (`_` matching any single character, `%` matching any sequence) in a quote ID would otherwise silently widen the match to a different quote's BOM lines within the tenant (e.g. `'BOM_LINE:QA1:AMP01' LIKE 'BOM_LINE:Q_1:%'` evaluates to true). `starts_with()` provides strict literal-prefix matching with zero pattern semantics.
-3. For each line, pulls product/customer pricing detail from a MongoDB payload (`engine.mongo_client`) referenced by `payload_ref`, if present; falls back to a flat `base_price: 100.0` when no product/customer pricing is found (`:99-142`).
-4. Applies any `toggled_options` override for that line and persists the new toggle state back to Mongo (`:144-161`).
-5. **Prices every line through the shared C6 pricing service** — `resolve_price()` then `dg_price()` (`nce/vertical_modules/sales/dealroom.py:19,163-176`) — never an inline discount formula. If price resolution throws, it falls back to `base_price` (or `100.0`) as the cost (`:172-174`).
-6. Sums `total_price` across lines where `toggled == True` into `total_price_nok` (`:193-194`).
+1. Reads the quote's `name`/`description` from `sales_read_model` (merged `source_json` + `manual`), falling back to `"DealRoom Quote"` if the quote isn't found (`:59-83`).
+2. **Fetches BOM lines from `kg_nodes` using literal prefix matching** (`:85-109`): queries `WHERE entity_type = 'BOM_LINE' AND namespace_id = $1::uuid AND starts_with(label, $2)` with parameter `f"BOM_LINE:{quote_id.upper()}:"`. **Postgres `starts_with()` is used instead of SQL `LIKE`** (PR #67). Because `quote_id` is caller-supplied and DealRoom is customer-facing, SQL `LIKE` metacharacters (`_` matching any single character, `%` matching any sequence) in a quote ID would otherwise silently widen the match to a different quote's BOM lines within the tenant (e.g. `'BOM_LINE:QA1:AMP01' LIKE 'BOM_LINE:Q_1:%'` evaluates to true). `starts_with()` provides strict literal-prefix matching with zero pattern semantics.
+3. For each line, pulls product/customer pricing detail from a MongoDB payload (`engine.mongo_client`) referenced by `payload_ref`, if present (`:128-158`). It then asks whether a price is **on record** at all — any of `product.base_price`, `product.supplier_list_price` or `customer.bid_price` (`:160-166`). 🔴 **A missing price is never replaced with a plausible one.** Until PR #187 this step substituted a flat `base_price: 100.0`; it no longer does, and no fallback price exists anywhere in this file.
+4. Applies any `toggled_options` override for that line and persists the new toggle state back to Mongo (`:168-185`).
+5. **Prices every line through the shared C6 pricing service** — `resolve_price()` then `dg_price()` (`nce/vertical_modules/sales/dealroom.py:19,187-209`) — never an inline discount formula. If no price is on record, or if `resolve_price()` raises, the line comes back **unpriced**: `base_cost`, `unit_price` and `total_price` are all `null` and the line carries `"priced": false` plus an `unpriced_reason`. The two reasons are kept distinct because they are different operator problems — `"no_price_on_record"` (nothing was ever recorded) vs `"price_resolution_failed"` (a price exists but C6 could not resolve it).
+6. Sums `total_price` across lines where `toggled == True` into `total_price_nok` (`:227-231`). 🔴 **If any toggled line is unpriced, `total_price_nok` is `null`, not a partial sum** — a caller must not be able to read a confident total that silently omits money. `unpriced_line_count` says how many toggled lines were left out (`:237-238`).
 
 **Response shape:**
 ```json
@@ -63,6 +63,7 @@ Unknown lookups fail closed with structured errors rather than empty success, e.
   "name": "DealRoom Quote",
   "description": "",
   "total_price_nok": 4200.0,
+  "unpriced_line_count": 0,
   "lines": [
     {
       "label": "BOM_LINE:QUOTE-12345:1",
@@ -72,13 +73,28 @@ Unknown lookups fail closed with structured errors rather than empty success, e.
       "base_cost": 3000.0,
       "unit_price": 3600.0,
       "total_price": 7200.0,
+      "priced": true,
+      "unpriced_reason": null,
       "is_optional": true,
       "toggled": true
+    },
+    {
+      "label": "BOM_LINE:QUOTE-12345:2",
+      "manufacturer": "Unknown",
+      "model": "Unknown",
+      "quantity": 1,
+      "base_cost": null,
+      "unit_price": null,
+      "total_price": null,
+      "priced": false,
+      "unpriced_reason": "no_price_on_record",
+      "is_optional": true,
+      "toggled": false
     }
   ]
 }
 ```
-`base_cost` and `unit_price` are present in this **internal** DealRoom payload — this is not the customer-facing shape (see §4 for what a customer actually sees).
+`base_cost` and `unit_price` are present in this **internal** DealRoom payload — this is not the customer-facing shape (see §4 for what a customer actually sees). **Both are `null` on an unpriced line, and every consumer must handle that**: the second line above is what a line with no price on record looks like.
 
 There is no `sales_open_dealroom` MCP tool registered; DealRoom is reached only by calling `do_open_dealroom` directly (no dedicated REST route exists in `nce/admin_handlers/sales.py` either — the spec's `api_sales_dealroom` route is **not yet implemented**).
 
@@ -206,7 +222,8 @@ room = await do_open_dealroom(engine, {
     "namespace_id": ns_id,
     "quote_id": "quote-12345",
 })
-# room["total_price_nok"] reflects only toggled=True lines
+# room["total_price_nok"] reflects only toggled=True lines, and is None if
+# any toggled line came back unpriced -- check room["unpriced_line_count"] first
 
 # 2. Request a signature (manual transport in dev/test; oneflow/criipto/signicat in prod)
 session = await do_request_signature(engine, {

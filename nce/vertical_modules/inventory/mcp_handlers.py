@@ -72,10 +72,11 @@ The six OTHER business refusals the Batch 138a cores raise —
 (the RMA claim legs) and ``LedgerDivergenceError`` (dead-stock reconcile) —
 were ALSO bare ``Exception`` subclasses falling through to
 ``MCP_INTERNAL_ERROR``. That is debt item **D38**, closed by mapping all six
-through ONE shared table, ``inventory/refusals.py``, to ``McpError(-32005)``
-with a machine-readable ``data.reason``. Each affected handler carries a
-single ``except BUSINESS_REFUSALS`` clause that delegates; none names an
-individual refusal class (D18 precedent).
+through ONE shared table, ``inventory/refusals.py``, to
+``McpError(-32005)`` with a machine-readable ``data.reason`` — the same shape
+B140a's opt-in gate already emits. Each affected handler carries a single
+``except BUSINESS_REFUSALS`` clause that delegates; none names an individual
+refusal class (D18 precedent).
 
 Note the deliberate asymmetry that remains: ``InsufficientStockError`` is
 still returned as a 200-shaped payload, while these six are raised as typed
@@ -93,7 +94,11 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from nce.mcp_args import require_namespace_id
-from nce.mcp_errors import mcp_handler
+from nce.mcp_errors import McpError, mcp_handler
+from nce.vertical_modules.inventory._guard import (
+    InventoryDisabledError,
+    require_inventory_enabled,
+)
 from nce.vertical_modules.inventory.forecast import do_forecast_demand
 from nce.vertical_modules.inventory.goods_receipt import do_record_goods_receipt
 from nce.vertical_modules.inventory.reconcile import do_reconcile_dead_stock
@@ -120,6 +125,38 @@ if TYPE_CHECKING:
     from nce.orchestrator import NCEEngine
 
 log = logging.getLogger("nce.vertical_modules.inventory.mcp_handlers")
+
+
+# ---------------------------------------------------------------------------
+# Shared opt-in guard -- applied at handler boundary (not inside do_* cores)
+# ---------------------------------------------------------------------------
+
+_MCP_INVENTORY_DISABLED_CODE: int = -32005  # MCP_SCOPE_FORBIDDEN
+
+
+async def _check_inventory_enabled(engine: NCEEngine, arguments: dict[str, Any]) -> None:
+    """Check namespace opt-in; raise McpError(-32005) if not enabled.
+
+    Also raises the pre-existing ``ValueError("namespace_id is required")``
+    (via ``require_namespace_id``) when ``namespace_id`` is absent -- this
+    function does not swallow it, so every handler keeps the exact
+    missing-namespace_id behaviour Batch 131/138a shipped.
+
+    Every ``handle_inventory_*`` handler calls this in place of its bare
+    ``require_namespace_id(arguments)``, OUTSIDE the narrow ``try:`` that
+    exists only to catch ``InsufficientStockError`` -- so the ``McpError``
+    propagates to ``@mcp_handler`` structured, never flattened into a
+    returned ``{"error": ...}`` JSON string.
+    """
+    namespace_id = require_namespace_id(arguments)
+    try:
+        await require_inventory_enabled(engine.pg_pool, namespace_id)
+    except InventoryDisabledError as exc:
+        raise McpError(
+            _MCP_INVENTORY_DISABLED_CODE,
+            "Inventory vertical is not enabled for this namespace",
+            data={"reason": "inventory_disabled", "detail": str(exc)},
+        ) from exc
 
 
 def _insufficient_stock_error(exc: InsufficientStockError) -> str:
@@ -151,7 +188,7 @@ async def handle_inventory_stock_levels(engine: NCEEngine, arguments: dict[str, 
     Returns ``{"ok": True, "items": [...]}``. Thin adapter — all logic lives
     in ``stock.do_stock_levels``.
     """
-    require_namespace_id(arguments)
+    await _check_inventory_enabled(engine, arguments)
     result = await do_stock_levels(engine, dict(arguments))
     return json.dumps(result, default=str)
 
@@ -169,7 +206,7 @@ async def handle_inventory_transfer_stock(engine: NCEEngine, arguments: dict[str
     hold enough stock. Thin adapter — all logic lives in
     ``stock.do_transfer_stock``.
     """
-    require_namespace_id(arguments)
+    await _check_inventory_enabled(engine, arguments)
     try:
         result = await do_transfer_stock(engine, dict(arguments))
     except InsufficientStockError as exc:
@@ -190,7 +227,7 @@ async def handle_inventory_record_consumption(engine: NCEEngine, arguments: dict
     module docstring) when *location* does not hold enough stock. Thin
     adapter — all logic lives in ``stock.do_record_consumption``.
     """
-    require_namespace_id(arguments)
+    await _check_inventory_enabled(engine, arguments)
     try:
         result = await do_record_consumption(engine, dict(arguments))
     except InsufficientStockError as exc:
@@ -218,7 +255,7 @@ async def handle_inventory_record_goods_receipt(
     True, ...}`` replay shape. Thin adapter — all logic lives in
     ``goods_receipt.do_record_goods_receipt``.
     """
-    require_namespace_id(arguments)
+    await _check_inventory_enabled(engine, arguments)
     result = await do_record_goods_receipt(engine, dict(arguments))
     return json.dumps(result, default=str)
 
@@ -234,7 +271,7 @@ async def handle_inventory_recommend_restock(engine: NCEEngine, arguments: dict[
     Returns ``{"ok": True, "recommendations": [...]}``. Thin adapter — all
     logic lives in ``replenishment.do_recommend_restock``.
     """
-    require_namespace_id(arguments)
+    await _check_inventory_enabled(engine, arguments)
     result = await do_recommend_restock(engine, dict(arguments))
     return json.dumps(result, default=str)
 
@@ -250,7 +287,7 @@ async def handle_inventory_forecast_demand(engine: NCEEngine, arguments: dict[st
     Returns ``{"ok": True, "forecasts": [...]}``. Thin adapter — all logic
     lives in ``forecast.do_forecast_demand``.
     """
-    require_namespace_id(arguments)
+    await _check_inventory_enabled(engine, arguments)
     result = await do_forecast_demand(engine, dict(arguments))
     return json.dumps(result, default=str)
 
@@ -265,7 +302,7 @@ async def handle_inventory_reserve_stock(engine: NCEEngine, arguments: dict[str,
 
     Thin adapter — all logic lives in ``reservation.do_reserve_stock``.
     """
-    require_namespace_id(arguments)
+    await _check_inventory_enabled(engine, arguments)
     try:
         result = await do_reserve_stock(engine, dict(arguments))
     except BUSINESS_REFUSALS as exc:
@@ -283,7 +320,7 @@ async def handle_inventory_release_stock(engine: NCEEngine, arguments: dict[str,
 
     Thin adapter — all logic lives in ``reservation.do_release_stock``.
     """
-    require_namespace_id(arguments)
+    await _check_inventory_enabled(engine, arguments)
     try:
         result = await do_release_stock(engine, dict(arguments))
     except BUSINESS_REFUSALS as exc:
@@ -302,7 +339,7 @@ async def handle_inventory_record_rma(engine: NCEEngine, arguments: dict[str, An
 
     Thin adapter — all logic lives in ``rma.do_record_rma``.
     """
-    require_namespace_id(arguments)
+    await _check_inventory_enabled(engine, arguments)
     result = await do_record_rma(engine, dict(arguments))
     return json.dumps(result, default=str)
 
@@ -319,7 +356,7 @@ async def handle_inventory_valuation(engine: NCEEngine, arguments: dict[str, Any
 
     Thin adapter — all logic lives in ``transactions.do_valuation``.
     """
-    require_namespace_id(arguments)
+    await _check_inventory_enabled(engine, arguments)
     result = await do_valuation(engine, dict(arguments))
     return json.dumps(result, default=str)
 
@@ -342,7 +379,7 @@ async def handle_inventory_record_goods_receipt_and_match(
     Thin adapter — all logic lives in
     ``triggers.do_record_goods_receipt_and_evaluate_match``.
     """
-    require_namespace_id(arguments)
+    await _check_inventory_enabled(engine, arguments)
     result = await do_record_goods_receipt_and_evaluate_match(engine, dict(arguments))
     return json.dumps(result, default=str)
 
@@ -359,7 +396,7 @@ async def handle_inventory_reconcile_dead_stock(
 
     Thin adapter — all logic lives in ``reconcile.do_reconcile_dead_stock``.
     """
-    require_namespace_id(arguments)
+    await _check_inventory_enabled(engine, arguments)
     try:
         result = await do_reconcile_dead_stock(engine, dict(arguments))
     except BUSINESS_REFUSALS as exc:
@@ -377,7 +414,7 @@ async def handle_inventory_restock_from_rma(engine: NCEEngine, arguments: dict[s
 
     Thin adapter — all logic lives in ``rma.do_restock_from_rma``.
     """
-    require_namespace_id(arguments)
+    await _check_inventory_enabled(engine, arguments)
     try:
         result = await do_restock_from_rma(engine, dict(arguments))
     except BUSINESS_REFUSALS as exc:
@@ -398,7 +435,7 @@ async def handle_inventory_dispose_rma_weee(engine: NCEEngine, arguments: dict[s
     ``InsufficientStockError`` treatment ``handle_inventory_transfer_stock``
     already uses. Thin adapter — all logic lives in ``rma.do_dispose_rma_weee``.
     """
-    require_namespace_id(arguments)
+    await _check_inventory_enabled(engine, arguments)
     try:
         result = await do_dispose_rma_weee(engine, dict(arguments))
     except InsufficientStockError as exc:

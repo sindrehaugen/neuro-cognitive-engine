@@ -326,3 +326,34 @@ async def test_do_whatif_spend_deterministic_with_real_conn(pg_app_conn, make_na
     # With no spend data current_spend = 0 → shifted_spend = 0 → net_delta = 0
     assert result1["shifted_spend"] == pytest.approx(0.0)
     assert result1["net_delta"] == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# A BOM row with no unit_price must not be priced at 0.0
+# (no-fabricated-money-defaults ratchet, 2026-09-03)
+# ---------------------------------------------------------------------------
+
+
+def test_unpriced_bom_row_is_reported_not_priced_at_zero():
+    """An unpriced row used to contribute 0.0, silently UNDERSTATING annual spend and
+    therefore the rebate band. The spend figure must now be flagged as a lower bound:
+    the row is counted, confidence drops, and the rationale says so."""
+    rows = [{"unit_price": 100.0, "quantity": 20}, {"quantity": 50}]  # 2nd has no price
+    tiers = [{"name": "T1", "min_spend": 1000.0, "rate": 0.05}]
+    result = forecast_rebate(rows, tiers)
+    assert result["annual_spend"] == pytest.approx(2000.0)  # the unpriced row is EXCLUDED
+    assert result["unpriced_rows"] == 1
+    assert result["confidence"] == "low"  # a tier matched, but on an incomplete figure
+    assert "no unit_price" in result["rationale"]
+
+
+def test_a_real_zero_priced_row_is_not_reported_as_unpriced():
+    """The pair: a row priced at a genuine 0.00 (a free item) is fully known. It must
+    not be counted as missing, and must not degrade confidence."""
+    rows = [{"unit_price": 100.0, "quantity": 20}, {"unit_price": 0.0, "quantity": 50}]
+    tiers = [{"name": "T1", "min_spend": 1000.0, "rate": 0.05}]
+    result = forecast_rebate(rows, tiers)
+    assert result["annual_spend"] == pytest.approx(2000.0)
+    assert result["unpriced_rows"] == 0
+    assert result["confidence"] == "medium"
+    assert "no unit_price" not in result["rationale"]

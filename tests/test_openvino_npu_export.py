@@ -294,3 +294,32 @@ def test_manifest_contains_truncation_note():
             assert data["model_revision"] == _REVISION
             assert "sequence_length=128" in data["note"]
             assert "truncated" in data["note"]
+
+
+# --------------------------------------------------------------------------- #
+# BATCH 5: missing-optimum guidance (TDL D46)
+# --------------------------------------------------------------------------- #
+
+
+@patch("nce.openvino_npu_export.OPENVINO_MODEL_REVISION", _REVISION)
+def test_missing_optimum_points_at_throwaway_venv(monkeypatch):
+    """Missing optimum.intel must not advise installing it into the NCE runtime."""
+    monkeypatch.setitem(sys.modules, "optimum.intel", None)
+
+    with TemporaryDirectory() as tmp:
+        out = Path(tmp) / "no-optimum"
+        with pytest.raises(RuntimeError) as excinfo:
+            export_jina_to_openvino_npu(out, local_files_only=True)
+        assert not out.exists()
+
+    msg = str(excinfo.value)
+    lowered = msg.lower()
+    # Points at an isolated, throwaway env pinned below transformers 5 ...
+    assert "throwaway" in lowered
+    assert "virtualenv" in lowered or "venv" in lowered
+    assert "transformers<5" in msg.replace(" ", "")
+    # ... says why ...
+    assert "openvino" in lowered and "detect" in lowered
+    # ... and never repeats the old advice that silently installs the 2024 stack.
+    assert "optimum[openvino-intel]" not in msg
+    assert isinstance(excinfo.value.__cause__, ImportError)

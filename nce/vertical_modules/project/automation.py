@@ -94,6 +94,20 @@ Design invariants (uncle-bob-craft)
   RLS alone.
 """
 
+# The DORMANT BY DECISION state above is a claim about the call graph, so it is
+# machine-checked rather than left to prose. tests/unit/test_claim_verifier.py
+# fails if anything wires these into a production path without the docstring
+# being updated to match. Verified at annotation time: zero production callers
+# each, with test-only callers (2, 4 and 0 respectively).
+#
+# @claim: no-production-callers rq_sync_bom_on_goods_receipt
+# @claim: no-production-callers rq_advance_phase_on_task_done
+# @claim: no-production-callers register_redis_client
+#
+# NOT claimed: _enqueue_rq_task has two real production call sites in this
+# module (587, 621). Dormant means nothing invokes the handlers, not that the
+# module's internals are unreachable.
+
 from __future__ import annotations
 
 import asyncio

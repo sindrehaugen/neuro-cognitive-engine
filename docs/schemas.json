@@ -851,7 +851,7 @@
       "description": "PII policy block nested inside NamespaceMetadata.\nConsumed in Phase 0.3 (PII Detection and Auto-Redaction).\nDeclared here so namespace creation can pre-configure it.",
       "properties": {
         "entity_types": {
-          "description": "Presidio entity types to detect (e.g. PERSON, EMAIL, PHONE)",
+          "description": "Presidio entity types to detect (e.g. PERSON, EMAIL, PHONE). Empty means every type the installation recognises.",
           "items": {
             "type": "string"
           },

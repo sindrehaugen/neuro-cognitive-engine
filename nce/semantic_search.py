@@ -204,7 +204,16 @@ async def semantic_search(
             "SELECT metadata FROM namespaces WHERE id = $1", UUID(namespace_id)
         )
         if ns_row:
+            # No jsonb codec is registered on the pool, so asyncpg hands the
+            # column back as text. me_app, tasks and contradictions decode it
+            # themselves for the same reason; without this, "cognitive" in meta
+            # is a substring test and the lookup below raises "string indices
+            # must be integers" on every search in the namespace.
             meta = ns_row["metadata"]
+            if isinstance(meta, str):
+                meta = json.loads(meta or "{}")
+            if not isinstance(meta, dict):
+                meta = {}
             if "cognitive" in meta:
                 cognitive_config = NamespaceCognitiveConfig(**meta["cognitive"])
             if "temporal_retention_days" in meta:

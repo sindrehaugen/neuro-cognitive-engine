@@ -39,19 +39,12 @@
 --       means the recovery sweeper repeatedly picks up work that cannot
 --       succeed -- the same defect shape as the outbox relay above.
 --
--- Both tables therefore stay OUT of EXPECTED_NON_CASCADE, whose assertion in
--- tests/test_namespace_fk_cascade.py they now satisfy: every FK to namespaces
--- must be ON DELETE CASCADE unless it is a documented exclusion.
---
--- NOTE for this repo: TD-1's REQUIRED-half check -- the
--- TENANT_TABLES_WITHOUT_NAMESPACE_FK allowlist that found these two tables in
--- the first place -- has NOT been ported here yet. So this repo has only the
--- allowlist half of the ratchet, which is blind to a table that has NO FK at
--- all: such a table never enters the catalog query, so the file stays green
--- while the gap exists. That is exactly how these two survived migration 055.
--- Until the required half lands, adding a tenant-scoped RLS table without a
--- namespaces FK is UNGATED here. On the private repo this migration also
--- removed both names from that allowlist in the same commit.
+-- Both tables therefore stay OUT of EXPECTED_NON_CASCADE, and their entries in
+-- TENANT_TABLES_WITHOUT_NAMESPACE_FK are removed in this same commit. That is
+-- not optional: TD-1's ratchet asserts that a table listed as having no FK
+-- which now HAS one must be dropped from the allowlist, so leaving the entries
+-- would fail the gate. A ratchet that passes because you widened the schema is
+-- the same defect in a new coat.
 --
 -- PRE-EXISTING ORPHANS -- this migration DELETES DATA, deliberately.
 --

@@ -105,21 +105,82 @@ async def handle_rotate_signing_key(
     admin_identity: str | None = None,
 ) -> str:
     """[ADMIN] Generate a new active signing key and retire the current one."""
-    from nce.signing import rotate_key
+    from nce.auth import set_namespace_context
+    from nce.event_log import append_event
+    from nce.signing import get_active_key, key_fingerprint, rotate_key
+    from nce.system_namespace import get_system_namespace_id
+
+    actor = admin_identity or "admin"
 
     async with engine.pg_pool.acquire(timeout=10.0) as conn:
         async with conn.transaction():
+            # Signing keys are global (not namespace-scoped). The reserved
+            # ``_system`` namespace seeded by migration 065 is what makes this
+            # append_event possible; before it existed this handler could only
+            # log, and a log line is not an immutable record.
+            system_ns_id = await get_system_namespace_id(conn)
+            await set_namespace_context(conn, system_ns_id)
+
+            # Fingerprint the OUTGOING key BEFORE rotating, best-effort. A key
+            # whose stored blob cannot be decrypted is precisely the situation
+            # an operator rotates *out of* (2026-09-02: 26h of exactly that),
+            # so a decryption failure must never block the remediation -- it is
+            # recorded as an unknown fingerprint instead.
+            old_key_id: str | None = None
+            old_key_fp: str | None = None
+            try:
+                old_key_id, old_raw = await get_active_key(conn)
+                old_key_fp = key_fingerprint(old_raw)
+            except Exception as exc:
+                log.warning("Could not fingerprint the outgoing signing key: %s", exc)
+
             new_key_id = await rotate_key(conn)
 
-    # Signing keys are global (not namespace-scoped), so append_event cannot be
-    # used here until a designated system/security namespace is provisioned.
-    # Log at WARNING level so this always surfaces in operator logs.
+            # rotate_key() clears the key cache, so this loads the NEW key.
+            new_key_fp: str | None = None
+            try:
+                _, new_raw = await get_active_key(conn)
+                new_key_fp = key_fingerprint(new_raw)
+            except Exception as exc:
+                log.warning("Could not fingerprint the incoming signing key: %s", exc)
+
+            # Emitted inside the SAME transaction as the rotation: an audit row
+            # that could commit while the rotation rolled back would be worse
+            # than no row at all. Fingerprints only -- never key material.
+            await append_event(
+                conn=conn,
+                namespace_id=system_ns_id,
+                agent_id=actor,
+                event_type="signing_key_rotated",
+                params={
+                    "old_key_id": old_key_id,
+                    "old_key_fingerprint": old_key_fp,
+                    "new_key_id": new_key_id,
+                    "new_key_fingerprint": new_key_fp,
+                    "rotated_by": actor,
+                },
+                result_summary={"status": "ok"},
+            )
+
+    # Log at WARNING level so this always surfaces in operator logs too.
     log.warning(
-        "SECURITY: signing key rotated by %s — new_key_id=%s",
-        admin_identity or "admin",
+        "SECURITY: signing key rotated by %s — new_key_id=%s new_key_fp=%s "
+        "old_key_id=%s old_key_fp=%s",
+        actor,
         new_key_id,
+        new_key_fp,
+        old_key_id,
+        old_key_fp,
     )
-    return json.dumps({"status": "ok", "new_key_id": new_key_id})
+    return json.dumps(
+        {
+            "status": "ok",
+            "new_key_id": new_key_id,
+            "new_key_fingerprint": new_key_fp,
+            "old_key_id": old_key_id,
+            "old_key_fingerprint": old_key_fp,
+        }
+    )
 
 
 @require_scope("admin")

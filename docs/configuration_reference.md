@@ -192,7 +192,7 @@ All provider keys default to `""`. The provider factory logs a warning if a requ
 | `NCE_COGNITIVE_EMBEDDING_MODEL` | `str` | `""` | Model identifier requested from cognitive HTTP endpoint. |
 | `NCE_COGNITIVE_FALLBACK_MODEL` | `str` | `text-embedding-3-small` | Fallback embedding model used when primary cognitive backend returns 429 or times out. |
 | `NCE_COGNITIVE_API_KEY` | `str` | `""` | Optional API key for cognitive HTTP endpoint. |
-| `NCE_EMBEDDING_MODEL_ID` | `str` | `jinaai/jina-embeddings-v2-base-code` | HuggingFace model ID for in-process embedding inference. |
+| `NCE_EMBEDDING_MODEL_ID` | `str` | `sentence-transformers/all-mpnet-base-v2` | HuggingFace model ID for in-process embedding inference. 768-dim, loads without `trust_remote_code`. |
 | `NCE_EMBEDDING_MODEL_REVISION` | `str` | `""` | HuggingFace commit SHA to pin for supply-chain integrity. Empty string selects `latest`. |
 | `NCE_EMBEDDING_TRUST_REMOTE_CODE` | `bool` | `false` | Set `true` to pass `trust_remote_code=True` to HuggingFace `AutoModel.from_pretrained`. |
 | `NCE_BACKEND` | `str` | `""` | Hardware acceleration backend selector (`openvino-npu` selects Intel NPU OpenVINO path; empty auto-selects CPU/CUDA). |
@@ -384,6 +384,13 @@ SMTP sends via port 587 using STARTTLS (`aiosmtplib`). Host is configured progra
 | `NCE_NETBOX_TOKEN` | `str` | `""` | NetBox REST API token. Required when `NCE_NETBOX_URL` is set. |
 | `NCE_NETBOX_DEFAULT_INTERFACE_TYPE` | `str` | `1000base-t` | Default interface type assigned when creating NetBox interface records without an explicit type. |
 
+### 19a-bis. Supplier Identity (System Design SoW)
+
+| Variable | Type | Default | Required | Description |
+|---|---|---|---|---|
+| `NCE_SUPPLIER_NAME` | `str` | `""` | **Required to generate a SoW** | Legal entity name of the operator running this deployment. Resolved through the single seam `nce/vertical_modules/system_design/sow.py::_supplier_name()` and emitted into generated customer-facing Statement-of-Work text: the summary prose, the Norwegian title-retention clause in **Terms**, and the per-line `ownership` field. **Fails closed** — when unset or blank, `do_generate_sow` raises `ValueError` naming this key (mapped to HTTP 422) instead of generating a contract with a blank or placeholder party. Not a runtime-tunable setting: it is a deployment constant and is not registered in `settings_registry`. |
+| `NCE_D365_PUBLISHER_PREFIX` | `str` | `""` | **Required for the D365 sales read path** | Dynamics 365 / Dataverse publisher prefix of the CRM organisation this deployment reads from. Every D365 org has its own, so custom field names (`<prefix>_industry`) and lookups (`_<prefix>_opportunityid_value`) cannot be hardcoded. Resolved through the single seam `nce/vertical_modules/sales/source_adapters/d365.py::publisher_prefix()` / `prefixed_field()`. Validated against `^[a-z][a-z0-9_]{0,31}$` and **fails closed** on first use: the value is interpolated into SQL and OData query text, so an unset or malformed prefix raises `ValueError` naming this key rather than being sanitised, defaulted, or silently querying non-existent fields (which returns no rows). Deployments with no D365 integration leave it unset and are unaffected; nothing raises at import. Global, not per-namespace (D34b). |
+
 ### 19b. Dynamics 365 / Dataverse
 
 | Variable | Type | Default | P-level | Description |
@@ -463,8 +470,6 @@ SMTP sends via port 587 using STARTTLS (`aiosmtplib`). Host is configured progra
 | `NCE_DIAG_CRASH_STORM_THRESHOLD` | `int` | `10` | Crash event count within detection window triggering crash-storm classification (minimum `1`). |
 | `NCE_DIAG_CRASH_STORM_WINDOW_SEC` | `int` | `300` | Sliding window in seconds for crash-storm anomaly detection (minimum `1`). |
 | `NCE_DIAG_TMPDIR` | `str` | `""` | Scratch directory for uncompressing large diagnostic bundles (defaults to system tmp). |
-| `NCE_SUPPLIER_NAME` | `str` | `""` | **Required to generate a SoW** | Legal entity name of the operator running this deployment. Resolved through the single seam `nce/vertical_modules/system_design/sow.py::_supplier_name()` and emitted into generated customer-facing Statement-of-Work text: the summary prose, the Norwegian title-retention clause in **Terms**, and the per-line `ownership` field. **Fails closed** — when unset or blank, `do_generate_sow` raises `ValueError` naming this key (mapped to HTTP 422) instead of generating a contract with a blank or placeholder party. Not a runtime-tunable setting: it is a deployment constant and is not registered in `settings_registry`. |
-| `NCE_D365_PUBLISHER_PREFIX` | `str` | `""` | **Required for the D365 sales read path** | Dynamics 365 / Dataverse publisher prefix of the CRM organisation this deployment reads from. Every D365 org has its own, so custom field names (`<prefix>_industry`) and lookups (`_<prefix>_opportunityid_value`) cannot be hardcoded. Resolved through the single seam `nce/vertical_modules/sales/source_adapters/d365.py::publisher_prefix()` / `prefixed_field()`. Validated against `^[a-z][a-z0-9_]{0,31}$` and **fails closed** on first use: the value is interpolated into SQL and OData query text, so an unset or malformed prefix raises `ValueError` naming this key rather than being sanitised, defaulted, or silently querying non-existent fields (which returns no rows). Deployments with no D365 integration leave it unset and are unaffected; nothing raises at import. Global, not per-namespace (D34b). |
 
 ---
 

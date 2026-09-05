@@ -114,7 +114,10 @@ def resolve_stored_oauth_access_token(
                 ),
                 timeout=_RESOLVE_TIMEOUT_S,
             )
-        except TimeoutError:
+        # asyncio.TimeoutError, NOT the builtin -- aliased only on 3.11+. On 3.10
+        # the builtin does not catch what wait_for raises, so this graceful-
+        # degradation path did not degrade: the timeout propagated instead.
+        except asyncio.TimeoutError:
             log.warning(
                 "resolve_stored_oauth_access_token timed out after %.1fs for "
                 "provider=%r — upstream vendor did not respond. "

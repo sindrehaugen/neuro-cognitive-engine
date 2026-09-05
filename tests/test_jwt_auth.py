@@ -19,7 +19,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from nce.config import cfg
+from nce.config import DeploymentConfigurationError, cfg
 from nce.jwt_auth import (
     JWTAuthMiddleware,
     JWTDecodeError,
@@ -75,6 +75,26 @@ def hs256_cfg(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cfg, "IS_PROD", False)
     monkeypatch.setattr(cfg, "NCE_JWT_LEEWAY_SECONDS", 0)
     monkeypatch.setattr(cfg, "NCE_JWT_PUBLIC_KEY", "")
+
+
+@pytest.fixture
+def missing_rs256_key_cfg(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
+    """RS256 configured but NCE_JWT_PUBLIC_KEY points at a file that does not exist.
+
+    D49c repro: the operator-fixable fault that used to escape as a bare ``ValueError``.
+    """
+    missing = tmp_path / "missing_key.pem"
+    monkeypatch.setattr(cfg, "NCE_JWT_ALGORITHM", "RS256")
+    monkeypatch.setattr(cfg, "NCE_JWT_SECRET", "")
+    monkeypatch.setattr(cfg, "NCE_JWT_KEY_DIR", str(tmp_path))
+    monkeypatch.setattr(cfg, "NCE_JWT_PUBLIC_KEY", f"file://{missing}")
+    monkeypatch.setattr(cfg, "NCE_JWT_ISSUER", "")
+    monkeypatch.setattr(cfg, "NCE_JWT_AUDIENCE", "")
+    monkeypatch.setattr(cfg, "IS_PROD", False)
+    monkeypatch.setattr(cfg, "NCE_JWT_LEEWAY_SECONDS", 0)
+    _load_public_key.cache_clear()
+    yield missing
+    _load_public_key.cache_clear()
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +154,19 @@ class TestDecodeAgentToken:
         with pytest.raises(JWTDecodeError) as excinfo:
             decode_agent_token(token)
         assert attacker not in excinfo.value.reason
+
+    def test_missing_key_file_yields_jwt_decode_error_not_raw_exception(
+        self, missing_rs256_key_cfg: Path
+    ) -> None:
+        """D49c: a DeploymentConfigurationError from _load_public_key must not escape
+        decode_agent_token — it converts to the same jwt_server_misconfigured
+        JWTDecodeError the RuntimeError branch already produces.
+        """
+        token = make_token(_base_payload())
+        with pytest.raises(JWTDecodeError) as excinfo:
+            decode_agent_token(token)
+        assert excinfo.value.reason == "jwt_server_misconfigured"
+        assert excinfo.value.code == -32005
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +295,7 @@ class TestLoadPublicKey:
         outside.write_text(_SAMPLE_PEM, encoding="utf-8")
         monkeypatch.setattr(cfg, "NCE_JWT_KEY_DIR", str(allowed))
         uri = f"file://{outside.resolve()}"
-        with pytest.raises(ValueError, match="escapes allowed directory"):
+        with pytest.raises(DeploymentConfigurationError, match="escapes allowed directory"):
             _load_public_key(uri)
 
     def test_nonexistent_key_dir_gives_clean_valueerror(
@@ -270,7 +303,7 @@ class TestLoadPublicKey:
     ) -> None:
         missing = "/nonexistent/nce-jwt-key-dir"
         monkeypatch.setattr(cfg, "NCE_JWT_KEY_DIR", missing)
-        with pytest.raises(ValueError, match="NCE_JWT_KEY_DIR does not exist"):
+        with pytest.raises(DeploymentConfigurationError, match="NCE_JWT_KEY_DIR does not exist"):
             _load_public_key(f"file://{missing}/key.pem")
 
     def test_missing_file_raises_valueerror(
@@ -280,11 +313,11 @@ class TestLoadPublicKey:
         key_dir.mkdir()
         monkeypatch.setattr(cfg, "NCE_JWT_KEY_DIR", str(key_dir))
         missing = key_dir / "missing.pem"
-        with pytest.raises(ValueError, match="file not found"):
+        with pytest.raises(DeploymentConfigurationError, match="file not found"):
             _load_public_key(f"file://{missing.resolve()}")
 
     def test_invalid_uri_raises_valueerror(self) -> None:
-        with pytest.raises(ValueError, match="must be a PEM string or a file://"):
+        with pytest.raises(DeploymentConfigurationError, match="must be a PEM string or a file://"):
             _load_public_key("http://example.com/key.pem")
 
 
@@ -414,3 +447,72 @@ class TestJWTAuthMiddleware:
             )
         assert resp.status_code == 401
         assert resp.json()["error"]["data"]["reason"] == "jwt_too_large"
+
+    def test_end_to_end_missing_key_file_returns_401_not_500(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hs256_cfg: None
+    ) -> None:
+        """D49c point of the wave: the promised 401 must hold for the
+        DeploymentConfigurationError class of misconfiguration, not just RuntimeError.
+
+        This covers the ALREADY-RUNNING server whose key file goes bad: it warms the
+        middleware under valid HS256 config first, then breaks the config exactly like
+        the operator fault the wave is about, before sending the request.
+
+        The sibling test below covers the other half — a server that BOOTS misconfigured
+        and is never warmed — which is the more common deployment fault. Both must be
+        401; before this fix both were 500.
+
+        ``raise_server_exceptions=False`` is required: without it TestClient re-raises
+        any unhandled exception instead of returning the status the wave is about.
+        """
+        app = _jwt_middleware_app()
+        with TestClient(app, raise_server_exceptions=False) as client:
+            warm = client.get("/health")
+            assert warm.status_code == 200
+
+            missing = tmp_path / "missing_key.pem"
+            monkeypatch.setattr(cfg, "NCE_JWT_ALGORITHM", "RS256")
+            monkeypatch.setattr(cfg, "NCE_JWT_SECRET", "")
+            monkeypatch.setattr(cfg, "NCE_JWT_KEY_DIR", str(tmp_path))
+            monkeypatch.setattr(cfg, "NCE_JWT_PUBLIC_KEY", f"file://{missing}")
+            _load_public_key.cache_clear()
+
+            token = make_token(_base_payload())
+            resp = client.get(
+                "/api/v1/something",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 401
+        assert resp.json()["error"]["data"]["reason"] == "jwt_server_misconfigured"
+
+    def test_middleware_init_with_missing_key_file_logs_and_does_not_raise(
+        self, missing_rs256_key_cfg: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """D49c: constructing the middleware under this fault must warn-and-continue,
+        matching the RuntimeError branch's behaviour, not raise out of __init__.
+
+        Starlette builds its middleware stack lazily on the first ASGI call, so
+        ``JWTAuthMiddleware.__init__`` doesn't actually run until a request is made —
+        exercise it with an unprotected request, which must still succeed.
+
+        🔴 And then the protected one, on the SAME never-warmed app: the warning's own
+        text promises "will return 401 until the key is configured", so this asserts
+        the promise the log makes. Without it the only end-to-end coverage is the
+        warm-then-break path, and a server that boots misconfigured — the ordinary
+        deployment fault — would have no test at all.
+        """
+        app = _jwt_middleware_app()
+        with caplog.at_level("WARNING", logger="nce.jwt_auth"):
+            with TestClient(app, raise_server_exceptions=False) as client:
+                resp = client.get("/health")
+                protected = client.get(
+                    "/api/v1/something",
+                    headers={"Authorization": f"Bearer {make_token(_base_payload())}"},
+                )
+        assert resp.status_code == 200
+        assert any(
+            "will return 401 until the key is configured" in rec.getMessage()
+            for rec in caplog.records
+        )
+        assert protected.status_code == 401
+        assert protected.json()["error"]["data"]["reason"] == "jwt_server_misconfigured"

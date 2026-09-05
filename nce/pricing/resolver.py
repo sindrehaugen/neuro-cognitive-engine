@@ -70,8 +70,23 @@ class PriceTier:
 
 
 def _is_stale(as_of: datetime.datetime, max_age_seconds: int) -> bool:
-    """Return True when (now − as_of) exceeds max_age_seconds."""
+    """Return True when (now - as_of) exceeds max_age_seconds.
+
+    A NAIVE ``as_of`` is read as UTC rather than rejected. This docstring's own
+    contract says ``as_of (datetime, UTC)``, and a naive UTC timestamp satisfies
+    that -- but ``now`` is aware, and subtracting the two raises
+    ``TypeError: can't subtract offset-naive and offset-aware datetimes``.
+
+    That is not hypothetical. ``sales/dealroom.py`` reads its price tiers out of
+    MongoDB, and BSON hands datetimes back **naive**, so every dated price
+    arriving by that route crashed here. It was invisible because dealroom used
+    to catch the exception and substitute a fabricated price; PR #187 removed
+    the fabrication, and the crash surfaced as ``price_resolution_failed`` on a
+    line whose price was perfectly well recorded.
+    """
     now = datetime.datetime.now(tz=datetime.timezone.utc)
+    if as_of.tzinfo is None:
+        as_of = as_of.replace(tzinfo=datetime.timezone.utc)
     age = (now - as_of).total_seconds()
     return age > max_age_seconds
 

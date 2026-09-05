@@ -183,7 +183,7 @@ Returns `{"design_id", "design_label", "quote_label", "design_version", "becomes
 
 ## 4. Quote-first: `do_design_from_quote(engine, params)`
 
-Source: `nce/vertical_modules/system_design/from_quote.py:256-426`.
+Source: `nce/vertical_modules/system_design/from_quote.py:251-421`.
 
 ```python
 result = await do_design_from_quote(engine, {
@@ -265,7 +265,7 @@ Node types written (all owned by `system_design` per `nce/config_data/node-owner
 Typed capability attributes (AVIXA Revit Parameter List fields: `signal_format`, `signal_version`, `port_direction`, `poe_class`, `poe_watts`, `dante_rx_channels`, `dante_tx_channels`, `power_draw_watts`, `heat_btu_hr`, `redundancy_role`, `device_category`, `manufacturer`, `model_number`, `extra`) are written to the `system_design_device_capabilities` table (migration 039), **not** to `kg_nodes` — `kg_nodes` has no payload/metadata column (`devices.py:91-106`). Returns `{"authored": {"nodes": int, "edges": int, "capabilities": int}}`.
 
 ### 6.2 Structural validation: `validate_design_graph(engine, params)`
-Source: `nce/vertical_modules/system_design/validation_queries.py:561-647`. Read-only, propose-only — no auto-fix, no mutation. It is additive to (does not call or alter) Phase-1 `do_validate_design`.
+Source: `nce/vertical_modules/system_design/validation_queries.py:389-475`. Read-only, propose-only — no auto-fix, no mutation. It is additive to (does not call or alter) Phase-1 `do_validate_design`.
 
 ```python
 result = await validate_design_graph(engine, {"namespace_id": "…", "design_id": "DESIGN-…"})

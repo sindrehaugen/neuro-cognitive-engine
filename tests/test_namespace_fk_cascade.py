@@ -28,6 +28,8 @@ import asyncpg  # type: ignore[import-untyped]
 import pytest  # type: ignore[import-untyped]
 import pytest_asyncio  # type: ignore[import-untyped]
 
+from nce.event_log import EXPECTED_TENANT_RLS_TABLES
+
 # Tables whose FK to namespaces is deliberately left NO ACTION.
 #   event_log / event_parents -- WORM, see module docstring.
 #   audit_log                 -- cascading destroys a tenant's audit trail on
@@ -44,6 +46,21 @@ EXPECTED_NON_CASCADE: frozenset[str] = frozenset(
         "namespaces.namespaces_parent_id_fkey",
     }
 )
+
+# Tenant tables that have NO foreign key to ``namespaces`` at all, so they never
+# appear in _FK_SQL's result set. A table listed here is a known schema gap owed
+# a migration -- listing it records the debt, it does not bless it.
+#
+# EMPTY as of migration 062. It previously held ``outbox_events`` and
+# ``saga_execution_log`` -- the two tables TD-1's required-half check found, and
+# debt item D1. Migration 062 gave both a REFERENCES namespaces(id) ON DELETE
+# CASCADE (and purged the orphan rows that would otherwise have made
+# ADD CONSTRAINT fail outright), so their entries are removed in that same
+# commit. The third assertion below is what forces that pairing: a table listed
+# here which has since grown its FK fails the gate, so the allowlist cannot rot
+# into a silent exemption, and a migration cannot be "passed" by widening the
+# schema while the excuse stays behind.
+TENANT_TABLES_WITHOUT_NAMESPACE_FK: frozenset[str] = frozenset()
 
 _FK_SQL = """
 SELECT t.relname || '.' || c.conname AS ref, c.confdeltype::text AS del
@@ -96,6 +113,28 @@ async def test_every_namespace_fk_cascades_except_documented_exclusions(
         "will fail on them: " + ", ".join(unexpected) + ". Add ON DELETE CASCADE "
         "in nce/schema.sql and to the migration 055 list, or -- if the rows must "
         "outlive their tenant -- add them to EXPECTED_NON_CASCADE with a reason."
+    )
+
+    # A table with no namespaces FK never enters ``rows`` at all, so every
+    # assertion above is blind to it: the FK could be dropped outright and this
+    # file would stay green. EXPECTED_TENANT_RLS_TABLES is the required half that
+    # EXPECTED_NON_CASCADE (the allowlist half) was missing.
+    tables_with_fk = {ref.split(".", 1)[0] for ref in present}
+    missing = sorted(
+        set(EXPECTED_TENANT_RLS_TABLES) - tables_with_fk - TENANT_TABLES_WITHOUT_NAMESPACE_FK
+    )
+    assert not missing, (
+        "these tenant-scoped tables have NO foreign key to namespaces, so deleting "
+        "a tenant silently orphans their rows: " + ", ".join(missing) + ". Add "
+        "REFERENCES namespaces(id) ON DELETE CASCADE in nce/schema.sql plus a "
+        "migration, or -- if the gap is knowingly deferred -- add the table to "
+        "TENANT_TABLES_WITHOUT_NAMESPACE_FK with the reason."
+    )
+
+    repaired = sorted(TENANT_TABLES_WITHOUT_NAMESPACE_FK & tables_with_fk)
+    assert not repaired, (
+        "listed as having no namespaces FK but one now exists -- drop from "
+        "TENANT_TABLES_WITHOUT_NAMESPACE_FK: " + ", ".join(repaired)
     )
 
     stale = sorted((EXPECTED_NON_CASCADE & present) - non_cascade)

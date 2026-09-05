@@ -62,6 +62,12 @@ def shutdown_embedding_executor() -> None:
 # ---------------------------------------------------------------------------
 
 
+# Squared-norm floor below which a vector is treated as degenerate rather than
+# merely small. Matches ``_l2_normalize``'s own 1e-12 no-op threshold (squared),
+# so the two cannot disagree about what "≈ 0" means.
+_DEGENERATE_NORM_SQ: float = 1e-24
+
+
 def _l2_normalize(vec: list[float]) -> list[float]:
     """Return the L2-normalised copy of *vec*. No-op when norm ≈ 0."""
     norm = math.sqrt(sum(x * x for x in vec))
@@ -132,6 +138,35 @@ def _validate_batch(
                 VECTOR_DIM,
             )
             return _fallback_batch(texts), True
+
+        # A DEGENERATE vector is not a valid embedding, and it is far more
+        # dangerous than a wrong-dimensioned one.  ``_l2_normalize`` below
+        # deliberately no-ops when the norm is ~0, so an all-zero vector would
+        # pass straight through here with ``degraded=False`` -- reported healthy.
+        #
+        # Why that matters more than it looks: a zero vector is EQUIDISTANT from
+        # every other vector, and cosine similarity against it is 0/0.  Recall
+        # therefore does not fail, it returns arbitrary ordering that looks like
+        # a result set.  Silence, not an error.
+        #
+        # This was live: the bundled cognitive sidecar stub answers
+        # ``POST /v1/embeddings`` with a 768-dim ZERO vector (see
+        # ``deploy/cognitive-stub/stub_server.py``), and every memory embedded
+        # through it was stored un-recallable with nothing logged.
+        norm_sq = sum(x * x for x in v)
+        if norm_sq <= _DEGENERATE_NORM_SQ:
+            return _fallback_with_error(
+                texts,
+                "%s returned a DEGENERATE (near-zero) vector at index %d: "
+                "|v|^2=%.3g. A zero vector is equidistant from everything, so "
+                "similarity search would silently return arbitrary results. "
+                "Falling back to deterministic vectors and marking the batch "
+                "degraded. If the backend is the cognitive sidecar, check "
+                "whether it is the stub (GET /health -> engine).",
+                backend_name,
+                i,
+                norm_sq,
+            )
 
     return [_l2_normalize(v) for v in vectors], False
 
@@ -256,14 +291,34 @@ def _load_sentence_transformer(device: str):
 
 @lru_cache(maxsize=2)
 def _load_openvino_npu_bundle(model_dir: str, seq_len: int):
-    from optimum.intel import OVModelForFeatureExtraction
+    """Compile the pre-exported OpenVINO IR with the RAW OpenVINO runtime.
+
+    Deliberately does **not** use ``optimum.intel``. ``optimum-intel`` 2.1.0 requires
+    ``transformers<5.6`` while this repo pins ``transformers>=5.14.1``, so pinning both is
+    ``ResolutionImpossible``; unpinned, pip silently backtracks to ``optimum-intel==1.15.0``
+    (2024), which cannot detect OpenVINO and raises the misleading ``ImportError:
+    OVModelForFeatureExtraction requires the openvino library but it was not found in your
+    environment`` *while ``openvino`` is installed and importable*. The raw runtime works:
+    ``Core().compile_model(<dir>/openvino_model.xml, "NPU")``.
+
+    Compilation failures (no NPU, bad IR) are allowed to propagate — the caller already
+    routes them to ``_fallback_with_error``.
+    """
+    import os
+
+    from openvino import Core
     from transformers import AutoTokenizer
 
-    model = OVModelForFeatureExtraction.from_pretrained(model_dir)
+    xml_names = model_dir_path_has_openvino_xml(model_dir)
+    if not xml_names:
+        raise FileNotFoundError(f"No OpenVINO IR (.xml) found in {model_dir!r}")
+    xml_name = "openvino_model.xml" if "openvino_model.xml" in xml_names else xml_names[0]
+
+    compiled = Core().compile_model(os.path.join(model_dir, xml_name), "NPU")
     tokenizer = AutoTokenizer.from_pretrained(
         model_dir, trust_remote_code=cfg.NCE_EMBEDDING_TRUST_REMOTE_CODE
     )
-    return model, tokenizer, seq_len
+    return compiled, tokenizer, seq_len
 
 
 # ---------------------------------------------------------------------------
@@ -451,17 +506,34 @@ class OpenVINONPUBackend(EmbeddingBackend):
                 max_length=seq_len,
                 return_tensors="pt",
             )
-            # Optimum OV models accept dict of numpy or torch depending on version —
-            # convert to numpy for widest compatibility.
+            # The raw OpenVINO runtime takes a dict of numpy arrays.
             inputs = {k: v.numpy() for k, v in encoded.items()}
-            out = model(**inputs)
-            last = out.last_hidden_state if hasattr(out, "last_hidden_state") else out[0]
-            if not isinstance(last, torch.Tensor):
-                last = torch.tensor(last)
-            mask = encoded["attention_mask"]
-            pooled = _mean_pool(last, mask)
-            pooled = torch.nn.functional.normalize(pooled, p=2, dim=1)
-            vectors = pooled.detach().cpu().numpy().astype(np.float64).tolist()
+            # The feed dict must cover EVERY input the IR declares, and nothing else.
+            required = [port.get_any_name() for port in model.inputs]
+            out_port = model.output(0)
+
+            # IMPORTANT: the exported IR has STATIC shapes [1, seq_len], so batch size is 1:
+            # the whole batch CANNOT be fed at once. Run one inference per text and
+            # assemble the vectors in input order.
+            vectors = []
+            for i in range(len(texts)):
+                row = {k: v[i : i + 1] for k, v in inputs.items()}
+                # A declared input the tokenizer did not produce is supplied as ZEROS.
+                # This IR declares token_type_ids while the tokenizer returns only
+                # input_ids/attention_mask; omitting it makes the plugin read an
+                # UNINITIALISED buffer — stable within a process and different across
+                # processes (measured cosine(CPU, NPU) drifting 0.999999 -> 0.395 on
+                # identical input). Zeros is what the model was exported with.
+                feed = {
+                    name: row[name] if name in row else np.zeros_like(row["input_ids"])
+                    for name in required
+                }
+                res = model(feed)
+                last = torch.tensor(np.asarray(res[out_port]))
+                mask = encoded["attention_mask"][i : i + 1]
+                pooled = _mean_pool(last, mask)
+                pooled = torch.nn.functional.normalize(pooled, p=2, dim=1)
+                vectors.append(pooled.detach().cpu().numpy().astype(np.float64)[0].tolist())
         except Exception as e:
             return _fallback_with_error(
                 texts,
@@ -514,6 +586,53 @@ class CognitiveRemoteBackend(EmbeddingBackend):
         except LLMProviderError as exc:
             log.warning("CognitiveRemoteBackend: rejecting base URL: %s", exc)
             self._base = ""
+        if self._base:
+            self._warn_if_sidecar_is_a_stub()
+
+    def _warn_if_sidecar_is_a_stub(self) -> None:
+        """Say so, loudly, when the sidecar we delegate to is a stub.
+
+        The stub ANNOUNCES itself -- ``GET /health`` returns
+        ``{"status": "ok", "engine": "stub"}`` -- and nothing used to look. So a
+        deployment could delegate every embedding to a placeholder that returns
+        zero vectors, with a green health check and no log line saying the
+        cognitive layer was not real.
+
+        Best-effort by construction: a probe failure is NOT fatal, because the
+        sidecar being briefly unreachable at import time is normal and the
+        request path already retries. Only a sidecar that positively identifies
+        itself as a stub is reported.
+        """
+        engine = ""
+        try:
+            import httpx
+
+            with httpx.Client(timeout=2.0) as client:
+                r = client.get(cognitive_health_check_url(self._base))
+                engine = str((r.json() or {}).get("engine", "")).strip().lower()
+        except Exception as exc:  # noqa: BLE001 - a probe must never break startup
+            log.debug("CognitiveRemoteBackend: stub probe inconclusive: %s", exc)
+            return
+
+        if engine != "stub":
+            return
+
+        msg = (
+            "COGNITIVE SIDECAR AT %s IS A STUB (GET /health reports "
+            'engine="stub"). It returns ZERO vectors, so embeddings are not '
+            "real and semantic recall over anything written now will be "
+            "meaningless. Point NCE_COGNITIVE_BASE_URL at a real model server, "
+            "or unset it so nce.embeddings.detect_backend() falls through to "
+            "the in-process hardware chain (CUDA/ROCm/XPU/OpenVINO-NPU/CPU)."
+        )
+        if cfg.ENVIRONMENT in {"prod", "production"}:
+            log.critical(msg, self._base)
+            raise RuntimeError(
+                f"Refusing to start: cognitive sidecar at {self._base} is a stub "
+                "and NCE_ENV is production. A stub returns zero vectors; storing "
+                "them is silent data loss."
+            )
+        log.warning(msg, self._base)
 
     def _sync_embed_batch(self, texts: list[str]) -> tuple[list[list[float]], bool]:
         if not self._base:

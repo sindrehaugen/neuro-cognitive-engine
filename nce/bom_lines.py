@@ -138,6 +138,7 @@ def _as_row_dict(row: asyncpg.Record) -> dict[str, Any]:  # type: ignore[type-ar
         "qty": float(row["qty"]),
         "unit_price": float(row["unit_price"]),
         "line_total": float(row["line_total"]),
+        "priced": bool(row["priced"]),
         "currency": row["currency"],
         "origin_kind": row["origin_kind"],
         "origin_ref": row["origin_ref"],
@@ -187,11 +188,20 @@ async def create_bom_line(
     line_total: Decimal | float,
     currency: str = "NOK",
     origin_ref: str | None = None,
+    priced: bool = True,
 ) -> dict[str, Any]:
     """Author a new BOM_LINE: the ``bom_line_content`` row AND the
     ``kg_nodes`` ``BOM_LINE`` row, in one transaction (the caller's -- this
     function issues no BEGIN/COMMIT of its own; call it inside
     ``scoped_pg_session``).
+
+    ``priced`` (default ``True``) is the D48 discriminator: ``unit_price`` /
+    ``line_total`` stay NOT NULL NUMERIC, so a caller with no real price yet
+    (e.g. a design-generated line -- see
+    ``vertical_modules/system_design/to_quote.py``) passes ``priced=False``
+    alongside a ``0.00`` placeholder. That keeps the placeholder zero
+    distinguishable from a line genuinely priced at zero, so
+    ``freeze_bom_lines_for_quote`` can refuse to freeze it.
 
     Guarded by ``assert_owner`` against ``content:create:{flow}`` -- deny by
     default when unregistered or when ``writer_engine`` is not the flow's
@@ -215,9 +225,9 @@ async def create_bom_line(
         INSERT INTO bom_line_content (
             namespace_id, bom_line_label, quote_id, line_ref,
             qty, unit_price, line_total, currency,
-            origin_kind, origin_ref, writer_engine
+            origin_kind, origin_ref, writer_engine, priced
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         ON CONFLICT (namespace_id, bom_line_label) DO NOTHING
         RETURNING *
         """,
@@ -232,6 +242,7 @@ async def create_bom_line(
         origin_kind,
         origin_ref,
         writer_engine,
+        priced,
     )
 
     if row is None:
@@ -384,9 +395,37 @@ async def freeze_bom_lines_for_quote(
     from the WHERE clause, so a repeat call freezes nothing further and
     never touches ``frozen_at`` on an already-frozen row (which the trigger
     would refuse in any case).
+
+    D48: refuses the WHOLE freeze -- raises ``ValueError`` and updates
+    nothing -- if any not-yet-frozen line for this quote is ``priced =
+    FALSE`` (a design-generated placeholder, see
+    ``vertical_modules/system_design/to_quote.py``). This is an all-or-
+    nothing decision, not "freeze the priced lines and report the rest":
+    the caller (``do_freeze_baseline``) treats this function's return value
+    as "this quote's baseline is now frozen" and has no field of its own to
+    carry a partial-freeze warning, so a partial freeze here would let a
+    caller believe a quote froze completely when it did not. Raising keeps
+    the existing return type's meaning intact and surfaces the problem
+    before any row is mutated.
     """
     ns_uuid = _ns_uuid(namespace_id)
     await assert_owner(conn, ns_uuid, NODE_TYPE_BOM_LINE, writer_engine, "content:freeze")
+
+    unpriced_count = await conn.fetchval(
+        """
+        SELECT count(*) FROM bom_line_content
+        WHERE namespace_id = $1 AND quote_id = $2
+          AND frozen_at IS NULL AND priced = FALSE
+        """,
+        ns_uuid,
+        quote_id,
+    )
+    if unpriced_count:
+        raise ValueError(
+            f"freeze_bom_lines_for_quote: refusing to freeze quote_id={quote_id!r} -- "
+            f"{unpriced_count} not-yet-frozen line(s) are unpriced (priced=FALSE) "
+            "and would carry a placeholder price into a signed baseline"
+        )
 
     status = await conn.execute(
         """

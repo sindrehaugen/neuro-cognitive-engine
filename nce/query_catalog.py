@@ -118,12 +118,14 @@ class CatalogManager:
                        1 - (description_embedding <=> $1::vector) AS confidence
                 FROM query_templates
                 WHERE is_active = TRUE
+                  AND (namespace_id IS NULL OR namespace_id = $3)
                   AND description_embedding IS NOT NULL
                 ORDER BY description_embedding <=> $1::vector
                 LIMIT $2
                 """,
                 json.dumps(embedding),
                 limit,
+                namespace_id,
             )
 
         return [
@@ -201,8 +203,10 @@ class CatalogManager:
                 SELECT raw_template, param_schema, target_engine, pipeline
                 FROM query_templates
                 WHERE slug = $1 AND is_active = TRUE
+                  AND (namespace_id IS NULL OR namespace_id = $2)
                 """,
                 slug,
+                namespace_id,
             )
 
             if row is None:
@@ -267,9 +271,11 @@ class CatalogManager:
                 """
                 SELECT element_type, type_key
                 FROM graph_schema_registry
+                WHERE namespace_id = $1
                 ORDER BY element_type, type_key
-                LIMIT $1
+                LIMIT $2
                 """,
+                namespace_id,
                 limit,
             )
 

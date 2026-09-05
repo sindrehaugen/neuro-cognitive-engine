@@ -24,6 +24,8 @@ Exception             Code     Message
 ====================  =======  ===========================
 ``McpError``          (as-is)  (as-is)
 ``ScopeError``        -32005   Scope forbidden
+``OwnershipError``    -32005   Not permitted to write this node type
+``DeploymentConfigurationError`` -32603  Internal error (deployment not configured)
 ``RateLimitError``    -32029   Rate limit exceeded
 ``ValidationError``   -32602   Invalid parameters
 ``QuotaExceededError``  -32013   Resource quota exceeded
@@ -48,7 +50,8 @@ from pydantic import ValidationError
 
 from nce.a2a import A2AAuthorizationError, A2AScopeViolationError
 from nce.auth import RateLimitError, ScopeError
-from nce.config import cfg
+from nce.config import DeploymentConfigurationError, cfg
+from nce.entity_resolution.ownership import OwnershipError
 from nce.quotas import QuotaExceededError
 
 log = logging.getLogger(__name__)
@@ -147,6 +150,53 @@ def invalid_arguments_data(exc: Exception) -> dict[str, Any]:
     return data
 
 
+def ownership_denied_data(exc: OwnershipError) -> dict[str, Any]:
+    """Build ``error.data`` for an ``assert_owner`` refusal (**D49a**).
+
+    JSON primitives only. ``nce/mcp_stdio_rpc.py`` emits ``error.data`` through
+    a plain ``json.dumps`` with no ``default=str``, so a non-primitive left here
+    would raise ``TypeError`` *inside the error-reporting path* — turning a
+    refusal into the very crash this mapping exists to remove.
+    ``inventory/refusals.py::refusal_payload`` already solves this, but it is
+    keyed on that module's own ``_REFUSALS`` table and importing it here would
+    close a cycle (``refusals.py`` imports ``nce.mcp_errors``), so the coercion
+    is explicit instead.
+
+    Carries only what the caller can act on: the contested ``node_type``, the
+    ``writer_engine`` that was refused, and the ``transition`` that was checked.
+    ``owner_engine`` and the namespace id are deliberately **omitted** — the
+    first is registry row content and the second identifies a tenant, and a
+    refusal payload is returned to a caller who may not be entitled to either.
+    """
+    return {
+        "reason": "ownership_denied",
+        "node_type": str(exc.node_type),
+        "writer_engine": str(exc.writer_engine),
+        "transition": None if exc.transition is None else str(exc.transition),
+    }
+
+
+def deployment_not_configured_data(exc: DeploymentConfigurationError) -> dict[str, Any]:
+    """Build ``error.data`` for an unset/malformed deployment key (**D49b**).
+
+    JSON primitives only, for the same reason ``ownership_denied_data`` is:
+    ``nce/mcp_stdio_rpc.py`` emits ``error.data`` through a plain ``json.dumps``
+    with no ``default=`` hook, so a non-primitive here would raise ``TypeError``
+    *inside the error-reporting path*.
+
+    Carries the config key's **name** only — never its value, which may be a
+    secret and which the caller has no business seeing. ``reason`` is what lets
+    a client tell a misconfiguration apart from a crash while the code stays
+    ``-32603``: the caller's action is identical either way (escalate, never
+    retry), so a new error code would cost every client a branch it cannot act
+    on differently.
+    """
+    return {
+        "reason": "deployment_not_configured",
+        "config_key": str(exc.config_key),
+    }
+
+
 def merge_client_error_data(
     base: dict[str, Any] | None,
     *,
@@ -194,6 +244,36 @@ def mcp_handler(handler_fn: F) -> F:
         except (ScopeError, RateLimitError, McpError):
             # Already typed — propagate to call_tool unchanged.
             raise
+        except OwnershipError as e:
+            # D49a: a stated refusal, not an opaque internal error. Clause order
+            # in this decorator is load-bearing, so note explicitly why this
+            # position is safe: ``OwnershipError`` derives from ``Exception``
+            # only and nothing derives from it, so it is disjoint from every
+            # clause below and shadows none of them. In particular
+            # ``QuotaExceededError`` still precedes ``ValueError`` (it is a
+            # ``ValueError`` subclass) exactly as before.
+            raise McpError(
+                MCP_SCOPE_FORBIDDEN,
+                "Not permitted to write this node type",
+                data=ownership_denied_data(e),
+            )
+        except DeploymentConfigurationError as e:
+            # D49b: an unset/malformed deployment key is the OPERATOR's fault,
+            # never the caller's — no argument any client can send will fix it.
+            # Falling through to ``except (ValueError, TypeError)`` would report
+            # it as ``-32602 Invalid parameters`` and invite an infinite retry.
+            # Clause order (see the D49a note above) is load-bearing, and this
+            # position is safe for the same reason: ``DeploymentConfigurationError``
+            # derives from ``Exception`` only and nothing derives from it, so it
+            # is disjoint from every clause below and shadows none of them.
+            # ``QuotaExceededError`` still precedes ``ValueError`` (it is a
+            # ``ValueError`` subclass) exactly as before. The code stays
+            # ``-32603``: this genuinely is a server-side problem.
+            raise McpError(
+                MCP_INTERNAL_ERROR,
+                "Internal error",
+                data=deployment_not_configured_data(e),
+            )
         except ValidationError as e:
             sanitized_errors = []
             for err in e.errors(include_url=False):

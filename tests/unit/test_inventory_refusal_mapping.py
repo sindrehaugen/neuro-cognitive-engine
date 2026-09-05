@@ -152,10 +152,7 @@ _REST_REFUSING_ROUTES: dict[str, str] = {
 #: Refusal classes in the inventory package that are handled by an OLDER,
 #: deliberately different contract -- see ``refusals.py``'s "known remaining
 #: asymmetry" note.  Anything not here and not in the mapping is a gap.
-#: NOTE: the private tree also lists ``InventoryDisabledError`` here. That
-#: class lives in B140a's namespace opt-in gate, which is NOT ported to this
-#: repo, so naming it here would excuse a class the ratchet cannot even see.
-_ALREADY_HANDLED_ELSEWHERE = {"InsufficientStockError"}
+_ALREADY_HANDLED_ELSEWHERE = {"InsufficientStockError", "InventoryDisabledError"}
 
 _INVENTORY_PKG = Path(inspect.getsourcefile(inv_mcp)).parent
 

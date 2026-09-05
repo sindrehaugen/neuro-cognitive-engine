@@ -101,12 +101,11 @@ async def seeded_nodes(
             await conn.execute(
                 """
                 INSERT INTO product_catalog
-                    (namespace_id, manufacturer, mfr_part_no, product_source_id,
+                    (manufacturer, mfr_part_no, product_source_id,
                      lifecycle_status)
-                VALUES ($1::uuid, $2, $3, $4, $5)
-                ON CONFLICT (namespace_id, manufacturer, mfr_part_no) DO NOTHING
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (manufacturer, mfr_part_no) DO NOTHING
                 """,
-                str(ns),
                 manufacturer,
                 mfr_part_no,
                 f"test-source-{mfr_part_no}",
@@ -229,11 +228,9 @@ class TestProductEolWatcher:
             FROM product_catalog
             WHERE manufacturer = $1
               AND mfr_part_no = $2
-              AND namespace_id = $3::uuid
             """,
             seeded_nodes["manufacturer"],
             seeded_nodes["mfr_part_no"],
-            str(ns),
         )
         assert before is not None, "Subject product_catalog row not found before watcher run"
 
@@ -247,11 +244,9 @@ class TestProductEolWatcher:
             FROM product_catalog
             WHERE manufacturer = $1
               AND mfr_part_no = $2
-              AND namespace_id = $3::uuid
             """,
             seeded_nodes["manufacturer"],
             seeded_nodes["mfr_part_no"],
-            str(ns),
         )
         assert after is not None, "Subject product_catalog row disappeared after watcher run"
         assert after["lifecycle_status"] == before["lifecycle_status"], (

@@ -41,7 +41,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from nce.config import cfg
+from nce.config import DeploymentConfigurationError, cfg
 from nce.db_utils import scoped_pg_session
 
 log = logging.getLogger("nce.vertical_modules.system_design.sow")
@@ -108,15 +108,19 @@ def _supplier_name() -> str:
     finished deploying, and the first SoW is the right place to find out.
 
     Raises:
-        ValueError: when ``NCE_SUPPLIER_NAME`` is unset or blank.  Matches
-            what ``do_generate_sow`` already raises for a missing required
-            input, so the admin route maps it to 422 (caller-fixable), not 500.
+        DeploymentConfigurationError: when ``NCE_SUPPLIER_NAME`` is unset or
+            blank.  **D49b:** deliberately *not* a ``ValueError``.  The missing
+            argument guards in ``do_generate_sow`` stay ``ValueError`` because
+            those are genuine caller mistakes that 422/-32602 describe
+            correctly; an unset deployment key is not one, and no argument the
+            caller can send will fix it.
     """
     name = (cfg.NCE_SUPPLIER_NAME or "").strip()
     if not name:
-        raise ValueError(
+        raise DeploymentConfigurationError(
+            "NCE_SUPPLIER_NAME",
             "NCE_SUPPLIER_NAME is not configured: refusing to generate a SoW that names no supplier. "
-            "Set NCE_SUPPLIER_NAME to the legal entity name of the operator running this deployment."
+            "Set NCE_SUPPLIER_NAME to the legal entity name of the operator running this deployment.",
         )
     return name
 
@@ -723,7 +727,8 @@ async def do_generate_sow(
         raise ValueError("do_generate_sow: 'namespace_id' is required in params")
     # D35 fail-closed: resolve the operator identity BEFORE any DB read, so an
     # unconfigured deployment is told what is missing instead of producing a
-    # contract that names no party. Raises ValueError naming NCE_SUPPLIER_NAME.
+    # contract that names no party. D49b: raises DeploymentConfigurationError
+    # naming NCE_SUPPLIER_NAME — an operator fault, not a caller fault.
     _supplier_name()
     ns_uuid = UUID(str(ns_raw)) if not isinstance(ns_raw, UUID) else ns_raw
 

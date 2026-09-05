@@ -1,0 +1,26 @@
+#!/usr/bin/make -f
+
+export DH_VERBOSE = 1
+DEB_HOST_ARCH ?= $(shell dpkg-architecture -qDEB_HOST_ARCH)
+
+%:
+	dh $@
+
+override_dh_auto_clean:
+	# No-op: root Makefile clean is for docker compose teardown
+
+override_dh_auto_build:
+	# Consumes prebuilt binary from build/linux/dist/
+
+override_dh_install:
+	dh_install
+	install -d debian/nce-server/usr/bin
+	install -m 0755 build/linux/dist/nce-launch-linux-$(DEB_HOST_ARCH) debian/nce-server/usr/bin/nce-launch
+	install -d debian/nce-server/lib/systemd/system
+	install -m 0644 build/linux/systemd/nce.service debian/nce-server/lib/systemd/system/nce.service
+
+override_dh_installsystemd:
+	dh_installsystemd --no-enable --no-start --name=nce
+
+override_dh_shlibdeps:
+	# No-op: nce-launch is a static CGO_ENABLED=0 Go binary and the rest of the payload is Python; nothing to compute.

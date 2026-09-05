@@ -63,7 +63,7 @@ from typing import Any
 import asyncpg  # type: ignore[import-untyped]
 import httpx
 
-from nce.config import cfg
+from nce.config import DeploymentConfigurationError, cfg
 
 log = logging.getLogger("nce.vertical_modules.system_design.netbox_bridge")
 
@@ -668,9 +668,13 @@ def build_bridge(
     token = netbox_token or cfg.NCE_NETBOX_TOKEN
 
     if not url:
-        raise ValueError("NetBox URL is not configured (NCE_NETBOX_URL is empty)")
+        raise DeploymentConfigurationError(
+            "NCE_NETBOX_URL", "NetBox URL is not configured (NCE_NETBOX_URL is empty)"
+        )
     if not token:
-        raise ValueError("NetBox token is not configured (NCE_NETBOX_TOKEN is empty)")
+        raise DeploymentConfigurationError(
+            "NCE_NETBOX_TOKEN", "NetBox token is not configured (NCE_NETBOX_TOKEN is empty)"
+        )
 
     nb_client = _NetBoxClient(url, token, page_size=page_size)
     return SystemDesignNetBoxBridge(conn, namespace_id, namespace_slug, nb_client)

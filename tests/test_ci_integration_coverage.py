@@ -141,7 +141,6 @@ KNOWN_UNWIRED: frozenset[str] = frozenset(
         "tests/test_replay_handlers_integration.py",
         "tests/test_sales_ai.py",
         "tests/test_sales_commission.py",
-        "tests/test_sales_dealroom.py",
         "tests/test_sales_divergence.py",
         "tests/test_sales_flip.py",
         "tests/test_sales_graph.py",

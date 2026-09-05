@@ -91,6 +91,7 @@ import pytest
 
 from nce.vertical_modules.system_design.devices import (
     DEFAULT_NODE_STATUS,
+    _connection_confidence,
     _has_explicit_lifecycle,
     _is_lifecycle_spelling,
     _refuse_misplaced_lifecycle_keys,
@@ -1327,9 +1328,12 @@ def test_the_candidate_filter_is_case_insensitive() -> None:
 def test_the_mirror_slice_is_bounded_by_the_migrations_length() -> None:
     """POSITIVE CONTROL for the bounded slice.
 
-    ``system_design_node_state`` is currently the LAST block in
-    ``schema.sql``, so ``marker -> EOF`` and ``marker -> marker+len(ddl)``
-    return the same bytes and the parity assertion passes either way.  Only a
+    ``system_design_node_state`` is NOT the last block in ``schema.sql`` (the
+    telemetry merge appended ``telemetry_samples`` after it) -- this test does
+    not depend on that claim. It is a positive control for a bounded mirror
+    slice: without something appended, ``marker -> EOF`` and
+    ``marker -> marker+len(ddl)`` would return the same bytes regardless, so
+    the parity assertion would pass either way and prove nothing. Only a
     synthetic file with something appended can tell them apart — and appending a
     table is exactly what the next migration wave will do.
     """
@@ -2683,3 +2687,53 @@ class TestOwnerPoolIsolation:
             _RACK_LABEL,
             _CABLE_LABEL,
         }
+
+
+# ---------------------------------------------------------------------------
+# D18 -- a caller-supplied connection confidence must be a real number in [0, 1]
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "1e400",  # -> inf via float(), silently, with a 200
+        1e400,  # same, already a float
+        float("inf"),
+        float("-inf"),
+        float("nan"),  # every comparison against it is false
+        -5,  # documented 0-1, unenforced
+        1e9,
+        1.0000001,
+        None,
+        "abc",
+        {},
+        [],
+        True,  # bool is an int subclass; a flag is not a confidence
+    ],
+)
+def test_a_connection_confidence_outside_zero_to_one_is_refused(value: Any) -> None:
+    """``mcp_handlers`` forwards ``connections`` items VERBATIM, so this value is
+    caller-controlled, and the bare ``float(...)`` this replaced accepted all of it.
+
+    The ones that mattered are not the ones that raised. ``"abc"``, ``None`` and
+    ``{}`` already produced ValueError/TypeError and mapped to -32602 correctly.
+    The defects were the values that SUCCEEDED: ``inf`` was written onto the edge
+    and then nulled on READ by ``graph_query.py:106``, so a caller authored a
+    connection, was told it worked, and never saw the value again; and ``nan``
+    made every threshold comparison false, so the edge silently vanished from
+    filtered queries while the write returned 200.
+    """
+    with pytest.raises(ValueError, match=r"confidence must be a number in \[0, 1\]"):
+        _connection_confidence({"confidence": value})
+
+
+@pytest.mark.parametrize("value", [0, 1, 0.0, 1.0, 0.5, 0.9999])
+def test_a_valid_connection_confidence_is_accepted(value: Any) -> None:
+    """The sibling, without which a guard that refused everything would pass above."""
+    assert _connection_confidence({"confidence": value}) == float(value)
+
+
+def test_an_absent_connection_confidence_keeps_the_structural_default() -> None:
+    """Omitting it is not an error -- structural connections are authored without one."""
+    assert _connection_confidence({}) == 1.0

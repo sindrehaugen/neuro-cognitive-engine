@@ -46,7 +46,7 @@ from typing import Any
 
 import httpx
 
-from nce.config import resolve_secret
+from nce.config import DeploymentConfigurationError, resolve_secret
 from nce.http_resilience import (
     ExternalAPITransientError,
     classify_httpx_response,
@@ -283,8 +283,9 @@ async def stream_nettailer_rows(
     effective_timeout = http_timeout if http_timeout is not None else _http_timeout()
 
     if _mock_lines is None and not effective_url:
-        raise ValueError(
-            "NCE_PRODUCT_NETTAILER_PRODUCT_URL is not configured; cannot stream Nettailer feed."
+        raise DeploymentConfigurationError(
+            "NCE_PRODUCT_NETTAILER_PRODUCT_URL",
+            "NCE_PRODUCT_NETTAILER_PRODUCT_URL is not configured; cannot stream Nettailer feed.",
         )
 
     seen: set[tuple[str, str]] = set()

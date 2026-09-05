@@ -3,13 +3,18 @@ import re
 import subprocess
 import sys
 
-STAGING_DOCS = r"C:\Claude\NCE_DOCS_STAGING\docs"
-REPO = r"C:\Users\SindreLøvlieHaugen\Documents\systemer\Neuro-Cognitive Engine\NCE-Main"
-BASELINE = "7304330"
+# TD-1: these were hard-coded to one developer's staging tree and to a frozen
+# baseline sha, so the checker could not run anywhere else -- which is why it was
+# wired into no workflow and neither its passes nor its failures were ever
+# observed. Default to this repository's own docs/ and working tree; set
+# NCE_DOCS_DIR to sweep a staging tree instead (the original use).
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STAGING_DOCS = os.environ.get("NCE_DOCS_DIR") or os.path.join(REPO, "docs")
+BASELINE = "working tree"
 
 
 def get_git_files():
-    cmd = ["git", "-C", REPO, "ls-tree", "-r", "--name-only", BASELINE]
+    cmd = ["git", "-C", REPO, "ls-files"]
     res = subprocess.run(cmd, capture_output=True, text=True, check=True, encoding="utf-8")
     return set(res.stdout.strip().splitlines())
 
@@ -173,7 +178,11 @@ def main():
             print(f"       * {doc}:{line} -> [{text}]({url}) (target: {target})")
 
     # 4. Status and Verified-against Stamps Check
-    print("\n[4] Status & Verified-against Stamps Check:")
+    # TD-1: WARNING ONLY, deliberately. A stamp is a claim about when somebody last
+    # looked; a broken link is a fact about the document. Gating a merge on the
+    # first punishes waves that correctly update a doc, so the verdict below is
+    # computed from links and code fences only.
+    print("\n[4] Status & Verified-against Stamps Check (WARNING ONLY -- never fatal):")
     non_exempt = [s for s in status_summary if not s["exempt"]]
     stamped = [s for s in non_exempt if s["has_status"] and s["has_verified"]]
     unstamped = [s for s in non_exempt if not (s["has_status"] and s["has_verified"])]
@@ -187,7 +196,7 @@ def main():
     print(f"    Unstamped or unverified: {len(unstamped)}")
 
     if unstamped:
-        print("\n    Details of unstamped/unverified files:")
+        print("\n    WARN: unstamped/unverified files (informational, not fatal):")
         for u in unstamped:
             print(f"       * {u['doc']} (status={u['has_status']}, verified={u['has_verified']})")
 

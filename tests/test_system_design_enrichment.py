@@ -205,14 +205,13 @@ async def _insert_product_catalog(
         product_id: uuid.UUID = await conn.fetchval(
             """
             INSERT INTO product_catalog
-                (namespace_id, manufacturer, mfr_part_no, product_source_id,
+                (manufacturer, mfr_part_no, product_source_id,
                  lifecycle_status, etim_specs)
-            VALUES ($1, $2, $3, $4, 'active', '{}'::jsonb)
-            ON CONFLICT (namespace_id, manufacturer, mfr_part_no)
+            VALUES ($1, $2, $3, 'active', '{}'::jsonb)
+            ON CONFLICT (manufacturer, mfr_part_no)
                 DO UPDATE SET updated_at = NOW()
             RETURNING id
             """,
-            ns_id,
             manufacturer,
             mfr_part_no,
             f"src-{mfr_part_no}",

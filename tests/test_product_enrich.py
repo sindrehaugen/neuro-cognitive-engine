@@ -79,12 +79,15 @@ async def _insert_test_product(
     product_id = await conn.fetchval(
         """
         INSERT INTO product_catalog
-            (namespace_id, manufacturer, mfr_part_no, product_source_id,
+            (manufacturer, mfr_part_no, product_source_id,
              lifecycle_status, etim_specs)
-        VALUES ($1, $2, $3, $4, 'active', '{}'::jsonb)
+        VALUES ($1, $2, $3, 'active', '{}'::jsonb)
+        ON CONFLICT (manufacturer, mfr_part_no) DO UPDATE
+            SET etim_specs       = '{}'::jsonb,
+                lifecycle_status = 'active',
+                updated_at       = now()
         RETURNING id
         """,
-        ns_id,
         manufacturer,
         part_no,
         f"src-{part_no}",

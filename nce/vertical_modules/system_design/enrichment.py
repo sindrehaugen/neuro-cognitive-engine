@@ -147,13 +147,11 @@ async def _resolve_product_uuid(
         """
         SELECT id
         FROM   product_catalog
-        WHERE  namespace_id    = $1::uuid
-          AND  upper(manufacturer)  = $2
-          AND  upper(mfr_part_no)   = $3
-          AND  is_deleted            = false
+        WHERE  upper(manufacturer) = $1
+          AND  upper(mfr_part_no)  = $2
+          AND  is_deleted          = false
         LIMIT  1
         """,
-        str(ns_uuid),
         mfr_upper,
         part_upper,
     )
@@ -240,7 +238,6 @@ async def _resolve_unit_price(
                 FROM   product_prices pp
                 JOIN   product_catalog pc
                        ON  upper(pp.mfr_part_no) = upper(pc.mfr_part_no)
-                       AND pp.namespace_id        = pc.namespace_id
                 WHERE  pc.id           = $1::uuid
                   AND  pp.namespace_id = $2::uuid
                 ORDER BY pp.updated_at DESC

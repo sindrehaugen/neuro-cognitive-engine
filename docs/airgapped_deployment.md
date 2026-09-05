@@ -8,7 +8,7 @@ NCE is designed for high-sovereignty environments where data must never leave th
 
 In airgapped mode, NCE replaces external API dependencies with local equivalents:
 
-1. **Local Embeddings**: Uses the `jinaai/jina-embeddings-v2-base-code` model running locally via SentenceTransformer or an exported OpenVINO IR bundle.
+1. **Local Embeddings**: Uses the `sentence-transformers/all-mpnet-base-v2` model running locally via SentenceTransformer (768-dim, no `trust_remote_code` required) — **stage this model** when preparing an airgapped bundle. The code-specialised `jinaai/jina-embeddings-v2-base-code` remains available through an exported OpenVINO IR bundle; it cannot be used in-process, because its custom modeling code does not load on the pinned `transformers` (see the exporter section below).
 2. **Local Cognitive Model**: Uses models like Llama 3 or Mistral running via an OpenAI-compatible HTTP sidecar (e.g. Ollama or `llama.cpp`), pointed to by `NCE_COGNITIVE_BASE_URL`.
 3. **Local Databases**: All data persists in locally-hosted PostgreSQL, MongoDB, and MinIO instances.
 
@@ -63,9 +63,9 @@ The table below lists the env-vars that govern offline/edge operation. All are r
 | `NCE_OPENVINO_MODEL_DIR` | _(empty)_ | Absolute path to the exported OpenVINO IR directory. Required when using `openvino_npu` / `openvino` backend. |
 | `NCE_OPENVINO_SEQ_LEN` | `512` | Token sequence length used at inference time. Must match the `sequence_length` used during export. |
 | `NCE_COGNITIVE_BASE_URL` | _(empty)_ | Base URL of an OpenAI-compatible embeddings sidecar (e.g. `http://localhost:11435`). When set and `NCE_BACKEND` is not forced, embeddings route to `POST {base}/v1/embeddings`. |
-| `NCE_EMBEDDING_MODEL_ID` | `jinaai/jina-embeddings-v2-base-code` | Hugging Face model ID used by CPU/CUDA/ROCm/MPS backends and by the OpenVINO exporter. |
+| `NCE_EMBEDDING_MODEL_ID` | `sentence-transformers/all-mpnet-base-v2` | Hugging Face model ID used by the CPU/CUDA/ROCm/MPS backends. The OpenVINO **exporter** keeps its own default of `jinaai/jina-embeddings-v2-base-code`. |
 | `NCE_EMBEDDING_MODEL_REVISION` | _(empty)_ | Optional revision pin for supply-chain safety. Passed to `from_pretrained`. |
-| `NCE_EMBEDDING_TRUST_REMOTE_CODE` | `false` | Must be `true` for Jina models that require it. Must be explicit in production. |
+| `NCE_EMBEDDING_TRUST_REMOTE_CODE` | `false` | Not needed by the default model. Required only for models shipping custom code, such as the Jina models. Must be explicit in production. |
 
 A minimal `.env` for an airgapped NPU node:
 

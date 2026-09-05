@@ -164,8 +164,10 @@ services:
     # replicas. Lanes (high_priority -> batch_processing -> default) stay as-is;
     # each replica is an independent forking Worker. No container_name so
     # replicas > 1 is allowed (Compose names them nce-worker-1, -2, ...).
-    profiles:
-      - gpu
+    # NO PROFILE, DELIBERATELY. This is the only service that runs RQ workers,
+    # so gating it behind a `gpu` profile meant that on any machine without an
+    # NVIDIA card no background job was processed AT ALL -- they queued forever,
+    # silently, with a healthy-looking stack. See the resources block below.
     env_file:
       - deploy/compose.stack.env
       - deploy/compose.stack.env.generated
@@ -212,16 +214,35 @@ services:
     deploy:
       # N replicas process N RQ jobs concurrently (default 2).
       replicas: ${WORKER_REPLICAS:-2}
-      # GPU access for re-embedding CUDA operations (Item 49)
+      # NO DEVICE RESERVATION, DELIBERATELY -- and this is not a downgrade.
+      #
+      # nce/embeddings.py::detect_backend() already auto-detects hardware, in
+      # this order:
+      #     NCE_BACKEND override -> CognitiveRemote -> CUDA -> ROCm -> XPU
+      #     -> OpenVINO NPU -> MPS -> CPU
+      # so CUDA is picked up automatically WHEN PRESENT. Reserving an nvidia
+      # device here did not enable that path; it only made the container
+      # refuse to start without one:
+      #     nvidia-container-cli: WSL environment detected but no adapters found
+      # Intel XPU (Arc iGPU) and OpenVINO NPU are in that chain too, and both
+      # are reachable on CPU-only hosts -- but only if the container can start.
+      #
+      # In THIS stack the point is moot in a second way: deploy/compose.stack.env
+      # sets NCE_COGNITIVE_BASE_URL, and detect_backend() returns
+      # CognitiveRemoteBackend *before any hardware probe*. The worker delegates
+      # embedding to the cognitive service over HTTP and loads no local model,
+      # so the reservation was buying a capability this deployment never used.
+      #
+      # On a CUDA host that also runs an in-process backend, re-add:
+      #     reservations:
+      #       devices:
+      #         - driver: nvidia
+      #           count: 1
+      #           capabilities: [gpu]
       resources:
         limits:
           cpus: "${WORKER_CPU_LIMIT:-2.0}"
-          memory: 1G
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+          memory: ${WORKER_MEMORY_LIMIT:-1G}
     depends_on:
       postgres:
         condition: service_healthy

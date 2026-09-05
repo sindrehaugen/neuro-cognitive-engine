@@ -136,8 +136,29 @@ async def execute_call_tool(
                     # Post-success: bump the generation counter so stale cached reads
                     # become unreachable.  Must run AFTER the handler so failed mutations
                     # do not cause unnecessary cache invalidation.
+                    #
+                    # D3: and therefore NEVER raised.  Everything below this line runs
+                    # after the handler has already committed, so a Redis failure here
+                    # would turn a landed write into -32603 -- inviting a client that
+                    # retries on internal errors to write it twice.  The stale window
+                    # degrades to TTL expiry, which is strictly better than a false
+                    # failure.  Semantics deliberately mirror the REST twin,
+                    # admin_handlers/_shared.py's bump_mcp_cache_generation, whose
+                    # docstring argues this same case: "failing the HTTP response would
+                    # invite the caller to retry a write that already landed."  The
+                    # purge_document_cache call below was ALREADY guarded this way --
+                    # the guard existed three lines under the call that needed it most.
                     if spec.mutation:
-                        await bump_cache_generation(engine.redis_client)
+                        try:
+                            await bump_cache_generation(engine.redis_client)
+                        except Exception as bump_exc:  # noqa: BLE001 - see above
+                            log.warning(
+                                "%s: MCP cache generation bump failed after a committed "
+                                "mutation; cacheable reads may serve stale data for up "
+                                "to MCP_CACHE_TTL_S: %s",
+                                name,
+                                bump_exc,
+                            )
 
                         doc_id = arguments.get("memory_id") or arguments.get("snapshot_id")
                         if name in ("forget_memory", "delete_snapshot") and doc_id:
@@ -156,7 +177,15 @@ async def execute_call_tool(
                                         exc,
                                     )
                     if spec.cacheable and cache_key:
-                        await engine.redis_client.setex(cache_key, _MCP_CACHE_TTL_S, result_text)
+                        # Same rule, same reason: the handler has returned, so a
+                        # failure to populate the cache must not become the caller's
+                        # error.  A missing cache entry costs one recomputation.
+                        try:
+                            await engine.redis_client.setex(
+                                cache_key, _MCP_CACHE_TTL_S, result_text
+                            )
+                        except Exception as cache_exc:  # noqa: BLE001 - see above
+                            log.warning("%s: MCP response cache write failed: %s", name, cache_exc)
                     return [TextContent(type="text", text=result_text)]
                 except BaseException:
                     # BaseException catches asyncio.CancelledError (Python ≥ 3.8) so

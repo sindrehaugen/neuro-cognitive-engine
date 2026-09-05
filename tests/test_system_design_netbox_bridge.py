@@ -32,6 +32,7 @@ import asyncpg  # type: ignore[import-untyped]
 import pytest
 
 from nce.auth import set_namespace_context
+from nce.config import DeploymentConfigurationError
 from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
 from nce.vertical_modules.system_design.graph import do_author_functional_location
 from nce.vertical_modules.system_design.netbox_bridge import (
@@ -453,7 +454,7 @@ class TestSystemDesignNetBoxBridge:
         # build_bridge with empty URL must raise — not silently skip
         async with pg_app_conn.transaction():
             await set_namespace_context(pg_app_conn, ns)
-            with pytest.raises(ValueError, match="NCE_NETBOX_URL"):
+            with pytest.raises(DeploymentConfigurationError, match="NCE_NETBOX_URL"):
                 build_bridge(
                     pg_app_conn,
                     ns_uuid,

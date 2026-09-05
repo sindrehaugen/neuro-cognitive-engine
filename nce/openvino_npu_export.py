@@ -6,6 +6,14 @@ is available locally. This module does not download weights by itself unless you
 `export_jina_to_openvino_npu` with `local_files_only=False` and allow hub access.
 
 Export output is loaded at runtime by `OpenVINONPUBackend` via `NCE_OPENVINO_MODEL_DIR`.
+
+WARNING — do NOT install the export dependencies into the NCE runtime environment.
+`optimum[openvino]` must live in a separate, throwaway virtualenv pinned to `transformers<5`,
+because `optimum-intel` pins `transformers<5.6` while this repo pins `transformers>=5.14.1`;
+pip does not error on that conflict, it silently backtracks to a 2024 `optimum-intel` that
+cannot detect OpenVINO and then fails with a misleading "requires the openvino library but it
+was not found" ImportError even though `openvino` is installed. Export in the throwaway venv,
+then point `NCE_OPENVINO_MODEL_DIR` at the resulting directory.
 """
 
 from __future__ import annotations
@@ -92,8 +100,13 @@ def export_jina_to_openvino_npu(
         from optimum.intel import OVModelForFeatureExtraction
     except ImportError as e:
         raise RuntimeError(
-            "openvino_npu_export requires optimum with Intel OpenVINO support. "
-            "Install e.g. pip install 'optimum[openvino-intel]' openvino"
+            "openvino_npu_export requires optimum with Intel OpenVINO support, and it must be "
+            "installed in a separate, throwaway virtualenv pinned to transformers<5 — never "
+            "into the NCE runtime environment, because optimum-intel pins transformers<5.6 "
+            "while this repo pins transformers>=5.14.1 and pip silently resolves that conflict "
+            "by backtracking to a 2024 optimum-intel that cannot detect OpenVINO. In that "
+            "throwaway venv: pip install 'transformers<5' 'optimum[openvino]' openvino, run the "
+            "export there, then point NCE_OPENVINO_MODEL_DIR at the exported directory."
         ) from e
 
     output_dir.parent.mkdir(parents=True, exist_ok=True)

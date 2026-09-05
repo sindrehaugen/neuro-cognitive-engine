@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from nce.config import cfg
+from nce.config import DeploymentConfigurationError, cfg
 from nce.vertical_modules.sales import read_model
 from nce.vertical_modules.sales.source_adapters import d365
 
@@ -116,16 +116,16 @@ def test_malformed_prefix_is_rejected_by_every_builder(
     monkeypatch: pytest.MonkeyPatch, bad: str
 ) -> None:
     monkeypatch.setattr(cfg, "NCE_D365_PUBLISHER_PREFIX", bad)
-    with pytest.raises(ValueError, match="NCE_D365_PUBLISHER_PREFIX"):
+    with pytest.raises(DeploymentConfigurationError, match="NCE_D365_PUBLISHER_PREFIX"):
         d365.publisher_prefix()
-    with pytest.raises(ValueError, match="NCE_D365_PUBLISHER_PREFIX"):
+    with pytest.raises(DeploymentConfigurationError, match="NCE_D365_PUBLISHER_PREFIX"):
         d365.prefixed_field("industry")
-    with pytest.raises(ValueError, match="NCE_D365_PUBLISHER_PREFIX"):
+    with pytest.raises(DeploymentConfigurationError, match="NCE_D365_PUBLISHER_PREFIX"):
         d365._select_fields()
     # Every SQL-text builder raises instead of returning a string, so no query text
     # containing the hostile value is ever constructed.
     for build in (read_model._rec_sql, read_model._rec_num_sql, read_model._subject_fv):
-        with pytest.raises(ValueError, match="NCE_D365_PUBLISHER_PREFIX"):
+        with pytest.raises(DeploymentConfigurationError, match="NCE_D365_PUBLISHER_PREFIX"):
             build(bad)
 
 
@@ -138,16 +138,21 @@ def test_no_sql_reaches_the_connection_for_a_malformed_prefix(
     ns = "00000000-0000-0000-0000-000000000000"
     for helper in (read_model.manager_dashboard_helper, read_model.stats_dashboard_helper):
         conn = _RecordingConn()
-        with pytest.raises(ValueError, match="NCE_D365_PUBLISHER_PREFIX"):
+        with pytest.raises(DeploymentConfigurationError, match="NCE_D365_PUBLISHER_PREFIX"):
             asyncio.run(helper(conn, ns))
         assert conn.queries == [], f"{helper.__name__} built SQL from {bad!r}: {conn.queries}"
 
 
 def test_the_guard_does_not_sanitise_or_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cfg, "NCE_D365_PUBLISHER_PREFIX", "ac'me")
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(DeploymentConfigurationError) as exc:
         d365.publisher_prefix()
     assert "NCE_D365_PUBLISHER_PREFIX" in str(exc.value)
+    # D49b: and it is NOT a ValueError — that is the whole point. A ValueError
+    # here would keep mapping to -32602/422, i.e. "you sent something wrong",
+    # for a key only the operator can set.
+    assert not isinstance(exc.value, ValueError)
+    assert exc.value.config_key == "NCE_D365_PUBLISHER_PREFIX"
     # no repaired value is offered anywhere in the failure path
     assert d365._validate_prefix("acme") == "acme"
 
@@ -155,9 +160,9 @@ def test_the_guard_does_not_sanitise_or_default(monkeypatch: pytest.MonkeyPatch)
 # ── (c) the unset case: validate on use, never at import ─────────────────────
 def test_unset_prefix_raises_on_use_naming_the_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cfg, "NCE_D365_PUBLISHER_PREFIX", "")
-    with pytest.raises(ValueError, match="NCE_D365_PUBLISHER_PREFIX is not set"):
+    with pytest.raises(DeploymentConfigurationError, match="NCE_D365_PUBLISHER_PREFIX is not set"):
         d365.publisher_prefix()
-    with pytest.raises(ValueError, match="NCE_D365_PUBLISHER_PREFIX is not set"):
+    with pytest.raises(DeploymentConfigurationError, match="NCE_D365_PUBLISHER_PREFIX is not set"):
         read_model.classify_it_av({"name": "anything"})
 
 

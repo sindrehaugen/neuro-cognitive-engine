@@ -196,7 +196,11 @@ async def run_preflight() -> int:
     deadline = asyncio.get_running_loop().time() + timeout
     try:
         await asyncio.wait_for(_probe_until_ready(deadline), timeout=timeout)
-    except TimeoutError:
+    # asyncio.TimeoutError, NOT the builtin: they are the same class only on
+    # 3.11+. On the declared floor (requires-python >=3.10) the builtin does not
+    # catch what wait_for raises, so this handler was dead and a hung startup
+    # returned EXIT_STARTUP_FAILED instead of EXIT_TIMEOUT.
+    except asyncio.TimeoutError:
         log.critical(
             "FATAL: pre-flight did not complete within %.0fs. Refusing to start; "
             "the container will exit so the restart backoff engages.",

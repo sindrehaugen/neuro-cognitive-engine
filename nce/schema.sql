@@ -1349,7 +1349,6 @@ CREATE INDEX IF NOT EXISTS idx_source_mode_config_namespace_engine
 -- --- Product Catalog (Migration 031) ---
 CREATE TABLE IF NOT EXISTS product_catalog (
     id                UUID        NOT NULL DEFAULT gen_random_uuid(),
-    namespace_id      UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
     gtin              TEXT,
     manufacturer      TEXT        NOT NULL,
     mfr_part_no       TEXT        NOT NULL,
@@ -1360,7 +1359,7 @@ CREATE TABLE IF NOT EXISTS product_catalog (
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (id),
-    UNIQUE (namespace_id, manufacturer, mfr_part_no)
+    UNIQUE (manufacturer, mfr_part_no)
 );
 
 CREATE TABLE IF NOT EXISTS product_prices (
@@ -1377,16 +1376,41 @@ CREATE TABLE IF NOT EXISTS product_prices (
     UNIQUE (namespace_id, mfr_part_no, supplier, bid_id)
 );
 
--- Indexes for product_catalog
-CREATE INDEX IF NOT EXISTS idx_product_catalog_namespace_mfr_mfr_part_no
-    ON product_catalog (namespace_id, manufacturer, mfr_part_no);
+-- product_catalog is a GLOBAL shared parts library (Sindre's ruling, 2026-09-04)
+-- -- see nce/migrations/064_product_catalog_global.sql. This block mirrors that
+-- migration's end state for databases created before it, and EVERY statement is
+-- idempotent because _init_pg_schema re-executes this file on every connect().
+DROP POLICY IF EXISTS tenant_isolation_policy ON product_catalog;
+DROP POLICY IF EXISTS namespace_isolation_policy ON product_catalog;
+ALTER TABLE product_catalog NO FORCE ROW LEVEL SECURITY;
+ALTER TABLE product_catalog DISABLE ROW LEVEL SECURITY;
+ALTER TABLE product_catalog
+    DROP CONSTRAINT IF EXISTS product_catalog_namespace_id_manufacturer_mfr_part_no_key;
+DROP INDEX IF EXISTS idx_product_catalog_namespace_mfr_mfr_part_no;
+DROP INDEX IF EXISTS idx_product_catalog_namespace_gtin;
+DROP INDEX IF EXISTS idx_product_catalog_namespace_is_deleted;
+ALTER TABLE product_catalog DROP COLUMN IF EXISTS namespace_id;
 
-CREATE INDEX IF NOT EXISTS idx_product_catalog_namespace_gtin
-    ON product_catalog (namespace_id, gtin)
+-- Indexes for product_catalog: identity is (manufacturer, mfr_part_no) --
+-- one row per real part, shared by every tenant.
+CREATE UNIQUE INDEX IF NOT EXISTS product_catalog_manufacturer_mfr_part_no_key
+    ON product_catalog (manufacturer, mfr_part_no);
+
+CREATE INDEX IF NOT EXISTS idx_product_catalog_gtin
+    ON product_catalog (gtin)
     WHERE gtin IS NOT NULL;
 
-CREATE INDEX IF NOT EXISTS idx_product_catalog_namespace_is_deleted
-    ON product_catalog (namespace_id, is_deleted);
+CREATE INDEX IF NOT EXISTS idx_product_catalog_is_deleted
+    ON product_catalog (is_deleted);
+
+-- product_catalog left the tenant_tables loop below, which was its only GRANT
+-- site, so nce_app's privileges are granted explicitly here.
+DO $BODY$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE product_catalog TO nce_app;
+    END IF;
+END $BODY$;
 
 -- Indexes for product_prices
 CREATE INDEX IF NOT EXISTS idx_product_prices_namespace_mfr_part_no
@@ -1397,7 +1421,7 @@ CREATE INDEX IF NOT EXISTS idx_product_prices_namespace_supplier
 
 COMMENT ON TABLE product_catalog IS
 'ETIM-coded product catalog: 552k-row streaming-upsert master for multi-source ingestion.
-Deduped on (namespace_id, manufacturer, mfr_part_no); GTIN is the universal key (nullable).
+Deduped on (manufacturer, mfr_part_no); GTIN is the universal key (nullable).
 etim_specs JSONB holds coded (etim_class, feature, value, unit) tuples with per-field
 provenance and confidence inside the JSONB. product_source_id tracks per-source provenance
 for multi-source dedup. is_deleted enables soft-delete. FORCE RLS isolates per tenant.';
@@ -2315,7 +2339,6 @@ DECLARE
         'device_health_rollup',
         -- vertical-engine tables (ml/foundation)
         'divergence_log',
-        'product_catalog',
         'product_prices',
         'procurement_bid_prices',
         'system_design_device_capabilities',
@@ -3399,8 +3422,11 @@ discriminator between the two key grains.';
 -- ---------------------------------------------------------------------------
 -- Module 0, Wave 31 (Batch 132a): bom_line_content -- mirror of migration 058.
 -- See that file's header for the full design rationale. Inserted BEFORE the
--- system_design_node_state block on purpose: that block is asserted elsewhere
--- (tests/test_system_design_node_state.py) to be the LAST block in this file.
+-- system_design_node_state block for historical reasons -- NOT because that
+-- block is the last one in this file (it no longer is; telemetry_samples was
+-- appended after it by the telemetry merge). See
+-- tests/test_system_design_node_state.py's bounded-mirror-slice control for
+-- why the mirror check does not depend on this table being last.
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS bom_line_content (
@@ -3494,6 +3520,12 @@ DROP TRIGGER IF EXISTS trg_reject_frozen_bom_line_mutation ON bom_line_content;
 CREATE TRIGGER trg_reject_frozen_bom_line_mutation
     BEFORE UPDATE ON bom_line_content
     FOR EACH ROW EXECUTE FUNCTION reject_frozen_bom_line_mutation();
+
+-- ---------------------------------------------------------------------------
+-- 063_bom_line_priced.sql mirror -- D48: unpriced is a STATE, not a value.
+-- See that migration's header for the full rationale.
+-- ---------------------------------------------------------------------------
+ALTER TABLE bom_line_content ADD COLUMN IF NOT EXISTS priced BOOLEAN NOT NULL DEFAULT TRUE;
 
 ALTER TABLE bom_line_content ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bom_line_content FORCE ROW LEVEL SECURITY;
@@ -3710,3 +3742,135 @@ COMMENT ON COLUMN system_design_node_state.salience IS
 'Per-node salience. Stored here because kg_nodes has no salience column.
 FINITE and NON-NEGATIVE: PostgreSQL numeric NaN sorts ABOVE every finite value,
 so a stored NaN would silently win every W17 threshold comparison.';
+
+-- ============================================================================
+-- Assets engine (Module 9, Wave 5 -- telemetry-adapter): the manufacturer
+-- telemetry reading stream behind
+-- nce/vertical_modules/assets/telemetry.py's do_pull_telemetry
+-- (migration 057).
+--
+-- MIRROR OF nce/migrations/057_telemetry_samples.sql -- the DDL statements
+-- below are byte-identical to that file's. A fresh install boots from this
+-- file alone; an existing install runs the migration. Both paths must produce
+-- not merely the same enforced expressions but the same catalog IDENTITY,
+-- which is why every CHECK, UNIQUE and FK carries an explicit name (an
+-- anonymous column CHECK is auto-named, and the auto-name differs between the
+-- two paths -- the divergence that caused a rejection on Batch 132). See
+-- migration 057's file header for the full rationale: no graph writes in this
+-- wave (TELEMETRY has no node-ownership.json row and no node/edge is
+-- written), a SINGLE-column FK on asset_id that proves existence but NOT
+-- namespace membership, and no UPDATE/DELETE grant (a reading is not
+-- revisable, and retention is a later wave's decision).
+--
+-- ORDERING: this block must follow the `assets` block above -- telemetry_
+-- samples_asset_fk references assets(id).
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS telemetry_samples (
+    id            UUID             NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id  UUID             NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    -- The asset this reading was taken from. Single-column FK -- see the file
+    -- header for exactly what that does and does not guarantee.
+    asset_id      UUID             NOT NULL,
+    -- Vendor metric name, verbatim from the adapter (e.g. 'uptime_seconds').
+    -- No enumerated CHECK: the metric vocabulary is whatever the manufacturer
+    -- platform emits and differs per vendor, so freezing a list in DDL would
+    -- make onboarding a new platform require a migration.
+    metric        TEXT             NOT NULL,
+    -- The reading. DOUBLE PRECISION because vendor telemetry is float-valued;
+    -- the finite CHECK below is what keeps a NaN/Infinity out of the
+    -- healthScore inputs a later wave will average over.
+    value         DOUBLE PRECISION NOT NULL,
+    -- The instant the VENDOR sampled it, not the instant we pulled it. This
+    -- is a component of the idempotency key precisely because re-pulling an
+    -- overlapping window must re-deliver the same instants (created_at is the
+    -- pull time and is deliberately NOT in that key).
+    sampled_at    TIMESTAMPTZ      NOT NULL,
+    -- The adapter's untouched payload for this sample, so a later health
+    -- writer can recover vendor fields this table does not model.
+    raw           JSONB            NOT NULL DEFAULT '{}'::jsonb,
+    change_origin TEXT             NOT NULL DEFAULT 'agent',
+    created_at    TIMESTAMPTZ      NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    CONSTRAINT telemetry_samples_asset_fk
+        FOREIGN KEY (asset_id) REFERENCES assets (id) ON DELETE CASCADE,
+    -- THE idempotency arbiter. A telemetry pull is a cron that re-reads
+    -- overlapping windows, so the SAME reading arrives repeatedly by design;
+    -- one (namespace, asset, metric, instant) is one row. Refused HERE, by
+    -- the database, not by a Python "have I seen this?" pre-check -- two
+    -- concurrent pulls would both pass such a pre-check and both insert.
+    -- Precedent: migration 054's assets_ns_bom_line_uq.
+    CONSTRAINT telemetry_samples_idempotency_uq
+        UNIQUE (namespace_id, asset_id, metric, sampled_at),
+    -- A blank metric name is not a metric, and must not be able to occupy the
+    -- idempotency key.
+    CONSTRAINT telemetry_samples_metric_not_blank
+        CHECK (btrim(metric) <> ''),
+    -- NaN and +/-Infinity are storable in DOUBLE PRECISION and would poison
+    -- any average taken over this column. Note NaN is NOT caught by
+    -- `value = value` in PostgreSQL -- unlike IEEE-754, PostgreSQL defines
+    -- NaN = NaN as TRUE so its btree ordering is total -- so the comparison
+    -- against 'NaN'::float8 below is the form that actually rejects it.
+    CONSTRAINT telemetry_samples_value_finite
+        CHECK (value <> 'NaN'::float8
+               AND value <> 'Infinity'::float8
+               AND value <> '-Infinity'::float8),
+    CONSTRAINT telemetry_samples_change_origin_check
+        CHECK (change_origin IN
+            ('sync','webhook','agent','operator','consolidation','replay','unknown'))
+);
+
+-- No further index in this wave, deliberately. The one read this wave
+-- performs -- "samples for this asset in this namespace" -- is already served
+-- by the leading columns of the unique index behind
+-- telemetry_samples_idempotency_uq. The "latest reading per metric" scan that
+-- 09-assets-engine.md's do_compute_health will want is a
+-- (namespace_id, asset_id, sampled_at DESC) index, and the wave that performs
+-- that read owns it -- the same rule migration 054 applied to serial /
+-- lifecycle_state.
+
+ALTER TABLE telemetry_samples ENABLE ROW LEVEL SECURITY;
+ALTER TABLE telemetry_samples FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON telemetry_samples;
+CREATE POLICY tenant_isolation_policy ON telemetry_samples
+    FOR ALL TO nce_app
+    USING  (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE telemetry_samples FROM nce_app;
+        -- SELECT + INSERT only. No UPDATE: a reading that was taken is not
+        -- revisable. No DELETE: nothing in the application may erase an
+        -- observation, and retention is a later wave's explicit decision (see
+        -- the file header). A namespace teardown still removes rows via the
+        -- namespace_id FK's ON DELETE CASCADE, which RLS grants do not gate.
+        GRANT SELECT, INSERT ON TABLE telemetry_samples TO nce_app;
+    END IF;
+END $$;
+
+COMMENT ON TABLE telemetry_samples IS
+'Manufacturer-telemetry reading stream (Module 9, Wave 5 -- telemetry-adapter).
+One row per (namespace, asset, metric, vendor sample instant):
+do_pull_telemetry (nce/vertical_modules/assets/telemetry.py) is the SOLE
+writer and is INSERT-only. Samples reach it through the TelemetryAdapter
+interface; `mock` is the only adapter with real behaviour in this wave and the
+five vendor platforms (crestron/qsys/neat/huddly/poly) are env-swap stubs
+selected by NCE_ASSETS_TELEMETRY_<PLATFORM>_REAL that raise NotImplementedError
+-- no vendor HTTP client, credential or dependency exists yet. Idempotency is
+by DB constraint (telemetry_samples_idempotency_uq + INSERT ... ON CONFLICT DO
+NOTHING), never a check-then-write, because a telemetry cron re-reads
+overlapping windows by design; sampled_at is the VENDOR instant and created_at
+the pull instant, and only the former is in the key. NO graph is written from
+this table or its writer: the TELEMETRY kg_node and the
+ASSET -[monitored_by]-> TELEMETRY edge are a later projection wave''s, and
+TELEMETRY has no row in node-ownership.json. asset_id has a SINGLE-column FK
+to assets(id) -- it proves the asset exists, NOT that it belongs to this
+row''s namespace; that binding comes from FORCE RLS plus do_pull_telemetry''s
+namespace-scoped pre-check, and closing the residual needs a
+UNIQUE (id, namespace_id) on `assets` that migration 054 does not provide.
+FORCE RLS isolates per tenant; nce_app is granted SELECT and INSERT only --
+never UPDATE (a reading is not revisable) and never DELETE (retention is a
+later wave''s decision).';

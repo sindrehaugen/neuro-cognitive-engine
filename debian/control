@@ -1,0 +1,14 @@
+Source: nce-server
+Section: utils
+Priority: optional
+Maintainer: Sindre Løvlie Haugen <sindre.haugen@gmail.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Homepage: https://github.com/sindrehaugen/NCE
+
+Package: nce-server
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}, adduser
+Description: Neuro-Cognitive Engine (NCE) Multiuser Server
+ NCE on-premise and edge server deployment daemon and Docker Compose
+ stack orchestrator for multi-user knowledge management and AI workloads.

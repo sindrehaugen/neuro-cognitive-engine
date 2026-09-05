@@ -308,9 +308,11 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     # Module 0, Wave 31 (Batch 132a): shared, top-level BOM_LINE content
     # store -- written by both system_design and sales, never engine-prefixed.
     "bom_line_content": "namespace_id",
-    # Product engine (Module 2): catalog/prices (W2), match feedback (W6),
+    # Product engine (Module 2): prices (W2), match feedback (W6),
     # enrichment review log (W7). Each new RLS table MUST be declared here.
-    "product_catalog": "namespace_id",
+    # product_catalog is NOT here: it is a global shared parts library, see
+    # EXPECTED_GLOBAL_TABLES. product_prices stays tenant-scoped because
+    # supplier-bid pricing is per-tenant commercial confidential.
     "product_prices": "namespace_id",
     "product_match_feedback": "namespace_id",
     "product_enrichment_log": "namespace_id",
@@ -353,6 +355,8 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "inventory_rma": "namespace_id",
     # Assets engine (Module 9, Wave 2): relational asset register (seed-from-bom).
     "assets": "namespace_id",
+    # Assets engine (Module 9, Wave 5): manufacturer telemetry reading stream.
+    "telemetry_samples": "namespace_id",
 }
 
 EXPECTED_SPECIAL_RLS_TABLES: dict[str, tuple[str, ...]] = {
@@ -366,6 +370,10 @@ EXPECTED_GLOBAL_TABLES: set[str] = {
     "kg_node_embeddings",
     "reembedding_runs",
     "event_sequences",
+    # The product catalogue is a global shared parts library: a manufacturer
+    # part number names the same physical part for every tenant (Sindre's
+    # ruling, 2026-09-04; migration 064).
+    "product_catalog",
     # Deployment state, not tenant data: which migration files this database
     # has applied (see nce/migration_ledger.py).
     "applied_migrations",

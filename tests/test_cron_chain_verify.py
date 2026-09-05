@@ -74,6 +74,33 @@ async def test_chain_verification_integration(pg_pool, make_namespace, monkeypat
     ns_id = await make_namespace()
     agent_id = "test-chain-verify-agent"
 
+    # Force a small startup depth, and seed a neighbour namespace with a higher
+    # event_seq counter than the test namespace. CI runs against a fresh,
+    # empty event_log per run, so without a neighbour the global max(event_seq)
+    # equals this namespace's own max and the unpredicated query is
+    # indistinguishable from the namespace-scoped one -- the test would pass
+    # even if the WHERE namespace_id predicate were missing.
+    monkeypatch.setenv("NCE_CHAIN_VERIFY_STARTUP_DEPTH", "2")
+    monkeypatch.setattr(cfg, "NCE_CHAIN_VERIFY_STARTUP_DEPTH", 2)
+
+    neighbour_ns_id = await make_namespace()
+    async with scoped_pg_session(pg_pool, neighbour_ns_id) as conn:
+        for i in range(10):
+            await append_event(
+                conn=conn,
+                namespace_id=neighbour_ns_id,
+                agent_id=agent_id,
+                event_type="store_memory",
+                params={
+                    "saga_id": str(uuid.uuid4()),
+                    "memory_id": str(uuid.uuid4()),
+                    "payload_ref": f"00000000000000000000000{i}",
+                    "assertion_type": "fact",
+                    "entities": [],
+                    "triplets": [],
+                },
+            )
+
     # Intercept namespace scan to only return this namespace, isolating our test
     # from other leftover namespaces in the shared test database.
     from contextlib import asynccontextmanager
@@ -180,3 +207,73 @@ async def test_chain_verification_integration(pg_pool, make_namespace, monkeypat
             "mismatch" in params.get("reason", "").lower()
             or "broken" in params.get("reason", "").lower()
         )
+
+
+@pytest.mark.asyncio
+async def test_chain_verification_scopes_max_event_seq_to_namespace(monkeypatch):
+    """Unit guard (no DB): the max(event_seq) lookup inside _chain_verification_tick
+    must carry a WHERE namespace_id predicate, with the *matching* namespace id bound
+    as a query argument for each namespace scanned -- two distinct namespaces are used
+    so a hardcoded or swapped id would be caught, not just "some id was passed".
+    """
+    from contextlib import asynccontextmanager
+
+    import nce.cron as cron_mod
+
+    ns_a = uuid.uuid4()
+    ns_b = uuid.uuid4()
+    calls: list[tuple[str, tuple]] = []
+    opened: list = []
+
+    class FakeConn:
+        async def fetchval(self, query, *args):
+            calls.append((query, args))
+            return 0
+
+        async def fetch(self, query, *args):
+            calls.append((query, args))
+            if "SELECT id FROM namespaces" in query:
+                return [{"id": ns_a}, {"id": ns_b}]
+            return []
+
+        async def execute(self, query, *args):
+            calls.append((query, args))
+            return None
+
+    fake_conn = FakeConn()
+
+    @asynccontextmanager
+    async def fake_scoped_pg_session(pool, namespace_id):
+        # Record which namespace this session was opened for, so the assertion
+        # below can pair each max(event_seq) call with its own namespace rather
+        # than checking that both ids merely appear somewhere.
+        opened.append(namespace_id)
+        yield fake_conn
+
+    @asynccontextmanager
+    async def fake_unmanaged_pg_connection(pool, *, site):
+        yield fake_conn
+
+    async def fake_verify_merkle_chain(conn, *, namespace_id, start_seq):
+        return {"valid": True}
+
+    monkeypatch.setattr(cron_mod, "scoped_pg_session", fake_scoped_pg_session)
+    monkeypatch.setattr(cron_mod, "unmanaged_pg_connection", fake_unmanaged_pg_connection)
+    monkeypatch.setattr("nce.event_log.verify_merkle_chain", fake_verify_merkle_chain)
+    monkeypatch.setattr(cron_mod, "acquire_cron_lock", AsyncMock(return_value=object()))
+    monkeypatch.setattr(cron_mod, "release_cron_lock", AsyncMock())
+
+    await _chain_verification_tick(MagicMock())
+
+    max_seq_calls = [(q, a) for q, a in calls if "max(event_seq)" in q]
+    assert len(max_seq_calls) == 2
+    for query, args in max_seq_calls:
+        assert "WHERE namespace_id" in query
+        assert len(args) == 1
+
+    # Pair each call with the namespace whose scoped session produced it. A set
+    # comparison would pass on a symmetric swap -- ns_a's iteration binding
+    # ns_b's id and vice versa -- which is precisely the cross-namespace
+    # confusion this batch exists to prevent, so assert the pairing in order.
+    assert opened == [ns_a, ns_b]
+    assert [args[0] for _, args in max_seq_calls] == [ns_a, ns_b]

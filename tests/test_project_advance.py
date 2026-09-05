@@ -11,7 +11,10 @@ Validates the Acceptance criteria from Batch_071a_Module_7_Wave_4a.md:
   d. Same-phase advance: idempotent no-op (no writes, noop=True).
   e. Tool flags: ``project_advance_phase`` registered with
      ``mutation=True, admin_only=True, cacheable=False``.
-  f. Canonical tool-count guard: total=89 / mutation=37 / admin=14.
+  f. Canonical tool-count guard -- see tests/test_tool_registry.py, which owns
+     the numbers. They are NOT repeated here: this line said 89/37/14 while the
+     live registry held 142/56/27, because a count written into prose is a claim
+     nothing re-derives.
 
 Fixtures used:
   ``pg_app_conn``           — asyncpg connection as nce_app (RLS enforced).

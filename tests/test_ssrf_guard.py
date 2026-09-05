@@ -20,7 +20,7 @@ from nce.net_safety import (
     validate_extractor_url,
     validate_webhook_payload_url,
 )
-from nce.providers.base import LLMProviderError, validate_base_url
+from nce.providers.base import LLMProviderError, validate_base_url, validate_base_url_async
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -71,6 +71,25 @@ class TestValidateBaseUrl:
             # --- Loopback with allow_loopback — should pass ---
             ("https://127.0.0.1:8000", False, True, True, None),
             ("https://localhost:11435", False, True, True, None),
+            # 🔴 IPv6 loopback with allow_loopback. This row is the whole reason
+            # this block exists: ipaddress calls ``::1`` RESERVED (and 127.0.0.1
+            # not), so it was rejected before allow_loopback was consulted, while
+            # the docstring promised allow_loopback permits "loopback (127.0.0.1,
+            # ::1)". The two rows above never caught it because the DNS mock maps
+            # `localhost` to 127.0.0.1 — a real dual-stack host answers ::1 first.
+            ("https://[::1]:8000", False, True, True, None),
+            ("http://[::1]:11435", True, True, True, None),
+            # --- ...and the exemption must NOT have widened anything. Every row
+            # --- below opts INTO loopback and must still be refused. ---
+            (
+                "http://169.254.169.254/latest/meta-data",
+                True,
+                True,
+                False,
+                "non-public IP",
+            ),
+            ("https://[fe80::1]:443", False, True, False, "non-public IP"),
+            ("https://224.0.0.1:443", False, True, False, "non-public IP"),
             # --- Private IPv4 — should fail ---
             ("https://10.0.0.1", False, False, False, "private IP"),
             ("https://10.255.255.255", False, False, False, "private IP"),
@@ -103,7 +122,110 @@ class TestValidateBaseUrl:
         monkeypatch: pytest.MonkeyPatch,
     ):
         """Run a single SSRF guard scenario with mocked DNS."""
+        self._install_dns_mock(url, monkeypatch)
 
+        if expect_pass:
+            validate_base_url(url, allow_http=allow_http, allow_loopback=allow_loopback)
+        else:
+            with pytest.raises(LLMProviderError, match=match or ""):
+                validate_base_url(url, allow_http=allow_http, allow_loopback=allow_loopback)
+
+    @pytest.mark.parametrize(
+        "url, allow_http, allow_loopback, expect_pass, match",
+        [
+            # --- Public HTTPS URLs — should pass ---
+            ("https://api.openai.com/v1", False, False, True, None),
+            ("https://www.google.com:443", False, False, True, None),
+            ("https://8.8.8.8", False, False, True, None),
+            # --- HTTP without flag — should fail ---
+            ("http://api.openai.com/v1", False, False, False, "must use HTTPS"),
+            # --- HTTP with allow_http — should pass ---
+            ("http://cognitive:11435", True, True, True, None),
+            # --- Loopback — should fail without flag ---
+            ("https://127.0.0.1:8000", False, False, False, "private IP|non-public IP|loopback"),
+            ("https://localhost", False, False, False, "private IP|non-public IP|loopback"),
+            ("https://[::1]:8000", False, False, False, "private IP|non-public IP|loopback"),
+            # --- Loopback with allow_loopback — should pass ---
+            ("https://127.0.0.1:8000", False, True, True, None),
+            ("https://localhost:11435", False, True, True, None),
+            # 🔴 IPv6 loopback with allow_loopback. This row is the whole reason
+            # this block exists: ipaddress calls ``::1`` RESERVED (and 127.0.0.1
+            # not), so it was rejected before allow_loopback was consulted, while
+            # the docstring promised allow_loopback permits "loopback (127.0.0.1,
+            # ::1)". The two rows above never caught it because the DNS mock maps
+            # `localhost` to 127.0.0.1 — a real dual-stack host answers ::1 first.
+            ("https://[::1]:8000", False, True, True, None),
+            ("http://[::1]:11435", True, True, True, None),
+            # --- ...and the exemption must NOT have widened anything. Every row
+            # --- below opts INTO loopback and must still be refused. ---
+            (
+                "http://169.254.169.254/latest/meta-data",
+                True,
+                True,
+                False,
+                "non-public IP",
+            ),
+            ("https://[fe80::1]:443", False, True, False, "non-public IP"),
+            ("https://224.0.0.1:443", False, True, False, "non-public IP"),
+            # --- Private IPv4 — should fail ---
+            ("https://10.0.0.1", False, False, False, "private IP"),
+            ("https://10.255.255.255", False, False, False, "private IP"),
+            ("https://172.16.0.1", False, False, False, "private IP"),
+            ("https://172.31.255.255", False, False, False, "private IP"),
+            ("https://192.168.1.1", False, False, False, "private IP"),
+            ("https://192.168.255.255", False, False, False, "private IP"),
+            # --- Private IPv6 — should fail ---
+            ("https://[fd00::1]", False, False, False, "private IP"),
+            # --- Invalid URL format ---
+            ("not-a-url", False, False, False, "invalid base_url"),
+            ("", False, False, False, "invalid base_url"),
+            # --- Unresolvable hostname ---
+            (
+                "https://does-not-exist.example",
+                False,
+                False,
+                False,
+                "could not resolve",
+            ),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_the_async_twin_gives_the_IDENTICAL_verdict(
+        self,
+        url: str,
+        allow_http: bool,
+        allow_loopback: bool,
+        expect_pass: bool,
+        match: str | None,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """``validate_base_url_async`` must agree with the sync guard on every row.
+
+        Its own comment says "Mirror validate_base_url exactly" -- and that was a
+        COMMENT, not a gate. The IPv6-loopback defect (``ipaddress`` calls ``::1``
+        reserved while ``127.0.0.1`` is not, so ``allow_loopback`` never got to
+        speak) lived in BOTH copies, and fixing only the one a test happened to
+        exercise would have left the async callers broken while looking fixed.
+
+        Two implementations of one rule need an assertion that they are one rule.
+        """
+        self._install_dns_mock(url, monkeypatch)
+
+        if expect_pass:
+            await validate_base_url_async(url, allow_http=allow_http, allow_loopback=allow_loopback)
+        else:
+            with pytest.raises(LLMProviderError, match=match or ""):
+                await validate_base_url_async(
+                    url, allow_http=allow_http, allow_loopback=allow_loopback
+                )
+
+    @staticmethod
+    def _install_dns_mock(url: str, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Deterministic DNS for one scenario row, shared by both guards.
+
+        Shared ON PURPOSE: if the sync and async tests mocked DNS differently they
+        could disagree for a reason that has nothing to do with the guards.
+        """
         # Map hostnames to fake IPs for deterministic mock
         host_to_ip = {
             "api.openai.com": "1.2.3.4",
@@ -120,6 +242,9 @@ class TestValidateBaseUrl:
             "192.168.1.1": "192.168.1.1",
             "192.168.255.255": "192.168.255.255",
             "fd00::1": "fd00::1",
+            "169.254.169.254": "169.254.169.254",
+            "fe80::1": "fe80::1",
+            "224.0.0.1": "224.0.0.1",
         }
 
         # Build the mock
@@ -149,12 +274,6 @@ class TestValidateBaseUrl:
                 "socket.getaddrinfo",
                 _mock_getaddrinfo("1.2.3.4"),
             )
-
-        if expect_pass:
-            validate_base_url(url, allow_http=allow_http, allow_loopback=allow_loopback)
-        else:
-            with pytest.raises(LLMProviderError, match=match or ""):
-                validate_base_url(url, allow_http=allow_http, allow_loopback=allow_loopback)
 
 
 # ---------------------------------------------------------------------------

@@ -30,6 +30,13 @@ jobs:
       - name: Ruff format (check only)
         run: ruff format --check .
 
+      # TD-1: this checker existed but was wired into no workflow, so neither its
+      # passes nor its failures were ever observed. Link and code-fence failures are
+      # blocking; the Verified-against stamp is reported as a warning only. It needs
+      # no database and no services, so it belongs in the lint job.
+      - name: Docs links & code fences
+        run: python scripts/verify_docs_links_and_syntax.py
+
       # TDL-6: was DEFERRED (continue-on-error) because pip-tools 7.4.1 crashed on the runner's
       # pip ("'PackageFinder' object has no attribute 'allow_all_prereleases'") and the lock was
       # Python-3.10-compiled while CI runs 3.11. Both fixed: pip-tools 7.6.1 + lock regenerated
@@ -41,40 +48,29 @@ jobs:
           python scripts/compile_requirements.py
           git diff --exit-code requirements.lock
 
-      # Ported with the hardware/topology work: go/ was compiled and tested by NOTHING
-      # in CI, which is how a substring bug in the Windows NPU probe survived unnoticed
-      # (it matched the 'npu' inside 'USB Input Device'). These steps are the ratchet.
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-          cache-dependency-path: go/go.sum
-
-      - name: Go format check
-        working-directory: ./go
-        run: test -z "$(gofmt -l .)"
-
-      - name: Go vet
-        working-directory: ./go
-        run: go vet ./...
-
-      - name: Go build
-        working-directory: ./go
-        run: go build ./...
-
-      - name: Go test
-        working-directory: ./go
-        run: go test ./... -v
-
   test:
-    name: Pytest (unit)
+    name: Pytest (unit, py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      # pyproject.toml declares requires-python = ">=3.10". Every job here used
+      # to pin 3.11, so the declared floor was asserted nowhere -- and it had
+      # already been broken by `from datetime import UTC` (3.11+) in production
+      # code, which fails at IMPORT on 3.10 while CI stayed green.
+      #
+      # Only this job is matrixed: it is the one that catches an import-time
+      # break, and the integration/citus jobs would multiply Postgres service
+      # containers for no extra language coverage. If the floor is ever raised,
+      # drop "3.10" here AND update requires-python in the same commit.
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11"]
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: |
             requirements.txt
@@ -82,6 +78,12 @@ jobs:
 
       - name: Install dependencies
         run: |
+          # CI has no GPU. torch is pinned >=2.13.0 and floated to 2.14.0, whose
+          # default wheels pull nvidia_cudnn_cu13 (553 MB), nvidia_nccl_cu13
+          # (216 MB) and triton (248 MB) on top of torch itself (555 MB) -- about
+          # 3.2 GB of downloads, which exhausts the runner disk (ENOSPC). The CPU
+          # index drops the CUDA wheels entirely; nothing here runs on a GPU.
+          pip install --index-url https://download.pytorch.org/whl/cpu torch
           pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Pytest (exclude integration)
@@ -220,7 +222,14 @@ jobs:
             requirements-dev.txt
 
       - name: Install dependencies
-        run: pip install -r requirements.txt -r requirements-dev.txt
+        run: |
+          # CI has no GPU. torch is pinned >=2.13.0 and floated to 2.14.0, whose
+          # default wheels pull nvidia_cudnn_cu13 (553 MB), nvidia_nccl_cu13
+          # (216 MB) and triton (248 MB) on top of torch itself (555 MB) -- about
+          # 3.2 GB of downloads, which exhausts the runner disk (ENOSPC). The CPU
+          # index drops the CUDA wheels entirely; nothing here runs on a GPU.
+          pip install --index-url https://download.pytorch.org/whl/cpu torch
+          pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Apply Postgres schema
         env:
@@ -362,29 +371,52 @@ jobs:
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/test_bom_line_store.py -m integration -q --tb=short
 
-      # Module 5, Waves 15-16 (Batches 132d + 132f): the Sales BOM_LINE
-      # origination path and its read seam. There is NO test_sales_* glob in
-      # this workflow -- the globs are test_economy_*, test_inventory_*,
-      # test_assets_* and test_system_design_*, and Sales appears elsewhere
-      # only as one hardcoded filename -- so without this step both files
-      # would run in NO job, which is exactly what
-      # tests/test_ci_integration_coverage.py exists to catch.
+      # Module 5, Wave 15 (Batch 132d): tests/test_sales_lines_manual.py -- the
+      # MANUAL-PICK origination path for BOM_LINE, and the first real caller of
+      # the guarded store above. There is no test_sales_* glob in this workflow
+      # (the globs are test_economy_*, test_inventory_*, test_assets_* and
+      # test_system_design_*; Sales appears only as one hardcoded filename in
+      # the smoke step), so without this step the file would run in NO job --
+      # exactly what tests/test_ci_integration_coverage.py exists to catch.
+      # A DEDICATED step, added rather than folded into another module's, is
+      # what survives a rebase against a concurrent glob rewrite; renaming the
+      # file to sneak under an existing glob would assert a false owner.
       # What it gates: that a guarded write actually reaches bom_line_content
-      # with origin_kind='manual'/writer_engine='sales'; that the deny path
-      # fires for an unregistered transition AND for the wrong engine; that a
-      # caller-supplied origin_kind cannot reach the store; idempotency on
-      # bom_line_label; tenant isolation on the read; and the D47 proof --
-      # do_design_from_quote called with the A2A seam UNMOCKED, which is the
-      # only test in the tree that would have caught the from-quote route
-      # returning 500 on every call.
+      # with origin_kind='manual'/writer_engine='sales', that the deny path
+      # still fires (unregistered transition AND wrong engine), that a
+      # caller-supplied origin_kind cannot reach the store, and idempotency on
+      # bom_line_label. Downstream waves seed BOM_LINE rows by raw SQL, which
+      # bypasses assert_owner entirely -- this step is what makes those mean
+      # something.
+      # Tenant-isolation predicates: five queries that sat inside a namespace-scoped
+      # session but omitted the namespace from their WHERE clause. The fixture collides
+      # every identifier across two namespaces and differentiates only on content, so it
+      # FAILS if any predicate is removed -- that is the whole point of the file, and it
+      # gates nothing unless a job runs it (see tests/test_ci_integration_coverage.py).
+      # Needs Postgres only: the file declares its own tp_pool fixture rather than
+      # conftest's pg_pool, because none of the five queries touch signing.
+      - name: Integration — tenant-isolation predicates
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+        run: pytest tests/test_tenant_predicates.py -m integration -q --tb=short
+
       - name: Integration — M5 Sales BOM_LINE origination + read seam
         env:
           PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
           NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        # tests/test_sales_dealroom.py carries the D53 regression cover (unpriced
+        # vs UNDATED vs price_resolution_failed) and ran in NO job until D55.
+        # One of its nine tests boots a real NCEEngine via engine.connect(), which
+        # needs Mongo AND MinIO; this job provides only Postgres and there is no
+        # MinIO service anywhere in this workflow. That ONE test is deselected by
+        # name -- deliberately not by adding the whole FILE back to KNOWN_UNWIRED,
+        # which would have kept all nine ungated to avoid running eight of them.
         run: >-
           pytest tests/test_sales_lines_manual.py tests/test_sales_get_quote_lines.py
-          -m integration -q --tb=short
+          tests/test_sales_dealroom.py -m integration -q --tb=short
+          --deselect 'tests/test_sales_dealroom.py::TestSalesDealRoom::test_open_dealroom_prices_correctly_and_handles_toggles'
 
       # M9 Assets (tests/test_assets_*.py). FIRST integration job for Module 9;
       # Wave 1 (Batch 141) was a pure state machine with no DB surface to
@@ -494,7 +526,14 @@ jobs:
             requirements-dev.txt
 
       - name: Install dependencies
-        run: pip install -r requirements.txt -r requirements-dev.txt
+        run: |
+          # CI has no GPU. torch is pinned >=2.13.0 and floated to 2.14.0, whose
+          # default wheels pull nvidia_cudnn_cu13 (553 MB), nvidia_nccl_cu13
+          # (216 MB) and triton (248 MB) on top of torch itself (555 MB) -- about
+          # 3.2 GB of downloads, which exhausts the runner disk (ENOSPC). The CPU
+          # index drops the CUDA wheels entirely; nothing here runs on a GPU.
+          pip install --index-url https://download.pytorch.org/whl/cpu torch
+          pip install -r requirements.txt -r requirements-dev.txt
 
       # Reads through the cacheable MCP path, mutates through the REST route,
       # reads again. FAILS on the unfixed tree — that is the point.
@@ -503,3 +542,35 @@ jobs:
           NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
           NCE_TEST_REDIS_URL: redis://localhost:16379/15
         run: pytest tests/test_rest_cache_invalidation.py -m integration -q --tb=short
+
+  go:
+    name: Go (build & test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: go/go.sum
+
+      - name: Go format check
+        working-directory: ./go
+        run: test -z "$(gofmt -l .)"
+
+      - name: Go vet
+        working-directory: ./go
+        run: go vet ./...
+
+      - name: Go build
+        working-directory: ./go
+        run: go build ./...
+
+      - name: Go test
+        working-directory: ./go
+        run: go test ./... -v
+
+      - name: Build Linux binaries (amd64 + arm64)
+        run: bash build/linux/build.sh
+

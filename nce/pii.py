@@ -151,20 +151,26 @@ def _scan_no_pii(text: str) -> list[PIIEntity]:
 
 
 def _merge_overlapping_entities(entities: list[PIIEntity]) -> list[PIIEntity]:
-    """Remove or trim overlapping entity spans, keeping the highest-score span.
+    """Remove overlapping entity spans, keeping the highest-score span.
 
-    Input must be sorted by start ascending. Returns list sorted by start
-    descending (ready for reverse-order string replacement).
+    Input order does not matter. Returns list sorted by start descending
+    (ready for reverse-order string replacement).
     """
     if not entities:
         return []
-    entities = sorted(entities, key=lambda e: (e.start, -(e.end - e.start)))
+    # Highest score first, as the docstring promises. The old sort was by start
+    # position only, so whichever pattern happened to begin earliest won: a
+    # fødselsnummer (score 0.99, Mod-11 verified) was swallowed by the generic
+    # phone regex (score 0.8) and masked as <PHONE> -- still hidden, but recorded
+    # under the wrong type, which is what pseudonym reversal and the audit trail
+    # go by. Ties fall back to the earlier and then the longer span. A candidate
+    # is dropped if it overlaps ANY kept span, not only the most recent one.
+    ordered = sorted(entities, key=lambda e: (-e.score, e.start, -(e.end - e.start)))
     merged: list[PIIEntity] = []
-    last_end = -1
-    for ent in entities:
-        if ent.start >= last_end:
-            merged.append(ent)
-            last_end = ent.end
+    for ent in ordered:
+        if any(ent.start < kept.end and kept.start < ent.end for kept in merged):
+            continue
+        merged.append(ent)
     merged.sort(key=lambda e: e.start, reverse=True)
     return merged
 
@@ -192,8 +198,16 @@ def _scan_sync(text: str, config: NamespacePIIConfig, locale: str = "en") -> lis
             f"({len(text.encode('utf-8'))} bytes, limit {_MAX_TEXT_BYTES})"
         )
 
-    if not config.entity_types:
-        return []
+    # An empty ``entity_types`` used to mean "scan for nothing", and every
+    # namespace is created with exactly that alongside ``policy: redact``. The
+    # empty list won: fødselsnummer, phone numbers, e-mail and card numbers were
+    # stored verbatim in a namespace that reported itself as redacting, with no
+    # warning anywhere, and the early return skipped the Norwegian locale scan
+    # too. There is no policy value for "do not scan" -- redact, pseudonymise,
+    # reject and flag all presuppose a scan -- so an unset list means
+    # "everything this installation can recognise", the only reading that
+    # matches the declared policy. Narrow it by listing types explicitly.
+    requested_types = config.entity_types or None
 
     entities: list[PIIEntity] = []
     _allowlist_lower = {v.lower() for v in config.allowlist}
@@ -203,7 +217,8 @@ def _scan_sync(text: str, config: NamespacePIIConfig, locale: str = "en") -> lis
             from presidio_analyzer import AnalyzerEngine  # noqa: F401
 
             analyzer = _get_analyzer()
-            results = analyzer.analyze(text=text, entities=config.entity_types, language="en")
+            # None makes Presidio use its full recogniser set (see requested_types).
+            results = analyzer.analyze(text=text, entities=requested_types, language="en")
             for r in results:
                 value = text[r.start : r.end]
                 if value.lower() not in _allowlist_lower:
@@ -223,7 +238,7 @@ def _scan_sync(text: str, config: NamespacePIIConfig, locale: str = "en") -> lis
             # propagates.  Sentry and Python logging capture local variables
             # from traceback frames; keeping ``value`` alive would leak PII into
             # error reports, violating GDPR Art. 25 (data protection by design).
-            for entity_type in config.entity_types:
+            for entity_type in requested_types or _FALLBACK_REGEXES:
                 pattern = _FALLBACK_REGEXES.get(entity_type)
                 if not pattern:
                     continue
@@ -291,6 +306,7 @@ def _scan_sync(text: str, config: NamespacePIIConfig, locale: str = "en") -> lis
 async def scan(text: str, config: NamespacePIIConfig, *, locale: str = "en") -> list[PIIEntity]:
     """Scans the text for PII entities defined in the namespace config.
 
+    An empty ``entity_types`` list means every type the installation recognises.
     Uses Presidio if available, otherwise falls back to basic regex.
     When ``locale="no"``, Norwegian-specific patterns (Fødselsnummer, org numbers,
     mobile numbers) are applied in addition to the generic EU set.

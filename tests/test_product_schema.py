@@ -61,7 +61,6 @@ class TestProductSchema:
             column_map = {col["column_name"]: col["data_type"] for col in columns}
 
             assert "id" in column_map
-            assert "namespace_id" in column_map
             assert "gtin" in column_map
             assert "manufacturer" in column_map
             assert "mfr_part_no" in column_map
@@ -111,19 +110,6 @@ class TestProductSchema:
             assert "updated_at" in column_map
 
     @pytest.mark.asyncio
-    async def test_product_catalog_force_rls(self, pg_pool):  # type: ignore[no-untyped-def]
-        """Verify product_catalog has FORCE ROW LEVEL SECURITY enabled."""
-        async with pg_pool.acquire() as conn:
-            result = await conn.fetchval(
-                """
-                SELECT relforcerowsecurity
-                FROM pg_class
-                WHERE relname = 'product_catalog'
-                """
-            )
-            assert result is True, "product_catalog does not have FORCE ROW LEVEL SECURITY"
-
-    @pytest.mark.asyncio
     async def test_product_prices_force_rls(self, pg_pool):  # type: ignore[no-untyped-def]
         """Verify product_prices has FORCE ROW LEVEL SECURITY enabled."""
         async with pg_pool.acquire() as conn:
@@ -135,21 +121,6 @@ class TestProductSchema:
                 """
             )
             assert result is True, "product_prices does not have FORCE ROW LEVEL SECURITY"
-
-    @pytest.mark.asyncio
-    async def test_product_catalog_has_tenant_isolation_policy(self, pg_pool):  # type: ignore[no-untyped-def]
-        """Verify product_catalog has tenant_isolation_policy RLS policy."""
-        async with pg_pool.acquire() as conn:
-            result = await conn.fetchval(
-                """
-                SELECT EXISTS(
-                    SELECT 1 FROM pg_policies
-                    WHERE tablename = 'product_catalog'
-                    AND policyname = 'tenant_isolation_policy'
-                )
-                """
-            )
-            assert result is True, "product_catalog does not have tenant_isolation_policy"
 
     @pytest.mark.asyncio
     async def test_product_prices_has_tenant_isolation_policy(self, pg_pool):  # type: ignore[no-untyped-def]
@@ -167,41 +138,25 @@ class TestProductSchema:
             assert result is True, "product_prices does not have tenant_isolation_policy"
 
     @pytest.mark.asyncio
-    async def test_product_catalog_row_isolation(
+    async def test_product_prices_row_isolation(
         self,
         pg_app_conn: asyncpg.Connection,
         make_namespace,
     ) -> None:
         """Verify rows inserted under ns_a are invisible under ns_b (RLS enforcement).
 
-        Connects as the ``nce_app`` role (FORCE RLS applies) and asserts that
-        a product_catalog row AND a product_prices row inserted under ns_a
-        each yield count==1 under ns_a and count==0 under ns_b.
+        Connects as the ``nce_app`` role (FORCE RLS applies) and asserts that a
+        product_prices row inserted under ns_a yields count==1 under ns_a and
+        count==0 under ns_b.
+
+        The product_catalog half of this test was DELETED, not weakened:
+        the catalogue is global reference data as of 2026-09-04 (migration
+        064), so "ns_b must not see ns_a's catalogue row" is no longer a
+        requirement. product_prices stays tenant-scoped -- supplier-bid
+        pricing is per-tenant commercial confidential.
         """
         ns_a = await make_namespace()
         ns_b = await make_namespace()
-
-        # --- insert product_catalog row under ns_a ---
-        async with pg_app_conn.transaction():
-            await set_namespace_context(pg_app_conn, ns_a)
-            product_id = await pg_app_conn.fetchval(
-                """
-                INSERT INTO product_catalog
-                (namespace_id, manufacturer, mfr_part_no, product_source_id,
-                 lifecycle_status, is_deleted, etim_specs)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
-                RETURNING id
-                """,
-                ns_a,
-                "TestMfg",
-                f"TEST-{uuid.uuid4().hex[:8]}",
-                "test_source",
-                "active",
-                False,
-                "{}",
-            )
-
-        assert product_id is not None
 
         # --- insert product_prices row under ns_a ---
         async with pg_app_conn.transaction():
@@ -223,42 +178,26 @@ class TestProductSchema:
 
         assert price_id is not None
 
-        # --- ns_a sees its own rows ---
+        # --- ns_a sees its own row ---
         async with pg_app_conn.transaction():
             await set_namespace_context(pg_app_conn, ns_a)
-            visible_catalog = await pg_app_conn.fetchval(
-                "SELECT count(*) FROM product_catalog WHERE id = $1",
-                product_id,
-            )
             visible_prices = await pg_app_conn.fetchval(
                 "SELECT count(*) FROM product_prices WHERE id = $1",
                 price_id,
             )
 
-        assert visible_catalog == 1, (
-            f"ns_a should see its own product_catalog row (id={product_id}), "
-            f"count={visible_catalog}"
-        )
         assert visible_prices == 1, (
             f"ns_a should see its own product_prices row (id={price_id}), count={visible_prices}"
         )
 
-        # --- ns_b cannot see ns_a's rows (RLS blocks them) ---
+        # --- ns_b cannot see ns_a's row (RLS blocks it) ---
         async with pg_app_conn.transaction():
             await set_namespace_context(pg_app_conn, ns_b)
-            blocked_catalog = await pg_app_conn.fetchval(
-                "SELECT count(*) FROM product_catalog WHERE id = $1",
-                product_id,
-            )
             blocked_prices = await pg_app_conn.fetchval(
                 "SELECT count(*) FROM product_prices WHERE id = $1",
                 price_id,
             )
 
-        assert blocked_catalog == 0, (
-            f"ns_b must NOT see ns_a's product_catalog row (id={product_id}), "
-            f"count={blocked_catalog}"
-        )
         assert blocked_prices == 0, (
             f"ns_b must NOT see ns_a's product_prices row (id={price_id}), count={blocked_prices}"
         )
@@ -295,12 +234,11 @@ class TestProductSchema:
             await conn.execute(
                 """
                 INSERT INTO product_catalog
-                (id, namespace_id, manufacturer, mfr_part_no, product_source_id,
+                (id, manufacturer, mfr_part_no, product_source_id,
                  lifecycle_status, is_deleted, etim_specs)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+                VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
                 """,
                 product_id,
-                ns_id,
                 "TestMfg",
                 "TEST-ETIM-001",
                 "test_source",

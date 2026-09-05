@@ -419,6 +419,99 @@ async def test_writing_the_same_line_twice_does_not_create_two_rows(
 
 
 # ---------------------------------------------------------------------------
+# D48: unpriced is a STATE, not a value.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_unpriced_line_is_distinguishable_from_a_genuine_zero(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """A ``priced=False`` placeholder and a genuine ``0.00`` both store
+    ``unit_price``/``line_total`` = 0.00 -- only the discriminator column
+    tells them apart."""
+    await _seed_ownership(pg_pool, namespace_id)
+    await _create(
+        pg_pool,
+        namespace_id,
+        **_line_kwargs(line_ref="UNPRICED01", unit_price=0, line_total=0, priced=False),
+    )
+    await _create(
+        pg_pool,
+        namespace_id,
+        **_line_kwargs(line_ref="ZERO01", unit_price=0, line_total=0),
+    )
+
+    async with pg_pool.acquire() as conn:
+        await set_namespace_context(conn, namespace_id)
+        unpriced_row = await get_bom_line(
+            conn, namespace_id, quote_id="QINT01", line_ref="UNPRICED01"
+        )
+        zero_row = await get_bom_line(conn, namespace_id, quote_id="QINT01", line_ref="ZERO01")
+
+    assert unpriced_row is not None and zero_row is not None
+    assert float(unpriced_row["unit_price"]) == float(zero_row["unit_price"]) == 0.0
+    assert unpriced_row["priced"] is False
+    assert zero_row["priced"] is True
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_freeze_refuses_a_quote_with_an_unpriced_line(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """``freeze_bom_lines_for_quote`` refuses the WHOLE freeze -- and
+    freezes nothing, not even a co-located priced line -- when any
+    not-yet-frozen line for the quote is unpriced."""
+    await _seed_ownership(pg_pool, namespace_id)
+    await _create(pg_pool, namespace_id, **_line_kwargs(quote_id="QUNP01", line_ref="A1"))
+    await _create(
+        pg_pool,
+        namespace_id,
+        **_line_kwargs(quote_id="QUNP01", line_ref="A2", unit_price=0, line_total=0, priced=False),
+    )
+
+    with pytest.raises(ValueError, match="unpriced"):
+        async with pg_pool.acquire() as conn, conn.transaction():
+            await set_namespace_context(conn, namespace_id)
+            await freeze_bom_lines_for_quote(
+                conn, namespace_id, writer_engine="sales", quote_id="QUNP01"
+            )
+
+    async with pg_pool.acquire() as conn:
+        await set_namespace_context(conn, namespace_id)
+        row_a1 = await get_bom_line(conn, namespace_id, quote_id="QUNP01", line_ref="A1")
+    assert row_a1 is not None
+    assert row_a1["frozen_at"] is None
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_freeze_succeeds_normally_for_a_genuinely_zero_priced_quote(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+) -> None:
+    """A quote whose only not-yet-frozen line is ``priced=True`` with a
+    genuine ``0.00`` freezes exactly as before D48."""
+    await _seed_ownership(pg_pool, namespace_id)
+    await _create(
+        pg_pool,
+        namespace_id,
+        **_line_kwargs(quote_id="QZERO01", line_ref="Z1", unit_price=0, line_total=0),
+    )
+
+    async with pg_pool.acquire() as conn, conn.transaction():
+        await set_namespace_context(conn, namespace_id)
+        frozen = await freeze_bom_lines_for_quote(
+            conn, namespace_id, writer_engine="sales", quote_id="QZERO01"
+        )
+    assert frozen == 1
+
+
+# ---------------------------------------------------------------------------
 # Fresh-install vs migrated-upgrade catalog parity.
 # ---------------------------------------------------------------------------
 
@@ -504,6 +597,7 @@ async def test_fresh_install_and_migrated_catalogs_match_for_bom_line_content(
         "frozen_at",
         "created_at",
         "updated_at",
+        "priced",
     } <= column_names
 
     policy_names = {r["policyname"] for r in policies}

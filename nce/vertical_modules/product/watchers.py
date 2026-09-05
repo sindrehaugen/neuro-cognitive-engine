@@ -295,11 +295,9 @@ async def _scan_catalog_for_eol(
                 WHERE LOWER(lifecycle_status) = ANY($2::text[])
                   AND successor_sku IS NOT NULL
                   AND successor_sku <> ''
-                  AND namespace_id = $3::uuid
                 """,
                 _DEFAULT_CONFIDENCE,
                 list(_EOL_STATUSES),
-                str(namespace_id),
             )
             for row in rows:
                 # successor_sku may be "MANUFACTURER:PART_NO" or just "PART_NO"

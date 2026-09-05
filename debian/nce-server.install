@@ -1,0 +1,10 @@
+deploy /opt/nce/
+nce /opt/nce/
+admin /opt/nce/
+server.py /opt/nce/
+admin_server.py /opt/nce/
+start_worker.py /opt/nce/
+health_probe.py /opt/nce/
+scripts /opt/nce/
+requirements.txt /opt/nce/
+build/linux/systemd/nce.env.example /etc/nce/

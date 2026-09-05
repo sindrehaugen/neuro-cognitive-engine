@@ -1,0 +1,50 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # Create system user and group 'nce' if not existing
+        if ! getent group nce >/dev/null; then
+            addgroup --system nce
+        fi
+        if ! getent passwd nce >/dev/null; then
+            adduser --system --ingroup nce --no-create-home --home /var/lib/nce --shell /usr/sbin/nologin nce
+        fi
+
+        # Add nce to docker group if docker group exists
+        if getent group docker >/dev/null; then
+            adduser nce docker || true
+        fi
+
+        # Create directories with appropriate permissions (0750)
+        install -d -m 0750 -o nce -g nce /var/lib/nce
+        install -d -m 0750 -o nce -g nce /var/log/nce
+        install -d -m 0750 -o root -g nce /etc/nce
+
+        # Initialize default mode.txt if absent
+        if [ ! -f /etc/nce/mode.txt ]; then
+            echo "multiuser" > /etc/nce/mode.txt
+            chmod 0640 /etc/nce/mode.txt
+            chown root:nce /etc/nce/mode.txt
+        fi
+
+        # Provide template nce.env if absent
+        if [ ! -f /etc/nce/nce.env ] && [ -f /etc/nce/nce.env.example ]; then
+            cp /etc/nce/nce.env.example /etc/nce/nce.env
+            chmod 0640 /etc/nce/nce.env
+            chown root:nce /etc/nce/nce.env
+        fi
+    ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+    ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+    ;;
+esac
+
+#DEBHELPER#
+
+exit 0

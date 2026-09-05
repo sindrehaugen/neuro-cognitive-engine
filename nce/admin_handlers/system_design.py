@@ -123,7 +123,9 @@ async def api_system_design_publish_design_docs(request) -> JSONResponse:
         )
     except Exception as exc:
         log.exception("api_system_design_publish_design_docs: unexpected error")
-        return admin_error_response(exc, status_code=500)
+        return admin_error_response(
+            "Failed to publish system design documents", exc, status_code=500
+        )
 
     # Mirror the MCP dispatch loop's post-mutation invalidation
     # (system_design_publish_design_docs is a mutation=True tool).

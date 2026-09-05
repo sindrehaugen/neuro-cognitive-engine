@@ -146,11 +146,6 @@ _NODE_TYPE_PORT: str = "PORT"
 _NODE_TYPE_RACK: str = "RACK"
 _NODE_TYPE_CABLE: str = "CABLE"
 
-# Re-export so validation_queries.py can import them without string duplication.
-NODE_TYPE_DEVICE = _NODE_TYPE_DEVICE
-NODE_TYPE_PORT = _NODE_TYPE_PORT
-NODE_TYPE_RACK = _NODE_TYPE_RACK
-NODE_TYPE_CABLE = _NODE_TYPE_CABLE
 
 # ---------------------------------------------------------------------------
 # Edge predicates.
@@ -500,6 +495,39 @@ def _is_lifecycle_spelling(key: str) -> bool:
     while lowered.startswith(_CABLE_PREFIX):
         lowered = lowered[len(_CABLE_PREFIX) :]
     return lowered in _STATE_KEYS
+
+
+def _connection_confidence(cnx: dict[str, Any]) -> float:
+    """Caller-supplied ``confidence``, refused unless it is a real number in [0, 1].
+
+    ``mcp_handlers`` forwards ``connections`` items **verbatim** from tool
+    arguments, so this value is fully caller-controlled, and the bare
+    ``float(...)`` this replaced accepted three things it should not have:
+
+    * ``"1e400"`` and ``1e400`` -> ``inf``. No exception, 200 returned, an
+      INFINITE confidence written onto the edge -- and ``graph_query.py:106``
+      then nulls any non-finite confidence on READ, so the caller authors a
+      connection, is told it succeeded, and never sees the value again.
+    * ``float("nan")`` -> stored. Every comparison against NaN is false, so a
+      threshold filter silently excludes the edge rather than reporting it.
+    * ``-5`` or ``1e9`` -> stored, while ``_upsert_edge``'s own docstring says
+      "confidence (0-1)". The contract was documented and unenforced.
+
+    ``ValueError`` is deliberate and is NOT the D49 family: this genuinely IS a
+    caller error -- a different argument fixes it -- so ``-32602 Invalid
+    parameters`` / 422 is the right wire class. Contrast
+    ``DeploymentConfigurationError``, which exists because an unset config key
+    is not something any argument can fix.
+    """
+    value_raw = cnx.get("confidence", _STRUCTURAL_CONFIDENCE)
+    if isinstance(value_raw, bool) or not isinstance(value_raw, (int, float)):
+        raise ValueError(
+            f"connection confidence must be a number in [0, 1]; got {type(value_raw).__name__}"
+        )
+    value = float(value_raw)
+    if not math.isfinite(value) or not (0.0 <= value <= 1.0):
+        raise ValueError(f"connection confidence must be a number in [0, 1]; got {value_raw!r}")
+    return value
 
 
 def _refuse_misplaced_lifecycle_keys(
@@ -1021,9 +1049,49 @@ async def do_author_device_topology(
     design_lbl = f"DESIGN:{design_id.upper()}"
 
     # ------------------------------------------------------------------
+    # 0. Validation, over the CALLER'S lists in the CALLER'S order.
+    #
+    # The four write loops below iterate SORTED copies (D2 - canonical write
+    # order, see the note on loop 1), but a caller who sent two bad items must
+    # still be told about the first one THEY sent, not the one that happens to
+    # sort lowest.  So every raising check runs here first, in receipt order.
+    # All of them are pure, so the write loops keep calling them in place
+    # rather than being restructured around this pass.
+    # ------------------------------------------------------------------
+    for raw_rack in rack_list:
+        _refuse_misplaced_lifecycle_keys(raw_rack, accepted=_RACK_STATE_KEYS, where="a rack")
+    for raw_dev in devices:
+        _refuse_misplaced_lifecycle_keys(raw_dev, accepted=_DEVICE_STATE_KEYS, where="a device")
+        for raw_port in raw_dev.get("ports", []):
+            _refuse_misplaced_lifecycle_keys(raw_port, accepted=_PORT_STATE_KEYS, where="a port")
+    for raw_cnx in conn_list:
+        _refuse_misplaced_lifecycle_keys(
+            raw_cnx, accepted=_CONNECTION_STATE_KEYS, where="a connection"
+        )
+        port_label(design_id, raw_cnx["from_device_ref"], raw_cnx["from_port_ref"])
+        port_label(design_id, raw_cnx["to_device_ref"], raw_cnx["to_port_ref"])
+        _connection_confidence(raw_cnx)
+        if _has_explicit_lifecycle(_state_of(raw_cnx, _CABLE_PREFIX)) and not raw_cnx.get(
+            "cable_ref"
+        ):
+            raise ValueError(
+                "cable_status / cable_revision / cable_salience describe the CABLE node; "
+                "supply cable_ref on the connection, or remove them"
+            )
+
+    # ------------------------------------------------------------------
     # 1. Racks (optional — write before devices so mounted_in edges resolve)
     # ------------------------------------------------------------------
-    for rack in rack_list:
+    # D2: iterate in CANONICAL LABEL order, never the caller's list order.  Row
+    # locks on kg_nodes/kg_edges are taken in iteration order, so two concurrent
+    # authoring calls sending the same set in opposite orders formed a wait cycle
+    # (12 deadlocks in 12 attempts).  Sorting on the label makes the acquisition
+    # order a pure function of the RESOURCE IDENTITIES and not of the request -
+    # the M11 Inventory pattern, nce/vertical_modules/inventory/stock.py
+    # ``_canonical_lock_order``.  sorted() is stable, so equal labels keep
+    # receipt order.  The four loops keep their relative order: racks -> devices
+    # -> ports -> connections is a dependency order, not a lock order.
+    for rack in sorted(rack_list, key=lambda r: rack_label(design_id, r["rack_ref"])):
         _refuse_misplaced_lifecycle_keys(rack, accepted=_RACK_STATE_KEYS, where="a rack")
         rack_state = _state_of(rack)
         rack_ref: str = rack["rack_ref"]
@@ -1060,7 +1128,7 @@ async def do_author_device_topology(
     # ------------------------------------------------------------------
     # 2. Devices + their ports
     # ------------------------------------------------------------------
-    for dev in devices:
+    for dev in sorted(devices, key=lambda d: device_label(design_id, d["device_ref"])):
         _refuse_misplaced_lifecycle_keys(dev, accepted=_DEVICE_STATE_KEYS, where="a device")
         dev_state = _state_of(dev)
         dev_ref: str = dev["device_ref"]
@@ -1105,7 +1173,10 @@ async def do_author_device_topology(
             edge_count += 1
 
         # Ports.
-        for port in dev.get("ports", []):
+        for port in sorted(
+            dev.get("ports", []),
+            key=lambda p: port_label(design_id, dev_ref, p["port_ref"]),
+        ):
             # A PORT has no lifecycle status anywhere in NetBox, so it accepts
             # NONE of the keys — in any spelling, prefixed or not.
             _refuse_misplaced_lifecycle_keys(port, accepted=_PORT_STATE_KEYS, where="a port")
@@ -1130,7 +1201,18 @@ async def do_author_device_topology(
     # ------------------------------------------------------------------
     # 3. Signal connections (PORT -[connected_to]-> PORT)
     # ------------------------------------------------------------------
-    for cnx in conn_list:
+    # D2, and the half that matters most: _upsert_edge writes kg_edges rows keyed
+    # by (subject, predicate, object), so ordering the NODE loops alone is not a
+    # fix - the wait cycle simply relocates onto kg_edges.  The key is therefore
+    # the EDGE IDENTITY, the (from_port_lbl, to_port_lbl) pair, not the
+    # connection dict's position in the caller's list.
+    for cnx in sorted(
+        conn_list,
+        key=lambda c: (
+            port_label(design_id, c["from_device_ref"], c["from_port_ref"]),
+            port_label(design_id, c["to_device_ref"], c["to_port_ref"]),
+        ),
+    ):
         # Validated UNCONDITIONALLY, before the cable_ref branch below decides
         # whether a CABLE node exists at all.  Reached only inside that branch,
         # a malformed cable_salience on a connection naming no cable returned
@@ -1139,7 +1221,7 @@ async def do_author_device_topology(
         cable_state = _state_of(cnx, _CABLE_PREFIX)
         from_port_lbl = port_label(design_id, cnx["from_device_ref"], cnx["from_port_ref"])
         to_port_lbl = port_label(design_id, cnx["to_device_ref"], cnx["to_port_ref"])
-        cnx_conf: float = float(cnx.get("confidence", _STRUCTURAL_CONFIDENCE))
+        cnx_conf: float = _connection_confidence(cnx)
         cnx_source: str | None = cnx.get("source_id") or source_id
 
         # Optional cable reference.

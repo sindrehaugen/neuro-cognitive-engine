@@ -1329,3 +1329,29 @@ def test_real_config_drives_a_real_match():
     r = _run(thresholds=thresholds)
     assert r["score"] == 130
     assert r["tier"] == "GREEN"
+
+
+# ===========================================================================
+# (d) A MISSING amount must be distinguishable from a real zero
+#     (no-fabricated-money-defaults ratchet, 2026-09-03)
+# ===========================================================================
+
+
+def test_absent_line_total_is_not_scored_as_a_100_percent_discrepancy():
+    """A line with NO ``line_total`` used to default to 0, so ``pct`` came out at
+    exactly 1.0 and the reason read "amount divergence 100.0%" -- a confident
+    discrepancy claim on a payment decision, when the truth is that there is no
+    amount to compare. It must now say so, and must not name a percentage."""
+    line = {k: v for k, v in _DEFAULT_LINE.items() if k != "line_total"}
+    reasons = _entry(_run(line=line))["reasons"]
+    assert "amount: no line total to compare" in reasons
+    assert not any("divergence" in r for r in reasons)
+
+
+def test_a_real_zero_line_total_still_reports_a_divergence():
+    """The other half of the pair: an invoice line that genuinely totals 0 against a
+    positive expected amount IS a 100% discrepancy, and must keep saying so. Absence
+    and zero must not collapse onto the same reason."""
+    reasons = _entry(_run(line={**_DEFAULT_LINE, "line_total": 0}))["reasons"]
+    assert "amount divergence 100.0%" in reasons
+    assert "amount: no line total to compare" not in reasons

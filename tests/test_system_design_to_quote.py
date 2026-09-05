@@ -195,7 +195,7 @@ async def _fetch_bom_line_rows(conn: Any, ns_id: uuid.UUID, quote_id: str) -> li
     rows = await conn.fetch(
         """
         SELECT id, bom_line_label, quote_id, line_ref, origin_kind, origin_ref,
-               writer_engine, status, created_at
+               writer_engine, status, created_at, unit_price, line_total, priced
         FROM bom_line_content
         WHERE namespace_id = $1::uuid AND quote_id = $2
         ORDER BY line_ref
@@ -474,6 +474,15 @@ class TestDesignToQuote:
                 f"origin_ref must name the source DESIGN_LINE; got {row['origin_ref']!r}"
             )
             assert row["status"] == "DRAFT", f"new line must be DRAFT; got {row['status']!r}"
+            # D48: a design-generated line carries a numeric 0.00 placeholder
+            # but is marked priced=False, so it is distinguishable from a
+            # line genuinely priced at zero and freeze_bom_lines_for_quote
+            # refuses to freeze it.
+            assert float(row["unit_price"]) == 0.0, f"unit_price: {row['unit_price']!r}"
+            assert float(row["line_total"]) == 0.0, f"line_total: {row['line_total']!r}"
+            assert row["priced"] is False, (
+                f"design-generated line must be priced=False; got {row['priced']!r}"
+            )
 
     # ------------------------------------------------------------------
     # 6. Batch 132e — the DENY path: every other transition is refused

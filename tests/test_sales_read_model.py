@@ -529,10 +529,18 @@ async def test_sales_manager_targets_and_risk(
                 },
             )
 
-            # Seed a stale open opportunity (modified > 60 days ago)
-            stale_modified = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
-                days=70
-            )
+            # Seed a stale open opportunity (modified > 60 days before REF_DATE).
+            #
+            # 🔴 Anchored on ``ref_date``, NOT on the wall clock.  ``do_sales_manager``
+            # is given ``today=ref_date`` below and derives its staleness cutoff as
+            # ``ref_date - 60 days``, so seeding ``now() - 70 days`` compares a row
+            # against a cutoff computed from a different clock.  That is exactly how
+            # this test broke: it passed while ``now() - 70d`` happened to fall before
+            # 2026-04-24 and started failing silently on 2026-07-03, when it stopped.
+            # A fixture must share the clock the code under test is told to use.
+            stale_modified = datetime.datetime.combine(
+                ref_date, datetime.time(), tzinfo=datetime.timezone.utc
+            ) - datetime.timedelta(days=70)
             await _insert_sales_record(
                 conn,
                 namespace_id,
