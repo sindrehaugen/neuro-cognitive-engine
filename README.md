@@ -356,6 +356,21 @@ suite. The legacy key is still honoured so existing configurations keep working.
 The rule applied: **rename what describes our behaviour; keep and document what describes the documents
 we read.**
 
+### A false friend, for the amused
+
+Norwegian and English part ways on this word. In Norwegian, a *kickback* is something you negotiate in
+the open, write into the contract, and reconcile against the general ledger at year end. In English, it
+is something you get arrested for. Same eight letters, meaningfully different consequences.
+
+It survives in this codebase for the least glamorous reason imaginable: the contracts are written in
+Norwegian, and a clause matcher has to look for the word the vendor actually typed. So we renamed the one
+place where *we* used it to describe our own behaviour, and left the rest as the false friend it is —
+with `anti_bribery` sitting two lines below it in the same list, quietly doing the job everyone assumes
+`kickback` is doing.
+
+If you are reading this because you grepped the repository for something alarming: this was the
+alarming thing, and it is a discount.
+
 ## Tech Stack
 
 - **Runtime** — Python 3.10+
