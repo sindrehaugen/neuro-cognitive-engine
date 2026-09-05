@@ -111,6 +111,18 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/gc/trigger` | `trigger_gc` |
 | GET | `/api/health` | `get_health` |
 | GET | `/api/health/v1` | `get_health_v1` |
+| POST | `/api/hr/absences` | `api_hr_register_absence` |
+| GET | `/api/hr/capacity` | `api_hr_capacity` |
+| GET | `/api/hr/cert-status` | `api_hr_cert_status` |
+| POST | `/api/hr/coach` | `api_hr_coach` |
+| GET | `/api/hr/employees` | `api_hr_employees` |
+| POST | `/api/hr/employees` | `api_hr_create_employee` |
+| GET | `/api/hr/employees/{id}` | `api_hr_employee` |
+| POST | `/api/hr/match-skills` | `api_hr_match_skills` |
+| GET | `/api/hr/onboarding/{id}` | `api_hr_onboarding_get` |
+| POST | `/api/hr/onboarding/{id}` | `api_hr_onboarding_build` |
+| POST | `/api/hr/sync/now` | `api_hr_sync_now` |
+| GET | `/api/hr/sync/status` | `api_hr_sync_status` |
 | POST | `/api/inventory/dispose-rma-weee` | `api_inventory_dispose_rma_weee` |
 | POST | `/api/inventory/forecast-demand` | `api_inventory_forecast_demand` |
 | POST | `/api/inventory/recommend-restock` | `api_inventory_recommend_restock` |
@@ -260,6 +272,14 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `get_health` |  |  |  |  |
 | `get_recent_context` |  |  |  |  |
 | `graph_search` |  |  | yes |  |
+| `hr_build_onboarding_quest` | yes | yes |  |  |
+| `hr_capacity` |  |  | yes |  |
+| `hr_cert_status` |  |  | yes |  |
+| `hr_coach` |  |  | yes |  |
+| `hr_get_employee` |  |  | yes |  |
+| `hr_log_one_on_one` | yes | yes |  |  |
+| `hr_match_skills` |  |  | yes |  |
+| `hr_register_absence` |  | yes |  |  |
 | `import_snapshot` |  | yes |  |  |
 | `index_code_file` |  | yes |  |  |
 | `inventory_dispose_rma_weee` | yes | yes |  |  |
@@ -366,4 +386,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_reliability_radar` |  |  | yes |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 182 REST endpoints, 166 MCP tools._
+_Totals: 194 REST endpoints, 174 MCP tools._
