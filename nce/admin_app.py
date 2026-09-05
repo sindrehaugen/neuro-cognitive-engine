@@ -964,6 +964,16 @@ def build_admin_routes() -> list[Route]:
             endpoint=support_handlers.api_support_tickets_resolve,
             methods=["POST"],
         ),
+        Route(
+            "/api/support/tickets/{id}/triage",
+            endpoint=support_handlers.api_support_tickets_triage,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/support/touchpoints",
+            endpoint=support_handlers.api_support_touchpoints_record,
+            methods=["POST"],
+        ),
         # Field Tech vertical module routes (ML12-B6, M12.W6)
         Route(
             "/api/field-tech/dispatch",

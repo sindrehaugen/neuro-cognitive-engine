@@ -566,8 +566,9 @@ class TestProjectAdvancePhaseToolRegistry:
         inventory_reconcile_dead_stock read only, and
         inventory_recommend_restock/inventory_forecast_demand write nothing;
         +8 ML12-B5 field_tech tools, M12.W5;
-        +5 ML14-B3 marketing tools, M14.W3."""
-        assert len(MUTATION_TOOLS) == 71
+        +5 ML14-B3 marketing tools, M14.W3;
+        +1 ML10b-P1 support tool."""
+        assert len(MUTATION_TOOLS) == 72
 
     def test_admin_only_count(self) -> None:
         """Admin-only tools must total 32 (unified realignment registry;

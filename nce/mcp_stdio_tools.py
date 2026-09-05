@@ -3773,6 +3773,54 @@ TOOLS = [
             "required": ["namespace_id", "ticket_id", "resolution_text"],
         },
     ),
+    Tool(
+        name="support_triage_ticket",
+        description=(
+            "Triage ticket priority, urgency, required engineering skill, and suggested routing. "
+            "Advisor; read-only, cacheable."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "ticket_id": {
+                    "type": "string",
+                    "description": "Ticket UUID to triage.",
+                },
+            },
+            "required": ["namespace_id", "ticket_id"],
+        },
+    ),
+    Tool(
+        name="support_record_touchpoint",
+        description=(
+            "Record an ÉT-spørsmål customer satisfaction touchpoint response and fold into "
+            "rolling customer health. Actor; mutation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Customer ID associated with the touchpoint.",
+                },
+                "question_id": {
+                    "type": "string",
+                    "default": "et_sporsmal_v1",
+                    "description": "Optional identifier for the touchpoint question.",
+                },
+                "answer": {
+                    "description": "Customer response / answer content.",
+                },
+                "score": {
+                    "type": "number",
+                    "description": "Optional numeric sentiment or rating score.",
+                },
+            },
+            "required": ["namespace_id", "customer_id", "answer"],
+        },
+    ),
     # Field Tech vertical module tools (ML12-B5, M12.W5)
     Tool(
         name="field_tech_dispatch",

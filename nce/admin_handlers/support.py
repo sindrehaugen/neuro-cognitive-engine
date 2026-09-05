@@ -12,10 +12,13 @@ Exports:
   ``api_support_customer_health``  — GET  /api/support/customers/{id}/health
   ``api_support_troubleshoot``     — POST /api/support/troubleshoot
   ``api_support_tickets_resolve``  — POST /api/support/tickets/{id}/resolve
+  ``api_support_tickets_triage``   — POST /api/support/tickets/{id}/triage
+  ``api_support_touchpoints_record`` — POST /api/support/touchpoints
 
 All handlers are thin REST wrappers over the vertical module cores in
 ``nce/vertical_modules/support/**`` (``do_open_ticket``, ``do_query_ticket``,
-``do_sla_clock``, ``do_health_score``, ``do_troubleshoot``, ``do_resolve_ticket``)
+``do_sla_clock``, ``do_health_score``, ``do_troubleshoot``, ``do_resolve_ticket``,
+``do_triage_ticket``, ``do_record_touchpoint``)
 — adhering to the "one core function, two surfaces" pattern.
 
 Mutating routes invalidate the MCP response cache via ``bump_mcp_cache_generation``.
@@ -45,7 +48,7 @@ from nce.vertical_modules.support._guard import (
     SupportDisabledError,
     require_support_enabled,
 )
-from nce.vertical_modules.support.health import do_health_score
+from nce.vertical_modules.support.health import do_health_score, do_record_touchpoint
 from nce.vertical_modules.support.sla import do_sla_clock
 from nce.vertical_modules.support.tickets import (
     InvalidTicketStatusError,
@@ -55,6 +58,7 @@ from nce.vertical_modules.support.tickets import (
     do_query_ticket,
     do_resolve_ticket,
 )
+from nce.vertical_modules.support.triage import do_triage_ticket
 from nce.vertical_modules.support.troubleshoot import do_troubleshoot
 
 log = logging.getLogger("nce.admin_handlers.support")
@@ -514,4 +518,131 @@ async def api_support_tickets_resolve(request: Any) -> JSONResponse:
         )
 
     await bump_mcp_cache_generation(admin_state.engine, route="api_support_tickets_resolve")
+    return JSONResponse({"ok": True, **result})
+
+
+# ---------------------------------------------------------------------------
+# POST /api/support/tickets/{id}/triage
+# ---------------------------------------------------------------------------
+
+
+async def api_support_tickets_triage(request: Any) -> JSONResponse:
+    """POST /api/support/tickets/{id}/triage — triage ticket priority and routing.
+
+    Path parameter:
+        id (str, optional): Ticket UUID.
+
+    Request body (JSON):
+        namespace_id (str, required): Active namespace UUID.
+        ticket_id (str, optional): Ticket UUID if not provided in path.
+
+    Response (JSON):
+        {"ok": True, "ticket_id": str, "recommended_priority": str, ...}
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    ticket_id = (request.path_params.get("id") or "").strip()
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    namespace_id, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+
+    if not ticket_id:
+        ticket_id = str(body.get("ticket_id") or "").strip()
+    if not ticket_id:
+        return JSONResponse({"error": "Missing ticket id (in path or body)"}, status_code=422)
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_support_enabled(pool, namespace_id)
+    except SupportDisabledError as exc:
+        return JSONResponse({"error": str(exc), "reason": "support_disabled"}, status_code=409)
+
+    params = dict(body)
+    params["namespace_id"] = namespace_id
+    params["ticket_id"] = ticket_id
+
+    try:
+        result = await do_triage_ticket(admin_state.engine, params)
+    except TicketNotFoundError as exc:
+        return JSONResponse(
+            {"error": str(exc), "not_found": True, "ticket_id": exc.ticket_id},
+            status_code=404,
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Support ticket triage error",
+            exc,
+            status_code=500,
+            log_event="api_support_tickets_triage",
+        )
+
+    return JSONResponse({"ok": True, **result})
+
+
+# ---------------------------------------------------------------------------
+# POST /api/support/touchpoints
+# ---------------------------------------------------------------------------
+
+
+async def api_support_touchpoints_record(request: Any) -> JSONResponse:
+    """POST /api/support/touchpoints — record an ÉT-spørsmål touchpoint response.
+
+    Request body (JSON):
+        namespace_id (str, required): Active namespace UUID.
+        customer_id (str, required): Customer identifier.
+        question_id (str, optional): Question identifier (default 'et_sporsmal_v1').
+        answer (any, required): Customer answer / feedback.
+        score (float, optional): Sentiment or rating score.
+
+    Response (JSON):
+        {"ok": True, "health": {...}}
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+
+    if not body.get("customer_id"):
+        return JSONResponse({"error": "customer_id is required"}, status_code=422)
+    if "answer" not in body:
+        return JSONResponse({"error": "answer is required"}, status_code=422)
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_support_enabled(pool, namespace_id)
+    except SupportDisabledError as exc:
+        return JSONResponse({"error": str(exc), "reason": "support_disabled"}, status_code=409)
+
+    params = dict(body)
+    params["namespace_id"] = namespace_id
+
+    try:
+        result = await do_record_touchpoint(admin_state.engine, params)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Support touchpoint record error",
+            exc,
+            status_code=500,
+            log_event="api_support_touchpoints_record",
+        )
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_support_touchpoints_record")
     return JSONResponse({"ok": True, **result})
