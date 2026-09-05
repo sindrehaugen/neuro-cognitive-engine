@@ -1378,6 +1378,26 @@ class _Config:
     )
     NCE_DIAG_TMPDIR: str = os.getenv("NCE_DIAG_TMPDIR", "")
 
+    # --- Module 16 Business Insights Engine (Charter M16) ---
+    NCE_BUSINESS_INSIGHTS_ENABLED: bool = _bool_env("NCE_BUSINESS_INSIGHTS_ENABLED", False)
+    NCE_BUSINESS_INSIGHTS_BRIEF_CRON: str = os.getenv(
+        "NCE_BUSINESS_INSIGHTS_BRIEF_CRON", "0 7 * * 1-5"
+    )
+    NCE_BUSINESS_INSIGHTS_KPI_SNAPSHOT_INTERVAL_MINUTES: int = _int_env(
+        "NCE_BUSINESS_INSIGHTS_KPI_SNAPSHOT_INTERVAL_MINUTES", 60, minimum=5
+    )
+    NCE_BUSINESS_INSIGHTS_SCENARIO_MONTE_CARLO_ITERATIONS: int = _int_env(
+        "NCE_BUSINESS_INSIGHTS_SCENARIO_MONTE_CARLO_ITERATIONS", 1000, minimum=10
+    )
+    NCE_BUSINESS_INSIGHTS_EXEC_ROLE: str = os.getenv("NCE_BUSINESS_INSIGHTS_EXEC_ROLE", "executive")
+    NCE_BUSINESS_INSIGHTS_BOARD_ROLE: str = os.getenv("NCE_BUSINESS_INSIGHTS_BOARD_ROLE", "board")
+    NCE_BUSINESS_INSIGHTS_BOARD_SCOPE_READONLY: bool = _bool_env(
+        "NCE_BUSINESS_INSIGHTS_BOARD_SCOPE_READONLY", True
+    )
+    NCE_BUSINESS_INSIGHTS_THIRD_PARTY_EGRESS_ENABLED: bool = _bool_env(
+        "NCE_BUSINESS_INSIGHTS_THIRD_PARTY_EGRESS_ENABLED", False
+    )
+
     @classmethod
     def validate_minio_credentials(cls) -> None:
         """Validate that MinIO credentials are set via environment.

@@ -99,6 +99,11 @@ EventType = Literal[
     "marketing_testimonial_retracted",
     "marketing_content_approved",
     "marketing_content_published",
+    # BUSINESS_INSIGHTS_EVENTS — Module 16 Business Insights Engine lifecycle & audit trail (Charter M16)
+    "business_insights_briefing_generated",
+    "business_insights_finding_surfaced",
+    "business_insights_scenario_executed",
+    "business_insights_board_pack_drafted",
 ]
 
 VALID_EVENT_TYPES: Final[frozenset[str]] = frozenset(get_args(EventType))
