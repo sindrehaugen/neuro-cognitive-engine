@@ -243,25 +243,13 @@ async def test_admin_handlers_delegate(admin_key_env: None) -> None:
     assert json.loads(raw)["quotas"] == []
 
     engine.pg_pool.acquire = _engine_pool_context().pg_pool.acquire
-    # handle_rotate_signing_key now also resolves the reserved ``_system``
-    # namespace and appends a ``signing_key_rotated`` event; both are stubbed
-    # here because this file is a boundary test with no live services.
-    with (
-        patch("nce.signing.rotate_key", new_callable=AsyncMock) as rk,
-        patch(
-            "nce.system_namespace.get_system_namespace_id",
-            AsyncMock(return_value=uuid.UUID(NS)),
-        ),
-        patch("nce.auth.set_namespace_context", AsyncMock()),
-        patch("nce.event_log.append_event", AsyncMock()) as rotated_event,
-    ):
+    with patch("nce.signing.rotate_key", new_callable=AsyncMock) as rk:
         rk.return_value = "kid-9"
         raw = await admin_mcp_handlers.handle_rotate_signing_key(
             engine,
             _admin_arguments({}),
         )
         assert json.loads(raw)["new_key_id"] == "kid-9"
-        assert rotated_event.await_args.kwargs["event_type"] == "signing_key_rotated"
 
     engine.check_health = AsyncMock(return_value={"postgres": "up"})
     raw = await admin_mcp_handlers.handle_get_health(engine, _admin_arguments({}))

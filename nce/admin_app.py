@@ -17,6 +17,7 @@ from nce.admin_handlers import agreements as agreements_handlers
 from nce.admin_handlers import assets as assets_handlers
 from nce.admin_handlers import economy as economy_handlers
 from nce.admin_handlers import entity_resolution as entity_resolution_handlers
+from nce.admin_handlers import field_tech as field_tech_handlers
 from nce.admin_handlers import inventory as inventory_handlers
 from nce.admin_handlers import pricing as pricing_handlers
 from nce.admin_handlers import procurement as procurement_handlers
@@ -961,6 +962,67 @@ def build_admin_routes() -> list[Route]:
             "/api/support/tickets/{id}/resolve",
             endpoint=support_handlers.api_support_tickets_resolve,
             methods=["POST"],
+        ),
+        # Field Tech vertical module routes (ML12-B6, M12.W6)
+        Route(
+            "/api/field-tech/dispatch",
+            endpoint=field_tech_handlers.api_field_tech_dispatch,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/field-tech/work-orders",
+            endpoint=field_tech_handlers.api_field_tech_create_work_order,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/field-tech/work-orders",
+            endpoint=field_tech_handlers.api_field_tech_query_work_orders,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/field-tech/work-orders/{id}",
+            endpoint=field_tech_handlers.api_field_tech_work_order,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/field-tech/work-orders/{id}/assign",
+            endpoint=field_tech_handlers.api_field_tech_assign,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/field-tech/checklists",
+            endpoint=field_tech_handlers.api_field_tech_complete_checklist,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/field-tech/scans",
+            endpoint=field_tech_handlers.api_field_tech_scan_serial,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/field-tech/time-entries",
+            endpoint=field_tech_handlers.api_field_tech_log_time,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/field-tech/photos",
+            endpoint=field_tech_handlers.api_field_tech_attach_photo,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/field-tech/sync",
+            endpoint=field_tech_handlers.api_field_tech_sync,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/field-tech/outcomes",
+            endpoint=field_tech_handlers.api_field_tech_record_outcome,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/field-tech/partner-view",
+            endpoint=field_tech_handlers.api_field_tech_partner_view,
+            methods=["GET"],
         ),
     ]
 

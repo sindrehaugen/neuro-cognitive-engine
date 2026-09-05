@@ -1,0 +1,80 @@
+{
+  "_comment": "Config-as-IP: ISO9001 quality checklist templates for field work orders.",
+  "install_standard": {
+    "name": "Standard AV Installation Checklist",
+    "kind": "install",
+    "items": [
+      {
+        "id": "pre_site_inspection",
+        "label": "Pre-site environment and safety inspection",
+        "required": true
+      },
+      {
+        "id": "mounting_hardware_secure",
+        "label": "Mounting brackets and display hardware securely torqued",
+        "required": true
+      },
+      {
+        "id": "cable_dressing_and_labels",
+        "label": "Cables routed, dressed, and labeled per design schedule",
+        "required": true
+      },
+      {
+        "id": "serial_number_scans",
+        "label": "All serial numbers scanned into Assets register",
+        "required": true
+      },
+      {
+        "id": "firmware_update_and_config",
+        "label": "Device firmware updated and base network config verified",
+        "required": true
+      },
+      {
+        "id": "audio_video_commissioning",
+        "label": "Audio equalization and video EDID / test pattern verified",
+        "required": true
+      },
+      {
+        "id": "site_cleanup_and_photo",
+        "label": "Room clean, packaging recycled, completion photos attached",
+        "required": true
+      },
+      {
+        "id": "customer_signoff",
+        "label": "Customer representative initial walk-through signoff",
+        "required": false
+      }
+    ]
+  },
+  "service_dispatch": {
+    "name": "Service & Repair Dispatch Checklist",
+    "kind": "service",
+    "items": [
+      {
+        "id": "fault_verification",
+        "label": "Reproduce reported ticket symptom",
+        "required": true
+      },
+      {
+        "id": "safety_power_disconnect",
+        "label": "Verify electrical / signal safety before service",
+        "required": true
+      },
+      {
+        "id": "part_replacement_sn_scan",
+        "label": "Scan S/N of replaced or repaired components",
+        "required": true
+      },
+      {
+        "id": "functional_test",
+        "label": "Verify end-to-end signal flow and control operation",
+        "required": true
+      },
+      {
+        "id": "completion_documentation",
+        "label": "Document root cause and resolution in work order",
+        "required": true
+      }
+    ]
+  }
+}

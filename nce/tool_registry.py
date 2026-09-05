@@ -43,6 +43,7 @@ from nce.vertical_modules.assets import mcp_handlers as assets_mcp_handlers
 from nce.vertical_modules.diagnostics import mcp_handlers as diag_mcp_handlers
 from nce.vertical_modules.dynamics365 import mcp_handlers as d365_mcp_handlers
 from nce.vertical_modules.economy import mcp_handlers as economy_mcp_handlers
+from nce.vertical_modules.field_tech import mcp_handlers as field_tech_mcp_handlers
 from nce.vertical_modules.inventory import mcp_handlers as inventory_mcp_handlers
 from nce.vertical_modules.netbox import circuits as netbox_circuits
 from nce.vertical_modules.procurement import mcp_handlers as procurement_mcp_handlers
@@ -981,6 +982,67 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
     ),
     "support_resolve_ticket": ToolSpec(
         _h(support_mcp_handlers, "handle_support_resolve_ticket"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    # Field Tech vertical module tools (ML12-B5, M12.W5)
+    "field_tech_dispatch": ToolSpec(
+        _h(field_tech_mcp_handlers, "handle_field_tech_dispatch"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "field_tech_partner_view": ToolSpec(
+        _h(field_tech_mcp_handlers, "handle_field_tech_partner_view"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "field_tech_create_work_order": ToolSpec(
+        _h(field_tech_mcp_handlers, "handle_field_tech_create_work_order"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "field_tech_assign": ToolSpec(
+        _h(field_tech_mcp_handlers, "handle_field_tech_assign"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "field_tech_complete_checklist": ToolSpec(
+        _h(field_tech_mcp_handlers, "handle_field_tech_complete_checklist"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    "field_tech_scan_serial": ToolSpec(
+        _h(field_tech_mcp_handlers, "handle_field_tech_scan_serial"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    "field_tech_log_time": ToolSpec(
+        _h(field_tech_mcp_handlers, "handle_field_tech_log_time"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    "field_tech_attach_photo": ToolSpec(
+        _h(field_tech_mcp_handlers, "handle_field_tech_attach_photo"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    "field_tech_sync": ToolSpec(
+        _h(field_tech_mcp_handlers, "handle_field_tech_sync"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    "field_tech_record_outcome": ToolSpec(
+        _h(field_tech_mcp_handlers, "handle_field_tech_record_outcome"),
         cacheable=False,
         admin_only=True,
         mutation=True,

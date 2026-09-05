@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 148  # 142 previous + 6 support tools (support_query_ticket/support_open_ticket/support_sla_clock/support_health_score/support_troubleshoot/support_resolve_ticket from ML10-B5, M10.W5).
+_EXPECTED_TOTAL = 158  # 148 previous + 10 field_tech tools from ML12-B5, M12.W5.
 
 
 def test_registry_has_expected_entries():
@@ -172,6 +172,15 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # ML10-B5 (M10.W5) -- Support Engine mutations (Actor, admin_only)
         "support_open_ticket",
         "support_resolve_ticket",
+        # ML12-B5 (M12.W5) -- Field Tech Engine mutations (8 tools)
+        "field_tech_create_work_order",
+        "field_tech_assign",
+        "field_tech_complete_checklist",
+        "field_tech_scan_serial",
+        "field_tech_log_time",
+        "field_tech_attach_photo",
+        "field_tech_sync",
+        "field_tech_record_outcome",
     }
 )
 
@@ -184,9 +193,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert (
-        len(MUTATION_TOOLS) == 58
-    )  # 56 previous + 2 support tools (support_open_ticket, support_resolve_ticket) from ML10-B5
+    assert len(MUTATION_TOOLS) == 66  # 58 previous + 8 field_tech tools from ML12-B5
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -280,6 +287,9 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "support_sla_clock",
         "support_health_score",
         "support_troubleshoot",
+        # ML12-B5 (M12.W5) -- Field Tech Engine Advisor reads (cacheable)
+        "field_tech_dispatch",
+        "field_tech_partner_view",
     }
 )
 
@@ -292,9 +302,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert (
-        len(CACHEABLE_TOOLS) == 52
-    )  # 48 previous + 4 support tools (support_query_ticket, support_sla_clock, support_health_score, support_troubleshoot) from ML10-B5
+    assert len(CACHEABLE_TOOLS) == 54  # 52 previous + 2 field_tech tools from ML12-B5
 
 
 # ---------------------------------------------------------------------------
@@ -355,6 +363,10 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         # ML10-B5 (M10.W5) -- Support Engine mutations (admin_only)
         "support_open_ticket",
         "support_resolve_ticket",
+        # ML12-B5 (M12.W5) -- Field Tech Engine admin_only tools (3 tools)
+        "field_tech_create_work_order",
+        "field_tech_assign",
+        "field_tech_record_outcome",
     }
 )
 
@@ -367,9 +379,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert (
-        len(ADMIN_ONLY_TOOLS) == 29
-    )  # 27 previous + 2 support tools (support_open_ticket, support_resolve_ticket) from ML10-B5
+    assert len(ADMIN_ONLY_TOOLS) == 32  # 29 previous + 3 field_tech tools from ML12-B5
 
 
 # ---------------------------------------------------------------------------

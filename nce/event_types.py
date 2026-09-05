@@ -80,6 +80,13 @@ EventType = Literal[
     "support_ticket_resolved",
     "support_touchpoint_recorded",
     "support_diagnosis_authored",
+    # FIELD_TECH_EVENTS — Module 12 Field Tech Engine lifecycle & audit trail (Charter M12.W7)
+    "field_tech_work_order_created",
+    "field_tech_work_order_assigned",
+    "field_tech_checklist_completed",
+    "field_tech_serial_scanned",
+    "field_tech_time_logged",
+    "field_tech_outcome_recorded",
 ]
 
 VALID_EVENT_TYPES: Final[frozenset[str]] = frozenset(get_args(EventType))
