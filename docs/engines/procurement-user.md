@@ -119,13 +119,13 @@ Price scoring calculates a proportional price score relative to the lowest quote
 $$\text{Price Score} = \frac{\text{Min Candidate Price}}{\text{Candidate Price}}$$
 This score is then multiplied by the config-defined `bid_price` weight. A cheaper price deterministically improves a supplier's rank.
 
-#### Step 5: Tier × Kickback-Proximity × Bundling
+#### Step 5: Tier × Rebate-Proximity × Bundling
 Computes a composite score of supplier quality, commercial tier benefits, and order bundling viability:
-$$\text{Step 5 Score} = \frac{\text{Tier Score} + \text{Kickback Proximity} + \text{Bundling Flag}}{3}$$
+$$\text{Step 5 Score} = \frac{\text{Tier Score} + \text{Rebate Proximity} + \text{Bundling Flag}}{3}$$
 
 Where:
 * **Tier Score:** $\frac{4 - \text{Supplier Tier}}{3}$ (Tier 1 maps to $1.0$; Tier 4 maps to $0.0$. Missing tiers default to 4).
-* **Kickback Proximity:** Represents how close the tenant is to unlocking the next rebate threshold with the supplier (values range from `0.0` to `1.0`; defaults to a neutral `0.5`).
+* **Rebate Proximity:** Represents how close the tenant is to unlocking the next rebate threshold with the supplier (values range from `0.0` to `1.0`; defaults to a neutral `0.5`).
 * **Bundling Flag:** $1.0$ if `candidate["bundles_well"]` is `True`, else `0.0`.
 
 ---
@@ -141,7 +141,7 @@ If the composite winner selected in Step 5 **is different** from the best-TCO wi
 rebate_override = composite_winner_id != best_tco_id
 if rebate_override:
     rebate_rationale = (
-        f"Step-5 governance factors (tier × kickback-proximity × bundling) elevated "
+        f"Step-5 governance factors (tier × rebate-proximity × bundling) elevated "
         f"supplier '{composite_winner_id}' above the best-TCO supplier "
         f"'{best_tco_id}' (TCO {min_tco:.2f}). "
         f"Composite winner TCO: {composite_winner_tco:.2f}."

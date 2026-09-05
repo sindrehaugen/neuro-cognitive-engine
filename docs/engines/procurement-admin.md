@@ -128,7 +128,7 @@ Rather than hardcoded rules, NCE uses tenant-configurable weights and tolerances
     "delivery_reliability": 0.25,
     "bid_price": 0.20,
     "tier_bundling": 0.10,
-    "kickback_proximity": 0.05
+    "rebate_proximity": 0.05
   }
 }
 ```

@@ -42,7 +42,7 @@ _WEIGHTS: dict[str, Any] = {
         "delivery_reliability": 0.20,
         "bid_price": 0.20,
         "tier_bundling": 0.10,
-        "kickback_proximity": 0.10,
+        "rebate_proximity": 0.10,
     },
 }
 

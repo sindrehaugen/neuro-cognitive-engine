@@ -31,9 +31,9 @@ Steps run in this fixed order; each step narrows / re-scores the candidate set:
 
   (5) Tier × kickback-proximity × bundling  — governance-aware bonus:
         tier_score         = (4 − supplier_tier) / 3  (tier 1 → 1.0, tier 4 → 0.0)
-        kickback_proximity = candidate's ``kickback_proximity`` (0–1); 0.5 when absent.
+        rebate_proximity = candidate's ``rebate_proximity`` (0–1); 0.5 when absent.
         bundling_flag      = 1.0 if ``bundles_well=True`` else 0.0
-        step5_score        = (tier_score + kickback_proximity + bundling_flag) / 3
+        step5_score        = (tier_score + rebate_proximity + bundling_flag) / 3
 
       When the composite winner from step 5 differs from the best-TCO winner, a
       ``rebate_override: True`` flag + human-readable ``rebate_rationale`` are added to
@@ -93,7 +93,7 @@ def do_rank_suppliers(
                                    candidate misses any tight deadline.
           ``delivery_reliability`` — float 0–1; default 0.0 (conservative).
           ``supplier_tier``      — int 1–4; default 4 (lowest tier, conservative).
-          ``kickback_proximity`` — float 0–1; default 0.5 (neutral, per spec intent).
+          ``rebate_proximity`` — float 0–1; default 0.5 (neutral, per spec intent).
           ``bundles_well``       — bool; default False (conservative).
           ``supplier_id``        — str; used in rationale messages.
 
@@ -189,21 +189,28 @@ def do_rank_suppliers(
         """Composite of tier quality, kickback proximity, and bundling benefit.
 
         tier_score         = (4 − supplier_tier) / 3  → tier 1=1.0, tier 4=0.0
-        kickback_proximity = 0–1 float; default 0.5 (neutral — spec is silent on a
+        rebate_proximity = 0–1 float; default 0.5 (neutral — spec is silent on a
                              better conservative, 0.5 is the midpoint, non-punitive).
         bundling_flag      = 1.0 if bundles_well=True, else 0.0 (conservative: False).
-        step5_score        = (tier_score + kickback_proximity + bundling_flag) / 3
+        step5_score        = (tier_score + rebate_proximity + bundling_flag) / 3
         """
         raw_tier = int(candidate.get("supplier_tier", 4))
         # Clamp tier to valid range 1–4.
         tier = max(1, min(4, raw_tier))
         tier_score = (4 - tier) / 3.0
 
-        kickback_proximity = float(candidate.get("kickback_proximity", 0.5))
+        rebate_proximity = float(
+            candidate.get(
+                "rebate_proximity",
+                # legacy key, renamed 2026-09-05; still honoured so a caller
+                # that has not migrated keeps its value instead of 0.5
+                candidate.get("kickback_proximity", 0.5),
+            )
+        )
 
         bundling_flag = 1.0 if candidate.get("bundles_well", False) else 0.0
 
-        return (tier_score + kickback_proximity + bundling_flag) / 3.0
+        return (tier_score + rebate_proximity + bundling_flag) / 3.0
 
     # -----------------------------------------------------------------------
     # Composite scoring and annotation
@@ -215,14 +222,19 @@ def do_rank_suppliers(
     #   delivery_reliability → delivery_reliability weight
     #   tco                  → tco weight
     #   bid_price            → bid_price weight
-    #   tier_bundling + kickback_proximity → tier_bundling + kickback_proximity weights
+    #   tier_bundling + rebate_proximity → tier_bundling + rebate_proximity weights
     # The split below honours all five SCORING_WEIGHTS keys from the JSON.
 
     w_tco = float(scoring_w["tco"])
     w_delivery = float(scoring_w["delivery_reliability"])
     w_bid = float(scoring_w["bid_price"])
     w_tier = float(scoring_w["tier_bundling"])
-    w_kickback = float(scoring_w["kickback_proximity"])
+    if "rebate_proximity" in scoring_w:
+        w_rebate = float(scoring_w["rebate_proximity"])
+    else:
+        # legacy key, renamed 2026-09-05; a namespace still overriding the old
+        # name keeps its tuning rather than losing it silently
+        w_rebate = float(scoring_w["kickback_proximity"])
 
     # own_stock gets a proportional bonus carved from the tco weight (half of tco).
     # This keeps the total weight sum = 1 while honouring the deliberate order.
@@ -242,7 +254,7 @@ def do_rank_suppliers(
             + s2 * w_delivery
             + s3 * w_tco_adjusted
             + s4 * w_bid
-            + s5 * (w_tier + w_kickback)
+            + s5 * (w_tier + w_rebate)
         )
 
         scored.append(
