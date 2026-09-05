@@ -25,6 +25,8 @@ from nce.db_utils import scoped_pg_session
 
 log = logging.getLogger("nce.vertical_modules.hr.profile")
 
+EVENT_TYPE_HR_EMPLOYEE_CREATED: str = "hr_employee_created"
+
 
 def _extract_pool(engine_or_pool: Any) -> Any:
     if hasattr(engine_or_pool, "pg_pool") and (

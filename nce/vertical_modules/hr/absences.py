@@ -22,6 +22,8 @@ from nce.vertical_modules.hr.compliance import evaluate_absence_compliance
 
 log = logging.getLogger("nce.vertical_modules.hr.absences")
 
+EVENT_TYPE_HR_ABSENCE_REGISTERED: str = "hr_absence_registered"
+
 _VALID_ABSENCE_TYPES = frozenset(
     {"vacation", "sick_leave", "sick", "parental", "compassionate", "training", "other"}
 )

@@ -32,6 +32,8 @@ from nce.db_utils import scoped_pg_session
 
 log = logging.getLogger("nce.vertical_modules.hr.compliance")
 
+EVENT_TYPE_HR_COMPLIANCE_MILESTONE_RECORDED: str = "hr_compliance_milestone_recorded"
+
 STATUTORY_OPPFOLGINGSPLAN_DAYS = 28  # 4 weeks
 STATUTORY_DIALOGMOTE_1_DAYS = 49  # 7 weeks
 STATUTORY_DIALOGMOTE_2_DAYS = 182  # 26 weeks (~6 months)

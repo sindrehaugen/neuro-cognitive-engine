@@ -54,6 +54,8 @@ def assert_ranking_prohibited(params: dict[str, Any]) -> None:
         "rank_employees",
         "compare_peers",
         "rank_against_peers",
+        "top_performers",
+        "top_performer",
     )
     for key in prohibited_keys:
         if params.get(key) is True:

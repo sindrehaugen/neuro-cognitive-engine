@@ -1139,6 +1139,11 @@ _additional_fork_provenance_types: tuple[str, ...] = (
     "field_tech_serial_scanned",
     "field_tech_time_logged",
     "field_tech_outcome_recorded",
+    # Module 13 HR Engine events (provenance-only fork projection per Charter M13.W7)
+    "hr_employee_created",
+    "hr_absence_registered",
+    "hr_compliance_milestone_recorded",
+    "hr_quest_progressed",
 )
 for _fork_et in _additional_fork_provenance_types:
     assert _fork_et not in _HANDLER_REGISTRY, (

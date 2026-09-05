@@ -26,6 +26,8 @@ from nce.db_utils import scoped_pg_session
 
 log = logging.getLogger("nce.vertical_modules.hr.onboarding")
 
+EVENT_TYPE_HR_QUEST_PROGRESSED: str = "hr_quest_progressed"
+
 _ROLE_QUEST_TEMPLATES: dict[str, list[dict[str, Any]]] = {
     "technician": [
         {
