@@ -84,10 +84,13 @@ async def api_portal_room_tracker(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Unauthorized: customer scope required"}, status_code=401)
 
     params = {
+        # Client-supplied values FIRST so the authoritative
+        # namespace/scope assigned below cannot be overridden by a
+        # client-controlled body or query parameter (cross-customer IDOR).
+        **dict(request.query_params),
         "namespace_id": ns_id,
         "customer_scope_id": cust_scope,
         "room_id": room_id,
-        **dict(request.query_params),
     }
     try:
         from nce.vertical_modules.customer_portal.rooms import do_room_tracker
@@ -109,9 +112,12 @@ async def api_portal_room_overview(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Unauthorized: customer scope required"}, status_code=401)
 
     params = {
+        # Client-supplied values FIRST so the authoritative
+        # namespace/scope assigned below cannot be overridden by a
+        # client-controlled body or query parameter (cross-customer IDOR).
+        **dict(request.query_params),
         "namespace_id": ns_id,
         "customer_scope_id": cust_scope,
-        **dict(request.query_params),
     }
     try:
         from nce.vertical_modules.customer_portal.rooms import do_room_overview
@@ -134,10 +140,13 @@ async def api_portal_asset_register(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Unauthorized: customer scope required"}, status_code=401)
 
     params = {
+        # Client-supplied values FIRST so the authoritative
+        # namespace/scope assigned below cannot be overridden by a
+        # client-controlled body or query parameter (cross-customer IDOR).
+        **dict(request.query_params),
         "namespace_id": ns_id,
         "customer_scope_id": cust_scope,
         "room_id": room_id,
-        **dict(request.query_params),
     }
     try:
         from nce.vertical_modules.customer_portal.rooms import do_asset_register
@@ -159,9 +168,12 @@ async def api_portal_documents(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Unauthorized: customer scope required"}, status_code=401)
 
     params = {
+        # Client-supplied values FIRST so the authoritative
+        # namespace/scope assigned below cannot be overridden by a
+        # client-controlled body or query parameter (cross-customer IDOR).
+        **dict(request.query_params),
         "namespace_id": ns_id,
         "customer_scope_id": cust_scope,
-        **dict(request.query_params),
     }
     try:
         from nce.vertical_modules.customer_portal.documents import do_list_documents
@@ -184,10 +196,13 @@ async def api_portal_document(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Unauthorized: customer scope required"}, status_code=401)
 
     params = {
+        # Client-supplied values FIRST so the authoritative
+        # namespace/scope assigned below cannot be overridden by a
+        # client-controlled body or query parameter (cross-customer IDOR).
+        **dict(request.query_params),
         "namespace_id": ns_id,
         "customer_scope_id": cust_scope,
         "share_id": share_id,
-        **dict(request.query_params),
     }
     try:
         from nce.vertical_modules.customer_portal.documents import do_get_document
@@ -209,9 +224,12 @@ async def api_portal_sla_status(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Unauthorized: customer scope required"}, status_code=401)
 
     params = {
+        # Client-supplied values FIRST so the authoritative
+        # namespace/scope assigned below cannot be overridden by a
+        # client-controlled body or query parameter (cross-customer IDOR).
+        **dict(request.query_params),
         "namespace_id": ns_id,
         "customer_scope_id": cust_scope,
-        **dict(request.query_params),
     }
     try:
         from nce.vertical_modules.customer_portal.sla import do_sla_status
@@ -233,9 +251,12 @@ async def api_portal_invoices(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Unauthorized: customer scope required"}, status_code=401)
 
     params = {
+        # Client-supplied values FIRST so the authoritative
+        # namespace/scope assigned below cannot be overridden by a
+        # client-controlled body or query parameter (cross-customer IDOR).
+        **dict(request.query_params),
         "namespace_id": ns_id,
         "customer_scope_id": cust_scope,
-        **dict(request.query_params),
     }
     try:
         from nce.vertical_modules.customer_portal.invoices import do_list_invoices
@@ -260,9 +281,12 @@ async def api_portal_service_requests(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Unauthorized: customer scope required"}, status_code=401)
 
     params = {
+        # Client-supplied values FIRST so the authoritative
+        # namespace/scope assigned below cannot be overridden by a
+        # client-controlled body or query parameter (cross-customer IDOR).
+        **body,
         "namespace_id": ns_id,
         "customer_scope_id": cust_scope,
-        **body,
     }
     try:
         from nce.vertical_modules.customer_portal.actions import do_raise_service_request
@@ -287,9 +311,12 @@ async def api_portal_expansion_interest(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Unauthorized: customer scope required"}, status_code=401)
 
     params = {
+        # Client-supplied values FIRST so the authoritative
+        # namespace/scope assigned below cannot be overridden by a
+        # client-controlled body or query parameter (cross-customer IDOR).
+        **body,
         "namespace_id": ns_id,
         "customer_scope_id": cust_scope,
-        **body,
     }
     try:
         from nce.vertical_modules.customer_portal.actions import do_register_expansion_interest
@@ -314,9 +341,12 @@ async def api_portal_advisor(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Unauthorized: customer scope required"}, status_code=401)
 
     params = {
+        # Client-supplied values FIRST so the authoritative
+        # namespace/scope assigned below cannot be overridden by a
+        # client-controlled body or query parameter (cross-customer IDOR).
+        **body,
         "namespace_id": ns_id,
         "customer_scope_id": cust_scope,
-        **body,
     }
     try:
         from nce.vertical_modules.customer_portal.advisor import do_advisor_answer

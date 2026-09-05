@@ -22,6 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 _NAMESPACE_ID = UUID("00000000-0000-4000-8000-000000000001")
 _CUSTOMER_A_SCOPE = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 _CUSTOMER_B_SCOPE = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+_ROOM_ID = "11111111-1111-4111-8111-111111111111"
 
 
 def test_customer_portal_tables_registered_in_expected_tenant_rls_tables():
@@ -179,3 +180,109 @@ def test_separate_customer_portal_app_surface():
     data = login_resp.json()
     assert "token" in data
     assert data["customer_scope_id"] is not None
+
+
+# ---------------------------------------------------------------------------
+# L1 hardening — a client must NOT be able to set its own customer scope.
+#
+# Every route built `params` with the client-controlled mapping spread LAST:
+#
+#     params = {"namespace_id": ns, "customer_scope_id": cust_scope, **body}
+#
+# so `?customer_scope_id=<other>` (GET) or `{"customer_scope_id": "<other>"}`
+# (POST) OVERWROTE the authoritative value taken from the X-Customer-Scope-ID
+# header. That value flows to rooms.py -> scoped_customer_pg_session(), which
+# sets the `nce.external_scope_id` GUC -- so RLS would then return the OTHER
+# customer's rows. A cross-customer IDOR on all ten routes.
+#
+# The header check `if not cust_scope: 401` did not catch it: the attacker
+# supplies a valid header for their OWN scope, and overrides only the params.
+# ---------------------------------------------------------------------------
+
+
+def _resolved_scope_for(monkeypatch, path, *, headers, params=None, json_body=None):
+    """Call a portal route and capture the customer_scope_id it actually resolved."""
+    from nce.vertical_modules.customer_portal.app import build_customer_portal_app
+
+    captured: dict = {}
+
+    async def _capture(engine, p):  # noqa: ANN001
+        captured.update(p)
+        return {"ok": True}
+
+    import nce.vertical_modules.customer_portal.actions as actions_mod
+    import nce.vertical_modules.customer_portal.rooms as rooms_mod
+
+    for mod, name in (
+        (rooms_mod, "do_room_tracker"),
+        (rooms_mod, "do_room_overview"),
+        (rooms_mod, "do_asset_register"),
+        (actions_mod, "do_raise_service_request"),
+    ):
+        if hasattr(mod, name):
+            monkeypatch.setattr(mod, name, _capture, raising=False)
+
+    client = TestClient(build_customer_portal_app())
+    if json_body is not None:
+        client.post(path, headers=headers, json=json_body)
+    else:
+        client.get(path, headers=headers, params=params or {})
+    return captured.get("customer_scope_id")
+
+
+def test_get_route_query_param_cannot_override_header_scope(monkeypatch):
+    """A GET query parameter MUST NOT override the authoritative header scope."""
+    resolved = _resolved_scope_for(
+        monkeypatch,
+        f"/api/portal/rooms/{_ROOM_ID}/tracker",
+        headers={"X-Customer-Scope-ID": str(_CUSTOMER_A_SCOPE)},
+        params={"customer_scope_id": str(_CUSTOMER_B_SCOPE)},
+    )
+    assert resolved is not None, "route did not resolve a customer scope at all"
+    assert str(resolved) == str(_CUSTOMER_A_SCOPE), (
+        "IDOR: a client-supplied ?customer_scope_id overrode the header scope "
+        f"(resolved {resolved!r}, expected customer A {_CUSTOMER_A_SCOPE!r})"
+    )
+    assert str(resolved) != str(_CUSTOMER_B_SCOPE)
+
+
+def test_post_route_body_cannot_override_header_scope(monkeypatch):
+    """A POST body field MUST NOT override the authoritative header scope."""
+    resolved = _resolved_scope_for(
+        monkeypatch,
+        "/api/portal/service-requests",
+        headers={"X-Customer-Scope-ID": str(_CUSTOMER_A_SCOPE)},
+        json_body={
+            "customer_scope_id": str(_CUSTOMER_B_SCOPE),
+            "subject": "microphone not working",
+        },
+    )
+    assert resolved is not None, "route did not resolve a customer scope at all"
+    assert str(resolved) == str(_CUSTOMER_A_SCOPE), (
+        "IDOR: a client-supplied body customer_scope_id overrode the header scope "
+        f"(resolved {resolved!r}, expected customer A {_CUSTOMER_A_SCOPE!r})"
+    )
+
+
+def test_every_route_assigns_the_authoritative_scope_last():
+    """Structural guard: no params dict may end with a client-controlled spread.
+
+    This is the shape that caused the IDOR. Asserting the SHAPE rather than one
+    route's behaviour means a newly-added route inherits the check for free --
+    the two tests above only cover the two routes they call.
+    """
+    import re
+
+    src = (REPO_ROOT / "nce" / "vertical_modules" / "customer_portal" / "app.py").read_text(
+        encoding="utf-8"
+    )
+
+    offenders = re.findall(r"\*\*(?:body|dict\(request\.query_params\)),\s*\n\s*\}", src)
+    assert not offenders, (
+        f"{len(offenders)} route(s) still spread client-controlled input LAST in their params "
+        "dict, so a client can override customer_scope_id. Put the spread FIRST and assign "
+        "namespace_id / customer_scope_id after it."
+    )
+
+    # ...and the authoritative keys must actually be assigned somewhere
+    assert src.count('"customer_scope_id": cust_scope') >= 10
