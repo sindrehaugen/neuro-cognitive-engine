@@ -4828,6 +4828,178 @@ TOOLS = [
             "required": ["namespace_id", "allocation_id", "itinerary"],
         },
     ),
+    # ML17-B5 (M17.W5) -- Customer Portal Engine (9 tools)
+    Tool(
+        name="customer_portal_room_tracker",
+        description="Project Domino's tracker progression and room status safely.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
+                "customer_scope_id": {
+                    "type": "string",
+                    "description": "Optional customer scope UUID.",
+                },
+                "room_id": {"type": "string", "description": "Target room identifier."},
+                "site_id": {"type": "string", "description": "Optional site identifier."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="customer_portal_room_overview",
+        description="Project overall customer rooms readiness rollup.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
+                "customer_scope_id": {
+                    "type": "string",
+                    "description": "Optional customer scope UUID.",
+                },
+                "site_id": {"type": "string", "description": "Optional site identifier."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="customer_portal_asset_register",
+        description="Project room-centric asset register with commercial values redacted.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
+                "customer_scope_id": {
+                    "type": "string",
+                    "description": "Optional customer scope UUID.",
+                },
+                "room_id": {"type": "string", "description": "Target room identifier."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="customer_portal_list_documents",
+        description="List granted, unexpired, and unrevoked documents for customer scope.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
+                "customer_scope_id": {
+                    "type": "string",
+                    "description": "Optional customer scope UUID.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="customer_portal_sla_status",
+        description="Project SLA self-service clock and tier status without internal MRR/costs.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
+                "customer_scope_id": {
+                    "type": "string",
+                    "description": "Optional customer scope UUID.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="customer_portal_list_invoices",
+        description="List customer invoices with margin, internal cost, and rebate stripped.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
+                "customer_scope_id": {
+                    "type": "string",
+                    "description": "Optional customer scope UUID.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="customer_portal_advisor_answer",
+        description="Sandboxed AI customer advisor answering room progress and intake inquiries.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
+                "query": {"type": "string", "description": "Customer question or inquiry."},
+                "customer_scope_id": {
+                    "type": "string",
+                    "description": "Optional customer scope UUID.",
+                },
+                "room_id": {"type": "string", "description": "Optional room identifier."},
+            },
+            "required": ["namespace_id", "query"],
+        },
+    ),
+    Tool(
+        name="customer_portal_raise_service_request",
+        description="Inbound customer service request intake with Contract-B gating and Support hand-off.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
+                "room_id": {"type": "string", "description": "Room identifier experiencing issue."},
+                "summary": {
+                    "type": "string",
+                    "description": "Summary of problem or service request.",
+                },
+                "customer_scope_id": {
+                    "type": "string",
+                    "description": "Optional customer scope UUID.",
+                },
+                "request_id": {
+                    "type": "string",
+                    "description": "Optional client request UUID for idempotency.",
+                },
+                "contract_b_covered": {
+                    "type": "boolean",
+                    "description": "Whether covered by Contract-B SLA.",
+                },
+                "spend_authorized": {
+                    "type": "boolean",
+                    "description": "Whether out-of-scope spend is pre-authorized.",
+                },
+            },
+            "required": ["namespace_id", "room_id", "summary"],
+        },
+    ),
+    Tool(
+        name="customer_portal_register_expansion_interest",
+        description="Inbound customer re-buy or expansion interest hand-off to Sales lead queue.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
+                "room_id": {
+                    "type": "string",
+                    "description": "Room identifier for proposed expansion.",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Description of upgrade or interest.",
+                },
+                "category": {"type": "string", "description": "Optional equipment category."},
+                "customer_scope_id": {
+                    "type": "string",
+                    "description": "Optional customer scope UUID.",
+                },
+                "estimated_users": {
+                    "type": "integer",
+                    "description": "Optional estimated room users.",
+                },
+            },
+            "required": ["namespace_id", "room_id", "description"],
+        },
+    ),
 ]
 
 
