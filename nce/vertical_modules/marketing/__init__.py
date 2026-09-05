@@ -14,10 +14,15 @@ from nce.vertical_modules.marketing._guard import (
     MarketingUngroundedClaimError,
     require_marketing_enabled,
 )
+from nce.vertical_modules.marketing.approval import do_approve_content
 from nce.vertical_modules.marketing.candidates import do_find_case_study_candidates
 from nce.vertical_modules.marketing.drafting import (
     do_draft_case_study,
     validate_draft_grounding,
+)
+from nce.vertical_modules.marketing.publish import (
+    PublishTransport,
+    do_publish_content,
 )
 from nce.vertical_modules.marketing.redaction import redact_for_marketing_draft
 from nce.vertical_modules.marketing.taxonomy import DEFAULT_BRAND_VOICE
@@ -35,9 +40,12 @@ __all__ = [
     "MarketingSensitiveDataLeakError",
     "MarketingUnapprovedPublishError",
     "MarketingUngroundedClaimError",
+    "PublishTransport",
+    "do_approve_content",
     "do_capture_testimonial",
     "do_draft_case_study",
     "do_find_case_study_candidates",
+    "do_publish_content",
     "do_request_testimonial",
     "do_retract_testimonial",
     "redact_for_marketing_draft",
