@@ -375,6 +375,13 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "case_studies": "namespace_id",
     "testimonials": "namespace_id",
     "content_assets": "namespace_id",
+    # Staff & Resources engine (Module 15, Phase 1): resources registry.
+    "resources": "namespace_id",
+    # Staff & Resources engine (Module 15, Phase 2): allocations, travel, lodging, per-diem.
+    "allocations": "namespace_id",
+    "travel_legs": "namespace_id",
+    "stays": "namespace_id",
+    "per_diems": "namespace_id",
 }
 
 

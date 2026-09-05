@@ -524,6 +524,17 @@ jobs:
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/test_marketing_*.py -m integration -q --tb=short
 
+      # M15 Staff & Resources Engine (Module 15). Proves resource registry,
+      # capacity calendar, double-booking exclusion constraint (RS-3), AI planner,
+      # material flow (RS-2 van), Contract-B travel spend gate (RS-5), and field schedule.
+      - name: Integration — M15 Staff & Resources Engine (tests/test_resources_*.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/test_resources_*.py -m integration -q --tb=short
+
+
 
   # REST-surface mutations must invalidate the MCP response cache.
   # `bump_cache_generation` is called from the MCP dispatch loop only, so a

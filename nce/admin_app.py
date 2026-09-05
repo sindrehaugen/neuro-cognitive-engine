@@ -25,6 +25,7 @@ from nce.admin_handlers import pricing as pricing_handlers
 from nce.admin_handlers import procurement as procurement_handlers
 from nce.admin_handlers import product as product_handlers
 from nce.admin_handlers import project as project_handlers
+from nce.admin_handlers import resources as resources_handlers
 from nce.admin_handlers import sales as sales_handlers
 from nce.admin_handlers import sales_public as sales_public_handlers
 from nce.admin_handlers import support as support_handlers
@@ -1161,6 +1162,57 @@ def build_admin_routes() -> list[Route]:
             "/api/marketing/publish",
             endpoint=marketing_handlers.api_marketing_publish_content,
             methods=["POST"],
+        ),
+        # --- Staff & Resources Engine (Module 15) ---
+        Route(
+            "/api/resources/capacity",
+            endpoint=resources_handlers.api_resources_resolve_capacity,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/resources/plan-allocation",
+            endpoint=resources_handlers.api_resources_plan_allocation,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/resources/reserve",
+            endpoint=resources_handlers.api_resources_reserve,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/resources/release",
+            endpoint=resources_handlers.api_resources_release,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/resources/conflicts",
+            endpoint=resources_handlers.api_resources_detect_conflicts,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/resources/material-flow",
+            endpoint=resources_handlers.api_resources_plan_material_flow,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/resources/travel",
+            endpoint=resources_handlers.api_resources_plan_travel,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/resources/field-schedule",
+            endpoint=resources_handlers.api_resources_field_schedule,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/resources/forecast",
+            endpoint=resources_handlers.api_resources_forecast_demand,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/resources/pulse",
+            endpoint=resources_handlers.api_resources_capacity_pulse,
+            methods=["GET"],
         ),
     ]
 

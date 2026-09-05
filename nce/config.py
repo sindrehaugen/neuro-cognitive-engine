@@ -1330,6 +1330,21 @@ class _Config:
     #    Coaching memories are scoped to agent "hr_private_coach".
     NCE_HR_RANKING_DISABLED: bool = True
 
+    # --- Staff & Resources Engine (Module 15) ---
+    NCE_RESOURCES_ENABLED: bool = _bool_env("NCE_RESOURCES_ENABLED", True)
+    NCE_RESOURCES_AUTONOMY_ALLOCATION_CEILING: float = _float_env(
+        "NCE_RESOURCES_AUTONOMY_ALLOCATION_CEILING", 50000.0, minimum=0.0
+    )
+    NCE_RESOURCES_CALENDAR_SYNC_ENABLED: bool = _bool_env(
+        "NCE_RESOURCES_CALENDAR_SYNC_ENABLED", False
+    )
+    NCE_RESOURCES_TRAVEL_PROVIDER: str = (
+        os.getenv("NCE_RESOURCES_TRAVEL_PROVIDER", "internal_plan").strip().lower()
+    )
+    NCE_RESOURCES_TRAVEL_MAX_AUTO_SPEND: float = _float_env(
+        "NCE_RESOURCES_TRAVEL_MAX_AUTO_SPEND", 10000.0, minimum=0.0
+    )
+
     # --- External Tamper Anchor (Batch 124) ---
     # Object-locked (WORM) MinIO bucket that receives per-namespace Merkle chain heads.
     # The bucket MUST be created with versioning + object-lock enabled at creation time.

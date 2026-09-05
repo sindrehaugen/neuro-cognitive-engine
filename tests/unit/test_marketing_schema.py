@@ -26,9 +26,9 @@ def test_marketing_tables_registered_in_expected_tenant_rls_tables():
 
 
 def test_expected_tenant_rls_tables_total_count():
-    """Verify total count of tenant RLS tables after Marketing and HR Engine additions is 77."""
-    assert len(EXPECTED_TENANT_RLS_TABLES) == 77, (
-        f"Expected 77 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
+    """Verify total count of tenant RLS tables after Resources Engine additions is 78."""
+    assert len(EXPECTED_TENANT_RLS_TABLES) == 82, (
+        f"Expected 78 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
     )
 
 

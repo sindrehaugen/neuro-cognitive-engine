@@ -51,6 +51,7 @@ from nce.vertical_modules.netbox import circuits as netbox_circuits
 from nce.vertical_modules.procurement import mcp_handlers as procurement_mcp_handlers
 from nce.vertical_modules.product import mcp_handlers as product_mcp_handlers
 from nce.vertical_modules.project import mcp_handlers as project_mcp_handlers
+from nce.vertical_modules.resources import mcp_handlers as resources_mcp_handlers
 from nce.vertical_modules.sales import mcp_handlers as sales_mcp_handlers
 from nce.vertical_modules.support import mcp_handlers as support_mcp_handlers
 from nce.vertical_modules.system_design import mcp_handlers as system_design_mcp_handlers
@@ -1175,7 +1176,49 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=True,
         mutation=True,
     ),
+    "resources_resolve_capacity": ToolSpec(
+        _h(resources_mcp_handlers, "handle_resources_resolve_capacity"),
+        cacheable=True,
+    ),
+    "resources_plan_allocation": ToolSpec(
+        _h(resources_mcp_handlers, "handle_resources_plan_allocation"),
+        cacheable=False,
+    ),
+    "resources_detect_conflicts": ToolSpec(
+        _h(resources_mcp_handlers, "handle_resources_detect_conflicts"),
+        cacheable=True,
+    ),
+    "resources_forecast_demand": ToolSpec(
+        _h(resources_mcp_handlers, "handle_resources_forecast_demand"),
+        cacheable=True,
+    ),
+    "resources_field_schedule": ToolSpec(
+        _h(resources_mcp_handlers, "handle_resources_field_schedule"),
+        cacheable=True,
+    ),
+    "resources_reserve": ToolSpec(
+        _h(resources_mcp_handlers, "handle_resources_reserve"),
+        cacheable=False,
+        mutation=True,
+    ),
+    "resources_release": ToolSpec(
+        _h(resources_mcp_handlers, "handle_resources_release"),
+        cacheable=False,
+        mutation=True,
+    ),
+    "resources_plan_material_flow": ToolSpec(
+        _h(resources_mcp_handlers, "handle_resources_plan_material_flow"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "resources_plan_travel": ToolSpec(
+        _h(resources_mcp_handlers, "handle_resources_plan_travel"),
+        cacheable=False,
+        mutation=True,
+    ),
 }
+
 
 # ---------------------------------------------------------------------------
 # Derived sets — computed once at import time
