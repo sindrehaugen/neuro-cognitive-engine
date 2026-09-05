@@ -41,15 +41,15 @@ USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
 WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
 ```
 
-### 2a. Authoritative Source of Truth: `EXPECTED_TENANT_RLS_TABLES` (70 Tables)
+### 2a. Authoritative Source of Truth: `EXPECTED_TENANT_RLS_TABLES` (74 Tables)
 
-**The definitive source of truth for RLS-protected tables across NCE is `EXPECTED_TENANT_RLS_TABLES` defined in [`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py) (70 tables), rather than the partial `schema.sql` loop (41 tables) or the initial migration 001 seed (14 tables).**
+**The definitive source of truth for RLS-protected tables across NCE is `EXPECTED_TENANT_RLS_TABLES` defined in [`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py) (74 tables), rather than the partial `schema.sql` loop (41 tables) or the initial migration 001 seed (14 tables).**
 
-At runtime, NCE executes `verify_rls_catalog_consistency()` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py)) during server startup, inspecting PostgreSQL's `pg_tables`, `pg_class.relrowsecurity`, and `pg_policies` catalogs to strictly validate all 70 tenant tables against the active schema.
+At runtime, NCE executes `verify_rls_catalog_consistency()` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py)) during server startup, inspecting PostgreSQL's `pg_tables`, `pg_class.relrowsecurity`, and `pg_policies` catalogs to strictly validate all 74 tenant tables against the active schema.
 
 The catalog consistency validator categorizes all tables in the engine into three exhaustive sets:
 
-1. **`EXPECTED_TENANT_RLS_TABLES` (70 tables)**: All standard tenant-isolated tables where rows belong to a single tenant and are partitioned by a `namespace_id` column.
+1. **`EXPECTED_TENANT_RLS_TABLES` (74 tables)**: All standard tenant-isolated tables where rows belong to a single tenant and are partitioned by a `namespace_id` column.
 2. **`EXPECTED_SPECIAL_RLS_TABLES` (1 table)**: `a2a_grants`, which enforces a dual-namespace ownership policy (`owner_namespace_id` and `target_namespace_id`).
 3. **`EXPECTED_GLOBAL_TABLES` (6 tables)**: Shared tables intentionally without RLS across all tenants (`embedding_models`, `kg_node_embeddings`, `reembedding_runs`, `event_sequences`, `applied_migrations`, `product_catalog`). A table in `EXPECTED_GLOBAL_TABLES` carries no `namespace_id` and no RLS by design. `product_catalog` is the first business table to sit here (the existing five are platform/infrastructure). `applied_migrations` is deployment state — which migration files this database has applied — not tenant data, which is why it carries no `namespace_id` (see `nce/migration_ledger.py`).
 
@@ -59,14 +59,14 @@ The catalog consistency validator categorizes all tables in the engine into thre
 ```
                               ┌─────────────────────────────────────────────────────────┐
                               │            NCE Database Schema Surface                  │
-                              │                 (77 Total Tables)                       │
+                              │                 (81 Total Tables)                       │
                               └────────────────────────────┬────────────────────────────┘
                                                            │
                      ┌─────────────────────────────────────┼─────────────────────────────────────┐
                      ▼                                     ▼                                     ▼
         ┌─────────────────────────┐           ┌─────────────────────────┐           ┌─────────────────────────┐
         │EXPECTED_TENANT_RLS_TABLES│          │EXPECTED_SPECIAL_RLS_TBLS│           │ EXPECTED_GLOBAL_TABLES  │
-        │       (70 Tables)       │           │        (1 Table)        │           │       (6 Tables)        │
+        │       (74 Tables)       │           │        (1 Table)        │           │       (6 Tables)        │
         │ Single namespace_id RLS │           │  a2a_grants (Dual-NS)   │           │ Intentionally Global    │
         └─────────────────────────┘           └─────────────────────────┘           └─────────────────────────┘
 ```
@@ -76,12 +76,12 @@ The catalog consistency validator categorizes all tables in the engine into thre
 | Surface Definition | Table Count | Scope / Description | Why It Is Not the Source of Truth |
 | :--- | :---: | :--- | :--- |
 | **Migration [`001_enable_rls.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/001_enable_rls.sql)** | 14 | Initial baseline seed (`memories`, `kg_nodes`, `kg_edges`, `pii_redactions`, `memory_salience`, `contradictions`, `snapshots`, `event_log`, `resource_quotas`, `consolidation_runs`, `bridge_subscriptions`, `dead_letter_queue`, `embedding_migrations`, `memory_embeddings`) + `a2a_grants`. | Only seeds initial v1 tables; omits post-v1 migrations ([`002`–`050`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/)). |
-| **[`schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) `tenant_tables` loop** | 41 | Dynamic PL/pgSQL array loop in `nce/schema.sql`. Additional tables (`replay_runs`, `outbox_events`, `saga_execution_log`, `topology_graph`, `economy_contracts`, `stock_locations`, `inventory_items`, etc.) receive policy statements inline outside the loop. | Incomplete as a standalone list; lacks 29 tables (70 − 41) handled inline or in newer vertical engine migrations. |
-| **`EXPECTED_TENANT_RLS_TABLES` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py))** | **70** | Authoritative programmatic specification covering all core, cognitive, governance, diagnostics, shared-core, and vertical-engine tables. Validated by `verify_rls_catalog_consistency()` at startup. | **Definitive source of truth**: Enforced by automated runtime assertions against live database catalog metadata. |
+| **[`schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) `tenant_tables` loop** | 41 | Dynamic PL/pgSQL array loop in `nce/schema.sql`. Additional tables (`replay_runs`, `outbox_events`, `saga_execution_log`, `topology_graph`, `economy_contracts`, `stock_locations`, `inventory_items`, etc.) receive policy statements inline outside the loop. | Incomplete as a standalone list; lacks 33 tables (74 − 41) handled inline or in newer vertical engine migrations. |
+| **`EXPECTED_TENANT_RLS_TABLES` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py))** | **74** | Authoritative programmatic specification covering all core, cognitive, governance, diagnostics, shared-core, and vertical-engine tables. Validated by `verify_rls_catalog_consistency()` at startup. | **Definitive source of truth**: Enforced by automated runtime assertions against live database catalog metadata. |
 
-### 2c. Complete Inventory of the 70 Tenant RLS Tables
+### 2c. Complete Inventory of the 74 Tenant RLS Tables
 
-The 70 tables in `EXPECTED_TENANT_RLS_TABLES` span all 19 functional domains of NCE:
+The 74 tables in `EXPECTED_TENANT_RLS_TABLES` span all 19 functional domains of NCE:
 
 | Subsystem Domain | Count | Table Names | Description |
 | :--- | :---: | :--- | :--- |
@@ -104,6 +104,7 @@ The 70 tables in `EXPECTED_TENANT_RLS_TABLES` span all 19 functional domains of 
 | **Assets Engine** | 2 | `assets`, `telemetry_samples` | Relational asset register seeded from BOM lines (Module 9), keyed per `(namespace_id, bom_line_id)`. |
 | **Support Engine** | 3 | `service_tickets`, `sla_clocks`, `customer_health` | Native ServiceTicket store, live SLA countdown clocks, and rolling customer health & churn-risk scoring (Module 10). |
 | **Field Tech Engine** | 3 | `work_orders`, `checklists`, `time_entries` | Physical work orders, ISO9001 checklist verification records, and GPS/manual time tracking (Module 12). |
+| **HR Engine** | 4 | `employees`, `skills`, `certifications`, `absences` | Native employee master data, skills matrix, cert lifecycle & expiry tracking, and sensitive leave/absence records (Module 13). |
 
 
 ---

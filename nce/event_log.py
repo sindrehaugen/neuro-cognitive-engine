@@ -365,6 +365,11 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "work_orders": "namespace_id",
     "checklists": "namespace_id",
     "time_entries": "namespace_id",
+    # HR engine (Module 13, Wave 1): employees, skills, certifications, absences.
+    "employees": "namespace_id",
+    "skills": "namespace_id",
+    "certifications": "namespace_id",
+    "absences": "namespace_id",
 }
 
 
