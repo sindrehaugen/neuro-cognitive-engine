@@ -149,6 +149,13 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | PUT | `/api/sales/targets` | `api_admin_sales_targets_put` |
 | POST | `/api/search` | `api_search` |
 | POST | `/api/snapshot/export` | `api_snapshot_export` |
+| GET | `/api/support/customers/{id}/health` | `api_support_customer_health` |
+| GET | `/api/support/tickets` | `api_support_tickets_list` |
+| POST | `/api/support/tickets` | `api_support_tickets_open` |
+| GET | `/api/support/tickets/{id}` | `api_support_tickets_get` |
+| POST | `/api/support/tickets/{id}/resolve` | `api_support_tickets_resolve` |
+| GET | `/api/support/tickets/{id}/sla-clock` | `api_support_ticket_sla_clock` |
+| POST | `/api/support/troubleshoot` | `api_support_troubleshoot` |
 | POST | `/api/system-design/enrich-design-lines` | `api_system_design_enrich_design_lines` |
 | POST | `/api/system-design/from-quote` | `api_system_design_from_quote` |
 | POST | `/api/system-design/functional-location` | `api_system_design_author_functional_location` |
@@ -287,6 +294,12 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `store_media` |  | yes |  |  |
 | `store_memory` |  | yes |  |  |
 | `suggest_queries` |  |  |  |  |
+| `support_health_score` |  |  | yes |  |
+| `support_open_ticket` | yes | yes |  |  |
+| `support_query_ticket` |  |  | yes |  |
+| `support_resolve_ticket` | yes | yes |  |  |
+| `support_sla_clock` |  |  | yes |  |
+| `support_troubleshoot` |  |  | yes |  |
 | `system_design_author_functional_location` |  | yes |  |  |
 | `system_design_author_topology` |  | yes |  |  |
 | `system_design_delete_planned` | yes | yes |  |  |
@@ -314,4 +327,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_reliability_radar` |  |  | yes |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 154 REST endpoints, 142 MCP tools._
+_Totals: 161 REST endpoints, 148 MCP tools._

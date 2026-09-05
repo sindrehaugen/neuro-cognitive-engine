@@ -357,7 +357,12 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "assets": "namespace_id",
     # Assets engine (Module 9, Wave 5): manufacturer telemetry reading stream.
     "telemetry_samples": "namespace_id",
+    # Support engine (Module 10, Wave 1): native service tickets, SLA clocks, customer health.
+    "service_tickets": "namespace_id",
+    "sla_clocks": "namespace_id",
+    "customer_health": "namespace_id",
 }
+
 
 EXPECTED_SPECIAL_RLS_TABLES: dict[str, tuple[str, ...]] = {
     # table_name: all namespace ownership columns (multi-namespace ownership)

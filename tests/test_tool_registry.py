@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 142  # 67 base + 23 ml engine tools + 6 rl tools (detect_causal_cycles + 5 diag_* from Batch 77) + 1 sales tool + 10 vendors tools (vendors_get_vendor/vendors_compute_scorecard from Batch 096 + 3 from Batch 098 + 1 from Batch 102 + 2 from Batch 103 + 2 from Batch 104) + 1 agreements tool (agreements_lookup_terms from Batch 109) + 1 sales A2A tool (sales_get_signed_baseline from PR #26) + 3 economy tools (economy_match_invoice/economy_compute_periodisering/economy_emit_event from Batch 119) + 3 inventory tools (inventory_stock_levels/inventory_transfer_stock/inventory_record_consumption from Batch 131, M11.W3) + 1 assets tool (assets_ping from Batch 141, M9.W1) + 3 assets tools (assets_get/assets_list/assets_advance_lifecycle from Batch 143, M9.W3) + 1 system_design tool (system_design_get_topology from Batch 067b, M6.W13a) + 2 system_design authoring tools (system_design_author_topology/system_design_author_functional_location from Batch 067c, M6.W13b — both cacheable=False, so CACHEABLE_TOOLS is unchanged at 46) + 1 system_design validator (system_design_validate_design_graph from Batch 067d, M6.W13c — cacheable=False AND mutation=False, so CACHEABLE_TOOLS stays 46 and MUTATION_TOOLS stays 44; only this total moves) + 1 system_design retire tool (system_design_delete_planned from Batch 067h, M6.W17 -- the module's FIRST delete path: cacheable=False so CACHEABLE_TOOLS stays 46, but mutation=True AND admin_only=True, so MUTATION_TOOLS moves 44 -> 45 and ADMIN_ONLY_TOOLS moves 17 -> 18 alongside this total; MIGRATION_TOOLS stays 5). + 4 system_design commercial tools (system_design_from_quote/system_design_to_quote/system_design_generate_sow/system_design_enrich_design_lines from Batch 230a, M6.W26 -- four cores that had no route and no tool; THREE are mutation=True so MUTATION_TOOLS moves 52 -> 55, none is cacheable or admin_only so CACHEABLE_TOOLS stays 48 and ADMIN_ONLY_TOOLS stays 27). + 11 inventory tools (inventory_record_goods_receipt/inventory_recommend_restock/inventory_forecast_demand/inventory_reserve_stock/inventory_release_stock/inventory_record_rma/inventory_valuation/inventory_record_goods_receipt_and_match/inventory_reconcile_dead_stock/inventory_restock_from_rma/inventory_dispose_rma_weee from Batch 138a, M11.W10a -- the surface-completion wave that registers the Inventory cores Batch 131's single surface wave predated; of the 11, SEVEN are mutation=True and admin_only=True, inventory_valuation and inventory_reconcile_dead_stock are admin_only=True with mutation=False, and inventory_recommend_restock/inventory_forecast_demand are the only two cacheable=True -- so MUTATION_TOOLS moves 45 -> 52, CACHEABLE_TOOLS 46 -> 48, ADMIN_ONLY_TOOLS 18 -> 27 and MIGRATION_TOOLS stays 5). + 1 sales tool (sales_add_quote_line from Batch 132d, M5.W15 -- the MANUAL-PICK origination path for BOM_LINE and the first real caller of nce/bom_lines.py's guarded store; a tenant write, so mutation=True moves MUTATION_TOOLS 55 -> 56 while cacheable=False and admin_only=False leave CACHEABLE_TOOLS at 48, ADMIN_ONLY_TOOLS at 27 and MIGRATION_TOOLS at 5). + 1 sales tool (sales_get_quote_lines from Batch 132f, M5.W16 -- the cross-engine READ seam for a quote's BOM_LINE rows, which closes defect D47 by making system_design.from_quote._read_quote_lines stop raising; a READ, so mutation=False, cacheable=False (deliberate: quote lines change as lines are added and a cached read would need generation bumps on both write paths) and admin_only=False -- only this total moves: MUTATION_TOOLS stays 56, CACHEABLE_TOOLS 48, ADMIN_ONLY_TOOLS 27, MIGRATION_TOOLS 5).
+_EXPECTED_TOTAL = 148  # 142 previous + 6 support tools (support_query_ticket/support_open_ticket/support_sla_clock/support_health_score/support_troubleshoot/support_resolve_ticket from ML10-B5, M10.W5).
 
 
 def test_registry_has_expected_entries():
@@ -169,6 +169,9 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "system_design_enrich_design_lines",
         # M5.W15 (Batch 132d) -- manual-pick BOM_LINE origination
         "sales_add_quote_line",
+        # ML10-B5 (M10.W5) -- Support Engine mutations (Actor, admin_only)
+        "support_open_ticket",
+        "support_resolve_ticket",
     }
 )
 
@@ -182,8 +185,8 @@ def test_mutation_tools_exact_match():
 
 def test_mutation_tools_count():
     assert (
-        len(MUTATION_TOOLS) == 56
-    )  # 42 + 2 system_design authoring tools (system_design_author_topology /
+        len(MUTATION_TOOLS) == 58
+    )  # 56 previous + 2 support tools (support_open_ticket, support_resolve_ticket) from ML10-B5
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -272,6 +275,11 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         # figure is a wrong number in someone's accounts.
         "inventory_recommend_restock",
         "inventory_forecast_demand",
+        # ML10-B5 (M10.W5) -- Support Engine Watcher reads (cacheable)
+        "support_query_ticket",
+        "support_sla_clock",
+        "support_health_score",
+        "support_troubleshoot",
     }
 )
 
@@ -285,8 +293,8 @@ def test_cacheable_tools_exact_match():
 
 def test_cacheable_tools_count():
     assert (
-        len(CACHEABLE_TOOLS) == 48
-    )  # ml +4 product (M2.W3-W5); +3 procurement M1.W4; +3 procurement M1.W12; +1 system_design_ping (M6.W1); +1 sales_ping (Batch 080); +1 project_can_enter_phase (M7.W3); +1 project_suggest_pl (M7.W11); +1 pricing_resolve; +2 resolve/merge_queue_list (C1); +10 vendors tools (Batch 096/098/102/103/104) | rl +3 diag_digest_status/diag_device_health/diag_list_anomalies (Batch 77) | +1 agreements_lookup_terms (Batch 109) | +3 economy tools (Batch 119, M8.W4) | +1 inventory_stock_levels (Batch 131, M11.W3) | +1 assets_ping (Batch 141, M9.W1) | +2 assets_get/assets_list (Batch 143, M9.W3); +1 system_design_get_topology (Batch 067b, M6.W13a) | +2 inventory_recommend_restock/inventory_forecast_demand (Batch 138a, M11.W10a) -- the only cacheable two of that wave's eleven tools
+        len(CACHEABLE_TOOLS) == 52
+    )  # 48 previous + 4 support tools (support_query_ticket, support_sla_clock, support_health_score, support_troubleshoot) from ML10-B5
 
 
 # ---------------------------------------------------------------------------
@@ -344,6 +352,9 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "inventory_dispose_rma_weee",
         "inventory_valuation",
         "inventory_reconcile_dead_stock",
+        # ML10-B5 (M10.W5) -- Support Engine mutations (admin_only)
+        "support_open_ticket",
+        "support_resolve_ticket",
     }
 )
 
@@ -356,13 +367,9 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    # 18 + 9 Inventory tools from Batch 138a, M11.W10a (surface completion):
-    # the 7 Actor mutations plus inventory_valuation and
-    # inventory_reconcile_dead_stock, which are read-only but admin_only for
-    # the data they return. inventory_recommend_restock and
-    # inventory_forecast_demand are the wave's only two non-admin tools, which
-    # is why this moves by 9 and not by 11.
-    assert len(ADMIN_ONLY_TOOLS) == 27
+    assert (
+        len(ADMIN_ONLY_TOOLS) == 29
+    )  # 27 previous + 2 support tools (support_open_ticket, support_resolve_ticket) from ML10-B5
 
 
 # ---------------------------------------------------------------------------

@@ -1127,6 +1127,11 @@ _additional_fork_provenance_types: tuple[str, ...] = (
     # Part II.4: shred is destructive + content-free; fork projection records
     # provenance only (no content to re-apply).
     "memory_shredded",
+    # Module 10 Support Engine events (provenance-only fork projection per Charter M10.W7)
+    "support_ticket_opened",
+    "support_ticket_resolved",
+    "support_touchpoint_recorded",
+    "support_diagnosis_authored",
 )
 for _fork_et in _additional_fork_provenance_types:
     assert _fork_et not in _HANDLER_REGISTRY, (

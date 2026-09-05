@@ -75,6 +75,11 @@ EventType = Literal[
     "edge_confidence_floored",
     "consolidation_requeue",
     "sales_ai_decision",
+    # SUPPORT_EVENTS — Module 10 Support Engine lifecycle & audit trail (Charter M10.W7)
+    "support_ticket_opened",
+    "support_ticket_resolved",
+    "support_touchpoint_recorded",
+    "support_diagnosis_authored",
 ]
 
 VALID_EVENT_TYPES: Final[frozenset[str]] = frozenset(get_args(EventType))

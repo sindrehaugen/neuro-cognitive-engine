@@ -24,6 +24,7 @@ from nce.admin_handlers import product as product_handlers
 from nce.admin_handlers import project as project_handlers
 from nce.admin_handlers import sales as sales_handlers
 from nce.admin_handlers import sales_public as sales_public_handlers
+from nce.admin_handlers import support as support_handlers
 from nce.admin_handlers import system_design as system_design_handlers
 from nce.admin_handlers import vendors as vendors_handlers
 from nce.auth import (
@@ -921,6 +922,44 @@ def build_admin_routes() -> list[Route]:
         Route(
             "/api/assets/{id}/lifecycle",
             endpoint=assets_handlers.api_assets_advance_lifecycle,
+            methods=["POST"],
+        ),
+        # ------------------------------------------------------------------
+        # Support vertical module endpoints (Module 10, Wave 6, ML10-B6)
+        # ------------------------------------------------------------------
+        Route(
+            "/api/support/tickets",
+            endpoint=support_handlers.api_support_tickets_list,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/support/tickets",
+            endpoint=support_handlers.api_support_tickets_open,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/support/tickets/{id}",
+            endpoint=support_handlers.api_support_tickets_get,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/support/tickets/{id}/sla-clock",
+            endpoint=support_handlers.api_support_ticket_sla_clock,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/support/customers/{id}/health",
+            endpoint=support_handlers.api_support_customer_health,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/support/troubleshoot",
+            endpoint=support_handlers.api_support_troubleshoot,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/support/tickets/{id}/resolve",
+            endpoint=support_handlers.api_support_tickets_resolve,
             methods=["POST"],
         ),
     ]
