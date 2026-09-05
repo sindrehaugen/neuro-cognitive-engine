@@ -4188,7 +4188,6 @@ BEGIN
     END IF;
 END $$;
 
-
 -- ============================================================================
 -- HR Engine (Module 13, Wave 1 -- hr-schema):
 -- Tables backing nce/vertical_modules/hr/**:
@@ -4365,3 +4364,465 @@ BEGIN
     END IF;
 END $$;
 
+-- ============================================================================
+-- Marketing Engine (Module 14, Wave 1 -- marketing-schema):
+-- Tables backing nce/vertical_modules/marketing/**:
+--   1. case_studies (drafted, approved, and published customer success stories)
+--   2. testimonials (quotes with high-NPS capture, structured consent tiers & scopes)
+--   3. content_assets (marketing assets, AEO/GEO metadata, JSON-LD schemas, MinIO storage)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS case_studies (
+    id                     UUID        NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id           UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    project_id             TEXT        NOT NULL,
+    title                  TEXT        NOT NULL,
+    body                   TEXT        NOT NULL DEFAULT '',
+    status                 TEXT        NOT NULL DEFAULT 'draft',
+    anonymized             BOOLEAN     NOT NULL DEFAULT TRUE,
+    approver               TEXT,
+    approved_at            TIMESTAMPTZ,
+    marketing_source_id    TEXT,
+    raw                    JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    CONSTRAINT case_studies_title_not_blank
+        CHECK (btrim(title) <> ''),
+    CONSTRAINT case_studies_status_check
+        CHECK (status IN ('draft', 'in_review', 'approved', 'published', 'retracted'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_case_studies_ns_status
+    ON case_studies (namespace_id, status);
+CREATE INDEX IF NOT EXISTS idx_case_studies_ns_project
+    ON case_studies (namespace_id, project_id);
+CREATE INDEX IF NOT EXISTS idx_case_studies_source_id
+    ON case_studies (marketing_source_id) WHERE marketing_source_id IS NOT NULL;
+
+ALTER TABLE case_studies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE case_studies FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON case_studies;
+CREATE POLICY tenant_isolation_policy ON case_studies
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE case_studies FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE case_studies TO nce_app;
+    END IF;
+END $$;
+
+
+CREATE TABLE IF NOT EXISTS testimonials (
+    id                     UUID        NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id           UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    customer_id            TEXT        NOT NULL,
+    project_id             TEXT,
+    quote                  TEXT        NOT NULL DEFAULT '',
+    status                 TEXT        NOT NULL DEFAULT 'requested',
+    consent                BOOLEAN     NOT NULL DEFAULT FALSE,
+    consent_tier           TEXT        NOT NULL DEFAULT 'web_retractable',
+    consent_scope          JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    consent_recorded_at    TIMESTAMPTZ,
+    nps_at_capture         NUMERIC(4, 2),
+    marketing_source_id    TEXT,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    CONSTRAINT testimonials_status_check
+        CHECK (status IN ('requested', 'received', 'approved', 'declined', 'retracted')),
+    CONSTRAINT testimonials_consent_tier_check
+        CHECK (consent_tier IN ('none', 'web_retractable', 'ai_citable_irrevocable'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_testimonials_ns_status
+    ON testimonials (namespace_id, status);
+CREATE INDEX IF NOT EXISTS idx_testimonials_ns_customer
+    ON testimonials (namespace_id, customer_id);
+CREATE INDEX IF NOT EXISTS idx_testimonials_source_id
+    ON testimonials (marketing_source_id) WHERE marketing_source_id IS NOT NULL;
+
+ALTER TABLE testimonials ENABLE ROW LEVEL SECURITY;
+ALTER TABLE testimonials FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON testimonials;
+CREATE POLICY tenant_isolation_policy ON testimonials
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE testimonials FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE testimonials TO nce_app;
+    END IF;
+END $$;
+
+
+CREATE TABLE IF NOT EXISTS content_assets (
+    id                     UUID        NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id           UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    kind                   TEXT        NOT NULL DEFAULT 'case_study',
+    ref_id                 TEXT,
+    title                  TEXT        NOT NULL DEFAULT '',
+    seo                    JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    storage_uri            TEXT,
+    status                 TEXT        NOT NULL DEFAULT 'draft',
+    marketing_source_id    TEXT,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    CONSTRAINT content_assets_kind_check
+        CHECK (kind IN ('case_study', 'testimonial', 'blog', 'brand', 'drip')),
+    CONSTRAINT content_assets_status_check
+        CHECK (status IN ('draft', 'approved', 'published', 'archived'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_content_assets_ns_kind
+    ON content_assets (namespace_id, kind);
+CREATE INDEX IF NOT EXISTS idx_content_assets_ns_status
+    ON content_assets (namespace_id, status);
+CREATE INDEX IF NOT EXISTS idx_content_assets_source_id
+    ON content_assets (marketing_source_id) WHERE marketing_source_id IS NOT NULL;
+
+ALTER TABLE content_assets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE content_assets FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON content_assets;
+CREATE POLICY tenant_isolation_policy ON content_assets
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE content_assets FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE content_assets TO nce_app;
+    END IF;
+END $$;
+-- ============================================================================
+-- HR Engine (Module 13, Wave 1 -- hr-schema):
+-- Tables backing nce/vertical_modules/hr/**:
+--   1. employees (native employee profile card & identity)
+--   2. skills (employee-skill relations & assessment levels)
+--   3. certifications (cert lifecycle, authority & expiry tracking for Watcher)
+--   4. absences (sensitive leave/sick records & Norwegian compliance state)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS employees (
+    id                     UUID        NOT NULL DEFAULT gen_random_uuid(),
+    employee_id            TEXT        NOT NULL,
+    namespace_id           UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    name                   TEXT        NOT NULL,
+    email                  TEXT,
+    role                   TEXT        NOT NULL DEFAULT 'technician',
+    department             TEXT        NOT NULL DEFAULT 'operations',
+    location_id            TEXT,
+    leave_balance          NUMERIC     NOT NULL DEFAULT 25.0,
+    active                 BOOLEAN     NOT NULL DEFAULT true,
+    raw                    JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    hr_source_id           TEXT,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    CONSTRAINT employees_id_ns_unique UNIQUE (employee_id, namespace_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_employees_ns_active ON employees (namespace_id, active);
+CREATE INDEX IF NOT EXISTS idx_employees_ns_dept ON employees (namespace_id, department);
+CREATE INDEX IF NOT EXISTS idx_employees_ns_role ON employees (namespace_id, role);
+CREATE INDEX IF NOT EXISTS idx_employees_ns_location ON employees (namespace_id, location_id) WHERE location_id IS NOT NULL;
+
+ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
+ALTER TABLE employees FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON employees;
+CREATE POLICY tenant_isolation_policy ON employees
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO 
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE employees FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE employees TO nce_app;
+    END IF;
+END ;
+
+
+CREATE TABLE IF NOT EXISTS skills (
+    id                     UUID        NOT NULL DEFAULT gen_random_uuid(),
+    skill_id               TEXT        NOT NULL,
+    employee_id            TEXT        NOT NULL,
+    namespace_id           UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    name                   TEXT        NOT NULL,
+    category               TEXT        NOT NULL DEFAULT 'general',
+    level                  TEXT        NOT NULL DEFAULT 'intermediate',
+    assessed_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    raw                    JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    hr_source_id           TEXT,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    CONSTRAINT skills_emp_skill_ns_unique UNIQUE (employee_id, skill_id, namespace_id),
+    CONSTRAINT fk_skills_employees FOREIGN KEY (employee_id, namespace_id)
+        REFERENCES employees (employee_id, namespace_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_skills_ns_emp ON skills (namespace_id, employee_id);
+CREATE INDEX IF NOT EXISTS idx_skills_ns_name ON skills (namespace_id, name);
+
+ALTER TABLE skills ENABLE ROW LEVEL SECURITY;
+ALTER TABLE skills FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON skills;
+CREATE POLICY tenant_isolation_policy ON skills
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO 
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE skills FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE skills TO nce_app;
+    END IF;
+END ;
+
+
+CREATE TABLE IF NOT EXISTS certifications (
+    id                     UUID        NOT NULL DEFAULT gen_random_uuid(),
+    cert_id                TEXT        NOT NULL,
+    employee_id            TEXT        NOT NULL,
+    namespace_id           UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    authority              TEXT        NOT NULL,
+    name                   TEXT        NOT NULL,
+    issued                 TIMESTAMPTZ NOT NULL,
+    valid_to               TIMESTAMPTZ,
+    status                 TEXT        NOT NULL DEFAULT 'active',
+    raw                    JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    hr_source_id           TEXT,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    CONSTRAINT certs_id_ns_unique UNIQUE (cert_id, namespace_id),
+    CONSTRAINT fk_certs_employees FOREIGN KEY (employee_id, namespace_id)
+        REFERENCES employees (employee_id, namespace_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_certs_ns_emp ON certifications (namespace_id, employee_id);
+CREATE INDEX IF NOT EXISTS idx_certs_ns_valid_to ON certifications (namespace_id, valid_to);
+CREATE INDEX IF NOT EXISTS idx_certs_ns_status ON certifications (namespace_id, status);
+
+ALTER TABLE certifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE certifications FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON certifications;
+CREATE POLICY tenant_isolation_policy ON certifications
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO 
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE certifications FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE certifications TO nce_app;
+    END IF;
+END ;
+
+
+CREATE TABLE IF NOT EXISTS absences (
+    id                     UUID        NOT NULL DEFAULT gen_random_uuid(),
+    absence_id             TEXT        NOT NULL,
+    employee_id            TEXT        NOT NULL,
+    namespace_id           UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    type                   TEXT        NOT NULL DEFAULT 'sick',
+    start_date             TIMESTAMPTZ NOT NULL,
+    end_date               TIMESTAMPTZ,
+    days                   NUMERIC     NOT NULL DEFAULT 1.0,
+    reason                 TEXT,
+    status                 TEXT        NOT NULL DEFAULT 'pending',
+    compliance_state       TEXT        NOT NULL DEFAULT 'normal',
+    raw                    JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    hr_source_id           TEXT,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    CONSTRAINT absences_id_ns_unique UNIQUE (absence_id, namespace_id),
+    CONSTRAINT fk_absences_employees FOREIGN KEY (employee_id, namespace_id)
+        REFERENCES employees (employee_id, namespace_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_absences_ns_emp ON absences (namespace_id, employee_id);
+CREATE INDEX IF NOT EXISTS idx_absences_ns_start ON absences (namespace_id, start_date);
+CREATE INDEX IF NOT EXISTS idx_absences_ns_type ON absences (namespace_id, type);
+
+ALTER TABLE absences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE absences FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON absences;
+CREATE POLICY tenant_isolation_policy ON absences
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO 
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE absences FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE absences TO nce_app;
+    END IF;
+END ;
+
+-- ============================================================================
+-- Marketing Engine (Module 14, Wave 1 -- marketing-schema):
+-- Tables backing nce/vertical_modules/marketing/**:
+--   1. case_studies (drafted, approved, and published customer success stories)
+--   2. testimonials (quotes with high-NPS capture, structured consent tiers & scopes)
+--   3. content_assets (marketing assets, AEO/GEO metadata, JSON-LD schemas, MinIO storage)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS case_studies (
+    id                     UUID        NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id           UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    project_id             TEXT        NOT NULL,
+    title                  TEXT        NOT NULL,
+    body                   TEXT        NOT NULL DEFAULT '',
+    status                 TEXT        NOT NULL DEFAULT 'draft',
+    anonymized             BOOLEAN     NOT NULL DEFAULT TRUE,
+    approver               TEXT,
+    approved_at            TIMESTAMPTZ,
+    marketing_source_id    TEXT,
+    raw                    JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    CONSTRAINT case_studies_title_not_blank
+        CHECK (btrim(title) <> ''),
+    CONSTRAINT case_studies_status_check
+        CHECK (status IN ('draft', 'in_review', 'approved', 'published', 'retracted'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_case_studies_ns_status
+    ON case_studies (namespace_id, status);
+CREATE INDEX IF NOT EXISTS idx_case_studies_ns_project
+    ON case_studies (namespace_id, project_id);
+CREATE INDEX IF NOT EXISTS idx_case_studies_source_id
+    ON case_studies (marketing_source_id) WHERE marketing_source_id IS NOT NULL;
+
+ALTER TABLE case_studies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE case_studies FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON case_studies;
+CREATE POLICY tenant_isolation_policy ON case_studies
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO 
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE case_studies FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE case_studies TO nce_app;
+    END IF;
+END ;
+
+
+CREATE TABLE IF NOT EXISTS testimonials (
+    id                     UUID        NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id           UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    customer_id            TEXT        NOT NULL,
+    project_id             TEXT,
+    quote                  TEXT        NOT NULL DEFAULT '',
+    status                 TEXT        NOT NULL DEFAULT 'requested',
+    consent                BOOLEAN     NOT NULL DEFAULT FALSE,
+    consent_tier           TEXT        NOT NULL DEFAULT 'web_retractable',
+    consent_scope          JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    consent_recorded_at    TIMESTAMPTZ,
+    nps_at_capture         NUMERIC(4, 2),
+    marketing_source_id    TEXT,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    CONSTRAINT testimonials_status_check
+        CHECK (status IN ('requested', 'received', 'approved', 'declined', 'retracted')),
+    CONSTRAINT testimonials_consent_tier_check
+        CHECK (consent_tier IN ('none', 'web_retractable', 'ai_citable_irrevocable'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_testimonials_ns_status
+    ON testimonials (namespace_id, status);
+CREATE INDEX IF NOT EXISTS idx_testimonials_ns_customer
+    ON testimonials (namespace_id, customer_id);
+CREATE INDEX IF NOT EXISTS idx_testimonials_source_id
+    ON testimonials (marketing_source_id) WHERE marketing_source_id IS NOT NULL;
+
+ALTER TABLE testimonials ENABLE ROW LEVEL SECURITY;
+ALTER TABLE testimonials FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON testimonials;
+CREATE POLICY tenant_isolation_policy ON testimonials
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO 
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE testimonials FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE testimonials TO nce_app;
+    END IF;
+END ;
+
+
+CREATE TABLE IF NOT EXISTS content_assets (
+    id                     UUID        NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id           UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    kind                   TEXT        NOT NULL DEFAULT 'case_study',
+    ref_id                 TEXT,
+    title                  TEXT        NOT NULL DEFAULT '',
+    seo                    JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    storage_uri            TEXT,
+    status                 TEXT        NOT NULL DEFAULT 'draft',
+    marketing_source_id    TEXT,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    CONSTRAINT content_assets_kind_check
+        CHECK (kind IN ('case_study', 'testimonial', 'blog', 'brand', 'drip')),
+    CONSTRAINT content_assets_status_check
+        CHECK (status IN ('draft', 'approved', 'published', 'archived'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_content_assets_ns_kind
+    ON content_assets (namespace_id, kind);
+CREATE INDEX IF NOT EXISTS idx_content_assets_ns_status
+    ON content_assets (namespace_id, status);
+CREATE INDEX IF NOT EXISTS idx_content_assets_source_id
+    ON content_assets (marketing_source_id) WHERE marketing_source_id IS NOT NULL;
+
+ALTER TABLE content_assets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE content_assets FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON content_assets;
+CREATE POLICY tenant_isolation_policy ON content_assets
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO 
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE content_assets FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE content_assets TO nce_app;
+    END IF;
+END ;

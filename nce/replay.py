@@ -1144,6 +1144,13 @@ _additional_fork_provenance_types: tuple[str, ...] = (
     "hr_absence_registered",
     "hr_compliance_milestone_recorded",
     "hr_quest_progressed",
+    # Module 14 Marketing Engine events (provenance-only fork projection per Charter M14.W7)
+    "marketing_case_study_drafted",
+    "marketing_testimonial_requested",
+    "marketing_testimonial_captured",
+    "marketing_testimonial_retracted",
+    "marketing_content_approved",
+    "marketing_content_published",
 )
 for _fork_et in _additional_fork_provenance_types:
     assert _fork_et not in _HANDLER_REGISTRY, (

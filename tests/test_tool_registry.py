@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 166  # 158 previous + 8 HR Engine tools from ML13-B3.
+_EXPECTED_TOTAL = 174  # 158 previous + 8 HR Engine tools + 8 marketing tools.
 
 
 def test_registry_has_expected_entries():
@@ -185,6 +185,12 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "hr_register_absence",
         "hr_build_onboarding_quest",
         "hr_log_one_on_one",
+        # ML14-B3 (M14.W3) -- Marketing Engine mutations (5 tools)
+        "marketing_draft_case_study",
+        "marketing_request_testimonial",
+        "marketing_capture_testimonial",
+        "marketing_approve_content",
+        "marketing_publish_content",
     }
 )
 
@@ -197,7 +203,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 69  # 66 previous + 3 hr tools from ML13-B3
+    assert len(MUTATION_TOOLS) == 74  # 66 previous + 3 hr tools + 5 marketing tools
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -300,6 +306,10 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "hr_capacity",
         "hr_cert_status",
         "hr_coach",
+        # ML14-B3 (M14.W3) -- Marketing Engine cacheable reads (3 tools)
+        "marketing_find_case_study_candidates",
+        "marketing_suggest_content",
+        "marketing_audit_seo",
     }
 )
 
@@ -312,7 +322,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 59  # 54 previous + 5 hr tools from ML13-B3
+    assert len(CACHEABLE_TOOLS) == 62  # 54 previous + 5 hr tools + 3 marketing tools
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +390,12 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         # ML13-B3 (M13.W3) -- HR Engine admin_only tools (2 tools)
         "hr_build_onboarding_quest",
         "hr_log_one_on_one",
+        # ML14-B3 (M14.W3) -- Marketing Engine admin_only tools (5 tools)
+        "marketing_draft_case_study",
+        "marketing_request_testimonial",
+        "marketing_capture_testimonial",
+        "marketing_approve_content",
+        "marketing_publish_content",
     }
 )
 
@@ -392,7 +408,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 34  # 32 previous + 2 hr tools from ML13-B3
+    assert len(ADMIN_ONLY_TOOLS) == 39  # 32 previous + 2 hr tools + 5 marketing tools
 
 
 # ---------------------------------------------------------------------------

@@ -31,8 +31,16 @@ async def test_check_health_unit_basic(monkeypatch):
 
     # Mock DB connections and return values
     mock_conn = AsyncMock()
-    mock_conn.fetchrow.return_value = {"encrypted_key": b"TC3\x01fakeblob"}
-    mock_conn.fetch.return_value = []  # namespaces
+    # Shared across every fetchrow() call in check_health, including probe
+    # (d)'s role-capability query — role_name/rolsuper/rolbypassrls added so
+    # that probe alongside the pre-existing signing-key lookup.
+    mock_conn.fetchrow.return_value = {
+        "encrypted_key": b"TC3\x01fakeblob",
+        "role_name": "mock_role",
+        "rolsuper": False,
+        "rolbypassrls": False,
+    }
+    mock_conn.fetch.return_value = []  # namespaces; also probe (d)'s policy query
     mock_conn.fetchval.return_value = 0  # max_seq
 
     @asynccontextmanager
@@ -67,8 +75,18 @@ async def test_check_health_unit_basic(monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.signing_isolation
 async def test_check_health_integration_healthy(pg_pool, make_namespace, monkeypatch):
-    """Integration test verifying that with a valid master key and healthy DBs,
-    check_health returns 'ok' and sets MERKLE_CHAIN_VALID to 1.
+    """Integration test: with a valid master key and healthy DBs every probe
+    reports valid, and the only thing keeping the overall status off "ok" is
+    the RLS role posture.
+
+    This test asserted ``status == "ok"`` until the role-capability probe
+    landed. It no longer can, and that is not a regression: every deployed
+    ``PG_DSN`` names a superuser/BYPASSRLS role, so the posture genuinely is
+    degraded and asserting "ok" asserted something untrue. Rather than drop
+    the status assertion (which would stop checking anything), it now pins
+    *why* the status is degraded — so an unrelated probe starting to fail here
+    still breaks this test instead of hiding behind an already-degraded
+    status.
     """
     monkeypatch.setattr(cfg, "NCE_BACKEND", "mock")
 
@@ -77,10 +95,18 @@ async def test_check_health_integration_healthy(pg_pool, make_namespace, monkeyp
 
     # Call check_health
     health = await engine.check_health()
-    assert health["status"] == "ok"
     assert health["security"]["signing_key_decryption"] == "valid"
     assert health["security"]["bounded_chain_sample"] == "valid"
     assert health["databases"]["rls_read"] == "valid"
+    # The RLS role posture is the sole reason for a non-"ok" status here.
+    posture = health["security"]["rls_role_posture"]
+    if posture == "ok":
+        assert health["status"] == "ok"
+    else:
+        assert health["status"] == "degraded"
+        assert any("can bypass RLS" in f for f in posture), (
+            f"status is degraded but not for the expected reason: {posture}"
+        )
 
     # Verify Prometheus gauge
     if hasattr(MERKLE_CHAIN_VALID, "_value"):
@@ -231,12 +257,21 @@ async def test_check_health_unit_signature_valid(monkeypatch):
     monkeypatch.setattr(cfg, "NCE_BACKEND", "mock")
 
     mock_conn = AsyncMock()
-    mock_conn.fetchrow.return_value = {"encrypted_key": b"TC3\x01fakeblob"}
-    # fetch calls in order: (b) namespaces, (b2) namespaces, (b2) sig_rows
+    # Shared across every fetchrow() call, including probe (d)'s role query.
+    mock_conn.fetchrow.return_value = {
+        "encrypted_key": b"TC3\x01fakeblob",
+        "role_name": "mock_role",
+        "rolsuper": False,
+        "rolbypassrls": False,
+    }
+    # fetch calls in order: (b) namespaces, (b2) namespaces, (b2) sig_rows,
+    # (d) tables-with-policies for the RLS role-capability check (added by
+    # probe (d); empty ⇒ no non-conforming tables ⇒ no finding).
     mock_conn.fetch.side_effect = [
         [{"id": _FAKE_NS_ID}],  # block (b): namespaces
         [{"id": _FAKE_NS_ID}],  # block (b2): namespaces
         [_FAKE_EVENT_ROW],  # block (b2): sig rows for _FAKE_NS_ID
+        [],  # block (d): RLS policy-role-list query
     ]
     # fetchval: (b) max_seq for chain check, (b2) max_seq for sig check
     mock_conn.fetchval.side_effect = [1, 1]

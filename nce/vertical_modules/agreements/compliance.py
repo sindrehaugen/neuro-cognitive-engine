@@ -95,6 +95,14 @@ _MONEY_QUANT = Decimal("0.01")
 # merely over-rejects (safe → human review); the risk this guards against is a
 # wrongful approve.
 _RESTRICTED_CLAUSE_MARKERS: tuple[str, ...] = (
+    # NOTE ON VOCABULARY: "kickback" here is the NORWEGIAN commercial term for a
+    # volume-based supplier rebate, and these are SEARCH KEYWORDS matched against the
+    # text of third-party supplier agreements -- not this project's own vocabulary.
+    # A contract that literally says "no kickback" must still match, so these strings
+    # MUST NOT be renamed to "rebate": doing so silently breaks clause detection.
+    # Note that ``anti_bribery`` below is a SEPARATE flag -- a rebate clause and a
+    # bribery clause are different things and are detected independently.
+    # See the "Terminology" section of README.md.
     "no_rebate",
     "rebate_prohibited",
     "no_kickback",

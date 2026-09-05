@@ -4316,6 +4316,205 @@ TOOLS = [
             "required": ["namespace_id", "employee_id"],
         },
     ),
+    # -------------------------------------------------------------------
+    # Module 14: Marketing Engine (ML14)
+    # -------------------------------------------------------------------
+    Tool(
+        name="marketing_find_case_study_candidates",
+        description=(
+            "Find delivered projects scoring high on outcome metrics suitable for "
+            "case studies. Surfaces verified graph evidence links for drafting."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "min_outcome_score": {
+                    "type": "number",
+                    "default": 7.5,
+                    "description": "Minimum outcome score threshold (0.0 - 10.0).",
+                },
+                "lookback_days": {
+                    "type": "integer",
+                    "default": 180,
+                    "description": "Lookback window in days for delivered projects.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="marketing_draft_case_study",
+        description=(
+            "Assemble a retrieval-grounded case study draft from verified graph facts (MK-2 & MK-3). "
+            "Applies assembly-time redaction of financials and optional anonymization."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "project_id": {
+                    "type": "string",
+                    "description": "Delivered project UUID or identifier.",
+                },
+                "anonymize": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Mask customer and site identifying names by default.",
+                },
+                "room_type": {"type": "string", "description": "Room type categorization."},
+                "vertical": {"type": "string", "description": "Industry vertical."},
+            },
+            "required": ["namespace_id", "project_id"],
+        },
+    ),
+    Tool(
+        name="marketing_request_testimonial",
+        description=(
+            "Issue a testimonial request for a customer, gated on high NPS >= 9.0 (MK-5). "
+            "Refuses requests triggered on low customer health."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "customer_id": {"type": "string", "description": "Customer UUID."},
+                "project_id": {"type": "string", "description": "Delivered project UUID."},
+                "nps_score": {
+                    "type": "number",
+                    "description": "Customer NPS score (must be >= 9.0).",
+                },
+            },
+            "required": ["namespace_id", "customer_id", "project_id"],
+        },
+    ),
+    Tool(
+        name="marketing_capture_testimonial",
+        description=(
+            "Record a customer quote with structured consent, duration, and tier (MK-4). "
+            "Enforces web_retractable vs ai_citable_irrevocable consent."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "customer_id": {"type": "string", "description": "Customer UUID."},
+                "project_id": {"type": "string", "description": "Project UUID."},
+                "quote": {"type": "string", "description": "Customer quote text."},
+                "consent": {
+                    "type": "boolean",
+                    "description": "Whether customer granted explicit consent.",
+                },
+                "consent_tier": {
+                    "type": "string",
+                    "enum": ["web_retractable", "ai_citable_irrevocable"],
+                    "description": "Consent tier (MK-4): web_retractable or ai_citable_irrevocable.",
+                },
+                "attribution_name": {
+                    "type": "string",
+                    "description": "Optional contact attribution.",
+                },
+                "attribution_title": {"type": "string", "description": "Optional title/role."},
+            },
+            "required": [
+                "namespace_id",
+                "customer_id",
+                "project_id",
+                "quote",
+                "consent",
+                "consent_tier",
+            ],
+        },
+    ),
+    Tool(
+        name="marketing_suggest_content",
+        description=(
+            "Suggest thought-leadership or drip content ideas grounded in real delivered work and failure-pattern learnings."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "theme": {"type": "string", "description": "Content theme or topic."},
+                "vertical": {"type": "string", "description": "Industry vertical focus."},
+                "limit": {
+                    "type": "integer",
+                    "default": 5,
+                    "description": "Maximum suggestions to return.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="marketing_audit_seo",
+        description=(
+            "Audit content asset for AEO/GEO answer engine citation readiness, Schema.org JSON-LD, and structured metadata."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "asset_id": {"type": "string", "description": "Content asset UUID to audit."},
+                "content": {
+                    "type": "string",
+                    "description": "Raw content text or markdown if unpersisted.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="marketing_approve_content",
+        description=(
+            "Human sign-off approval gate for drafted marketing content or case studies (MK-1). "
+            "Records approver and decision in cognitive ledger."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "artifact_id": {
+                    "type": "string",
+                    "description": "Case study or content asset UUID.",
+                },
+                "approver": {"type": "string", "description": "Human approver name or identifier."},
+                "decision": {
+                    "type": "string",
+                    "enum": ["approved", "rejected", "changes_requested"],
+                    "description": "Approval decision.",
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Optional review feedback or sign-off notes.",
+                },
+            },
+            "required": ["namespace_id", "artifact_id", "approver", "decision"],
+        },
+    ),
+    Tool(
+        name="marketing_publish_content",
+        description=(
+            "Publish marketing content via PublishTransport. Enforces recorded human approval (MK-1) and valid consent (MK-4)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "artifact_id": {
+                    "type": "string",
+                    "description": "Case study or content asset UUID.",
+                },
+                "transport": {
+                    "type": "string",
+                    "enum": ["manual", "cms"],
+                    "default": "manual",
+                    "description": "Publish transport destination (manual export or cms).",
+                },
+            },
+            "required": ["namespace_id", "artifact_id"],
+        },
+    ),
 ]
 
 

@@ -20,6 +20,7 @@ from nce.admin_handlers import entity_resolution as entity_resolution_handlers
 from nce.admin_handlers import field_tech as field_tech_handlers
 from nce.admin_handlers import hr as hr_handlers
 from nce.admin_handlers import inventory as inventory_handlers
+from nce.admin_handlers import marketing as marketing_handlers
 from nce.admin_handlers import pricing as pricing_handlers
 from nce.admin_handlers import procurement as procurement_handlers
 from nce.admin_handlers import product as product_handlers
@@ -1086,6 +1087,54 @@ def build_admin_routes() -> list[Route]:
         Route(
             "/api/hr/sync/now",
             endpoint=hr_handlers.api_hr_sync_now,
+            methods=["POST"],
+        ),
+        # ------------------------------------------------------------------
+        # Marketing vertical module endpoints (Module 14, Wave 6, ML14-B6)
+        # ------------------------------------------------------------------
+        Route(
+            "/api/marketing/candidates",
+            endpoint=marketing_handlers.api_marketing_candidates,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/marketing/draft",
+            endpoint=marketing_handlers.api_marketing_draft_case_study,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/marketing/testimonials",
+            endpoint=marketing_handlers.api_marketing_testimonials,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/marketing/testimonials/capture",
+            endpoint=marketing_handlers.api_marketing_capture_testimonial,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/marketing/suggest-content",
+            endpoint=marketing_handlers.api_marketing_suggest_content,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/marketing/audit-seo",
+            endpoint=marketing_handlers.api_marketing_audit_seo,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/marketing/approve",
+            endpoint=marketing_handlers.api_marketing_approve_content,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/marketing/assets",
+            endpoint=marketing_handlers.api_marketing_assets,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/marketing/publish",
+            endpoint=marketing_handlers.api_marketing_publish_content,
             methods=["POST"],
         ),
     ]
