@@ -48,7 +48,13 @@ def assert_ranking_prohibited(params: dict[str, Any]) -> None:
         # Defense-in-depth: should never happen as constant is hard-pinned True
         raise RuntimeError("CRITICAL: NCE_HR_RANKING_DISABLED cannot be cleared.")
 
-    prohibited_keys = ("leaderboard", "standing_ranking", "rank_employees", "compare_peers")
+    prohibited_keys = (
+        "leaderboard",
+        "standing_ranking",
+        "rank_employees",
+        "compare_peers",
+        "rank_against_peers",
+    )
     for key in prohibited_keys:
         if params.get(key) is True:
             raise HrRankingProhibitedError(
@@ -56,7 +62,7 @@ def assert_ranking_prohibited(params: dict[str, Any]) -> None:
             )
 
     sort_by = str(params.get("sort_by") or "").strip().lower()
-    if sort_by in ("rating", "score", "performance", "standing", "rank"):
+    if any(k in sort_by for k in ("rating", "score", "performance", "standing", "rank")):
         raise HrRankingProhibitedError(
             f"NEVER ranking policy (RL-1): Sorting candidates by {sort_by!r} is strictly prohibited."
         )
