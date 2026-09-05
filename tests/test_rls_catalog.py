@@ -2,7 +2,11 @@
 
 import pytest
 
-from nce.event_log import EXPECTED_TENANT_RLS_TABLES, verify_rls_catalog_consistency
+from nce.event_log import (
+    EXPECTED_TENANT_RLS_TABLES,
+    verify_rls_catalog_consistency,
+    verify_rls_role_capability,
+)
 
 
 async def _require_current_tenant_columns(conn) -> None:
@@ -55,6 +59,42 @@ async def test_rls_catalog_consistency(pg_admin_conn, pg_app_conn):
     await verify_rls_catalog_consistency(pg_admin_conn)
     # Verify using the nce_app application role connection
     await verify_rls_catalog_consistency(pg_app_conn)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_rls_role_capability_discriminates_by_role(pg_pool, pg_app_conn):
+    """The role-capability check must fire for mcp_user and stay quiet for nce_app.
+
+    A check that fires for both, or neither, proves nothing — mcp_user is
+    superuser + bypassrls and will always trip a correct check, so only the
+    asymmetry (mcp_user trips / nce_app passes) is evidence the assertion
+    discriminates rather than always firing.
+    """
+    await _require_current_tenant_columns(pg_app_conn)
+
+    async with pg_pool.acquire() as mcp_conn:
+        mcp_findings = await verify_rls_role_capability(mcp_conn)
+    assert mcp_findings, (
+        "mcp_user is superuser+bypassrls and must trip the RLS role-capability check"
+    )
+    assert any("bypass" in f for f in mcp_findings), (
+        f"mcp_user findings did not name the bypass condition: {mcp_findings}"
+    )
+    # Both checks must be exercised, not just the first. Asserting only the
+    # bypass finding leaves the policy-role-list check free to be dead: with it
+    # disabled the bypass assertion still passes and nce_app still returns [],
+    # so the test would go green over a check that never fires for anyone.
+    # Verified by mutation before this line was added.
+    assert any("no RLS policy targeting" in f for f in mcp_findings), (
+        "mcp_user findings did not name the policy-role-list condition — the "
+        f"second check may be dead: {mcp_findings}"
+    )
+
+    app_findings = await verify_rls_role_capability(pg_app_conn)
+    assert app_findings == [], (
+        f"nce_app should not trip the RLS role-capability check: {app_findings}"
+    )
 
 
 def test_static_schema_rls_declarations() -> None:
