@@ -3516,7 +3516,265 @@ TOOLS = [
             "required": ["namespace_id", "room_brief"],
         },
     ),
+    # -----------------------------------------------------------------
+    # Support vertical module tools (Module 10, Wave 5, ML10-B5)
+    # -----------------------------------------------------------------
+    Tool(
+        name="support_query_ticket",
+        description=(
+            "Query a single support ticket by ID (including SLA clock) or list "
+            "tickets with filters (status, priority, customer, room, asset). "
+            "Watcher; read-only, cacheable."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "ticket_id": {
+                    "type": "string",
+                    "description": "Optional; ticket UUID to retrieve a single ticket.",
+                },
+                "status": {
+                    "type": "string",
+                    "description": "Optional; filter by status (open, in_progress, waiting_customer, waiting_parts, resolved, closed, cancelled).",
+                },
+                "priority": {
+                    "type": "string",
+                    "description": "Optional; filter by priority (low, medium, high, critical).",
+                },
+                "customer_id": {
+                    "type": "string",
+                    "description": "Optional; filter by customer ID.",
+                },
+                "room_id": {
+                    "type": "string",
+                    "description": "Optional; filter by room / functional location ID.",
+                },
+                "asset_id": {
+                    "type": "string",
+                    "description": "Optional; filter by asset UUID.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 50,
+                    "minimum": 1,
+                    "maximum": 200,
+                    "description": "Optional; maximum number of tickets to return.",
+                },
+                "offset": {
+                    "type": "integer",
+                    "default": 0,
+                    "minimum": 0,
+                    "description": "Optional; pagination offset.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="support_open_ticket",
+        description=(
+            "Open a new native service ticket and initialize its running SLA clock. "
+            "Actor / admin-only; mutation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "summary": {
+                    "type": "string",
+                    "description": "Short summary description of the issue.",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Optional; detailed incident context.",
+                },
+                "priority": {
+                    "type": "string",
+                    "enum": ["low", "medium", "high", "critical"],
+                    "default": "medium",
+                    "description": "Ticket priority level.",
+                },
+                "source": {
+                    "type": "string",
+                    "enum": ["nce", "d365"],
+                    "default": "nce",
+                    "description": "Originating source system.",
+                },
+                "source_id": {
+                    "type": "string",
+                    "description": "Optional; external system source identifier.",
+                },
+                "customer_id": {
+                    "type": "string",
+                    "description": "Optional; customer ID.",
+                },
+                "room_id": {
+                    "type": "string",
+                    "description": "Optional; functional location / room ID.",
+                },
+                "asset_id": {
+                    "type": "string",
+                    "description": "Optional; asset UUID.",
+                },
+                "sla_profile": {
+                    "type": "string",
+                    "enum": ["mission_critical", "standard", "basic", "best_effort"],
+                    "default": "standard",
+                    "description": "SLA profile governing target deadlines.",
+                },
+                "change_origin": {
+                    "type": "string",
+                    "enum": [
+                        "sync",
+                        "webhook",
+                        "agent",
+                        "operator",
+                        "consolidation",
+                        "replay",
+                        "unknown",
+                    ],
+                    "default": "agent",
+                    "description": "Origin of the ticket creation.",
+                },
+                "ai_diagnosis": {
+                    "type": "object",
+                    "description": "Optional; preliminary AI diagnostics or suggested fixes.",
+                },
+            },
+            "required": ["namespace_id", "summary"],
+        },
+    ),
+    Tool(
+        name="support_sla_clock",
+        description=(
+            "Query and evaluate running SLA clock state for a support ticket. "
+            "Watcher; read-only, cacheable."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "ticket_id": {
+                    "type": "string",
+                    "description": "Ticket UUID to inspect SLA clock for.",
+                },
+            },
+            "required": ["namespace_id", "ticket_id"],
+        },
+    ),
+    Tool(
+        name="support_health_score",
+        description=(
+            "Compute and upsert customer health score and churn risk from passive support signals. "
+            "Watcher; read-only, cacheable."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Customer identifier.",
+                },
+                "lookback_days": {
+                    "type": "integer",
+                    "default": 30,
+                    "minimum": 1,
+                    "description": "Optional; lookback window in days.",
+                },
+            },
+            "required": ["namespace_id", "customer_id"],
+        },
+    ),
+    Tool(
+        name="support_troubleshoot",
+        description=(
+            "AI Troubleshooter: cognitive recall over historical resolutions in "
+            "v3_cognitive_ledger and memories with auditable citations. "
+            "Watcher; read-only, cacheable."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "symptom_text": {
+                    "type": "string",
+                    "description": "Observed symptoms or problem description.",
+                },
+                "ticket_id": {
+                    "type": "string",
+                    "description": "Optional; existing ticket UUID to diagnose (extracts summary/description if symptom_text omitted).",
+                },
+                "asset_id": {
+                    "type": "string",
+                    "description": "Optional; asset UUID to prioritize asset-specific historical fixes.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 5,
+                    "minimum": 1,
+                    "maximum": 50,
+                    "description": "Optional; maximum citations to return.",
+                },
+                "min_confidence": {
+                    "type": "number",
+                    "default": 0.5,
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                    "description": "Optional; minimum confidence score threshold.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="support_resolve_ticket",
+        description=(
+            "Resolve an open service ticket, record resolution in v3_cognitive_ledger, "
+            "and update SLA clock. Actor / admin-only; mutation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "ticket_id": {
+                    "type": "string",
+                    "description": "Ticket UUID to resolve.",
+                },
+                "resolution_text": {
+                    "type": "string",
+                    "description": "Detailed explanation of the resolution or fix.",
+                },
+                "was_fix": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Whether the action resolved the underlying issue.",
+                },
+                "resolution_category": {
+                    "type": "string",
+                    "default": "other",
+                    "description": "Category slug for the resolution (hardware, firmware, configuration, network, user_error, other).",
+                },
+                "fixed_asset_id": {
+                    "type": "string",
+                    "description": "Optional; asset UUID that was repaired or replaced.",
+                },
+                "fixed_product_id": {
+                    "type": "string",
+                    "description": "Optional; product ID of replaced/repaired component.",
+                },
+                "resolved_by": {
+                    "type": "string",
+                    "default": "agent",
+                    "description": "Operator or agent identity resolving the ticket.",
+                },
+            },
+            "required": ["namespace_id", "ticket_id", "resolution_text"],
+        },
+    ),
 ]
+
 
 # Conditionally include migration tools based on operator config.
 if not cfg.NCE_DISABLE_MIGRATION_MCP:

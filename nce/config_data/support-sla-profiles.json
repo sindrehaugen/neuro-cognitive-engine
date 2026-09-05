@@ -1,0 +1,29 @@
+{
+  "_comment": "Config-as-IP: Support SLA profiles per room/functional location. Driftsavtaler follow room, not customer.",
+  "profiles": {
+    "mission_critical": {
+      "critical": {"first_response_hours": 0.5, "resolution_hours": 2.0},
+      "high": {"first_response_hours": 1.0, "resolution_hours": 4.0},
+      "medium": {"first_response_hours": 2.0, "resolution_hours": 8.0},
+      "low": {"first_response_hours": 4.0, "resolution_hours": 16.0}
+    },
+    "standard": {
+      "critical": {"first_response_hours": 1.0, "resolution_hours": 4.0},
+      "high": {"first_response_hours": 2.0, "resolution_hours": 8.0},
+      "medium": {"first_response_hours": 4.0, "resolution_hours": 24.0},
+      "low": {"first_response_hours": 8.0, "resolution_hours": 48.0}
+    },
+    "basic": {
+      "critical": {"first_response_hours": 2.0, "resolution_hours": 8.0},
+      "high": {"first_response_hours": 4.0, "resolution_hours": 16.0},
+      "medium": {"first_response_hours": 8.0, "resolution_hours": 48.0},
+      "low": {"first_response_hours": 16.0, "resolution_hours": 72.0}
+    },
+    "best_effort": {
+      "critical": {"first_response_hours": 4.0, "resolution_hours": 24.0},
+      "high": {"first_response_hours": 8.0, "resolution_hours": 48.0},
+      "medium": {"first_response_hours": 16.0, "resolution_hours": 72.0},
+      "low": {"first_response_hours": 24.0, "resolution_hours": 120.0}
+    }
+  }
+}

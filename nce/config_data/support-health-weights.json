@@ -1,0 +1,16 @@
+{
+  "_comment": "Config-as-IP: Customer health scoring weights and churn risk thresholds. Passive signals + touchpoints.",
+  "weights": {
+    "ticket_cadence_weight": 0.25,
+    "recency_weight": 0.20,
+    "sla_breach_weight": 0.25,
+    "frustration_trend_weight": 0.20,
+    "touchpoint_weight": 0.10
+  },
+  "churn_risk_thresholds": {
+    "high_risk": 50.0,
+    "medium_risk": 75.0,
+    "low_risk": 100.0
+  },
+  "default_lookback_days": 90
+}

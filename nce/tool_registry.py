@@ -49,6 +49,7 @@ from nce.vertical_modules.procurement import mcp_handlers as procurement_mcp_han
 from nce.vertical_modules.product import mcp_handlers as product_mcp_handlers
 from nce.vertical_modules.project import mcp_handlers as project_mcp_handlers
 from nce.vertical_modules.sales import mcp_handlers as sales_mcp_handlers
+from nce.vertical_modules.support import mcp_handlers as support_mcp_handlers
 from nce.vertical_modules.system_design import mcp_handlers as system_design_mcp_handlers
 from nce.vertical_modules.vendors import mcp_handlers as vendors_mcp_handlers
 
@@ -943,6 +944,45 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         _h(assets_mcp_handlers, "handle_assets_advance_lifecycle"),
         cacheable=False,
         admin_only=False,
+        mutation=True,
+    ),
+    # ------------------------------------------------------------------
+    # Support vertical module tools (Module 10, Wave 5, ML10-B5)
+    # ------------------------------------------------------------------
+    "support_query_ticket": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_query_ticket"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "support_open_ticket": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_open_ticket"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "support_sla_clock": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_sla_clock"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "support_health_score": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_health_score"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "support_troubleshoot": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_troubleshoot"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "support_resolve_ticket": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_resolve_ticket"),
+        cacheable=False,
+        admin_only=True,
         mutation=True,
     ),
 }
