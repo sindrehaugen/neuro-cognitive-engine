@@ -325,6 +325,52 @@ Details: [docs/netbox_and_cognitive_extensions.md](docs/netbox_and_cognitive_ext
 
 ---
 
+## Terminology: "kickback"
+
+This codebase uses the word **kickback** in its Norwegian commercial sense, where *kickback* is the
+ordinary term for a **volume-based supplier rebate** — a discount a supplier pays back once agreed
+purchase thresholds are met. It is a standard, openly negotiated clause in Nordic framework agreements
+and it appears on invoices, in contracts and in accounting records.
+
+**It does not mean a bribe, a secret commission, or any improper payment.**
+
+The distinction is enforced in the code, not just asserted here. In
+`nce/vertical_modules/agreements/compliance.py`, the clause matcher scans supplier agreements for a set
+of flags in which `kickback_prohibited` and `anti_bribery` are **separate entries** — a rebate clause and
+a bribery clause are different things, detected independently.
+
+Where the word appears, it is one of three things:
+
+| appearance | why it stays |
+|---|---|
+| Clause keywords in `compliance.py` (`no_kickback`, `kickback_prohibited`) | These are **search terms for text in third-party contracts.** A contract that literally says "no kickback" must still match. Renaming them would silently break detection. |
+| `procurement_kickback_tiers` | A **database table this project does not own.** It is queried defensively and degrades to empty when absent; renaming it would break the lookup against the table's real name. |
+| `kickback_tiers`, `do_reconcile_kickback`, `kickback_accrued` | The domain itself: reconciling accrued supplier rebates against general-ledger spend. |
+
+One thing was deliberately renamed. The supplier-**scoring** weight `kickback_proximity` is now
+`rebate_proximity`, because that name described *our own ranking behaviour* rather than a term in
+someone else's contract — "rank suppliers by kickback proximity" reads as scoring suppliers by bribe, and
+the project's own spec review had already flagged it as the single biggest reputational risk in the
+suite. The legacy key is still honoured so existing configurations keep working.
+
+The rule applied: **rename what describes our behaviour; keep and document what describes the documents
+we read.**
+
+### A false friend, for the amused
+
+Norwegian and English part ways on this word. In Norwegian, a *kickback* is something you negotiate in
+the open, write into the contract, and reconcile against the general ledger at year end. In English, it
+is something you get arrested for. Same eight letters, meaningfully different consequences.
+
+It survives in this codebase for the least glamorous reason imaginable: the contracts are written in
+Norwegian, and a clause matcher has to look for the word the vendor actually typed. So we renamed the one
+place where *we* used it to describe our own behaviour, and left the rest as the false friend it is —
+with `anti_bribery` sitting two lines below it in the same list, quietly doing the job everyone assumes
+`kickback` is doing.
+
+If you are reading this because you grepped the repository for something alarming: this was the
+alarming thing, and it is a discount.
+
 ## Tech Stack
 
 - **Runtime** — Python 3.10+

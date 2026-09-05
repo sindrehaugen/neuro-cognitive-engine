@@ -135,6 +135,12 @@ When a purchase order contains a rebate override (`rebate_override=True`), the P
 
 ## 6. Coverage, Gap, & Kickback Reconciliation
 
+> **Terminology.** *Kickback* is used here in its Norwegian commercial sense — a **volume-based
+> supplier rebate**, openly negotiated in a framework agreement and settled against actual spend.
+> It is not a bribe or a secret commission. The compliance matcher treats `kickback_prohibited`
+> and `anti_bribery` as separate, independently detected clause flags. See the Terminology
+> section of `README.md`.
+
 ### 6.1 Spend Leakage Detection (`do_coverage_matrix`)
 * **GL Join:** Queries live spend lines from the Economy Engine via A2A (`fetchGlLines`).
 * **Entity Resolution:** Standardizes vendor names across invoices and contracts using NCE's shared entity-resolution primitive.
