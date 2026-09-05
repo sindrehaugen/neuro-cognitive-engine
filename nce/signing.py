@@ -1147,17 +1147,3 @@ async def rotate_key(conn: asyncpg.Connection) -> str:
     _key_cache.clear()
     log.info("Signing key rotated.  New key_id=%s.", new_key_id)
     return new_key_id
-
-
-def key_fingerprint(raw_key: bytes) -> str:
-    """Return a short, NON-SECRET fingerprint of signing-key material.
-
-    ``sha256(key)[:16]`` (hex). A SHA-256 of a key is not secret; the key is.
-    The fingerprint exists so an audit event can answer *"which key was the data
-    written under after time T"* without ever recording key material -- the
-    question that cost hours of trial-decrypting stored signing-key blobs during
-    the 2026-09-02 incident.
-
-    Never log, store, or emit *raw_key* itself.
-    """
-    return hashlib.sha256(raw_key).hexdigest()[:16]

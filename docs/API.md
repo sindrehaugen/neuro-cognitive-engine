@@ -96,6 +96,18 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/economy/emit-event` | `api_economy_emit_event` |
 | POST | `/api/economy/match-invoice` | `api_economy_match_invoice` |
 | POST | `/api/economy/periodisering` | `api_economy_periodisering` |
+| POST | `/api/field-tech/checklists` | `api_field_tech_complete_checklist` |
+| POST | `/api/field-tech/dispatch` | `api_field_tech_dispatch` |
+| POST | `/api/field-tech/outcomes` | `api_field_tech_record_outcome` |
+| GET | `/api/field-tech/partner-view` | `api_field_tech_partner_view` |
+| POST | `/api/field-tech/photos` | `api_field_tech_attach_photo` |
+| POST | `/api/field-tech/scans` | `api_field_tech_scan_serial` |
+| POST | `/api/field-tech/sync` | `api_field_tech_sync` |
+| POST | `/api/field-tech/time-entries` | `api_field_tech_log_time` |
+| GET | `/api/field-tech/work-orders` | `api_field_tech_query_work_orders` |
+| POST | `/api/field-tech/work-orders` | `api_field_tech_create_work_order` |
+| GET | `/api/field-tech/work-orders/{id}` | `api_field_tech_work_order` |
+| POST | `/api/field-tech/work-orders/{id}/assign` | `api_field_tech_assign` |
 | POST | `/api/gc/trigger` | `trigger_gc` |
 | GET | `/api/health` | `get_health` |
 | GET | `/api/health/v1` | `get_health_v1` |
@@ -223,6 +235,16 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `explain_config_change` | yes |  |  |  |
 | `explain_memory` |  |  |  |  |
 | `explain_past_decision` | yes | yes |  |  |
+| `field_tech_assign` | yes | yes |  |  |
+| `field_tech_attach_photo` |  | yes |  |  |
+| `field_tech_complete_checklist` |  | yes |  |  |
+| `field_tech_create_work_order` | yes | yes |  |  |
+| `field_tech_dispatch` |  |  | yes |  |
+| `field_tech_log_time` |  | yes |  |  |
+| `field_tech_partner_view` |  |  | yes |  |
+| `field_tech_record_outcome` | yes | yes |  |  |
+| `field_tech_scan_serial` |  | yes |  |  |
+| `field_tech_sync` |  | yes |  |  |
 | `force_resync_bridge` |  | yes |  |  |
 | `forget_memory` |  | yes |  |  |
 | `get_event_provenance` |  |  |  |  |
@@ -327,4 +349,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_reliability_radar` |  |  | yes |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 161 REST endpoints, 148 MCP tools._
+_Totals: 173 REST endpoints, 158 MCP tools._

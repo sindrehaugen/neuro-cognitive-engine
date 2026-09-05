@@ -3773,6 +3773,311 @@ TOOLS = [
             "required": ["namespace_id", "ticket_id", "resolution_text"],
         },
     ),
+    # Field Tech vertical module tools (ML12-B5, M12.W5)
+    Tool(
+        name="field_tech_dispatch",
+        description=(
+            "AI dispatch advisor: rank candidate technicians for a work order by "
+            "skill/certification, location, current load, and outcome history. Advisor; cacheable."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "work_order_id": {
+                    "type": "string",
+                    "description": "Work order business identifier.",
+                },
+                "candidates": {
+                    "type": "array",
+                    "description": "Optional explicit candidate technician pool.",
+                    "items": {"type": "object"},
+                },
+                "required_skills": {
+                    "type": "array",
+                    "description": "Optional list of required skills/certifications.",
+                    "items": {"type": "string"},
+                },
+            },
+            "required": ["namespace_id", "work_order_id"],
+        },
+    ),
+    Tool(
+        name="field_tech_partner_view",
+        description=(
+            "Partner-scoped, field-redacted work order projection for external contractors. "
+            "Enforces the Partner Access Model (Spec §46). Advisor; cacheable."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "partner_scope_id": {
+                    "type": "string",
+                    "description": "Contractor partner scope UUID.",
+                },
+                "work_order_id": {
+                    "type": "string",
+                    "description": "Optional specific work order ID.",
+                },
+            },
+            "required": ["namespace_id", "partner_scope_id"],
+        },
+    ),
+    Tool(
+        name="field_tech_create_work_order",
+        description=(
+            "Create a work order for field installation or service visit. "
+            "Actor / admin-only; mutation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "work_order_id": {
+                    "type": "string",
+                    "description": "Work order business identifier.",
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": ["install", "service"],
+                    "description": "Work order kind: install or service.",
+                },
+                "source_kind": {
+                    "type": "string",
+                    "enum": ["project", "ticket", "manual"],
+                    "description": "Originating source kind.",
+                },
+                "source_ref": {"type": "string", "description": "Originating reference ID."},
+                "location_id": {"type": "string", "description": "Functional location / room ID."},
+                "bom_lines": {
+                    "type": "array",
+                    "description": "BOM line IDs to be installed.",
+                    "items": {"type": "string"},
+                },
+                "summary": {"type": "string", "description": "Summary description of work."},
+                "priority": {"type": "string", "description": "Priority level."},
+                "due_at": {"type": "string", "description": "ISO8601 deadline timestamp."},
+                "raw": {"type": "object", "description": "Additional domain metadata."},
+            },
+            "required": ["namespace_id", "work_order_id", "kind"],
+        },
+    ),
+    Tool(
+        name="field_tech_assign",
+        description=(
+            "Assign a work order to an internal technician or external contractor. "
+            "Actor / admin-only; mutation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "work_order_id": {"type": "string", "description": "Work order identifier."},
+                "assignee_id": {
+                    "type": "string",
+                    "description": "Technician or contractor identifier.",
+                },
+                "assignee_kind": {
+                    "type": "string",
+                    "enum": ["employee", "contractor"],
+                    "default": "employee",
+                    "description": "Assignee kind: employee or contractor.",
+                },
+                "partner_scope_id": {
+                    "type": "string",
+                    "description": "Partner scope UUID (required if contractor).",
+                },
+            },
+            "required": ["namespace_id", "work_order_id", "assignee_id"],
+        },
+    ),
+    Tool(
+        name="field_tech_complete_checklist",
+        description=(
+            "Record checklist items as an ISO9001 quality verification record. Actor; mutation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "work_order_id": {"type": "string", "description": "Work order identifier."},
+                "checklist_id": {"type": "string", "description": "Checklist instance identifier."},
+                "template_id": {
+                    "type": "string",
+                    "description": "Template ID from checklist-templates.json.",
+                },
+                "items": {
+                    "type": "array",
+                    "description": "Checklist item verification entries.",
+                    "items": {"type": "object"},
+                },
+                "require_all_required": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "If true, rejects completion when required items are unverified.",
+                },
+                "partner_scope_id": {
+                    "type": "string",
+                    "description": "Partner scope UUID if contractor.",
+                },
+            },
+            "required": ["namespace_id", "work_order_id"],
+        },
+    ),
+    Tool(
+        name="field_tech_scan_serial",
+        description=(
+            "Scan equipment serial number at install/service, seeding the canonical "
+            "BOM_LINE -[installed_as]-> ASSET edge for the Assets register. Actor; mutation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "work_order_id": {"type": "string", "description": "Work order identifier."},
+                "bom_line_id": {"type": "string", "description": "BOM line identifier."},
+                "serial": {"type": "string", "description": "Scanned equipment serial number."},
+                "product_id": {"type": "string", "description": "Optional product catalog ID."},
+                "partner_scope_id": {
+                    "type": "string",
+                    "description": "Partner scope UUID if contractor.",
+                },
+            },
+            "required": ["namespace_id", "work_order_id", "bom_line_id", "serial"],
+        },
+    ),
+    Tool(
+        name="field_tech_log_time",
+        description=(
+            "Log technician labor time (manual or GPS geofence) with op_id dedup. Actor; mutation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "work_order_id": {"type": "string", "description": "Work order identifier."},
+                "started_at": {"type": "string", "description": "ISO8601 start timestamp."},
+                "ended_at": {"type": "string", "description": "ISO8601 end timestamp."},
+                "hours": {
+                    "type": "number",
+                    "description": "Labor hours (alternative to explicit timestamps).",
+                },
+                "source": {
+                    "type": "string",
+                    "enum": ["manual", "gps"],
+                    "default": "manual",
+                    "description": "Tracking source.",
+                },
+                "op_id": {
+                    "type": "string",
+                    "description": "Client-generated idempotency operation ID.",
+                },
+                "approved": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Approval flag for billing.",
+                },
+                "partner_scope_id": {
+                    "type": "string",
+                    "description": "Partner scope UUID if contractor.",
+                },
+            },
+            "required": ["namespace_id", "work_order_id"],
+        },
+    ),
+    Tool(
+        name="field_tech_attach_photo",
+        description=("Attach photo documentation to a work order. Capture; mutation."),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "work_order_id": {"type": "string", "description": "Work order identifier."},
+                "blob_ref": {
+                    "type": "string",
+                    "description": "Object store URI for the photo blob.",
+                },
+                "caption": {"type": "string", "description": "Optional descriptive caption."},
+                "partner_scope_id": {
+                    "type": "string",
+                    "description": "Partner scope UUID if contractor.",
+                },
+            },
+            "required": ["namespace_id", "work_order_id", "blob_ref"],
+        },
+    ),
+    Tool(
+        name="field_tech_sync",
+        description=(
+            "Reconcile offline client mutation batch with server-sequence ordering and conflict surfacing. "
+            "Offline reconcile; mutation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "device_id": {"type": "string", "description": "Client device identifier."},
+                "ops": {
+                    "type": "array",
+                    "description": "Queued operation envelopes to replay.",
+                    "items": {"type": "object"},
+                },
+                "partner_scope_id": {
+                    "type": "string",
+                    "description": "Partner scope UUID if contractor.",
+                },
+            },
+            "required": ["namespace_id", "device_id", "ops"],
+        },
+    ),
+    Tool(
+        name="field_tech_record_outcome",
+        description=(
+            "Record work order completion quality rating and outcome in v3_cognitive_ledger "
+            "tagged with field_tech_source_id. Ledger append / admin-only; mutation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "work_order_id": {"type": "string", "description": "Work order identifier."},
+                "rating": {
+                    "type": "number",
+                    "minimum": 1.0,
+                    "maximum": 5.0,
+                    "default": 5.0,
+                    "description": "Customer or supervisor rating [1.0 - 5.0].",
+                },
+                "quality_score": {
+                    "type": "number",
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                    "default": 1.0,
+                    "description": "Quality score [0.0 - 1.0].",
+                },
+                "resolution_notes": {
+                    "type": "string",
+                    "description": "Detailed completion or fix notes.",
+                },
+                "was_rework": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether visit was a rework.",
+                },
+                "completed_by": {
+                    "type": "string",
+                    "description": "Technician ID who executed work.",
+                },
+                "mark_completed": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Whether to mark WO completed.",
+                },
+            },
+            "required": ["namespace_id", "work_order_id"],
+        },
+    ),
 ]
 
 

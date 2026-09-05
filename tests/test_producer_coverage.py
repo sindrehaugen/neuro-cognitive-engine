@@ -126,6 +126,14 @@ KNOWN_UNPRODUCED_EVENT_TYPES: dict[str, str] = {
         "unrelated dict key in tests/test_event_types_contracts.py:45. Needs a "
         "redaction-path wave."
     ),
+    "signing_key_rotated": (
+        "TRUE POSITIVE, unfixed, SECURITY-RELEVANT: "
+        "nce/admin_mcp_handlers.py's handle_rotate_signing_key says in its own "
+        "comment that append_event 'cannot be used here until a designated "
+        "system/security namespace is provisioned' and logs at WARNING instead. "
+        "So key rotation is auditable by design, has a replay handler, and emits "
+        "nothing. Fixing it requires provisioning that namespace — its own wave."
+    ),
 }
 
 # Call sites that pass a *non-constant* ``event_type`` to an emitter.  These make
