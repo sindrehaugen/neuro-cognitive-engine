@@ -3838,12 +3838,7 @@ TOOLS = [
                 },
                 "estimated_cost": {
                     "type": "number",
-                    "default": 0.0,
-                    "description": "Optional estimated dispatch cost evaluated against DISPATCH_CEILING.",
-                },
-                "dispatch_ceiling": {
-                    "type": "number",
-                    "description": "Optional ceiling override threshold.",
+                    "description": "Estimated dispatch cost evaluated against DISPATCH_CEILING. If omitted, confirm=True is required to dispatch autonomously.",
                 },
                 "confirm": {
                     "type": "boolean",

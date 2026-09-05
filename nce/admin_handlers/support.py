@@ -682,9 +682,9 @@ async def api_support_tickets_dispatch(request: Any) -> JSONResponse:
 
     Request body (JSON):
         namespace_id (str, required): Active namespace UUID.
-        estimated_cost (float, optional): Estimated cost to evaluate against DISPATCH_CEILING.
-        dispatch_ceiling (float, optional): Ceiling override.
+        estimated_cost (float, optional): Estimated cost to evaluate against DISPATCH_CEILING. If omitted, confirm=True is required.
         confirm (bool, optional): Human confirmation override for over-ceiling dispatch.
+
         notes (str, optional): Dispatch notes.
 
     Response (JSON):
