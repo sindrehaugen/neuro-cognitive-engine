@@ -100,21 +100,35 @@ async def do_dispatch_work_order(
     ns_uuid = _parse_uuid(params.get("namespace_id"), "namespace_id")
     ticket_id = _parse_uuid(params.get("ticket_id") or params.get("id"), "ticket_id")
 
-    estimated_cost = float(params.get("estimated_cost") or params.get("cost") or 0.0)
     confirm = bool(params.get("confirm", False))
 
+    # Configuration is authoritative for DISPATCH_CEILING.
+    # An optional caller-supplied dispatch_ceiling can only tighten (lower) the ceiling, never raise it.
+    config_ceiling = float(getattr(cfg, "NCE_SUPPORT_AUTONOMY_DISPATCH_CEILING", 0.0))
     raw_ceiling = params.get("dispatch_ceiling")
     if raw_ceiling is not None:
-        ceiling = float(raw_ceiling)
+        ceiling = min(config_ceiling, float(raw_ceiling))
     else:
-        ceiling = float(getattr(cfg, "NCE_SUPPORT_AUTONOMY_DISPATCH_CEILING", 0.0))
+        ceiling = config_ceiling
 
-    # Autonomy Guard: Over-ceiling dispatch without human confirm MUST be refused
-    if not confirm and estimated_cost > ceiling:
-        raise DispatchCeilingExceededError(
-            estimated_cost=estimated_cost,
-            ceiling=ceiling,
-        )
+    # Autonomy Guard (Charter §6 & ML10b-Orch bypass fix):
+    # An absent cost estimate is un-evaluable and MUST fail closed (require confirm=True).
+    # Explicit 0.0 cost indicates genuinely zero-cost dispatch and proceeds autonomously.
+    raw_cost = params.get("estimated_cost") if "estimated_cost" in params else params.get("cost")
+    if raw_cost is None:
+        if not confirm:
+            raise DispatchCeilingExceededError(
+                estimated_cost=float("inf"),
+                ceiling=ceiling,
+            )
+        estimated_cost = 0.0
+    else:
+        estimated_cost = float(raw_cost)
+        if not confirm and estimated_cost > ceiling:
+            raise DispatchCeilingExceededError(
+                estimated_cost=estimated_cost,
+                ceiling=ceiling,
+            )
 
     now_dt = datetime.datetime.now(datetime.timezone.utc)
     ticket_subject = f"TICKET:{ticket_id}"

@@ -449,11 +449,13 @@ async def do_resolve_ticket(
     # Auto-closing a ticket without sufficient confidence is refused.
     autonomous = bool(params.get("autonomous", False))
     if autonomous:
+        config_threshold = float(getattr(cfg, "NCE_SUPPORT_AUTONOMY_AUTOCLOSE_CONFIDENCE", 0.95))
         raw_threshold = params.get("autoclose_confidence")
         if raw_threshold is not None:
-            threshold = float(raw_threshold)
+            # Caller may only tighten (raise) the confidence threshold, never lower it below config
+            threshold = max(config_threshold, float(raw_threshold))
         else:
-            threshold = float(getattr(cfg, "NCE_SUPPORT_AUTONOMY_AUTOCLOSE_CONFIDENCE", 0.95))
+            threshold = config_threshold
         confidence = float(params.get("confidence", 0.0))
         if confidence < threshold:
             raise AutocloseConfidenceRefusalError(

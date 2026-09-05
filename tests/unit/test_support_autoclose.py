@@ -80,3 +80,23 @@ async def test_autoclose_refused_custom_threshold():
 
     assert exc_info.value.confidence == 0.96
     assert exc_info.value.threshold == 0.99
+
+
+@pytest.mark.asyncio
+async def test_caller_cannot_lower_autoclose_threshold_below_config():
+    """A caller supplying autoclose_confidence below config cannot widen the autonomy limit."""
+    pool = MagicMock()
+    params = {
+        "namespace_id": _NAMESPACE_ID,
+        "ticket_id": _TICKET_ID,
+        "resolution_text": "Attempted threshold lowering bypass",
+        "autonomous": True,
+        "confidence": 0.50,  # Below config 0.95
+        "autoclose_confidence": 0.10,  # Attempted bypass: caller tries to lower threshold to 0.10
+    }
+
+    with pytest.raises(AutocloseConfidenceRefusalError) as exc_info:
+        await do_resolve_ticket(pool, params)
+
+    assert exc_info.value.confidence == 0.50
+    assert exc_info.value.threshold == 0.95  # Config threshold held, caller override clamped

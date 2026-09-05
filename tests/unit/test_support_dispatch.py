@@ -40,6 +40,14 @@ def mock_pool():
     return pool
 
 
+@pytest.fixture(autouse=True)
+def set_default_dispatch_ceiling():
+    """Pin default DISPATCH_CEILING config to 200.0 for unit test isolation."""
+    with patch("nce.vertical_modules.support.dispatch.cfg") as mock_cfg:
+        mock_cfg.NCE_SUPPORT_AUTONOMY_DISPATCH_CEILING = 200.0
+        yield mock_cfg
+
+
 # ---------------------------------------------------------------------------
 # 1. Autonomy Ceiling Refusal & Guard Verification
 # ---------------------------------------------------------------------------
@@ -62,6 +70,105 @@ async def test_over_ceiling_dispatch_refused(mock_pool):
     assert exc_info.value.estimated_cost == 500.0
     assert exc_info.value.ceiling == 200.0
     assert "exceeds autonomous ceiling" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_absent_estimated_cost_without_confirm_is_refused(mock_pool):
+    """An autonomous dispatch with NO cost estimate MUST be refused (fail closed)."""
+    with pytest.raises(DispatchCeilingExceededError) as exc_info:
+        await do_dispatch_work_order(
+            mock_pool,
+            {
+                "namespace_id": _NAMESPACE_ID,
+                "ticket_id": _TICKET_ID,
+                # estimated_cost omitted!
+                "confirm": False,
+            },
+        )
+    assert exc_info.value.estimated_cost == float("inf")
+    assert "exceeds autonomous ceiling" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_caller_cannot_raise_ceiling_above_config(mock_pool):
+    """A caller supplying dispatch_ceiling above config cannot widen the autonomy limit."""
+    with patch("nce.vertical_modules.support.dispatch.cfg") as mock_cfg:
+        mock_cfg.NCE_SUPPORT_AUTONOMY_DISPATCH_CEILING = 1000.0
+        with pytest.raises(DispatchCeilingExceededError) as exc_info:
+            await do_dispatch_work_order(
+                mock_pool,
+                {
+                    "namespace_id": _NAMESPACE_ID,
+                    "ticket_id": _TICKET_ID,
+                    "estimated_cost": 5000.0,
+                    "dispatch_ceiling": 999999.0,  # Attempted bypass: caller tries to raise ceiling
+                    "confirm": False,
+                },
+            )
+        assert exc_info.value.estimated_cost == 5000.0
+        assert (
+            exc_info.value.ceiling == 1000.0
+        )  # Config ceiling held, caller override ignored/clamped
+
+
+@pytest.mark.asyncio
+async def test_explicit_zero_cost_proceeds_autonomously(mock_pool):
+    """An explicit 0.0 cost indicates genuinely zero-cost work and proceeds autonomously."""
+    now_dt = datetime.datetime.now(datetime.timezone.utc)
+    ticket_row = {
+        "id": UUID(_TICKET_ID),
+        "namespace_id": UUID(_NAMESPACE_ID),
+        "status": "open",
+        "summary": "Display dead",
+        "events": [],
+    }
+
+    mock_conn = AsyncMock()
+    mock_conn.fetchrow.side_effect = [
+        ticket_row,  # service_tickets lookup
+        None,  # kg_edges existing check
+        {"created_at": now_dt},  # kg_edges insert returning
+    ]
+
+    with (
+        patch("nce.vertical_modules.support.dispatch.scoped_pg_session") as mock_scoped,
+        patch("nce.vertical_modules.support.dispatch.assert_owner", new=AsyncMock()),
+        patch("nce.vertical_modules.support.dispatch.cfg") as mock_cfg,
+    ):
+        mock_cfg.NCE_SUPPORT_AUTONOMY_DISPATCH_CEILING = 1000.0
+        mock_scoped.return_value.__aenter__.return_value = mock_conn
+
+        res = await do_dispatch_work_order(
+            mock_pool,
+            {
+                "namespace_id": _NAMESPACE_ID,
+                "ticket_id": _TICKET_ID,
+                "estimated_cost": 0.0,  # Explicitly zero cost
+                "confirm": False,
+            },
+        )
+
+        assert res["dispatched"] is True
+        assert res["idempotent_replay"] is False
+
+
+@pytest.mark.asyncio
+async def test_default_config_ceiling_zero_refuses_any_positive_cost_without_confirm(mock_pool):
+    """With config ceiling at 0.0, any positive cost requires confirm."""
+    with patch("nce.vertical_modules.support.dispatch.cfg") as mock_cfg:
+        mock_cfg.NCE_SUPPORT_AUTONOMY_DISPATCH_CEILING = 0.0
+        with pytest.raises(DispatchCeilingExceededError) as exc_info:
+            await do_dispatch_work_order(
+                mock_pool,
+                {
+                    "namespace_id": _NAMESPACE_ID,
+                    "ticket_id": _TICKET_ID,
+                    "estimated_cost": 10.0,
+                    "confirm": False,
+                },
+            )
+        assert exc_info.value.estimated_cost == 10.0
+        assert exc_info.value.ceiling == 0.0
 
 
 @pytest.mark.asyncio
