@@ -7,7 +7,7 @@
   <img alt="version" src="https://img.shields.io/badge/version-3.0.0-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.10%2B-3776ab">
   <img alt="protocol" src="https://img.shields.io/badge/MCP-JSON--RPC%202.0-6e40c9">
-  <img alt="license" src="https://img.shields.io/badge/license-Proprietary-lightgrey">
+  <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-blue">
 </p>
 
 NCE began life as **TriMCP** — a Model Context Protocol server backed by a tri-database stack. It has since grown into a full **Neuro-Cognitive Engine**: MCP is now just *one* of several front doors onto a system that consolidates memories while agents sleep, models how knowledge decays and is reinforced, maintains logical consistency across competing beliefs, reasons about cause and effect, and federates memory securely between independent agent networks.
@@ -387,4 +387,4 @@ The [`docs/`](docs/) tree is the source of truth. Start here:
 
 ---
 
-<sub>NCE — Neuro-Cognitive Engine · v3.0.0 · © Sindre Løvlie Haugen · Proprietary. Formerly TriMCP.</sub>
+<sub>NCE — Neuro-Cognitive Engine · v3.0.0 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.</sub>

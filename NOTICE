@@ -1,0 +1,55 @@
+NCE — Neuro-Cognitive Engine
+Copyright (c) 2026 Sindre Løvlie Haugen
+
+This product includes software developed by Sindre Løvlie Haugen.
+
+Licensed under the GNU Affero General Public License, Version 3 (AGPL-3.0).
+You should have received a copy of the licence in the file LICENSE. If not,
+see <https://www.gnu.org/licenses/agpl-3.0.html>.
+
+--------------------------------------------------------------------------
+What this licence means for you, in plain language
+--------------------------------------------------------------------------
+
+You are welcome to use, study, run, modify and redistribute this software,
+including commercially. Three conditions come with that:
+
+  1. ATTRIBUTION. Keep this NOTICE file, the copyright line above, and the
+     attribution to Sindre Løvlie Haugen intact in all copies and derived
+     works. This is a licence condition under AGPL-3.0 section 7(b), and
+     removing it terminates your rights under section 8.
+
+  2. CONTRIBUTE CHANGES BACK. If you distribute a modified version, you must
+     release your modifications under the AGPL-3.0 as well, with source.
+
+  3. NETWORK USE COUNTS AS DISTRIBUTION (section 13). If you run a modified
+     version of this software so that other people interact with it over a
+     network — a hosted service, an API, a SaaS product — you must offer
+     those users the complete corresponding source of your modified version.
+
+Condition 3 is the reason this project uses AGPL-3.0 rather than MIT or
+Apache-2.0. Under a permissive licence, a fork could be run as a hosted
+service indefinitely with no obligation to publish its changes or credit the
+original. That outcome — the living version of this work drifting out of the
+author's hands and out of attribution — is precisely what this licence is
+chosen to prevent. The intent is not to restrict use; it is to keep the
+project alive, shared, and attributed.
+
+--------------------------------------------------------------------------
+Commercial licensing
+--------------------------------------------------------------------------
+
+The copyright holder retains all rights in this work and may license it under
+different terms. If the AGPL-3.0 obligations do not suit your use — for
+example, if you need to build a closed-source or hosted derivative without
+publishing source — contact the copyright holder to discuss a separate
+commercial licence.
+
+--------------------------------------------------------------------------
+Contributions
+--------------------------------------------------------------------------
+
+Contributions are welcome and are accepted under the AGPL-3.0. Note that
+contributions from third parties are owned by their authors; if the project
+later needs to offer commercial licences covering that code, a Contributor
+Licence Agreement will be required at that point.
