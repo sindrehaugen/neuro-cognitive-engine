@@ -1,0 +1,9 @@
+{
+  "version": "1.0",
+  "skill_match_weight": 0.35,
+  "travel_distance_weight": 0.20,
+  "load_balance_weight": 0.15,
+  "internal_preference_weight": 0.15,
+  "outcome_history_weight": 0.15,
+  "description": "Multi-objective weights for Module 15 Staff & Resources AI allocation planner."
+}

@@ -22,6 +22,11 @@ from nce.vertical_modules.resources.allocations import (
     redact_contractor_view,
 )
 from nce.vertical_modules.resources.capacity import do_resolve_capacity
+from nce.vertical_modules.resources.planner import (
+    do_plan_allocation,
+    do_record_allocation_outcome,
+    load_allocation_weights,
+)
 from nce.vertical_modules.resources.registry import (
     VALID_RESOURCE_KINDS,
     do_create_resource,
@@ -43,10 +48,13 @@ __all__ = [
     "do_detect_conflicts",
     "do_get_resource",
     "do_list_resources",
+    "do_plan_allocation",
+    "do_record_allocation_outcome",
     "do_release",
     "do_reserve",
     "do_resolve_capacity",
     "do_update_resource",
+    "load_allocation_weights",
     "redact_contractor_view",
     "require_resources_enabled",
 ]
