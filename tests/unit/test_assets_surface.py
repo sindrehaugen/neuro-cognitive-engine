@@ -168,14 +168,14 @@ def test_tool_count_updated_for_assets_surface() -> None:
     assert "assets_get" in TOOL_REGISTRY
     assert "assets_list" in TOOL_REGISTRY
     assert "assets_advance_lifecycle" in TOOL_REGISTRY
-    assert len(TOOL_REGISTRY) == 158, (
+    assert len(TOOL_REGISTRY) == 166, (
         f"Expected 135 tools (116 + 3 assets from Batch 143, M9.W3 + 1 system_design "
         f"from Batch 067b, M6.W13a + 2 system_design authoring tools from "
         f"Batch 067c, M6.W13b + 1 system_design validator from Batch 067d, M6.W13c "
         f"+ 1 system_design retire tool from Batch 067h, M6.W17 "
         f"+ 11 inventory tools from Batch 138a, M11.W10a -- the Inventory "
         f"surface-completion wave; this Assets test carries a repo-wide registry "
-        f"ratchet, so it moves whenever ANY module registers a tool), "
+        f"ratchet, so it moves whenever ANY module registers a tool + 8 hr tools from Module 13 (HR engine)), "
         f"got {len(TOOL_REGISTRY)}: {sorted(TOOL_REGISTRY)}"
     )
 

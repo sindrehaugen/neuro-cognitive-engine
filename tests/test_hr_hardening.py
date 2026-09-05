@@ -60,7 +60,7 @@ async def tenant_a(pg_pool: asyncpg.Pool) -> AsyncGenerator[str, None]:
     async with pg_pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO namespaces (id, name, metadata)
+            INSERT INTO namespaces (id, slug, metadata)
             VALUES ($1::uuid, $2, '{"hr": {"enabled": true}}'::jsonb)
             ON CONFLICT (id) DO NOTHING
             """,
@@ -80,7 +80,7 @@ async def tenant_b(pg_pool: asyncpg.Pool) -> AsyncGenerator[str, None]:
     async with pg_pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO namespaces (id, name, metadata)
+            INSERT INTO namespaces (id, slug, metadata)
             VALUES ($1::uuid, $2, '{"hr": {"enabled": true}}'::jsonb)
             ON CONFLICT (id) DO NOTHING
             """,

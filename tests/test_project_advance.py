@@ -566,7 +566,7 @@ class TestProjectAdvancePhaseToolRegistry:
         inventory_reconcile_dead_stock read only, and
         inventory_recommend_restock/inventory_forecast_demand write nothing;
         +8 ML12-B5 field_tech tools, M12.W5."""
-        assert len(MUTATION_TOOLS) == 66
+        assert len(MUTATION_TOOLS) == 69
 
     def test_admin_only_count(self) -> None:
         """Admin-only tools must total 32 (unified realignment registry;
@@ -581,4 +581,4 @@ class TestProjectAdvancePhaseToolRegistry:
         inventory_forecast_demand, are Watcher reads and are not admin_only;
         +2 ML10-B5 support tools, M10.W5 -- support_open_ticket, support_resolve_ticket;
         +3 ML12-B5 field_tech tools, M12.W5 -- field_tech_create_work_order, field_tech_assign, field_tech_record_outcome)."""
-        assert len(ADMIN_ONLY_TOOLS) == 32
+        assert len(ADMIN_ONLY_TOOLS) == 34
