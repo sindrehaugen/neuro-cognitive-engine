@@ -21,6 +21,11 @@ from nce.vertical_modules.marketing.drafting import (
 )
 from nce.vertical_modules.marketing.redaction import redact_for_marketing_draft
 from nce.vertical_modules.marketing.taxonomy import DEFAULT_BRAND_VOICE
+from nce.vertical_modules.marketing.testimonials import (
+    do_capture_testimonial,
+    do_request_testimonial,
+    do_retract_testimonial,
+)
 
 __all__ = [
     "DEFAULT_BRAND_VOICE",
@@ -30,8 +35,11 @@ __all__ = [
     "MarketingSensitiveDataLeakError",
     "MarketingUnapprovedPublishError",
     "MarketingUngroundedClaimError",
+    "do_capture_testimonial",
     "do_draft_case_study",
     "do_find_case_study_candidates",
+    "do_request_testimonial",
+    "do_retract_testimonial",
     "redact_for_marketing_draft",
     "require_marketing_enabled",
     "validate_draft_grounding",
