@@ -83,7 +83,7 @@ installer writes mode file ─► go/launch/run.go
 
 ## 4. Profile A — on-prem customer edge worker
 
-**Runs on:** an IT-provisioned mini-PC/VM at the customer site (the Veidekke M4350/PR460X LAN is the pilot).
+**Runs on:** an IT-provisioned mini-PC/VM at the customer site (a managed switch/AP LAN at the pilot site).
 **Why at the edge:** *data-plane locality* — the resources only exist on the customer network. You cannot SNMP-poll, receive syslog/traps, or packet-capture a customer LAN from the cloud.
 **Flagship tool pack:** `netops` (SNMP / syslog / traps / Zeek / NPCAP capture — see `18b-data-paths.md`) plus any customer-scoped MCP integrations (their on-prem systems).
 **Trust tier:** the **most** untrusted worker in the fleet — third-party premises, physically outside the tenant's control. Gets the strictest §8 posture.
@@ -186,7 +186,7 @@ Governance: tiering is a **routing policy**, not a quality compromise — the C9
 - **EW-1 — `ModeEdge` skeleton.** `edge.go` in `go/launch`; installer writes the mode + sub-profile; worker boots bound to a stub uplink (no `PG_DSN`); reuses `DetectHardware` + `RecoveringWorker`.
 - **EW-2 — The uplink (the hard part).** Outbound mTLS client; job-pull + command/response + result push; versioned envelope; per-edge identity/token; offline buffer + replay over the outbox/DLQ. Security-reviewed on its own (like C3).
 - **EW-3 — Isolation hardening.** Per-edge C3 scope + capability-grant binding (only granted tools registered); local OS vault; egress allowlist; signed image/attestation.
-- **EW-4 — Profile A pack (netops).** Bind the `netops` tool pack; wire `18b` data paths; capture behind C2 + legal gate (`18d`). Veidekke pilot.
+- **EW-4 — Profile A pack (netops).** Bind the `netops` tool pack; wire `18b` data paths; capture behind C2 + legal gate (`18d`). Pilot site.
 - **EW-5 — Profile B tiering.** Local-model routing policy on the detected backend; lane mapping (local-cheap vs cloud-hard); promptwave/code-index offload; measure token delta.
 - **EW-6 — Fleet management.** Remote pause/rotate/revoke; health/telemetry per edge; multi-edge addressing; calibration of tiering thresholds from the ledger.
 

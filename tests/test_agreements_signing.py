@@ -205,7 +205,7 @@ async def test_record_signature_same_document_signs_and_history_newest_first(
     await _seed_ownership(pg_pool, namespace_id)
 
     agreement_id = uuid.uuid4()
-    document = "SLA agreement — customer Veidekke — v2026.1"
+    document = "SLA agreement — customer Acme AS — v2026.1"
     signer = "cfo@customer.example"
     engine = _EngineStub(pg_pool)
 

@@ -34,7 +34,7 @@ shared graph — the whole reason to do this in NCE.
 | `18b-data-paths.md` | The five sources, adapted: netbox-via-vertical, SNMP, syslog/traps, Zeek/flow, capture |
 | `18c-correlation-and-reconciliation.md` | Deep-AI correlation + intent-vs-observed divergence discipline (C5/C1 reuse), topology, drift |
 | `18d-security-legal-ops.md` | C2/C3/C8 reuse, capture legal gate, retention, edge hardening |
-| `18e-roadmap.md` | Build phases B1–B6 (RL-batch sized) + foundation (C1–C9) dependencies + Veidekke pilot |
+| `18e-roadmap.md` | Build phases B1–B6 (RL-batch sized) + foundation (C1–C9) dependencies + pilot site |
 
 ## Adaptations from the original draft (`C:\Claude\nce-netops-edge\plans\`)
 

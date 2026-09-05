@@ -436,7 +436,7 @@ interface SearchHit {
       "memory_id": "11111111-1111-1111-1111-111111111111",
       "payload_ref": "abcdef1234567890abcdef1234567890abcdef12",
       "score": 0.92,
-      "raw_data": "Core switch M4350 at 10.1.0.1 serves VLAN 100.",
+      "raw_data": "Core switch SW-CORE-01 at 10.1.0.1 serves VLAN 100.",
       "salience_score": 0.88,
       "last_reinforced_at": "2026-06-19T08:30:00+00:00",
       "confidence": 0.81,
