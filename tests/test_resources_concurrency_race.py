@@ -20,9 +20,17 @@ from typing import Any
 import asyncpg
 import pytest
 
+from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
 from nce.vertical_modules.resources._guard import ResourceConcurrencyError
 from nce.vertical_modules.resources.allocations import do_reserve
 from nce.vertical_modules.resources.registry import do_create_resource
+
+
+@pytest.fixture(autouse=True)
+async def _seed_ownership(pg_pool: asyncpg.Pool, namespace_id: uuid.UUID) -> None:  # type: ignore[type-arg]
+    async with pg_pool.acquire() as conn:
+        async with conn.transaction():
+            await seed_node_ownership_registry(conn, namespace_id)
 
 
 @pytest.mark.integration
