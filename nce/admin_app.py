@@ -253,6 +253,11 @@ def build_admin_routes() -> list[Route]:
             methods=["GET"],
         ),
         Route(
+            "/api/admin/signing/mark-signed",
+            endpoint=h.api_admin_signing_mark_signed,
+            methods=["POST"],
+        ),
+        Route(
             "/api/admin/pii-redactions",
             endpoint=h.api_admin_pii_redactions_list,
             methods=["GET"],

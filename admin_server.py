@@ -46,6 +46,7 @@ from nce.admin_http_handlers import (
     api_admin_dlq_list,
     api_admin_quotas,
     api_admin_signing_status,
+    api_admin_signing_mark_signed,
     api_admin_pii_redactions_list,
     api_admin_security_event_seq_gaps,
     api_admin_security_verify_memory_sample,

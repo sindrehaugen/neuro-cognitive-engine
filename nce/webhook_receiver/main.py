@@ -218,6 +218,14 @@ def _dedup_key(provider: str, payload: dict[str, Any]) -> str | None:
         raw = f"{channel_id}|{resource_id}|{message_number}|{resource_state}"
         digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
         return f"nce:webhook:dedup:gdrive:{digest}"
+    if provider in ("manual", "oneflow", "criipto", "signicat"):
+        session_id = str(payload.get("session_id") or "")
+        event_status = str(payload.get("status") or payload.get("event") or "")
+        if not session_id:
+            return None
+        raw = f"{provider}|{session_id}|{event_status}"
+        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+        return f"nce:webhook:dedup:signing:{digest}"
     return None
 
 
@@ -502,3 +510,98 @@ async def drive_webhook(
     }
     job_id = enqueue_process_bridge_event("gdrive", enqueue_payload)
     return {"status": "queued", "job_id": job_id}
+
+
+@app.post("/webhooks/signing/{provider}")
+async def signing_webhook(
+    provider: str,
+    request: Request,
+):
+    """Receive e-signature webhook notifications (Wave S-2a).
+
+    Supports 'manual', 'oneflow', 'criipto', 'signicat'.
+    Applies bounded-body reading, rate limiting, and deduplication.
+    When status is 'signed', invokes do_on_signed_callback to freeze the
+    quote baseline and trigger Project conversion.
+    """
+    valid_providers = ("manual", "oneflow", "criipto", "signicat")
+    if provider not in valid_providers:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported signing provider '{provider}'. Must be one of {valid_providers}",
+        )
+
+    payload = await _read_json_bounded(request)
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Expected a JSON object")
+
+    session_id = payload.get("session_id")
+    if not session_id or not str(session_id).strip():
+        raise HTTPException(status_code=400, detail="Missing required 'session_id' in payload")
+
+    session_id_str = str(session_id).strip()
+    dedup = _dedup_key(provider, payload)
+    if dedup and not _claim_dedup(dedup):
+        log.info(
+            "Signing webhook dedup skip provider=%s session=%s key=%s",
+            provider,
+            session_id_str,
+            dedup,
+        )
+        return {"status": "deduplicated", "session_id": session_id_str}
+
+    status = str(payload.get("status") or payload.get("event") or "").lower()
+
+    # Unsigned / pending / unrecognized callbacks write no baseline and trigger no conversion
+    if status != "signed":
+        return {
+            "status": "acknowledged",
+            "provider": provider,
+            "session_id": session_id_str,
+            "event_status": status,
+            "baseline_frozen": False,
+        }
+
+    pool = await _get_pg_pool()
+    import types
+
+    engine = getattr(request.app.state, "engine", None)
+    if engine is None or not hasattr(engine, "pg_pool"):
+        engine = types.SimpleNamespace(pg_pool=pool)
+
+    # Resolve namespace_id
+    ns_str = payload.get("namespace_id") or request.query_params.get("namespace_id")
+    if not ns_str:
+        async with pool.acquire(timeout=10.0) as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT namespace_id
+                FROM sales_read_model
+                WHERE entity = 'quotes'
+                  AND (manual->>'signing_session_id' = $1 OR source_json->>'signing_session_id' = $1)
+                LIMIT 1
+                """,
+                session_id_str,
+            )
+            if row and row.get("namespace_id"):
+                ns_str = str(row["namespace_id"])
+
+    if not ns_str:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Quote session '{session_id_str}' not found in read model",
+        )
+
+    from nce.vertical_modules.sales.signing import do_on_signed_callback
+
+    params = {
+        "namespace_id": ns_str,
+        "session_id": session_id_str,
+        "callback_payload": payload.get("callback_payload") or payload,
+    }
+
+    try:
+        res = await do_on_signed_callback(engine, params)
+        return {"status": "processed", "provider": provider, **res}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

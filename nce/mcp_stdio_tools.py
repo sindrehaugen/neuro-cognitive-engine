@@ -3373,6 +3373,40 @@ TOOLS = [
         },
     ),
     Tool(
+        name="sales_request_signature",
+        description=(
+            "Initiate an e-signature request for a sales quote via C7 SignTransport. "
+            "Actor tool, confirm-first, idempotent under caller-supplied key."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "quote_id": {
+                    "type": "string",
+                    "description": "The Sales QUOTE identifier.",
+                },
+                "signer": {
+                    "type": "object",
+                    "description": "Optional signer details (name, email).",
+                },
+                "method": {
+                    "type": "string",
+                    "description": "Transport method: 'manual', 'oneflow', 'criipto', 'signicat'. Defaults to 'manual'.",
+                },
+                "idempotency_key": {
+                    "type": "string",
+                    "description": "Optional caller-supplied idempotency key.",
+                },
+                "doc_bytes": {
+                    "type": "string",
+                    "description": "Optional document bytes/text to sign.",
+                },
+            },
+            "required": ["namespace_id", "quote_id"],
+        },
+    ),
+    Tool(
         name="sales_ping",
         description=(
             'Liveness probe for the Sales vertical. Returns {"ok": true, "engine": "sales"}.'

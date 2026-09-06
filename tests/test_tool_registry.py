@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 206  # 202 baseline + 4 Assets completion tools (ML9b P1+P2)
+_EXPECTED_TOTAL = 207  # 202 baseline + 4 Assets completion tools (ML9b P1+P2) + 1 Sales signing request (Wave S-2a)
 
 
 def test_registry_has_expected_entries():
@@ -209,6 +209,8 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # ML17-B5 (M17.W5) -- Customer Portal Engine mutations (2 tools)
         "customer_portal_raise_service_request",
         "customer_portal_register_expansion_interest",
+        # MLV15B-S2a -- Sales quote signing request Actor tool
+        "sales_request_signature",
     }
 )
 
@@ -221,7 +223,9 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 87  # 83 baseline + 4 assets completion tools
+    assert (
+        len(MUTATION_TOOLS) == 88
+    )  # 83 baseline + 4 assets completion tools + 1 sales_request_signature
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -446,6 +450,8 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "business_insights_ask_business",
         # ML9b-P1 -- Assets Engine admin_only tools (operator/cron telemetry pull)
         "assets_pull_telemetry",
+        # MLV15B-S2a -- Sales quote signing request Actor tool
+        "sales_request_signature",
     }
 )
 
@@ -458,7 +464,9 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 49  # 48 baseline + 1 assets tool (pull_telemetry)
+    assert (
+        len(ADMIN_ONLY_TOOLS) == 50
+    )  # 48 baseline + 1 assets tool (pull_telemetry) + 1 sales_request_signature
 
 
 # ---------------------------------------------------------------------------
