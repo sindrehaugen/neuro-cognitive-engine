@@ -14,13 +14,16 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from typing import Any
 from uuid import UUID
 
 from starlette.responses import JSONResponse
 
 from nce.admin_handlers._shared import (
+    _json_safe,
     admin_error_response,
     admin_state,
+    bump_mcp_cache_generation,
     serialize_pg_row,
 )
 from nce.auth import validate_agent_id
@@ -32,10 +35,28 @@ from nce.vertical_modules.agreements._guard import (
     AgreementsDisabledError,
     require_agreements_enabled,
 )
+from nce.vertical_modules.agreements.authoring import (
+    do_add_comment,
+    do_create_agreement,
+    do_suggest_revision,
+)
+from nce.vertical_modules.agreements.compliance import (
+    do_run_compliance_audit,
+    do_suggest_terms,
+)
 from nce.vertical_modules.agreements.coverage import do_coverage_matrix
 from nce.vertical_modules.agreements.extract import do_extract_agreement
-from nce.vertical_modules.agreements.graph import write_agreement_to_graph_and_memories
+from nce.vertical_modules.agreements.graph import (
+    do_upsert_agreement,
+    write_agreement_to_graph_and_memories,
+)
+from nce.vertical_modules.agreements.kickback import do_reconcile_kickback
 from nce.vertical_modules.agreements.review import do_review_extraction
+from nce.vertical_modules.agreements.signing import (
+    do_record_signature,
+    do_request_signature,
+)
+from nce.vertical_modules.agreements.sla import do_set_sla_coverage
 
 __all__ = [
     "AgreementsDisabledError",
@@ -45,6 +66,16 @@ __all__ = [
     "api_agreements_extract",
     "api_agreements_review",
     "api_agreements_coverage",
+    "api_agreements_reconcile",
+    "api_agreements_create",
+    "api_agreements_suggest_revision",
+    "api_agreements_comment",
+    "api_agreements_request_signature",
+    "api_agreements_record_signature",
+    "api_agreements_compliance_audit",
+    "api_agreements_suggest_terms",
+    "api_agreements_sla_coverage",
+    "api_agreements_upsert",
 ]
 
 log = logging.getLogger("nce.admin_handlers.agreements")
@@ -296,6 +327,7 @@ async def api_agreements_extract(request) -> JSONResponse:
                 extracted_data=extraction_res,
             )
 
+        await bump_mcp_cache_generation(admin_state.engine, route="api_agreements_extract")
         return JSONResponse(
             {
                 "status": "ok",
@@ -372,6 +404,7 @@ async def api_agreements_review(request) -> JSONResponse:
                 extracted_data=review_res["extracted"],
             )
 
+        await bump_mcp_cache_generation(admin_state.engine, route="api_agreements_review")
         return JSONResponse({"status": "ok", "agreement": review_res})
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=422)
@@ -425,4 +458,287 @@ async def api_agreements_coverage(request) -> JSONResponse:
     except Exception as exc:
         return admin_error_response(
             "Agreements coverage error", exc, status_code=500, log_event="api_agreements_coverage"
+        )
+
+
+async def _extract_request_data(request) -> tuple[dict[str, Any], JSONResponse | None]:
+    """Extract request payload from JSON body or query params."""
+    data: dict[str, Any] = {}
+    if hasattr(request, "json") and callable(request.json):
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                data.update(body)
+        except Exception:
+            content_type = getattr(request, "headers", {}).get("content-type", "")
+            if "application/json" in content_type:
+                return {}, JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+    if hasattr(request, "query_params"):
+        for k, v in request.query_params.items():
+            if k not in data:
+                data[k] = v
+    return data, None
+
+
+async def _resolve_namespace_id(data: dict[str, Any]) -> tuple[str | None, JSONResponse | None]:
+    """Validate namespace_id and check if agreements vertical is enabled."""
+    namespace_id_raw = data.get("namespace_id")
+    if not namespace_id_raw:
+        return None, JSONResponse({"error": "Missing namespace_id"}, status_code=422)
+    namespace_id = validate_agent_id(str(namespace_id_raw).strip())
+    try:
+        UUID(namespace_id)
+    except ValueError as exc:
+        return None, JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+    disabled = await _check_agreements_enabled_rest(namespace_id)
+    if disabled is not None:
+        return None, disabled
+    return namespace_id, None
+
+
+async def api_agreements_reconcile(request) -> JSONResponse:
+    """POST /api/agreements/reconcile — compute supplier kickback reconciliation."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+    data, err = await _extract_request_data(request)
+    if err:
+        return err
+    namespace_id, err = await _resolve_namespace_id(data)
+    if err:
+        return err
+    data["namespace_id"] = namespace_id
+    try:
+        res = await do_reconcile_kickback(admin_state.engine, data)
+        return JSONResponse({"status": "ok", **_json_safe(res)})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Agreements reconcile error", exc, status_code=500, log_event="api_agreements_reconcile"
+        )
+
+
+async def api_agreements_create(request) -> JSONResponse:
+    """POST /api/agreements/create — author a new agreement."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+    data, err = await _extract_request_data(request)
+    if err:
+        return err
+    namespace_id, err = await _resolve_namespace_id(data)
+    if err:
+        return err
+    data["namespace_id"] = namespace_id
+    try:
+        res = await do_create_agreement(admin_state.engine, data)
+        await bump_mcp_cache_generation(admin_state.engine, route="api_agreements_create")
+        return JSONResponse({"status": "ok", **_json_safe(res)})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Agreements create error", exc, status_code=500, log_event="api_agreements_create"
+        )
+
+
+async def api_agreements_suggest_revision(request) -> JSONResponse:
+    """POST /api/agreements/suggest-revision — propose revision to agreement clause."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+    data, err = await _extract_request_data(request)
+    if err:
+        return err
+    namespace_id, err = await _resolve_namespace_id(data)
+    if err:
+        return err
+    data["namespace_id"] = namespace_id
+    try:
+        res = await do_suggest_revision(admin_state.engine, data)
+        await bump_mcp_cache_generation(admin_state.engine, route="api_agreements_suggest_revision")
+        return JSONResponse({"status": "ok", **_json_safe(res)})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Agreements suggest revision error",
+            exc,
+            status_code=500,
+            log_event="api_agreements_suggest_revision",
+        )
+
+
+async def api_agreements_comment(request) -> JSONResponse:
+    """POST /api/agreements/comment — record negotiation comment."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+    data, err = await _extract_request_data(request)
+    if err:
+        return err
+    namespace_id, err = await _resolve_namespace_id(data)
+    if err:
+        return err
+    data["namespace_id"] = namespace_id
+    try:
+        res = await do_add_comment(admin_state.engine, data)
+        await bump_mcp_cache_generation(admin_state.engine, route="api_agreements_comment")
+        return JSONResponse({"status": "ok", **_json_safe(res)})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Agreements comment error", exc, status_code=500, log_event="api_agreements_comment"
+        )
+
+
+async def api_agreements_request_signature(request) -> JSONResponse:
+    """POST /api/agreements/request-signature — dispatch signature request."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+    data, err = await _extract_request_data(request)
+    if err:
+        return err
+    namespace_id, err = await _resolve_namespace_id(data)
+    if err:
+        return err
+    data["namespace_id"] = namespace_id
+    try:
+        res = await do_request_signature(admin_state.engine, data)
+        await bump_mcp_cache_generation(
+            admin_state.engine, route="api_agreements_request_signature"
+        )
+        return JSONResponse({"status": "ok", **_json_safe(res)})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Agreements request signature error",
+            exc,
+            status_code=500,
+            log_event="api_agreements_request_signature",
+        )
+
+
+async def api_agreements_record_signature(request) -> JSONResponse:
+    """POST /api/agreements/record-signature — record external signature."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+    data, err = await _extract_request_data(request)
+    if err:
+        return err
+    namespace_id, err = await _resolve_namespace_id(data)
+    if err:
+        return err
+    data["namespace_id"] = namespace_id
+    try:
+        res = await do_record_signature(admin_state.engine, data)
+        await bump_mcp_cache_generation(admin_state.engine, route="api_agreements_record_signature")
+        return JSONResponse({"status": "ok", **_json_safe(res)})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Agreements record signature error",
+            exc,
+            status_code=500,
+            log_event="api_agreements_record_signature",
+        )
+
+
+async def api_agreements_compliance_audit(request) -> JSONResponse:
+    """POST /api/agreements/compliance-audit — execute compliance audit gate."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+    data, err = await _extract_request_data(request)
+    if err:
+        return err
+    namespace_id, err = await _resolve_namespace_id(data)
+    if err:
+        return err
+    data["namespace_id"] = namespace_id
+    try:
+        res = await do_run_compliance_audit(admin_state.engine, data)
+        return JSONResponse({"status": "ok", **_json_safe(res)})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Agreements compliance audit error",
+            exc,
+            status_code=500,
+            log_event="api_agreements_compliance_audit",
+        )
+
+
+async def api_agreements_suggest_terms(request) -> JSONResponse:
+    """POST /api/agreements/suggest-terms — suggest term adjustments versus benchmark."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+    data, err = await _extract_request_data(request)
+    if err:
+        return err
+    namespace_id, err = await _resolve_namespace_id(data)
+    if err:
+        return err
+    data["namespace_id"] = namespace_id
+    try:
+        res = await do_suggest_terms(admin_state.engine, data)
+        await bump_mcp_cache_generation(admin_state.engine, route="api_agreements_suggest_terms")
+        return JSONResponse({"status": "ok", **_json_safe(res)})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Agreements suggest terms error",
+            exc,
+            status_code=500,
+            log_event="api_agreements_suggest_terms",
+        )
+
+
+async def api_agreements_sla_coverage(request) -> JSONResponse:
+    """POST /api/agreements/sla-coverage — set SLA coverage terms and functional location edge."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+    data, err = await _extract_request_data(request)
+    if err:
+        return err
+    namespace_id, err = await _resolve_namespace_id(data)
+    if err:
+        return err
+    data["namespace_id"] = namespace_id
+    try:
+        res = await do_set_sla_coverage(admin_state.engine, data)
+        await bump_mcp_cache_generation(admin_state.engine, route="api_agreements_sla_coverage")
+        return JSONResponse({"status": "ok", **_json_safe(res)})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Agreements SLA coverage error",
+            exc,
+            status_code=500,
+            log_event="api_agreements_sla_coverage",
+        )
+
+
+async def api_agreements_upsert(request) -> JSONResponse:
+    """POST /api/agreements/upsert — upsert agreement graph node and memories."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+    data, err = await _extract_request_data(request)
+    if err:
+        return err
+    namespace_id, err = await _resolve_namespace_id(data)
+    if err:
+        return err
+    data["namespace_id"] = namespace_id
+    try:
+        res = await do_upsert_agreement(admin_state.engine, data)
+        await bump_mcp_cache_generation(admin_state.engine, route="api_agreements_upsert")
+        return JSONResponse({"status": "ok", **_json_safe(res)})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Agreements upsert error", exc, status_code=500, log_event="api_agreements_upsert"
         )

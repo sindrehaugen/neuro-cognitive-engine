@@ -26,9 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = (
-    215  # 213 baseline (incl. S-2a #25) + 2 Procurement PO lifecycle tools (Wave PR-1)
-)
+_EXPECTED_TOTAL = 224  # 215 baseline (incl. Wave PR-1 #35) + 9 Agreements tools (Wave AG-2)
 
 
 def test_registry_has_expected_entries():
@@ -216,6 +214,13 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # Wave PR-1 -- Procurement PO lifecycle Actor tools (2 tools)
         "procurement_generate_po",
         "procurement_submit_po",
+        # MLV15D-AG2 -- Agreements surface completion Actor mutations (6 tools)
+        "agreements_extract",
+        "agreements_create",
+        "agreements_suggest_revision",
+        "agreements_request_signature",
+        "agreements_record_signature",
+        "agreements_review_extraction",
     }
 )
 
@@ -228,7 +233,9 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 90  # 88 baseline + 2 Procurement PO lifecycle tools (Wave PR-1)
+    assert (
+        len(MUTATION_TOOLS) == 96
+    )  # 90 baseline (incl. PR-1 #35) + 6 Agreements tools (Wave AG-2)
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -360,6 +367,10 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "business_insights_morning_brief",
         "business_insights_risk_radar",
         "business_insights_kpi_dashboard",
+        # MLV15D-AG2 -- Agreements surface completion cacheable reads (3 tools)
+        "agreements_coverage_matrix",
+        "agreements_reconcile_kickback",
+        "agreements_run_compliance_audit",
     }
 )
 
@@ -372,7 +383,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 82  # 76 baseline + 6 economy surface completion tools
+    assert len(CACHEABLE_TOOLS) == 85  # 76 baseline + 6 economy + 3 agreements tools
 
 
 # ---------------------------------------------------------------------------
@@ -465,6 +476,13 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         # Wave PR-1 -- Procurement PO lifecycle Actor tools (2 tools)
         "procurement_generate_po",
         "procurement_submit_po",
+        # MLV15D-AG2 -- Agreements surface completion admin tools (6 tools)
+        "agreements_extract",
+        "agreements_create",
+        "agreements_suggest_revision",
+        "agreements_request_signature",
+        "agreements_record_signature",
+        "agreements_review_extraction",
     }
 )
 
@@ -477,7 +495,9 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 52  # 50 baseline + 2 Procurement PO lifecycle tools (Wave PR-1)
+    assert (
+        len(ADMIN_ONLY_TOOLS) == 58
+    )  # 52 baseline (incl. PR-1 #35) + 6 Agreements tools (Wave AG-2)
 
 
 # ---------------------------------------------------------------------------
