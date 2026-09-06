@@ -16,6 +16,8 @@ from nce.observability import MERKLE_CHAIN_VALID
 
 # Ensure NCE_MASTER_KEY is populated for the config loader
 os.environ.setdefault("NCE_MASTER_KEY", "x" * 32)
+os.environ.setdefault("MINIO_ACCESS_KEY", "test-minio-key")
+os.environ.setdefault("MINIO_SECRET_KEY", "test-minio-secret")
 
 
 class StopMain(Exception):
@@ -33,6 +35,9 @@ async def test_cron_boot_registers_chain_verification():
     with (
         patch("asyncpg.create_pool", new_callable=AsyncMock, return_value=mock_pool),
         patch("asyncio.Event.wait", side_effect=StopMain),
+        patch("asyncio.sleep", new_callable=AsyncMock),
+        patch.object(cfg, "CRON_STARTUP_JITTER_MAX_SECONDS", 0.0),
+        patch.object(cfg, "validate"),
         patch("nce.cron._renewal_tick", new_callable=AsyncMock),
         patch("nce.cron._reembedding_tick", new_callable=AsyncMock),
         patch("nce.cron._consolidation_tick", new_callable=AsyncMock),

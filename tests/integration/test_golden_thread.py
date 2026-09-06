@@ -27,6 +27,8 @@ import pytest
 from nce.orchestrator import NCEEngine
 from nce.tool_registry import TOOL_REGISTRY
 
+pytestmark = pytest.mark.live
+
 # ---------------------------------------------------------------------------
 # Golden Thread Burndown Manifest
 # ---------------------------------------------------------------------------

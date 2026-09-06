@@ -53,15 +53,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
-      # pyproject.toml declares requires-python = ">=3.10". Every job here used
-      # to pin 3.11, so the declared floor was asserted nowhere -- and it had
-      # already been broken by `from datetime import UTC` (3.11+) in production
-      # code, which fails at IMPORT on 3.10 while CI stayed green.
-      #
-      # Only this job is matrixed: it is the one that catches an import-time
-      # break, and the integration/citus jobs would multiply Postgres service
-      # containers for no extra language coverage. If the floor is ever raised,
-      # drop "3.10" here AND update requires-python in the same commit.
+      # Wave T-3 / TDL-8: Three-tier test execution model:
+      # 1. Fast unit tier (this job): Matrixed across Python 3.10 and 3.11 to enforce
+      #    the declared requires-python = ">=3.10" floor (TDL-8) at import/compile time.
+      #    Excludes integration, perf, and live-tier multi-engine scenarios.
+      # 2. Integration tier: DB-backed suites against Postgres and Redis running on
+      #    Python 3.11 only to avoid multiplying service container runtimes.
+      # 3. Live tier: Nightly Golden Thread (I-7) against the live stack in
+      #    .github/workflows/nightly-golden-thread.yml rather than in the PR path.
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11"]
@@ -94,10 +93,9 @@ jobs:
           DRIVE_CHANNEL_TOKEN: test-drive-token
           MINIO_ACCESS_KEY: test-minio-access-key
           MINIO_SECRET_KEY: test-minio-secret-key
-        # "and not perf": the perf measurement harness (tests/perf, OL Batch O0)
-        # is opt-in — pytest.ini defaults exclude it, but a CLI -m overrides
-        # that default, so the exclusion must live here too.
-        run: pytest tests/ -m "not integration and not perf" -q --tb=short
+        # Wave T-3: Exclude integration, perf, and live-tier scenarios.
+        # Golden Thread multi-engine scenario runs nightly against the live stack.
+        run: pytest tests/ -m "not integration and not perf and not live" -q --tb=short
 
       - name: Empty with-block gate
         run: python scripts/check_empty_with.py

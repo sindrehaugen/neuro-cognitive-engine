@@ -5,11 +5,14 @@ from __future__ import annotations
 import os
 
 os.environ.setdefault("NCE_MASTER_KEY", "x" * 32)
+os.environ.setdefault("MINIO_ACCESS_KEY", "test-minio-key")
+os.environ.setdefault("MINIO_SECRET_KEY", "test-minio-secret")
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from nce.config import cfg
 from nce.cron import async_main
 
 
@@ -26,11 +29,14 @@ async def test_cron_boot_registers_decay_prune():
     mock_pool = MagicMock()
     mock_pool.close = AsyncMock()
 
-    # We patch the database/event loops and all tick functions to avoid executing
+    # We patch the database/event loops, sleep jitter, and all tick functions to avoid executing
     # actual background queries or connecting to live services during boot.
     with (
         patch("asyncpg.create_pool", new_callable=AsyncMock, return_value=mock_pool),
         patch("asyncio.Event.wait", side_effect=StopMain),
+        patch("asyncio.sleep", new_callable=AsyncMock),
+        patch.object(cfg, "CRON_STARTUP_JITTER_MAX_SECONDS", 0.0),
+        patch.object(cfg, "validate"),
         patch("nce.cron._renewal_tick", new_callable=AsyncMock),
         patch("nce.cron._reembedding_tick", new_callable=AsyncMock),
         patch("nce.cron._consolidation_tick", new_callable=AsyncMock),
