@@ -151,10 +151,10 @@ async def test_kpi_snapshots_tenant_isolation(bi_db_pool: asyncpg.Pool) -> None:
         await conn.execute(
             """
             INSERT INTO business_insights_kpi_snapshots (
-                id, namespace_id, snapshot_type, metrics, coverage, created_by
+                id, namespace_id, kpi_key, value, period, source_engine, raw
             ) VALUES (
-                $1, $2, 'daily_roll_up', '{"ebitda_margin": 0.18}'::jsonb,
-                '{"reconciled_engines": ["economy"]}'::jsonb, 'test_runner'
+                $1, $2, 'ebitda_margin', 0.18, 'daily_roll_up', 'economy',
+                '{"reconciled_engines": ["economy"]}'::jsonb
             )
             """,
             snapshot_id,
@@ -163,15 +163,16 @@ async def test_kpi_snapshots_tenant_isolation(bi_db_pool: asyncpg.Pool) -> None:
 
         # Tenant A sees row
         row_a = await conn.fetchrow(
-            "SELECT id, metrics FROM business_insights_kpi_snapshots WHERE namespace_id = $1 AND id = $2",
+            "SELECT id, kpi_key, value, raw FROM business_insights_kpi_snapshots "
+            "WHERE namespace_id = $1 AND id = $2",
             ns_a,
             snapshot_id,
         )
         assert row_a is not None
-        metrics = (
-            json.loads(row_a["metrics"]) if isinstance(row_a["metrics"], str) else row_a["metrics"]
-        )
-        assert metrics["ebitda_margin"] == 0.18
+        assert row_a["kpi_key"] == "ebitda_margin"
+        assert float(row_a["value"]) == 0.18
+        raw = json.loads(row_a["raw"]) if isinstance(row_a["raw"], str) else row_a["raw"]
+        assert raw["reconciled_engines"] == ["economy"]
 
         # Tenant B sees nothing
         row_b = await conn.fetchrow(

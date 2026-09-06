@@ -400,7 +400,7 @@ Schema evolution is governed by chronological migration scripts located in [`nce
 | [`073_customer_portal_engine.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/073_customer_portal_engine.sql) | Customer Portal Engine (Module 17, Phase 1): customer login identities (`portal_users`), document grants (`portal_document_shares`), and service request intake (`portal_service_requests`). | `portal_users`, `portal_document_shares`, `portal_service_requests` | None | `external_isolation_policy` on all three tables |
 
 ### 9c. Automated RLS Catalog Consistency Gate
-To guarantee that newly added tables cannot be deployed without tenant isolation, NCE executes `verify_rls_catalog_consistency()` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py)) during startup. The validator compares live PostgreSQL catalog metadata (`pg_tables`, `pg_class`, `pg_policies`) against the 85 tables in `EXPECTED_TENANT_RLS_TABLES`:
+To guarantee that newly added tables cannot be deployed without tenant isolation, NCE executes `verify_rls_catalog_consistency()` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py)) during startup. The validator compares live PostgreSQL catalog metadata (`pg_tables`, `pg_class`, `pg_policies`) against the 86 tables in `EXPECTED_TENANT_RLS_TABLES`:
 * Asserts that `relrowsecurity` is enabled on all 86 tenant tables.
 * Asserts that `tenant_isolation_policy` (or `a2a_grants` dual-ownership policy) is attached.
 * Raises `RuntimeError` and halts server startup if any unisolated tenant table is detected.
