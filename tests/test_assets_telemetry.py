@@ -65,6 +65,7 @@ from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 import asyncpg  # type: ignore[import-untyped]
+import httpx
 import pytest
 
 from nce.auth import set_namespace_context
@@ -858,101 +859,297 @@ async def test_a_malformed_adapter_payload_is_refused_before_any_row_is_written(
 
 
 class TestAVCloudAdapters:
-    """Validate concrete real AV cloud adapters without requiring live hardware."""
+    """Validate concrete real AV cloud adapters without requiring live hardware.
+
+    All real adapters must:
+    1. Raise NotImplementedError naming missing env vars when unconfigured.
+    2. Parse real API responses into TelemetrySample objects when connected to a transport.
+    3. Record degradation and return [] when an HTTP query fails, never inventing data.
+    """
 
     @pytest.mark.asyncio
-    async def test_crestron_xio_cloud_adapter(self) -> None:
+    async def test_crestron_xio_cloud_adapter_unconfigured_raises(self) -> None:
         from nce.vertical_modules.assets.xio_cloud import CrestronXiOCloudTelemetryAdapter
 
-        adapter = CrestronXiOCloudTelemetryAdapter(timeout=10.0)
+        adapter = CrestronXiOCloudTelemetryAdapter(endpoint_url=None, api_key=None, timeout=10.0)
         assert adapter.platform == "crestron"
         assert adapter._timeout <= 4.9
 
+        with pytest.raises(NotImplementedError, match="crestron") as excinfo:
+            await adapter.fetch_samples(uuid.uuid4())
+        assert "NCE_ASSETS_CRESTRON_ENDPOINT_URL" in str(excinfo.value)
+        assert "NCE_ASSETS_CRESTRON_API_KEY" in str(excinfo.value)
+
+    @pytest.mark.asyncio
+    async def test_crestron_xio_cloud_adapter_live_http(self) -> None:
+        from nce.vertical_modules.assets.xio_cloud import CrestronXiOCloudTelemetryAdapter
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.headers.get("XiO-Subscription-Key") == "test-key"
+            assert request.headers.get("XiO-Account-Id") == "test-acc"
+            return httpx.Response(
+                200,
+                json={
+                    "metrics": {
+                        "status_online": 1.0,
+                        "temperature_celsius": 42.5,
+                        "hdmi_sync_detected": 1.0,
+                        "uptime_seconds": 86400.0,
+                    },
+                    "raw": {"source": "crestron_xio_cloud", "device_model": "Crestron-DM-NVX-360"},
+                },
+            )
+
+        adapter = CrestronXiOCloudTelemetryAdapter(
+            endpoint_url="https://api.crestron.com",
+            api_key="test-key",
+            account_id="test-acc",
+            transport=httpx.MockTransport(handler),
+        )
         test_id = uuid.uuid4()
         samples = await adapter.fetch_samples(test_id)
-        assert len(samples) >= 4
+        assert len(samples) == 4
         metrics = {s.metric: s.value for s in samples}
         assert metrics["status_online"] == 1.0
-        assert "temperature_celsius" in metrics
+        assert metrics["temperature_celsius"] == 42.5
         assert metrics["hdmi_sync_detected"] == 1.0
 
     @pytest.mark.asyncio
-    async def test_neat_pulse_adapter(self) -> None:
+    async def test_crestron_xio_cloud_adapter_http_failure_degrades_gracefully(self) -> None:
+        from nce.vertical_modules.assets.xio_cloud import CrestronXiOCloudTelemetryAdapter
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, text="Service Unavailable")
+
+        adapter = CrestronXiOCloudTelemetryAdapter(
+            endpoint_url="https://api.crestron.com",
+            api_key="test-key",
+            transport=httpx.MockTransport(handler),
+        )
+        test_id = uuid.uuid4()
+        samples = await adapter.fetch_samples(test_id)
+        assert samples == []
+
+    @pytest.mark.asyncio
+    async def test_neat_pulse_adapter_unconfigured_raises(self) -> None:
         from nce.vertical_modules.assets.neat_pulse import NeatPulseTelemetryAdapter
 
-        adapter = NeatPulseTelemetryAdapter(timeout=10.0)
+        adapter = NeatPulseTelemetryAdapter(endpoint_url=None, api_key=None, timeout=10.0)
         assert adapter.platform == "neat"
         assert adapter._timeout <= 4.9
 
-        test_id = uuid.uuid4()
-        samples = await adapter.fetch_samples(test_id)
-        assert len(samples) >= 5
-        metrics = {s.metric: s.value for s in samples}
-        assert metrics["status_online"] == 1.0
-        assert "air_quality_co2_ppm" in metrics
-        assert "people_count" in metrics
-        assert metrics["people_count"] >= 1.0
+        with pytest.raises(NotImplementedError, match="neat") as excinfo:
+            await adapter.fetch_samples(uuid.uuid4())
+        assert "NCE_ASSETS_NEAT_ENDPOINT_URL" in str(excinfo.value)
+        assert "NCE_ASSETS_NEAT_API_KEY" in str(excinfo.value)
 
     @pytest.mark.asyncio
-    async def test_sennheiser_adapter(self) -> None:
+    async def test_neat_pulse_adapter_live_http(self) -> None:
+        from nce.vertical_modules.assets.neat_pulse import NeatPulseTelemetryAdapter
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.headers.get("Authorization") == "Bearer neat-token"
+            return httpx.Response(
+                200,
+                json={
+                    "metrics": {
+                        "status_online": 1.0,
+                        "air_quality_co2_ppm": 620.0,
+                        "people_count": 4.0,
+                        "temperature_celsius": 22.1,
+                    },
+                    "raw": {"source": "neat_pulse", "device_model": "Neat-Bar-Pro"},
+                },
+            )
+
+        adapter = NeatPulseTelemetryAdapter(
+            endpoint_url="https://api.neat.no",
+            api_key="neat-token",
+            org_id="org-123",
+            transport=httpx.MockTransport(handler),
+        )
+        test_id = uuid.uuid4()
+        samples = await adapter.fetch_samples(test_id)
+        assert len(samples) == 4
+        metrics = {s.metric: s.value for s in samples}
+        assert metrics["status_online"] == 1.0
+        assert metrics["air_quality_co2_ppm"] == 620.0
+        assert metrics["people_count"] == 4.0
+
+    @pytest.mark.asyncio
+    async def test_sennheiser_adapter_unconfigured_raises(self) -> None:
         from nce.vertical_modules.assets.sennheiser import SennheiserTelemetryAdapter
 
-        adapter = SennheiserTelemetryAdapter(timeout=10.0)
+        adapter = SennheiserTelemetryAdapter(endpoint_url=None, api_key=None, timeout=10.0)
         assert adapter.platform == "sennheiser"
         assert adapter._timeout <= 4.9
 
-        test_id = uuid.uuid4()
-        samples = await adapter.fetch_samples(test_id)
-        assert len(samples) >= 5
-        metrics = {s.metric: s.value for s in samples}
-        assert metrics["status_online"] == 1.0
-        assert "beam_elevation_deg" in metrics
-        assert "beam_azimuth_deg" in metrics
-        assert "rf_signal_quality_percent" in metrics
+        with pytest.raises(NotImplementedError, match="sennheiser") as excinfo:
+            await adapter.fetch_samples(uuid.uuid4())
+        assert "NCE_ASSETS_SENNHEISER_ENDPOINT_URL" in str(excinfo.value)
 
     @pytest.mark.asyncio
-    async def test_qsys_reflect_adapter(self) -> None:
+    async def test_sennheiser_adapter_live_http(self) -> None:
+        from nce.vertical_modules.assets.sennheiser import SennheiserTelemetryAdapter
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "metrics": {
+                        "status_online": 1.0,
+                        "beam_elevation_deg": 25.0,
+                        "beam_azimuth_deg": 180.0,
+                        "rf_signal_quality_percent": 98.0,
+                    },
+                    "raw": {"source": "sennheiser_cockpit"},
+                },
+            )
+
+        adapter = SennheiserTelemetryAdapter(
+            endpoint_url="https://cockpit.local",
+            api_key="senn-key",
+            transport=httpx.MockTransport(handler),
+        )
+        test_id = uuid.uuid4()
+        samples = await adapter.fetch_samples(test_id)
+        assert len(samples) == 4
+        metrics = {s.metric: s.value for s in samples}
+        assert metrics["status_online"] == 1.0
+        assert metrics["beam_elevation_deg"] == 25.0
+        assert metrics["beam_azimuth_deg"] == 180.0
+
+    @pytest.mark.asyncio
+    async def test_qsys_reflect_adapter_unconfigured_raises(self) -> None:
         from nce.vertical_modules.assets.qsys_reflect import QSysReflectTelemetryAdapter
 
-        adapter = QSysReflectTelemetryAdapter(timeout=10.0)
+        adapter = QSysReflectTelemetryAdapter(endpoint_url=None, api_key=None, timeout=10.0)
         assert adapter.platform == "qsys"
         assert adapter._timeout <= 4.9
 
+        with pytest.raises(NotImplementedError, match="qsys") as excinfo:
+            await adapter.fetch_samples(uuid.uuid4())
+        assert "NCE_ASSETS_QSYS_ENDPOINT_URL" in str(excinfo.value)
+        assert "NCE_ASSETS_QSYS_API_KEY" in str(excinfo.value)
+
+    @pytest.mark.asyncio
+    async def test_qsys_reflect_adapter_live_http(self) -> None:
+        from nce.vertical_modules.assets.qsys_reflect import QSysReflectTelemetryAdapter
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "metrics": {
+                        "status_online": 1.0,
+                        "dsp_cpu_percent": 24.5,
+                        "clock_master_locked": 1.0,
+                    },
+                    "raw": {"source": "qsys_reflect"},
+                },
+            )
+
+        adapter = QSysReflectTelemetryAdapter(
+            endpoint_url="https://reflect.qsc.com",
+            api_key="qsys-token",
+            transport=httpx.MockTransport(handler),
+        )
         test_id = uuid.uuid4()
         samples = await adapter.fetch_samples(test_id)
-        assert len(samples) >= 4
+        assert len(samples) == 3
         metrics = {s.metric: s.value for s in samples}
         assert metrics["status_online"] == 1.0
-        assert "dsp_cpu_percent" in metrics
+        assert metrics["dsp_cpu_percent"] == 24.5
         assert metrics["clock_master_locked"] == 1.0
 
     @pytest.mark.asyncio
-    async def test_shure_cloud_adapter(self) -> None:
+    async def test_shure_cloud_adapter_unconfigured_raises(self) -> None:
         from nce.vertical_modules.assets.shure_cloud import ShureCloudTelemetryAdapter
 
-        adapter = ShureCloudTelemetryAdapter(timeout=10.0)
+        adapter = ShureCloudTelemetryAdapter(endpoint_url=None, api_key=None, timeout=10.0)
         assert adapter.platform == "shure"
         assert adapter._timeout <= 4.9
 
+        with pytest.raises(NotImplementedError, match="shure") as excinfo:
+            await adapter.fetch_samples(uuid.uuid4())
+        assert "NCE_ASSETS_SHURE_ENDPOINT_URL" in str(excinfo.value)
+        assert "NCE_ASSETS_SHURE_API_KEY" in str(excinfo.value)
+
+    @pytest.mark.asyncio
+    async def test_shure_cloud_adapter_live_http(self) -> None:
+        from nce.vertical_modules.assets.shure_cloud import ShureCloudTelemetryAdapter
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.headers.get("X-API-KEY") == "shure-token"
+            return httpx.Response(
+                200,
+                json={
+                    "metrics": {
+                        "status_online": 1.0,
+                        "dante_clock_sync": 1.0,
+                        "active_lobes_count": 8.0,
+                    },
+                    "raw": {"source": "shure_cloud"},
+                },
+            )
+
+        adapter = ShureCloudTelemetryAdapter(
+            endpoint_url="https://cloud.shure.com",
+            api_key="shure-token",
+            transport=httpx.MockTransport(handler),
+        )
         test_id = uuid.uuid4()
         samples = await adapter.fetch_samples(test_id)
-        assert len(samples) >= 4
+        assert len(samples) == 3
         metrics = {s.metric: s.value for s in samples}
         assert metrics["status_online"] == 1.0
-        assert "dante_clock_sync" in metrics
+        assert metrics["dante_clock_sync"] == 1.0
         assert metrics["active_lobes_count"] == 8.0
 
     @pytest.mark.asyncio
-    async def test_yealink_adapter_alias_and_simulation(self) -> None:
+    async def test_yealink_adapter_alias_unconfigured_raises(self) -> None:
         from nce.vertical_modules.assets.ymcs import YealinkTelemetryAdapter, YMCSTelemetryAdapter
 
         assert YealinkTelemetryAdapter is YMCSTelemetryAdapter
-        adapter = YealinkTelemetryAdapter(platform_name="yealink", timeout=10.0)
+        adapter = YealinkTelemetryAdapter(
+            endpoint_url=None, api_key=None, platform_name="yealink", timeout=10.0
+        )
         assert adapter.platform == "yealink"
         assert adapter._timeout <= 4.9
 
+        with pytest.raises(NotImplementedError, match="yealink") as excinfo:
+            await adapter.fetch_samples(uuid.uuid4())
+        assert "NCE_ASSETS_YMCS_ENDPOINT_URL" in str(excinfo.value)
+        assert "NCE_ASSETS_YMCS_API_KEY" in str(excinfo.value)
+
+    @pytest.mark.asyncio
+    async def test_yealink_adapter_live_http(self) -> None:
+        from nce.vertical_modules.assets.ymcs import YealinkTelemetryAdapter
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.headers.get("Authorization") == "Bearer ymcs-token"
+            return httpx.Response(
+                200,
+                json={
+                    "metrics": {
+                        "uptime_seconds": 12345.0,
+                        "temperature_celsius": 38.2,
+                        "link_status": 1.0,
+                    },
+                    "raw": {"source": "ymcs", "device": "Yealink-MeetingBar-A30"},
+                },
+            )
+
+        adapter = YealinkTelemetryAdapter(
+            endpoint_url="https://ymcs.yealink.com",
+            api_key="ymcs-token",
+            platform_name="yealink",
+            transport=httpx.MockTransport(handler),
+        )
         test_id = uuid.uuid4()
         samples = await adapter.fetch_samples(test_id)
-        assert len(samples) >= 4
-        for s in samples:
-            assert s.raw["device"] == "Yealink-MeetingBar-A30"
+        assert len(samples) == 3
+        metrics = {s.metric: s.value for s in samples}
+        assert metrics["uptime_seconds"] == 12345.0
+        assert metrics["temperature_celsius"] == 38.2
+        assert metrics["link_status"] == 1.0

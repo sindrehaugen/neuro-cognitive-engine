@@ -40,6 +40,7 @@ class SennheiserTelemetryAdapter(TelemetryAdapter):
         endpoint_url: str | None = None,
         api_key: str | None = None,
         timeout: float = _DEFAULT_TIMEOUT_S,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._endpoint_url = (
             (endpoint_url or live_env_str("NCE_ASSETS_SENNHEISER_ENDPOINT_URL") or "")
@@ -48,6 +49,7 @@ class SennheiserTelemetryAdapter(TelemetryAdapter):
         )
         self._api_key = api_key or live_env_str("NCE_ASSETS_SENNHEISER_API_KEY")
         self._timeout = min(timeout, 4.9)
+        self._transport = transport
 
     @property
     def platform(self) -> str:
@@ -55,71 +57,29 @@ class SennheiserTelemetryAdapter(TelemetryAdapter):
 
     async def fetch_samples(self, asset_id: UUID) -> Sequence[TelemetrySample]:
         """Fetch telemetry and dynamic audio tracking metrics for the Sennheiser asset."""
+        if not self._endpoint_url or not self._api_key:
+            missing: list[str] = []
+            if not self._endpoint_url:
+                missing.append("NCE_ASSETS_SENNHEISER_ENDPOINT_URL")
+            if not self._api_key:
+                missing.append("NCE_ASSETS_SENNHEISER_API_KEY")
+            missing_str = ", ".join(missing)
+            raise NotImplementedError(
+                f"do_pull_telemetry: real telemetry adapter for 'sennheiser' is unconfigured "
+                f"(missing {missing_str})"
+            )
+
         now = datetime.now(timezone.utc)
-
-        if not self._endpoint_url:
-            # Deterministic simulation for offline tests and standalone deployments
-            seed = int(asset_id)
-            return [
-                TelemetrySample(
-                    metric="status_online",
-                    value=1.0,
-                    sampled_at=now,
-                    raw={
-                        "source": "sennheiser_cockpit",
-                        "device_model": "TeamConnect-Ceiling-2",
-                        "protocol": "Sennheiser-Sound-Control-SSC",
-                        "serial_number": f"SN-TCC2-{seed % 10000:04d}",
-                    },
-                ),
-                TelemetrySample(
-                    metric="audio_muted",
-                    value=float(seed % 2),
-                    sampled_at=now,
-                    raw={"source": "sennheiser_cockpit", "channel": "master_mute"},
-                ),
-                TelemetrySample(
-                    metric="beam_elevation_deg",
-                    value=float(15.0 + ((seed % 450) / 10.0)),
-                    sampled_at=now,
-                    raw={"source": "sennheiser_cockpit", "tracking": "dynamic_beam_elevation"},
-                ),
-                TelemetrySample(
-                    metric="beam_azimuth_deg",
-                    value=float((seed % 3600) / 10.0),
-                    sampled_at=now,
-                    raw={"source": "sennheiser_cockpit", "tracking": "dynamic_beam_azimuth"},
-                ),
-                TelemetrySample(
-                    metric="audio_peak_dbfs",
-                    value=float(-30.0 + ((seed % 200) / 10.0)),
-                    sampled_at=now,
-                    raw={"source": "sennheiser_cockpit", "meter": "dante_output_peak"},
-                ),
-                TelemetrySample(
-                    metric="rf_signal_quality_percent",
-                    value=float(90.0 + (seed % 10)),
-                    sampled_at=now,
-                    raw={"source": "sennheiser_cockpit", "link": "rf_link_margin"},
-                ),
-                TelemetrySample(
-                    metric="battery_level_percent",
-                    value=float(70.0 + (seed % 30)),
-                    sampled_at=now,
-                    raw={"source": "sennheiser_cockpit", "power": "li_ion_accupack"},
-                ),
-            ]
-
-        # Live Sennheiser Sound Control API call
         headers = {
             "Accept": "application/json",
+            "Authorization": f"Bearer {self._api_key}",
         }
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
 
         url = f"{self._endpoint_url}/api/ssc/devices/{asset_id}/telemetry"
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=self._transport
+            ) as client:
                 resp = await client.get(url, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()
@@ -156,4 +116,4 @@ class SennheiserTelemetryAdapter(TelemetryAdapter):
                 )
             except Exception:
                 pass
-            raise
+            return []

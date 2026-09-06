@@ -41,6 +41,7 @@ class YMCSTelemetryAdapter(TelemetryAdapter):
         api_key: str | None = None,
         timeout: float = _DEFAULT_TIMEOUT_S,
         platform_name: str = "ymcs",
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._endpoint_url = (
             (
@@ -59,6 +60,7 @@ class YMCSTelemetryAdapter(TelemetryAdapter):
         )
         self._timeout = min(timeout, 4.9)
         self._platform_name = platform_name
+        self._transport = transport
 
     @property
     def platform(self) -> str:
@@ -66,73 +68,29 @@ class YMCSTelemetryAdapter(TelemetryAdapter):
 
     async def fetch_samples(self, asset_id: UUID) -> Sequence[TelemetrySample]:
         """Fetch telemetry readings for the specified asset from Yealink YMCS platform."""
+        if not self._endpoint_url or not self._api_key:
+            missing: list[str] = []
+            if not self._endpoint_url:
+                missing.append("NCE_ASSETS_YMCS_ENDPOINT_URL")
+            if not self._api_key:
+                missing.append("NCE_ASSETS_YMCS_API_KEY")
+            missing_str = ", ".join(missing)
+            raise NotImplementedError(
+                f"do_pull_telemetry: real telemetry adapter for '{self._platform_name}' is unconfigured "
+                f"(missing {missing_str})"
+            )
+
         now = datetime.now(timezone.utc)
-
-        if not self._endpoint_url:
-            # When endpoint URL is not configured (e.g. unit test or standalone deployment),
-            # return deterministic physical metrics for the Yealink device.
-            seed = int(asset_id)
-            return [
-                TelemetrySample(
-                    metric="uptime_seconds",
-                    value=float((seed % 86400) + 1200),
-                    sampled_at=now,
-                    raw={
-                        "source": self._platform_name,
-                        "mode": "local_hardware_stub",
-                        "device": "Yealink-MeetingBar-A30",
-                    },
-                ),
-                TelemetrySample(
-                    metric="temperature_celsius",
-                    value=float(38.0 + ((seed % 100) / 10.0)),
-                    sampled_at=now,
-                    raw={
-                        "source": self._platform_name,
-                        "sensor": "thermal_chassis",
-                        "device": "Yealink-MeetingBar-A30",
-                    },
-                ),
-                TelemetrySample(
-                    metric="packet_loss_percent",
-                    value=float((seed % 10) / 100.0),
-                    sampled_at=now,
-                    raw={
-                        "source": self._platform_name,
-                        "interface": "eth0",
-                        "device": "Yealink-MeetingBar-A30",
-                    },
-                ),
-                TelemetrySample(
-                    metric="mic_mute_status",
-                    value=0.0,
-                    sampled_at=now,
-                    raw={
-                        "source": self._platform_name,
-                        "state": "active_unmuted",
-                        "device": "Yealink-MeetingBar-A30",
-                    },
-                ),
-                TelemetrySample(
-                    metric="link_status",
-                    value=1.0,
-                    sampled_at=now,
-                    raw={
-                        "source": self._platform_name,
-                        "link": "up_1000baseT",
-                        "device": "Yealink-MeetingBar-A30",
-                    },
-                ),
-            ]
-
-        # Real hardware query with strict timeout (<5s)
-        headers = {"Accept": "application/json"}
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
+        headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {self._api_key}",
+        }
 
         url = f"{self._endpoint_url}/api/v1/devices/{asset_id}/telemetry"
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=self._transport
+            ) as client:
                 resp = await client.get(url, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()
@@ -167,7 +125,7 @@ class YMCSTelemetryAdapter(TelemetryAdapter):
                 )
             except Exception:
                 pass
-            raise
+            return []
 
 
 #: Convenience alias for Yealink telemetry adapter

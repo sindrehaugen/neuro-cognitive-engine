@@ -40,6 +40,7 @@ class ShureCloudTelemetryAdapter(TelemetryAdapter):
         endpoint_url: str | None = None,
         api_key: str | None = None,
         timeout: float = _DEFAULT_TIMEOUT_S,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._endpoint_url = (
             (endpoint_url or live_env_str("NCE_ASSETS_SHURE_ENDPOINT_URL") or "")
@@ -48,6 +49,7 @@ class ShureCloudTelemetryAdapter(TelemetryAdapter):
         )
         self._api_key = api_key or live_env_str("NCE_ASSETS_SHURE_API_KEY")
         self._timeout = min(timeout, 4.9)
+        self._transport = transport
 
     @property
     def platform(self) -> str:
@@ -55,65 +57,29 @@ class ShureCloudTelemetryAdapter(TelemetryAdapter):
 
     async def fetch_samples(self, asset_id: UUID) -> Sequence[TelemetrySample]:
         """Fetch telemetry and array microphone health metrics for the Shure asset."""
+        if not self._endpoint_url or not self._api_key:
+            missing: list[str] = []
+            if not self._endpoint_url:
+                missing.append("NCE_ASSETS_SHURE_ENDPOINT_URL")
+            if not self._api_key:
+                missing.append("NCE_ASSETS_SHURE_API_KEY")
+            missing_str = ", ".join(missing)
+            raise NotImplementedError(
+                f"do_pull_telemetry: real telemetry adapter for 'shure' is unconfigured "
+                f"(missing {missing_str})"
+            )
+
         now = datetime.now(timezone.utc)
-
-        if not self._endpoint_url:
-            # Deterministic simulation for offline tests and standalone deployments
-            seed = int(asset_id)
-            return [
-                TelemetrySample(
-                    metric="status_online",
-                    value=1.0,
-                    sampled_at=now,
-                    raw={
-                        "source": "shure_cloud",
-                        "device_model": "Microflex-Advance-MXA920",
-                        "coverage_type": "Automatic-Coverage",
-                        "firmware": "v6.1.12",
-                        "serial_number": f"SH-MXA920-{seed % 10000:04d}",
-                    },
-                ),
-                TelemetrySample(
-                    metric="audio_muted",
-                    value=float(seed % 2),
-                    sampled_at=now,
-                    raw={"source": "shure_cloud", "sync": "led_mute_sync"},
-                ),
-                TelemetrySample(
-                    metric="dante_clock_sync",
-                    value=1.0,
-                    sampled_at=now,
-                    raw={"source": "shure_cloud", "clock": "dante_aes67_locked"},
-                ),
-                TelemetrySample(
-                    metric="active_lobes_count",
-                    value=8.0,
-                    sampled_at=now,
-                    raw={"source": "shure_cloud", "array": "steerable_coverage_lobes"},
-                ),
-                TelemetrySample(
-                    metric="temperature_celsius",
-                    value=float(34.0 + ((seed % 50) / 10.0)),
-                    sampled_at=now,
-                    raw={"source": "shure_cloud", "sensor": "internal_temperature"},
-                ),
-                TelemetrySample(
-                    metric="audio_clipping_count",
-                    value=0.0,
-                    sampled_at=now,
-                    raw={"source": "shure_cloud", "meter": "dante_overload_detector"},
-                ),
-            ]
-
-        # Live Shure Cloud API call
         headers = {
             "Accept": "application/json",
-            "X-API-KEY": self._api_key or "",
+            "X-API-KEY": self._api_key,
         }
 
         url = f"{self._endpoint_url}/api/v1/devices/{asset_id}/telemetry"
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=self._transport
+            ) as client:
                 resp = await client.get(url, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()
@@ -150,4 +116,4 @@ class ShureCloudTelemetryAdapter(TelemetryAdapter):
                 )
             except Exception:
                 pass
-            raise
+            return []

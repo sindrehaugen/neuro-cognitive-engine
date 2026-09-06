@@ -40,6 +40,7 @@ class NeatPulseTelemetryAdapter(TelemetryAdapter):
         api_key: str | None = None,
         org_id: str | None = None,
         timeout: float = _DEFAULT_TIMEOUT_S,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._endpoint_url = (
             (endpoint_url or live_env_str("NCE_ASSETS_NEAT_ENDPOINT_URL") or "").strip().rstrip("/")
@@ -47,6 +48,7 @@ class NeatPulseTelemetryAdapter(TelemetryAdapter):
         self._api_key = api_key or live_env_str("NCE_ASSETS_NEAT_API_KEY")
         self._org_id = org_id or live_env_str("NCE_ASSETS_NEAT_ORG_ID")
         self._timeout = min(timeout, 4.9)
+        self._transport = transport
 
     @property
     def platform(self) -> str:
@@ -54,70 +56,29 @@ class NeatPulseTelemetryAdapter(TelemetryAdapter):
 
     async def fetch_samples(self, asset_id: UUID) -> Sequence[TelemetrySample]:
         """Fetch telemetry and environmental sensor readings for the specified Neat device."""
+        if not self._endpoint_url or not self._api_key:
+            missing: list[str] = []
+            if not self._endpoint_url:
+                missing.append("NCE_ASSETS_NEAT_ENDPOINT_URL")
+            if not self._api_key:
+                missing.append("NCE_ASSETS_NEAT_API_KEY")
+            missing_str = ", ".join(missing)
+            raise NotImplementedError(
+                f"do_pull_telemetry: real telemetry adapter for 'neat' is unconfigured "
+                f"(missing {missing_str})"
+            )
+
         now = datetime.now(timezone.utc)
-
-        if not self._endpoint_url:
-            # Deterministic simulation for offline tests and standalone deployments
-            seed = int(asset_id)
-            return [
-                TelemetrySample(
-                    metric="status_online",
-                    value=1.0,
-                    sampled_at=now,
-                    raw={
-                        "source": "neat_pulse",
-                        "device_model": "Neat-Bar-Pro",
-                        "neat_os_version": "NFD1.20260301.001",
-                        "room_name": "Executive Boardroom",
-                    },
-                ),
-                TelemetrySample(
-                    metric="uptime_seconds",
-                    value=float((seed % 86400) + 7200),
-                    sampled_at=now,
-                    raw={"source": "neat_pulse", "counter": "uptime"},
-                ),
-                TelemetrySample(
-                    metric="temperature_celsius",
-                    value=float(21.0 + ((seed % 40) / 10.0)),
-                    sampled_at=now,
-                    raw={"source": "neat_pulse", "sensor": "ambient_temperature"},
-                ),
-                TelemetrySample(
-                    metric="humidity_percent",
-                    value=float(42.0 + ((seed % 150) / 10.0)),
-                    sampled_at=now,
-                    raw={"source": "neat_pulse", "sensor": "relative_humidity"},
-                ),
-                TelemetrySample(
-                    metric="air_quality_co2_ppm",
-                    value=float(580.0 + (seed % 400)),
-                    sampled_at=now,
-                    raw={"source": "neat_pulse", "sensor": "co2_ppm"},
-                ),
-                TelemetrySample(
-                    metric="air_quality_voc_ppb",
-                    value=float(50.0 + (seed % 120)),
-                    sampled_at=now,
-                    raw={"source": "neat_pulse", "sensor": "voc_ppb"},
-                ),
-                TelemetrySample(
-                    metric="people_count",
-                    value=float((seed % 8) + 1),
-                    sampled_at=now,
-                    raw={"source": "neat_pulse", "detector": "neat_sense_occupancy"},
-                ),
-            ]
-
-        # Live Neat Pulse API call
         headers = {
             "Accept": "application/json",
-            "Authorization": f"Bearer {self._api_key or ''}",
+            "Authorization": f"Bearer {self._api_key}",
         }
         org_path = f"orgs/{self._org_id}/" if self._org_id else ""
         url = f"{self._endpoint_url}/v1/{org_path}devices/{asset_id}/telemetry"
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=self._transport
+            ) as client:
                 resp = await client.get(url, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()
@@ -154,4 +115,4 @@ class NeatPulseTelemetryAdapter(TelemetryAdapter):
                 )
             except Exception:
                 pass
-            raise
+            return []

@@ -40,6 +40,7 @@ class CrestronXiOCloudTelemetryAdapter(TelemetryAdapter):
         api_key: str | None = None,
         account_id: str | None = None,
         timeout: float = _DEFAULT_TIMEOUT_S,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._endpoint_url = (
             (endpoint_url or live_env_str("NCE_ASSETS_CRESTRON_ENDPOINT_URL") or "")
@@ -49,6 +50,7 @@ class CrestronXiOCloudTelemetryAdapter(TelemetryAdapter):
         self._api_key = api_key or live_env_str("NCE_ASSETS_CRESTRON_API_KEY")
         self._account_id = account_id or live_env_str("NCE_ASSETS_CRESTRON_ACCOUNT_ID")
         self._timeout = min(timeout, 4.9)
+        self._transport = transport
 
     @property
     def platform(self) -> str:
@@ -56,64 +58,31 @@ class CrestronXiOCloudTelemetryAdapter(TelemetryAdapter):
 
     async def fetch_samples(self, asset_id: UUID) -> Sequence[TelemetrySample]:
         """Fetch telemetry readings for the specified asset from Crestron XiO Cloud."""
+        if not self._endpoint_url or not self._api_key:
+            missing: list[str] = []
+            if not self._endpoint_url:
+                missing.append("NCE_ASSETS_CRESTRON_ENDPOINT_URL")
+            if not self._api_key:
+                missing.append("NCE_ASSETS_CRESTRON_API_KEY")
+            missing_str = ", ".join(missing)
+            raise NotImplementedError(
+                f"do_pull_telemetry: real telemetry adapter for 'crestron' is unconfigured "
+                f"(missing {missing_str})"
+            )
+
         now = datetime.now(timezone.utc)
-
-        if not self._endpoint_url:
-            # Deterministic simulation for offline tests and standalone deployments
-            seed = int(asset_id)
-            return [
-                TelemetrySample(
-                    metric="status_online",
-                    value=1.0,
-                    sampled_at=now,
-                    raw={
-                        "source": "crestron_xio_cloud",
-                        "device_model": "Crestron-DM-NVX-360",
-                        "connection_status": "Connected",
-                        "firmware": "v2.1.5123",
-                    },
-                ),
-                TelemetrySample(
-                    metric="uptime_seconds",
-                    value=float((seed % 86400) + 3600),
-                    sampled_at=now,
-                    raw={"source": "crestron_xio_cloud", "counter": "uptime"},
-                ),
-                TelemetrySample(
-                    metric="temperature_celsius",
-                    value=float(42.0 + ((seed % 80) / 10.0)),
-                    sampled_at=now,
-                    raw={"source": "crestron_xio_cloud", "sensor": "dsp_soc_thermal"},
-                ),
-                TelemetrySample(
-                    metric="packet_loss_percent",
-                    value=float((seed % 5) / 100.0),
-                    sampled_at=now,
-                    raw={"source": "crestron_xio_cloud", "stream": "aes67_primary"},
-                ),
-                TelemetrySample(
-                    metric="hdmi_sync_detected",
-                    value=1.0,
-                    sampled_at=now,
-                    raw={
-                        "source": "crestron_xio_cloud",
-                        "port": "hdmi_in_1",
-                        "resolution": "3840x2160@60",
-                    },
-                ),
-            ]
-
-        # Live XiO Cloud REST API call
         headers = {
             "Accept": "application/json",
-            "XiO-Subscription-Key": self._api_key or "",
+            "XiO-Subscription-Key": self._api_key,
         }
         if self._account_id:
             headers["XiO-Account-Id"] = self._account_id
 
         url = f"{self._endpoint_url}/api/v1/devices/{asset_id}/status"
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=self._transport
+            ) as client:
                 resp = await client.get(url, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()
@@ -152,4 +121,4 @@ class CrestronXiOCloudTelemetryAdapter(TelemetryAdapter):
                 )
             except Exception:
                 pass
-            raise
+            return []
