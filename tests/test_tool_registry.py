@@ -236,7 +236,9 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 95  # 88 baseline + 2 Procurement PO lifecycle tools (Wave PR-1) + 1 decision_feedback_record + 1 product_ingest_spec + 1 project_record_outcome + 1 resources_record_allocation_outcome + 1 trust_dial_set_tier
+    assert (
+        len(MUTATION_TOOLS) == 95
+    )  # 88 baseline + 2 Procurement PO lifecycle tools (Wave PR-1) + 1 decision_feedback_record + 1 product_ingest_spec + 1 project_record_outcome + 1 resources_record_allocation_outcome + 1 trust_dial_set_tier
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -499,7 +501,9 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 56  # 50 baseline + 2 Procurement PO lifecycle tools (Wave PR-1) + 1 decision_feedback_record + 1 project_record_outcome + 1 resources_record_allocation_outcome + 1 trust_dial_set_tier
+    assert (
+        len(ADMIN_ONLY_TOOLS) == 56
+    )  # 50 baseline + 2 Procurement PO lifecycle tools (Wave PR-1) + 1 decision_feedback_record + 1 project_record_outcome + 1 resources_record_allocation_outcome + 1 trust_dial_set_tier
 
 
 # ---------------------------------------------------------------------------
