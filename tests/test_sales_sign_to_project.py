@@ -12,7 +12,7 @@ import pytest
 
 from nce.auth import set_namespace_context
 from nce.orchestrator import NCEEngine
-from nce.vertical_modules.sales.baseline import get_signed_baseline
+from nce.vertical_modules.sales.baseline import do_freeze_baseline, get_signed_baseline
 from nce.vertical_modules.sales.signing import do_on_signed_callback, do_request_signature
 
 
@@ -98,12 +98,24 @@ class TestSalesSignToProject:
                         },
                     )
 
+            # 1b. Freeze baseline for quote (required per ruling b before requesting signature)
+            await do_freeze_baseline(
+                engine,
+                {
+                    "namespace_id": str(ns),
+                    "quote_id": quote_id,
+                    "signed_margin_pct": 0.35,
+                    "signed_total_nok": 250000.0,
+                },
+            )
+
             # 2. Call do_request_signature to initiate signing
             session = await do_request_signature(
                 engine,
                 {
                     "namespace_id": str(ns),
                     "quote_id": quote_id,
+                    "signer": {"name": "Alice Signer", "email": "alice@acme.com"},
                     "method": "manual",
                 },
             )
@@ -111,6 +123,7 @@ class TestSalesSignToProject:
             session_id = session["session_id"]
             assert session_id is not None
             assert session["status"] == "pending"
+            assert "document_hash" in session
 
             # Check that pending status is saved in database
             async with pg_pool.acquire() as conn:

@@ -8,21 +8,41 @@ freezing quote baselines, and triggering Project conversion.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
 from typing import Any, cast
 from uuid import UUID
 
+from nce.bom_lines import list_bom_lines_for_quote
 from nce.db_utils import scoped_pg_session
 from nce.signing_service import ManualTransport, TransportMethod
 from nce.vertical_modules.project.convert import do_convert_signed_quote
-from nce.vertical_modules.sales.baseline import do_freeze_baseline
+from nce.vertical_modules.sales.baseline import do_freeze_baseline, get_signed_baseline
+from nce.vertical_modules.sales.render import render_quote_document
 
 log = logging.getLogger("nce.vertical_modules.sales.signing")
 
 # Global in-memory transport instance for manual signing
 _transport = ManualTransport()
+
+
+class MissingBaselineError(ValueError):
+    """Raised when requesting signature for a quote that has no frozen baseline.
+
+    Under Sindre's ruling (Option b), the quote document signed by the customer is
+    rendered directly from the frozen baseline. Requesting a signature on an
+    unfrozen quote is refused with a 4xx equivalent.
+    """
+
+
+class MissingSignerError(ValueError):
+    """Raised when requesting signature without explicit, valid signer identity.
+
+    A signature request requires an explicit signer name and email address.
+    Silent defaults (e.g. signer@example.com) are strictly prohibited.
+    """
 
 
 class MissingSignedAmountError(ValueError):
@@ -91,15 +111,19 @@ async def do_request_signature(
 ) -> dict[str, Any]:
     """Request a signature for a quote.
 
+    Under Sindre's ruling (Option b), the quote document bytes are deterministically
+    rendered from the frozen baseline stored in `sales_signed_baselines`.
+    Callers cannot supply `doc_bytes`, and requesting a signature for an unfrozen
+    quote or without an explicit signer is strictly refused with typed 4xx errors.
+
     Params:
       namespace_id (str | UUID): namespace id
       quote_id (str): identifier of the quote
-      doc_bytes (bytes, optional): raw document bytes to sign (defaults to dummy bytes)
-      signer (dict, optional): signer details (name, email)
+      signer (dict): required signer details (name, email)
       method (str, optional): transport method (defaults to "manual")
 
     Returns:
-      dict: details of the created signing session.
+      dict: details of the created signing session including document_hash.
     """
     ns_raw = params.get("namespace_id")
     if not ns_raw:
@@ -107,25 +131,35 @@ async def do_request_signature(
     ns_uuid = UUID(str(ns_raw)) if not isinstance(ns_raw, UUID) else ns_raw
 
     quote_id = params.get("quote_id")
-    if not quote_id:
+    if not quote_id or not isinstance(quote_id, str) or not quote_id.strip():
         raise ValueError("quote_id is required")
+    quote_id = quote_id.strip()
 
-    doc_bytes = params.get("doc_bytes") or b"Dummy Quote Document"
-    signer = params.get("signer") or {"name": "Test Signer", "email": "signer@example.com"}
+    if "doc_bytes" in params:
+        raise ValueError(
+            "doc_bytes parameter is not allowed; quote document is rendered from the frozen baseline"
+        )
+
+    signer = params.get("signer")
+    if not signer or not isinstance(signer, dict):
+        raise MissingSignerError("signer dict with 'name' and 'email' is required")
+    signer_name = str(signer.get("name") or "").strip()
+    signer_email = str(signer.get("email") or "").strip()
+    if not signer_name:
+        raise MissingSignerError("signer 'name' is required and must not be empty")
+    if not signer_email or "@" not in signer_email or "." not in signer_email.split("@")[-1]:
+        raise MissingSignerError("signer 'email' is required and must be a valid email address")
+    signer_payload = {"name": signer_name, "email": signer_email}
+
     method = params.get("method") or "manual"
     if method not in ("oneflow", "criipto", "signicat", "manual"):
         raise ValueError(f"Invalid signing method: {method}")
     tm_method = cast(TransportMethod, method)
 
-    # 1. Request signature from C7 transport
-    session = _transport.request_signature(doc_bytes, signer, tm_method)
-    session_id = session["session_id"]
-
-    # 2. Update quote record in sales_read_model with session details
     async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
         row = await conn.fetchrow(
             """
-            SELECT manual, source_json
+            SELECT name, manual, source_json
             FROM sales_read_model
             WHERE namespace_id = $1
               AND entity = 'quotes'
@@ -138,14 +172,57 @@ async def do_request_signature(
         if not row:
             raise ValueError(f"Quote {quote_id} not found in read model")
 
+        # Verify frozen baseline exists
+        baseline = await get_signed_baseline(conn, ns_uuid, quote_id)
+        if not baseline:
+            raise MissingBaselineError(
+                f"Quote {quote_id} has no frozen baseline; baseline must be frozen before requesting signature"
+            )
+
+        # Read line items from bom_line_content
+        try:
+            line_items = await list_bom_lines_for_quote(conn, ns_uuid, quote_id=quote_id)
+        except Exception as exc:
+            log.warning("Could not read bom_line_content for quote %s: %s", quote_id, exc)
+            line_items = []
+
+        source_json = row["source_json"] or {}
+        if isinstance(source_json, str):
+            source_json = json.loads(source_json)
         manual = row["manual"] or {}
         if isinstance(manual, str):
             manual = json.loads(manual)
 
+        merged_quote = {**(source_json or {}), **(manual or {})}
+        quote_details = {
+            "name": row["name"] or merged_quote.get("name"),
+            "customer_name": merged_quote.get("customer_name") or merged_quote.get("customer"),
+            "currency": merged_quote.get("currency") or "NOK",
+            "description": merged_quote.get("description"),
+        }
+        if not line_items and "lines" in merged_quote and isinstance(merged_quote["lines"], list):
+            line_items = merged_quote["lines"]
+
+        # Deterministically render quote PDF from the frozen baseline
+        doc_bytes = render_quote_document(
+            baseline=baseline,
+            quote_details=quote_details,
+            line_items=line_items,
+            signer=signer_payload,
+        )
+        doc_hash = hashlib.sha256(doc_bytes).hexdigest()
+
+        # Request signature from C7 transport
+        session = _transport.request_signature(doc_bytes, signer_payload, tm_method)
+        session_id = session["session_id"]
+
+        # Update quote record in sales_read_model with session details and document hash
         manual["signing_session_id"] = session_id
         manual["signing_status"] = "pending"
         manual["signing_fingerprint"] = session["fingerprint"]
-        manual["signer_name"] = signer.get("name", "Unknown")
+        manual["document_hash"] = doc_hash
+        manual["signer_name"] = signer_name
+        manual["signer_email"] = signer_email
 
         await conn.execute(
             """
@@ -161,6 +238,8 @@ async def do_request_signature(
             quote_id,
         )
 
+    session["document_hash"] = doc_hash
+    session["quote_id"] = quote_id
     return session
 
 
