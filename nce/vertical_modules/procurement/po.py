@@ -37,6 +37,7 @@ import hashlib
 import json
 import logging
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 import asyncpg  # type: ignore[import-untyped]
 
@@ -45,8 +46,16 @@ from nce.config import cfg
 from nce.event_log import append_event
 from nce.vertical_modules.procurement.bids import do_resolve_bids
 from nce.vertical_modules.procurement.graph import upsert_po_node
+from nce.vertical_modules.procurement.po_line import (
+    POLineStatus,
+    update_po_line_status,
+    upsert_po_line_node,
+)
 from nce.vertical_modules.procurement.ranking import do_rank_suppliers
-from nce.vertical_modules.procurement.transports import NetsetPoTransport, PoTransport
+from nce.vertical_modules.procurement.transports import (
+    NetsetPoTransport,
+    PoTransport,
+)
 
 if TYPE_CHECKING:
     from nce.orchestrator import NCEEngine
@@ -111,19 +120,23 @@ async def do_generate_po(
     confirm: bool = False,
     engine: NCEEngine,
     po_number: str,
-    bom_line: dict[str, Any],
-    candidates: list[dict[str, Any]],
-    weights: dict[str, Any],
-    artnrs: list[str],
+    bom_line: dict[str, Any] | None = None,
+    candidates: list[dict[str, Any]] | None = None,
+    weights: dict[str, Any] | None = None,
+    artnrs: list[str] | None = None,
     source_id: str | None = None,
+    line_items: list[dict[str, Any]] | None = None,
+    bom_line_ref: str | None = None,
 ) -> dict[str, Any]:
-    """Create a draft PO node via the C2 ``@governed`` gate.
+    """Create a draft PO node and PO_LINE nodes via the C2 ``@governed`` gate.
 
     Orchestration order
     -------------------
     1. Rank suppliers (Wave 2 ``do_rank_suppliers``) — pure, no DB.
     2. Resolve best BID prices (Wave 5 ``do_resolve_bids``) — reads cache.
     3. Upsert a draft ``PO`` node (Wave 6 ``upsert_po_node``) — writes graph.
+    4. Upsert draft ``PO_LINE`` nodes (Wave PR-1) — writes kg_nodes, kg_edges,
+       and ``procurement_po_lines`` with status=DRAFT.
 
     No transport is called here.  ``do_submit_po`` (Wave 11) selects the
     ``PoTransport`` adapter and places the external order.
@@ -164,6 +177,10 @@ async def do_generate_po(
         Article numbers to resolve from the BID cache (Wave 5).
     source_id:
         Optional procurement source record ID for graph provenance.
+    line_items:
+        Optional list of line item dicts to upsert as PO_LINE nodes.
+    bom_line_ref:
+        Optional BOM line label reference for single-line generation.
 
     Returns
     -------
@@ -173,13 +190,40 @@ async def do_generate_po(
       ``ranked_winner`` — dict of the top-ranked supplier.
       ``bid_results``   — list of best-BID rows resolved by Wave 5.
       ``rebate_override`` — bool from Wave 2 ranking.
+      ``po_lines``      — list of created PO_LINE dicts.
     """
     ns_str = str(namespace_id)
+
+    effective_bom_line = dict(bom_line) if bom_line else {"quantity": 1, "unit_price": 0.0}
+    effective_candidates = (
+        list(candidates)
+        if candidates
+        else [
+            {
+                "supplier_id": "DEFAULT",
+                "unit_price": float(effective_bom_line.get("unit_price") or 0.0),
+                "delivery_reliability": 1.0,
+                "supplier_tier": 1,
+                "own_stock": True,
+            }
+        ]
+    )
+    effective_artnrs = list(artnrs) if artnrs else []
+    effective_weights = weights or {
+        "TCO_WEIGHTS": {"freight": 0.05, "warranty": 0.03, "stock": 0.02, "delivery_risk": 0.05},
+        "SCORING_WEIGHTS": {
+            "tco": 0.30,
+            "delivery_reliability": 0.20,
+            "bid_price": 0.20,
+            "tier_bundling": 0.15,
+            "rebate_proximity": 0.15,
+        },
+    }
 
     # ------------------------------------------------------------------
     # Step 1: Rank suppliers (Wave 2 — pure, no I/O)
     # ------------------------------------------------------------------
-    ranking = do_rank_suppliers(weights, bom_line, candidates)
+    ranking = do_rank_suppliers(effective_weights, effective_bom_line, effective_candidates)
     ranked_winner: dict[str, Any] = ranking["ranked"][0]
     log.info(
         "[generate-po] ranking done: winner=%s rebate_override=%s ns=%s",
@@ -193,7 +237,7 @@ async def do_generate_po(
     # ------------------------------------------------------------------
     bid_result = await do_resolve_bids(
         engine,
-        {"namespace_id": ns_str, "artnrs": artnrs},
+        {"namespace_id": ns_str, "artnrs": effective_artnrs},
     )
     bid_results: list[dict[str, Any]] = bid_result.get("results", [])
     log.info(
@@ -218,12 +262,60 @@ async def do_generate_po(
         ns_str[:8],
     )
 
+    # ------------------------------------------------------------------
+    # Step 4: Upsert draft PO_LINE nodes (Wave PR-1 — status=DRAFT)
+    # ------------------------------------------------------------------
+    po_lines: list[dict[str, Any]] = []
+    items_to_create = (
+        line_items
+        if line_items is not None
+        else [
+            {
+                "line_ref": 1,
+                "bom_line_ref": bom_line_ref
+                or effective_bom_line.get("bom_line_ref")
+                or effective_bom_line.get("id"),
+                "sku": effective_bom_line.get("artnr")
+                or effective_bom_line.get("sku")
+                or (effective_artnrs[0] if effective_artnrs else None),
+                "qty": effective_bom_line.get("quantity") or effective_bom_line.get("qty") or 1,
+                "unit_price": effective_bom_line.get("unit_price") or 0.0,
+                "total_amount": float(
+                    effective_bom_line.get("quantity") or effective_bom_line.get("qty") or 1
+                )
+                * float(effective_bom_line.get("unit_price") or 0.0),
+            }
+        ]
+    )
+    for idx, item in enumerate(items_to_create, 1):
+        l_ref = str(item.get("line_ref", idx))
+        b_ref = item.get("bom_line_ref") or bom_line_ref
+        sku = item.get("sku") or item.get("artnr")
+        qty = item.get("qty") or item.get("quantity") or 1
+        u_price = float(item.get("unit_price") or 0.0)
+        tot = float(item.get("total_amount", float(qty) * u_price))
+        created_line = await upsert_po_line_node(
+            conn,
+            namespace_id,
+            po_number=po_number,
+            line_ref=l_ref,
+            bom_line_ref=b_ref,
+            sku=sku,
+            qty=qty,
+            unit_price=u_price,
+            total_amount=tot,
+            status=POLineStatus.DRAFT,
+            source_id=source_id,
+        )
+        po_lines.append(created_line)
+
     return {
         "po_number": po_number,
         "po_label": po_label,
         "ranked_winner": ranked_winner,
         "bid_results": bid_results,
         "rebate_override": ranking["rebate_override"],
+        "po_lines": po_lines,
     }
 
 
@@ -391,11 +483,68 @@ async def _governed_place_po(
         type(_transport).__name__,
     )
 
+    # Transition PO_LINE nodes to ORDERED (Wave PR-1)
+    ns_uuid = namespace_id if isinstance(namespace_id, UUID) else UUID(ns_str)
+    rows = await conn.fetch(
+        """
+        SELECT line_ref, project_id, bom_line_label
+        FROM procurement_po_lines
+        WHERE namespace_id = $1 AND po_number = $2
+        ORDER BY line_ref ASC
+        """,
+        ns_uuid,
+        po_number,
+    )
+    if not rows and line_items:
+        for idx, item in enumerate(line_items, 1):
+            l_ref = str(item.get("line_ref", idx))
+            b_ref = item.get("bom_line_ref") or item.get("bom_line_label")
+            sku = item.get("sku") or item.get("artnr")
+            qty = item.get("qty") or item.get("quantity") or 1
+            u_price = float(item.get("unit_price") or 0.0)
+            await upsert_po_line_node(
+                conn,
+                namespace_id,
+                po_number=po_number,
+                line_ref=l_ref,
+                bom_line_ref=b_ref,
+                sku=sku,
+                qty=qty,
+                unit_price=u_price,
+                total_amount=float(qty) * u_price,
+                status=POLineStatus.DRAFT,
+            )
+        rows = await conn.fetch(
+            """
+            SELECT line_ref, project_id, bom_line_label
+            FROM procurement_po_lines
+            WHERE namespace_id = $1 AND po_number = $2
+            ORDER BY line_ref ASC
+            """,
+            ns_uuid,
+            po_number,
+        )
+
+    ordered_lines: list[dict[str, Any]] = []
+    for r in rows:
+        updated = await update_po_line_status(
+            conn,
+            namespace_id,
+            po_number=po_number,
+            line_ref=r["line_ref"],
+            new_status=POLineStatus.ORDERED,
+            project_id=r["project_id"],
+            bom_line_label=r["bom_line_label"],
+            project_value=po_value,
+        )
+        ordered_lines.append(updated)
+
     return {
         "status": "submitted",
         "po_number": po_number,
         "supplier_id": supplier_id,
         "transport_result": transport_result,
+        "ordered_lines": ordered_lines,
     }
 
 

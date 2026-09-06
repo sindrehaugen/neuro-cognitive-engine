@@ -35,11 +35,19 @@ from nce.vertical_modules.procurement.tco import do_calculate_tco
 from nce.vertical_modules.procurement.three_way_match import (
     do_evaluate_three_way_match,
 )
+from nce.vertical_modules.procurement.transports import (
+    ManualPoTransport,
+    NetsetPoTransport,
+    PoTransport,
+)
 
 __all__ = [
     "ALLOWED_TRANSITIONS",
+    "ManualPoTransport",
     "NODE_TYPE_PO_LINE",
+    "NetsetPoTransport",
     "POLineStatus",
+    "PoTransport",
     "do_aggregate_savings",
     "do_calculate_tco",
     "do_evaluate_three_way_match",
