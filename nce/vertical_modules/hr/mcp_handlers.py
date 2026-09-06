@@ -38,13 +38,20 @@ from nce.vertical_modules.hr._guard import (
     HrRankingProhibitedError,
     require_hr_enabled,
 )
-from nce.vertical_modules.hr.absences import do_register_absence
+from nce.vertical_modules.hr.absences import do_query_absences, do_register_absence
 from nce.vertical_modules.hr.capacity import do_capacity
 from nce.vertical_modules.hr.certs import do_cert_status
 from nce.vertical_modules.hr.coaching import do_coach, do_log_one_on_one
-from nce.vertical_modules.hr.onboarding import do_build_onboarding_quest
+from nce.vertical_modules.hr.compliance import (
+    do_query_compliance_deadlines,
+    do_update_absence_compliance,
+)
+from nce.vertical_modules.hr.onboarding import (
+    do_build_onboarding_quest,
+    do_get_onboarding_progress,
+)
 from nce.vertical_modules.hr.profile import do_get_employee
-from nce.vertical_modules.hr.skills import do_match_skills
+from nce.vertical_modules.hr.skills import do_match_skills, do_record_skill
 
 log = logging.getLogger("nce.vertical_modules.hr.mcp_handlers")
 
@@ -184,6 +191,71 @@ async def handle_hr_coach(engine: Any, arguments: dict[str, Any]) -> str:
         res = await do_coach(engine, params)
     except HrRankingProhibitedError as exc:
         raise McpError(MCP_SCOPE_FORBIDDEN, str(exc)) from exc
+    except ValueError as exc:
+        raise McpError(-32602, str(exc)) from exc
+    return json.dumps(res)
+
+
+@mcp_handler
+async def handle_hr_record_skill(engine: Any, arguments: dict[str, Any]) -> str:
+    """MCP tool: hr_record_skill — record or update an employee skill (Actor, admin_only)."""
+    namespace_id = await _check_hr_enabled(engine, arguments)
+    params = dict(arguments)
+    params["namespace_id"] = namespace_id
+    try:
+        res = await do_record_skill(engine, params)
+    except ValueError as exc:
+        raise McpError(-32602, str(exc)) from exc
+    return json.dumps(res)
+
+
+@mcp_handler
+async def handle_hr_query_absences(engine: Any, arguments: dict[str, Any]) -> str:
+    """MCP tool: hr_query_absences — query absences with caller privacy scoping."""
+    namespace_id = await _check_hr_enabled(engine, arguments)
+    params = dict(arguments)
+    params["namespace_id"] = namespace_id
+    try:
+        res = await do_query_absences(engine, params)
+    except ValueError as exc:
+        raise McpError(-32602, str(exc)) from exc
+    return json.dumps(res)
+
+
+@mcp_handler
+async def handle_hr_compliance_deadlines(engine: Any, arguments: dict[str, Any]) -> str:
+    """MCP tool: hr_compliance_deadlines — query statutory sick leave compliance deadlines."""
+    namespace_id = await _check_hr_enabled(engine, arguments)
+    params = dict(arguments)
+    params["namespace_id"] = namespace_id
+    try:
+        res = await do_query_compliance_deadlines(engine, params)
+    except ValueError as exc:
+        raise McpError(-32602, str(exc)) from exc
+    return json.dumps(res)
+
+
+@mcp_handler
+async def handle_hr_update_absence_compliance(engine: Any, arguments: dict[str, Any]) -> str:
+    """MCP tool: hr_update_absence_compliance — advance Norwegian sick leave compliance milestone (Actor, admin_only)."""
+    namespace_id = await _check_hr_enabled(engine, arguments)
+    params = dict(arguments)
+    params["namespace_id"] = namespace_id
+    try:
+        res = await do_update_absence_compliance(engine, params)
+    except ValueError as exc:
+        raise McpError(-32602, str(exc)) from exc
+    return json.dumps(res)
+
+
+@mcp_handler
+async def handle_hr_get_onboarding_progress(engine: Any, arguments: dict[str, Any]) -> str:
+    """MCP tool: hr_get_onboarding_progress — retrieve onboarding quest progress and next actions."""
+    namespace_id = await _check_hr_enabled(engine, arguments)
+    params = dict(arguments)
+    params["namespace_id"] = namespace_id
+    try:
+        res = await do_get_onboarding_progress(engine, params)
     except ValueError as exc:
         raise McpError(-32602, str(exc)) from exc
     return json.dumps(res)

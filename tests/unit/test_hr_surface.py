@@ -29,10 +29,15 @@ from nce.vertical_modules.hr.mcp_handlers import (
     handle_hr_capacity,
     handle_hr_cert_status,
     handle_hr_coach,
+    handle_hr_compliance_deadlines,
     handle_hr_get_employee,
+    handle_hr_get_onboarding_progress,
     handle_hr_log_one_on_one,
     handle_hr_match_skills,
+    handle_hr_query_absences,
+    handle_hr_record_skill,
     handle_hr_register_absence,
+    handle_hr_update_absence_compliance,
 )
 
 _NS_A = "00000000-0000-4000-8000-000000000001"
@@ -46,6 +51,11 @@ _HR_TOOLS = (
     "hr_build_onboarding_quest",
     "hr_log_one_on_one",
     "hr_coach",
+    "hr_record_skill",
+    "hr_query_absences",
+    "hr_compliance_deadlines",
+    "hr_update_absence_compliance",
+    "hr_get_onboarding_progress",
 )
 
 
@@ -77,28 +87,35 @@ def _make_mock_engine(hr_enabled: bool = True) -> MagicMock:
 
 
 def test_hr_tools_registered_in_tool_registry():
-    """All 8 HR tools must be registered in TOOL_REGISTRY."""
+    """All 13 HR tools must be registered in TOOL_REGISTRY."""
     for tool_name in _HR_TOOLS:
         assert tool_name in TOOL_REGISTRY, f"Tool {tool_name!r} missing from TOOL_REGISTRY"
 
 
 def test_hr_tools_flags():
-    """Verify exact flags for all 8 HR tools."""
-    # Mutations (3 tools)
+    """Verify exact flags for all 13 HR tools."""
+    # Mutations (5 tools)
     assert "hr_register_absence" in MUTATION_TOOLS
     assert "hr_build_onboarding_quest" in MUTATION_TOOLS
     assert "hr_log_one_on_one" in MUTATION_TOOLS
+    assert "hr_record_skill" in MUTATION_TOOLS
+    assert "hr_update_absence_compliance" in MUTATION_TOOLS
 
-    # Admin only (2 tools)
+    # Admin only (4 tools)
     assert "hr_build_onboarding_quest" in ADMIN_ONLY_TOOLS
     assert "hr_log_one_on_one" in ADMIN_ONLY_TOOLS
+    assert "hr_record_skill" in ADMIN_ONLY_TOOLS
+    assert "hr_update_absence_compliance" in ADMIN_ONLY_TOOLS
 
-    # Cacheable (5 tools)
+    # Cacheable (8 tools)
     assert "hr_get_employee" in CACHEABLE_TOOLS
     assert "hr_match_skills" in CACHEABLE_TOOLS
     assert "hr_capacity" in CACHEABLE_TOOLS
     assert "hr_cert_status" in CACHEABLE_TOOLS
     assert "hr_coach" in CACHEABLE_TOOLS
+    assert "hr_query_absences" in CACHEABLE_TOOLS
+    assert "hr_compliance_deadlines" in CACHEABLE_TOOLS
+    assert "hr_get_onboarding_progress" in CACHEABLE_TOOLS
 
 
 def test_hr_tools_advertised_in_stdio_tools():
@@ -288,3 +305,95 @@ async def test_handle_hr_disabled_namespace():
         )
     assert exc_info.value.code == MCP_SCOPE_FORBIDDEN
     assert "HR vertical is not enabled" in exc_info.value.message
+
+
+@pytest.mark.asyncio
+async def test_handle_hr_record_skill():
+    engine = _make_mock_engine(hr_enabled=True)
+    with patch("nce.vertical_modules.hr.mcp_handlers.do_record_skill") as mock_do:
+        mock_do.return_value = {
+            "skill_id": "dante-routing",
+            "employee_id": "EMP-ALPHA",
+            "name": "Dante Network Audio Routing",
+        }
+        raw = await handle_hr_record_skill(
+            engine,
+            {
+                "namespace_id": _NS_A,
+                "employee_id": "EMP-ALPHA",
+                "skill_id": "dante-routing",
+                "name": "Dante Network Audio Routing",
+            },
+        )
+        res = json.loads(raw)
+        assert res["skill_id"] == "dante-routing"
+        mock_do.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_hr_query_absences():
+    engine = _make_mock_engine(hr_enabled=True)
+    with patch("nce.vertical_modules.hr.mcp_handlers.do_query_absences") as mock_do:
+        mock_do.return_value = {"count": 1, "absences": [{"absence_id": "ABS-01"}]}
+        raw = await handle_hr_query_absences(
+            engine,
+            {"namespace_id": _NS_A, "employee_id": "EMP-ALPHA"},
+        )
+        res = json.loads(raw)
+        assert res["count"] == 1
+        mock_do.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_hr_compliance_deadlines():
+    engine = _make_mock_engine(hr_enabled=True)
+    with patch("nce.vertical_modules.hr.mcp_handlers.do_query_compliance_deadlines") as mock_do:
+        mock_do.return_value = {"total_alerts": 2, "records": []}
+        raw = await handle_hr_compliance_deadlines(
+            engine,
+            {"namespace_id": _NS_A, "only_alerts": True},
+        )
+        res = json.loads(raw)
+        assert res["total_alerts"] == 2
+        mock_do.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_hr_update_absence_compliance():
+    engine = _make_mock_engine(hr_enabled=True)
+    with patch("nce.vertical_modules.hr.mcp_handlers.do_update_absence_compliance") as mock_do:
+        mock_do.return_value = {
+            "absence_id": "ABS-01",
+            "milestone": "plan_4w",
+            "completed": True,
+        }
+        raw = await handle_hr_update_absence_compliance(
+            engine,
+            {
+                "namespace_id": _NS_A,
+                "absence_id": "ABS-01",
+                "milestone": "plan_4w",
+                "completed": True,
+            },
+        )
+        res = json.loads(raw)
+        assert res["milestone"] == "plan_4w"
+        mock_do.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_hr_get_onboarding_progress():
+    engine = _make_mock_engine(hr_enabled=True)
+    with patch("nce.vertical_modules.hr.mcp_handlers.do_get_onboarding_progress") as mock_do:
+        mock_do.return_value = {
+            "employee_id": "EMP-ALPHA",
+            "progress_pct": 50.0,
+            "next_task": {"task_id": "t1"},
+        }
+        raw = await handle_hr_get_onboarding_progress(
+            engine,
+            {"namespace_id": _NS_A, "employee_id": "EMP-ALPHA"},
+        )
+        res = json.loads(raw)
+        assert res["progress_pct"] == 50.0
+        mock_do.assert_called_once()

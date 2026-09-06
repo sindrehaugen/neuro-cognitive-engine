@@ -53,10 +53,10 @@ _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
 # --- MEASURED on branch mlv15b/close-the-loop --------------------------------
 # python -c "import nce.tool_registry as tr; print(len(tr.TOOL_REGISTRY))"
-_TOTAL_TOOLS = 228  # 224 baseline + 4 vendors (V-1)
-_MUTATION_TOOLS = 99  # 96 baseline + 3 vendors mutations
-_CACHEABLE_TOOLS = 86  # 85 baseline + 1 vendors cacheable read
-_ADMIN_ONLY_TOOLS = 61  # 58 baseline + 3 vendors admin tools
+_TOTAL_TOOLS = 233  # 228 baseline + 5 HR tools (Wave HR-2)
+_MUTATION_TOOLS = 101  # 99 baseline + 2 HR mutations
+_CACHEABLE_TOOLS = 89  # 86 baseline + 3 HR cacheable reads
+_ADMIN_ONLY_TOOLS = 63  # 61 baseline + 2 HR admin tools
 _MIGRATION_TOOLS = 5
 
 

@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 228  # 224 baseline + 4 Vendors tools (Wave V-1)
+_EXPECTED_TOTAL = 233  # 228 baseline + 5 HR tools (Wave HR-2)
 
 
 def test_registry_has_expected_entries():
@@ -225,6 +225,9 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "vendors_upsert_vendor",
         "vendors_upsert_contractor",
         "vendors_upsert_cert",
+        # MLV15D-HR2 -- HR surface completion Actor mutations (2 tools)
+        "hr_record_skill",
+        "hr_update_absence_compliance",
     }
 )
 
@@ -237,7 +240,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 99  # 96 baseline + 3 Vendors tools (Wave V-1)
+    assert len(MUTATION_TOOLS) == 101  # 99 baseline + 2 HR tools (Wave HR-2)
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -375,6 +378,10 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "agreements_run_compliance_audit",
         # MLV15D-V1 -- Vendors cacheable read (1 tool)
         "vendors_get_contractor",
+        # MLV15D-HR2 -- HR surface completion cacheable reads (3 tools)
+        "hr_query_absences",
+        "hr_compliance_deadlines",
+        "hr_get_onboarding_progress",
     }
 )
 
@@ -387,7 +394,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 86  # 76 baseline + 6 economy + 3 agreements + 1 vendors tools
+    assert len(CACHEABLE_TOOLS) == 89  # 86 baseline + 3 HR tools (Wave HR-2)
 
 
 # ---------------------------------------------------------------------------
@@ -491,6 +498,9 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "vendors_upsert_vendor",
         "vendors_upsert_contractor",
         "vendors_upsert_cert",
+        # MLV15D-HR2 -- HR surface completion admin tools (2 tools)
+        "hr_record_skill",
+        "hr_update_absence_compliance",
     }
 )
 
@@ -504,8 +514,8 @@ def test_admin_only_tools_exact_match():
 
 def test_admin_only_tools_count():
     assert (
-        len(ADMIN_ONLY_TOOLS) == 61
-    )  # 52 baseline (incl. PR-1 #35) + 6 Agreements tools (Wave AG-2) + 3 Vendors tools (Wave V-1)
+        len(ADMIN_ONLY_TOOLS) == 63
+    )  # 52 baseline (incl. PR-1 #35) + 6 Agreements tools (Wave AG-2) + 3 Vendors tools (Wave V-1) + 2 HR tools (Wave HR-2)
 
 
 # ---------------------------------------------------------------------------
