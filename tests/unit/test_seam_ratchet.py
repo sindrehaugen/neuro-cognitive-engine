@@ -59,8 +59,15 @@ def _scan_hasattr_engine_probes(tree: ast.AST, file_path: str = "") -> list[tupl
     return violations
 
 
-def test_no_hasattr_engine_probes_in_vertical_modules() -> None:
-    """Ratchet: Ensure zero hasattr(..., "<engine_name>") calls exist across vertical engines."""
+# Known pre-existing seam offenders being closed by MLV15B (Wave CP-1).
+# This dictionary is shrink-only: once CP-1 closes an offender, the entry MUST be removed.
+KNOWN_SEAM_OFFENDERS: dict[str, set[str]] = {
+    "nce/vertical_modules/customer_portal/actions.py": {"support", "sales"},
+}
+
+
+def test_no_unlisted_hasattr_engine_probes_in_vertical_modules() -> None:
+    """Ratchet: Ensure zero hasattr(..., "<engine_name>") calls exist outside known allowlist."""
     all_violations: list[tuple[str, int, str]] = []
 
     for py_path in sorted(_VERT_DIR.glob("**/*.py")):
@@ -73,10 +80,46 @@ def test_no_hasattr_engine_probes_in_vertical_modules() -> None:
         violations = _scan_hasattr_engine_probes(tree, rel)
         all_violations.extend(violations)
 
-    assert not all_violations, (
-        f"Found {len(all_violations)} prohibited hasattr(..., '<engine_name>') probes:\n"
-        + "\n".join(f"  - {f}:{line} hasattr(..., '{eng}')" for f, line, eng in all_violations)
+    unexpected_violations = [
+        v for v in all_violations if v[2] not in KNOWN_SEAM_OFFENDERS.get(v[0], set())
+    ]
+
+    assert not unexpected_violations, (
+        f"Found {len(unexpected_violations)} unexpected prohibited hasattr(..., '<engine_name>') probes:\n"
+        + "\n".join(
+            f"  - {f}:{line} hasattr(..., '{eng}')" for f, line, eng in unexpected_violations
+        )
         + "\nCross-engine calls must use engine.modules['<engine>'] or catalogued events."
+    )
+
+
+def test_seam_offenders_allowlist_is_shrink_only() -> None:
+    """Every entry in KNOWN_SEAM_OFFENDERS must still be an active violation.
+
+    When MLV15B CP-1 replaces the seams, this test trips until the entry is removed.
+    """
+    active_violations: dict[str, set[str]] = {}
+    for py_path in sorted(_VERT_DIR.glob("**/*.py")):
+        rel = py_path.relative_to(_REPO_ROOT).as_posix()
+        try:
+            tree = ast.parse(py_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            pytest.fail(f"Failed to parse {rel}: {exc}")
+
+        violations = _scan_hasattr_engine_probes(tree, rel)
+        for _, _, eng in violations:
+            active_violations.setdefault(rel, set()).add(eng)
+
+    closed_entries: list[str] = []
+    for fpath, engines in KNOWN_SEAM_OFFENDERS.items():
+        active_for_file = active_violations.get(fpath, set())
+        for eng in engines:
+            if eng not in active_for_file:
+                closed_entries.append(f"{fpath} ({eng})")
+
+    assert not closed_entries, (
+        "Shrink-only violation: Seam(s) closed and no longer use hasattr! "
+        f"Remove from KNOWN_SEAM_OFFENDERS: {closed_entries}"
     )
 
 
