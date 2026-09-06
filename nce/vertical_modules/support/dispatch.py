@@ -26,6 +26,7 @@ from uuid import UUID, uuid5
 from nce.config import cfg
 from nce.db_utils import scoped_pg_session
 from nce.entity_resolution.ownership import assert_owner
+from nce.events.bus import publish
 from nce.vertical_modules.support.tickets import (
     InvalidTicketStatusError,
     TicketNotFoundError,
@@ -38,6 +39,7 @@ log = logging.getLogger("nce.vertical_modules.support.dispatch")
 _DISPATCH_NAMESPACE_UUID = UUID("e8b0a94d-1785-4081-9b16-564344d56789")
 _SUPPORT_ENGINE = "support"
 _NODE_TYPE_TICKET = "TICKET"
+_OP_DISPATCHED = "dispatched"
 
 
 class DispatchCeilingExceededError(ValueError):
@@ -236,6 +238,23 @@ async def do_dispatch_work_order(
             now_dt,
             ticket_id,
             ns_uuid,
+        )
+
+        # 7. Publish C4 transactional outbox event: TICKET.dispatched (Wave SU-1 / FT-3)
+        await publish(
+            conn,
+            namespace_id=ns_uuid,
+            node_type=_NODE_TYPE_TICKET,
+            op=_OP_DISPATCHED,
+            aggregate_id=ticket_subject,
+            payload={
+                "ticket_id": str(ticket_id),
+                "work_order_id": str(work_order_id),
+                "namespace_id": str(ns_uuid),
+                "estimated_cost": estimated_cost,
+                "summary": ticket_row["summary"] or "Dispatched ticket work order",
+                "status": "dispatched",
+            },
         )
 
     return {
