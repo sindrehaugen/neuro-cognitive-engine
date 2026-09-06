@@ -140,16 +140,21 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/health` | `get_health` |
 | GET | `/api/health/degradations` | `get_degradations` |
 | GET | `/api/health/v1` | `get_health_v1` |
+| GET | `/api/hr/absences` | `api_hr_absences` |
 | POST | `/api/hr/absences` | `api_hr_register_absence` |
 | GET | `/api/hr/capacity` | `api_hr_capacity` |
 | GET | `/api/hr/cert-status` | `api_hr_cert_status` |
 | POST | `/api/hr/coach` | `api_hr_coach` |
+| GET | `/api/hr/compliance/deadlines` | `api_hr_compliance_deadlines` |
+| POST | `/api/hr/compliance/milestones` | `api_hr_update_absence_compliance` |
 | GET | `/api/hr/employees` | `api_hr_employees` |
 | POST | `/api/hr/employees` | `api_hr_create_employee` |
 | GET | `/api/hr/employees/{id}` | `api_hr_employee` |
 | POST | `/api/hr/match-skills` | `api_hr_match_skills` |
 | GET | `/api/hr/onboarding/{id}` | `api_hr_onboarding_get` |
 | POST | `/api/hr/onboarding/{id}` | `api_hr_onboarding_build` |
+| GET | `/api/hr/onboarding/{id}/progress` | `api_hr_onboarding_progress` |
+| POST | `/api/hr/skills` | `api_hr_record_skill` |
 | POST | `/api/hr/sync/now` | `api_hr_sync_now` |
 | GET | `/api/hr/sync/status` | `api_hr_sync_status` |
 | POST | `/api/inventory/dispose-rma-weee` | `api_inventory_dispose_rma_weee` |
@@ -358,10 +363,15 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `hr_capacity` |  |  | yes |  |
 | `hr_cert_status` |  |  | yes |  |
 | `hr_coach` |  |  | yes |  |
+| `hr_compliance_deadlines` |  |  | yes |  |
 | `hr_get_employee` |  |  | yes |  |
+| `hr_get_onboarding_progress` |  |  | yes |  |
 | `hr_log_one_on_one` | yes | yes |  |  |
 | `hr_match_skills` |  |  | yes |  |
+| `hr_query_absences` |  |  | yes |  |
+| `hr_record_skill` | yes | yes |  |  |
 | `hr_register_absence` |  | yes |  |  |
+| `hr_update_absence_compliance` | yes | yes |  |  |
 | `import_snapshot` |  | yes |  |  |
 | `index_code_file` |  | yes |  |  |
 | `inventory_dispose_rma_weee` | yes | yes |  |  |
@@ -488,4 +498,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 242 REST endpoints, 228 MCP tools._
+_Totals: 247 REST endpoints, 233 MCP tools._

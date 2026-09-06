@@ -1292,6 +1292,36 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    "hr_record_skill": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_record_skill"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "hr_query_absences": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_query_absences"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "hr_compliance_deadlines": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_compliance_deadlines"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "hr_update_absence_compliance": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_update_absence_compliance"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "hr_get_onboarding_progress": ToolSpec(
+        _h(hr_mcp_handlers, "handle_hr_get_onboarding_progress"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # -------------------------------------------------------------------
     # Module 14: Marketing Engine (ML14-B3, M14.W3)
     # -------------------------------------------------------------------

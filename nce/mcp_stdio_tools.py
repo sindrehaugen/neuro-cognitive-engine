@@ -5149,6 +5149,143 @@ TOOLS = [
             "required": ["namespace_id", "employee_id"],
         },
     ),
+    Tool(
+        name="hr_record_skill",
+        description=(
+            "Mutation: record or update a technical skill on an employee profile. Admin-only."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "employee_id": {"type": "string", "description": "Target employee identifier."},
+                "skill_id": {"type": "string", "description": "Unique skill identifier or slug."},
+                "name": {"type": "string", "description": "Skill display name."},
+                "category": {
+                    "type": "string",
+                    "description": "Skill category (e.g. audio, video, control, network, general).",
+                    "default": "general",
+                },
+                "level": {
+                    "type": "string",
+                    "description": "Proficiency level: beginner, intermediate, advanced, expert.",
+                    "default": "intermediate",
+                },
+                "hr_source_id": {
+                    "type": "string",
+                    "description": "Optional upstream source ID for GDPR hard retirement.",
+                },
+                "raw": {
+                    "type": "object",
+                    "description": "Optional skill metadata dictionary.",
+                },
+            },
+            "required": ["namespace_id", "employee_id", "skill_id", "name"],
+        },
+    ),
+    Tool(
+        name="hr_query_absences",
+        description=("Read-only: query employee absences with caller-role privacy scoping."),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "employee_id": {
+                    "type": "string",
+                    "description": "Optional target employee ID filter.",
+                },
+                "absence_type": {
+                    "type": "string",
+                    "description": "Optional filter by absence type (vacation, sick_leave, parental, training, other).",
+                },
+                "caller_role": {
+                    "type": "string",
+                    "description": "Role of calling agent (peer, hr, manager, verneombud, admin).",
+                    "default": "peer",
+                },
+                "caller_employee_id": {
+                    "type": "string",
+                    "description": "Optional employee ID of caller for self-access scoping.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="hr_compliance_deadlines",
+        description=(
+            "Read-only: query active sick leave statutory compliance deadlines across the namespace."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "only_alerts": {
+                    "type": "boolean",
+                    "description": "If true, return only records with pending or overdue alerts.",
+                    "default": False,
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="hr_update_absence_compliance",
+        description=(
+            "Mutation: record completion or advancement of a Norwegian statutory compliance milestone (plan_4w, dialogmote_1, dialogmote_2). Admin-only."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "absence_id": {
+                    "type": "string",
+                    "description": "Target absence record identifier.",
+                },
+                "milestone": {
+                    "type": "string",
+                    "description": "Statutory milestone: plan_4w, dialogmote_1, or dialogmote_2.",
+                },
+                "completed": {
+                    "type": "boolean",
+                    "description": "Whether the milestone is completed.",
+                    "default": True,
+                },
+                "completed_at": {
+                    "type": "string",
+                    "description": "ISO date string when milestone was completed.",
+                },
+                "participants": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of participating roles or names.",
+                },
+                "notes": {"type": "string", "description": "Compliance documentation notes."},
+                "nav_notified": {
+                    "type": "boolean",
+                    "description": "Whether NAV was notified of milestone completion.",
+                    "default": False,
+                },
+            },
+            "required": ["namespace_id", "absence_id", "milestone"],
+        },
+    ),
+    Tool(
+        name="hr_get_onboarding_progress",
+        description=(
+            "Read-only: retrieve individual onboarding progress, active stage, and next recommended actions."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "employee_id": {"type": "string", "description": "Target employee identifier."},
+                "role": {"type": "string", "description": "Role specialization override."},
+                "department": {"type": "string", "description": "Department override."},
+            },
+            "required": ["namespace_id", "employee_id"],
+        },
+    ),
     # -------------------------------------------------------------------
     # Module 14: Marketing Engine (ML14)
     # -------------------------------------------------------------------

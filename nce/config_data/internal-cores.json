@@ -54,35 +54,10 @@
     "owner": "MLV15D-PR6",
     "reason": "Supplier credit and payment term recalibration pure core; scheduled for surface in MLV15D Wave PR-6."
   },
-  "nce/vertical_modules/hr/absences.py::do_query_absences": {
-    "engine": "hr",
-    "owner": "MLV15D-HR2",
-    "reason": "Employee absence query core; scheduled for MCP tool and admin route exposure in MLV15D Wave HR-2."
-  },
-  "nce/vertical_modules/hr/compliance.py::do_query_compliance_deadlines": {
-    "engine": "hr",
-    "owner": "MLV15D-HR2",
-    "reason": "HR statutory compliance deadline reporter; scheduled for admin dashboard route in MLV15D Wave HR-2."
-  },
-  "nce/vertical_modules/hr/compliance.py::do_update_absence_compliance": {
-    "engine": "hr",
-    "owner": "MLV15D-HR2",
-    "reason": "Working environment compliance auditor for absences; scheduled for background cron sweep in MLV15D."
-  },
-  "nce/vertical_modules/hr/onboarding.py::do_get_onboarding_progress": {
-    "engine": "hr",
-    "owner": "MLV15D-HR2",
-    "reason": "Employee onboarding checklist progress tracker; scheduled for tool exposure in MLV15D Wave HR-2."
-  },
   "nce/vertical_modules/hr/skills.py::do_record_certification": {
     "engine": "hr",
     "owner": "MLV15B-HR1",
     "reason": "Professional certification recorder; emits CERTIFICATION.CREATED when wired in MLV15B Wave HR-1."
-  },
-  "nce/vertical_modules/hr/skills.py::do_record_skill": {
-    "engine": "hr",
-    "owner": "MLV15D-HR2",
-    "reason": "Employee skill taxonomy qualification recorder; scheduled for MCP tool exposure in MLV15D Wave HR-2."
   },
   "nce/vertical_modules/inventory/restock_po.py::do_create_restock_po": {
     "engine": "inventory",

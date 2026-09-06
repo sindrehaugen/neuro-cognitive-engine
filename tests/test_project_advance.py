@@ -577,8 +577,9 @@ class TestProjectAdvancePhaseToolRegistry:
         +1 MLV15B-S2a sales tool (sales_request_signature);
         +2 Wave PR-1 procurement tools (procurement_generate_po, procurement_submit_po);
         +6 MLV15D-AG2 agreements tools;
-        +3 MLV15D-V1 vendors tools."""
-        assert len(MUTATION_TOOLS) == 99
+        +3 MLV15D-V1 vendors tools;
+        +2 MLV15D-HR2 HR tools."""
+        assert len(MUTATION_TOOLS) == 101
 
     def test_admin_only_count(self) -> None:
         """Admin-only tools must total 32 (unified realignment registry;
@@ -605,5 +606,6 @@ class TestProjectAdvancePhaseToolRegistry:
         +1 MLV15B-S2a sales tool -- sales_request_signature;
         +2 Wave PR-1 procurement tools -- procurement_generate_po, procurement_submit_po;
         +6 MLV15D-AG2 agreements tools;
-        +3 MLV15D-V1 vendors tools)."""
-        assert len(ADMIN_ONLY_TOOLS) == 61
+        +3 MLV15D-V1 vendors tools;
+        +2 MLV15D-HR2 HR tools)."""
+        assert len(ADMIN_ONLY_TOOLS) == 63

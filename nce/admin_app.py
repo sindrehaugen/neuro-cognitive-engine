@@ -1250,6 +1250,31 @@ def build_admin_routes() -> list[Route]:
             endpoint=hr_handlers.api_hr_sync_now,
             methods=["POST"],
         ),
+        Route(
+            "/api/hr/skills",
+            endpoint=hr_handlers.api_hr_record_skill,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/hr/absences",
+            endpoint=hr_handlers.api_hr_absences,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/hr/compliance/deadlines",
+            endpoint=hr_handlers.api_hr_compliance_deadlines,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/hr/compliance/milestones",
+            endpoint=hr_handlers.api_hr_update_absence_compliance,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/hr/onboarding/{id}/progress",
+            endpoint=hr_handlers.api_hr_onboarding_progress,
+            methods=["GET"],
+        ),
         # ------------------------------------------------------------------
         # Marketing vertical module endpoints (Module 14, Wave 6, ML14-B6)
         # ------------------------------------------------------------------

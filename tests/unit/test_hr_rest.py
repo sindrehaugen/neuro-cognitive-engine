@@ -94,6 +94,11 @@ def test_hr_routes_mounted_in_admin_app():
         ("/api/hr/coach", ("POST",)),
         ("/api/hr/sync/status", ("GET",)),
         ("/api/hr/sync/now", ("POST",)),
+        ("/api/hr/skills", ("POST",)),
+        ("/api/hr/absences", ("GET",)),
+        ("/api/hr/compliance/deadlines", ("GET",)),
+        ("/api/hr/compliance/milestones", ("POST",)),
+        ("/api/hr/onboarding/{id}/progress", ("GET",)),
     ]
 
     for path, methods in expected_routes:
@@ -285,3 +290,73 @@ async def test_admin_error_response_two_arg_signature():
         assert resp.status_code == 500
         data = json.loads(resp.body)
         assert "error" in data
+
+
+@pytest.mark.asyncio
+async def test_api_hr_record_skill():
+    with (
+        patch("nce.admin_handlers.hr.do_record_skill") as mock_core,
+        patch("nce.admin_handlers.hr.bump_mcp_cache_generation") as mock_bump,
+    ):
+        mock_core.return_value = {"skill_id": "dante-1"}
+        req = _make_request(
+            body={
+                "namespace_id": _NS_A,
+                "employee_id": _EMP_ID,
+                "skill_id": "dante-1",
+                "name": "Dante",
+            }
+        )
+        resp = await hr_mod.api_hr_record_skill(req)
+        assert resp.status_code == 201
+        mock_bump.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_api_hr_absences():
+    with patch("nce.admin_handlers.hr.do_query_absences") as mock_core:
+        mock_core.return_value = {"count": 0, "absences": []}
+        req = _make_request(query={"namespace_id": _NS_A, "employee_id": _EMP_ID})
+        resp = await hr_mod.api_hr_absences(req)
+        assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_api_hr_compliance_deadlines():
+    with patch("nce.admin_handlers.hr.do_query_compliance_deadlines") as mock_core:
+        mock_core.return_value = {"total_alerts": 0, "records": []}
+        req = _make_request(query={"namespace_id": _NS_A, "only_alerts": "true"})
+        resp = await hr_mod.api_hr_compliance_deadlines(req)
+        assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_api_hr_update_absence_compliance():
+    with (
+        patch("nce.admin_handlers.hr.do_update_absence_compliance") as mock_core,
+        patch("nce.admin_handlers.hr.bump_mcp_cache_generation") as mock_bump,
+    ):
+        mock_core.return_value = {"absence_id": "ABS-01", "milestone": "plan_4w"}
+        req = _make_request(
+            body={
+                "namespace_id": _NS_A,
+                "absence_id": "ABS-01",
+                "milestone": "plan_4w",
+                "completed": True,
+            }
+        )
+        resp = await hr_mod.api_hr_update_absence_compliance(req)
+        assert resp.status_code == 200
+        mock_bump.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_api_hr_onboarding_progress():
+    with patch("nce.admin_handlers.hr.do_get_onboarding_progress") as mock_core:
+        mock_core.return_value = {"employee_id": _EMP_ID, "progress_pct": 25.0}
+        req = _make_request(
+            path_params={"id": _EMP_ID},
+            query={"namespace_id": _NS_A},
+        )
+        resp = await hr_mod.api_hr_onboarding_progress(req)
+        assert resp.status_code == 200
