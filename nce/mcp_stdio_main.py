@@ -115,6 +115,9 @@ async def run_stdio_server(*, app: Server | None = None, engine: NCEEngine | Non
         # tasks._handle_bom_line_status_changed reads one at delivery time and
         # raises EngineNotRegisteredError without it. Module-qualified because
         # automation and tasks each define a DIFFERENT register_engine.
+        from nce.engine_registry import populate_engine_modules
+
+        populate_engine_modules(engine)
         project_tasks.register_engine(engine)
         project_automation.register_engine(engine)
         project_tasks.register_bom_task_subscriber()

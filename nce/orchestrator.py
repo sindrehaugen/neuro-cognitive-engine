@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 if TYPE_CHECKING:
+    from nce.engine_registry import EngineRegistry
     from nce.orchestrators.cognitive import CognitiveOrchestrator
     from nce.orchestrators.graph import GraphOrchestrator
     from nce.orchestrators.memory import MemoryOrchestrator
@@ -133,6 +134,10 @@ class NCEEngine(OrchestratorBase):
         self.cognitive: CognitiveOrchestrator | None = None
         self.migration: MigrationOrchestrator | None = None  # nce.orchestrators.migration
         self._init_lock = asyncio.Lock()
+        # Vertical module registry (W-1)
+        from nce.engine_registry import populate_engine_modules
+
+        self.modules: EngineRegistry = populate_engine_modules(self)
 
     async def connect(self):
         cfg.validate()
