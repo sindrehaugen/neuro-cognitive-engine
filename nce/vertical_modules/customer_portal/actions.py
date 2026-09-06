@@ -60,14 +60,10 @@ async def do_raise_service_request(engine: Any, params: dict[str, Any]) -> dict[
     # Pass through customer redaction allow-list (Charter Layer 2)
     safe_record = project_customer_safe("service_request", raw_record)
 
-    # Hand-off hook to Support engine if engine and module registry are present
-    if engine is not None:
+    # Hand-off hook to Support engine if engine is present
+    if engine is not None and hasattr(engine, "support"):
         try:
-            modules = getattr(engine, "modules", None)
-            if modules is not None:
-                support_module = modules.get("support")
-                if support_module is not None:
-                    pass
+            pass
         except Exception:
             pass
 
@@ -87,14 +83,10 @@ async def do_register_expansion_interest(engine: Any, params: dict[str, Any]) ->
     interest_id = str(params.get("interest_id") or f"exp-{uuid.uuid4().hex[:8]}")
     now_iso = datetime.now(timezone.utc).isoformat()
 
-    # Hand-off hook to Sales engine / lead queue if engine and module registry are present
-    if engine is not None:
+    # Hand-off hook to Sales engine / lead queue if engine is present
+    if engine is not None and hasattr(engine, "sales"):
         try:
-            modules = getattr(engine, "modules", None)
-            if modules is not None:
-                sales_module = modules.get("sales")
-                if sales_module is not None:
-                    pass
+            pass
         except Exception:
             pass
 
