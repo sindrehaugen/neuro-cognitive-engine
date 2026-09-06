@@ -63,7 +63,18 @@ async def handle_hr_cert_change(
 
     now_utc = datetime.now(timezone.utc)
 
-    async with scoped_pg_session(pool, ns_id) as conn:
+    if hasattr(pool, "acquire"):
+        session_ctx = scoped_pg_session(pool, ns_id)
+    else:
+        from contextlib import asynccontextmanager
+
+        @asynccontextmanager
+        async def _conn_ctx():
+            yield pool
+
+        session_ctx = _conn_ctx()
+
+    async with session_ctx as conn:
         # 1. Resolve technician resource
         res_row = await conn.fetchrow(
             """

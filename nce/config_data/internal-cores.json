@@ -198,10 +198,5 @@
     "engine": "system_design",
     "owner": "MLV15C-SD4",
     "reason": "Design graph topology validator; scheduled for consolidation with validate_design_graph in MLV15C Wave SD-4."
-  },
-  "nce/vertical_modules/vendors/certs.py::do_check_cert_expiry": {
-    "engine": "vendors",
-    "owner": "MLV15D-V2",
-    "reason": "Certification expiration checker; scheduled for cron runner in MLV15D Wave V-2 emitting CERTIFICATION.EXPIRED."
   }
 }

@@ -1090,6 +1090,119 @@ async def _economy_contract_renewal_watcher_tick(pool: asyncpg.Pool) -> None:
         await release_cron_lock(lock)
 
 
+_HR_CERT_EXPIRY_WATCHER_INTERVAL_MINUTES: int = 60
+_VENDORS_CERT_EXPIRY_WATCHER_INTERVAL_MINUTES: int = 60
+
+
+async def _hr_cert_expiry_watcher_tick(pool: asyncpg.Pool) -> None:
+    """
+    APScheduler job: scan certifications in active namespaces and emit
+    CERTIFICATION.EXPIRED for expired employee certifications (Wave HR-1).
+    """
+    ttl = _HR_CERT_EXPIRY_WATCHER_INTERVAL_MINUTES * 60 + 60
+    lock: CronLock | None = await acquire_cron_lock("hr_cert_expiry_watcher", ttl)
+    if lock is None:
+        log.debug("Skipping hr_cert_expiry_watcher — lock held by another instance")
+        return
+    try:
+        from nce.vertical_modules.hr.certs import do_check_hr_cert_expiry
+
+        class _PoolEngine:
+            def __init__(self, p: asyncpg.Pool) -> None:
+                self.pg_pool = p
+
+        engine = _PoolEngine(pool)
+
+        async with unmanaged_pg_connection(
+            pool, site="cron.hr_cert_expiry_watcher.namespace_scan"
+        ) as conn:
+            rows = await conn.fetch("SELECT id FROM namespaces")
+
+        for row in rows:
+            ns_id: UUID = row["id"]
+            try:
+                stats = await do_check_hr_cert_expiry(engine, {"namespace_id": str(ns_id)})
+                log.debug(
+                    "hr_cert_expiry_watcher tick namespace=%s checked=%d expired=%d published=%d",
+                    ns_id,
+                    stats.get("checked", 0),
+                    stats.get("expired", 0),
+                    stats.get("published", 0),
+                )
+            except _CRON_TICK_ERRORS as exc:
+                log.exception("hr_cert_expiry_watcher tick failed for namespace=%s", ns_id)
+                await _dispatch_throttled_alert(
+                    f"cron.hr_cert_expiry_watcher.{ns_id}",
+                    f"HR Cert Expiry Watcher Failed: Namespace {ns_id}",
+                    f"HR cert expiry watcher tick failed for namespace {ns_id}: "
+                    f"{type(exc).__name__}: {exc}",
+                )
+    except _CRON_TICK_ERRORS as exc:
+        log.exception("hr_cert_expiry_watcher tick failed unexpectedly")
+        await _dispatch_throttled_alert(
+            "cron.hr_cert_expiry_watcher.global",
+            "Cron Job Failed: hr_cert_expiry_watcher",
+            f"HR cert expiry watcher tick failed unexpectedly: {type(exc).__name__}: {exc}",
+        )
+    finally:
+        await release_cron_lock(lock)
+
+
+async def _vendors_cert_expiry_watcher_tick(pool: asyncpg.Pool, mongo_client: Any = None) -> None:
+    """
+    APScheduler job: scan contractor certifications in active namespaces and emit
+    CERTIFICATION.EXPIRED for expired contractor certs (Wave V-2).
+    """
+    ttl = _VENDORS_CERT_EXPIRY_WATCHER_INTERVAL_MINUTES * 60 + 60
+    lock: CronLock | None = await acquire_cron_lock("vendors_cert_expiry_watcher", ttl)
+    if lock is None:
+        log.debug("Skipping vendors_cert_expiry_watcher — lock held by another instance")
+        return
+    try:
+        from nce.vertical_modules.vendors.certs import do_check_cert_expiry
+
+        class _PoolEngine:
+            def __init__(self, p: asyncpg.Pool, m: Any = None) -> None:
+                self.pg_pool = p
+                self.mongo_client = m
+
+        engine = _PoolEngine(pool, mongo_client)
+
+        async with unmanaged_pg_connection(
+            pool, site="cron.vendors_cert_expiry_watcher.namespace_scan"
+        ) as conn:
+            rows = await conn.fetch("SELECT id FROM namespaces")
+
+        for row in rows:
+            ns_id: UUID = row["id"]
+            try:
+                stats = await do_check_cert_expiry(engine, {"namespace_id": str(ns_id)})
+                log.debug(
+                    "vendors_cert_expiry_watcher tick namespace=%s checked=%d expiring=%d published=%d",
+                    ns_id,
+                    stats.get("checked", 0),
+                    stats.get("expiring", 0),
+                    stats.get("published", 0),
+                )
+            except _CRON_TICK_ERRORS as exc:
+                log.exception("vendors_cert_expiry_watcher tick failed for namespace=%s", ns_id)
+                await _dispatch_throttled_alert(
+                    f"cron.vendors_cert_expiry_watcher.{ns_id}",
+                    f"Vendors Cert Expiry Watcher Failed: Namespace {ns_id}",
+                    f"Vendors cert expiry watcher tick failed for namespace {ns_id}: "
+                    f"{type(exc).__name__}: {exc}",
+                )
+    except _CRON_TICK_ERRORS as exc:
+        log.exception("vendors_cert_expiry_watcher tick failed unexpectedly")
+        await _dispatch_throttled_alert(
+            "cron.vendors_cert_expiry_watcher.global",
+            "Cron Job Failed: vendors_cert_expiry_watcher",
+            f"Vendors cert expiry watcher tick failed unexpectedly: {type(exc).__name__}: {exc}",
+        )
+    finally:
+        await release_cron_lock(lock)
+
+
 async def _actor_trust_tick(pool: asyncpg.Pool) -> None:
     """
     Hourly tick: recompute Laplace-smoothed trust scores in ``actor_trust``.
@@ -1790,12 +1903,16 @@ async def async_main() -> None:
     )
     from nce.vertical_modules.project import automation as project_automation
     from nce.vertical_modules.project import tasks as project_tasks
+    from nce.vertical_modules.resources.watcher import (
+        register_resources_event_subscribers,
+    )
     from nce.vertical_modules.system_design.subscribers import (
         register_system_design_subscribers,
     )
 
     register_system_design_subscribers()
     register_field_tech_subscribers()
+    register_resources_event_subscribers()
 
     # Module 7's three C4 selectors (M0.W20d) -- PO_LINE.status_changed,
     # GOODS_RECEIPT.created and BOM_LINE.status_changed. Their handlers were
@@ -1975,6 +2092,28 @@ async def async_main() -> None:
         replace_existing=True,
     )
 
+    hr_cert_expiry_minutes = max(5, int(_HR_CERT_EXPIRY_WATCHER_INTERVAL_MINUTES))
+    scheduler.add_job(
+        _hr_cert_expiry_watcher_tick,
+        IntervalTrigger(minutes=hr_cert_expiry_minutes),
+        args=[pool],
+        id="hr_cert_expiry_watcher",
+        coalesce=True,
+        max_instances=1,
+        replace_existing=True,
+    )
+
+    vendors_cert_expiry_minutes = max(5, int(_VENDORS_CERT_EXPIRY_WATCHER_INTERVAL_MINUTES))
+    scheduler.add_job(
+        _vendors_cert_expiry_watcher_tick,
+        IntervalTrigger(minutes=vendors_cert_expiry_minutes),
+        args=[pool, mongo_client],
+        id="vendors_cert_expiry_watcher",
+        coalesce=True,
+        max_instances=1,
+        replace_existing=True,
+    )
+
     scheduler.start()
     log.info(
         "Started bridge renewal scheduler: interval=%s min, lookahead=%s h",
@@ -2014,6 +2153,8 @@ async def async_main() -> None:
         _actor_trust_tick(pool),
         _anchor_tick(pool),
         _retention_tick(pool),
+        _hr_cert_expiry_watcher_tick(pool),
+        _vendors_cert_expiry_watcher_tick(pool, mongo_client),
     ]
     if cfg.NCE_D365_ENABLED:
         startup_coros.append(_d365_sync_tick(pool))

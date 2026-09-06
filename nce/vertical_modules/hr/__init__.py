@@ -28,7 +28,7 @@ from nce.vertical_modules.hr.absences import (
     do_register_absence,
 )
 from nce.vertical_modules.hr.capacity import do_capacity
-from nce.vertical_modules.hr.certs import do_cert_status
+from nce.vertical_modules.hr.certs import do_cert_status, do_check_hr_cert_expiry
 from nce.vertical_modules.hr.coaching import do_coach, do_log_one_on_one
 from nce.vertical_modules.hr.compliance import (
     EVENT_TYPE_HR_COMPLIANCE_MILESTONE_RECORDED,
@@ -63,6 +63,7 @@ __all__ = [
     "do_build_onboarding_quest",
     "do_capacity",
     "do_cert_status",
+    "do_check_hr_cert_expiry",
     "do_coach",
     "do_create_employee",
     "do_get_employee",

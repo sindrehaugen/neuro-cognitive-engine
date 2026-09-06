@@ -22,7 +22,9 @@ log = logging.getLogger("nce.vertical_modules.vendors.certs")
 
 _VENDORS_ENGINE: str = "vendors"
 _NODE_TYPE_CERT: str = "CERT"
+_NODE_TYPE_CERTIFICATION: str = "CERTIFICATION"
 _NODE_TYPE_CONTRACTOR: str = "CONTRACTOR"
+_OP_EXPIRED: str = "EXPIRED"
 
 # Retrieve NCE_VENDORS_CERT_EXPIRY_WARN_DAYS from config/env with fallback
 try:
@@ -277,14 +279,14 @@ async def do_check_cert_expiry(
         if expiry_date <= warn_date:
             expiring += 1
 
-            # Idempotently publish cert.expiry C4 event
+            # Idempotently publish CERTIFICATION.EXPIRED C4 event (Wave V-2)
             async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
                 already_published = await conn.fetchval(
                     """
                     SELECT EXISTS (
                         SELECT 1 FROM outbox_events
                         WHERE namespace_id = $1::uuid
-                          AND event_type = 'cert.expiry'
+                          AND event_type IN ('CERTIFICATION.EXPIRED', 'cert.expiry')
                           AND aggregate_id = $2
                     )
                     """,
@@ -296,13 +298,17 @@ async def do_check_cert_expiry(
                     await publish(
                         conn,
                         namespace_id=ns_uuid,
-                        node_type="cert",
-                        op="expiry",
+                        node_type=_NODE_TYPE_CERTIFICATION,
+                        op=_OP_EXPIRED,
                         aggregate_id=cert_label,
                         payload={
                             "cert_id": cert_label,
                             "contractor_id": contractor_label or "",
+                            "employee_id": contractor_label or "",
+                            "resource_id": contractor_label or "",
                             "cert_name": doc.get("cert_name") or cert_label.split(":")[-1],
+                            "status": "expired",
+                            "valid_to": expiry_date.isoformat(),
                             "expiry_date": expiry_date.isoformat(),
                             "namespace_id": str(ns_uuid),
                         },

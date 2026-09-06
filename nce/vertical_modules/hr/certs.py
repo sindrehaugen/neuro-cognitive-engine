@@ -15,8 +15,12 @@ from typing import Any
 from uuid import UUID
 
 from nce.db_utils import scoped_pg_session
+from nce.events.bus import publish
 
 log = logging.getLogger("nce.vertical_modules.hr.certs")
+
+_NODE_TYPE_CERTIFICATION = "CERTIFICATION"
+_OP_EXPIRED = "EXPIRED"
 
 
 def _extract_pool(engine_or_pool: Any) -> Any:
@@ -142,4 +146,106 @@ async def do_cert_status(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
         "expiring_soon_count": expiring_count,
         "expired_count": expired_count,
         "valid_count": valid_count,
+    }
+
+
+async def do_check_hr_cert_expiry(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
+    """Scan certifications in active namespace and idempotently publish CERTIFICATION.EXPIRED for expired ones.
+
+    Parameters
+    ----------
+    params : dict[str, Any]
+        - namespace_id: (required) Tenant UUID.
+        - reference_date: (optional) Base date to check against (defaults to today).
+    """
+    pool = _extract_pool(engine)
+    ns_uuid = _parse_uuid(params.get("namespace_id"), "namespace_id")
+
+    ref_date_raw = params.get("reference_date")
+    if ref_date_raw:
+        if isinstance(ref_date_raw, (date, datetime)):
+            ref_date = ref_date_raw.date() if isinstance(ref_date_raw, datetime) else ref_date_raw
+        else:
+            ref_date = date.fromisoformat(str(ref_date_raw).split("T")[0])
+    else:
+        ref_date = date.today()
+
+    query = """
+        SELECT c.id, c.cert_id, c.employee_id, c.name, c.valid_to, c.status
+        FROM certifications c
+        WHERE c.namespace_id = $1::uuid
+          AND (
+              (c.valid_to IS NOT NULL AND c.valid_to::date <= $2::date)
+              OR LOWER(c.status) IN ('expired', 'revoked', 'suspended', 'inactive')
+          )
+    """
+
+    checked = 0
+    expired = 0
+    published = 0
+
+    async with scoped_pg_session(pool, ns_uuid) as conn:
+        rows = await conn.fetch(query, ns_uuid, ref_date)
+        checked = len(rows)
+
+        for r in rows:
+            v_to = r["valid_to"]
+            if isinstance(v_to, datetime):
+                v_date = v_to.date()
+            elif isinstance(v_to, date):
+                v_date = v_to
+            else:
+                v_date = None
+
+            status_str = str(r["status"] or "").strip().lower()
+            is_expired = (v_date is not None and v_date <= ref_date) or status_str in (
+                "expired",
+                "revoked",
+                "suspended",
+                "inactive",
+            )
+
+            if not is_expired:
+                continue
+
+            expired += 1
+            aggregate_id = str(r["cert_id"] or r["id"])
+
+            already_published = await conn.fetchval(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM outbox_events
+                    WHERE namespace_id = $1::uuid
+                      AND event_type = 'CERTIFICATION.EXPIRED'
+                      AND aggregate_id = $2
+                )
+                """,
+                ns_uuid,
+                aggregate_id,
+            )
+
+            if not already_published:
+                await publish(
+                    conn,
+                    namespace_id=ns_uuid,
+                    node_type=_NODE_TYPE_CERTIFICATION,
+                    op=_OP_EXPIRED,
+                    aggregate_id=aggregate_id,
+                    payload={
+                        "namespace_id": str(ns_uuid),
+                        "employee_id": str(r["employee_id"]),
+                        "resource_id": str(r["employee_id"]),
+                        "cert_name": str(r["name"]),
+                        "status": "expired",
+                        "valid_to": v_to.isoformat() if v_to else None,
+                        "cert_id": aggregate_id,
+                    },
+                )
+                published += 1
+
+    return {
+        "namespace_id": str(ns_uuid),
+        "checked": checked,
+        "expired": expired,
+        "published": published,
     }
