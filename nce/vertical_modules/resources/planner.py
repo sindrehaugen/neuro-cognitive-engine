@@ -17,6 +17,7 @@ from uuid import uuid4
 
 from nce.config import cfg
 from nce.db_utils import scoped_pg_session
+from nce.decision_feedback import record_decision_feedback
 from nce.vertical_modules.resources._guard import (
     ResourceValidationError,
     require_resources_enabled,
@@ -356,10 +357,34 @@ async def do_record_allocation_outcome(engine: Any, params: dict[str, Any]) -> d
             "m15_resources_planner_v1",
         )
 
+    on_time = bool(params.get("on_time", True))
+    decision = "held" if on_time and quality_score >= 0.8 else "deviated"
+    demand_kind = str(params.get("demand_kind") or "project")
+    df_record = await record_decision_feedback(
+        pool,
+        ns_id,
+        engine="resources",
+        proposal={
+            "resource_id": str(res_id),
+            "allocation_id": str(alloc_id) if alloc_id else None,
+            "demand_kind": demand_kind,
+        },
+        decision=decision,
+        delta={
+            "rating": rating,
+            "quality_score": quality_score,
+            "on_time": on_time,
+            "notes": str(params.get("notes") or ""),
+        },
+        actor=str(params.get("actor") or "planner"),
+        context_id=str(alloc_id) if alloc_id else str(res_id),
+    )
+
     return {
         "ledger_id": str(ledger_id),
         "namespace_id": str(ns_id),
         "resource_id": str(res_id),
         "rating": rating,
         "quality_score": quality_score,
+        "decision_feedback_id": df_record.get("id"),
     }

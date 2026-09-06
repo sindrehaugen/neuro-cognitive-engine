@@ -573,9 +573,9 @@ class TestProjectAdvancePhaseToolRegistry:
         +4 ML15-B7 resources tools (reserve, release, material-flow, travel);
         +2 ML17-B5 customer portal tools (raise_service_request, register_expansion_interest);
         +4 ML9b Assets completion tools (seed_from_bom, pull_telemetry, attach_sla,
-        compute_health);
-        +1 MLV15B-S2a sales tool (sales_request_signature)."""
-        assert len(MUTATION_TOOLS) == 88
+        +1 MLV15B-S2a sales tool (sales_request_signature);
+        +1 Wave C10 decision_feedback_record tool."""
+        assert len(MUTATION_TOOLS) == 89
 
     def test_admin_only_count(self) -> None:
         """Admin-only tools must total 32 (unified realignment registry;
@@ -599,5 +599,6 @@ class TestProjectAdvancePhaseToolRegistry:
         no non-admin principal may reach any of them;
         +1 ML9b Assets tool -- assets_pull_telemetry, admin_only because it
         drives an operator/cron pull against a vendor telemetry adapter;
-        +1 MLV15B-S2a sales tool -- sales_request_signature)."""
-        assert len(ADMIN_ONLY_TOOLS) == 50
+        +1 MLV15B-S2a sales tool -- sales_request_signature;
+        +1 Wave C10 decision_feedback_record tool)."""
+        assert len(ADMIN_ONLY_TOOLS) == 51

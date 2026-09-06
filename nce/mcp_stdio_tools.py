@@ -5434,6 +5434,48 @@ TOOLS = [
             "required": ["namespace_id", "query"],
         },
     ),
+    Tool(
+        name="decision_feedback_record",
+        description=(
+            "Record ground-truth human decision or outcome feedback across vertical engines "
+            "(product, procurement, economy, resources, field_tech) into the tenant-isolated decision_feedback ledger."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Tenant namespace UUID",
+                },
+                "engine": {
+                    "type": "string",
+                    "description": "Source engine (e.g. 'product', 'procurement', 'economy', 'resources', 'field_tech')",
+                },
+                "decision": {
+                    "type": "string",
+                    "description": "Human decision or outcome (e.g. 'accept', 'override', 'held', 'deviated', 'succeeded', 'rework')",
+                },
+                "context_id": {
+                    "type": "string",
+                    "description": "Optional entity identifier (e.g. BOM line, supplier ID, invoice ID, work order ID)",
+                },
+                "proposal": {
+                    "type": "object",
+                    "description": "Engine proposal or recommendation before human decision",
+                },
+                "delta": {
+                    "type": "object",
+                    "description": "Difference between proposal and human decision",
+                },
+                "actor": {
+                    "type": "string",
+                    "description": "Actor identifier or role (default 'human')",
+                    "default": "human",
+                },
+            },
+            "required": ["namespace_id", "engine", "decision"],
+        },
+    ),
 ]
 
 

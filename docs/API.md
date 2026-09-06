@@ -292,6 +292,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `d365_query_case` |  |  | yes |  |
 | `d365_sync_now` | yes | yes |  |  |
 | `d365_sync_status` |  |  |  |  |
+| `decision_feedback_record` | yes | yes |  |  |
 | `delete_snapshot` |  | yes |  |  |
 | `describe_schema` |  |  |  |  |
 | `detect_causal_cycles` | yes |  |  |  |
@@ -459,4 +460,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_reliability_radar` |  |  | yes |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 228 REST endpoints, 213 MCP tools._
+_Totals: 228 REST endpoints, 214 MCP tools._

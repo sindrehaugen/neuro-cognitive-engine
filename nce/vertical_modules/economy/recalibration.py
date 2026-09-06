@@ -150,6 +150,7 @@ from typing import Any
 import asyncpg  # type: ignore[import-untyped]
 
 from nce.db_utils import POOL_ACQUIRE_TIMEOUT, scoped_pg_session
+from nce.decision_feedback import record_decision_feedback
 from nce.vertical_modules.economy.matching import _MIN_GREEN, _coerce_cutoff, _resolve_thresholds
 
 log = logging.getLogger("nce.vertical_modules.economy.recalibration")
@@ -258,14 +259,30 @@ async def do_record_match_decision(
             _MODEL_VERSION,
         )
 
+    df_record = await record_decision_feedback(
+        pg_pool,
+        namespace_id,
+        engine="economy",
+        proposal={"supplier_orgnr": key, "score": score, "tier": tier},
+        decision=decision,
+        delta={"supplier_orgnr": key, "score": score, "tier": tier},
+        actor="human",
+        context_id=key,
+    )
+
     log.info(
-        "[ECONOMY-RECAL] decision recorded supplier_orgnr=%s decision=%s score=%d ledger_id=%s",
+        "[ECONOMY-RECAL] decision recorded supplier_orgnr=%s decision=%s score=%d ledger_id=%s df_id=%s",
         key,
         decision,
         score,
         ledger_id,
+        df_record.get("id"),
     )
-    return {"ledger_id": str(ledger_id), "supplier_orgnr": key}
+    return {
+        "ledger_id": str(ledger_id),
+        "supplier_orgnr": key,
+        "decision_feedback_id": df_record.get("id"),
+    }
 
 
 # ---------------------------------------------------------------------------

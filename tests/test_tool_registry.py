@@ -27,7 +27,7 @@ from nce.tool_registry import (
 # ---------------------------------------------------------------------------
 
 _EXPECTED_TOTAL = (
-    213  # 206 baseline + 6 Economy tools (MLV15D Wave E-1) + 1 Sales signing request (Wave S-2a)
+    214  # 206 baseline + 6 Economy tools (MLV15D Wave E-1) + 1 Sales signing request (Wave S-2a) + 1 Decision Feedback (Wave C10)
 )
 
 
@@ -213,6 +213,8 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "customer_portal_register_expansion_interest",
         # MLV15B-S2a -- Sales quote signing request Actor tool
         "sales_request_signature",
+        # Wave C10 -- Decision Feedback service mutation
+        "decision_feedback_record",
     }
 )
 
@@ -226,8 +228,8 @@ def test_mutation_tools_exact_match():
 
 def test_mutation_tools_count():
     assert (
-        len(MUTATION_TOOLS) == 88
-    )  # 83 baseline + 4 assets completion tools + 1 sales_request_signature
+        len(MUTATION_TOOLS) == 89
+    )  # 83 baseline + 4 assets completion tools + 1 sales_request_signature + 1 decision_feedback_record
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -461,6 +463,8 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "assets_pull_telemetry",
         # MLV15B-S2a -- Sales quote signing request Actor tool
         "sales_request_signature",
+        # Wave C10 -- Decision Feedback service admin_only tool
+        "decision_feedback_record",
     }
 )
 
@@ -474,8 +478,8 @@ def test_admin_only_tools_exact_match():
 
 def test_admin_only_tools_count():
     assert (
-        len(ADMIN_ONLY_TOOLS) == 50
-    )  # 48 baseline + 1 assets tool (pull_telemetry) + 1 sales_request_signature
+        len(ADMIN_ONLY_TOOLS) == 51
+    )  # 48 baseline + 1 assets tool (pull_telemetry) + 1 sales_request_signature + 1 decision_feedback_record
 
 
 # ---------------------------------------------------------------------------

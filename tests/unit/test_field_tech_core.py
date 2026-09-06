@@ -140,6 +140,11 @@ def _patch_scoped_session(monkeypatch: pytest.MonkeyPatch) -> None:
         _fake_scoped,
         raising=False,
     )
+    monkeypatch.setattr(
+        "nce.decision_feedback.scoped_pg_session",
+        _fake_scoped,
+        raising=False,
+    )
 
 
 # ============================================================================

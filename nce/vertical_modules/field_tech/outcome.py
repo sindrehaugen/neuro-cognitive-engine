@@ -21,6 +21,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from nce.db_utils import scoped_pg_session
+from nce.decision_feedback import record_decision_feedback
 
 log = logging.getLogger("nce.vertical_modules.field_tech.outcome")
 
@@ -158,6 +159,27 @@ async def do_record_outcome(engine: Any, params: dict[str, Any]) -> dict[str, An
             _MODEL_VERSION,
         )
 
+    decision = "succeeded" if not was_rework and quality_score >= 0.7 else "rework"
+    df_record = await record_decision_feedback(
+        pool,
+        ns_uuid,
+        engine="field_tech",
+        proposal={
+            "work_order_id": work_order_id,
+            "kind": wo_row["kind"],
+            "assignee_kind": wo_row["assignee_kind"],
+        },
+        decision=decision,
+        delta={
+            "rating": rating,
+            "quality_score": quality_score,
+            "was_rework": was_rework,
+            "resolution_notes": resolution_notes,
+        },
+        actor=effective_completed_by,
+        context_id=work_order_id,
+    )
+
     return {
         "status": "recorded",
         "ledger_id": str(ledger_id),
@@ -166,4 +188,5 @@ async def do_record_outcome(engine: Any, params: dict[str, Any]) -> dict[str, An
         "quality_score": quality_score,
         "completed_by": effective_completed_by,
         "marked_completed": mark_completed,
+        "decision_feedback_id": df_record.get("id"),
     }

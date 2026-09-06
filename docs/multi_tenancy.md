@@ -76,12 +76,12 @@ The catalog consistency validator categorizes all tables in the engine into thre
 | Surface Definition | Table Count | Scope / Description | Why It Is Not the Source of Truth |
 | :--- | :---: | :--- | :--- |
 | **Migration [`001_enable_rls.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/001_enable_rls.sql)** | 14 | Initial baseline seed (`memories`, `kg_nodes`, `kg_edges`, `pii_redactions`, `memory_salience`, `contradictions`, `snapshots`, `event_log`, `resource_quotas`, `consolidation_runs`, `bridge_subscriptions`, `dead_letter_queue`, `embedding_migrations`, `memory_embeddings`) + `a2a_grants`. | Only seeds initial v1 tables; omits post-v1 migrations ([`002`–`050`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/)). |
-| **[`schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) `tenant_tables` loop** | 41 | Dynamic PL/pgSQL array loop in `nce/schema.sql`. Additional tables (`replay_runs`, `outbox_events`, `saga_execution_log`, `topology_graph`, `economy_contracts`, `stock_locations`, `inventory_items`, etc.) receive policy statements inline outside the loop. | Incomplete as a standalone list; lacks 46 tables (87 − 41) handled inline or in newer vertical engine migrations. |
-| **`EXPECTED_TENANT_RLS_TABLES` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py))** | **87** | Authoritative programmatic specification covering all core, cognitive, governance, diagnostics, shared-core, and vertical-engine tables. Validated by `verify_rls_catalog_consistency()` at startup. | **Definitive source of truth**: Enforced by automated runtime assertions against live database catalog metadata. |
+| **[`schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) `tenant_tables` loop** | 41 | Dynamic PL/pgSQL array loop in `nce/schema.sql`. Additional tables (`replay_runs`, `outbox_events`, `saga_execution_log`, `topology_graph`, `economy_contracts`, `stock_locations`, `inventory_items`, etc.) receive policy statements inline outside the loop. | Incomplete as a standalone list; lacks 47 tables (88 − 41) handled inline or in newer vertical engine migrations. |
+| **`EXPECTED_TENANT_RLS_TABLES` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py))** | **88** | Authoritative programmatic specification covering all core, cognitive, governance, diagnostics, shared-core, and vertical-engine tables. Validated by `verify_rls_catalog_consistency()` at startup. | **Definitive source of truth**: Enforced by automated runtime assertions against live database catalog metadata. |
 
-### 2c. Complete Inventory of the 87 Tenant RLS Tables
+### 2c. Complete Inventory of the 88 Tenant RLS Tables
 
-The 87 tables in `EXPECTED_TENANT_RLS_TABLES` span all 24 functional domains of NCE:
+The 88 tables in `EXPECTED_TENANT_RLS_TABLES` span all 25 functional domains of NCE:
 
 | Subsystem Domain | Count | Table Names | Description |
 | :--- | :---: | :--- | :--- |
@@ -109,6 +109,7 @@ The 87 tables in `EXPECTED_TENANT_RLS_TABLES` span all 24 functional domains of 
 | **Staff & Resources Engine** | 5 | `resources`, `allocations`, `travel_legs`, `stays`, `per_diems` | Schedulable abstraction registry (people, contractors, vehicles, tools), capacity calendar, conflict-excluded allocations (btree_gist), travel legs, lodging stays, and statutory per-diem allowances (Module 15). |
 | **Customer Portal Engine** | 3 | `portal_users`, `portal_document_shares`, `portal_service_requests` | Customer login identities (external scoped), scoped and expiring document grants, and service request intake before Support hand-off (Module 17). |
 | **Business Insights Engine** | 1 | `business_insights_kpi_snapshots` | Cached point-in-time KPI roll-up snapshots and historical performance trends (Module 16). |
+| **Decision Feedback** | 1 | `decision_feedback` | Cross-engine human decision and outcome telemetry (Phase 2, Wave C10). |
 
 
 ---

@@ -29,6 +29,7 @@ from nce import (
     catalog_mcp_handlers,
     code_mcp_handlers,
     contradiction_mcp_handlers,
+    decision_feedback,
     graph_mcp_handlers,
     memory_mcp_handlers,
     migration_mcp_handlers,
@@ -405,6 +406,14 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
     ),
     "describe_schema": ToolSpec(
         _h(catalog_mcp_handlers, "handle_describe_schema"),
+    ),
+    # ------------------------------------------------------------------
+    # Decision feedback tools (C10 cross-engine feedback service)
+    # ------------------------------------------------------------------
+    "decision_feedback_record": ToolSpec(
+        _h(decision_feedback, "handle_record_decision_feedback"),
+        admin_only=True,
+        mutation=True,
     ),
     # ------------------------------------------------------------------
     # Dynamics 365 / Dataverse vertical module tools
