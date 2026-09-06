@@ -85,8 +85,8 @@ def test_no_node_type_has_both_a_null_and_a_non_null_transition_row() -> None:
     )
 
 
-def test_bom_line_has_exactly_the_twelve_registered_rows() -> None:
-    """Pins the registration this wave makes, so a thirteenth or missing
+def test_bom_line_has_exactly_the_thirteen_registered_rows() -> None:
+    """Pins the registration this wave makes, so a fourteenth or missing
     transition is caught here rather than only downstream."""
     raw = _OWNERSHIP_MAP_PATH.read_text(encoding="utf-8")
     data: dict[str, Any] = json.loads(raw)
@@ -105,9 +105,10 @@ def test_bom_line_has_exactly_the_twelve_registered_rows() -> None:
         ("procurement", "status:ordered"),
         ("inventory", "status:delivered"),
         ("field_tech", "status:installed"),
+        ("field_tech", "status:tested"),
     }
     assert got == expected
-    assert len(rows) == 12
+    assert len(rows) == 13
     assert not any(r.get("transition") is None for r in rows)
 
 

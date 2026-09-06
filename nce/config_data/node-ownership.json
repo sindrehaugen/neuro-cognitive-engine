@@ -57,6 +57,7 @@
     { "node_type": "BOM_LINE", "owner_engine": "procurement",   "transition": "status:ordered" },
     { "node_type": "BOM_LINE", "owner_engine": "inventory",     "transition": "status:delivered" },
     { "node_type": "BOM_LINE", "owner_engine": "field_tech",    "transition": "status:installed" },
+    { "node_type": "BOM_LINE", "owner_engine": "field_tech",    "transition": "status:tested" },
     { "node_type": "TICKET",                "owner_engine": "support",       "transition": null,
       "_note": "Module 10 (Support Engine) primary spine node: native ServiceTicket lifecycle, status, SLA clock, and resolution timeline." },
     { "node_type": "SLA",                   "owner_engine": "support",       "transition": null,

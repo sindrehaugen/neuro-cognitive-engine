@@ -16,6 +16,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from nce.bom_lines import update_bom_line_status
 from nce.db_utils import scoped_pg_session
 
 log = logging.getLogger("nce.vertical_modules.field_tech.scan")
@@ -67,7 +68,7 @@ async def do_scan_serial(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
         # 1. Assert work order exists in namespace
         wo = await conn.fetchrow(
             """
-            SELECT id FROM work_orders
+            SELECT id, location_id FROM work_orders
             WHERE work_order_id = $1 AND namespace_id = $2::uuid
             """,
             work_order_id,
@@ -131,7 +132,111 @@ async def do_scan_serial(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
             ns_uuid,
         )
 
-    return {
+        # 6. Advance BOM_LINE status to INSTALLED (Wave FT-1)
+        target_quote_id = params.get("quote_id")
+        target_line_ref = params.get("line_ref")
+        if not (target_quote_id and target_line_ref):
+            clean_id = (
+                bom_line_id[len("BOM_LINE:") :]
+                if bom_line_id.startswith("BOM_LINE:")
+                else bom_line_id
+            )
+            if ":" in clean_id:
+                target_quote_id, target_line_ref = clean_id.split(":", 1)
+            else:
+                try:
+                    bl_row = await conn.fetchrow(
+                        """
+                        SELECT quote_id, line_ref FROM bom_line_content
+                        WHERE namespace_id = $1::uuid
+                          AND (bom_line_label = $2 OR bom_line_label = 'BOM_LINE:' || $2 OR line_ref = $2)
+                        LIMIT 1
+                        """,
+                        ns_uuid,
+                        bom_line_id,
+                    )
+                    if bl_row:
+                        target_quote_id = bl_row["quote_id"]
+                        target_line_ref = bl_row["line_ref"]
+                except Exception as exc:
+                    log.debug("Failed to query bom_line_content in do_scan_serial: %s", exc)
+
+        if target_quote_id and target_line_ref:
+            try:
+                await update_bom_line_status(
+                    conn,
+                    ns_uuid,
+                    writer_engine="field_tech",
+                    quote_id=target_quote_id,
+                    line_ref=target_line_ref,
+                    status="INSTALLED",
+                )
+            except Exception as exc:
+                log.warning("Could not update BOM_LINE status to INSTALLED: %s", exc)
+
+        # 7. Promote FUNCTIONAL_LOCATION from design-intent to as-built (Wave FT-1)
+        fl_val = (
+            params.get("functional_location_id")
+            or params.get("location_id")
+            or (wo["location_id"] if wo and "location_id" in wo and wo["location_id"] else None)
+        )
+        asbuilt_label: str | None = None
+        if fl_val:
+            loc_str = str(fl_val).strip()
+            if loc_str.startswith("FL:") or loc_str.startswith("FUNCTIONAL_LOCATION:"):
+                intent_label = loc_str
+            else:
+                intent_label = f"FUNCTIONAL_LOCATION:{loc_str}"
+            asbuilt_label = f"AsBuilt:{intent_label}"
+
+            # Upsert AsBuilt FUNCTIONAL_LOCATION node
+            await conn.execute(
+                """
+                INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)
+                VALUES ($1, 'FUNCTIONAL_LOCATION', $2::uuid, 'agent')
+                ON CONFLICT (label, namespace_id) DO NOTHING
+                """,
+                asbuilt_label,
+                ns_uuid,
+            )
+
+            # Promoted_to_asbuilt edge: intent -> as-built
+            await conn.execute(
+                """
+                INSERT INTO kg_edges (subject_label, predicate, object_label, confidence, namespace_id, change_origin)
+                VALUES ($1, 'promoted_to_asbuilt', $2, 1.0, $3::uuid, 'agent')
+                ON CONFLICT (subject_label, predicate, object_label, namespace_id) DO NOTHING
+                """,
+                intent_label,
+                asbuilt_label,
+                ns_uuid,
+            )
+
+            # Reverse confirmation edge: as-built -> intent
+            await conn.execute(
+                """
+                INSERT INTO kg_edges (subject_label, predicate, object_label, confidence, namespace_id, change_origin)
+                VALUES ($1, 'as_built_confirms', $2, 1.0, $3::uuid, 'agent')
+                ON CONFLICT (subject_label, predicate, object_label, namespace_id) DO NOTHING
+                """,
+                asbuilt_label,
+                intent_label,
+                ns_uuid,
+            )
+
+            # Link asset to as-built location
+            await conn.execute(
+                """
+                INSERT INTO kg_edges (subject_label, predicate, object_label, confidence, namespace_id, change_origin)
+                VALUES ($1, 'lives_in', $2, 1.0, $3::uuid, 'agent')
+                ON CONFLICT (subject_label, predicate, object_label, namespace_id) DO NOTHING
+                """,
+                asset_label,
+                asbuilt_label,
+                ns_uuid,
+            )
+
+    res: dict[str, Any] = {
         "status": "scanned",
         "work_order_id": work_order_id,
         "bom_line_id": bom_line_id,
@@ -145,3 +250,6 @@ async def do_scan_serial(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
             "raw": f"{bom_label} -[installed_as]-> {asset_label}",
         },
     }
+    if asbuilt_label:
+        res["asbuilt_location"] = asbuilt_label
+    return res

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
+from nce.bom_lines import update_bom_line_status
 from nce.db_utils import scoped_pg_session
 
 log = logging.getLogger("nce.vertical_modules.field_tech.checklist")
@@ -197,6 +198,71 @@ async def do_complete_checklist(engine: Any, params: dict[str, Any]) -> dict[str
             ns_uuid,
         )
 
+        # Advance BOM_LINE status to TESTED on successful checklist completion (Wave FT-1)
+        tested_lines: list[str] = []
+        if completed:
+            raw_lines: list[str] = []
+            if params.get("bom_line_id"):
+                raw_lines.append(str(params["bom_line_id"]).strip())
+            if params.get("bom_lines"):
+                raw_lines.extend(str(x).strip() for x in params["bom_lines"] if str(x).strip())
+
+            # Also check if work order has installed BOM lines via graph edges
+            if not raw_lines:
+                try:
+                    edge_rows = await conn.fetch(
+                        """
+                        SELECT object_label FROM kg_edges
+                        WHERE namespace_id = $1::uuid
+                          AND subject_label = $2
+                          AND predicate = 'installs'
+                        """,
+                        ns_uuid,
+                        wo_label,
+                    )
+                    raw_lines.extend(r["object_label"] for r in edge_rows)
+                except Exception as exc:
+                    log.debug("Failed to query installs edges for work order: %s", exc)
+
+            for bl_id in raw_lines:
+                target_quote_id = params.get("quote_id")
+                target_line_ref = params.get("line_ref")
+                if not (target_quote_id and target_line_ref):
+                    clean_id = bl_id[len("BOM_LINE:") :] if bl_id.startswith("BOM_LINE:") else bl_id
+                    if ":" in clean_id:
+                        target_quote_id, target_line_ref = clean_id.split(":", 1)
+                    else:
+                        try:
+                            bl_row = await conn.fetchrow(
+                                """
+                                SELECT quote_id, line_ref FROM bom_line_content
+                                WHERE namespace_id = $1::uuid
+                                  AND (bom_line_label = $2 OR bom_line_label = 'BOM_LINE:' || $2 OR line_ref = $2)
+                                LIMIT 1
+                                """,
+                                ns_uuid,
+                                bl_id,
+                            )
+                            if bl_row:
+                                target_quote_id = bl_row["quote_id"]
+                                target_line_ref = bl_row["line_ref"]
+                        except Exception as exc:
+                            log.debug("Failed to query bom_line_content: %s", exc)
+
+                if target_quote_id and target_line_ref:
+                    try:
+                        await update_bom_line_status(
+                            conn,
+                            ns_uuid,
+                            writer_engine="field_tech",
+                            quote_id=target_quote_id,
+                            line_ref=target_line_ref,
+                            status="TESTED",
+                        )
+                        tested_lines.append(f"BOM_LINE:{target_quote_id}:{target_line_ref}")
+                    except Exception as exc:
+                        log.warning("Could not update BOM_LINE status to TESTED: %s", exc)
+
     res = dict(row)
     res["id"] = str(res["id"])
     res["namespace_id"] = str(res["namespace_id"])
@@ -210,4 +276,5 @@ async def do_complete_checklist(engine: Any, params: dict[str, Any]) -> dict[str
         res["completed_at"] = res["completed_at"].isoformat()
     res["missing_required"] = missing_required
     res["is_complete"] = completed
+    res["tested_lines"] = tested_lines
     return res
