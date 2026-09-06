@@ -1,0 +1,50 @@
+{
+  "rules": [
+    {
+      "id": "pipeline_up_capacity_redlined",
+      "name": "Pipeline Surge vs Capacity Redlined",
+      "severity": "critical",
+      "description": "Sales pipeline volume is surging while delivery and resource capacity is redlined or constrained.",
+      "engines": [
+        "sales",
+        "resources",
+        "project"
+      ],
+      "thresholds": {
+        "pipeline_growth_pct": 25.0,
+        "capacity_utilization_pct": 85.0
+      },
+      "rationale_template": "Sales pipeline surged by {pipeline_growth_pct}% to {pipeline_value}, while delivery capacity is at {capacity_utilization_pct}% ({capacity_status}). New commitments risk project delivery delays and customer dissatisfaction."
+    },
+    {
+      "id": "margin_erosion_dead_stock",
+      "name": "Margin Erosion vs Dead Stock Accumulation",
+      "severity": "high",
+      "description": "Gross margins are compressing while dead or non-moving inventory is accumulating.",
+      "engines": [
+        "economy",
+        "inventory"
+      ],
+      "thresholds": {
+        "margin_compression_bps": 200,
+        "dead_stock_value_threshold": 50000.0
+      },
+      "rationale_template": "Gross margins compressed by {margin_compression_bps} bps while dead stock reached {dead_stock_value}. Unsold inventory is tying up operating capital amidst narrowing margins."
+    },
+    {
+      "id": "sla_breach_trend_renewal_due",
+      "name": "Support SLA Breach Trend vs Contract Renewal Due",
+      "severity": "high",
+      "description": "Critical enterprise agreements are up for renewal while customer support tickets exhibit SLA breaches.",
+      "engines": [
+        "support",
+        "agreements"
+      ],
+      "thresholds": {
+        "renewal_window_days": 90,
+        "sla_breach_rate_pct": 15.0
+      },
+      "rationale_template": "Enterprise agreement renewal is due within {renewal_window_days} days, but customer support tickets show an SLA breach rate of {sla_breach_rate_pct}%. Churn risk is elevated."
+    }
+  ]
+}

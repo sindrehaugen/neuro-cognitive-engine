@@ -1151,6 +1151,11 @@ _additional_fork_provenance_types: tuple[str, ...] = (
     "marketing_testimonial_retracted",
     "marketing_content_approved",
     "marketing_content_published",
+    # Module 16 Business Insights Engine events (provenance-only fork projection per Charter M16)
+    "business_insights_briefing_generated",
+    "business_insights_finding_surfaced",
+    "business_insights_scenario_executed",
+    "business_insights_board_pack_drafted",
 )
 for _fork_et in _additional_fork_provenance_types:
     assert _fork_et not in _HANDLER_REGISTRY, (
