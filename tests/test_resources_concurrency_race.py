@@ -20,9 +20,16 @@ from typing import Any
 import asyncpg
 import pytest
 
+from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
 from nce.vertical_modules.resources._guard import ResourceConcurrencyError
 from nce.vertical_modules.resources.allocations import do_reserve
 from nce.vertical_modules.resources.registry import do_create_resource
+
+
+async def _seed_ownership(pg_pool: asyncpg.Pool, namespace_id: uuid.UUID) -> None:  # type: ignore[type-arg]
+    async with pg_pool.acquire() as conn:
+        async with conn.transaction():
+            await seed_node_ownership_registry(conn, namespace_id)
 
 
 @pytest.mark.integration
@@ -38,6 +45,7 @@ async def test_concurrent_overlapping_reservations_race(
     Dispatched simultaneously via asyncio.gather across real pool connections.
     Exactly one must commit and succeed; exactly one must fail with ResourceConcurrencyError.
     """
+    await _seed_ownership(pg_pool, namespace_id)
     engine: dict[str, Any] = {"pg_pool": pg_pool}
 
     # 1. Create a test resource
@@ -104,8 +112,9 @@ async def test_consecutive_non_overlapping_reservations_succeed(
 ) -> None:
     """
     Two consecutive reservations touching at boundary (09:00-12:00 and 12:00-15:00)
-    must BOTH succeed because half-open range [09:00, 12:00) and [12:00, 15:00) do NOT overlap.
+    Must BOTH succeed because half-open range [09:00, 12:00) and [12:00, 15:00) do NOT overlap.
     """
+    await _seed_ownership(pg_pool, namespace_id)
     engine: dict[str, Any] = {"pg_pool": pg_pool}
 
     res = await do_create_resource(
@@ -154,6 +163,7 @@ async def test_positive_control_dropping_constraint_allows_race(
     When the constraint is absent, two concurrent overlapping reserves both succeed
     (double-booking occurs), proving that the DB constraint is strictly load-bearing.
     """
+    await _seed_ownership(pg_pool, namespace_id)
     engine: dict[str, Any] = {"pg_pool": pg_pool}
 
     res = await do_create_resource(

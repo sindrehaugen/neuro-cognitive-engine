@@ -23,6 +23,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from nce.db_utils import scoped_pg_session
+from nce.entity_resolution.ownership import assert_owner
 from nce.vertical_modules.resources._guard import (
     ResourceNotFoundError,
     ResourceValidationError,
@@ -32,6 +33,8 @@ from nce.vertical_modules.resources._guard import (
 log = logging.getLogger("nce.vertical_modules.resources.registry")
 
 VALID_RESOURCE_KINDS: frozenset[str] = frozenset({"employee", "contractor", "vehicle", "tool"})
+_NODE_TYPE_RESOURCE: str = "RESOURCE"
+_RESOURCES_ENGINE: str = "resources"
 
 
 def _extract_pool(engine_or_pool: Any) -> Any:
@@ -95,6 +98,7 @@ async def do_create_resource(engine: Any, params: dict[str, Any]) -> dict[str, A
     attrs_json = json.dumps(attrs)
 
     async with scoped_pg_session(pool, ns_id) as conn:
+        await assert_owner(conn, ns_id, _NODE_TYPE_RESOURCE, _RESOURCES_ENGINE)
         await conn.execute(
             """
             INSERT INTO resources (id, namespace_id, kind, ref_id, display_name, attrs)
@@ -260,6 +264,7 @@ async def do_update_resource(engine: Any, params: dict[str, Any]) -> dict[str, A
 
     pool = _extract_pool(engine)
     async with scoped_pg_session(pool, ns_id) as conn:
+        await assert_owner(conn, ns_id, _NODE_TYPE_RESOURCE, _RESOURCES_ENGINE)
         existing = await conn.fetchrow(
             "SELECT attrs, display_name FROM resources WHERE id = $1 AND namespace_id = $2",
             res_id,

@@ -1472,6 +1472,27 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=True,
         mutation=True,
     ),
+    # Resources Engine — master-data surface completion (Wave RS-1)
+    "resources_create": ToolSpec(
+        _h(resources_mcp_handlers, "handle_resources_create"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "resources_update": ToolSpec(
+        _h(resources_mcp_handlers, "handle_resources_update"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "resources_get_resource": ToolSpec(
+        _h(resources_mcp_handlers, "handle_resources_get_resource"),
+        cacheable=True,
+    ),
+    "resources_list_resources": ToolSpec(
+        _h(resources_mcp_handlers, "handle_resources_list_resources"),
+        cacheable=True,
+    ),
     # ML17-B5 (M17.W5) -- Customer Portal Engine (9 tools)
     "customer_portal_room_tracker": ToolSpec(
         _h(customer_portal_mcp_handlers, "handle_customer_portal_room_tracker"),

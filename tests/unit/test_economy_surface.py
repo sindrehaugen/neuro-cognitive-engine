@@ -271,8 +271,8 @@ def test_tool_count_includes_economy_tools() -> None:
     assert "economy_gl_sync_status" in TOOL_REGISTRY
     assert "economy_generate_close_narrative" in TOOL_REGISTRY
     assert "economy_approve_invoice" in TOOL_REGISTRY
-    assert len(TOOL_REGISTRY) == 241, (
-        f"Expected 241 tools (+6 economy from MLV15D Wave E-1, +1 sales from Wave S-2a, +2 procurement from PR-1, +9 agreements from AG-2, +4 vendors from V-1, +5 HR from HR-2, +7 MLV15C, +1 economy from E-3), "
+    assert len(TOOL_REGISTRY) == 245, (
+        f"Expected 245 tools (+6 economy from MLV15D Wave E-1, +1 sales from Wave S-2a, +2 procurement from PR-1, +9 agreements from AG-2, +4 vendors from V-1, +5 HR from HR-2, +7 MLV15C, +4 resources from RS-1, +1 economy from E-3), "
         f"got {len(TOOL_REGISTRY)}: {sorted(TOOL_REGISTRY)}"
     )
 

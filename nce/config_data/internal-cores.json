@@ -99,26 +99,6 @@
     "owner": "MLV15B-PJ5",
     "reason": "Project task sync from BOM changes; scheduled for activation with parked automation in Wave PJ-5."
   },
-  "nce/vertical_modules/resources/registry.py::do_create_resource": {
-    "engine": "resources",
-    "owner": "MLV15D-RS1",
-    "reason": "Resource registry entity creator; scheduled for master-data tool exposure in MLV15D Wave RS-1."
-  },
-  "nce/vertical_modules/resources/registry.py::do_get_resource": {
-    "engine": "resources",
-    "owner": "MLV15D-RS1",
-    "reason": "Resource entity detail lookup; scheduled for MCP tool exposure in MLV15D Wave RS-1."
-  },
-  "nce/vertical_modules/resources/registry.py::do_list_resources": {
-    "engine": "resources",
-    "owner": "MLV15D-RS1",
-    "reason": "Resource inventory list query; scheduled for cacheable MCP tool exposure in MLV15D Wave RS-1."
-  },
-  "nce/vertical_modules/resources/registry.py::do_update_resource": {
-    "engine": "resources",
-    "owner": "MLV15D-RS1",
-    "reason": "Resource attribute update mutator; scheduled for admin tool exposure in MLV15D Wave RS-1."
-  },
   "nce/vertical_modules/sales/ai.py::do_draft_quote": {
     "engine": "sales",
     "owner": "MLV15B-S5",

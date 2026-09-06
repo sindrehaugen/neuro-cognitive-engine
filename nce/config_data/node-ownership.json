@@ -75,7 +75,13 @@
     { "node_type": "FIELD_TECH_SCAN",       "owner_engine": "field_tech",    "transition": null,
       "_note": "Module 12 (Field Tech Engine) serial number capture seeding BOM_LINE to ASSET edges." },
     { "node_type": "FIELD_TECH_PHOTO",      "owner_engine": "field_tech",    "transition": null,
-      "_note": "Module 12 (Field Tech Engine) work order photographic documentation attachments." }
+      "_note": "Module 12 (Field Tech Engine) work order photographic documentation attachments." },
+    { "node_type": "RESOURCE",              "owner_engine": "resources",     "transition": null,
+      "_note": "Module 15 (Staff & Resources Engine) schedulable resource master-data entity." },
+    { "node_type": "ALLOCATION",            "owner_engine": "resources",     "transition": null,
+      "_note": "Module 15 (Staff & Resources Engine) time-window resource allocation." },
+    { "node_type": "TRAVEL_LEG",            "owner_engine": "resources",     "transition": null,
+      "_note": "Module 15 (Staff & Resources Engine) technician travel leg segment." }
   ]
 }
 
