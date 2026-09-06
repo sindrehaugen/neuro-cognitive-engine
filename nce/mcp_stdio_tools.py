@@ -2617,6 +2617,50 @@ TOOLS = [
             "required": ["namespace_id", "quote_id", "signed_by", "signature_ref"],
         },
     ),
+    Tool(
+        name="project_record_outcome",
+        description=(
+            "Record final project outcome (margin drift, slip reason, delivery rating). "
+            "admin_only; mutation. Stores outcome memory, writes kg_edges has_outcome "
+            "edge with confidence, logs decision feedback, and unblocks G5 transition."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "project_id": {"type": "string", "description": "Project UUID or identifier."},
+                "description": {
+                    "type": "string",
+                    "description": "Project outcome description for semantic embedding and recall.",
+                },
+                "slip_reason": {
+                    "type": "string",
+                    "description": "Reason for schedule or budget variance, or 'on_time_on_budget'.",
+                },
+                "margin_drift": {
+                    "type": "number",
+                    "description": "Actual minus planned margin (positive = gain, negative = slip).",
+                },
+                "gate_dwell_time": {
+                    "type": "integer",
+                    "description": "Days spent in final execution gates.",
+                },
+                "confidence": {
+                    "type": "number",
+                    "description": "Confidence score for outcome attribution (0.0 - 1.0, default 1.0).",
+                },
+                "waived": {
+                    "type": "boolean",
+                    "description": "Whether outcome recording was waived by authorized human actor.",
+                },
+                "actor": {
+                    "type": "string",
+                    "description": "Actor attributing or waiving the outcome.",
+                },
+            },
+            "required": ["namespace_id", "project_id", "description", "slip_reason"],
+        },
+    ),
     # -----------------------------------------------------------------
     # OQ-3 tranche 3 (2026-09-01) — the two tools whose CORE raises an
     # explicit "'x' is required", so the required/optional split is read
@@ -3863,6 +3907,13 @@ TOOLS = [
                     "description": (
                         "Natural-language description of the room or design requirement "
                         "to match against past designs."
+                    ),
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": (
+                        "Number of past designs to recall (bounded 1-50, default 3). "
+                        "Sales commissioning passes top_k=1 to limit recall scope."
                     ),
                 },
             },

@@ -33,7 +33,8 @@
     "G5": [
       "all_bom_lines_delivered",
       "installation_complete",
-      "testing_started"
+      "testing_started",
+      "outcomes_recorded_or_waived"
     ],
     "G6": [
       "all_tests_passed",

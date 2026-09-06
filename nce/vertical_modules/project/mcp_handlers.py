@@ -43,7 +43,10 @@ from nce.mcp_errors import mcp_handler
 from nce.vertical_modules.project.advance import do_advance_phase
 from nce.vertical_modules.project.convert import do_convert_signed_quote
 from nce.vertical_modules.project.phase_gates import can_enter_phase
-from nce.vertical_modules.project.recall import do_suggest_pl
+from nce.vertical_modules.project.recall import (
+    do_record_project_outcome,
+    do_suggest_pl,
+)
 
 if TYPE_CHECKING:
     from nce.orchestrator import NCEEngine
@@ -143,4 +146,27 @@ async def handle_project_suggest_pl(engine: NCEEngine, arguments: dict[str, Any]
     require_namespace_id(arguments)
     params: dict[str, Any] = dict(arguments)
     result = await do_suggest_pl(engine, params)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_project_record_outcome(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: project_record_outcome — Record project outcome signals at G5.
+
+    Requires ``namespace_id``, ``project_id``, ``description``, and
+    ``slip_reason`` in *arguments*. Optionally accepts ``margin_drift`` (float),
+    ``gate_dwell_time`` (int), ``confidence`` (float), ``waived`` (bool), and
+    ``actor`` (str).
+
+    Actor / admin-only (``mutation=True, admin_only=True``).
+    """
+    require_namespace_id(arguments)
+    if not arguments.get("project_id"):
+        raise ValueError("project_id is required")
+    if not arguments.get("description"):
+        raise ValueError("description is required")
+    if not arguments.get("slip_reason"):
+        raise ValueError("slip_reason is required")
+    params: dict[str, Any] = dict(arguments)
+    result = await do_record_project_outcome(engine, params)
     return json.dumps(result, default=str)

@@ -284,7 +284,7 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         index=27,
         name="design_recall",
         canonical_label="design recall returns the project",
-        is_broken=True,
+        is_broken=False,
         review_break="break-4",
         phase1_wave="PJ-1/SD-2",
         description="System design recall returns similar projects weighted by measured outcome",
@@ -594,10 +594,6 @@ class TestGoldenThreadSteps:
 
         assert callable(do_record_project_outcome)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="break-4: project outcome attribution and design recall similarity-only / unwired (Wave PJ-1/SD-2)",
-    )
     def test_step_27_design_recall(self) -> None:
         """Step 27: design recall returns outcome-weighted similar project."""
         # Seam verification: project_record_outcome tool must exist in tool_registry
@@ -747,9 +743,9 @@ class TestGoldenThreadPositiveControls:
         burning down to 8 broken steps.
         """
         broken_steps = [s for s in GOLDEN_THREAD_STEPS if s.is_broken]
-        assert len(broken_steps) == 8
+        assert len(broken_steps) == 7
         broken_indices = {s.index for s in broken_steps}
-        assert broken_indices == {8, 11, 13, 14, 17, 20, 23, 27}
+        assert broken_indices == {8, 11, 13, 14, 17, 20, 23}
 
     def test_positive_control_broken_steps_have_remediation_waves(self) -> None:
         """Verify every broken step specifies a responsible Phase 1 remediation wave."""

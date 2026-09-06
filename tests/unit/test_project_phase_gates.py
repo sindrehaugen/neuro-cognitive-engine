@@ -42,7 +42,12 @@ _FIXTURE_CONFIG: dict[str, Any] = {
         "G2": ["signed_baseline_frozen", "bom_lines_linked", "kick_off_meeting_held"],
         "G3": ["design_approved", "bom_fully_specified", "site_access_confirmed"],
         "G4": ["frozen_baseline_locked", "bom_ordered", "project_lead_assigned"],
-        "G5": ["all_bom_lines_delivered", "installation_complete", "testing_started"],
+        "G5": [
+            "all_bom_lines_delivered",
+            "installation_complete",
+            "testing_started",
+            "outcomes_recorded_or_waived",
+        ],
         "G6": [
             "all_tests_passed",
             "customer_sign_off",
@@ -116,7 +121,12 @@ def _enter(
         (
             "G4",
             "G5",
-            ["all_bom_lines_delivered", "installation_complete", "testing_started"],
+            [
+                "all_bom_lines_delivered",
+                "installation_complete",
+                "testing_started",
+                "outcomes_recorded_or_waived",
+            ],
         ),
         (
             "G5",

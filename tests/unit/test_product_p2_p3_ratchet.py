@@ -405,7 +405,7 @@ def test_cores_removed_from_internal_cores_allowlist() -> None:
 
     assert "nce/vertical_modules/product/ingestion.py::do_ingest_spec" not in allowlist
     assert "nce/vertical_modules/product/golden_record.py::do_golden_record" not in allowlist
-    assert len(allowlist) == 70
+    assert len(allowlist) == 69
 
 
 def test_ast_reachability_from_mcp_handlers() -> None:

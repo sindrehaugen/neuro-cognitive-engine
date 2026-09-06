@@ -267,7 +267,15 @@ async def do_propose_design(
     if not room_brief:
         raise ValueError("do_propose_design: 'room_brief' is required in params")
 
-    top_k: int = cfg.NCE_SYSTEM_DESIGN_RECALL_TOP_K
+    raw_top_k = params.get("top_k")
+    if raw_top_k is not None:
+        try:
+            val = int(raw_top_k)
+            top_k = max(1, min(val, 50))
+        except (TypeError, ValueError):
+            top_k = cfg.NCE_SYSTEM_DESIGN_RECALL_TOP_K
+    else:
+        top_k = cfg.NCE_SYSTEM_DESIGN_RECALL_TOP_K
     outcome_weighting_enabled: bool = cfg.NCE_SYSTEM_DESIGN_OUTCOME_WEIGHTING_ENABLED
 
     # 1. Embed the room brief (outside the DB transaction per scoped_pg_session

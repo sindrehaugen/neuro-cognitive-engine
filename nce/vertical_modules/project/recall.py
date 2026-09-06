@@ -273,6 +273,12 @@ async def do_record_project_outcome(
     margin_drift = params.get("margin_drift")
     gate_dwell_time = params.get("gate_dwell_time")
 
+    confidence_val = params.get("confidence")
+    confidence = float(confidence_val) if confidence_val is not None else 1.0
+    waived = bool(params.get("waived", False))
+    edge_confidence = 0.0 if waived else confidence
+    actor = str(params.get("actor") or "human")
+
     # Embed the project description
     vector = await embed(description)
     vector_json = json.dumps(vector)
@@ -284,6 +290,8 @@ async def do_record_project_outcome(
         "project_id": project_id,
         "slip_reason": slip_reason,
         "description": description,
+        "confidence": edge_confidence,
+        "waived": waived,
     }
     if margin_drift is not None:
         row_metadata["margin_drift"] = float(margin_drift)
@@ -358,4 +366,46 @@ async def do_record_project_outcome(
             "1.0",
         )
 
-    return {"ok": True, "memory_id": str(memory_id)}
+        # Upsert PROJECT -[has_outcome]-> OUTCOME edge in kg_edges
+        outcome_label = f"OUTCOME:{project_id}"
+        await conn.execute(
+            """
+            INSERT INTO kg_edges
+                (subject_label, predicate, object_label, confidence, namespace_id)
+            VALUES ($1, $2, $3, $4, $5::uuid)
+            ON CONFLICT (subject_label, predicate, object_label, namespace_id) DO UPDATE
+                SET confidence = EXCLUDED.confidence,
+                    updated_at = NOW()
+            """,
+            project_id,
+            "has_outcome",
+            outcome_label,
+            edge_confidence,
+            str(ns_uuid),
+        )
+
+        # Record decision feedback signal
+        try:
+            from nce.decision_feedback import record_decision_feedback
+
+            await record_decision_feedback(
+                conn,
+                namespace_id=ns_uuid,
+                engine="project",
+                context_id=project_id,
+                proposal={"project_id": project_id, "description": description},
+                decision="waived" if waived else "recorded",
+                delta=row_metadata,
+                actor=actor,
+            )
+        except Exception as exc:
+            log.warning("do_record_project_outcome: decision feedback write failed: %s", exc)
+
+    return {
+        "ok": True,
+        "memory_id": str(memory_id),
+        "project_id": project_id,
+        "edge": f"{project_id} -[has_outcome]-> OUTCOME:{project_id}",
+        "confidence": edge_confidence,
+        "waived": waived,
+    }

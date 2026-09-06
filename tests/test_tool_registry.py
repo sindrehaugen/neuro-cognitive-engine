@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 216  # 206 baseline + 6 Economy tools (Wave E-1) + 1 Sales signing request (Wave S-2a) + 1 Decision Feedback (Wave C10) + 2 Product tools (Waves P-2 / P-3)
+_EXPECTED_TOTAL = 217  # 206 baseline + 6 Economy tools (Wave E-1) + 1 Sales signing request (Wave S-2a) + 1 Decision Feedback (Wave C10) + 2 Product tools (Waves P-2 / P-3) + 1 Project outcome (Wave PJ-1)
 
 
 def test_registry_has_expected_entries():
@@ -215,6 +215,8 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "decision_feedback_record",
         # Wave P-2 -- Product Spec Ingestion mutation
         "product_ingest_spec",
+        # Wave PJ-1 -- Project record outcome mutation
+        "project_record_outcome",
     }
 )
 
@@ -228,8 +230,8 @@ def test_mutation_tools_exact_match():
 
 def test_mutation_tools_count():
     assert (
-        len(MUTATION_TOOLS) == 90
-    )  # 83 baseline + 4 assets completion tools + 1 sales_request_signature + 1 decision_feedback_record + 1 product_ingest_spec
+        len(MUTATION_TOOLS) == 91
+    )  # 83 baseline + 4 assets completion tools + 1 sales_request_signature + 1 decision_feedback_record + 1 product_ingest_spec + 1 project_record_outcome
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -467,6 +469,8 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "sales_request_signature",
         # Wave C10 -- Decision Feedback service admin_only tool
         "decision_feedback_record",
+        # Wave PJ-1 -- Project record outcome admin_only tool
+        "project_record_outcome",
     }
 )
 
@@ -480,8 +484,8 @@ def test_admin_only_tools_exact_match():
 
 def test_admin_only_tools_count():
     assert (
-        len(ADMIN_ONLY_TOOLS) == 51
-    )  # 48 baseline + 1 assets tool (pull_telemetry) + 1 sales_request_signature + 1 decision_feedback_record
+        len(ADMIN_ONLY_TOOLS) == 52
+    )  # 48 baseline + 1 assets tool (pull_telemetry) + 1 sales_request_signature + 1 decision_feedback_record + 1 project_record_outcome
 
 
 # ---------------------------------------------------------------------------

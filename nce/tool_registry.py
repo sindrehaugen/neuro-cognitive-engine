@@ -690,6 +690,13 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # Project vertical module tools (v1.5 Phase 2 Wave PJ-1) — G5 outcome recorder
+    "project_record_outcome": ToolSpec(
+        _h(project_mcp_handlers, "handle_project_record_outcome"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
     # ------------------------------------------------------------------
     # Diagnostic Log Digestion Engine vertical module tools (Batch 77)
     # ------------------------------------------------------------------
