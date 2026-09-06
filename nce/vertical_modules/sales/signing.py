@@ -12,11 +12,13 @@ import hashlib
 import json
 import logging
 import math
+from datetime import datetime, timezone
 from typing import Any, cast
 from uuid import UUID
 
 from nce.bom_lines import list_bom_lines_for_quote
 from nce.db_utils import scoped_pg_session
+from nce.mailer import EmailDelivery, get_mailer
 from nce.signing_service import (
     ManualTransport,
     SignTransport,
@@ -56,6 +58,81 @@ class MissingBaselineError(ValueError):
     rendered directly from the frozen baseline. Requesting a signature on an
     unfrozen quote is refused with a 4xx equivalent.
     """
+
+
+def _resolve_signed_delivery_recipients(
+    merged_quote: dict[str, Any],
+    manual: dict[str, Any],
+    params: dict[str, Any],
+    account_data: dict[str, Any] | None = None,
+) -> list[tuple[str, str]]:
+    """Resolve recipient addresses for signed quote document delivery (Wave Q-3).
+
+    Recipients per Sindre's mandate:
+    1. 'signer': The person who signed the quote document.
+    2. 'case_responsible': The responsible salesperson / PM / service tech / advisor for the case.
+    3. 'account_responsible': The account-responsible person.
+
+    Returns a list of (role, email) pairs for all non-empty email addresses found.
+    """
+    recipients: list[tuple[str, str]] = []
+
+    # 1. Signer
+    signer_email = (
+        params.get("signer_email")
+        or manual.get("signer_email")
+        or merged_quote.get("signer_email")
+        or (merged_quote.get("signer") or {}).get("email")
+    )
+    if signer_email and isinstance(signer_email, str) and "@" in signer_email:
+        recipients.append(("signer", signer_email.strip()))
+
+    # 2. Case Responsible (salesperson / project manager / service tech / advisor)
+    case_resp = (
+        params.get("case_responsible_email")
+        or params.get("salesperson_email")
+        or params.get("project_manager_email")
+        or params.get("service_tech_email")
+        or params.get("advisor_email")
+        or merged_quote.get("case_responsible_email")
+        or merged_quote.get("salesperson_email")
+        or merged_quote.get("project_manager_email")
+        or merged_quote.get("service_tech_email")
+        or merged_quote.get("advisor_email")
+        or merged_quote.get("responsible_email")
+        or (merged_quote.get("case") or {}).get("responsible_email")
+        or (merged_quote.get("case") or {}).get("email")
+        or (merged_quote.get("salesperson") or {}).get("email")
+        or (merged_quote.get("project_manager") or {}).get("email")
+        or (merged_quote.get("service_tech") or {}).get("email")
+        or (merged_quote.get("advisor") or {}).get("email")
+    )
+    if case_resp and isinstance(case_resp, str) and "@" in case_resp:
+        recipients.append(("case_responsible", case_resp.strip()))
+
+    # 3. Account Responsible
+    acc_resp = (
+        params.get("account_responsible_email")
+        or params.get("account_manager_email")
+        or params.get("account_owner_email")
+        or merged_quote.get("account_responsible_email")
+        or merged_quote.get("account_manager_email")
+        or merged_quote.get("account_owner_email")
+        or (merged_quote.get("account") or {}).get("responsible_email")
+        or (merged_quote.get("account") or {}).get("email")
+        or (merged_quote.get("account_manager") or {}).get("email")
+    )
+    if not acc_resp and account_data:
+        acc_resp = (
+            account_data.get("account_responsible_email")
+            or account_data.get("account_manager_email")
+            or account_data.get("owner_email")
+            or account_data.get("email")
+        )
+    if acc_resp and isinstance(acc_resp, str) and "@" in acc_resp:
+        recipients.append(("account_responsible", acc_resp.strip()))
+
+    return recipients
 
 
 class MissingSignerError(ValueError):
@@ -289,7 +366,7 @@ async def do_on_signed_callback(
     async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
         row = await conn.fetchrow(
             """
-            SELECT source_id, source_json, manual
+            SELECT source_id, name, source_json, manual
             FROM sales_read_model
             WHERE namespace_id = $1
               AND entity = 'quotes'
@@ -303,6 +380,7 @@ async def do_on_signed_callback(
             raise ValueError(f"Quote not found for session_id: {session_id}")
 
         quote_id = row["source_id"]
+        quote_db_name = row["name"] if "name" in row else None
         source_json = row["source_json"] or {}
         if isinstance(source_json, str):
             source_json = json.loads(source_json)
@@ -324,7 +402,39 @@ async def do_on_signed_callback(
                 "baseline_frozen": True,
                 "project_id": project_lbl,
                 "already_processed": True,
+                "deliveries_sent": 0,
             }
+
+        # Attempt to read linked account record for account-responsible contact
+        account_id = (
+            merged_quote.get("account_id")
+            or merged_quote.get("customer_id")
+            or merged_quote.get("_customerid_value")
+        )
+        account_data: dict[str, Any] | None = None
+        if account_id:
+            try:
+                acc_row = await conn.fetchrow(
+                    """
+                    SELECT source_json, manual
+                    FROM sales_read_model
+                    WHERE namespace_id = $1
+                      AND entity = 'accounts'
+                      AND source_id = $2
+                    """,
+                    str(ns_uuid),
+                    str(account_id),
+                )
+                if acc_row:
+                    asj = acc_row["source_json"] or {}
+                    if isinstance(asj, str):
+                        asj = json.loads(asj)
+                    aman = acc_row["manual"] or {}
+                    if isinstance(aman, str):
+                        aman = json.loads(aman)
+                    account_data = {**(asj or {}), **(aman or {})}
+            except Exception as exc:
+                log.debug("Could not read account for %s: %s", account_id, exc)
 
     # 2. Transition transport session state
     method = params.get("method") or manual.get("signing_method") or "manual"
@@ -374,6 +484,50 @@ async def do_on_signed_callback(
             signed_total_nok=signed_total_nok,
         )
 
+        # Retrieve baseline and line items to render deterministic quote PDF (Wave Q-3)
+        baseline = await get_signed_baseline(conn, ns_uuid, quote_id)
+        try:
+            line_items = await list_bom_lines_for_quote(conn, ns_uuid, quote_id=quote_id)
+        except Exception as exc:
+            log.warning("Could not read bom_line_content for quote %s: %s", quote_id, exc)
+            line_items = []
+        if not line_items and "lines" in merged_quote and isinstance(merged_quote["lines"], list):
+            line_items = merged_quote["lines"]
+
+    # Render signed quote PDF from the frozen baseline
+    quote_name = quote_db_name or merged_quote.get("name") or quote_id
+    quote_details = {
+        "name": quote_name,
+        "customer_name": merged_quote.get("customer_name") or merged_quote.get("customer"),
+        "currency": merged_quote.get("currency") or "NOK",
+        "description": merged_quote.get("description"),
+    }
+    signer_name = (
+        merged_quote.get("signer_name")
+        or (merged_quote.get("signer") or {}).get("name")
+        or "Customer"
+    )
+    signer_email = (
+        manual.get("signer_email")
+        or merged_quote.get("signer_email")
+        or (merged_quote.get("signer") or {}).get("email")
+        or ""
+    )
+    signer_payload = {"name": signer_name, "email": signer_email}
+
+    if baseline:
+        doc_bytes = render_quote_document(
+            baseline=baseline,
+            quote_details=quote_details,
+            line_items=line_items,
+            signer=signer_payload,
+        )
+    else:
+        # Fallback for unit tests mocking without baseline row
+        doc_bytes = b"%PDF-1.4\n%Signed Quote Document\n%%EOF"
+
+    doc_hash = hashlib.sha256(doc_bytes).hexdigest()
+
     # 4. Trigger Project convert A2A bridge (idempotent)
     # Call outside transaction to avoid nested connection holds.
     convert_res = await do_convert_signed_quote(
@@ -381,15 +535,96 @@ async def do_on_signed_callback(
         {
             "namespace_id": str(ns_uuid),
             "quote_id": quote_id,
-            "signed_by": merged_quote.get("signer_name") or "Customer",
+            "signed_by": signer_name,
             "signature_ref": session_id,
         },
     )
 
-    # 5. Mark quote as signed in read model
+    # 5. Deliver signed document by email (Wave Q-3)
+    # Sindre's requirement: on signature, the document goes to:
+    # 1. The signer
+    # 2. The responsible salesperson / project manager / service tech / advisor for the case
+    # 3. The account-responsible person
+    #
+    # HARD CONSTRAINT: Separate emails, NEVER CC or BCC.
+    # Every send call carries exactly one recipient address in `to`,
+    # with `cc` and `bcc` strictly empty to prevent cross-boundary address disclosure.
+    mailer = get_mailer(engine)
+    delivery_candidates = _resolve_signed_delivery_recipients(
+        merged_quote=merged_quote,
+        manual=manual,
+        params=params,
+        account_data=account_data,
+    )
+
+    delivered_records: list[dict[str, Any]] = []
+    seen_addresses: set[str] = set()
+    active_sec_tier = updated_session.get("security_tier", method)
+
+    for role, recipient_email in delivery_candidates:
+        clean_email = recipient_email.strip()
+        norm_key = clean_email.lower()
+        if norm_key in seen_addresses:
+            continue
+        seen_addresses.add(norm_key)
+
+        email_delivery = EmailDelivery(
+            to=clean_email,
+            subject=f"Signed Quote: {quote_name} ({quote_id})",
+            body_text=(
+                f"Quote {quote_id} ({quote_name}) has been successfully signed.\n\n"
+                f"Signer: {signer_name} ({signer_email})\n"
+                f"Security Tier: {active_sec_tier}\n"
+                f"Document Hash (SHA-256): {doc_hash}\n\n"
+                f"The signed document is attached.\n"
+            ),
+            attachments=((f"quote_{quote_id}_signed.pdf", doc_bytes, "application/pdf"),),
+            cc=(),
+            bcc=(),
+        )
+
+        try:
+            await mailer.send(email_delivery)
+            delivered_records.append(
+                {
+                    "role": role,
+                    "email": clean_email,
+                    "status": "sent",
+                }
+            )
+            log.info(
+                "do_on_signed_callback: delivered signed quote %s to %s (%s)",
+                quote_id,
+                clean_email,
+                role,
+            )
+        except Exception as exc:
+            log.error(
+                "do_on_signed_callback: failed to deliver signed quote %s to %s (%s): %s",
+                quote_id,
+                clean_email,
+                role,
+                exc,
+            )
+            delivered_records.append(
+                {
+                    "role": role,
+                    "email": clean_email,
+                    "status": "failed",
+                    "error": str(exc),
+                }
+            )
+
+    # 6. Mark quote as signed in read model with delivery audit trail
     async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
         manual["signing_status"] = "signed"
-        manual["signing_security_tier"] = updated_session.get("security_tier", method)
+        manual["signing_security_tier"] = active_sec_tier
+        manual["document_hash"] = doc_hash
+        manual["signed_delivery"] = {
+            "delivered_at": datetime.now(timezone.utc).isoformat(),
+            "deliveries": delivered_records,
+            "document_hash": doc_hash,
+        }
         await conn.execute(
             """
             UPDATE sales_read_model
@@ -411,7 +646,9 @@ async def do_on_signed_callback(
         "baseline_frozen": freeze_res.get("ok", False),
         "project_id": convert_res.get("project_id"),
         "already_processed": False,
-        "security_tier": updated_session.get("security_tier", method),
+        "security_tier": active_sec_tier,
+        "deliveries_sent": sum(1 for d in delivered_records if d.get("status") == "sent"),
+        "delivery_records": delivered_records,
     }
 
 

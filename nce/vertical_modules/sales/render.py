@@ -90,7 +90,7 @@ def render_quote_document(
         raise ValueError("baseline must contain signed_margin_pct")
     margin_val = float(signed_margin_pct)
 
-    signed_at_raw = baseline.get("signed_at")
+    signed_at_raw = baseline.get("signed_at") or baseline.get("frozen_at_utc")
     if not signed_at_raw:
         raise ValueError("baseline must contain signed_at timestamp")
 
