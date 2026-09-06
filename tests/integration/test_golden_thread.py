@@ -142,9 +142,9 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         index=11,
         name="delivered",
         canonical_label="DELIVERED",
-        is_broken=True,
-        review_break="break-2",
-        phase1_wave="IN-1",
+        is_broken=False,
+        review_break=None,
+        phase1_wave=None,
         description="GOODS_RECEIPT.created event published to transition BOM_LINE to DELIVERED",
     ),
     BurndownStep(
@@ -396,10 +396,6 @@ class TestGoldenThreadSteps:
 
         assert callable(do_evaluate_three_way_match)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="break-2/IN-1: GOODS_RECEIPT.created producer parked; does not trigger project task update (Wave IN-1)",
-    )
     def test_step_11_bom_line_delivered(self) -> None:
         """Step 11: BOM_LINE DELIVERED triggered by GOODS_RECEIPT.created."""
         # Seam verification: IN-1 wakes the 132c parked producer for GOODS_RECEIPT.created
@@ -641,14 +637,15 @@ class TestGoldenThreadPipeline:
 
     @pytest.mark.xfail(
         strict=True,
-        reason="break-2/IN-1: Golden Thread pipeline halts at next broken seam (GOODS_RECEIPT.created parked, Wave IN-1)",
+        reason="break-2: Golden Thread pipeline halts at next broken seam (BOM_LINE INSTALLED unwritten, Wave FT-1)",
     )
     def test_golden_thread_full_e2e_pipeline(self) -> None:
         """Execute full scenario pipeline end-to-end.
 
         Step 5 (baseline frozen) was closed by Wave S-2a.
         Step 8 (BOM_LINE ORDERED) was closed by Wave PR-1.
-        Halts at Step 11 (BOM_LINE DELIVERED / GOODS_RECEIPT.created) until Wave IN-1 lands.
+        Step 11 (BOM_LINE DELIVERED / GOODS_RECEIPT.created) was closed by Wave IN-1.
+        Halts at Step 13 (BOM_LINE INSTALLED / Field Tech install) until Wave FT-1 lands.
         """
         engine = NCEEngine()
         assert engine is not None
@@ -720,7 +717,7 @@ class TestGoldenThreadPipeline:
 
         assert callable(do_evaluate_three_way_match)
 
-        # Step 11: GOODS_RECEIPT.created (Third Seam Break - Wave IN-1)
+        # Step 11: GOODS_RECEIPT.created (Closed by Wave IN-1)
         try:
             from nce.events import catalogue
 
@@ -732,6 +729,30 @@ class TestGoldenThreadPipeline:
         except (ImportError, AttributeError):
             raise AssertionError(
                 "break-2/IN-1: pipeline halted at step 11: GOODS_RECEIPT.created producer is parked or uncatalogued (Wave IN-1)"
+            )
+
+        # Step 12: Asset Seeded
+        from nce.vertical_modules.assets.seed import do_seed_asset_from_bom
+
+        assert callable(do_seed_asset_from_bom)
+
+        # Step 13: BOM_LINE INSTALLED (Fourth Seam Break - Wave FT-1)
+        import ast
+        import pathlib
+
+        ft_dir = pathlib.Path("nce/vertical_modules/field_tech")
+        found = False
+        for py_file in ft_dir.glob("*.py"):
+            tree = ast.parse(py_file.read_bytes().decode("utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Call):
+                    fn = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+                    if fn == "update_bom_line_status":
+                        found = True
+                        break
+        if not found:
+            raise AssertionError(
+                "break-2: pipeline halted at step 13: Field Tech never calls update_bom_line_status (Wave FT-1)"
             )
 
 
@@ -773,12 +794,12 @@ class TestGoldenThreadPositiveControls:
         Originally 10 seam breaks (Steps 5, 8, 11, 13, 14, 17, 20, 23, 25, 27)
         plus the degradation register check (Step 28).
         Wave S-2a closed Step 5, Wave CP-1 closed Step 25, Wave I-5 closed Step 28,
-        and Wave PR-1 closed Step 8, burning down to 7 broken steps.
+        Wave PR-1 closed Step 8, and Wave IN-1 closed Step 11, burning down to 6 broken steps.
         """
         broken_steps = [s for s in GOLDEN_THREAD_STEPS if s.is_broken]
-        assert len(broken_steps) == 7
+        assert len(broken_steps) == 6
         broken_indices = {s.index for s in broken_steps}
-        assert broken_indices == {11, 13, 14, 17, 20, 23, 27}
+        assert broken_indices == {13, 14, 17, 20, 23, 27}
 
     def test_positive_control_broken_steps_have_remediation_waves(self) -> None:
         """Verify every broken step specifies a responsible Phase 1 remediation wave."""
