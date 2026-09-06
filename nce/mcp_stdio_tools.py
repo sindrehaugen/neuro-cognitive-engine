@@ -5706,6 +5706,27 @@ TOOLS = [
             "required": ["namespace_id", "artifact_id"],
         },
     ),
+    Tool(
+        name="marketing_retract_testimonial",
+        description=(
+            "Retract consent for a customer testimonial and retire derived content assets (MK-4 right-to-retract)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "testimonial_id": {
+                    "type": "string",
+                    "description": "Testimonial record UUID to retract.",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Optional retraction reason or notes.",
+                },
+            },
+            "required": ["namespace_id", "testimonial_id"],
+        },
+    ),
     # --- Staff & Resources Engine (Module 15) ---
     Tool(
         name="resources_resolve_capacity",

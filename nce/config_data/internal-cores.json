@@ -69,11 +69,6 @@
     "owner": "MLV15D-M1",
     "reason": "A2A marketing intelligence query dispatcher; scheduled for A2A skill registration in MLV15D."
   },
-  "nce/vertical_modules/marketing/testimonials.py::do_retract_testimonial": {
-    "engine": "marketing",
-    "owner": "MLV15D-M2",
-    "reason": "Customer testimonial retraction core; scheduled for admin tool surface in MLV15D Wave M-2."
-  },
   "nce/vertical_modules/procurement/recalibration.py::do_recalibrate_supplier": {
     "engine": "procurement",
     "owner": "MLV15D-PR6",

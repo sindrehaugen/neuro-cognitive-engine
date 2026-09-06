@@ -1304,6 +1304,11 @@ def build_admin_routes() -> list[Route]:
             methods=["POST"],
         ),
         Route(
+            "/api/marketing/testimonials/retract",
+            endpoint=marketing_handlers.api_marketing_retract_testimonial,
+            methods=["POST"],
+        ),
+        Route(
             "/api/marketing/suggest-content",
             endpoint=marketing_handlers.api_marketing_suggest_content,
             methods=["POST"],

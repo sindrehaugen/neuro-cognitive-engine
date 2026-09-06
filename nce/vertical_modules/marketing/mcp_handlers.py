@@ -10,6 +10,7 @@ MCP tool handlers for Module 14 (Marketing Engine):
   - handle_marketing_audit_seo: Advisor; read-only, cacheable.
   - handle_marketing_approve_content: Actor; mutation, admin_only (human gate).
   - handle_marketing_publish_content: Actor; mutation, admin_only (sign-off gated).
+  - handle_marketing_retract_testimonial: Actor; mutation, admin_only (right to retract).
 
 Flags mirror the Marketing Engine contract:
 | Tool                                 | cacheable | admin_only | mutation | AI-role |
@@ -22,6 +23,7 @@ Flags mirror the Marketing Engine contract:
 | marketing_audit_seo                  | Y         | N          | N        | Advisor |
 | marketing_approve_content            | N         | Y          | Y        | Actor   |
 | marketing_publish_content            | N         | Y          | Y        | Actor   |
+| marketing_retract_testimonial        | N         | Y          | Y        | Actor   |
 """
 
 from __future__ import annotations
@@ -157,4 +159,18 @@ async def handle_marketing_publish_content(
     from nce.vertical_modules.marketing.publish import do_publish_content
 
     result = await do_publish_content(engine, params)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_marketing_retract_testimonial(
+    engine: Any,
+    params: dict[str, Any],
+) -> str:
+    """Retract consent for a customer testimonial and retire derived content assets (MK-4)."""
+    ns = require_namespace_id(params)
+    await _check_marketing_enabled(engine, ns)
+    from nce.vertical_modules.marketing.testimonials import do_retract_testimonial
+
+    result = await do_retract_testimonial(engine, params)
     return json.dumps(result, default=str)

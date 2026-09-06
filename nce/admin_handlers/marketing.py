@@ -8,6 +8,7 @@ Exports:
   api_marketing_draft_case_study    — POST /api/marketing/draft
   api_marketing_testimonials        — GET  /api/marketing/testimonials
   api_marketing_capture_testimonial — POST /api/marketing/testimonials/capture
+  api_marketing_retract_testimonial — POST /api/marketing/testimonials/retract
   api_marketing_suggest_content     — POST /api/marketing/suggest-content
   api_marketing_audit_seo           — POST /api/marketing/audit-seo
   api_marketing_approve_content     — POST /api/marketing/approve
@@ -52,7 +53,10 @@ from nce.vertical_modules.marketing.approval import do_approve_content
 from nce.vertical_modules.marketing.candidates import do_find_case_study_candidates
 from nce.vertical_modules.marketing.drafting import do_draft_case_study
 from nce.vertical_modules.marketing.publish import do_publish_content
-from nce.vertical_modules.marketing.testimonials import do_capture_testimonial
+from nce.vertical_modules.marketing.testimonials import (
+    do_capture_testimonial,
+    do_retract_testimonial,
+)
 
 log = logging.getLogger("nce.admin_handlers.marketing")
 
@@ -327,6 +331,50 @@ async def api_marketing_capture_testimonial(request: Any) -> JSONResponse:
         return JSONResponse({"error": str(exc)}, status_code=422)
     except Exception as exc:
         return admin_error_response("Failed to capture testimonial", exc)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/marketing/testimonials/retract
+# ---------------------------------------------------------------------------
+
+
+async def api_marketing_retract_testimonial(request: Any) -> JSONResponse:
+    """POST /api/marketing/testimonials/retract — retract customer testimonial consent (MK-4)."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "Request body must be a JSON object"}, status_code=422)
+
+    ns, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+
+    testimonial_id = str(body.get("testimonial_id") or "").strip()
+    if not testimonial_id:
+        return JSONResponse({"error": "testimonial_id is required"}, status_code=422)
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_marketing_enabled(pool, ns)
+    except MarketingDisabledError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+    try:
+        result = await do_retract_testimonial(admin_state.engine, body)
+        await bump_mcp_cache_generation(
+            admin_state.engine, route="api_marketing_retract_testimonial"
+        )
+        return JSONResponse(_json_safe(result), status_code=200)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response("Failed to retract testimonial", exc)
 
 
 # ---------------------------------------------------------------------------

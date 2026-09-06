@@ -23,11 +23,12 @@ EXPECTED_MARKETING_TOOLS = {
     "marketing_audit_seo": {"cacheable": True, "admin_only": False, "mutation": False},
     "marketing_approve_content": {"cacheable": False, "admin_only": True, "mutation": True},
     "marketing_publish_content": {"cacheable": False, "admin_only": True, "mutation": True},
+    "marketing_retract_testimonial": {"cacheable": False, "admin_only": True, "mutation": True},
 }
 
 
 def test_marketing_tools_registered_in_tool_registry():
-    """Verify all 8 marketing tools are present in TOOL_REGISTRY with correct flags."""
+    """Verify all 9 marketing tools are present in TOOL_REGISTRY with correct flags."""
     for tool_name, flags in EXPECTED_MARKETING_TOOLS.items():
         assert tool_name in TOOL_REGISTRY, f"Tool {tool_name!r} missing from TOOL_REGISTRY"
         spec = TOOL_REGISTRY[tool_name]
@@ -62,7 +63,7 @@ def test_marketing_tools_flag_sets():
 
 
 def test_marketing_tool_schemas_defined():
-    """Verify all 8 marketing tools have JSON schemas in mcp_stdio_tools.py."""
+    """Verify all 9 marketing tools have JSON schemas in mcp_stdio_tools.py."""
     tool_map = {t.name: t for t in TOOLS}
     for tool_name in EXPECTED_MARKETING_TOOLS:
         assert tool_name in tool_map, f"Schema missing for tool {tool_name!r}"
