@@ -94,10 +94,9 @@ NODE_TYPE_BOM_LINE: str = "BOM_LINE"
 # transition suffix and exactly one origin_kind (the same string, here).
 CreateFlow = Literal["design", "manual", "package", "external"]
 
-# The three status states this wave's registry rows cover. status:ordered has
-# no builder yet (procurement/po.py writes no BOM_LINE status today) -- that
-# is a known, out-of-scope gap, not something this module can detect.
-StatusState = Literal["ORDERED", "DELIVERED", "INSTALLED"]
+# The status states this store's registry rows cover: ORDERED (procurement),
+# DELIVERED (inventory), INSTALLED (field_tech), and TESTED (field_tech).
+StatusState = Literal["ORDERED", "DELIVERED", "INSTALLED", "TESTED"]
 
 # kg_nodes.change_origin's own CHECK-constrained vocabulary (sync/webhook/
 # agent/operator/consolidation/replay/unknown). Unrelated to origin_kind,
