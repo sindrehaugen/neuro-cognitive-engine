@@ -32,6 +32,7 @@ from typing import Any
 
 from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import MCP_SCOPE_FORBIDDEN, McpError, mcp_handler
+from nce.structural.no_person_grain import PersonGrainRejected
 from nce.vertical_modules.hr._guard import (
     HrDisabledError,
     HrRankingProhibitedError,
@@ -99,7 +100,7 @@ async def handle_hr_match_skills(engine: Any, arguments: dict[str, Any]) -> str:
     params["namespace_id"] = namespace_id
     try:
         res = await do_match_skills(engine, params)
-    except HrRankingProhibitedError as exc:
+    except (HrRankingProhibitedError, PersonGrainRejected) as exc:
         raise McpError(MCP_SCOPE_FORBIDDEN, str(exc)) from exc
     except ValueError as exc:
         raise McpError(-32602, str(exc)) from exc
@@ -114,6 +115,8 @@ async def handle_hr_capacity(engine: Any, arguments: dict[str, Any]) -> str:
     params["namespace_id"] = namespace_id
     try:
         res = await do_capacity(engine, params)
+    except (HrRankingProhibitedError, PersonGrainRejected) as exc:
+        raise McpError(MCP_SCOPE_FORBIDDEN, str(exc)) from exc
     except ValueError as exc:
         raise McpError(-32602, str(exc)) from exc
     return json.dumps(res)

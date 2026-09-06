@@ -31,6 +31,7 @@ from nce.admin_handlers._shared import (
     admin_state,
     bump_mcp_cache_generation,
 )
+from nce.structural.no_person_grain import PersonGrainRejected
 from nce.vertical_modules.hr._guard import (
     HrDisabledError,
     HrRankingProhibitedError,
@@ -225,7 +226,7 @@ async def api_hr_match_skills(request: Any) -> JSONResponse:
     try:
         res = await do_match_skills(admin_state.engine, params)
         return JSONResponse({"ok": True, **res})
-    except HrRankingProhibitedError as exc:
+    except (HrRankingProhibitedError, PersonGrainRejected) as exc:
         return JSONResponse({"error": str(exc)}, status_code=403)
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=422)
@@ -254,17 +255,14 @@ async def api_hr_capacity(request: Any) -> JSONResponse:
     except HrDisabledError as exc:
         return JSONResponse({"error": str(exc)}, status_code=409)
 
-    params: dict[str, Any] = {"namespace_id": namespace_id}
-    if "employee_id" in request.query_params:
-        params["employee_id"] = request.query_params["employee_id"]
-    if "department" in request.query_params:
-        params["department"] = request.query_params["department"]
-    if "horizon_days" in request.query_params:
-        params["horizon_days"] = request.query_params["horizon_days"]
+    params: dict[str, Any] = dict(request.query_params)
+    params["namespace_id"] = namespace_id
 
     try:
         res = await do_capacity(admin_state.engine, params)
         return JSONResponse({"ok": True, **res})
+    except (HrRankingProhibitedError, PersonGrainRejected) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=403)
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=422)
     except Exception as exc:
