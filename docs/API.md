@@ -180,6 +180,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/marketing/suggest-content` | `api_marketing_suggest_content` |
 | GET | `/api/marketing/testimonials` | `api_marketing_testimonials` |
 | POST | `/api/marketing/testimonials/capture` | `api_marketing_capture_testimonial` |
+| POST | `/api/marketing/testimonials/retract` | `api_marketing_retract_testimonial` |
 | POST | `/api/procurement/frontier/forecast-rebate` | `api_procurement_forecast_rebate` |
 | POST | `/api/procurement/frontier/recommend-move-spend` | `api_procurement_recommend_move_spend` |
 | POST | `/api/procurement/frontier/whatif-spend` | `api_procurement_whatif_spend` |
@@ -408,6 +409,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `marketing_find_case_study_candidates` |  |  | yes |  |
 | `marketing_publish_content` | yes | yes |  |  |
 | `marketing_request_testimonial` | yes | yes |  |  |
+| `marketing_retract_testimonial` | yes | yes |  |  |
 | `marketing_suggest_content` |  |  | yes |  |
 | `merge_queue_confirm` | yes | yes |  |  |
 | `merge_queue_list` |  |  | yes |  |
@@ -516,4 +518,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 252 REST endpoints, 246 MCP tools._
+_Totals: 253 REST endpoints, 247 MCP tools._

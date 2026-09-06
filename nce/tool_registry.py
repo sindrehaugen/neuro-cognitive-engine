@@ -1430,6 +1430,12 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=True,
         mutation=True,
     ),
+    "marketing_retract_testimonial": ToolSpec(
+        _h(marketing_mcp_handlers, "handle_marketing_retract_testimonial"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
     "resources_resolve_capacity": ToolSpec(
         _h(resources_mcp_handlers, "handle_resources_resolve_capacity"),
         cacheable=True,

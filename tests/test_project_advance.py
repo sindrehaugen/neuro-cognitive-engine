@@ -583,10 +583,10 @@ class TestProjectAdvancePhaseToolRegistry:
         +1 Wave P-2 product_ingest_spec tool;
         +1 Wave PJ-1 project_record_outcome tool;
         +1 Wave RS-3 resources_record_allocation_outcome tool;
-        +1 Wave T-1 trust_dial_set_tier tool;
         +2 MLV15D-RS1 resources tools;
-        +1 MLV15B-E3 economy tool."""
-        assert len(MUTATION_TOOLS) == 109
+        +1 MLV15B-E3 economy tool;
+        +1 MLV15D-MK2 marketing tool."""
+        assert len(MUTATION_TOOLS) == 110
 
     def test_admin_only_count(self) -> None:
         """Admin-only tools must total 32 (unified realignment registry;
@@ -620,5 +620,6 @@ class TestProjectAdvancePhaseToolRegistry:
         +1 Wave RS-3 resources_record_allocation_outcome tool;
         +1 Wave T-1 trust_dial_set_tier tool;
         +2 MLV15D-RS1 resources tools;
-        +1 MLV15B-E3 economy tool)."""
-        assert len(ADMIN_ONLY_TOOLS) == 70
+        +1 MLV15B-E3 economy tool;
+        +1 MLV15D-MK2 marketing tool)."""
+        assert len(ADMIN_ONLY_TOOLS) == 71
