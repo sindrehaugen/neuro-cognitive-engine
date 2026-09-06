@@ -18,7 +18,7 @@ wrapper (confirm-only default + idempotency key + ``event_log`` audit).
   - Cost/margin/BID columns are never returned or logged (ADR-0017).
 
 Dependency rule (uncle-bob inward): this module imports from ``nce.autonomy``,
-``nce.db_utils``, stdlib, and ``os`` only.  No web / admin / HTTP modules.
+``nce.providers``, ``nce.db_utils``, stdlib, and ``os`` only.  No web / admin / HTTP modules.
 """
 
 from __future__ import annotations
@@ -28,11 +28,17 @@ import json
 import logging
 import os
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import asyncpg  # type: ignore[import-untyped]
+from pydantic import BaseModel, Field
 
 from nce.autonomy.governor import governed
+from nce.providers.base import Message
+from nce.providers.factory import get_provider
+
+if TYPE_CHECKING:
+    from nce.providers.base import LLMProvider
 
 log = logging.getLogger("nce.vertical_modules.product.enrich")
 
@@ -153,41 +159,104 @@ async def _fetch_product_row(
 
 
 # ---------------------------------------------------------------------------
-# Enrichment proposals (mock-deterministic: confidence derived from field data)
+# Pydantic Enrichment Models
 # ---------------------------------------------------------------------------
 
 
-def _build_proposals(
+class EnrichedFieldProposal(BaseModel):
+    field_name: str = Field(description="Name of the product specification or attribute field")
+    field_value: str = Field(description="Enriched value for the field based on product details")
+    confidence: float = Field(
+        default=0.0, description="Confidence score from 0.0 to 1.0 (or 0.0 to 100.0)"
+    )
+
+
+class ProductEnrichmentModel(BaseModel):
+    proposals: list[EnrichedFieldProposal] = Field(
+        default_factory=list,
+        description="List of enriched field proposals for missing product specifications",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Isolated LLM Enrichment Caller
+# ---------------------------------------------------------------------------
+
+
+async def _call_product_enrichment(
+    provider: LLMProvider,
+    product_row: dict[str, Any],
+    missing_fields: list[str],
+    trigger_context: dict[str, Any],
+) -> ProductEnrichmentModel:
+    """Invoke the cognitive provider to enrich missing fields for exactly one product."""
+    prompt = (
+        f"Enrich the following missing product specification fields: {', '.join(missing_fields)}.\n"
+        f"Product details:\n"
+        f"- Manufacturer: {product_row.get('manufacturer') or 'unknown'}\n"
+        f"- Manufacturer Part Number: {product_row.get('mfr_part_no') or 'unknown'}\n"
+        f"- Existing Specifications: {json.dumps(product_row.get('etim_specs') or {})}\n"
+        f"- Trigger Context: {json.dumps(trigger_context)}\n\n"
+        "For each requested missing field, predict or extract the accurate value and estimate "
+        "your confidence as a score between 0.0 and 1.0 (or 0.0 to 100.0)."
+    )
+    messages = [
+        Message.system(
+            "You are an expert technical product catalog enrichment system. "
+            "You accurately complete missing product specifications, attributes, dimensions, and classifications."
+        ),
+        Message.user(prompt),
+    ]
+    return await provider.complete(messages, ProductEnrichmentModel)
+
+
+# ---------------------------------------------------------------------------
+# Enrichment proposals (routes through LLMProvider)
+# ---------------------------------------------------------------------------
+
+
+async def _build_proposals(
+    provider: LLMProvider,
     missing_fields: list[str],
     product_row: dict[str, Any],
     trigger_context: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Return per-field enrichment proposals for the missing fields.
+    """Return per-field enrichment proposals for the missing fields via LLMProvider.
 
-    In production this would call an AI/ML inference layer.  Here it builds
-    deterministic synthetic proposals so the governed handler can enforce the
-    §9.3 / confidence gate logic without an external dependency.
-
-    Each proposal:
-      ``field_name``, ``field_value``, ``confidence`` (0–1 float), ``verbalized``
+    Invokes the configured LLMProvider to obtain real estimates and per-field
+    calibrated confidence scores.  Never generates synthetic template strings.
     """
+    try:
+        enrichment_result = await _call_product_enrichment(
+            provider,
+            product_row,
+            missing_fields,
+            trigger_context,
+        )
+        proposals_by_field = {p.field_name: p for p in enrichment_result.proposals if p.field_name}
+    except Exception as exc:
+        log.warning("[enrich] cognitive provider call failed: %s", exc)
+        proposals_by_field = {}
+
     proposals: list[dict[str, Any]] = []
     for field in missing_fields:
-        # Synthetic value derived from the product so tests can assert on it.
-        value = f"{field}_enriched_for_{product_row.get('mfr_part_no', 'unknown')}"
-        # Money/legal fields get sub-threshold confidence to make the test clear,
-        # but the §9.3 guard fires regardless of the numeric value.
-        if field in _MONEY_LEGAL_FIELDS:
-            confidence = 0.50
+        prop = proposals_by_field.get(field)
+        if prop is not None:
+            field_value = str(prop.field_value)
+            conf = float(prop.confidence)
+            if conf > 1.0:
+                conf = conf / 100.0
+            conf = max(0.0, min(1.0, conf))
         else:
-            # Non-money fields: moderate-to-high confidence.
-            confidence = 0.80
+            field_value = ""
+            conf = 0.0
+
         proposals.append(
             {
                 "field_name": field,
-                "field_value": value,
-                "confidence": confidence,
-                "verbalized": _verbalize_confidence(confidence),
+                "field_value": field_value,
+                "confidence": conf,
+                "verbalized": _verbalize_confidence(conf),
             }
         )
     return proposals
@@ -207,6 +276,7 @@ async def do_enrich_product(
     confirm: bool = False,
     product_id: str,
     trigger_context: dict[str, Any],
+    provider: LLMProvider | None = None,
 ) -> dict[str, Any]:
     """Enrich exactly ONE product's missing fields under the C2 ``@governed`` gate.
 
@@ -232,6 +302,9 @@ async def do_enrich_product(
         UUID string of the single product to enrich.  NEVER a list.
     trigger_context:
         ``{kind: "quote"|"design", ref_id: str, missing_fields: [str], source_watermark: str}``
+    provider:
+        Optional ``LLMProvider`` instance override (for tests / direct injection).
+        When ``None``, resolves the provider from namespace metadata via ``get_provider``.
 
     Returns
     -------
@@ -259,8 +332,21 @@ async def do_enrich_product(
 
     product_source_id: str = str(product_row.get("product_source_id") or "")
 
-    # --- Build per-field proposals ---
-    proposals = _build_proposals(missing_fields, product_row, trigger_context)
+    # --- Resolve cognitive provider for this tenant ---
+    if provider is None:
+        row = await conn.fetchrow(
+            "SELECT metadata FROM namespaces WHERE id = $1::uuid",
+            uuid.UUID(str(namespace_id)),
+        )
+        metadata = (
+            json.loads(row["metadata"])
+            if row and isinstance(row["metadata"], str)
+            else (row["metadata"] if row and isinstance(row["metadata"], dict) else {})
+        )
+        provider = get_provider(metadata)
+
+    # --- Build per-field proposals via cognitive provider ---
+    proposals = await _build_proposals(provider, missing_fields, product_row, trigger_context)
 
     proposals_written = 0
     auto_merged = 0
