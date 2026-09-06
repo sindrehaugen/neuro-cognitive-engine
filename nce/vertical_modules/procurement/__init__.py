@@ -16,6 +16,15 @@ from nce.vertical_modules.procurement.frontier import (
     do_whatif_spend,
 )
 from nce.vertical_modules.procurement.po import do_generate_po, do_submit_po
+from nce.vertical_modules.procurement.po_line import (
+    ALLOWED_TRANSITIONS,
+    NODE_TYPE_PO_LINE,
+    POLineStatus,
+    po_line_label,
+    update_po_line_status,
+    upsert_po_line_node,
+    validate_status_transition,
+)
 from nce.vertical_modules.procurement.ranking import do_rank_suppliers
 from nce.vertical_modules.procurement.recalibration import (
     do_recalibrate_supplier,
@@ -28,6 +37,9 @@ from nce.vertical_modules.procurement.three_way_match import (
 )
 
 __all__ = [
+    "ALLOWED_TRANSITIONS",
+    "NODE_TYPE_PO_LINE",
+    "POLineStatus",
     "do_aggregate_savings",
     "do_calculate_tco",
     "do_evaluate_three_way_match",
@@ -40,4 +52,8 @@ __all__ = [
     "do_resolve_bids",
     "do_submit_po",
     "do_whatif_spend",
+    "po_line_label",
+    "update_po_line_status",
+    "upsert_po_line_node",
+    "validate_status_transition",
 ]
