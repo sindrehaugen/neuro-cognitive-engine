@@ -266,7 +266,7 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         index=25,
         name="portal_ticket",
         canonical_label="ticket",
-        is_broken=True,
+        is_broken=False,
         review_break="break-5c",
         phase1_wave="CP-1",
         description="Customer Portal hand-off creates real Support ticket via engine.modules['support']",
@@ -581,10 +581,6 @@ class TestGoldenThreadSteps:
 
         assert callable(do_raise_service_request)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="break-5c: customer_portal service request hand-off to support ticket dead seam (Wave CP-1)",
-    )
     def test_step_25_portal_ticket(self) -> None:
         """Step 25: customer portal hand-off creates Support ticket."""
         # Seam verification: customer_portal/actions.py must not be in KNOWN_SEAM_OFFENDERS
@@ -726,15 +722,16 @@ class TestGoldenThreadPositiveControls:
         assert indices == list(range(1, 29))
 
     def test_burndown_manifest_broken_steps_count(self) -> None:
-        """Verify that exactly 11 steps are currently marked broken.
+        """Verify broken steps count burns down as waves land.
 
-        10 seam breaks (Steps 5, 8, 11, 13, 14, 17, 20, 23, 25, 27)
+        Originally 10 seam breaks (Steps 5, 8, 11, 13, 14, 17, 20, 23, 25, 27)
         plus the degradation register check (Step 28).
+        Wave CP-1 closed Step 25, burning down to 10 broken steps.
         """
         broken_steps = [s for s in GOLDEN_THREAD_STEPS if s.is_broken]
-        assert len(broken_steps) == 11
+        assert len(broken_steps) == 10
         broken_indices = {s.index for s in broken_steps}
-        assert broken_indices == {5, 8, 11, 13, 14, 17, 20, 23, 25, 27, 28}
+        assert broken_indices == {5, 8, 11, 13, 14, 17, 20, 23, 27, 28}
 
     def test_positive_control_broken_steps_have_remediation_waves(self) -> None:
         """Verify every broken step specifies a responsible Phase 1 remediation wave."""
