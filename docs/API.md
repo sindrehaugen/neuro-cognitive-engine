@@ -450,6 +450,8 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `system_design_to_quote` |  | yes |  |  |
 | `system_design_validate_design_graph` |  |  |  |  |
 | `trigger_consolidation` |  | yes |  |  |
+| `trust_dial_get_status` |  |  | yes |  |
+| `trust_dial_set_tier` | yes | yes |  |  |
 | `unredact_memory` | yes | yes |  |  |
 | `validate_migration` |  |  |  | yes |
 | `vendors_calibrate_weights` |  |  | yes |  |
@@ -464,4 +466,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_reliability_radar` |  |  | yes |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 228 REST endpoints, 218 MCP tools._
+_Totals: 228 REST endpoints, 220 MCP tools._

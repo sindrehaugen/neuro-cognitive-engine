@@ -35,6 +35,7 @@ from nce import (
     migration_mcp_handlers,
     replay_mcp_handlers,
     snapshot_mcp_handlers,
+    trust_dial,
 )
 from nce.admin_handlers import settings as settings_mcp_handlers
 from nce.entity_resolution import mcp_handlers as entity_resolution_mcp_handlers
@@ -412,6 +413,21 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
     # ------------------------------------------------------------------
     "decision_feedback_record": ToolSpec(
         _h(decision_feedback, "handle_record_decision_feedback"),
+        admin_only=True,
+        mutation=True,
+    ),
+    # ------------------------------------------------------------------
+    # Trust Dial tools (Wave T-1 roadmap capstone)
+    # ------------------------------------------------------------------
+    "trust_dial_get_status": ToolSpec(
+        _h(trust_dial, "handle_trust_dial_get_status"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "trust_dial_set_tier": ToolSpec(
+        _h(trust_dial, "handle_trust_dial_set_tier"),
+        cacheable=False,
         admin_only=True,
         mutation=True,
     ),

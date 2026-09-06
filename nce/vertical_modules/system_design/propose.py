@@ -407,10 +407,24 @@ async def do_propose_design(
         for r in ranked
     ]
 
+    # 6. Fetch Trust Dial autonomy badge (Wave T-1 EU-AI-Act transparency)
+    trust_dial_badge: dict[str, Any] | None = None
+    try:
+        from nce.trust_dial import get_trust_dial_status
+
+        trust_dial_badge = await get_trust_dial_status(
+            engine,
+            ns_uuid,
+            engine="system_design",
+        )
+    except Exception as exc:
+        log.warning("do_propose_design: failed to fetch trust dial badge: %s", exc)
+
     return {
         "proposed_lines": proposed_lines,
         "recall_evidence": recall_evidence,
         "outcome_weighting_applied": outcome_weighting_enabled
         and (coverage["attributed_outcomes"] > 0),
         "coverage": coverage,
+        "trust_dial": trust_dial_badge,
     }

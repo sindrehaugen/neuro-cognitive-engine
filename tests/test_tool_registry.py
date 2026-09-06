@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 218  # 206 baseline + 6 Economy tools (Wave E-1) + 1 Sales signing request (Wave S-2a) + 1 Decision Feedback (Wave C10) + 2 Product tools (Waves P-2 / P-3) + 1 Project outcome (Wave PJ-1) + 1 Resources allocation outcome (Wave RS-3)
+_EXPECTED_TOTAL = 220  # 206 baseline + 6 Economy tools (Wave E-1) + 1 Sales signing request (Wave S-2a) + 1 Decision Feedback (Wave C10) + 2 Product tools (Waves P-2 / P-3) + 1 Project outcome (Wave PJ-1) + 1 Resources allocation outcome (Wave RS-3) + 2 Trust Dial tools (Wave T-1)
 
 
 def test_registry_has_expected_entries():
@@ -219,6 +219,8 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "project_record_outcome",
         # Wave RS-3 -- Resources record allocation outcome mutation
         "resources_record_allocation_outcome",
+        # Wave T-1 -- Trust dial set tier mutation
+        "trust_dial_set_tier",
     }
 )
 
@@ -232,8 +234,8 @@ def test_mutation_tools_exact_match():
 
 def test_mutation_tools_count():
     assert (
-        len(MUTATION_TOOLS) == 92
-    )  # 83 baseline + 4 assets completion tools + 1 sales_request_signature + 1 decision_feedback_record + 1 product_ingest_spec + 1 project_record_outcome + 1 resources_record_allocation_outcome
+        len(MUTATION_TOOLS) == 93
+    )  # 83 baseline + 4 assets completion tools + 1 sales_request_signature + 1 decision_feedback_record + 1 product_ingest_spec + 1 project_record_outcome + 1 resources_record_allocation_outcome + 1 trust_dial_set_tier
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -367,6 +369,8 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "business_insights_kpi_dashboard",
         # Wave P-3 -- Product golden record read tool (cacheable)
         "product_golden_record",
+        # Wave T-1 -- Trust dial status read tool (cacheable)
+        "trust_dial_get_status",
     }
 )
 
@@ -379,7 +383,9 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 83  # 82 baseline + 1 product golden record tool (Wave P-3)
+    assert (
+        len(CACHEABLE_TOOLS) == 84
+    )  # 82 baseline + 1 product golden record tool (Wave P-3) + 1 trust dial status (Wave T-1)
 
 
 # ---------------------------------------------------------------------------
@@ -475,6 +481,8 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "project_record_outcome",
         # Wave RS-3 -- Resources record allocation outcome admin_only tool
         "resources_record_allocation_outcome",
+        # Wave T-1 -- Trust dial set tier admin_only tool
+        "trust_dial_set_tier",
     }
 )
 
@@ -488,8 +496,8 @@ def test_admin_only_tools_exact_match():
 
 def test_admin_only_tools_count():
     assert (
-        len(ADMIN_ONLY_TOOLS) == 53
-    )  # 48 baseline + 1 assets tool (pull_telemetry) + 1 sales_request_signature + 1 decision_feedback_record + 1 project_record_outcome + 1 resources_record_allocation_outcome
+        len(ADMIN_ONLY_TOOLS) == 54
+    )  # 48 baseline + 1 assets tool (pull_telemetry) + 1 sales_request_signature + 1 decision_feedback_record + 1 project_record_outcome + 1 resources_record_allocation_outcome + 1 trust_dial_set_tier
 
 
 # ---------------------------------------------------------------------------

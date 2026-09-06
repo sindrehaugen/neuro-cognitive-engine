@@ -5641,6 +5641,50 @@ TOOLS = [
             "required": ["namespace_id", "engine", "decision"],
         },
     ),
+    Tool(
+        name="trust_dial_get_status",
+        description=(
+            "Get the current and proposed autonomy tier for a tenant based on C10 "
+            "measured decision precision (EU-AI-Act compliant explainability). cacheable."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "engine": {
+                    "type": "string",
+                    "description": "Optional engine filter (e.g. 'system_design', 'resources').",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="trust_dial_set_tier",
+        description=(
+            "Explicitly confirm or set a tenant's autonomy tier (1-4). "
+            "admin_only; mutation. A human must raise tiers; autonomy never raises itself."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "tier": {
+                    "type": "integer",
+                    "description": "Autonomy tier (1=autonomous, 2=actor_confirm, 3=advisor_pl_review, 4=advisor_only).",
+                },
+                "engine": {
+                    "type": "string",
+                    "description": "Optional engine identifier (defaults to global).",
+                },
+                "actor": {
+                    "type": "string",
+                    "description": "Actor identifier setting the tier (defaults to 'admin').",
+                },
+            },
+            "required": ["namespace_id", "tier"],
+        },
+    ),
 ]
 
 
