@@ -132,7 +132,12 @@ def test_generated_surface_doc_matches_the_generator():
             str(_ROOT), "HEAD", f"nce/vertical_modules/{eng}/"
         )
 
-    lines = ["# Surface of Truth", "", "| Engine | Tools (+ flags) | Routes | Cores (`do_*`) |", "|---|---|---|---|"]
+    lines = [
+        "# Surface of Truth",
+        "",
+        "| Engine | Tools (+ flags) | Routes | Cores (`do_*`) |",
+        "|---|---|---|---|",
+    ]
     for eng in all_engines:
         data = engine_data[eng]
         t_str = "<br>".join(

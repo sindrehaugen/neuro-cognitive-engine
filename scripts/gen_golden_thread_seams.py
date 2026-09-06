@@ -91,7 +91,9 @@ def render(steps: list[dict], baseline_sha: str) -> str:
     break_ids = sorted({_break_id(s["xfail_reason"]) for s in open_steps})
 
     lines = []
-    lines.append(f"> **Status:** shipped · **Verified-against:** {baseline_sha} (main) · **Last-audited:** generated")
+    lines.append(
+        f"> **Status:** shipped · **Verified-against:** {baseline_sha} (main) · **Last-audited:** generated"
+    )
     lines.append("")
     lines.append("# Golden Thread — Seam Burndown")
     lines.append("")
