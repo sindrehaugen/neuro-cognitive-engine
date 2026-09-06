@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Any
 
 from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import mcp_handler
+from nce.vertical_modules.vendors.certs import do_upsert_cert
+from nce.vertical_modules.vendors.contractors import do_get_contractor, do_upsert_contractor
 from nce.vertical_modules.vendors.feed import (
     do_check_tier_at_risk,
     do_detect_reliability_degradation,
@@ -22,7 +24,7 @@ from nce.vertical_modules.vendors.performance import (
     do_compute_performance,
     do_recall_similar_jobs,
 )
-from nce.vertical_modules.vendors.registry import do_get_vendor
+from nce.vertical_modules.vendors.registry import do_get_vendor, do_upsert_vendor
 from nce.vertical_modules.vendors.scorecard import do_compute_scorecard
 from nce.vertical_modules.vendors.tiers import do_get_tier_status
 
@@ -144,4 +146,48 @@ async def handle_vendors_calibrate_weights(engine: NCEEngine, arguments: dict[st
     """
     require_namespace_id(arguments)
     result = await do_calibrate_weights(engine, arguments)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_vendors_upsert_vendor(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: vendors_upsert_vendor — upsert a vendor organization.
+
+    Requires ``namespace_id``, ``orgnr``, and ``name`` in *arguments*.
+    """
+    require_namespace_id(arguments)
+    result = await do_upsert_vendor(engine, arguments)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_vendors_upsert_contractor(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: vendors_upsert_contractor — upsert contractor profile.
+
+    Requires ``namespace_id``, ``contractor_id``, and ``partner_scope_id`` in *arguments*.
+    """
+    require_namespace_id(arguments)
+    result = await do_upsert_contractor(engine, arguments)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_vendors_get_contractor(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: vendors_get_contractor — fetch a single contractor profile.
+
+    Requires ``namespace_id`` and ``contractor_id`` in *arguments*.
+    """
+    require_namespace_id(arguments)
+    result = await do_get_contractor(engine, arguments)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_vendors_upsert_cert(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: vendors_upsert_cert — upsert contractor certification.
+
+    Requires ``namespace_id``, ``contractor_id``, ``cert_name``, and ``expiry_date`` in *arguments*.
+    """
+    require_namespace_id(arguments)
+    result = await do_upsert_cert(engine, arguments)
     return json.dumps(result, default=str)
