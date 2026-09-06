@@ -3019,6 +3019,28 @@ TOOLS = [
         },
     ),
     Tool(
+        name="procurement_aggregate_savings",
+        description=(
+            "Aggregate realised/lost savings and leakage candidates for a period. "
+            "Read-only, advisory."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "period_start": {
+                    "type": "string",
+                    "description": "Inclusive start date (ISO 8601, YYYY-MM-DD).",
+                },
+                "period_end": {
+                    "type": "string",
+                    "description": "Exclusive end date (ISO 8601, YYYY-MM-DD).",
+                },
+            },
+            "required": ["namespace_id", "period_start", "period_end"],
+        },
+    ),
+    Tool(
         name="procurement_calculate_tco",
         description=(
             "Total cost of ownership for one supplier against one BOM line. Read-only, advisory."

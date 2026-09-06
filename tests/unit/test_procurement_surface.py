@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -74,9 +74,32 @@ def _make_engine() -> MagicMock:
     return MagicMock()
 
 
+def _make_request(
+    body: dict[str, Any] | None = None,
+    query_params: dict[str, Any] | None = None,
+    method: str = "POST",
+) -> MagicMock:
+    """Minimal Starlette-like request mock."""
+    req = MagicMock()
+    req.method = method
+    req.json = AsyncMock(return_value=body or {})
+    req.query_params = query_params or {}
+    return req
+
+
 # ---------------------------------------------------------------------------
 # 1. Tool registry — flags
 # ---------------------------------------------------------------------------
+
+
+def test_procurement_aggregate_savings_flags():
+    from nce.tool_registry import TOOL_REGISTRY
+
+    spec = TOOL_REGISTRY["procurement_aggregate_savings"]
+    assert spec.cacheable is True
+    assert spec.admin_only is False
+    assert spec.mutation is False
+    assert spec.migration is False
 
 
 def test_procurement_calculate_tco_flags():
@@ -117,6 +140,7 @@ def test_procurement_evaluate_match_flags():
 def test_tool_count_includes_procurement_tools():
     from nce.tool_registry import TOOL_REGISTRY
 
+    assert "procurement_aggregate_savings" in TOOL_REGISTRY
     assert "procurement_calculate_tco" in TOOL_REGISTRY
     assert "procurement_rank_suppliers" in TOOL_REGISTRY
     assert "procurement_evaluate_match" in TOOL_REGISTRY
@@ -205,6 +229,49 @@ async def test_handle_evaluate_match_returns_valid_json():
     assert parsed["tier"] == "GREEN"
 
 
+@pytest.mark.asyncio
+async def test_handle_aggregate_savings_returns_valid_json(monkeypatch):
+    from nce.vertical_modules.procurement.mcp_handlers import (
+        handle_procurement_aggregate_savings,
+    )
+
+    async def _mock_do_aggregate_savings(engine, params):
+        return {
+            "realised": 1500.0,
+            "lost": 200.0,
+            "leakage_candidates": [
+                {
+                    "artnr": "ART-1",
+                    "actual_price": 50.0,
+                    "best_bid": 40.0,
+                    "gap": 10.0,
+                    "quantity": 20,
+                    "gap_total": 200.0,
+                    "rationale": "Over baseline",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        "nce.vertical_modules.procurement.mcp_handlers.do_aggregate_savings",
+        _mock_do_aggregate_savings,
+    )
+
+    engine = _make_engine()
+    result = await handle_procurement_aggregate_savings(
+        engine,
+        {
+            "namespace_id": _NAMESPACE_ID,
+            "period_start": "2026-01-01",
+            "period_end": "2026-02-01",
+        },
+    )
+    parsed = json.loads(result)
+    assert parsed["realised"] == 1500.0
+    assert parsed["lost"] == 200.0
+    assert len(parsed["leakage_candidates"]) == 1
+
+
 # ---------------------------------------------------------------------------
 # 3. handle_* returns {"error": ...} for missing namespace_id
 # ---------------------------------------------------------------------------
@@ -272,8 +339,27 @@ async def test_handle_evaluate_match_missing_namespace_id():
     assert exc_info.value.code == -32602
 
 
+@pytest.mark.asyncio
+async def test_handle_aggregate_savings_missing_namespace_id():
+    from nce.mcp_errors import McpError
+    from nce.vertical_modules.procurement.mcp_handlers import (
+        handle_procurement_aggregate_savings,
+    )
+
+    engine = _make_engine()
+    with pytest.raises(McpError) as exc_info:
+        await handle_procurement_aggregate_savings(
+            engine,
+            {
+                "period_start": "2026-01-01",
+                "period_end": "2026-02-01",
+            },
+        )
+    assert exc_info.value.code == -32602
+
+
 # ---------------------------------------------------------------------------
-# 5. REST routes are mounted in the admin app
+# 5. REST routes are mounted in the admin app and handler tests
 # ---------------------------------------------------------------------------
 
 
@@ -282,6 +368,120 @@ def test_procurement_routes_mounted_in_admin_app():
 
     routes = build_admin_routes()
     paths = {r.path for r in routes}
+    assert "/api/procurement/savings" in paths
     assert "/api/procurement/tco" in paths
     assert "/api/procurement/rank" in paths
     assert "/api/procurement/match" in paths
+
+
+@pytest.mark.asyncio
+async def test_api_procurement_aggregate_savings_get_success(monkeypatch):
+    from nce import admin_state
+    from nce.admin_handlers.procurement import api_procurement_aggregate_savings
+
+    async def _mock_do_aggregate_savings(engine, params):
+        return {
+            "realised": 500.0,
+            "lost": 50.0,
+            "leakage_candidates": [],
+        }
+
+    monkeypatch.setattr(
+        "nce.admin_handlers.procurement.do_aggregate_savings",
+        _mock_do_aggregate_savings,
+    )
+
+    with patch.object(admin_state, "engine", MagicMock()):
+        req = _make_request(
+            query_params={
+                "namespace_id": _NAMESPACE_ID,
+                "period_start": "2026-01-01",
+                "period_end": "2026-02-01",
+            },
+            method="GET",
+        )
+        resp = await api_procurement_aggregate_savings(req)
+        assert resp.status_code == 200
+        body = json.loads(bytes(resp.body).decode("utf-8"))
+        assert body["status"] == "ok"
+        assert body["realised"] == 500.0
+        assert body["lost"] == 50.0
+
+
+@pytest.mark.asyncio
+async def test_api_procurement_aggregate_savings_post_success(monkeypatch):
+    from nce import admin_state
+    from nce.admin_handlers.procurement import api_procurement_aggregate_savings
+
+    async def _mock_do_aggregate_savings(engine, params):
+        return {
+            "realised": 250.0,
+            "lost": 0.0,
+            "leakage_candidates": [],
+        }
+
+    monkeypatch.setattr(
+        "nce.admin_handlers.procurement.do_aggregate_savings",
+        _mock_do_aggregate_savings,
+    )
+
+    with patch.object(admin_state, "engine", MagicMock()):
+        req = _make_request(
+            body={
+                "namespace_id": _NAMESPACE_ID,
+                "period_start": "2026-01-01",
+                "period_end": "2026-02-01",
+            },
+            method="POST",
+        )
+        resp = await api_procurement_aggregate_savings(req)
+        assert resp.status_code == 200
+        body = json.loads(bytes(resp.body).decode("utf-8"))
+        assert body["status"] == "ok"
+        assert body["realised"] == 250.0
+
+
+@pytest.mark.asyncio
+async def test_api_procurement_aggregate_savings_missing_namespace():
+    from nce import admin_state
+    from nce.admin_handlers.procurement import api_procurement_aggregate_savings
+
+    with patch.object(admin_state, "engine", MagicMock()):
+        req = _make_request(
+            body={"period_start": "2026-01-01", "period_end": "2026-02-01"},
+            method="POST",
+        )
+        resp = await api_procurement_aggregate_savings(req)
+        assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_api_procurement_aggregate_savings_missing_period():
+    from nce import admin_state
+    from nce.admin_handlers.procurement import api_procurement_aggregate_savings
+
+    with patch.object(admin_state, "engine", MagicMock()):
+        req = _make_request(
+            body={"namespace_id": _NAMESPACE_ID, "period_start": "2026-01-01"},
+            method="POST",
+        )
+        resp = await api_procurement_aggregate_savings(req)
+        assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_api_procurement_aggregate_savings_engine_not_connected():
+    from nce import admin_state
+    from nce.admin_handlers.procurement import api_procurement_aggregate_savings
+
+    with patch.object(admin_state, "engine", None):
+        req = _make_request(
+            body={
+                "namespace_id": _NAMESPACE_ID,
+                "period_start": "2026-01-01",
+                "period_end": "2026-02-01",
+            },
+            method="POST",
+        )
+        resp = await api_procurement_aggregate_savings(req)
+        assert resp.status_code == 503

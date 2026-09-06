@@ -509,8 +509,14 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
     ),
     # ------------------------------------------------------------------
-    # Procurement vertical module tools (M1.W4) — Advisor: read-only
+    # Procurement vertical module tools (M1.W4 / PR-3) — Advisor: read-only
     # ------------------------------------------------------------------
+    "procurement_aggregate_savings": ToolSpec(
+        _h(procurement_mcp_handlers, "handle_procurement_aggregate_savings"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     "procurement_calculate_tco": ToolSpec(
         _h(procurement_mcp_handlers, "handle_procurement_calculate_tco"),
         cacheable=True,

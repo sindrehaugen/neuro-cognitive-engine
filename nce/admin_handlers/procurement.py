@@ -5,6 +5,7 @@ Exports:
   ``api_procurement_calculate_tco``         — POST /api/procurement/tco
   ``api_procurement_rank_suppliers``        — POST /api/procurement/rank
   ``api_procurement_evaluate_match``        — POST /api/procurement/match
+  ``api_procurement_aggregate_savings``     — GET/POST /api/procurement/savings
   ``api_procurement_sync_now``              — POST /api/procurement/sync  (admin-only, W7)
   ``api_procurement_sync_status``           — GET  /api/procurement/sync/status (admin-only, W7)
   ``api_procurement_forecast_rebate``       — POST /api/procurement/frontier/forecast-rebate (W12)
@@ -22,6 +23,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
 from nce.admin_handlers._shared import (
     _MISSING_NAMESPACE_QUERY_PARAM,
@@ -33,6 +35,7 @@ from nce.admin_handlers._shared import (
 from nce.db_utils import scoped_pg_session
 from nce.vertical_modules.procurement import frontier as procurement_frontier
 from nce.vertical_modules.procurement.ranking import do_rank_suppliers
+from nce.vertical_modules.procurement.savings import do_aggregate_savings
 from nce.vertical_modules.procurement.tco import (
     do_calculate_tco,
     load_procurement_config,
@@ -477,4 +480,66 @@ async def api_procurement_whatif_spend(request) -> JSONResponse:
             exc,
             status_code=500,
             log_event="api_procurement_whatif_spend",
+        )
+
+
+async def api_procurement_aggregate_savings(request: Any) -> JSONResponse:
+    """GET/POST /api/procurement/savings — aggregate realised/lost savings and leakage candidates.
+
+    Query parameters (GET) or JSON body (POST):
+        namespace_id (str, required): Active namespace UUID.
+        period_start (str, required): Inclusive start date (ISO 8601, YYYY-MM-DD).
+        period_end   (str, required): Exclusive end date (ISO 8601, YYYY-MM-DD).
+
+    Response (JSON):
+        {"status": "ok", "realised": float, "lost": float, "leakage_candidates": [...]}
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    params: dict[str, Any] = {}
+    if hasattr(request, "query_params"):
+        try:
+            params.update(dict(request.query_params))
+        except Exception:
+            pass
+
+    if getattr(request, "method", None) == "POST":
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+        params.update(body)
+
+    namespace_id, ns_err = _require_namespace_id(params.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
+
+    period_start = params.get("period_start")
+    period_end = params.get("period_end")
+    if not period_start:
+        return JSONResponse({"error": "period_start is required"}, status_code=422)
+    if not period_end:
+        return JSONResponse({"error": "period_end is required"}, status_code=422)
+
+    try:
+        result = await do_aggregate_savings(
+            admin_state.engine,
+            {
+                "namespace_id": str(namespace_id),
+                "period_start": str(period_start),
+                "period_end": str(period_end),
+            },
+        )
+        return JSONResponse({**result, "status": "ok"})
+    except (ValueError, KeyError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Procurement aggregate savings error",
+            exc,
+            status_code=500,
+            log_event="api_procurement_aggregate_savings",
         )

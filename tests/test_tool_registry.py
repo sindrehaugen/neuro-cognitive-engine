@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 245  # 244 baseline + 1 Economy tool (Wave E-3)
+_EXPECTED_TOTAL = 246  # 245 baseline + 1 Procurement savings tool (Wave PR-3)
 
 
 def test_registry_has_expected_entries():
@@ -300,7 +300,8 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "product_price",
         # Product vertical module (M2.W5) — related-products advisor read, cacheable
         "product_related",
-        # Procurement vertical module (M1.W4) — advisor reads, cacheable
+        # Procurement vertical module (M1.W4 / PR-3) — advisor reads, cacheable
+        "procurement_aggregate_savings",
         "procurement_calculate_tco",
         "procurement_rank_suppliers",
         "procurement_evaluate_match",
@@ -416,7 +417,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 93  # 91 baseline + 2 Resources tools (Wave RS-1)
+    assert len(CACHEABLE_TOOLS) == 94  # 93 baseline + 1 Procurement savings tool (Wave PR-3)
 
 
 # ---------------------------------------------------------------------------
