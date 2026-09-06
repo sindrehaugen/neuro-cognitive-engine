@@ -317,10 +317,37 @@ def test_a1_select_telemetry_adapter_ymcs(monkeypatch: pytest.MonkeyPatch):
 
 @pytest.mark.asyncio
 async def test_a1_ymcs_deterministic_fallback():
-    """When no remote URL is configured, adapter returns realistic read-only metrics."""
-    adapter = YMCSTelemetryAdapter(endpoint_url=None)
+    """Unconfigured adapter fails loud; configured adapter parses HTTP responses."""
+    import httpx
+
+    adapter = YMCSTelemetryAdapter(endpoint_url=None, api_key=None)
     asset_id = UUID("12345678-1234-5678-1234-567812345678")
-    samples = await adapter.fetch_samples(asset_id)
+    with pytest.raises(NotImplementedError, match="ymcs") as excinfo:
+        await adapter.fetch_samples(asset_id)
+    assert "NCE_ASSETS_YMCS_ENDPOINT_URL" in str(excinfo.value)
+    assert "NCE_ASSETS_YMCS_API_KEY" in str(excinfo.value)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "metrics": {
+                    "uptime_seconds": 1200.0,
+                    "temperature_celsius": 38.5,
+                    "packet_loss_percent": 0.05,
+                    "mic_mute_status": 0.0,
+                    "link_status": 1.0,
+                },
+                "raw": {"source": "ymcs", "device": "Yealink-MeetingBar-A30"},
+            },
+        )
+
+    adapter_live = YMCSTelemetryAdapter(
+        endpoint_url="https://ymcs.yealink.com",
+        api_key="secret-key",
+        transport=httpx.MockTransport(handler),
+    )
+    samples = await adapter_live.fetch_samples(asset_id)
 
     assert len(samples) >= 5
     metrics = {s.metric: s.value for s in samples}
