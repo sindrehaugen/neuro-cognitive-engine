@@ -1,9 +1,11 @@
 > **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
 
 # NCE-FE — Front-End Readiness & Extension Seams
-> **Status:** FE-1/FE-2/FE-6 SHIPPED · FE-3/FE-4/FE-5 PLANNED  
+> **Status:** FE-1/FE-2/FE-6 SHIPPED · FE-5 PLANNED · **FE-3/FE-4 WITHDRAWN** (their only consumer,
+> Copper, withdrew both asks 2026-09-02; Sindre confirmed RL-B155/RL-B156 `[DROPPED]` 2026-09-04 —
+> see `C:\Claude\DL_INTAKE_2026-09-04.md` item 1)
 > **Target:** Host application / consuming front-end integration  
-> **Baseline:** `main` @ `9415eb0` · Verified-against: `9415eb0`
+> **Baseline:** `main` @ `b75c873` · Verified-against: `b75c873`
 
 ---
 
@@ -77,7 +79,13 @@ When a host vendors or consumes NCE as a backend engine, NCE is treated as an im
 
 ---
 
-### NCE-FE-3 — Configurable static front-end serving · **PLANNED**
+### NCE-FE-3 — Configurable static front-end serving · **WITHDRAWN** (not scheduled)
+
+> [!NOTE]
+> **Withdrawn, not planned.** Copper (the NCE front end) withdrew this ask on 2026-09-02
+> (`C:\Claude\MSG_TO_ML_ORCH_2026-09-02.md`); the row behind it, `RL-B155`, is confirmed
+> `[DROPPED]` by Sindre as of 2026-09-04. Nobody is building this. The description below is kept
+> as a design reference in case a future consumer asks for it — it is not a commitment.
 
 * **Current Reality:** `nce/admin_handlers/health.py` serves a hardcoded index path (`index_path = os.path.join(os.path.dirname(__file__), "admin", "index.html")`) and stylesheet (`styles_path = os.path.join(os.path.dirname(__file__), "admin", "styles.css")`).
 * **Status:** `NCE_FRONTEND_DIR` / `NCE_FRONTEND_INDEX` config keys do not exist in `nce/config.py` on `main`. Hardcoded fallback paths remain.
@@ -89,7 +97,13 @@ When a host vendors or consumes NCE as a backend engine, NCE is treated as an im
 
 ---
 
-### NCE-FE-4 — Sanctioned browser auth + CORS surface · **PLANNED**
+### NCE-FE-4 — Sanctioned browser auth + CORS surface · **WITHDRAWN** (not scheduled)
+
+> [!NOTE]
+> **Withdrawn, not planned.** Copper withdrew this ask on 2026-09-02
+> (`C:\Claude\MSG_TO_ML_ORCH_2026-09-02.md`); the row behind it, `RL-B156`, is confirmed
+> `[DROPPED]` by Sindre as of 2026-09-04. Nobody is building this. The `extra_middleware` slot from
+> FE-1 remains the correct place to inject CORS today.
 
 * **Current Reality:** `nce/jwt_auth.py` and `nce/a2a_server.py` log warnings and reject general browser client tokens when authenticating as agent principals:
   * `jwt_auth.py`: `logger.warning("Rejecting token with aud=%s; tokens issued for other services (web frontend, admin UI, etc.) must not authenticate as agent", aud)`
@@ -138,8 +152,8 @@ When a host vendors or consumes NCE as a backend engine, NCE is treated as an im
 |---|---|---|---|
 | **NCE-FE-1** | Mount custom Starlette routes & middleware | **SHIPPED** | `nce/admin_app.py` (`build_app`) |
 | **NCE-FE-2** | Register custom MCP tools & handlers | **SHIPPED** | `nce/tool_registry.py` (`register_tool`) |
-| **NCE-FE-3** | Configurable static asset / SPA serving | **PLANNED** | `nce/admin_handlers/health.py` (`admin_index`) |
-| **NCE-FE-4** | Browser JWT audience & CORS configuration | **PLANNED** | `nce/jwt_auth.py`, `nce/a2a_server.py` |
+| **NCE-FE-3** | Configurable static asset / SPA serving | **WITHDRAWN** (RL-B155 dropped 2026-09-04) | `nce/admin_handlers/health.py` (`admin_index`) |
+| **NCE-FE-4** | Browser JWT audience & CORS configuration | **WITHDRAWN** (RL-B156 dropped 2026-09-04) | `nce/jwt_auth.py`, `nce/a2a_server.py` |
 | **NCE-FE-5** | Host extension configuration isolation | **PLANNED** | `nce/config.py` (`_Config`) |
 | **NCE-FE-6** | Stable muscles & governance data contract | **SHIPPED** | Migration `022`, `models.py`, `admin_app.py` |
 

@@ -1,17 +1,28 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** b75c873 (main) — **surface summary only, see note** · **Last-audited:** 2026-09-06
 
 # Economy Engine User Guide (Doc 75)
 
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** b75c873 (main) — **surface summary only, see note** · **Last-audited:** 2026-09-06
 
 The **Economy Engine** (`nce/vertical_modules/economy/`) is the financial intelligence and accounting engine of the Neuro-Cognitive Engine (NCE). It lifts the core financial mechanisms from PFT (~17.3k LOC, 80+ test files) onto the NCE knowledge graph spine: the **130-point contextual invoice matcher**, the **7-effect approval cascade** (the sole writer of `BOM_LINE.actual_cost`), **Norwegian GAAP (regnskapsloven §4-1) periodisering**, the **strict zero-drift balance guarantee**, the **margin-trinity** actuals tracking, and the **recurring-revenue** stack.
 
+> [!WARNING]
+> **This guide's body (§1 onward) was written against `7304330` and describes only the original 3 tools.**
+> The engine has grown to **9 tools / 9 routes / 21 `do_*` cores** since (`docs/_generated/surface.md`
+> is authoritative and regenerates on every run of `scripts/gen_surface_table.py`). The 6 tools and 12
+> cores added since `7304330` are listed below with file:line so nothing is hidden, but they are **not
+> yet described in the narrative sections of this guide** — that write-up is follow-up scope, not done
+> in this pass. Found and logged 2026-09-06 (`DL.md` K-1): the model doc this charter names as the
+> pattern to follow was itself the most stale doc in the tree on tool count.
+
 > [!IMPORTANT]
-> **Surface summary (Main @ 7304330):**
-> - **3 exposed MCP tools:** `economy_match_invoice`, `economy_compute_periodisering`, `economy_emit_event` (`nce/tool_registry.py:666-684`). All three are read-only Advisor tools (`cacheable: true`, `admin_only: false`, `mutation: false`).
-> - **3 mounted REST routes:** `POST /api/economy/match-invoice`, `POST /api/economy/periodisering`, `POST /api/economy/emit-event` (`nce/admin_handlers/economy.py`).
-> - **9 internal domain cores (`do_*`):** `do_compute_bucket_targets`, `do_compute_dunning`, `do_compute_recognition_schedule`, `do_emit_financial_event`, `do_forecast_cashflow`, `do_generate_kid`, `do_match_invoice`, `do_snapshot_mrr_arr_churn`, `do_validate_kid`.
-> - **Core accounting invariant:** **NCE mirrors and periodises internally; Finago remains the legal General Ledger (GL) system-of-record.** NCE computes the internal numbers (matching, cascade, accruals, projections, balanced double-entry postings) and mirrors the legal book, but does not commit postings directly to Finago's GL in Normal mode.
+> **Surface summary (Main @ b75c873, re-derived 2026-09-06):**
+> - **9 exposed MCP tools**, all read-only Advisor tools (`cacheable: true`, `admin_only: false`, `mutation: false`), `nce/tool_registry.py:823-876`:
+>   - Original 3 (described in §1-4 below): `economy_match_invoice`, `economy_compute_periodisering`, `economy_emit_event`.
+>   - **6 added since `7304330`, not yet documented in this guide's body:** `economy_forecast_cashflow` (`:841`), `economy_snapshot_mrr_arr_churn` (`:847`), `economy_compute_dunning` (`:853`), `economy_compute_recognition_schedule` (`:859`), `economy_gl_sync_status` (`:865`), `economy_generate_close_narrative` (`:871`).
+> - **9 mounted REST routes** (`nce/admin_app.py:823-867`): the original 3 plus `GET/POST /api/economy/forecast`, `/mrr-arr-churn`, `/dunning`, `/recognition-schedule`, `/gl-sync-status`, `/close-narrative`.
+> - **21 internal domain cores (`do_*`)** in `nce/vertical_modules/economy/`, up from the 9 this guide originally described — new ones include `do_ingest_invoice`, `do_reconcile_gl`, `do_generate_ehf`, `do_upsert_contract`, `do_validate_contract`, `do_scan_renewals`, `do_recalibrate_supplier`, `do_recognize_recurring`, `do_get_invoice_watermark`, `do_cascade_on_approval`, `do_record_match_decision`, plus the 6 now wired to the tools above.
+> - **Core accounting invariant (still true):** **NCE mirrors and periodises internally; Finago remains the legal General Ledger (GL) system-of-record.** NCE computes the internal numbers (matching, cascade, accruals, projections, balanced double-entry postings) and mirrors the legal book, but does not commit postings directly to Finago's GL in Normal mode.
 
 ---
 

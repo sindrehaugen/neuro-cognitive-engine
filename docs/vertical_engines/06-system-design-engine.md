@@ -2,7 +2,7 @@
 
 # 06 — System Design Engine  (nce/vertical_modules/system_design)
 
-<!-- BLOCKED ON OQ-2 / OQ-4: SPEC PROPOSAL VOICE. This document is an architectural design specification. At baseline 7304330, System Design ships 2 registered MCP tools (system_design_ping, system_design_publish_design_docs) and 1 REST route (/api/system-design/publish-design-docs). Interactive CAD/topology/BOM generation functions remain unbuilt/unwired on main. Refer to docs/engines/system-design-user.md and docs/engines/system-design-admin.md for shipped reality. Verified-against: 7304330 -->
+<!-- BLOCKED ON OQ-2 / OQ-4: SPEC PROPOSAL VOICE. This document is an architectural design specification. System Design's exposed surface has grown twice since this banner was last accurate (7304330: 2 tools/1 route; 2026-08-30 Module 6: 7 tools/5 routes; b75c873: 12 tools/9 routes) -- see docs/_generated/surface.md for the current count, not a number here. Refer to docs/engines/system-design-user.md and docs/engines/system-design-admin.md for shipped reality -- note both now carry their own staleness warnings too (found 2026-09-06, DL.md K-1: the "shipped reality" docs were themselves stale, twice over). Verified-against: b75c873 -->
 
 
 > **Status: DISCUSSION doc** — Sindre flagged this one "lets discuss here". This lays out what it is, the scope options, a recommendation, and the open questions. The other engines have settled shapes; this one needs a decision before it's specced like the rest.
@@ -106,7 +106,7 @@ Neither direction is privileged; the engine reconciles to one `DESIGN` ⇄ `QUOT
 - Every derived edge carries `confidence` (0–1) and a `system_design_source_id` for retirement (roadmap §2.3).
 
 ## Core functions
-<!-- BLOCKED ON OQ-2 / OQ-4: do_propose_design, do_generate_sow, do_design_from_quote, do_design_to_quote, do_validate_design, do_sync_functional_locations remain prospective Phase-1/Phase-2 design cores not exposed on main. -->
+<!-- BLOCKED ON OQ-2 / OQ-4: STALE, corrected 2026-09-06 -- do_propose_design, do_generate_sow, do_design_from_quote (as system_design_from_quote), do_design_to_quote (as system_design_to_quote), and do_validate_design (as system_design_validate_design_graph) are ALL now exposed as MCP tools + REST routes at b75c873 (nce/tool_registry.py:585-625). Only do_sync_functional_locations remains genuinely unexposed. -->
 ```python
 async def do_propose_design(engine, params) -> dict
 #   params: {namespace_id, brief:{rooms:[{name,use_case,constraints}], ...}, top_k?}
@@ -140,7 +140,7 @@ async def do_publish_design_docs(engine, params) -> dict
 ```
 
 ## MCP tools
-<!-- BLOCKED ON OQ-2 / OQ-4: Historical proposal listed 7 tools. Baseline 7304330 registers 2 MCP tools: system_design_ping and system_design_publish_design_docs. -->
+<!-- BLOCKED ON OQ-2 / OQ-4: Historical proposal listed 7 tools. STALE, corrected 2026-09-06 -- 12 MCP tools are registered at b75c873 (up from 2 at 7304330 and 7 as of the 2026-08-30 Module 6 note): system_design_ping, system_design_publish_design_docs, system_design_get_topology, system_design_author_topology, system_design_author_functional_location, system_design_validate_design_graph, system_design_delete_planned, system_design_from_quote, system_design_to_quote, system_design_generate_sow, system_design_enrich_design_lines, system_design_propose_design. See docs/_generated/surface.md for the current count. -->
 | Tool | cacheable | admin_only | mutation | AI-role |
 |---|---|---|---|---|
 | `system_design_propose_design` | False | False | True | **Advisor** (proposes, human owns) |
@@ -152,7 +152,7 @@ async def do_publish_design_docs(engine, params) -> dict
 | `system_design_publish_docs` | False | True | True | **Actor** (SharePoint + Lucid push) |
 
 ## REST routes
-<!-- BLOCKED ON OQ-2 / OQ-4: Mounted REST routes at baseline 7304330 comprise exactly 1 endpoint: POST /api/system-design/publish-design-docs. -->
+<!-- BLOCKED ON OQ-2 / OQ-4: STALE, corrected 2026-09-06 -- 9 REST routes are mounted at b75c873 (up from 1 at 7304330), adding topology, functional-location, validate, planned-delete, from-quote, to-quote, sow, and enrich-design-lines endpoints (nce/admin_app.py). -->
 No-model path for the BFF/Lysning (admin app, HMAC/mTLS): `api_system_design_propose_design`, `api_system_design_design_from_quote`, `api_system_design_generate_sow` (read-only deterministic → REST per §2.2), `api_system_design_design_to_quote`, `api_system_design_validate_design`, `api_system_design_sync_functional_locations`, `api_system_design_publish_docs`.
 
 ## AI features

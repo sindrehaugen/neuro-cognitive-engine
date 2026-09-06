@@ -1,13 +1,23 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** b75c873 (main) — **surface summary only, see note** · **Last-audited:** 2026-09-06
 
 # Sales Engine User Guide (Doc 73)
 
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** b75c873 (main) — **surface summary only, see note** · **Last-audited:** 2026-09-06
 
-The **Sales Engine** (`nce/vertical_modules/sales/`) owns the deal lifecycle — lead/opportunity/deal → quote → DealRoom → signature — and is the single place a **signed baseline** is frozen for a quote. This guide documents the surfaces that actually exist in code today: the tenant-isolated read-model (mirrored from Dynamics 365), the DealRoom pricing recompute, the signing-and-freeze flow, the public customer-facing quote link, and the one MCP tool other engines use to read the frozen baseline. Where the design spec (`docs/vertical_engines/05-sales-engine.md`) describes more than is built, this guide says so explicitly.
+The **Sales Engine** (`nce/vertical_modules/sales/`) owns the deal lifecycle — lead/opportunity/deal → quote → DealRoom → signature — and is the single place a **signed baseline** is frozen for a quote. This guide documents the surfaces that actually exist in code today: the tenant-isolated read-model (mirrored from Dynamics 365), the DealRoom pricing recompute, the signing-and-freeze flow, the public customer-facing quote link, and the MCP tools other engines use to read the frozen baseline. Where the design spec (`docs/vertical_engines/05-sales-engine.md`) describes more than is built, this guide says so explicitly.
+
+> [!WARNING]
+> **This guide's body was written against `7304330`, when only 2 tools existed.** Sales has since grown
+> to **5** MCP tools (`nce/tool_registry.py:697-747`) — 3 added tools are not yet described in the
+> narrative below. Found and logged 2026-09-06 (`DL.md` K-1) as part of the same pattern that
+> hit `economy-user.md` and `system-design-user.md`.
 
 > [!IMPORTANT]
-> Only **two** Sales functions are registered as MCP tools today: `sales_ping` and `sales_get_signed_baseline` (`nce/tool_registry.py:573-589`). Everything else described below — customer/quote/dashboard reads, DealRoom, signing, commission — is real, tested, `do_*`-callable code, but it is reached through **REST admin routes** (`nce/admin_handlers/sales.py`, `nce/admin_handlers/sales_public.py`), not MCP. If you are integrating an AI agent via MCP, `sales_get_signed_baseline` is the only Sales-specific tool you can call today; the rest of this guide describes the underlying engine behavior for anyone building against the REST surface.
+> **Five** Sales functions are registered as MCP tools today (`nce/tool_registry.py:697-747`):
+> - `sales_ping` (cacheable) and `sales_get_signed_baseline` — described below, unchanged since `7304330`.
+> - **Added since, not yet described below:** `sales_get_quote_lines` (`:722`, read, not cacheable by design — quote lines mutate frequently and the read is cheap), `sales_add_quote_line` (`:734`, `mutation=True`, a salesperson's manual BOM_LINE origination path), `sales_request_signature` (`:742`, `admin_only=True, mutation=True` — the C7 sign-transport orchestration for Wave S-2a).
+>
+> Everything else described below — customer/quote/dashboard reads, DealRoom, signing, commission — is real, tested, `do_*`-callable code, but it is reached through **REST admin routes** (`nce/admin_handlers/sales.py`, `nce/admin_handlers/sales_public.py`), not MCP.
 
 ---
 

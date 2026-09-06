@@ -1,26 +1,34 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** b75c873 (main) — **surface summary only, see note** · **Last-audited:** 2026-09-06
 
 # System Design Engine User Guide (Doc 69)
 
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** b75c873 (main) — **surface summary only, see note** · **Last-audited:** 2026-09-06
 
 The **System Design Engine** (`nce/vertical_modules/system_design/`) is NCE's Revenue↔Delivery bridge: it turns a room brief or a Sales quote into a versioned, room-centric Bill of Materials (BOM) and a Statement of Work (SoW). It is the "AI Solution Agent" — an embedding-recall loop over past `DESIGN`/`PROJECT` memories, not a rules engine — and it is strictly **propose-only**: every line it produces carries `validated: False` until a human explicitly accepts or overrides it.
 
-> [!NOTE]
-> **External surface: COMPLETE as of Module 6 W12a-W20 (2026-08-30).**
-> This block previously warned that the engine exposed only 2 MCP tools and that interactive topological
-> design "CANNOT be invoked over MCP or REST endpoints today". **That is no longer true** — and the warning
-> is replaced rather than amended, because it was cited downstream as evidence of the gap.
+> [!WARNING]
+> **This "7 MCP tools" count (below) is itself stale, found 2026-09-06 (`DL.md` K-1).** The engine has
+> grown to **12** tools since the 2026-08-30 Module 6 note was written. The 5 added tools —
+> `system_design_from_quote`, `system_design_to_quote`, `system_design_generate_sow`,
+> `system_design_enrich_design_lines`, `system_design_propose_design` (all in
+> `nce/tool_registry.py:585-625`, the quote-conversion / SoW / recall-proposal group) — are the
+> quote↔design bidirectional pair and the SoW generator that §1 of this guide already describes as
+> domain concepts; they are not yet cross-referenced from this surface-summary box. 4 matching REST
+> routes were added too: `/api/system-design/from-quote`, `/to-quote`, `/sow`, `/enrich-design-lines`.
+> Narrative sections below have not been re-verified against `b75c873` in this pass.
 >
-> **7 MCP tools**, all advertised in `tools/list` and asserted equal to the registry in both directions by
+> **12 MCP tools**, all advertised in `tools/list` and asserted equal to the registry in both directions by
 > `tests/unit/test_system_design_toolcount.py`: `system_design_ping` · `system_design_publish_design_docs` ·
 > `system_design_get_topology` · `system_design_author_topology` ·
 > `system_design_author_functional_location` · `system_design_validate_design_graph` ·
-> `system_design_delete_planned`
+> `system_design_delete_planned` · `system_design_from_quote` · `system_design_to_quote` ·
+> `system_design_generate_sow` · `system_design_enrich_design_lines` · `system_design_propose_design`
 >
-> **5 REST routes:** `POST /api/system-design/publish-design-docs` · `GET|POST /api/system-design/topology` ·
+> **9 REST routes:** `POST /api/system-design/publish-design-docs` · `GET|POST /api/system-design/topology` ·
 > `POST /api/system-design/functional-location` · `POST /api/system-design/validate` ·
-> `DELETE /api/system-design/planned`
+> `DELETE /api/system-design/planned` · `POST /api/system-design/from-quote` ·
+> `POST /api/system-design/to-quote` · `POST /api/system-design/sow` ·
+> `POST /api/system-design/enrich-design-lines`
 >
 > Also live: canvas geometry and the per-design optimistic-concurrency token (`expected_version`, W14),
 > per-node lifecycle `status`/`revision`/`salience` with a live `statuses` read filter (W16/W16b), and a
