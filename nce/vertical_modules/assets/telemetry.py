@@ -339,12 +339,11 @@ def select_telemetry_adapter(platform: str) -> TelemetryAdapter:
         known = ", ".join(sorted([MOCK_PLATFORM, *VENDOR_PLATFORMS]))
         raise ValueError(f"do_pull_telemetry: unknown telemetry platform {name!r} (known: {known})")
 
-    if name == "ymcs":
-        from nce.vertical_modules.assets.ymcs import YMCSTelemetryAdapter
-
-        return YMCSTelemetryAdapter()
-
     if _real_adapter_enabled(name):
+        if name == "ymcs":
+            from nce.vertical_modules.assets.ymcs import YMCSTelemetryAdapter
+
+            return YMCSTelemetryAdapter()
         return UnimplementedVendorAdapter(name, vendor_api)
     return MockTelemetryAdapter()
 

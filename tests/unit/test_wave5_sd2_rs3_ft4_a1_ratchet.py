@@ -301,9 +301,15 @@ async def test_ft4_do_record_outcome_routes_to_vendors_and_c10():
 # ===========================================================================
 
 
-def test_a1_select_telemetry_adapter_ymcs():
-    """Verify YMCS platform is recognized in VENDOR_PLATFORMS and instantiates YMCSTelemetryAdapter."""
+def test_a1_select_telemetry_adapter_ymcs(monkeypatch: pytest.MonkeyPatch):
+    """Verify YMCS platform is recognized in VENDOR_PLATFORMS and instantiates YMCSTelemetryAdapter when enabled."""
+    from nce.vertical_modules.assets.telemetry import MockTelemetryAdapter, real_adapter_env_key
+
     assert "ymcs" in VENDOR_PLATFORMS
+    # When flag is unset, default is MockTelemetryAdapter per estate contract
+    assert isinstance(select_telemetry_adapter("ymcs"), MockTelemetryAdapter)
+    # When flag is set, swaps to real YMCSTelemetryAdapter
+    monkeypatch.setenv(real_adapter_env_key("ymcs"), "1")
     adapter = select_telemetry_adapter("ymcs")
     assert isinstance(adapter, YMCSTelemetryAdapter)
     assert adapter.platform == "ymcs"

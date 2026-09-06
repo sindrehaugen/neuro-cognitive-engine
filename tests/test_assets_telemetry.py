@@ -130,11 +130,11 @@ async def test_unknown_platform_is_refused_before_any_db_call() -> None:
 
 
 def test_the_five_vendor_platforms_are_exactly_the_documented_set() -> None:
-    """``09-assets-engine.md`` names crestron/qsys/neat/huddly/poly. Pinning
+    """``09-assets-engine.md`` names crestron/qsys/neat/huddly/poly + ymcs. Pinning
     the whole set — not a sample of it — so a dropped or renamed platform is
     caught rather than discovered by an operator whose env key stops working.
     """
-    assert set(VENDOR_PLATFORMS) == {"crestron", "qsys", "neat", "huddly", "poly"}
+    assert set(VENDOR_PLATFORMS) == {"crestron", "qsys", "neat", "huddly", "poly", "ymcs"}
     assert MOCK_PLATFORM not in VENDOR_PLATFORMS
 
 
@@ -163,8 +163,13 @@ def test_vendor_platform_swaps_to_its_real_adapter_when_the_flag_is_set(
     the real adapter is a declared stub that raises rather than degrading."""
     monkeypatch.setenv(real_adapter_env_key(platform), flag)
     adapter = select_telemetry_adapter(platform)
-    assert isinstance(adapter, UnimplementedVendorAdapter)
-    assert adapter.platform == platform
+    if platform == "ymcs":
+        from nce.vertical_modules.assets.ymcs import YMCSTelemetryAdapter
+
+        assert isinstance(adapter, YMCSTelemetryAdapter)
+    else:
+        assert isinstance(adapter, UnimplementedVendorAdapter)
+        assert adapter.platform == platform
 
     # Every OTHER platform is untouched by this one's flag.
     for other in VENDOR_PLATFORMS:

@@ -41,15 +41,15 @@ USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
 WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
 ```
 
-### 2a. Authoritative Source of Truth: `EXPECTED_TENANT_RLS_TABLES` (87 Tables)
+### 2a. Authoritative Source of Truth: `EXPECTED_TENANT_RLS_TABLES` (88 Tables)
 
-**The definitive source of truth for RLS-protected tables across NCE is `EXPECTED_TENANT_RLS_TABLES` defined in [`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py) (87 tables), rather than the partial `schema.sql` loop (41 tables) or the initial migration 001 seed (14 tables).**
+**The definitive source of truth for RLS-protected tables across NCE is `EXPECTED_TENANT_RLS_TABLES` defined in [`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py) (88 tables), rather than the partial `schema.sql` loop (41 tables) or the initial migration 001 seed (14 tables).**
 
-At runtime, NCE executes `verify_rls_catalog_consistency()` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py)) during server startup, inspecting PostgreSQL's `pg_tables`, `pg_class.relrowsecurity`, and `pg_policies` catalogs to strictly validate all 87 tenant tables against the active schema.
+At runtime, NCE executes `verify_rls_catalog_consistency()` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py)) during server startup, inspecting PostgreSQL's `pg_tables`, `pg_class.relrowsecurity`, and `pg_policies` catalogs to strictly validate all 88 tenant tables against the active schema.
 
 The catalog consistency validator categorizes all tables in the engine into three exhaustive sets:
 
-1. **`EXPECTED_TENANT_RLS_TABLES` (87 tables)**: All standard tenant-isolated tables where rows belong to a single tenant and are partitioned by a `namespace_id` column.
+1. **`EXPECTED_TENANT_RLS_TABLES` (88 tables)**: All standard tenant-isolated tables where rows belong to a single tenant and are partitioned by a `namespace_id` column.
 2. **`EXPECTED_SPECIAL_RLS_TABLES` (1 table)**: `a2a_grants`, which enforces a dual-namespace ownership policy (`owner_namespace_id` and `target_namespace_id`).
 3. **`EXPECTED_GLOBAL_TABLES` (6 tables)**: Shared tables intentionally without RLS across all tenants (`embedding_models`, `kg_node_embeddings`, `reembedding_runs`, `event_sequences`, `applied_migrations`, `product_catalog`). A table in `EXPECTED_GLOBAL_TABLES` carries no `namespace_id` and no RLS by design. `product_catalog` is the first business table to sit here (the existing five are platform/infrastructure). `applied_migrations` is deployment state — which migration files this database has applied — not tenant data, which is why it carries no `namespace_id` (see `nce/migration_ledger.py`).
 
@@ -59,14 +59,14 @@ The catalog consistency validator categorizes all tables in the engine into thre
 ```
                               ┌─────────────────────────────────────────────────────────┐
                               │            NCE Database Schema Surface                  │
-                              │                 (94 Total Tables)                       │
+                              │                 (95 Total Tables)                       │
                               └────────────────────────────┬────────────────────────────┘
                                                            │
                      ┌─────────────────────────────────────┼─────────────────────────────────────┐
                      ▼                                     ▼                                     ▼
         ┌─────────────────────────┐           ┌─────────────────────────┐           ┌─────────────────────────┐
         │EXPECTED_TENANT_RLS_TABLES│          │EXPECTED_SPECIAL_RLS_TBLS│           │ EXPECTED_GLOBAL_TABLES  │
-        │       (87 Tables)       │           │        (1 Table)        │           │       (6 Tables)        │
+        │       (88 Tables)       │           │        (1 Table)        │           │       (6 Tables)        │
         │ Single namespace_id RLS │           │  a2a_grants (Dual-NS)   │           │ Intentionally Global    │
         └─────────────────────────┘           └─────────────────────────┘           └─────────────────────────┘
 ```
