@@ -201,21 +201,14 @@ Explicit out of scope — by name, with the batch that owns it
 Nothing below is a silent omission; each is named so a reader never has to
 wonder whether it was forgotten:
 
-  * **The C4 ``GOODS_RECEIPT.created`` publish** is **Batch 132c**'s, and
-    132c is **PARKED** as of 2026-09-01. 🔴 **Two things this used to say are
-    no longer true.** It said ``register_automation_subscribers()`` has "zero
-    production callers on main" — it has callers in both relay-running
-    processes since **M0.W20d**. And it said 132c is BLOCKED, implying it is
-    waiting on wiring; it is parked, because Sindre accepted Module 7's
-    reactive automation as **dormant** (W20c option (c)). Nothing emits
-    ``GOODS_RECEIPT.created``, and giving it a producer needs a ``PO_LINE``
-    status model in Procurement — a feature, not wiring. This module still
-    never calls ``nce.events.bus.publish``, and still never re-labels the
-    ``GOODS_RECEIPT.upserted`` event this wave emits into a ``"created"`` op —
-    the two are different selectors with different payload contracts, and
-    re-labelling them would drop every event silently (the base payload
-    carries no ``project_id``, so Module 7's handler returns early and the
-    relay reads that as success).
+  * **The C4 ``GOODS_RECEIPT.created`` publish** (originally Batch 132c, parked
+    pending PO_LINE status model) is **ACTIVATED in v1.5 Phase 1 Wave IN-1**.
+    With PR-2 (`PO_LINE` status model) and PR-1 (`PO_LINE.status_changed`) merged,
+    :func:`do_record_goods_receipt` publishes ``GOODS_RECEIPT.created`` via
+    ``nce.events.bus.publish`` with ``project_id`` and ``bom_line_label`` resolved
+    from ``procurement_po_lines`` (or caller arguments), waking Project's
+    dormant ``_handle_goods_receipt_created`` subscriber to transition BOM lines
+    to ``DELIVERED``.
   * **``GOODS_RECEIPT.upserted`` reaching the DLQ, not a subscriber** — a
     REPO-WIDE, pre-existing condition, not this wave's bug. No handler is
     registered anywhere in this repo for that event_type (the only
@@ -296,6 +289,7 @@ import asyncpg  # type: ignore[import-untyped]
 
 from nce.db_utils import scoped_pg_session
 from nce.entity_resolution.ownership import assert_owner
+from nce.events.bus import publish
 from nce.events.emit import emit_graph_write
 from nce.vertical_modules.assets.seed import do_seed_asset_from_bom
 from nce.vertical_modules.inventory.transactions import (
@@ -684,6 +678,8 @@ async def _increment_qty_on_hand(
 
 _OWNER_ENGINE = "inventory"
 _NODE_TYPE_GOODS_RECEIPT = "GOODS_RECEIPT"
+_OP_CREATED = "created"
+_STATUS_DELIVERED = "DELIVERED"
 _CHANGE_ORIGIN = "agent"
 _PRED_AGAINST = "against"
 _PRED_OF = "of"
@@ -1254,6 +1250,109 @@ async def do_record_goods_receipt(engine: NCEEngine, params: dict[str, Any]) -> 
                 po_ref=po_ref,
                 location_id=location_id,
                 serials=serials,
+            )
+
+        # -------------------------------------------------------------
+        # C4 Reactive Event: GOODS_RECEIPT.created (Wave IN-1)
+        # Emitted via events.bus.publish inside this transaction.
+        # Links delivery to BOM_LINE via project/automation.py subscriber.
+        # -------------------------------------------------------------
+        project_id = str(params.get("project_id") or "").strip()
+        bom_line_label = str(params.get("bom_line_label") or "").strip()
+        raw_val = params.get("project_value")
+        project_value: float | None = None
+        if raw_val is not None:
+            try:
+                project_value = float(raw_val)
+            except (ValueError, TypeError):
+                project_value = None
+
+        po_line_rows: list[asyncpg.Record] = []
+        try:
+            po_line_rows = await conn.fetch(
+                """
+                SELECT line_ref, bom_line_label, project_id, artnr, status
+                FROM procurement_po_lines
+                WHERE namespace_id = $1 AND po_number = $2
+                """,
+                ns_uuid,
+                po_ref,
+            )
+        except Exception as exc:
+            log.debug("Could not query procurement_po_lines for po_ref %s: %s", po_ref, exc)
+
+        matched_targets: list[tuple[str, str]] = []
+        if project_id and bom_line_label:
+            matched_targets.append((project_id, bom_line_label))
+        elif po_line_rows:
+            received_skus = {sku for sku, _, _ in lines}
+            for plr in po_line_rows:
+                plr_pid = str(plr["project_id"] or "").strip()
+                plr_bll = str(plr["bom_line_label"] or "").strip()
+                plr_artnr = str(plr["artnr"] or "").strip().upper()
+                if plr_pid and plr_bll and (not received_skus or plr_artnr in received_skus):
+                    matched_targets.append((plr_pid, plr_bll))
+            if not matched_targets:
+                for plr in po_line_rows:
+                    plr_pid = str(plr["project_id"] or "").strip()
+                    plr_bll = str(plr["bom_line_label"] or "").strip()
+                    if plr_pid and plr_bll:
+                        matched_targets.append((plr_pid, plr_bll))
+
+            # Advance matching PO_LINE rows from ORDERED to RECEIVED
+            try:
+                for plr in po_line_rows:
+                    if plr["status"] == "ORDERED":
+                        await conn.execute(
+                            """
+                            UPDATE procurement_po_lines
+                            SET status = 'RECEIVED',
+                                status_changed_at = now(),
+                                updated_at = now()
+                            WHERE namespace_id = $1 AND po_number = $2 AND line_ref = $3
+                            """,
+                            ns_uuid,
+                            po_ref,
+                            plr["line_ref"],
+                        )
+            except Exception as exc:
+                log.debug("Could not advance procurement_po_lines to RECEIVED: %s", exc)
+
+        if not matched_targets:
+            matched_targets.append((project_id, bom_line_label))
+
+        unique_targets: list[tuple[str, str]] = []
+        for t in matched_targets:
+            if t not in unique_targets:
+                unique_targets.append(t)
+
+        for eff_pid, eff_bll in unique_targets:
+            event_payload: dict[str, Any] = {
+                "namespace_id": str(ns_uuid),
+                "receipt_id": str(receipt_id),
+                "po_ref": po_ref,
+                "delivery_note_ref": delivery_note_ref,
+                "project_id": eff_pid,
+                "bom_line_label": eff_bll,
+                "id": eff_bll,
+                "status": _STATUS_DELIVERED,
+                "project_value": project_value,
+                "lines": [
+                    {
+                        "sku": sku,
+                        "qty": str(qty),
+                        "unit_cost": str(uc) if uc is not None else None,
+                    }
+                    for sku, qty, uc in lines
+                ],
+            }
+            await publish(
+                conn,
+                namespace_id=ns_uuid,
+                node_type=_NODE_TYPE_GOODS_RECEIPT,
+                op=_OP_CREATED,
+                aggregate_id=goods_receipt_label,
+                payload=event_payload,
             )
 
     log.info(

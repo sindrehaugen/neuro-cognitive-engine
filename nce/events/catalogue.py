@@ -26,6 +26,16 @@ class EventContract:
     reason: str | None = None
     description: str = ""
 
+    @property
+    def producers(self) -> tuple[str, ...]:
+        """Alias for declared_producers."""
+        return self.declared_producers
+
+    @property
+    def consumers(self) -> tuple[str, ...]:
+        """Alias for declared_consumers."""
+        return self.declared_consumers
+
 
 # Canonical catalogue of all event selectors across the Neuro-Cognitive Engine estate.
 EVENT_CATALOGUE: Mapping[str, EventContract] = {
@@ -46,13 +56,9 @@ EVENT_CATALOGUE: Mapping[str, EventContract] = {
         selector="GOODS_RECEIPT.created",
         node_type="GOODS_RECEIPT",
         op="created",
-        declared_producers=(),
+        declared_producers=("nce/vertical_modules/inventory/goods_receipt.py",),
         declared_consumers=("nce/vertical_modules/project/automation.py",),
-        status="PARKED",
-        reason=(
-            "Parked by decision 132c (dormant by decision pending full warehouse "
-            "receipting integration in v1.5 Phase 1 Wave IN-1)."
-        ),
+        status="ACTIVE",
         description="Emitted when incoming goods receipt is posted in the warehouse.",
     ),
     "BOM_LINE.status_changed": EventContract(

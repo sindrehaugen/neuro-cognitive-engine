@@ -331,14 +331,17 @@ def test_every_emitter_has_catalogue_row() -> None:
 
 
 def test_starting_unproduced_baseline_has_at_least_three_seams() -> None:
-    """Validate starting RED baseline: at least three unproduced/parked seams exist at issue."""
-    unproduced = get_unproduced_selectors()
-    assert len(unproduced) >= 3, (
-        f"Expected at least 3 unproduced seams at baseline, found {len(unproduced)}"
-    )
+    """Validate starting RED baseline: unproduced/parked seams burn down as waves land.
 
-    # Assert the specific known-broken seams from Charter §6 are present
-    assert "GOODS_RECEIPT.created" in unproduced
+    Originally 6 unproduced/parked seams (PO_LINE.status_changed, GOODS_RECEIPT.created,
+    BOM_LINE.status_changed, CERTIFICATION.CREATED, CERTIFICATION.UPDATED, CERTIFICATION.EXPIRED).
+    PR-1 closed PO_LINE.status_changed, Wave IN-1 closed GOODS_RECEIPT.created.
+    """
+    unproduced = get_unproduced_selectors()
+    assert len(unproduced) >= 3, f"Expected at least 3 unproduced seams, found {len(unproduced)}"
+
+    # Assert remaining known-broken seams from Charter §6 are present
+    assert "GOODS_RECEIPT.created" not in unproduced
     assert "BOM_LINE.status_changed" in unproduced
     assert "CERTIFICATION.EXPIRED" in unproduced
 
