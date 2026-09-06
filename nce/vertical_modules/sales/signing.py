@@ -17,15 +17,36 @@ from uuid import UUID
 
 from nce.bom_lines import list_bom_lines_for_quote
 from nce.db_utils import scoped_pg_session
-from nce.signing_service import ManualTransport, TransportMethod
+from nce.signing_service import (
+    ManualTransport,
+    SignTransport,
+    TransportMethod,
+    get_signing_transport,
+)
 from nce.vertical_modules.project.convert import do_convert_signed_quote
 from nce.vertical_modules.sales.baseline import do_freeze_baseline, get_signed_baseline
 from nce.vertical_modules.sales.render import render_quote_document
 
 log = logging.getLogger("nce.vertical_modules.sales.signing")
 
-# Global in-memory transport instance for manual signing
-_transport = ManualTransport()
+
+def _resolve_transport(engine: Any, method: str) -> SignTransport:
+    """Resolve the SignTransport instance for this execution.
+
+    Prefers an engine-injected `sign_transport` if explicitly configured;
+    otherwise resolves via the signing_service transport factory.
+    Guards against MagicMock auto-synthesizing child mocks (Charter K-1).
+    """
+    # Guard against MagicMock auto-synthesizing an unconfigured child mock (Kaizen K-1)
+    if hasattr(engine, "_mock_return_value") or type(engine).__name__ in ("MagicMock", "AsyncMock"):
+        if "sign_transport" in getattr(engine, "__dict__", {}):
+            return cast(SignTransport, engine.sign_transport)
+        return get_signing_transport(method)
+
+    injected = getattr(engine, "sign_transport", None)
+    if injected is not None:
+        return cast(SignTransport, injected)
+    return get_signing_transport(method)
 
 
 class MissingBaselineError(ValueError):
@@ -152,8 +173,7 @@ async def do_request_signature(
     signer_payload = {"name": signer_name, "email": signer_email}
 
     method = params.get("method") or "manual"
-    if method not in ("oneflow", "criipto", "signicat", "manual"):
-        raise ValueError(f"Invalid signing method: {method}")
+    transport = _resolve_transport(engine, method)
     tm_method = cast(TransportMethod, method)
 
     async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
@@ -213,12 +233,14 @@ async def do_request_signature(
         doc_hash = hashlib.sha256(doc_bytes).hexdigest()
 
         # Request signature from C7 transport
-        session = _transport.request_signature(doc_bytes, signer_payload, tm_method)
+        session = transport.request_signature(doc_bytes, signer_payload, tm_method)
         session_id = session["session_id"]
 
         # Update quote record in sales_read_model with session details and document hash
         manual["signing_session_id"] = session_id
         manual["signing_status"] = "pending"
+        manual["signing_method"] = method
+        manual["signing_security_tier"] = session.get("security_tier", method)
         manual["signing_fingerprint"] = session["fingerprint"]
         manual["document_hash"] = doc_hash
         manual["signer_name"] = signer_name
@@ -263,20 +285,7 @@ async def do_on_signed_callback(
 
     callback_payload = params.get("callback_payload") or {}
 
-    # 1. Transition transport session state
-    try:
-        _ = _transport.on_signed(session_id, callback_payload)
-    except KeyError:
-        # Multi-process / external webhook: register and transition session locally
-        _transport._sessions[session_id] = {
-            "session_id": session_id,
-            "status": "signed",
-            "fingerprint": callback_payload.get("fingerprint", ""),
-            "method": "manual",
-            "signer": {},
-        }
-
-    # 2. Fetch quote associated with session_id
+    # 1. Fetch quote associated with session_id from read model
     async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
         row = await conn.fetchrow(
             """
@@ -317,10 +326,30 @@ async def do_on_signed_callback(
                 "already_processed": True,
             }
 
-        # 3. Call do_freeze_baseline (idempotent).
-        # The baseline is immutable once written, so every figure must come from the
-        # signed quote itself — never a default. Missing/malformed amounts raise
-        # MissingSignedAmountError rather than freezing an invented number.
+    # 2. Transition transport session state
+    method = params.get("method") or manual.get("signing_method") or "manual"
+    transport = _resolve_transport(engine, method)
+    try:
+        updated_session = transport.on_signed(session_id, callback_payload)
+    except KeyError:
+        if method == "manual" and isinstance(transport, ManualTransport):
+            # Multi-process / external webhook: register and transition session locally
+            transport._sessions[session_id] = {
+                "session_id": session_id,
+                "status": "signed",
+                "fingerprint": callback_payload.get("fingerprint", ""),
+                "method": "manual",
+                "signer": {},
+            }
+            updated_session = transport._sessions[session_id]
+        else:
+            raise
+
+    # 3. Call do_freeze_baseline (idempotent).
+    # The baseline is immutable once written, so every figure must come from the
+    # signed quote itself — never a default. Missing/malformed amounts raise
+    # MissingSignedAmountError rather than freezing an invented number.
+    async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
         signed_margin_pct = _require_money_field(
             merged_quote,
             ("margin", "signed_margin_pct"),
@@ -360,6 +389,7 @@ async def do_on_signed_callback(
     # 5. Mark quote as signed in read model
     async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
         manual["signing_status"] = "signed"
+        manual["signing_security_tier"] = updated_session.get("security_tier", method)
         await conn.execute(
             """
             UPDATE sales_read_model
@@ -381,6 +411,7 @@ async def do_on_signed_callback(
         "baseline_frozen": freeze_res.get("ok", False),
         "project_id": convert_res.get("project_id"),
         "already_processed": False,
+        "security_tier": updated_session.get("security_tier", method),
     }
 
 
@@ -400,10 +431,6 @@ async def do_on_declined_callback(
 
     callback_payload = params.get("callback_payload") or {}
 
-    # Transition transport session
-    _ = _transport.on_declined(session_id, callback_payload)
-
-    # Update quote status to declined
     async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
         row = await conn.fetchrow(
             """
@@ -424,6 +451,15 @@ async def do_on_declined_callback(
         manual = row["manual"] or {}
         if isinstance(manual, str):
             manual = json.loads(manual)
+
+        method = params.get("method") or manual.get("signing_method") or "manual"
+        transport = _resolve_transport(engine, method)
+
+        # Transition transport session
+        try:
+            _ = transport.on_declined(session_id, callback_payload)
+        except KeyError:
+            pass
 
         manual["signing_status"] = "declined"
 

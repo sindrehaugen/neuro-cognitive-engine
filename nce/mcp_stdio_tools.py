@@ -3979,7 +3979,7 @@ TOOLS = [
                 },
                 "method": {
                     "type": "string",
-                    "description": "Transport method: 'manual', 'oneflow', 'criipto', 'signicat'. Defaults to 'manual'.",
+                    "description": "Transport method: 'manual', 'email_code', 'oneflow', 'criipto', 'signicat'. Defaults to 'manual'.",
                 },
                 "idempotency_key": {
                     "type": "string",

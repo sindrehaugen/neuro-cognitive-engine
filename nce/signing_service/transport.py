@@ -14,7 +14,7 @@ signer
     Opaque dict carrying identity fields (name, email, …) as required by the
     chosen transport.  The abstraction does not validate it.
 method
-    One of ``{"oneflow", "criipto", "signicat", "manual"}``.
+    One of ``{"oneflow", "criipto", "signicat", "manual", "email_code"}``.
 """
 
 from __future__ import annotations
@@ -23,10 +23,60 @@ from typing import Any, Literal, Protocol, runtime_checkable
 
 # The canonical set of signing transports — callers should not hard-code
 # the string literals; use this type instead.
-TransportMethod = Literal["oneflow", "criipto", "signicat", "manual"]
+TransportMethod = Literal["oneflow", "criipto", "signicat", "manual", "email_code"]
 
 # Minimal required keys a signing session dict MUST carry.
 REQUIRED_SESSION_KEYS: frozenset[str] = frozenset({"session_id", "status", "fingerprint"})
+
+# Process-wide singleton registry for concrete transports
+_TRANSPORTS: dict[str, Any] = {}
+
+
+class UnimplementedTransportError(NotImplementedError, ValueError):
+    """Raised when a requested signing transport is not yet implemented or configured."""
+
+
+def get_signing_transport(method: str | TransportMethod) -> SignTransport:
+    """Return the active SignTransport implementation for the requested method.
+
+    Supported methods:
+        - "manual": Credential-free in-memory transport (tests / dev)
+        - "email_code": Native e-signature via emailed one-time code (Wave Q-2)
+
+    Unbuilt methods:
+        - "oneflow", "criipto", "signicat": External vendor integrations not yet built.
+          Raises UnimplementedTransportError (never silently downgrades to manual).
+
+    Raises:
+        UnimplementedTransportError: If method is known but unbuilt / unconfigured.
+        ValueError: If method is not a valid signing method.
+    """
+    if method == "manual":
+        if "manual" not in _TRANSPORTS:
+            from nce.signing_service.manual import ManualTransport
+
+            _TRANSPORTS["manual"] = ManualTransport()
+        return _TRANSPORTS["manual"]
+
+    if method == "email_code":
+        if "email_code" not in _TRANSPORTS:
+            from nce.signing_service.email_code import EmailCodeTransport
+
+            _TRANSPORTS["email_code"] = EmailCodeTransport()
+        return _TRANSPORTS["email_code"]
+
+    if method in ("oneflow", "criipto", "signicat"):
+        raise UnimplementedTransportError(
+            f"Signing transport '{method}' is not implemented or configured. "
+            f"Select a configured transport ('email_code', 'manual')."
+        )
+
+    raise ValueError(f"Invalid signing method: {method!r}")
+
+
+def reset_signing_transports() -> None:
+    """Reset cached singleton transports (for test isolation)."""
+    _TRANSPORTS.clear()
 
 
 @runtime_checkable
