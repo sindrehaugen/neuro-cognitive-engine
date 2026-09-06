@@ -1,11 +1,12 @@
 """
 nce/vertical_modules/assets/ymcs.py
 ====================================
-Yamaha Management Console for Systems (YMCS) Real Telemetry Adapter
-(Module 9, Wave A-1, MLV15C).
+Yealink Management Cloud Service (YMCS) Real Telemetry Adapter
+(Module 9, Telemetry Integration).
 
-Provides real read-only device telemetry for Yamaha UC hardware (CS-700,
-CS-800, ADECIA series) over REST/HTTP with strict timeouts (<5s).
+Provides real read-only device telemetry for Yealink UC hardware (MeetingBar A20/A30,
+MVC-series Microsoft Teams Rooms, MeetingBoard, RoomPanel, CP-series) over REST/HTTP
+with strict timeouts (<5s).
 
 Rules:
 - Strictly read-only; no configuration mutation.
@@ -32,62 +33,95 @@ _DEFAULT_TIMEOUT_S = 4.5  # < 5.0s per AV Operations rule
 
 
 class YMCSTelemetryAdapter(TelemetryAdapter):
-    """Real read-only telemetry adapter for Yamaha YMCS / UC devices."""
+    """Real read-only telemetry adapter for Yealink YMCS / UC devices."""
 
     def __init__(
         self,
         endpoint_url: str | None = None,
         api_key: str | None = None,
         timeout: float = _DEFAULT_TIMEOUT_S,
+        platform_name: str = "ymcs",
     ) -> None:
         self._endpoint_url = (
-            (endpoint_url or live_env_str("NCE_ASSETS_YMCS_ENDPOINT_URL") or "").strip().rstrip("/")
+            (
+                endpoint_url
+                or live_env_str("NCE_ASSETS_YMCS_ENDPOINT_URL")
+                or live_env_str("NCE_ASSETS_YEALINK_ENDPOINT_URL")
+                or ""
+            )
+            .strip()
+            .rstrip("/")
         )
-        self._api_key = api_key or live_env_str("NCE_ASSETS_YMCS_API_KEY")
+        self._api_key = (
+            api_key
+            or live_env_str("NCE_ASSETS_YMCS_API_KEY")
+            or live_env_str("NCE_ASSETS_YEALINK_API_KEY")
+        )
         self._timeout = min(timeout, 4.9)
+        self._platform_name = platform_name
 
     @property
     def platform(self) -> str:
-        return "ymcs"
+        return self._platform_name
 
     async def fetch_samples(self, asset_id: UUID) -> Sequence[TelemetrySample]:
-        """Fetch telemetry readings for the specified asset from YMCS / Yamaha UC device."""
+        """Fetch telemetry readings for the specified asset from Yealink YMCS platform."""
         now = datetime.now(timezone.utc)
 
         if not self._endpoint_url:
             # When endpoint URL is not configured (e.g. unit test or standalone deployment),
-            # return deterministic physical metrics for the Yamaha device.
+            # return deterministic physical metrics for the Yealink device.
             seed = int(asset_id)
             return [
                 TelemetrySample(
                     metric="uptime_seconds",
                     value=float((seed % 86400) + 1200),
                     sampled_at=now,
-                    raw={"source": "ymcs", "mode": "local_hardware_stub", "device": "Yamaha-CS700"},
+                    raw={
+                        "source": self._platform_name,
+                        "mode": "local_hardware_stub",
+                        "device": "Yealink-MeetingBar-A30",
+                    },
                 ),
                 TelemetrySample(
                     metric="temperature_celsius",
                     value=float(38.0 + ((seed % 100) / 10.0)),
                     sampled_at=now,
-                    raw={"source": "ymcs", "sensor": "thermal_chassis", "device": "Yamaha-CS700"},
+                    raw={
+                        "source": self._platform_name,
+                        "sensor": "thermal_chassis",
+                        "device": "Yealink-MeetingBar-A30",
+                    },
                 ),
                 TelemetrySample(
                     metric="packet_loss_percent",
                     value=float((seed % 10) / 100.0),
                     sampled_at=now,
-                    raw={"source": "ymcs", "interface": "eth0", "device": "Yamaha-CS700"},
+                    raw={
+                        "source": self._platform_name,
+                        "interface": "eth0",
+                        "device": "Yealink-MeetingBar-A30",
+                    },
                 ),
                 TelemetrySample(
                     metric="mic_mute_status",
                     value=0.0,
                     sampled_at=now,
-                    raw={"source": "ymcs", "state": "active_unmuted", "device": "Yamaha-CS700"},
+                    raw={
+                        "source": self._platform_name,
+                        "state": "active_unmuted",
+                        "device": "Yealink-MeetingBar-A30",
+                    },
                 ),
                 TelemetrySample(
                     metric="link_status",
                     value=1.0,
                     sampled_at=now,
-                    raw={"source": "ymcs", "link": "up_1000baseT", "device": "Yamaha-CS700"},
+                    raw={
+                        "source": self._platform_name,
+                        "link": "up_1000baseT",
+                        "device": "Yealink-MeetingBar-A30",
+                    },
                 ),
             ]
 
@@ -134,3 +168,7 @@ class YMCSTelemetryAdapter(TelemetryAdapter):
             except Exception:
                 pass
             raise
+
+
+#: Convenience alias for Yealink telemetry adapter
+YealinkTelemetryAdapter = YMCSTelemetryAdapter

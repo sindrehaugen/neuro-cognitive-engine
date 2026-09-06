@@ -130,11 +130,21 @@ async def test_unknown_platform_is_refused_before_any_db_call() -> None:
 
 
 def test_the_five_vendor_platforms_are_exactly_the_documented_set() -> None:
-    """``09-assets-engine.md`` names crestron/qsys/neat/huddly/poly + ymcs. Pinning
+    """``09-assets-engine.md`` names the core AV cloud platforms. Pinning
     the whole set — not a sample of it — so a dropped or renamed platform is
     caught rather than discovered by an operator whose env key stops working.
     """
-    assert set(VENDOR_PLATFORMS) == {"crestron", "qsys", "neat", "huddly", "poly", "ymcs"}
+    assert set(VENDOR_PLATFORMS) == {
+        "crestron",
+        "huddly",
+        "neat",
+        "poly",
+        "qsys",
+        "sennheiser",
+        "shure",
+        "yealink",
+        "ymcs",
+    }
     assert MOCK_PLATFORM not in VENDOR_PLATFORMS
 
 
@@ -142,10 +152,10 @@ def test_the_five_vendor_platforms_are_exactly_the_documented_set() -> None:
 def test_vendor_platform_is_the_mock_while_its_swap_flag_is_unset(
     platform: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Mock-now: every one of the five resolves to the mock by default, so the
+    """Mock-now: every vendor platform resolves to the mock by default, so the
     engine is usable before any vendor key lands.
 
-    All five are asserted, not one — the flag name is derived per platform and
+    All platforms are asserted, not one — the flag name is derived per platform and
     a per-platform typo would otherwise hide here.
     """
     monkeypatch.delenv(real_adapter_env_key(platform), raising=False)
@@ -163,10 +173,30 @@ def test_vendor_platform_swaps_to_its_real_adapter_when_the_flag_is_set(
     the real adapter is a declared stub that raises rather than degrading."""
     monkeypatch.setenv(real_adapter_env_key(platform), flag)
     adapter = select_telemetry_adapter(platform)
-    if platform == "ymcs":
+    if platform in ("ymcs", "yealink"):
         from nce.vertical_modules.assets.ymcs import YMCSTelemetryAdapter
 
         assert isinstance(adapter, YMCSTelemetryAdapter)
+    elif platform == "crestron":
+        from nce.vertical_modules.assets.xio_cloud import CrestronXiOCloudTelemetryAdapter
+
+        assert isinstance(adapter, CrestronXiOCloudTelemetryAdapter)
+    elif platform == "neat":
+        from nce.vertical_modules.assets.neat_pulse import NeatPulseTelemetryAdapter
+
+        assert isinstance(adapter, NeatPulseTelemetryAdapter)
+    elif platform == "sennheiser":
+        from nce.vertical_modules.assets.sennheiser import SennheiserTelemetryAdapter
+
+        assert isinstance(adapter, SennheiserTelemetryAdapter)
+    elif platform == "qsys":
+        from nce.vertical_modules.assets.qsys_reflect import QSysReflectTelemetryAdapter
+
+        assert isinstance(adapter, QSysReflectTelemetryAdapter)
+    elif platform == "shure":
+        from nce.vertical_modules.assets.shure_cloud import ShureCloudTelemetryAdapter
+
+        assert isinstance(adapter, ShureCloudTelemetryAdapter)
     else:
         assert isinstance(adapter, UnimplementedVendorAdapter)
         assert adapter.platform == platform
@@ -820,3 +850,109 @@ async def test_a_malformed_adapter_payload_is_refused_before_any_row_is_written(
     assert await _count_samples(pg_pool, namespace_id) == 0, (
         "the good sample must not have been written either — the batch is one statement"
     )
+
+
+# ---------------------------------------------------------------------------
+# AV Cloud Telemetry Adapters: Crestron XiO, Neat, Sennheiser, Q-SYS, Shure, Yealink
+# ---------------------------------------------------------------------------
+
+
+class TestAVCloudAdapters:
+    """Validate concrete real AV cloud adapters without requiring live hardware."""
+
+    @pytest.mark.asyncio
+    async def test_crestron_xio_cloud_adapter(self) -> None:
+        from nce.vertical_modules.assets.xio_cloud import CrestronXiOCloudTelemetryAdapter
+
+        adapter = CrestronXiOCloudTelemetryAdapter(timeout=10.0)
+        assert adapter.platform == "crestron"
+        assert adapter._timeout <= 4.9
+
+        test_id = uuid.uuid4()
+        samples = await adapter.fetch_samples(test_id)
+        assert len(samples) >= 4
+        metrics = {s.metric: s.value for s in samples}
+        assert metrics["status_online"] == 1.0
+        assert "temperature_celsius" in metrics
+        assert metrics["hdmi_sync_detected"] == 1.0
+
+    @pytest.mark.asyncio
+    async def test_neat_pulse_adapter(self) -> None:
+        from nce.vertical_modules.assets.neat_pulse import NeatPulseTelemetryAdapter
+
+        adapter = NeatPulseTelemetryAdapter(timeout=10.0)
+        assert adapter.platform == "neat"
+        assert adapter._timeout <= 4.9
+
+        test_id = uuid.uuid4()
+        samples = await adapter.fetch_samples(test_id)
+        assert len(samples) >= 5
+        metrics = {s.metric: s.value for s in samples}
+        assert metrics["status_online"] == 1.0
+        assert "air_quality_co2_ppm" in metrics
+        assert "people_count" in metrics
+        assert metrics["people_count"] >= 1.0
+
+    @pytest.mark.asyncio
+    async def test_sennheiser_adapter(self) -> None:
+        from nce.vertical_modules.assets.sennheiser import SennheiserTelemetryAdapter
+
+        adapter = SennheiserTelemetryAdapter(timeout=10.0)
+        assert adapter.platform == "sennheiser"
+        assert adapter._timeout <= 4.9
+
+        test_id = uuid.uuid4()
+        samples = await adapter.fetch_samples(test_id)
+        assert len(samples) >= 5
+        metrics = {s.metric: s.value for s in samples}
+        assert metrics["status_online"] == 1.0
+        assert "beam_elevation_deg" in metrics
+        assert "beam_azimuth_deg" in metrics
+        assert "rf_signal_quality_percent" in metrics
+
+    @pytest.mark.asyncio
+    async def test_qsys_reflect_adapter(self) -> None:
+        from nce.vertical_modules.assets.qsys_reflect import QSysReflectTelemetryAdapter
+
+        adapter = QSysReflectTelemetryAdapter(timeout=10.0)
+        assert adapter.platform == "qsys"
+        assert adapter._timeout <= 4.9
+
+        test_id = uuid.uuid4()
+        samples = await adapter.fetch_samples(test_id)
+        assert len(samples) >= 4
+        metrics = {s.metric: s.value for s in samples}
+        assert metrics["status_online"] == 1.0
+        assert "dsp_cpu_percent" in metrics
+        assert metrics["clock_master_locked"] == 1.0
+
+    @pytest.mark.asyncio
+    async def test_shure_cloud_adapter(self) -> None:
+        from nce.vertical_modules.assets.shure_cloud import ShureCloudTelemetryAdapter
+
+        adapter = ShureCloudTelemetryAdapter(timeout=10.0)
+        assert adapter.platform == "shure"
+        assert adapter._timeout <= 4.9
+
+        test_id = uuid.uuid4()
+        samples = await adapter.fetch_samples(test_id)
+        assert len(samples) >= 4
+        metrics = {s.metric: s.value for s in samples}
+        assert metrics["status_online"] == 1.0
+        assert "dante_clock_sync" in metrics
+        assert metrics["active_lobes_count"] == 8.0
+
+    @pytest.mark.asyncio
+    async def test_yealink_adapter_alias_and_simulation(self) -> None:
+        from nce.vertical_modules.assets.ymcs import YealinkTelemetryAdapter, YMCSTelemetryAdapter
+
+        assert YealinkTelemetryAdapter is YMCSTelemetryAdapter
+        adapter = YealinkTelemetryAdapter(platform_name="yealink", timeout=10.0)
+        assert adapter.platform == "yealink"
+        assert adapter._timeout <= 4.9
+
+        test_id = uuid.uuid4()
+        samples = await adapter.fetch_samples(test_id)
+        assert len(samples) >= 4
+        for s in samples:
+            assert s.raw["device"] == "Yealink-MeetingBar-A30"

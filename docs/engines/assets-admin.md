@@ -163,16 +163,19 @@ Mounted in `nce/admin_app.py:951-990`. Literal paths (`/api/assets/seed-from-bom
 
 `nce/vertical_modules/assets/telemetry.py` implements an abstract `TelemetryAdapter` (`platform` property + `fetch_samples(asset_id)`), selected exclusively through the one factory function `select_telemetry_adapter` (`telemetry.py:315-343`) — there is no `if platform == "crestron"` branch anywhere else in the module.
 
-| Platform key | Vendor API a real adapter would call | Real adapter exists? |
+| Platform key | Vendor API a real adapter calls | Real adapter exists? |
 |---|---|---|
-| `mock` | — | **Yes** — the only adapter with real behaviour |
-| `crestron` | Crestron XiO Cloud / Fusion xAPI | No — `UnimplementedVendorAdapter` |
-| `qsys` | Q-SYS Reflect Enterprise Manager API | No — `UnimplementedVendorAdapter` |
-| `neat` | Neat Pulse API | No — `UnimplementedVendorAdapter` |
-| `huddly` | Huddly device API | No — `UnimplementedVendorAdapter` |
+| `mock` | — | **Yes** — default fixed epoch synthetic simulation |
+| `crestron` | Crestron XiO Cloud REST API | **Yes** — `CrestronXiOCloudTelemetryAdapter` (<5s timeout, NVX/Flex status) |
+| `neat` | Neat Pulse REST API | **Yes** — `NeatPulseTelemetryAdapter` (<5s timeout, air quality, people count) |
+| `sennheiser` | Sennheiser Control Cockpit API | **Yes** — `SennheiserTelemetryAdapter` (<5s timeout, TCC2 beamforming, EW-DX) |
+| `qsys` | Q-SYS Reflect Enterprise Manager API | **Yes** — `QSysReflectTelemetryAdapter` (<5s timeout, Core DSP load, PTP clock) |
+| `shure` | Shure SystemOn / Cloud API | **Yes** — `ShureCloudTelemetryAdapter` (<5s timeout, MXA920 lobes, Dante clock) |
+| `yealink` / `ymcs` | Yealink Management Cloud Service (YMCS) API | **Yes** — `YMCSTelemetryAdapter` (<5s timeout, MeetingBar/MVC telemetry) |
 | `poly` | Poly Lens API | No — `UnimplementedVendorAdapter` |
+| `huddly` | Huddly device API | No — `UnimplementedVendorAdapter` |
 
-(`VENDOR_PLATFORMS`, `telemetry.py:154-160`)
+(`VENDOR_PLATFORMS`, `telemetry.py:154-164`)
 
 **The swap flag is `NCE_ASSETS_TELEMETRY_<PLATFORM>_REAL`** (e.g. `NCE_ASSETS_TELEMETRY_CRESTRON_REAL`), read live via `nce.config.live_env_str` (never captured at import, so a runtime env change and `monkeypatch.setenv` in tests both take effect immediately — `telemetry.py:305-312`). Its default (unset) means mock; setting it swaps to `UnimplementedVendorAdapter`, which raises `NotImplementedError` rather than serving mock data — a deployment that flips the flag without a built adapter fails loudly instead of quietly lying about device state (`telemetry.py:265-292`). **There is no `httpx` import, no network call, and no credential-handling code anywhere in this file** — building any of the five real adapters (auth, HTTP client via `nce.http_resilience.request_with_retry`, vendor pagination) is entirely unbuilt, not partially built.
 
