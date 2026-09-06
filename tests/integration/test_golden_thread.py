@@ -223,7 +223,7 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         index=20,
         name="work_order",
         canonical_label="work order",
-        is_broken=True,
+        is_broken=False,
         review_break="break-5b",
         phase1_wave="SU-1/FT-3",
         description="Support dispatched_as boundary edge consumed by Field Tech to create work order",
@@ -498,10 +498,6 @@ class TestGoldenThreadSteps:
 
         assert callable(do_dispatch_work_order)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="break-5b: support TICKET dispatched_as has no consumer in field_tech (Wave SU-1/FT-3)",
-    )
     def test_step_20_work_order(self) -> None:
         """Step 20: support dispatched_as boundary edge consumed by Field Tech."""
         # Seam verification: field_tech must consume dispatched_as edge or subscribe to TICKET.dispatched
@@ -800,12 +796,13 @@ class TestGoldenThreadPositiveControls:
         plus the degradation register check (Step 28).
         Wave S-2a closed Step 5, Wave CP-1 closed Step 25, Wave I-5 closed Step 28,
         Wave PR-1 closed Step 8, Wave IN-1 closed Step 11, Wave FT-1 closed Steps 13 & 14,
-        and Wave PJ-1/SD-2 closed Step 27, burning down to 3 broken steps.
+        Wave SU-1/FT-3 closed Step 20, and Wave PJ-1/SD-2 closed Step 27,
+        burning down to 2 broken steps.
         """
         broken_steps = [s for s in GOLDEN_THREAD_STEPS if s.is_broken]
-        assert len(broken_steps) == 3
+        assert len(broken_steps) == 2
         broken_indices = {s.index for s in broken_steps}
-        assert broken_indices == {17, 20, 23}
+        assert broken_indices == {17, 23}
 
     def test_positive_control_broken_steps_have_remediation_waves(self) -> None:
         """Verify every broken step specifies a responsible Phase 1 remediation wave."""

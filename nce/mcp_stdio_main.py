@@ -93,6 +93,9 @@ async def run_stdio_server(*, app: Server | None = None, engine: NCEEngine | Non
         log.info("Re-embedder background task started.")
 
         from nce.outbox_relay import run_outbox_relay_once
+        from nce.vertical_modules.field_tech.work_orders import (
+            register_field_tech_subscribers,
+        )
         from nce.vertical_modules.project import automation as project_automation
         from nce.vertical_modules.project import tasks as project_tasks
         from nce.vertical_modules.system_design.subscribers import (
@@ -105,6 +108,7 @@ async def run_stdio_server(*, app: Server | None = None, engine: NCEEngine | Non
         # never marked published either, so it also stays in
         # idx_outbox_unpublished, which every tenant's relay poll reads.
         register_system_design_subscribers()
+        register_field_tech_subscribers()
 
         # Module 7's three C4 selectors (M0.W20d). Same reason, same ordering:
         # PO_LINE.status_changed, GOODS_RECEIPT.created and

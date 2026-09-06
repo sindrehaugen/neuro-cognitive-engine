@@ -1785,6 +1785,9 @@ async def async_main() -> None:
     # second process that runs the relay (the first is nce/mcp_stdio_main.py), and
     # OUTBOX_HANDLERS is per-process state -- registering in only one of them
     # leaves the other dead-lettering every System Design authoring event it polls.
+    from nce.vertical_modules.field_tech.work_orders import (
+        register_field_tech_subscribers,
+    )
     from nce.vertical_modules.project import automation as project_automation
     from nce.vertical_modules.project import tasks as project_tasks
     from nce.vertical_modules.system_design.subscribers import (
@@ -1792,6 +1795,7 @@ async def async_main() -> None:
     )
 
     register_system_design_subscribers()
+    register_field_tech_subscribers()
 
     # Module 7's three C4 selectors (M0.W20d) -- PO_LINE.status_changed,
     # GOODS_RECEIPT.created and BOM_LINE.status_changed. Their handlers were
