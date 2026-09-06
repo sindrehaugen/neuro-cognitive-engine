@@ -1,49 +1,4 @@
 {
-  "nce/vertical_modules/agreements/authoring.py::do_add_comment": {
-    "engine": "agreements",
-    "owner": "MLV15B-AG2",
-    "reason": "Collaborative review comment annotator for agreements; scheduled for tool registration in Wave AG-2."
-  },
-  "nce/vertical_modules/agreements/authoring.py::do_create_agreement": {
-    "engine": "agreements",
-    "owner": "MLV15B-AG2",
-    "reason": "Agreement lifecycle authoring core; scheduled for MCP tool registration in v1.5 Phase 1 Wave AG-2."
-  },
-  "nce/vertical_modules/agreements/authoring.py::do_suggest_revision": {
-    "engine": "agreements",
-    "owner": "MLV15B-AG2",
-    "reason": "Revision suggestion assistant for agreement clauses; scheduled for tool registration in Wave AG-2."
-  },
-  "nce/vertical_modules/agreements/compliance.py::do_run_compliance_audit": {
-    "engine": "agreements",
-    "owner": "MLV15B-AG3",
-    "reason": "Agreement compliance audit execution core; planned as enforcement point called by PR-5 in Wave AG-3."
-  },
-  "nce/vertical_modules/agreements/compliance.py::do_suggest_terms": {
-    "engine": "agreements",
-    "owner": "MLV15B-AG2",
-    "reason": "Contract terms suggestion engine; scheduled for exposure as an advisor tool in Wave AG-2."
-  },
-  "nce/vertical_modules/agreements/graph.py::do_upsert_agreement": {
-    "engine": "agreements",
-    "owner": "MLV15B-AG2",
-    "reason": "Graph persistence core for agreement entities; scheduled for MCP tool registration in Wave AG-2."
-  },
-  "nce/vertical_modules/agreements/kickback.py::do_reconcile_kickback": {
-    "engine": "agreements",
-    "owner": "MLV15B-AG1",
-    "reason": "Supplier kickback reconciliation calculation; awaiting Economy GL query tool in Wave AG-1."
-  },
-  "nce/vertical_modules/agreements/signing.py::do_record_signature": {
-    "engine": "agreements",
-    "owner": "MLV15B-S2b",
-    "reason": "Agreement signature audit recorder; scheduled for signing webhook integration in Wave S-2b."
-  },
-  "nce/vertical_modules/agreements/sla.py::do_set_sla_coverage": {
-    "engine": "agreements",
-    "owner": "MLV15B-AG2",
-    "reason": "SLA coverage mapping definition core; scheduled for tool surface registration in Wave AG-2."
-  },
   "nce/vertical_modules/customer_portal/documents.py::do_get_document": {
     "engine": "customer_portal",
     "owner": "MLV15B-CP2",

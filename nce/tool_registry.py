@@ -869,13 +869,67 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         mutation=False,
     ),
     # ------------------------------------------------------------------
-    # Agreements vertical module tools (Batch 109) — Advisor: read-only
+    # Agreements vertical module tools (Batch 109 & Wave AG-2/AG-3)
     # ------------------------------------------------------------------
     "agreements_lookup_terms": ToolSpec(
         _h(agreements_mcp_handlers, "handle_agreements_lookup_terms"),
         cacheable=True,
         admin_only=False,
         mutation=False,
+    ),
+    "agreements_coverage_matrix": ToolSpec(
+        _h(agreements_mcp_handlers, "handle_agreements_coverage_matrix"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "agreements_reconcile_kickback": ToolSpec(
+        _h(agreements_mcp_handlers, "handle_agreements_reconcile_kickback"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "agreements_run_compliance_audit": ToolSpec(
+        _h(agreements_mcp_handlers, "handle_agreements_run_compliance_audit"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "agreements_extract": ToolSpec(
+        _h(agreements_mcp_handlers, "handle_agreements_extract"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "agreements_create": ToolSpec(
+        _h(agreements_mcp_handlers, "handle_agreements_create"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "agreements_suggest_revision": ToolSpec(
+        _h(agreements_mcp_handlers, "handle_agreements_suggest_revision"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "agreements_request_signature": ToolSpec(
+        _h(agreements_mcp_handlers, "handle_agreements_request_signature"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "agreements_record_signature": ToolSpec(
+        _h(agreements_mcp_handlers, "handle_agreements_record_signature"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "agreements_review_extraction": ToolSpec(
+        _h(agreements_mcp_handlers, "handle_agreements_review_extraction"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
     ),
     # ------------------------------------------------------------------
     # Economy vertical module tools (M8.W4) — Advisor: read-only

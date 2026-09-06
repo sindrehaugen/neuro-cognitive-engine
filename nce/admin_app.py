@@ -809,11 +809,6 @@ def build_admin_routes() -> list[Route]:
             methods=["GET"],
         ),
         Route(
-            "/api/agreements/{id}",
-            endpoint=agreements_handlers.api_agreements_detail,
-            methods=["GET"],
-        ),
-        Route(
             "/api/agreements/extract",
             endpoint=agreements_handlers.api_agreements_extract,
             methods=["POST"],
@@ -822,6 +817,61 @@ def build_admin_routes() -> list[Route]:
             "/api/agreements/review",
             endpoint=agreements_handlers.api_agreements_review,
             methods=["POST"],
+        ),
+        Route(
+            "/api/agreements/reconcile",
+            endpoint=agreements_handlers.api_agreements_reconcile,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/agreements/create",
+            endpoint=agreements_handlers.api_agreements_create,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/agreements/suggest-revision",
+            endpoint=agreements_handlers.api_agreements_suggest_revision,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/agreements/comment",
+            endpoint=agreements_handlers.api_agreements_comment,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/agreements/request-signature",
+            endpoint=agreements_handlers.api_agreements_request_signature,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/agreements/record-signature",
+            endpoint=agreements_handlers.api_agreements_record_signature,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/agreements/compliance-audit",
+            endpoint=agreements_handlers.api_agreements_compliance_audit,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/agreements/suggest-terms",
+            endpoint=agreements_handlers.api_agreements_suggest_terms,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/agreements/sla-coverage",
+            endpoint=agreements_handlers.api_agreements_sla_coverage,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/agreements/upsert",
+            endpoint=agreements_handlers.api_agreements_upsert,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/agreements/{id}",
+            endpoint=agreements_handlers.api_agreements_detail,
+            methods=["GET"],
         ),
         # ------------------------------------------------------------------
         # Economy vertical module endpoints (M8.W4) — cores-surface

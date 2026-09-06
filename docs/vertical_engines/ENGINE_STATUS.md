@@ -26,7 +26,7 @@
 | Instrument | Value |
 |---|---|
 | Module packages under `nce/vertical_modules/` | **20** (17 engines + `diagnostics`, `dynamics365`, `netbox`) |
-| `TOOL_REGISTRY` entries | **213** MCP tools (66 shared + 147 engine) |
+| `TOOL_REGISTRY` entries | **222** MCP tools (66 shared + 156 engine) |
 | REST routes on the admin app | measured per-engine in [`docs/_generated/surface.md`](../_generated/surface.md) (+12 on the Customer Portal's own app shell) — regenerate for a total, do not hand-add the column |
 | `do_*` domain cores | **228** distinct names across the 17 engines |
 | SQL migrations | 70 files (+1 optional), `001` → `074` — gaps at `002`, `009`, `059` (never allocated); `010` exists only under `nce/migrations/optional/`. **Corrected 2026-09-06: this row previously said "67 files, 059/066/072 unused" — 066 and 072 are real, in-use migrations (`system_namespace`, `business_insights_engine`); only 002/009/059 were ever actually skipped.** |

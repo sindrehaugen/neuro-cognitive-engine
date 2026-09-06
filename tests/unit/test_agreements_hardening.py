@@ -252,7 +252,20 @@ def test_lookup_sql_never_selects_reviewer_or_secret_columns() -> None:
 # 2. Exact Agreements tool-count assertion
 # ---------------------------------------------------------------------------
 
-_AGREEMENTS_TOOLS: frozenset[str] = frozenset({"agreements_lookup_terms"})
+_AGREEMENTS_TOOLS: frozenset[str] = frozenset(
+    {
+        "agreements_lookup_terms",
+        "agreements_coverage_matrix",
+        "agreements_reconcile_kickback",
+        "agreements_run_compliance_audit",
+        "agreements_extract",
+        "agreements_create",
+        "agreements_suggest_revision",
+        "agreements_request_signature",
+        "agreements_record_signature",
+        "agreements_review_extraction",
+    }
+)
 
 
 def test_exact_agreements_tool_count() -> None:

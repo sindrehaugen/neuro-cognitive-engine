@@ -576,12 +576,13 @@ class TestProjectAdvancePhaseToolRegistry:
         compute_health);
         +1 MLV15B-S2a sales tool (sales_request_signature);
         +2 Wave PR-1 procurement tools (procurement_generate_po, procurement_submit_po);
+        +6 MLV15D-AG2 agreements tools;
         +1 Wave C10 decision_feedback_record tool;
         +1 Wave P-2 product_ingest_spec tool;
         +1 Wave PJ-1 project_record_outcome tool;
         +1 Wave RS-3 resources_record_allocation_outcome tool;
         +1 Wave T-1 trust_dial_set_tier tool."""
-        assert len(MUTATION_TOOLS) == 95
+        assert len(MUTATION_TOOLS) == 101
 
     def test_admin_only_count(self) -> None:
         """Admin-only tools must total 32 (unified realignment registry;
@@ -607,8 +608,9 @@ class TestProjectAdvancePhaseToolRegistry:
         drives an operator/cron pull against a vendor telemetry adapter;
         +1 MLV15B-S2a sales tool -- sales_request_signature;
         +2 Wave PR-1 procurement tools -- procurement_generate_po, procurement_submit_po;
+        +6 MLV15D-AG2 agreements tools;
         +1 Wave C10 decision_feedback_record tool;
         +1 Wave PJ-1 project_record_outcome tool;
         +1 Wave RS-3 resources_record_allocation_outcome tool;
         +1 Wave T-1 trust_dial_set_tier tool)."""
-        assert len(ADMIN_ONLY_TOOLS) == 56
+        assert len(ADMIN_ONLY_TOOLS) == 62

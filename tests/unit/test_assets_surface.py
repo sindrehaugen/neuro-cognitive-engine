@@ -184,7 +184,7 @@ def test_tool_count_updated_for_assets_surface() -> None:
     assert "assets_pull_telemetry" in TOOL_REGISTRY
     assert "assets_attach_sla" in TOOL_REGISTRY
     assert "assets_compute_health" in TOOL_REGISTRY
-    assert len(TOOL_REGISTRY) == 222, (
+    assert len(TOOL_REGISTRY) == 231, (
         f"Expected 135 tools (116 + 3 assets from Batch 143, M9.W3 + 1 system_design "
         f"from Batch 067b, M6.W13a + 2 system_design authoring tools from "
         f"Batch 067c, M6.W13b + 1 system_design validator from Batch 067d, M6.W13c "

@@ -87,9 +87,19 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/admin/tools/toggle` | `api_admin_tools_toggle` |
 | GET | `/api/admin/verify-chain/{namespace_id}` | `api_admin_verify_chain` |
 | GET | `/api/agreements` | `api_agreements_list` |
+| POST | `/api/agreements/comment` | `api_agreements_comment` |
+| POST | `/api/agreements/compliance-audit` | `api_agreements_compliance_audit` |
 | GET | `/api/agreements/coverage` | `api_agreements_coverage` |
+| POST | `/api/agreements/create` | `api_agreements_create` |
 | POST | `/api/agreements/extract` | `api_agreements_extract` |
+| POST | `/api/agreements/reconcile` | `api_agreements_reconcile` |
+| POST | `/api/agreements/record-signature` | `api_agreements_record_signature` |
+| POST | `/api/agreements/request-signature` | `api_agreements_request_signature` |
 | POST | `/api/agreements/review` | `api_agreements_review` |
+| POST | `/api/agreements/sla-coverage` | `api_agreements_sla_coverage` |
+| POST | `/api/agreements/suggest-revision` | `api_agreements_suggest_revision` |
+| POST | `/api/agreements/suggest-terms` | `api_agreements_suggest_terms` |
+| POST | `/api/agreements/upsert` | `api_agreements_upsert` |
 | GET | `/api/agreements/{id}` | `api_agreements_detail` |
 | GET | `/api/assets` | `api_assets_list` |
 | GET | `/api/assets/health` | `api_assets_health` |
@@ -253,7 +263,16 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `a2a_update_grant_scopes` |  | yes |  |  |
 | `a2a_verify_grant_status` |  |  |  |  |
 | `abort_migration` |  | yes |  | yes |
+| `agreements_coverage_matrix` |  |  | yes |  |
+| `agreements_create` | yes | yes |  |  |
+| `agreements_extract` | yes | yes |  |  |
 | `agreements_lookup_terms` |  |  | yes |  |
+| `agreements_reconcile_kickback` |  |  | yes |  |
+| `agreements_record_signature` | yes | yes |  |  |
+| `agreements_request_signature` | yes | yes |  |  |
+| `agreements_review_extraction` | yes | yes |  |  |
+| `agreements_run_compliance_audit` |  |  | yes |  |
+| `agreements_suggest_revision` | yes | yes |  |  |
 | `assets_advance_lifecycle` |  | yes |  |  |
 | `assets_attach_sla` |  | yes |  |  |
 | `assets_compute_health` |  | yes |  |  |
@@ -468,4 +487,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_reliability_radar` |  |  | yes |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 228 REST endpoints, 222 MCP tools._
+_Totals: 238 REST endpoints, 231 MCP tools._
