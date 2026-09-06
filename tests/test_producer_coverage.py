@@ -30,6 +30,12 @@ recorded as TDL Debt 20.
 **Dimension C — ``pending_approval``.**  ``xfail(strict=True)``: RED on arrival
 and correct.  See ``test_pending_approval_status_is_persisted``.
 
+**Unobserved surfaces (audited per Phase 4 Wave T-5 / Charter §13 Question 3):**
+1. *Dynamic interpolation*: Event types composed dynamically via f-strings or runtime concatenation
+   (as documented under Dimension B) are invisible to literal extraction.
+2. *Producers outside nce/*: Emitters residing in scripts, tests, or external adapters.
+3. *Reflection emission*: Dynamic calls via `getattr(module, "append_event")` without direct function calls.
+
 These are plain unit tests on purpose — they must run in the job that always
 runs (``.github/workflows/ci.yml`` "Pytest (exclude integration)").
 """
@@ -403,4 +409,29 @@ def test_pending_approval_status_is_persisted() -> None:
     assert writers, (
         "governor.py returns 'pending_approval' but no module under nce/ writes "
         "action_approval_queue — the deferred action is announced and then lost."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 Wave T-5 Hardening: Positive Controls (U18)
+# ---------------------------------------------------------------------------
+
+
+def test_positive_control_fails_on_synthetic_unproduced_event() -> None:
+    """Standing positive control (U18 / T-5 Q1): prove ratchet fails on unproduced event type."""
+    unproduced = _unproduced_event_types()
+    synthetic_unproduced = unproduced + ["synthetic_unproduced_event_type"]
+    unexpected = [t for t in synthetic_unproduced if t not in KNOWN_UNPRODUCED_EVENT_TYPES]
+    assert unexpected == ["synthetic_unproduced_event_type"], (
+        "Positive control failed: ratchet did not isolate synthetic unproduced event"
+    )
+
+
+def test_positive_control_fails_on_synthetic_unreviewed_dynamic_site() -> None:
+    """Standing positive control (U18 / T-5 Q1): prove dynamic scanner catches unreviewed emit sites."""
+    sites = dict(_dynamic_emit_sites())
+    sites["nce/synthetic_module.py::synthetic_function"] = ("nce/synthetic_module.py", 42)
+    unreviewed = sorted(set(sites) - set(KNOWN_DYNAMIC_EMIT_SITES))
+    assert "nce/synthetic_module.py::synthetic_function" in unreviewed, (
+        "Positive control failed: dynamic emitter scanner did not isolate synthetic site"
     )

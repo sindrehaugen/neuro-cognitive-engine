@@ -31,3 +31,21 @@ def test_api_docs_are_current():
         "docs/API.md is out of date with the REST routes / MCP tool registry. "
         "Regenerate with: python scripts/gen_api_docs.py"
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 Wave T-5 Hardening: Positive Controls (U18) & Unobserved Surfaces
+# ---------------------------------------------------------------------------
+# Scope & Unobserved Surfaces (T-5 Q3):
+# What this ratchet CANNOT see:
+# 1. Payload deep schema: Only docstring and route paths are generated/compared;
+#    inner JSON body parameter schemas for REST routes are not generated here.
+# 2. Tool handler runtime signatures vs MCP inputSchema parameter types.
+
+
+def test_positive_control_drift_detection():
+    """Standing positive control (U18 / T-5 Q1): prove drift fails assertion loudly."""
+    gen = _load_generator()
+    expected = gen.generate().strip()
+    synthetic_actual = expected + "\n<!-- synthetic drift -->"
+    assert synthetic_actual != expected

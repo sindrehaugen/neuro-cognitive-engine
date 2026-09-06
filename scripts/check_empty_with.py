@@ -68,13 +68,20 @@ def check_file(filepath: Path) -> list[Violation]:
 
     try:
         source = filepath.read_text(encoding="utf-8")
-    except Exception:
-        return violations
+    except Exception as exc:
+        return [Violation(str(filepath), 1, 0, f"FILE_READ_ERROR: {exc}")]
 
     try:
         tree = ast.parse(source, filename=str(filepath))
-    except SyntaxError:
-        return violations
+    except SyntaxError as exc:
+        return [
+            Violation(
+                str(filepath),
+                exc.lineno or 1,
+                exc.offset or 0,
+                f"SYNTAX_ERROR: {exc}",
+            )
+        ]
 
     for node in ast.walk(tree):
         # We only care about With and AsyncWith
@@ -136,7 +143,7 @@ def main() -> int:
         print("\nFix: remove the empty with block or place real logic inside it.\n")
         return 1
 
-    print("✓ No empty 'with' blocks found.")
+    print("[OK] No empty 'with' blocks found.")
     return 0
 
 
