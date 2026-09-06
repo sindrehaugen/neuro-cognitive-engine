@@ -379,8 +379,10 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `procurement_calculate_tco` |  |  | yes |  |
 | `procurement_evaluate_match` |  |  | yes |  |
 | `procurement_forecast_rebate` |  |  | yes |  |
+| `procurement_generate_po` | yes | yes |  |  |
 | `procurement_rank_suppliers` |  |  | yes |  |
 | `procurement_recommend_move_spend` |  |  | yes |  |
+| `procurement_submit_po` | yes | yes |  |  |
 | `procurement_whatif_spend` |  |  | yes |  |
 | `product_enrich` |  | yes |  |  |
 | `product_get` |  |  | yes |  |
@@ -466,4 +468,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_reliability_radar` |  |  | yes |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 228 REST endpoints, 220 MCP tools._
+_Totals: 228 REST endpoints, 222 MCP tools._

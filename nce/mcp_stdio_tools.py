@@ -3154,6 +3154,104 @@ TOOLS = [
         },
     ),
     Tool(
+        name="procurement_generate_po",
+        description=(
+            "Generate a draft purchase order node (PO) and line items (PO_LINE) "
+            "from ranking and BOM lines. Governed Actor tool (admin_only, mutation, confirm-first)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "po_number": {"type": "string", "description": "Purchase order number."},
+                "bom_line": {
+                    "type": "object",
+                    "description": "Optional BOM line data; e.g. quantity and unit_price.",
+                },
+                "candidates": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": "Optional candidate suppliers; each must contain unit_price.",
+                },
+                "line_items": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": "Optional PO line items to create under this PO.",
+                },
+                "artnrs": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional article numbers to resolve from BID cache.",
+                },
+                "source_id": {"type": "string", "description": "Optional source record ID."},
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Set to true to execute creation; false returns pending_approval.",
+                    "default": False,
+                },
+                "idempotency_key": {
+                    "type": "string",
+                    "description": "Caller-supplied idempotency key.",
+                },
+            },
+            "required": ["namespace_id", "po_number"],
+        },
+    ),
+    Tool(
+        name="procurement_submit_po",
+        description=(
+            "Submit a purchase order, placing the order via transport and advancing PO_LINE "
+            "status to ORDERED (emitting PO_LINE.status_changed). Governed Actor tool "
+            "(admin_only, mutation, confirm-first)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "po_number": {"type": "string", "description": "Purchase order number."},
+                "supplier_id": {
+                    "type": "string",
+                    "description": "Supplier ID to place the order with.",
+                },
+                "line_items": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": "Optional order line items; each entry has artnr + quantity.",
+                },
+                "po_value": {
+                    "type": "number",
+                    "description": "Total monetary value of the PO checked against ceiling gate.",
+                    "default": 0.0,
+                },
+                "rebate_override": {
+                    "type": "boolean",
+                    "description": "Whether rebate override requires Agreements compliance audit.",
+                    "default": False,
+                },
+                "rebate_amount": {
+                    "type": "number",
+                    "description": "Rebate amount forwarded to Agreements compliance audit.",
+                    "default": 0.0,
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Set to true to execute submission; false returns pending_approval.",
+                    "default": False,
+                },
+                "idempotency_key": {
+                    "type": "string",
+                    "description": "Caller-supplied idempotency key.",
+                },
+                "transport_method": {
+                    "type": "string",
+                    "description": "Transport adapter method (e.g. 'manual', 'netset'). Default 'manual'.",
+                    "default": "manual",
+                },
+            },
+            "required": ["namespace_id", "po_number"],
+        },
+    ),
+    Tool(
         name="vendors_compute_scorecard",
         description="Compute the scorecard for one vendor. Read-only.",
         inputSchema={

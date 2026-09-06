@@ -25,7 +25,7 @@ from uuid import UUID
 import asyncpg  # type: ignore[import-untyped]
 
 from nce.entity_resolution.ownership import assert_owner
-from nce.events.emit import emit_graph_write
+from nce.events.bus import publish
 
 log = logging.getLogger("nce.vertical_modules.procurement.po_line")
 
@@ -172,20 +172,19 @@ async def upsert_po_line_node(
     await conn.execute(
         """
         INSERT INTO kg_edges (
-            namespace_id,
-            from_label,
+            subject_label,
             predicate,
-            to_label,
+            object_label,
             confidence,
-            source,
-            created_at
+            namespace_id,
+            change_origin
         )
-        VALUES ($1, $2, 'contains', $3, 1.0, 'procurement_sync', now())
-        ON CONFLICT (namespace_id, from_label, predicate, to_label) DO NOTHING
+        VALUES ($1, 'contains', $2, 1.0, $3, 'agent')
+        ON CONFLICT (subject_label, predicate, object_label, namespace_id) DO NOTHING
         """,
-        ns_uuid,
         parent_po_lbl,
         lbl,
+        ns_uuid,
     )
 
     # Edge PO_LINE -[fulfills]-> BOM_LINE if linked
@@ -193,20 +192,19 @@ async def upsert_po_line_node(
         await conn.execute(
             """
             INSERT INTO kg_edges (
-                namespace_id,
-                from_label,
+                subject_label,
                 predicate,
-                to_label,
+                object_label,
                 confidence,
-                source,
-                created_at
+                namespace_id,
+                change_origin
             )
-            VALUES ($1, $2, 'fulfills', $3, 1.0, 'procurement_sync', now())
-            ON CONFLICT (namespace_id, from_label, predicate, to_label) DO NOTHING
+            VALUES ($1, 'fulfills', $2, 1.0, $3, 'agent')
+            ON CONFLICT (subject_label, predicate, object_label, namespace_id) DO NOTHING
             """,
-            ns_uuid,
             lbl,
             bom_line_label,
+            ns_uuid,
         )
 
     # Upsert procurement_po_lines relational store
@@ -353,11 +351,12 @@ async def update_po_line_status(
         "project_value": project_value,
     }
 
-    await emit_graph_write(
+    await publish(
         conn,
-        ns_uuid,
-        NODE_TYPE_PO_LINE,
-        "status_changed",
+        namespace_id=ns_uuid,
+        node_type=NODE_TYPE_PO_LINE,
+        op="status_changed",
+        aggregate_id=lbl,
         payload=payload,
     )
 

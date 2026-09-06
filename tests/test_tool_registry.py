@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 220  # 206 baseline + 6 Economy tools (Wave E-1) + 1 Sales signing request (Wave S-2a) + 1 Decision Feedback (Wave C10) + 2 Product tools (Waves P-2 / P-3) + 1 Project outcome (Wave PJ-1) + 1 Resources allocation outcome (Wave RS-3) + 2 Trust Dial tools (Wave T-1)
+_EXPECTED_TOTAL = 222  # 213 baseline + 2 Procurement PO lifecycle tools (Wave PR-1) + 1 Decision Feedback (Wave C10) + 2 Product tools (Waves P-2 / P-3) + 1 Project outcome (Wave PJ-1) + 1 Resources allocation outcome (Wave RS-3) + 2 Trust Dial tools (Wave T-1)
 
 
 def test_registry_has_expected_entries():
@@ -211,6 +211,9 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "customer_portal_register_expansion_interest",
         # MLV15B-S2a -- Sales quote signing request Actor tool
         "sales_request_signature",
+        # Wave PR-1 -- Procurement PO lifecycle Actor tools (2 tools)
+        "procurement_generate_po",
+        "procurement_submit_po",
         # Wave C10 -- Decision Feedback service mutation
         "decision_feedback_record",
         # Wave P-2 -- Product Spec Ingestion mutation
@@ -233,9 +236,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert (
-        len(MUTATION_TOOLS) == 93
-    )  # 83 baseline + 4 assets completion tools + 1 sales_request_signature + 1 decision_feedback_record + 1 product_ingest_spec + 1 project_record_outcome + 1 resources_record_allocation_outcome + 1 trust_dial_set_tier
+    assert len(MUTATION_TOOLS) == 95  # 88 baseline + 2 Procurement PO lifecycle tools (Wave PR-1) + 1 decision_feedback_record + 1 product_ingest_spec + 1 project_record_outcome + 1 resources_record_allocation_outcome + 1 trust_dial_set_tier
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -475,6 +476,9 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "assets_pull_telemetry",
         # MLV15B-S2a -- Sales quote signing request Actor tool
         "sales_request_signature",
+        # Wave PR-1 -- Procurement PO lifecycle Actor tools (2 tools)
+        "procurement_generate_po",
+        "procurement_submit_po",
         # Wave C10 -- Decision Feedback service admin_only tool
         "decision_feedback_record",
         # Wave PJ-1 -- Project record outcome admin_only tool
@@ -495,9 +499,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert (
-        len(ADMIN_ONLY_TOOLS) == 54
-    )  # 48 baseline + 1 assets tool (pull_telemetry) + 1 sales_request_signature + 1 decision_feedback_record + 1 project_record_outcome + 1 resources_record_allocation_outcome + 1 trust_dial_set_tier
+    assert len(ADMIN_ONLY_TOOLS) == 56  # 50 baseline + 2 Procurement PO lifecycle tools (Wave PR-1) + 1 decision_feedback_record + 1 project_record_outcome + 1 resources_record_allocation_outcome + 1 trust_dial_set_tier
 
 
 # ---------------------------------------------------------------------------

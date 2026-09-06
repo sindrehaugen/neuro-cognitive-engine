@@ -158,3 +158,42 @@ class NetsetPoTransport(PoTransport):
             f"po_number={po_number!r} supplier_id={supplier_id!r} "
             "Track blocker: docs/vertical_engines/01-procurement-engine.md §External 🔴"
         )
+
+
+# ---------------------------------------------------------------------------
+# Manual transport — operator attestation & zero-dependency order placement
+# ---------------------------------------------------------------------------
+
+
+class ManualPoTransport(PoTransport):
+    """Manual transport for purchase orders (attestation / operator-confirmed).
+
+    Used when external supplier order automation is unavailable or when an
+    operator confirms external placement manually.
+    """
+
+    async def place_order(
+        self,
+        po_number: str,
+        supplier_id: str,
+        line_items: list[dict[str, Any]],
+        *,
+        namespace_id: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        log.info(
+            "[manual-transport] place_order po=%s supplier=%s lines=%d ns=%s ikey=%s",
+            po_number,
+            supplier_id,
+            len(line_items),
+            namespace_id[:8] if len(namespace_id) >= 8 else namespace_id,
+            idempotency_key[:8],
+        )
+        return {
+            "status": "placed",
+            "method": "manual",
+            "po_number": po_number,
+            "supplier_id": supplier_id,
+            "line_count": len(line_items),
+            "idempotency_key": idempotency_key,
+        }

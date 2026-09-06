@@ -27,6 +27,8 @@ import pytest
 from nce.orchestrator import NCEEngine
 from nce.tool_registry import TOOL_REGISTRY
 
+pytestmark = pytest.mark.live
+
 # ---------------------------------------------------------------------------
 # Golden Thread Burndown Manifest
 # ---------------------------------------------------------------------------
@@ -113,9 +115,9 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         index=8,
         name="ordered",
         canonical_label="ORDERED",
-        is_broken=True,
-        review_break="break-2",
-        phase1_wave="PR-1",
+        is_broken=False,
+        review_break=None,
+        phase1_wave=None,
         description="PO submission emits PO_LINE.status_changed to write BOM_LINE ORDERED rung",
     ),
     BurndownStep(
@@ -367,10 +369,6 @@ class TestGoldenThreadSteps:
 
         assert callable(do_generate_po)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="break-2: PO_LINE status model absent / BOM_LINE ORDERED unwritten (Wave PR-1)",
-    )
     def test_step_08_bom_line_ordered(self) -> None:
         """Step 8: BOM_LINE ORDERED rung written on PO submit."""
         # Seam verification: procurement_generate_po and procurement_submit_po
@@ -378,6 +376,10 @@ class TestGoldenThreadSteps:
         if "procurement_generate_po" not in TOOL_REGISTRY:
             raise AssertionError(
                 "break-2: procurement_generate_po tool not registered; PO_LINE status model absent (Wave PR-1)"
+            )
+        if "procurement_submit_po" not in TOOL_REGISTRY:
+            raise AssertionError(
+                "break-2: procurement_submit_po tool not registered; PO_LINE status model absent (Wave PR-1)"
             )
 
     def test_step_09_gr(self) -> None:
@@ -635,13 +637,14 @@ class TestGoldenThreadPipeline:
 
     @pytest.mark.xfail(
         strict=True,
-        reason="break-2: Golden Thread pipeline halts at next broken seam (BOM_LINE ORDERED unwritten, Wave PR-1)",
+        reason="break-2/IN-1: Golden Thread pipeline halts at next broken seam (GOODS_RECEIPT.created parked, Wave IN-1)",
     )
     def test_golden_thread_full_e2e_pipeline(self) -> None:
         """Execute full scenario pipeline end-to-end.
 
         Step 5 (baseline frozen) was closed by Wave S-2a.
-        Halts at Step 8 (BOM_LINE ORDERED) until Wave PR-1 lands.
+        Step 8 (BOM_LINE ORDERED) was closed by Wave PR-1.
+        Halts at Step 11 (BOM_LINE DELIVERED / GOODS_RECEIPT.created) until Wave IN-1 lands.
         """
         engine = NCEEngine()
         assert engine is not None
@@ -695,10 +698,36 @@ class TestGoldenThreadPipeline:
 
         assert callable(do_generate_po)
 
-        # Step 8: BOM_LINE ORDERED (Second Seam Break - Wave PR-1)
+        # Step 8: BOM_LINE ORDERED (Closed by Wave PR-1)
         if "procurement_submit_po" not in TOOL_REGISTRY:
             raise AssertionError(
                 "break-2: pipeline halted at step 8: BOM_LINE ORDERED unwritten, procurement_submit_po missing (Wave PR-1)"
+            )
+
+        # Step 9: GR
+        from nce.vertical_modules.inventory.goods_receipt import do_record_goods_receipt
+
+        assert callable(do_record_goods_receipt)
+
+        # Step 10: Match
+        from nce.vertical_modules.procurement.three_way_match import (
+            do_evaluate_three_way_match,
+        )
+
+        assert callable(do_evaluate_three_way_match)
+
+        # Step 11: GOODS_RECEIPT.created (Third Seam Break - Wave IN-1)
+        try:
+            from nce.events import catalogue
+
+            contract = getattr(catalogue, "EVENT_CATALOGUE", {}).get("GOODS_RECEIPT.created")
+            if contract is None or not contract.producers:
+                raise AssertionError(
+                    "break-2/IN-1: pipeline halted at step 11: GOODS_RECEIPT.created producer is parked or uncatalogued (Wave IN-1)"
+                )
+        except (ImportError, AttributeError):
+            raise AssertionError(
+                "break-2/IN-1: pipeline halted at step 11: GOODS_RECEIPT.created producer is parked or uncatalogued (Wave IN-1)"
             )
 
 
@@ -739,13 +768,14 @@ class TestGoldenThreadPositiveControls:
 
         Originally 10 seam breaks (Steps 5, 8, 11, 13, 14, 17, 20, 23, 25, 27)
         plus the degradation register check (Step 28).
-        Wave S-2a closed Step 5, Wave CP-1 closed Step 25 and Wave I-5 closed Step 28,
-        burning down to 8 broken steps.
+        Wave S-2a closed Step 5, Wave CP-1 closed Step 25, Wave I-5 closed Step 28,
+        Wave PR-1 closed Step 8, and Wave PJ-1/SD-2 closed Step 27,
+        burning down to 6 broken steps.
         """
         broken_steps = [s for s in GOLDEN_THREAD_STEPS if s.is_broken]
-        assert len(broken_steps) == 7
+        assert len(broken_steps) == 6
         broken_indices = {s.index for s in broken_steps}
-        assert broken_indices == {8, 11, 13, 14, 17, 20, 23}
+        assert broken_indices == {11, 13, 14, 17, 20, 23}
 
     def test_positive_control_broken_steps_have_remediation_waves(self) -> None:
         """Verify every broken step specifies a responsible Phase 1 remediation wave."""

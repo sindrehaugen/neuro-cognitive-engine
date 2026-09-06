@@ -551,6 +551,21 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         mutation=False,
     ),
     # ------------------------------------------------------------------
+    # Procurement vertical module tools (v1.5 PR-1) — Actor: PO lifecycle
+    # ------------------------------------------------------------------
+    "procurement_generate_po": ToolSpec(
+        _h(procurement_mcp_handlers, "handle_procurement_generate_po"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "procurement_submit_po": ToolSpec(
+        _h(procurement_mcp_handlers, "handle_procurement_submit_po"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    # ------------------------------------------------------------------
     # System Design vertical module tools (M6.W1) — skeleton ping
     # ------------------------------------------------------------------
     "system_design_ping": ToolSpec(

@@ -25,15 +25,26 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+from nce.db_utils import scoped_pg_session
 from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import mcp_handler
 from nce.vertical_modules.procurement import frontier
+from nce.vertical_modules.procurement.po import (
+    _derive_po_idempotency_key,
+    _derive_submit_idempotency_key,
+    do_generate_po,
+    do_submit_po,
+)
 from nce.vertical_modules.procurement.ranking import do_rank_suppliers
 from nce.vertical_modules.procurement.tco import (
     do_calculate_tco,
     load_procurement_config,
 )
 from nce.vertical_modules.procurement.three_way_match import do_evaluate_three_way_match
+from nce.vertical_modules.procurement.transports import (
+    ManualPoTransport,
+    NetsetPoTransport,
+)
 
 if TYPE_CHECKING:
     from nce.orchestrator import NCEEngine
@@ -269,3 +280,127 @@ async def handle_procurement_whatif_spend(engine: NCEEngine, arguments: dict[str
     except Exception as exc:
         log.exception("[procurement-frontier] handle_procurement_whatif_spend error")
         return json.dumps({"error": str(exc)}, default=str)
+
+
+# ---------------------------------------------------------------------------
+# Wave PR-1: Governed Actor handlers (PO lifecycle)
+# ---------------------------------------------------------------------------
+
+
+@mcp_handler
+async def handle_procurement_generate_po(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: procurement_generate_po — generate a draft purchase order and lines.
+
+    Governed Actor tool (admin_only, mutation, confirm-first).
+
+    Required arguments:
+        namespace_id (str, UUID)
+        po_number    (str) — purchase order identifier.
+    Optional arguments:
+        bom_line     (dict) — BOM line details (quantity, unit_price).
+        candidates   (list[dict]) — candidate suppliers.
+        weights      (dict) — procurement weights.
+        artnrs       (list[str]) — article numbers for BID cache resolution.
+        line_items   (list[dict]) — order line items to generate under this PO.
+        source_id    (str) — optional source record ID.
+        confirm      (bool) — set to True to execute; False returns pending_approval.
+        idempotency_key (str) — caller-supplied idempotency key.
+    """
+    require_namespace_id(arguments)
+    namespace_id = arguments["namespace_id"]
+    po_number = str(arguments.get("po_number") or "").strip()
+    if not po_number:
+        raise ValueError("po_number is required")
+
+    confirm = bool(arguments.get("confirm", False))
+    idempotency_key = str(arguments.get("idempotency_key") or "").strip()
+    if not idempotency_key:
+        idempotency_key = _derive_po_idempotency_key(str(namespace_id), po_number)
+
+    weights = arguments.get("weights")
+    if not weights:
+        loaded_weights, _ = load_procurement_config()
+        weights = loaded_weights
+
+    bom_line = arguments.get("bom_line") or {}
+    candidates = arguments.get("candidates") or []
+    artnrs = arguments.get("artnrs") or []
+    line_items = arguments.get("line_items")
+    source_id = arguments.get("source_id")
+
+    async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+        result = await do_generate_po(
+            conn,
+            namespace_id,
+            idempotency_key=idempotency_key,
+            confirm=confirm,
+            engine=engine,
+            po_number=po_number,
+            bom_line=bom_line,
+            candidates=candidates,
+            weights=weights,
+            artnrs=artnrs,
+            source_id=source_id,
+            line_items=line_items,
+        )
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_procurement_submit_po(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: procurement_submit_po — submit a purchase order via transport.
+
+    Governed Actor tool (admin_only, mutation, confirm-first).
+    Advances PO_LINE nodes to ORDERED and emits PO_LINE.status_changed into C4.
+
+    Required arguments:
+        namespace_id (str, UUID)
+        po_number    (str) — purchase order identifier.
+    Optional arguments:
+        supplier_id  (str) — supplier identifier (default: 'DEFAULT').
+        line_items   (list[dict]) — order line items.
+        po_value     (float) — total value checked against ceiling.
+        rebate_override (bool) — whether rebate override requires Agreements audit.
+        rebate_amount   (float) — rebate amount forwarded to Agreements.
+        confirm      (bool) — set to True to execute; False returns pending_approval.
+        idempotency_key (str) — caller-supplied idempotency key.
+        transport_method (str) — 'manual' (default) or 'netset'.
+    """
+    require_namespace_id(arguments)
+    namespace_id = arguments["namespace_id"]
+    po_number = str(arguments.get("po_number") or "").strip()
+    if not po_number:
+        raise ValueError("po_number is required")
+
+    supplier_id = str(arguments.get("supplier_id") or "DEFAULT").strip()
+    line_items = list(arguments.get("line_items") or [])
+    po_value = float(arguments.get("po_value") or 0.0)
+    rebate_override = bool(arguments.get("rebate_override", False))
+    rebate_amount = float(arguments.get("rebate_amount") or 0.0)
+    confirm = bool(arguments.get("confirm", False))
+    idempotency_key = str(arguments.get("idempotency_key") or "").strip()
+    if not idempotency_key:
+        idempotency_key = _derive_submit_idempotency_key(str(namespace_id), po_number)
+
+    transport_method = str(arguments.get("transport_method") or "manual").lower().strip()
+    transport = NetsetPoTransport() if transport_method == "netset" else ManualPoTransport()
+    a2a_client = arguments.get("a2a_client")
+    redis_client = getattr(engine, "redis_pool", None) or arguments.get("redis_client")
+
+    async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+        result = await do_submit_po(
+            conn,
+            namespace_id,
+            idempotency_key=idempotency_key,
+            confirm=confirm,
+            po_number=po_number,
+            supplier_id=supplier_id,
+            line_items=line_items,
+            po_value=po_value,
+            rebate_override=rebate_override,
+            rebate_amount=rebate_amount,
+            transport=transport,
+            a2a_client=a2a_client,
+            redis_client=redis_client,
+        )
+    return json.dumps(result, default=str)
