@@ -1,8 +1,16 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 7304330 (main) — **body not re-audited, see note** · **Last-audited:** 2026-08-17
 
 # Sales Engine Admin Guide (Doc 74)
 
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 7304330 (main) — **body not re-audited, see note** · **Last-audited:** 2026-08-17
+
+> [!WARNING]
+> **Not re-audited in this pass (2026-09-06).** This guide's "C7 signing ceremony wiring" section
+> predates the `sales_request_signature` MCP tool (`nce/tool_registry.py:742`, `admin_only=True,
+> mutation=True`) that now implements that ceremony as an Actor tool, and predates
+> `sales_get_quote_lines`/`sales_add_quote_line` becoming MCP-reachable too — see
+> `docs/engines/sales-user.md`'s warning for the full list. The governance/RLS/D365 claims below were
+> not independently re-checked this pass; treat them as last-verified `7304330`, not `b75c873`.
 
 This guide documents how to enable, configure, and operate the Sales Engine (`nce/vertical_modules/sales/`): the D365 source adapter and watermark sync, the C5 source-mode resolver (`d365|both|nce`) and its divergence/flip-gate machinery, the public-quote redaction surface, the C7 signing ceremony wiring, DealRoom & Sales baseline event stream / WORM posture, RLS/migrations, and exactly what governance the code enforces around Sales' AI and write paths. Every claim below is grounded in a specific file/line on `main @ 7304330`; where the design spec (`docs/vertical_engines/05-sales-engine.md`) promises more than ships, this guide says so.
 

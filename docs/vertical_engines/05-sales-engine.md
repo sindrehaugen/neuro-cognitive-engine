@@ -2,7 +2,7 @@
 
 # 05 — Sales Engine  (nce/vertical_modules/sales)
 
-<!-- BLOCKED ON OQ-2 / OQ-4: SPEC PROPOSAL VOICE. This document is an architectural design specification. At baseline 7304330, Sales ships exactly 2 MCP tools (sales_ping, sales_get_signed_baseline) and 15 REST routes (1 public: /public-api/sales/quotes/{id}). 12 prospective MCP tools described below remain unbuilt/unwired. Refer to docs/engines/sales-user.md and docs/engines/sales-admin.md for shipped reality. Verified-against: 7304330 -->
+<!-- BLOCKED ON OQ-2 / OQ-4: SPEC PROPOSAL VOICE. This document is an architectural design specification. Sales's tool count has grown since this banner was last accurate (7304330: 2 tools; b75c873: 5 -- sales_get_quote_lines, sales_add_quote_line, sales_request_signature added) -- see docs/_generated/surface.md for the current count, not a number here. Refer to docs/engines/sales-user.md and docs/engines/sales-admin.md for shipped reality -- note the user guide now carries its own staleness warning too (found 2026-09-06, DL.md K-1). Verified-against: b75c873 -->
 
 
 **Status:** spec (Tier 2 — Revenue axis) · **Owner:** NCE core (Sindre)
@@ -52,7 +52,7 @@ Pure-ish `do_<action>(engine, params) -> dict`; every read path goes through the
 - `do_draft_quote(engine, params)` — Advisor: AI quote-draft assist (asks System Design for a BOM; never bulk-runs).
 
 ## MCP tools
-<!-- BLOCKED ON OQ-2 / OQ-4: Historical proposal listed 14 tools. Baseline 7304330 registers exactly 2 MCP tools: sales_ping and sales_get_signed_baseline. The remaining 12 prospective tools are not in TOOL_REGISTRY. -->
+<!-- BLOCKED ON OQ-2 / OQ-4: Historical proposal listed 14 tools. STALE, corrected 2026-09-06 -- 5 MCP tools are registered at b75c873: sales_ping, sales_get_signed_baseline, sales_get_quote_lines, sales_add_quote_line, sales_request_signature. See docs/_generated/surface.md for the current count. -->
 Registered in `nce/tool_registry.py` via `_h(...)` late-binding. AI-role tag per roadmap §2 taxonomy.
 
 | Tool | cacheable | admin_only | mutation | AI-role |
@@ -73,7 +73,7 @@ Registered in `nce/tool_registry.py` via `_h(...)` late-binding. AI-role tag per
 | `sales_sync_now` | ✘ | ✔ | ✔ | — (operator) |
 
 ## REST routes
-<!-- BLOCKED ON OQ-2 / OQ-4: Mounted REST routes at baseline 7304330 comprise 15 endpoints (14 under /api/sales, /api/admin/sales, plus 1 public quote endpoint at /public-api/sales/quotes/{id}). -->
+<!-- BLOCKED ON OQ-2 / OQ-4: Mounted REST routes at baseline 7304330 comprised 15 endpoints (14 under /api/sales, /api/admin/sales, plus 1 public quote endpoint at /public-api/sales/quotes/{id}) -- route count unchanged as of b75c873, only the MCP tool surface grew (see line 5). -->
 No-model path for the BFF (the 12 Lysning pages + the 2 customer-facing shares), cron, scripts. Mounted via `build_app(extra_routes=...)`; HMAC/mTLS-authed in `nce/admin_handlers/sales.py`. Each resolves its source mode internally.
 - `api_sales_customers` / `api_sales_customer_profile` (GET) — Kunder, KundeDetalj.
 - `api_sales_overview` (GET) — Oversikt / Salgsoversikt.

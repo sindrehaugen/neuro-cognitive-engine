@@ -2,7 +2,7 @@
 
 # 08 — Economy Engine  (nce/vertical_modules/economy)
 
-<!-- BLOCKED ON OQ-2 / OQ-4: SPEC PROPOSAL VOICE. This document is an architectural design specification. At baseline 7304330, Economy ships 3 read-only advisor MCP tools and 3 REST routes (see docs/_generated/surface.md). 9 pure domain calculation cores exist in nce/vertical_modules/economy/ but are not wired to autonomous mutation dispatchers; direct Finago GL posting is locked by CFO policy. Refer to docs/engines/economy-user.md and docs/engines/economy-admin.md for shipped reality. Verified-against: 7304330 -->
+<!-- BLOCKED ON OQ-2 / OQ-4: SPEC PROPOSAL VOICE. This document is an architectural design specification. Economy's exposed MCP tool count and REST route count have grown twice since this banner was last accurate (7304330: 3/3; b75c873: 9/9) -- see docs/_generated/surface.md for the current count, not a number here. Direct Finago GL posting remains locked by CFO policy (still true at b75c873). Refer to docs/engines/economy-user.md and docs/engines/economy-admin.md for shipped reality -- note both now carry their own staleness warnings too (found 2026-09-06, DL.md K-1: the "shipped reality" docs were themselves stale). Verified-against: b75c873 -->
 
 
 **Status:** spec (Tier 2 — Platform axis) · **Owner:** NCE core (Sindre)
@@ -42,7 +42,7 @@ Node `entity_type` prefixes: `ECONOMY_*`, plus shared spine nodes `INVOICE`, `PE
 - **memories/ledger:** invoice OCR/EHF text → `memories` (embedding + `content_fts`) for "find similar invoices / disputes" recall. **Learning lives on the ledger:** every match decision, every cascade run, every balanced posting → `v3_cognitive_ledger` (this is where per-supplier recalibration and close-narrative recall live — event-sourced, auditor-queryable, replacing the reference implementation's bespoke learning table). Tag every derived row with `economy_source_id` for hard-retirement.
 
 ## Core functions
-<!-- BLOCKED ON OQ-2 / OQ-4: 9 domain cores exist in nce/vertical_modules/economy/ (do_compute_bucket_targets, do_compute_dunning, do_compute_recognition_schedule, do_emit_financial_event, do_forecast_cashflow, do_generate_kid, do_match_invoice, do_snapshot_mrr_arr_churn, do_validate_kid). Only 3 are exposed via MCP/REST as read-only advisor tools. Mutation cascades and direct GL posting remain unwired by policy. -->
+<!-- BLOCKED ON OQ-2 / OQ-4: STALE, corrected 2026-09-06 -- the engine now has 21 domain cores (up from 9), and 9 of them (not 3) are exposed via MCP/REST as read-only advisor tools: the original 3 plus economy_forecast_cashflow, economy_snapshot_mrr_arr_churn, economy_compute_dunning, economy_compute_recognition_schedule, economy_gl_sync_status, economy_generate_close_narrative (nce/tool_registry.py:823-876). do_cascade_on_approval and direct GL posting (do_reconcile_gl) remain unwired to autonomous mutation dispatch by policy -- that part is still true. See docs/_generated/surface.md for the current core count, not this comment. -->
 Pure-ish `do_<action>(engine, params) -> dict`; the match/periodise/balance cores are **pure** (0 DB) and lift near-1:1.
 - `do_match_invoice(engine, params) -> dict` — `{invoice, candidates[]}` → `{score 0..130, tier GREEN|YELLOW|RED, breakdown[]}`. **Pure.** 130-pt contextual: **PO-nr 50 / supplier 40 / price 30 / article 20 / project 10** + BOM-tieback / PO-expected-window / supplier-pattern (+15/+10/+5). Triage **≥115 GREEN / 70–114 YELLOW / <70 RED**, per-supplier adjustable thresholds overlaid from the ledger. **Invoice-tier = worst line-tier (conservative).**
 - `do_compute_bucket_targets(engine, params) -> dict` — NGAAP accrued/deferred/WIP over a period boundary (regnskapsloven §4-1; 7 buckets; Norwegian accounts 1531/2901/1771/4300…). **Pure.** Accounts come from config-as-IP, not code.
@@ -56,7 +56,7 @@ Pure-ish `do_<action>(engine, params) -> dict`; the match/periodise/balance core
 - `do_reconcile_gl(engine, params) -> dict` — **Finago GL reader** (internal vs legal book; **Economy OWNS this reader** — also consumed by Agreements(3) for spend reconciliation).
 
 ## MCP tools
-<!-- BLOCKED ON OQ-2 / OQ-4: Historical proposal listed 10 tools. Baseline 7304330 registers exactly 3 MCP tools: economy_match_invoice, economy_compute_periodisering, economy_emit_event. -->
+<!-- BLOCKED ON OQ-2 / OQ-4: Historical proposal listed 10 tools. STALE, corrected 2026-09-06 -- 9 MCP tools are registered at b75c873 (economy_match_invoice, economy_compute_periodisering, economy_emit_event, economy_forecast_cashflow, economy_snapshot_mrr_arr_churn, economy_compute_dunning, economy_compute_recognition_schedule, economy_gl_sync_status, economy_generate_close_narrative), not 3 -- see docs/_generated/surface.md for the current count. -->
 Registered in `nce/tool_registry.py` via `_h(...)` late-binding. AI-role tag per roadmap §2.
 
 | Tool | cacheable | admin_only | mutation | AI-role |
@@ -73,7 +73,7 @@ Registered in `nce/tool_registry.py` via `_h(...)` late-binding. AI-role tag per
 | `economy_sync_now` | ✘ | ✔ | ✔ | — (operator) |
 
 ## REST routes
-<!-- BLOCKED ON OQ-2 / OQ-4: Mounted REST routes at baseline 7304330 are /api/economy/match-invoice, /api/economy/periodisering, /api/economy/emit-event. Routes for dunning, cashflow forecast, GL reconciliation, and EHF generation are not mounted. -->
+<!-- BLOCKED ON OQ-2 / OQ-4: STALE, corrected 2026-09-06 -- dunning and cashflow-forecast routes ARE now mounted (/api/economy/dunning, /api/economy/forecast, /api/economy/mrr-arr-churn, /api/economy/recognition-schedule, /api/economy/gl-sync-status, /api/economy/close-narrative, nce/admin_app.py:823-867), alongside the original match-invoice/periodisering/emit-event. GL reconciliation (do_reconcile_gl) and EHF generation (do_generate_ehf) remain core-only with no route -- that part is still true. -->
 No-model path for the BFF, cron, scripts. Mounted via `build_app(extra_routes=...)`; HMAC/mTLS-authed in `nce/admin_handlers/economy.py`:
 - `api_economy_match_invoice` (POST) — 130-pt triage for an invoice + candidates.
 - `api_economy_periodisering` (POST) — NGAAP bucket targets for a period.

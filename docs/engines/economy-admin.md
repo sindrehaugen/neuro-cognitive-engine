@@ -1,10 +1,18 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** b75c873 (main) — **header only, see note** · **Last-audited:** 2026-09-06
 
 # Economy Engine Admin Guide (Doc 76)
 
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** b75c873 (main) — **header only, see note** · **Last-audited:** 2026-09-06
 
-This guide documents the administrative, operational, architectural, and security boundaries of the **Economy Engine** (`nce/vertical_modules/economy/`). It covers tenant enablement, the 3 SQL migrations, database Row Level Security (RLS) and Write-Once-Read-Many (WORM) ledger enforcement, statement-level balance triggers, the 3 mounted admin REST endpoints, external system integration (Finago GL and PEPPOL/EHF), cross-engine data ownership boundaries, and operational runbooks.
+> [!WARNING]
+> **This guide's body was written against `7304330` and describes 3 REST endpoints.** The engine
+> now mounts **9** (`nce/admin_app.py:823-867` — added: `/api/economy/forecast`,
+> `/mrr-arr-churn`, `/dunning`, `/recognition-schedule`, `/gl-sync-status`, `/close-narrative`) and
+> has grown from 9 to **21** `do_*` cores. The narrative sections below have not yet been rewritten
+> for the new surface — see `docs/engines/economy-user.md`'s matching warning for the full list of
+> what's new. Found and logged 2026-09-06 (`DL.md` K-1).
+
+This guide documents the administrative, operational, architectural, and security boundaries of the **Economy Engine** (`nce/vertical_modules/economy/`). It covers tenant enablement, the 3 SQL migrations, database Row Level Security (RLS) and Write-Once-Read-Many (WORM) ledger enforcement, statement-level balance triggers, the (now 9, see warning above) mounted admin REST endpoints, external system integration (Finago GL and PEPPOL/EHF), cross-engine data ownership boundaries, and operational runbooks.
 
 ---
 

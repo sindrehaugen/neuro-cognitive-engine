@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** b75c873 (main) — **§10 patched only, see warning there** · **Last-audited:** 2026-09-06
 
 # System Design Engine Admin Guide (Doc 70)
 
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** b75c873 (main) — **§10 patched only, see warning there** · **Last-audited:** 2026-09-06
 
 The **System Design Engine** (`nce/vertical_modules/system_design/`) is the Revenue↔Delivery bridge: an embedding-recall "AI Solution Agent" that proposes room BOMs, a pure SoW generator, and (Phase-2) a device/port topology model with structural validation. This guide covers enablement, configuration, database schema/RLS, the three Phase-1b adapters (NetBox, SharePoint, Lucid), autonomy posture, and troubleshooting — grounded strictly in what is implemented, not the design-intent spec.
 
@@ -192,11 +192,23 @@ There are **no scheduled tasks or watcher daemons** for this engine in the curre
 
 ## 10. Known code-level drift from the design spec (flagged, not fixed)
 
-For anyone reconciling `docs/vertical_engines/06-system-design-engine.md` against the running system:
+> [!WARNING]
+> **Points 2 and 3 below are now STALE and describe a state that no longer exists — found 2026-09-06
+> (`DL.md` K-1).** As of `b75c873` the engine registers **12** MCP tools, not 2: every function point 2
+> lists as "spec-only" — `system_design_propose_design`, `system_design_generate_sow`, and (under the
+> names `system_design_from_quote`/`system_design_to_quote`, not the spec's `design_from_quote`/
+> `design_to_quote`) the quote-conversion pair — is now registered in `nce/tool_registry.py:585-625`,
+> each with a matching REST route (see `docs/engines/system-design-user.md`'s warning for the full
+> list). `system_design_validate_design_graph` and `system_design_enrich_design_lines` also ship,
+> beyond what point 2 even enumerated. **Only `system_design_sync_functional_locations` remains
+> genuinely spec-only** (no tool, no route) as far as this pass re-checked. Points 1, 4, 5, 6 were
+> not re-verified this pass — treat them as last-checked `7304330`.
+
+For anyone reconciling `docs/vertical_engines/06-system-design-engine.md` against the running system (as it stood at `7304330` — see the warning above for what has since changed):
 
 1. **No `NCE_SYSTEM_DESIGN_ENABLED`** anywhere in code (§1 above) — spec §"Config keys" claims a per-namespace opt-in that does not exist.
-2. **Only 2 of 7 spec'd MCP tools exist.** `system_design_propose_design`, `system_design_design_from_quote`, `system_design_generate_sow`, `system_design_design_to_quote`, `system_design_validate_design`, and `system_design_sync_functional_locations` are all spec-only; only `system_design_ping` (a ping stub) and `system_design_publish_design_docs` (named `publish_design_docs`, not the spec's `publish_docs`) are registered.
-3. **No REST routes exist** for `api_system_design_propose_design`, `..._design_from_quote`, `..._generate_sow`, `..._design_to_quote`, `..._validate_design`, or `..._sync_functional_locations` — only `api_system_design_publish_design_docs` (under `/api/system-design/publish-design-docs` or `/api/system-design/publish`) is wired into `admin_app.py`.
+2. ~~**Only 2 of 7 spec'd MCP tools exist.**~~ **Stale — see warning above.** `system_design_propose_design`, `system_design_design_from_quote`, `system_design_generate_sow`, `system_design_design_to_quote`, `system_design_validate_design`, and `system_design_sync_functional_locations` are all spec-only; only `system_design_ping` (a ping stub) and `system_design_publish_design_docs` (named `publish_design_docs`, not the spec's `publish_docs`) are registered.
+3. ~~**No REST routes exist**~~ **Stale — see warning above.** for `api_system_design_propose_design`, `..._design_from_quote`, `..._generate_sow`, `..._design_to_quote`, `..._validate_design`, or `..._sync_functional_locations` — only `api_system_design_publish_design_docs` (under `/api/system-design/publish-design-docs` or `/api/system-design/publish`) is wired into `admin_app.py`.
 4. **No `NCE_SYSTEM_DESIGN_OUTCOME_WEIGHTS` config-as-IP JSON and no `NCE_SYSTEM_DESIGN_AUTO_CONFIDENCE_THRESHOLD`** — the outcome-weighting feature the spec describes has neither its config surface nor its implementation.
 5. **No `system_design_doc_refs` table** — the spec proposes one for tracking SharePoint/Lucid refs against a design; SharePoint's `store_sow` returns a ref to the *caller*, who is responsible for persisting it (nowhere does), and Lucid's export doesn't persist its URL anywhere either.
 6. **`do_publish_design_docs` only handles Lucid**, not the spec's combined `targets: ["sharepoint", "lucid"]` parameter — SharePoint delivery is a separate, uncalled function (§2.3).

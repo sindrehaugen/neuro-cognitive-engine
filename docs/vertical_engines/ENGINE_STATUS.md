@@ -1,9 +1,11 @@
-> **Status:** shipped · **Verified-against:** `dc751f9` (public `main`) · **Last-audited:** 2026-09-06
+> **Status:** shipped · **Verified-against:** `1e402e1` (public `main`) · **Last-audited:** 2026-09-06
 
 # NCE Vertical Engines — Build & Production Status
 
-> **For frontend planning.** 16 of 17 numbered engines are merged and running on public `main`
-> (+3 supporting integrations, +2 Operations-axis extensions not yet scheduled).
+> **For frontend planning.** **All 17 of 17 numbered engines are merged and running on public
+> `main`** (+3 supporting integrations, +2 Operations-axis extensions not yet scheduled). Every
+> engine with a registered tool now has a `docs/engines/<engine>-user.md` guide — the last five
+> (Support, Customer Portal, Resources, Assets, Marketing) were written 2026-09-06.
 > **Repository of record since 2026-09-05: `sindrehaugen/neuro-cognitive-engine` (public, AGPL-3.0).**
 > Source of truth for every number on this page: `nce/tool_registry.py`, `nce/admin_app.py`, and
 > `nce/vertical_modules/`, read by `scripts/gen_surface_table.py` into
@@ -19,17 +21,18 @@
 > python scripts/gen_surface_table.py --repo . --baseline HEAD --out docs/_generated/surface.md
 > ```
 
-## Measured inventory at `dc751f9`
+## Measured inventory at `1e402e1`
 
 | Instrument | Value |
 |---|---|
-| Module packages under `nce/vertical_modules/` | **19** (16 engines + `diagnostics`, `dynamics365`, `netbox`) |
-| `TOOL_REGISTRY` entries | **196** MCP tools (66 shared + 130 engine) |
-| REST routes on the admin app | **209** (+12 on the Customer Portal's own app shell) |
-| `do_*` domain cores | **229** distinct names across the 16 engines |
-| SQL migrations | 67 files, `001` → `073` (059, 066, 072 unused) |
+| Module packages under `nce/vertical_modules/` | **20** (17 engines + `diagnostics`, `dynamics365`, `netbox`) |
+| `TOOL_REGISTRY` entries | **213** MCP tools (66 shared + 147 engine) |
+| REST routes on the admin app | measured per-engine in [`docs/_generated/surface.md`](../_generated/surface.md) (+12 on the Customer Portal's own app shell) — regenerate for a total, do not hand-add the column |
+| `do_*` domain cores | **228** distinct names across the 17 engines |
+| SQL migrations | 70 files (+1 optional), `001` → `074` — gaps at `002`, `009`, `059` (never allocated); `010` exists only under `nce/migrations/optional/`. **Corrected 2026-09-06: this row previously said "67 files, 059/066/072 unused" — 066 and 072 are real, in-use migrations (`system_namespace`, `business_insights_engine`); only 002/009/059 were ever actually skipped.** |
 | `EXPECTED_TENANT_RLS_TABLES` | **87** |
-| Tests | **6,182** `def test_` across 507 files |
+| Tests | **6,423** `def test_` across 528 files |
+| Golden Thread seam burndown | **8 of 28** lifecycle steps still broken (5 distinct seams — `break-degradations` closed by Wave I-5, 2026-09-06) — generated, cannot go stale: [`docs/_generated/golden_thread_seams.md`](../_generated/golden_thread_seams.md) |
 
 **Status legend**
 
@@ -66,17 +69,17 @@
 
 | Engine | Module | Build | Tools | Routes | Cores | What it owns / does |
 |---|---|---|---|---|---|---|
-| Sales | M5 | ✅ Live | 4 | 15 | 31 | Owns `CUSTOMER`/`LEAD`/`QUOTE`/`SIGNED_BASELINE`. Full read model, `d365`/`both`/`nce` source-mode flip with a parity window, public quote endpoint (HMAC token), quote-line tools landing BOM_LINEs. |
+| Sales | M5 | ✅ Live | 5 | 15 | 31 | Owns `CUSTOMER`/`LEAD`/`QUOTE`/`SIGNED_BASELINE`. Full read model, `d365`/`both`/`nce` source-mode flip with a parity window, public quote endpoint (HMAC token), quote-line tools landing BOM_LINEs, C7 signature request (`sales_request_signature`, Wave S-2a). |
 | Vendors & Contractors | M4 | ✅ Live | 10 | 2 | 17 | Owns `VENDOR`/`CONTRACTOR`. Scorecards, tier status, reliability degradation, contractor matching, partner view over A2A with a pinned allowlist. |
 | Agreements | M3 | ✅ Live | 1 | 5 | 13 | Owns `AGREEMENT`. **The only real LLM extraction in the suite** (per-field confidence; money and legal always route to review), review queue, coverage matrix, kickback reconciliation, compliance audit, coverage watcher on cron. |
-| Economy | M8 | ✅ Live | 3 | 3 | 22 | Owns `INVOICE`/`POSTING`/`MARGIN`. 130-point matching, NGAAP periodisation, WORM balance trigger, 7-effect cascade, MRR/ARR/churn, dunning, Monte-Carlo cashflow, KID, EHF, Finago reader (real HTTP). |
+| Economy | M8 | ✅ Live | 9 | 9 | 22 | Owns `INVOICE`/`POSTING`/`MARGIN`. 130-point matching, NGAAP periodisation, WORM balance trigger, 7-effect cascade, MRR/ARR/churn, dunning, Monte-Carlo cashflow, KID, EHF, GL sync status, close-narrative generation, Finago reader (real HTTP). |
 
 ## Tier 3 — Delivery & Field Ops
 
 | Engine | Module | Build | Tools | Routes | Cores | What it owns / does |
 |---|---|---|---|---|---|---|
 | Warehouse & Inventory | M11 | ✅ Live | 14 | 14 | 17 | Owns `STOCK_LOCATION`/`GOODS_RECEIPT`. Append-only transactions, reservation algebra, row-locked decrements, partial-GR semantics, RMA+WEEE, dead stock, forecast/restock advisor, stock watcher on cron. **Every core is surfaced** — the template for the rest. |
-| Assets | M9 | ✅ Live | 4 | 3 | 6 | Owns `ASSET`/`TELEMETRY`. 14-state lifecycle, seeding from goods receipt, telemetry table and adapter contract. |
+| Assets | M9 | ✅ Live | 8 | 8 | 7 | Owns `ASSET`/`TELEMETRY`. 14-state lifecycle, seeding from BOM line, SLA attachment, health scoring — **telemetry is simulated** (`MockTelemetryAdapter`; no real vendor HTTP client is wired for Crestron/Q-SYS/Neat/Huddly/Poly, see `docs/engines/assets-admin.md`). |
 | Support | M10 | ✅ Live (PR #2, #11, #13) | 10 | 12 | 15 | Owns `TICKET` + SLA clock. Ticket query/open/resolve/triage, SLA clocks, customer-health scoring with touchpoints, recall-grounded troubleshooter, dispatch, D365 case sync. |
 | Staff & Resources | M15 | ✅ Live (PR #12) | 9 | 10 | 14 | Owns `RESOURCE`/`ALLOCATION`. Double-booking made impossible at the database (`EXCLUDE USING gist`), AI allocation planner, material flow, Norwegian *diett* travel rules, redacted field schedule, demand forecast. |
 | Field Tech | M12 | ✅ Live (PR #4) | 10 | 12 | 12 | Owns `WORK_ORDER`. Work orders under dual RLS (namespace + partner scope), ISO9001 checklists, time entries, serial scan, photo capture, offline sync, partner view. |
@@ -89,7 +92,7 @@
 |---|---|---|---|---|---|---|
 | HR | M13 | ✅ Live (PR #7) | 8 | 12 | 16 | Owns `EMPLOYEE`/`SKILL`/`CERTIFICATION`. Profiles, skills match, capacity, cert status, absences, onboarding quests, redacted 1:1 log, and a **native sykefravær compliance state machine**. EU-AI-Act constrained: no individual ranking. |
 | Marketing | M14 | ✅ Live (PR #9) | 8 | 9 | 10 | Case-study candidates and grounded drafting, anonymise-by-default, testimonials with consent tiers, AEO/GEO audit, human-gated publishing (`PublishTransport.MANUAL`; no Autonomous tier exists). |
-| Business Insights | M16 | 🟡 In review (PR #14) | 6 | 6 | — | KPI cockpit, executive morning brief with a provenance graph, **cross-engine risk radar**, Monte-Carlo scenarios, board pack, and "ask your business" behind a person barrier and an egress boundary. |
+| Business Insights | M16 | ✅ Live (PR #14 merged) | 6 | 6 | 6 | KPI cockpit, executive morning brief with a provenance graph, **cross-engine risk radar**, Monte-Carlo scenarios, board pack, and "ask your business" behind a person barrier and an egress boundary. |
 | Customer Portal | M17 | ✅ Live (PR #15, #16) | 9 | 12 (own app) | 10 | External customer surface — owns `PORTAL_USER`/`SERVICE_REQUEST`. Four-layer security spine on the existing C3 external-scope primitive, allow-list redaction, a rate-limited app shell, delivery tracker, expiring document shares, sandboxed advisor. |
 
 ## Supporting integrations

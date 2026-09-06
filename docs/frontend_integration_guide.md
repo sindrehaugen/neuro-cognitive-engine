@@ -4,7 +4,7 @@
 
 This guide covers the two shipped host-integration seams delivered as NCE front-end-readiness items **FE-1** and **FE-2** (Batches 153 and 154 respectively). These seams allow a host application to mount its own Starlette routes and register custom MCP tools against a pristine NCE installation without editing any NCE source file.
 
-> **Scope of this document:** shipped seams only (FE-1 and FE-2). Configurable static-asset serving (FE-3) and browser CORS/JWT-audience policy (FE-4) are planned and not yet shipped; they are noted as forthcoming where relevant.
+> **Scope of this document:** shipped seams only (FE-1 and FE-2). Configurable static-asset serving (FE-3) and browser CORS/JWT-audience policy (FE-4) are **withdrawn, not shipped and not scheduled** — Copper (their only consumer) withdrew both asks 2026-09-02, and Sindre confirmed `RL-B155`/`RL-B156` `[DROPPED]` 2026-09-04. They are noted below only as design reference for a future consumer, not as forthcoming work.
 
 ---
 
@@ -116,7 +116,7 @@ from host.bff_routes import steps_bff_routes
 app = build_app(extra_routes=steps_bff_routes)
 ```
 
-To also inject a CORS middleware (planned for FE-4, but the middleware slot is available now):
+To also inject a CORS middleware (FE-4 was withdrawn — see the note below — but the middleware slot is available now):
 
 ```python
 from starlette.middleware import Middleware
@@ -137,7 +137,7 @@ app = build_app(
 )
 ```
 
-> **Note — FE-3/FE-4 forthcoming (planned):** Configurable static front-end serving (`NCE_FRONTEND_DIR` / `NCE_FRONTEND_INDEX`) and a sanctioned browser JWT-audience/CORS policy are planned as Batches 155 and 156 respectively. The `extra_middleware` slot shown above is available today and is the correct place to inject CORS until the first-class FE-4 surface ships.
+> **Note — FE-3/FE-4 withdrawn, not planned:** Configurable static front-end serving (`NCE_FRONTEND_DIR` / `NCE_FRONTEND_INDEX`, Batch 155) and a sanctioned browser JWT-audience/CORS policy (Batch 156) were withdrawn by their only consumer, Copper, on 2026-09-02; `RL-B155`/`RL-B156` are confirmed `[DROPPED]` by Sindre (2026-09-04). Neither is scheduled. The `extra_middleware` slot shown above is available today and remains the correct place to inject CORS — there is no first-class FE-4 surface to migrate to.
 
 ---
 
@@ -358,14 +358,17 @@ flowchart TB
 
 ---
 
-## 6. What is NOT Covered (Forthcoming)
+## 6. What is NOT Covered (Withdrawn or Forthcoming)
 
-The following capabilities are specified in `docs/FRONTEND_READINESS.md` but are not yet shipped as of commit `7304330`:
+The following capabilities are specified in `docs/FRONTEND_READINESS.md` but not shipped. FE-3 and
+FE-4 are **withdrawn** (their only consumer, Copper, withdrew both asks 2026-09-02;
+`RL-B155`/`RL-B156` confirmed `[DROPPED]` by Sindre 2026-09-04) — nobody is building them. FE-5 is
+still an open, unscheduled ask.
 
 | Item | Spec ID | Description |
 |---|---|---|
-| Configurable static front-end serving | FE-3 (Batch 155, planned) | `NCE_FRONTEND_DIR` / `NCE_FRONTEND_INDEX` config vars to serve a host-provided SPA from outside the NCE package. Until FE-3 ships, hosts must serve static assets from their own process or a reverse proxy. |
-| Browser auth (CORS + JWT audience) | FE-4 (Batch 156, planned) | A configurable front-end JWT audience and CORS allow-origins so a browser can authenticate directly against NCE. Until FE-4 ships, use the `extra_middleware` slot from FE-1 to inject a CORS middleware as a temporary measure. |
+| Configurable static front-end serving | FE-3 (Batch 155, **withdrawn**) | `NCE_FRONTEND_DIR` / `NCE_FRONTEND_INDEX` config vars to serve a host-provided SPA from outside the NCE package. Not scheduled — hosts must serve static assets from their own process or a reverse proxy. |
+| Browser auth (CORS + JWT audience) | FE-4 (Batch 156, **withdrawn**) | A configurable front-end JWT audience and CORS allow-origins so a browser can authenticate directly against NCE. Not scheduled — use the `extra_middleware` slot from FE-1 to inject a CORS middleware, which is the durable answer, not a stopgap. |
 | Host configuration namespace | FE-5 (Batch 157, planned) | An extension-config pattern so host modules supply their own env-driven settings without editing `nce/config.py`. Until FE-5 ships, host modules should own and read their own settings objects independently of NCE config. |
 
 ---
