@@ -86,7 +86,7 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         index=5,
         name="baseline_frozen",
         canonical_label="baseline frozen",
-        is_broken=True,
+        is_broken=False,
         review_break="break-1",
         phase1_wave="S-2a",
         description="Signed quote freezes baseline via signing webhook/callback in production",
@@ -342,10 +342,6 @@ class TestGoldenThreadSteps:
 
         assert callable(do_request_signature)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="break-1: sales_signed_baselines has no production writer or signing webhook (Wave S-2a)",
-    )
     def test_step_05_baseline_frozen(self) -> None:
         """Step 5: baseline frozen via signing webhook."""
         # Seam verification: A signed quote in production must have an active webhook
@@ -640,12 +636,13 @@ class TestGoldenThreadPipeline:
 
     @pytest.mark.xfail(
         strict=True,
-        reason="break-1: Golden Thread pipeline halts at first broken seam (baseline frozen)",
+        reason="break-2: Golden Thread pipeline halts at next broken seam (BOM_LINE ORDERED unwritten, Wave PR-1)",
     )
     def test_golden_thread_full_e2e_pipeline(self) -> None:
         """Execute full scenario pipeline end-to-end.
 
-        Currently halts at Step 5 (baseline frozen) because Wave S-2a has not landed.
+        Step 5 (baseline frozen) was closed by Wave S-2a.
+        Halts at Step 8 (BOM_LINE ORDERED) until Wave PR-1 lands.
         """
         engine = NCEEngine()
         assert engine is not None
@@ -678,7 +675,7 @@ class TestGoldenThreadPipeline:
 
         assert callable(do_request_signature)
 
-        # Step 5: Baseline Frozen (First Seam Break)
+        # Step 5: Baseline Frozen (Closed by Wave S-2a)
         if not context["baseline_frozen"]:
             from nce.webhook_receiver.main import app
 
@@ -687,6 +684,23 @@ class TestGoldenThreadPipeline:
                 raise AssertionError(
                     "break-1: pipeline halted at step 5: sales_signed_baselines has no production webhook or tool (Wave S-2a)"
                 )
+            context["baseline_frozen"] = True
+
+        # Step 6: Project
+        from nce.vertical_modules.project.convert import do_convert_signed_quote
+
+        assert callable(do_convert_signed_quote)
+
+        # Step 7: PO
+        from nce.vertical_modules.procurement.po import do_generate_po
+
+        assert callable(do_generate_po)
+
+        # Step 8: BOM_LINE ORDERED (Second Seam Break - Wave PR-1)
+        if "procurement_submit_po" not in TOOL_REGISTRY:
+            raise AssertionError(
+                "break-2: pipeline halted at step 8: BOM_LINE ORDERED unwritten, procurement_submit_po missing (Wave PR-1)"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -726,12 +740,12 @@ class TestGoldenThreadPositiveControls:
 
         Originally 10 seam breaks (Steps 5, 8, 11, 13, 14, 17, 20, 23, 25, 27)
         plus the degradation register check (Step 28).
-        Wave CP-1 closed Step 25, burning down to 10 broken steps.
+        Wave S-2a closed Step 5, and Wave CP-1 closed Step 25, burning down to 9 broken steps.
         """
         broken_steps = [s for s in GOLDEN_THREAD_STEPS if s.is_broken]
-        assert len(broken_steps) == 10
+        assert len(broken_steps) == 9
         broken_indices = {s.index for s in broken_steps}
-        assert broken_indices == {5, 8, 11, 13, 14, 17, 20, 23, 27, 28}
+        assert broken_indices == {8, 11, 13, 14, 17, 20, 23, 27, 28}
 
     def test_positive_control_broken_steps_have_remediation_waves(self) -> None:
         """Verify every broken step specifies a responsible Phase 1 remediation wave."""

@@ -28,7 +28,7 @@
 | REST routes on the admin app | **209** (+12 on the Customer Portal's own app shell) |
 | `do_*` domain cores | **229** distinct names across the 16 engines |
 | SQL migrations | 67 files, `001` → `073` (059, 066, 072 unused) |
-| `EXPECTED_TENANT_RLS_TABLES` | **85** |
+| `EXPECTED_TENANT_RLS_TABLES` | **87** |
 | Tests | **6,182** `def test_` across 507 files |
 
 **Status legend**

@@ -25,6 +25,7 @@ import asyncpg  # type: ignore[import-untyped]
 import pytest
 import pytest_asyncio
 
+from nce.structural.no_person_grain import PersonGrainRejected
 from nce.vertical_modules.hr._guard import HrRankingProhibitedError, assert_ranking_prohibited
 from nce.vertical_modules.hr.certs import do_cert_status
 from nce.vertical_modules.hr.profile import (
@@ -186,7 +187,10 @@ async def test_hr_skills_and_certs_lifecycle(
 
 @pytest.mark.asyncio
 async def test_hr_rl1_never_ranking_enforcement() -> None:
-    """RL-1 NEVER ranking: asserting ranking parameters raises HrRankingProhibitedError."""
+    """RL-1 NEVER ranking / C9b: asserting ranking parameters raises HrRankingProhibitedError / PersonGrainRejected."""
+    assert issubclass(HrRankingProhibitedError, PersonGrainRejected)
+
+    # Standard brief inputs
     with pytest.raises(HrRankingProhibitedError):
         assert_ranking_prohibited({"leaderboard": True})
 
@@ -195,3 +199,22 @@ async def test_hr_rl1_never_ranking_enforcement() -> None:
 
     with pytest.raises(HrRankingProhibitedError):
         assert_ranking_prohibited({"sort_by": "score"})
+
+    # Adversarial inputs absent from brief (EU AI Act Art. 5 floor)
+    adversarial_cases = [
+        {"sort_by": "utilization_pct"},
+        {"sort_by": "workload"},
+        {"order_by": "fit"},
+        {"order_by": "score DESC"},
+        {"rank_by": "performance"},
+        {"top_n": 3},
+        {"top_k": 5},
+        {"rank": True},
+        {"ranking": "relative"},
+        {"compare_peers": True},
+    ]
+    for case in adversarial_cases:
+        with pytest.raises(PersonGrainRejected) as exc_info:
+            assert_ranking_prohibited(case)
+        assert isinstance(exc_info.value, HrRankingProhibitedError)
+        assert "EU AI Act Art. 5" in str(exc_info.value)

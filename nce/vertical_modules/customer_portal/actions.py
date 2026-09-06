@@ -72,9 +72,8 @@ async def do_raise_service_request(engine: Any, params: dict[str, Any]) -> dict[
             or getattr(engine, "namespace_id", "00000000-0000-4000-8000-000000000001")
         )
         try:
-            scoped_registry = (
-                modules.for_namespace(ns_str) if hasattr(modules, "for_namespace") else modules
-            )
+            for_ns = getattr(modules, "for_namespace", None)
+            scoped_registry = for_ns(ns_str) if callable(for_ns) else modules
             support_module = scoped_registry["support"]
             ticket_params = {
                 "namespace_id": ns_str,
@@ -134,9 +133,8 @@ async def do_register_expansion_interest(engine: Any, params: dict[str, Any]) ->
             or getattr(engine, "namespace_id", "00000000-0000-4000-8000-000000000001")
         )
         try:
-            scoped_registry = (
-                modules.for_namespace(ns_str) if hasattr(modules, "for_namespace") else modules
-            )
+            for_ns = getattr(modules, "for_namespace", None)
+            scoped_registry = for_ns(ns_str) if callable(for_ns) else modules
             _ = scoped_registry["sales"]
 
             # Sales lead queue hook / presence confirmed

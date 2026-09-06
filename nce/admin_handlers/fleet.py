@@ -1401,6 +1401,52 @@ async def api_admin_signing_status(request):
     return JSONResponse(payload)
 
 
+async def api_admin_signing_mark_signed(request):
+    """POST /api/admin/signing/mark-signed — mark a manual signing session signed (attest PDF)."""
+    if not admin_state.engine or not admin_state.engine.pg_pool:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    namespace_id = data.get("namespace_id")
+    session_id = data.get("session_id")
+    if not namespace_id:
+        return JSONResponse({"error": "namespace_id is required"}, status_code=400)
+    if not session_id:
+        return JSONResponse({"error": "session_id is required"}, status_code=400)
+
+    try:
+        from nce.vertical_modules.sales.signing import do_on_signed_callback
+
+        attestation = {
+            "attested_by": data.get("attested_by", "admin"),
+            "notes": data.get("attestation_notes", ""),
+            "method": "manual",
+            "pdf_attested": bool(data.get("attest_pdf", True)),
+            "signer_name": data.get("signer_name", "Admin Attestation"),
+        }
+        res = await do_on_signed_callback(
+            admin_state.engine,
+            {
+                "namespace_id": str(namespace_id),
+                "session_id": str(session_id),
+                "callback_payload": attestation,
+            },
+        )
+        return JSONResponse(res)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except Exception as exc:
+        return admin_error_response(
+            "Failed to mark signing session signed",
+            exc,
+            log_event="api_admin_signing_mark_signed failed",
+        )
+
+
 async def api_admin_pii_redactions_list(request):
     """GET /api/admin/pii-redactions — paginated vault rows (no ciphertext)."""
     if not admin_state.engine:

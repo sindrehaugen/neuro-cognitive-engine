@@ -3,6 +3,10 @@
   "ownership": [
     { "node_type": "PRODUCT_SKU",          "owner_engine": "product",       "transition": null },
     { "node_type": "PO",                   "owner_engine": "procurement",   "transition": null },
+    { "node_type": "PO_LINE",              "owner_engine": "procurement",   "transition": "status:draft" },
+    { "node_type": "PO_LINE",              "owner_engine": "procurement",   "transition": "status:ordered" },
+    { "node_type": "PO_LINE",              "owner_engine": "procurement",   "transition": "status:received" },
+    { "node_type": "PO_LINE",              "owner_engine": "procurement",   "transition": "status:cancelled" },
     { "node_type": "PROCUREMENT_MATCH",    "owner_engine": "procurement",   "transition": null },
     { "node_type": "FUNCTIONAL_LOCATION",  "owner_engine": "system_design", "transition": null },
     { "node_type": "DESIGN",               "owner_engine": "system_design", "transition": null },

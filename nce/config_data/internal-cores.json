@@ -39,11 +39,6 @@
     "owner": "MLV15B-S2b",
     "reason": "Agreement signature audit recorder; scheduled for signing webhook integration in Wave S-2b."
   },
-  "nce/vertical_modules/agreements/signing.py::do_request_signature": {
-    "engine": "agreements",
-    "owner": "MLV15B-S2b",
-    "reason": "Agreement digital signature request dispatcher; scheduled for BankID/Criipto transport in Wave S-2b."
-  },
   "nce/vertical_modules/agreements/sla.py::do_set_sla_coverage": {
     "engine": "agreements",
     "owner": "MLV15B-AG2",
@@ -254,11 +249,6 @@
     "owner": "MLV15C-SD2",
     "reason": "Historical win/loss recall core; dormant pending decision feedback loop integration in Phase 1."
   },
-  "nce/vertical_modules/sales/baseline.py::do_freeze_baseline": {
-    "engine": "sales",
-    "owner": "MLV15B-S2a",
-    "reason": "Baseline freeze core called internally by signing workflow; exposed externally when signing webhook lands in Wave S-2a."
-  },
   "nce/vertical_modules/sales/commission.py::do_calculate_commission": {
     "engine": "sales",
     "owner": "MLV15B-S6",
@@ -308,16 +298,6 @@
     "engine": "sales",
     "owner": "MLV15B-S2a",
     "reason": "Callback handler for declined signature requests; activated by signing webhook endpoint in Wave S-2a."
-  },
-  "nce/vertical_modules/sales/signing.py::do_on_signed_callback": {
-    "engine": "sales",
-    "owner": "MLV15B-S2a",
-    "reason": "Callback handler for completed signature attestations; activated by signing webhook endpoint in Wave S-2a."
-  },
-  "nce/vertical_modules/sales/signing.py::do_request_signature": {
-    "engine": "sales",
-    "owner": "MLV15B-S2a",
-    "reason": "Signature request dispatcher; currently unsurfaced pending signing webhook and admin route in Wave S-2a."
   },
   "nce/vertical_modules/sales/write_routing.py::do_create_deal": {
     "engine": "sales",

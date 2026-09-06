@@ -605,3 +605,27 @@ def test_every_globbed_file_contributes_a_marked_test() -> None:
         "file is marked now, no longer matched by any glob, or gone -- so remove "
         "them before the list drifts into a rubber stamp: " + ", ".join(stale) + "."
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 Wave T-5 Hardening: Positive Controls (U18)
+# ---------------------------------------------------------------------------
+
+
+def test_positive_control_fails_on_unwired_marked_file() -> None:
+    """Standing positive control (U18 / T-5 Q1): prove ratchet catches unwired marked files."""
+    fake_marked = _files_with_integration_markers() | {"tests/test_synthetic_unwired_marked.py"}
+    unaccounted = sorted(fake_marked - _files_named_in_workflows() - KNOWN_UNWIRED)
+    assert unaccounted == ["tests/test_synthetic_unwired_marked.py"], (
+        "Positive control failed: ratchet did not isolate synthetic unwired marked file"
+    )
+
+
+def test_positive_control_fails_on_unmarked_globbed_file() -> None:
+    """Standing positive control (U18 / T-5 Q1): prove converse ratchet catches unmarked globbed files."""
+    marked = _files_with_integration_markers()
+    fake_glob_files = {"tests/test_assets_synthetic_unmarked.py"}
+    offenders = sorted(fake_glob_files - marked - GLOBBED_UNMARKED_BY_DESIGN)
+    assert offenders == ["tests/test_assets_synthetic_unmarked.py"], (
+        "Positive control failed: converse ratchet did not isolate synthetic unmarked globbed file"
+    )

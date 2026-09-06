@@ -78,6 +78,15 @@ Same shape as ``TENANT_TABLES_WITHOUT_NAMESPACE_FK`` in
 ``tests/test_namespace_fk_cascade.py``: an allowlist plus a reverse assertion
 records debt without blessing it.
 
+**Unobserved surfaces (audited per Phase 4 Wave T-5 / Charter §13 Question 3):**
+1. *Dynamic tool registrations*: Tools injected into ``TOOL_REGISTRY`` at runtime
+   after module import, or via reflection/factory functions that do not use literal
+   ``Tool(name=...)`` AST expressions in ``nce/mcp_stdio_tools.py``.
+2. *Deep schema fidelity*: Structural schema checks verify ``type``, ``properties``,
+   and ``required`` fields exist, but cannot detect semantic contract mismatches (e.g.
+   missing regex patterns or mismatching inner payload types expected by handlers).
+3. *Runtime execution behavior*: Does not execute handlers against live inputs.
+
 Pure unit tests -- no database, no Redis.
 """
 
@@ -118,6 +127,29 @@ TOOLS_WITH_NO_DEFINITION: frozenset[str] = frozenset(
         "d365_sync_status",
     }
 )
+
+# Structured allowlist details: owner and substantive reason per entry.
+# Follows the internal-cores.json pattern audited under Phase 4 Wave T-5.
+TOOLS_WITH_NO_DEFINITION_DETAILS: dict[str, dict[str, str]] = {
+    "assets_ping": {
+        "owner": "assets",
+        "reason": (
+            "No argument contract is stated anywhere -- not in the handler, not in a "
+            "core. Authoring a schema would mean inventing one, and a guessed "
+            "contract in a document the FE codes against is worse than a documented "
+            "gap. Needs one sentence from the Assets owner, then it can move."
+        ),
+    },
+    "d365_sync_status": {
+        "owner": "dynamics365",
+        "reason": (
+            "DEPRIORITISED at Copper's request, not missed. Copper renders no D365 "
+            "at all (Contract-H) and will never call it, and its five siblings are "
+            "already defined behind NCE_D365_ENABLED. Left out so the exemption is "
+            "a decision on the record rather than an oversight."
+        ),
+    },
+}
 
 # Tools that DO have a definition but are spliced into TOOLS only when their
 # feature flag is on, so whether they are advertised is an operator choice, not
@@ -319,6 +351,47 @@ def test_the_recorded_gap_matches_what_is_measured() -> None:
     the gate above having been bypassed.
     """
     assert len(TOOLS_WITH_NO_DEFINITION) == 2
-    assert len(_registered()) == 212
-    assert len(_defined_in_file()) == 210
+    assert len(_registered()) == 213
+    assert len(_defined_in_file()) == 211
+
     assert len(_registered()) == len(_defined_in_file()) + len(TOOLS_WITH_NO_DEFINITION)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 Wave T-5 Hardening: Positive Controls (U18) & Allowlist Structure
+# ---------------------------------------------------------------------------
+
+
+def test_tools_with_no_definition_are_reasoned_and_owned() -> None:
+    """Audit rule (T-5 Q4): Every allowlist entry must have an owner and >=60 char reason."""
+    assert set(TOOLS_WITH_NO_DEFINITION) == set(TOOLS_WITH_NO_DEFINITION_DETAILS), (
+        "Allowlist keys mismatch between TOOLS_WITH_NO_DEFINITION and TOOLS_WITH_NO_DEFINITION_DETAILS"
+    )
+    for tool_name, details in TOOLS_WITH_NO_DEFINITION_DETAILS.items():
+        owner = details.get("owner", "").strip()
+        reason = details.get("reason", "").strip()
+        assert owner, f"{tool_name}: missing owner"
+        assert len(reason) >= 60, (
+            f"{tool_name}: reason too short ({len(reason)} chars; minimum 60 required)"
+        )
+
+
+def test_positive_control_ratchet_detects_unadvertised_tool() -> None:
+    """Standing positive control (U18 / T-5 Q1): prove ratchet goes red on unadvertised tool."""
+    fake_registered = _registered() | {"synthetic_unadvertised_tool"}
+    undiscoverable = sorted(fake_registered - _defined_in_file() - TOOLS_WITH_NO_DEFINITION)
+    assert undiscoverable == ["synthetic_unadvertised_tool"], (
+        "Positive control failed: ratchet did not isolate synthetic unadvertised tool"
+    )
+
+
+def test_positive_control_ratchet_detects_malformed_schema() -> None:
+    """Standing positive control (U18 / T-5 Q1): prove schema validator catches malformed Tool."""
+
+    class _BadTool:
+        name = "bad_synthetic_tool"
+        description = ""
+        inputSchema = {}
+
+    with pytest.raises(AssertionError, match="empty description"):
+        test_every_advertised_tool_carries_a_usable_contract(_BadTool())
