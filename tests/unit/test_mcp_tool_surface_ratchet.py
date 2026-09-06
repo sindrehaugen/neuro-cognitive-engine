@@ -351,8 +351,8 @@ def test_the_recorded_gap_matches_what_is_measured() -> None:
     the gate above having been bypassed.
     """
     assert len(TOOLS_WITH_NO_DEFINITION) == 2
-    assert len(_registered()) == 231
-    assert len(_defined_in_file()) == 229
+    assert len(_registered()) == 235
+    assert len(_defined_in_file()) == 233
     assert len(_registered()) == len(_defined_in_file()) + len(TOOLS_WITH_NO_DEFINITION)
 
 

@@ -258,25 +258,5 @@
     "engine": "vendors",
     "owner": "MLV15D-V2",
     "reason": "Certification expiration checker; scheduled for cron runner in MLV15D Wave V-2 emitting CERTIFICATION.EXPIRED."
-  },
-  "nce/vertical_modules/vendors/certs.py::do_upsert_cert": {
-    "engine": "vendors",
-    "owner": "MLV15D-V1",
-    "reason": "Vendor certification upsert mutator; scheduled for master-data tool exposure in MLV15D Wave V-1."
-  },
-  "nce/vertical_modules/vendors/contractors.py::do_get_contractor": {
-    "engine": "vendors",
-    "owner": "MLV15D-V1",
-    "reason": "Contractor detail query; scheduled for MCP tool exposure in MLV15D Wave V-1."
-  },
-  "nce/vertical_modules/vendors/contractors.py::do_upsert_contractor": {
-    "engine": "vendors",
-    "owner": "MLV15D-V1",
-    "reason": "Contractor profile upsert mutator; scheduled for master-data tool exposure in MLV15D Wave V-1."
-  },
-  "nce/vertical_modules/vendors/registry.py::do_upsert_vendor": {
-    "engine": "vendors",
-    "owner": "MLV15D-V1",
-    "reason": "Vendor organization upsert core; scheduled for master-data tool exposure in MLV15D Wave V-1."
   }
 }

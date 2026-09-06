@@ -116,8 +116,8 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         name="ordered",
         canonical_label="ORDERED",
         is_broken=False,
-        review_break=None,
-        phase1_wave=None,
+        review_break="break-2",
+        phase1_wave="PR-1",
         description="PO submission emits PO_LINE.status_changed to write BOM_LINE ORDERED rung",
     ),
     BurndownStep(
@@ -143,8 +143,8 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         name="delivered",
         canonical_label="DELIVERED",
         is_broken=False,
-        review_break=None,
-        phase1_wave=None,
+        review_break="break-2",
+        phase1_wave="IN-1",
         description="GOODS_RECEIPT.created event published to transition BOM_LINE to DELIVERED",
     ),
     BurndownStep(
@@ -160,7 +160,7 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         index=13,
         name="installed",
         canonical_label="install (INSTALLED)",
-        is_broken=True,
+        is_broken=False,
         review_break="break-2",
         phase1_wave="FT-1",
         description="Field Tech scan/install completion calls update_bom_line_status with INSTALLED",
@@ -169,7 +169,7 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         index=14,
         name="tested",
         canonical_label="test (TESTED)",
-        is_broken=True,
+        is_broken=False,
         review_break="break-2",
         phase1_wave="FT-1",
         description="Field Tech test completion calls update_bom_line_status with TESTED",
@@ -419,10 +419,6 @@ class TestGoldenThreadSteps:
 
         assert callable(do_seed_asset_from_bom)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="break-2: Field Tech install never calls update_bom_line_status(INSTALLED) (Wave FT-1)",
-    )
     def test_step_13_install_installed(self) -> None:
         """Step 13: BOM_LINE INSTALLED rung written by Field Tech install."""
         # Seam verification: field_tech/scan.py or checklist.py must call update_bom_line_status
@@ -444,10 +440,6 @@ class TestGoldenThreadSteps:
                 "break-2: Field Tech never calls update_bom_line_status (Wave FT-1)"
             )
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="break-2: Field Tech test never calls update_bom_line_status(TESTED) (Wave FT-1)",
-    )
     def test_step_14_test_tested(self) -> None:
         """Step 14: BOM_LINE TESTED rung written by Field Tech test."""
         # Seam verification: field_tech must record TESTED rung
@@ -633,7 +625,7 @@ class TestGoldenThreadPipeline:
 
     @pytest.mark.xfail(
         strict=True,
-        reason="break-2: Golden Thread pipeline halts at next broken seam (BOM_LINE INSTALLED unwritten, Wave FT-1)",
+        reason="break-3: Golden Thread pipeline halts at next broken seam (actual_cost on BOM_LINE unwritten, Wave E-3)",
     )
     def test_golden_thread_full_e2e_pipeline(self) -> None:
         """Execute full scenario pipeline end-to-end.
@@ -641,7 +633,8 @@ class TestGoldenThreadPipeline:
         Step 5 (baseline frozen) was closed by Wave S-2a.
         Step 8 (BOM_LINE ORDERED) was closed by Wave PR-1.
         Step 11 (BOM_LINE DELIVERED / GOODS_RECEIPT.created) was closed by Wave IN-1.
-        Halts at Step 13 (BOM_LINE INSTALLED / Field Tech install) until Wave FT-1 lands.
+        Steps 13 & 14 (BOM_LINE INSTALLED & TESTED) were closed by Wave FT-1.
+        Halts at Step 17 (actual_cost on BOM_LINE / economy cascade) until Wave E-3 lands.
         """
         engine = NCEEngine()
         assert engine is not None
@@ -732,7 +725,7 @@ class TestGoldenThreadPipeline:
 
         assert callable(do_seed_asset_from_bom)
 
-        # Step 13: BOM_LINE INSTALLED (Fourth Seam Break - Wave FT-1)
+        # Step 13 / 14: Field Tech install / test updates BOM_LINE status (Wave FT-1)
         import ast
         import pathlib
 
@@ -748,7 +741,23 @@ class TestGoldenThreadPipeline:
                         break
         if not found:
             raise AssertionError(
-                "break-2: pipeline halted at step 13: Field Tech never calls update_bom_line_status (Wave FT-1)"
+                "break-2: Field Tech never calls update_bom_line_status (Wave FT-1)"
+            )
+
+        # Step 15: SLA Attached
+        from nce.vertical_modules.assets.sla import do_attach_sla
+
+        assert callable(do_attach_sla)
+
+        # Step 16: Invoice Approved
+        from nce.vertical_modules.economy.cascade import do_cascade_on_approval
+
+        assert callable(do_cascade_on_approval)
+
+        # Step 17: actual_cost written to BOM_LINE by economy cascade (Fifth Seam Break - Wave E-3)
+        if "economy_approve_invoice" not in TOOL_REGISTRY:
+            raise AssertionError(
+                "break-3: pipeline halted at step 17: economy_approve_invoice missing / actual_cost unwritten (Wave E-3)"
             )
 
 
@@ -790,13 +799,13 @@ class TestGoldenThreadPositiveControls:
         Originally 10 seam breaks (Steps 5, 8, 11, 13, 14, 17, 20, 23, 25, 27)
         plus the degradation register check (Step 28).
         Wave S-2a closed Step 5, Wave CP-1 closed Step 25, Wave I-5 closed Step 28,
-        Wave PR-1 closed Step 8, Wave IN-1 closed Step 11, and Wave PJ-1/SD-2 closed Step 27,
-        burning down to 5 broken steps.
+        Wave PR-1 closed Step 8, Wave IN-1 closed Step 11, Wave FT-1 closed Steps 13 & 14,
+        and Wave PJ-1/SD-2 closed Step 27, burning down to 3 broken steps.
         """
         broken_steps = [s for s in GOLDEN_THREAD_STEPS if s.is_broken]
-        assert len(broken_steps) == 5
+        assert len(broken_steps) == 3
         broken_indices = {s.index for s in broken_steps}
-        assert broken_indices == {13, 14, 17, 20, 23}
+        assert broken_indices == {17, 20, 23}
 
     def test_positive_control_broken_steps_have_remediation_waves(self) -> None:
         """Verify every broken step specifies a responsible Phase 1 remediation wave."""

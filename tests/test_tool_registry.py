@@ -26,9 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = (
-    231  # 215 baseline (incl. Wave PR-1 #35) + 9 Agreements tools (Wave AG-2) + 7 MLV15C tools
-)
+_EXPECTED_TOTAL = 235  # 224 baseline + 4 Vendors tools (Wave V-1) + 7 MLV15C tools
 
 
 def test_registry_has_expected_entries():
@@ -223,6 +221,10 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "agreements_request_signature",
         "agreements_record_signature",
         "agreements_review_extraction",
+        # MLV15D-V1 -- Vendors master-data mutations (3 tools)
+        "vendors_upsert_vendor",
+        "vendors_upsert_contractor",
+        "vendors_upsert_cert",
         # Wave C10 -- Decision Feedback service mutation
         "decision_feedback_record",
         # Wave P-2 -- Product Spec Ingestion mutation
@@ -245,9 +247,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert (
-        len(MUTATION_TOOLS) == 101
-    )  # 90 baseline (incl. PR-1 #35) + 6 Agreements tools (Wave AG-2) + 5 MLV15C tools
+    assert len(MUTATION_TOOLS) == 104  # 96 baseline + 3 Vendors tools (Wave V-1) + 5 MLV15C tools
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -383,6 +383,8 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "agreements_coverage_matrix",
         "agreements_reconcile_kickback",
         "agreements_run_compliance_audit",
+        # MLV15D-V1 -- Vendors cacheable read (1 tool)
+        "vendors_get_contractor",
         # Wave P-3 -- Product golden record read tool (cacheable)
         "product_golden_record",
         # Wave T-1 -- Trust dial status read tool (cacheable)
@@ -400,8 +402,8 @@ def test_cacheable_tools_exact_match():
 
 def test_cacheable_tools_count():
     assert (
-        len(CACHEABLE_TOOLS) == 87
-    )  # 82 baseline + 3 agreements tools (Wave AG-2) + 1 product golden record (Wave P-3) + 1 trust dial status (Wave T-1)
+        len(CACHEABLE_TOOLS) == 88
+    )  # 86 baseline (incl. V-1) + 2 MLV15C tools (product_golden_record, trust_dial_get_status)
 
 
 # ---------------------------------------------------------------------------
@@ -501,6 +503,10 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "agreements_request_signature",
         "agreements_record_signature",
         "agreements_review_extraction",
+        # MLV15D-V1 -- Vendors master-data admin tools (3 tools)
+        "vendors_upsert_vendor",
+        "vendors_upsert_contractor",
+        "vendors_upsert_cert",
         # Wave C10 -- Decision Feedback service admin_only tool
         "decision_feedback_record",
         # Wave PJ-1 -- Project record outcome admin_only tool
@@ -522,8 +528,8 @@ def test_admin_only_tools_exact_match():
 
 def test_admin_only_tools_count():
     assert (
-        len(ADMIN_ONLY_TOOLS) == 62
-    )  # 52 baseline (incl. PR-1 #35) + 6 Agreements tools (Wave AG-2) + 4 MLV15C tools
+        len(ADMIN_ONLY_TOOLS) == 65
+    )  # 52 baseline (incl. PR-1 #35) + 6 Agreements tools (Wave AG-2) + 3 Vendors tools (Wave V-1) + 4 MLV15C tools
 
 
 # ---------------------------------------------------------------------------

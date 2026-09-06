@@ -748,6 +748,26 @@ def build_admin_routes() -> list[Route]:
             methods=["GET"],
         ),
         Route(
+            "/api/vendors/upsert",
+            endpoint=vendors_handlers.api_vendors_upsert,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/vendors/contractors/upsert",
+            endpoint=vendors_handlers.api_vendors_upsert_contractor,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/vendors/contractors/{id}",
+            endpoint=vendors_handlers.api_vendors_get_contractor,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/vendors/certs/upsert",
+            endpoint=vendors_handlers.api_vendors_upsert_cert,
+            methods=["POST"],
+        ),
+        Route(
             "/api/vendors/{id}",
             endpoint=vendors_handlers.api_vendors_get_vendor,
             methods=["GET"],

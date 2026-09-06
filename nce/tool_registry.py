@@ -868,6 +868,30 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    "vendors_upsert_vendor": ToolSpec(
+        _h(vendors_mcp_handlers, "handle_vendors_upsert_vendor"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "vendors_upsert_contractor": ToolSpec(
+        _h(vendors_mcp_handlers, "handle_vendors_upsert_contractor"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "vendors_get_contractor": ToolSpec(
+        _h(vendors_mcp_handlers, "handle_vendors_get_contractor"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "vendors_upsert_cert": ToolSpec(
+        _h(vendors_mcp_handlers, "handle_vendors_upsert_cert"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
     # ------------------------------------------------------------------
     # Agreements vertical module tools (Batch 109 & Wave AG-2/AG-3)
     # ------------------------------------------------------------------
