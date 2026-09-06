@@ -35,6 +35,7 @@ from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import mcp_handler
 from nce.vertical_modules.sales.baseline import get_signed_baseline
 from nce.vertical_modules.sales.lines import do_add_quote_line, do_get_quote_lines
+from nce.vertical_modules.sales.signing import do_request_signature
 
 if TYPE_CHECKING:
     from nce.orchestrator import NCEEngine
@@ -185,3 +186,49 @@ async def handle_sales_get_quote_lines(engine: NCEEngine, arguments: dict[str, A
     ns = require_namespace_id(arguments)
     rows = await do_get_quote_lines(engine, UUID(ns), arguments.get("quote_id"))
     return json.dumps(rows)
+
+
+@mcp_handler
+async def handle_sales_request_signature(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: sales_request_signature — request e-signature for a sales quote.
+
+    Surfaces Sales quote signing orchestration via C7 SignTransport.
+    Actor tool, mutation=True, admin_only=True.
+
+    Arguments
+    ---------
+    namespace_id (str): Required. Caller namespace UUID.
+    quote_id (str): Required. The Sales QUOTE identifier.
+    signer (dict, optional): Signer details (name, email).
+    method (str, optional): Transport method ("manual", "oneflow", "criipto", "signicat"). Defaults to "manual".
+    idempotency_key (str, optional): Caller-supplied idempotency key.
+    doc_bytes (str, optional): Raw document bytes or string.
+
+    Returns
+    -------
+    JSON body of the created signing session dict.
+    """
+    ns = require_namespace_id(arguments)
+    quote_id = arguments.get("quote_id")
+    if not isinstance(quote_id, str) or not quote_id.strip():
+        raise ValueError("quote_id is required")
+
+    params: dict[str, Any] = {
+        "namespace_id": ns,
+        "quote_id": quote_id.strip(),
+    }
+    if "signer" in arguments and isinstance(arguments["signer"], dict):
+        params["signer"] = arguments["signer"]
+    if "method" in arguments and isinstance(arguments["method"], str):
+        params["method"] = arguments["method"].strip()
+    if "idempotency_key" in arguments:
+        params["idempotency_key"] = arguments["idempotency_key"]
+    if "doc_bytes" in arguments:
+        doc_raw = arguments["doc_bytes"]
+        if isinstance(doc_raw, str):
+            params["doc_bytes"] = doc_raw.encode("utf-8")
+        elif isinstance(doc_raw, bytes):
+            params["doc_bytes"] = doc_raw
+
+    session = await do_request_signature(engine, params)
+    return json.dumps(session)

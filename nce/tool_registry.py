@@ -737,6 +737,14 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=True,
     ),
+    # Sales quote signing orchestration via C7 SignTransport (Wave S-2a).
+    # Actor tool: admin_only=True, mutation=True, cacheable=False.
+    "sales_request_signature": ToolSpec(
+        _h(sales_mcp_handlers, "handle_sales_request_signature"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
     # ------------------------------------------------------------------
     # Vendors vertical module tools (Batch 096)
     # ------------------------------------------------------------------

@@ -51,12 +51,12 @@ _NAMESPACE_ID = "00000000-0000-4000-8000-000000000001"
 _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
-# --- MEASURED on branch ml9b/assets-completion ------------------------------
+# --- MEASURED on branch mlv15b/close-the-loop --------------------------------
 # python -c "import nce.tool_registry as tr; print(len(tr.TOOL_REGISTRY))"
-_TOTAL_TOOLS = 212  # 206 baseline + 6 economy surface completion tools (MLV15D Wave E-1)
-_MUTATION_TOOLS = 87  # 83 baseline + 4 mutating assets tools
+_TOTAL_TOOLS = 213  # 206 baseline + 6 economy surface completion tools (MLV15D Wave E-1) + 1 sales signing request (Wave S-2a)
+_MUTATION_TOOLS = 88  # 87 baseline + 1 sales signing request
 _CACHEABLE_TOOLS = 82  # 76 baseline + 6 economy surface completion tools
-_ADMIN_ONLY_TOOLS = 49  # 48 baseline + 1 admin_only assets tool (pull_telemetry)
+_ADMIN_ONLY_TOOLS = 50  # 49 baseline + 1 sales signing request
 _MIGRATION_TOOLS = 5
 
 

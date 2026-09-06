@@ -185,7 +185,17 @@ async def do_on_signed_callback(
     callback_payload = params.get("callback_payload") or {}
 
     # 1. Transition transport session state
-    _ = _transport.on_signed(session_id, callback_payload)
+    try:
+        _ = _transport.on_signed(session_id, callback_payload)
+    except KeyError:
+        # Multi-process / external webhook: register and transition session locally
+        _transport._sessions[session_id] = {
+            "session_id": session_id,
+            "status": "signed",
+            "fingerprint": callback_payload.get("fingerprint", ""),
+            "method": "manual",
+            "signer": {},
+        }
 
     # 2. Fetch quote associated with session_id
     async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
