@@ -315,3 +315,26 @@ async def test_mcp_handler_resources_error_maps_to_invalid_params() -> None:
 
     assert exc_info.value.code == MCP_INVALID_PARAMS
     assert "Invalid parameters" in exc_info.value.message
+
+
+@pytest.mark.asyncio
+async def test_missing_method_on_support_module_raises_loudly() -> None:
+    """If support_module lacks do_open_ticket, it raises AttributeError rather than silently dropping."""
+    engine = NCEEngine()
+    empty_support_module = object()
+
+    mock_scoped_registry = {"support": empty_support_module}
+    mock_registry = MagicMock()
+    mock_registry.for_namespace.return_value = mock_scoped_registry
+
+    engine.modules = mock_registry
+
+    params = {
+        "namespace_id": _NS_ID,
+        "customer_scope_id": _CUST_SCOPE,
+        "request_id": f"req-loud-{uuid.uuid4().hex[:6]}",
+        "summary": "Should be loud if method missing",
+    }
+
+    with pytest.raises(AttributeError):
+        await do_raise_service_request(engine, params)

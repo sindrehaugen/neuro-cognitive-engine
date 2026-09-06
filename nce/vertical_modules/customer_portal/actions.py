@@ -85,15 +85,14 @@ async def do_raise_service_request(engine: Any, params: dict[str, Any]) -> dict[
                 "description": params.get("description") or safe_record.get("summary"),
                 "priority": params.get("priority", "medium"),
             }
-            if hasattr(support_module, "do_open_ticket"):
-                ticket_res = await support_module.do_open_ticket(engine, ticket_params)
-                ticket_data = (
-                    ticket_res.get("ticket", ticket_res) if isinstance(ticket_res, dict) else {}
-                )
-                safe_record["ticket_id"] = str(
-                    ticket_data.get("id") or ticket_data.get("ticket_id") or ""
-                )
-                safe_record["ticket_status"] = str(ticket_data.get("status") or "open")
+            ticket_res = await support_module.do_open_ticket(engine, ticket_params)
+            ticket_data = (
+                ticket_res.get("ticket", ticket_res) if isinstance(ticket_res, dict) else {}
+            )
+            safe_record["ticket_id"] = str(
+                ticket_data.get("id") or ticket_data.get("ticket_id") or ""
+            )
+            safe_record["ticket_status"] = str(ticket_data.get("status") or "open")
         except EngineDisabledError as exc:
             log.warning("Support engine is disabled for namespace %s: %s", ns_str, exc)
             safe_record["support_degraded"] = True
@@ -102,9 +101,6 @@ async def do_raise_service_request(engine: Any, params: dict[str, Any]) -> dict[
             log.warning("Support engine not found in registry: %s", exc)
             safe_record["support_degraded"] = True
             safe_record["degradation_reason"] = "support_engine_not_found"
-        except Exception as exc:
-            log.warning("Support hand-off encountered error: %s", exc)
-            safe_record["support_handoff_error"] = str(exc)
     else:
         safe_record["support_degraded"] = True
         safe_record["degradation_reason"] = "engine_modules_unavailable"
