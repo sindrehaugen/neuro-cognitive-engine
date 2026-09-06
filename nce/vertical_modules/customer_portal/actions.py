@@ -72,7 +72,9 @@ async def do_raise_service_request(engine: Any, params: dict[str, Any]) -> dict[
             or getattr(engine, "namespace_id", "00000000-0000-4000-8000-000000000001")
         )
         try:
-            scoped_registry = modules.for_namespace(ns_str)
+            scoped_registry = (
+                modules.for_namespace(ns_str) if hasattr(modules, "for_namespace") else modules
+            )
             support_module = scoped_registry["support"]
             ticket_params = {
                 "namespace_id": ns_str,
@@ -132,8 +134,11 @@ async def do_register_expansion_interest(engine: Any, params: dict[str, Any]) ->
             or getattr(engine, "namespace_id", "00000000-0000-4000-8000-000000000001")
         )
         try:
-            scoped_registry = modules.for_namespace(ns_str)
+            scoped_registry = (
+                modules.for_namespace(ns_str) if hasattr(modules, "for_namespace") else modules
+            )
             _ = scoped_registry["sales"]
+
             # Sales lead queue hook / presence confirmed
             sales_routed = True
         except EngineDisabledError as exc:
@@ -144,10 +149,6 @@ async def do_register_expansion_interest(engine: Any, params: dict[str, Any]) ->
             log.warning("Sales engine not found in registry: %s", exc)
             sales_degraded = True
             degradation_reason = "sales_engine_not_found"
-        except Exception as exc:
-            log.warning("Sales hand-off encountered error: %s", exc)
-            sales_degraded = True
-            degradation_reason = str(exc)
     else:
         sales_degraded = True
         degradation_reason = "engine_modules_unavailable"

@@ -53,9 +53,9 @@ _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
 # --- MEASURED on branch ml9b/assets-completion ------------------------------
 # python -c "import nce.tool_registry as tr; print(len(tr.TOOL_REGISTRY))"
-_TOTAL_TOOLS = 206  # 202 baseline + 4 assets completion tools (ML9b P1+P2)
+_TOTAL_TOOLS = 212  # 206 baseline + 6 economy surface completion tools (MLV15D Wave E-1)
 _MUTATION_TOOLS = 87  # 83 baseline + 4 mutating assets tools
-_CACHEABLE_TOOLS = 76  # unchanged by ML9b
+_CACHEABLE_TOOLS = 82  # 76 baseline + 6 economy surface completion tools
 _ADMIN_ONLY_TOOLS = 49  # 48 baseline + 1 admin_only assets tool (pull_telemetry)
 _MIGRATION_TOOLS = 5
 

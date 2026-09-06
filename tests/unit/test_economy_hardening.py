@@ -42,7 +42,17 @@ from asyncpg.exceptions import DataError as _PgDataError
 _NAMESPACE_ID = "00000000-0000-4000-8000-000000000099"
 
 _ECONOMY_TOOLS: frozenset[str] = frozenset(
-    {"economy_match_invoice", "economy_compute_periodisering", "economy_emit_event"}
+    {
+        "economy_match_invoice",
+        "economy_compute_periodisering",
+        "economy_emit_event",
+        "economy_forecast_cashflow",
+        "economy_snapshot_mrr_arr_churn",
+        "economy_compute_dunning",
+        "economy_compute_recognition_schedule",
+        "economy_gl_sync_status",
+        "economy_generate_close_narrative",
+    }
 )
 
 _INVOICE: dict[str, Any] = {
@@ -68,7 +78,7 @@ _BALANCED_EVENT: dict[str, Any] = {
 
 
 def test_exact_economy_tool_count() -> None:
-    """Economy tools registered in TOOL_REGISTRY must be exactly the 3 listed tools."""
+    """Economy tools registered in TOOL_REGISTRY must be exactly the 9 listed tools."""
     from nce.tool_registry import TOOL_REGISTRY
 
     registered_economy = {name for name in TOOL_REGISTRY if name.startswith("economy_")}
