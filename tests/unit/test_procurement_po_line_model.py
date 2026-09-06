@@ -131,8 +131,8 @@ def test_node_ownership_json_declares_procurement_po_line():
 
     ownership_list = data["ownership"]
     po_line_entries = [e for e in ownership_list if e.get("node_type") == "PO_LINE"]
-    assert len(po_line_entries) == 5, (
-        f"Expected 5 PO_LINE ownership entries, found {len(po_line_entries)}"
+    assert len(po_line_entries) == 4, (
+        f"Expected 4 PO_LINE ownership entries, found {len(po_line_entries)}"
     )
 
     for entry in po_line_entries:
@@ -140,7 +140,6 @@ def test_node_ownership_json_declares_procurement_po_line():
 
     transitions = {e.get("transition") for e in po_line_entries}
     expected_transitions = {
-        None,
         "status:draft",
         "status:ordered",
         "status:received",

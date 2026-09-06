@@ -3,7 +3,6 @@
   "ownership": [
     { "node_type": "PRODUCT_SKU",          "owner_engine": "product",       "transition": null },
     { "node_type": "PO",                   "owner_engine": "procurement",   "transition": null },
-    { "node_type": "PO_LINE",              "owner_engine": "procurement",   "transition": null },
     { "node_type": "PO_LINE",              "owner_engine": "procurement",   "transition": "status:draft" },
     { "node_type": "PO_LINE",              "owner_engine": "procurement",   "transition": "status:ordered" },
     { "node_type": "PO_LINE",              "owner_engine": "procurement",   "transition": "status:received" },
