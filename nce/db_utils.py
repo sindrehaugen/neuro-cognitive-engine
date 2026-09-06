@@ -62,6 +62,10 @@ UNMANAGED_PG_AUDITED_SITES: Final[frozenset[str]] = frozenset(
         "cron.inventory_stock_watcher.namespace_scan",
         # Wave A-1 (M9.W5): assets telemetry watcher tick -- scans active telemetry devices
         "cron.assets_telemetry.scan",
+        # Wave HR-1 (break-5a): HR cert expiry watcher tick -- scans active namespaces
+        "cron.hr_cert_expiry_watcher.namespace_scan",
+        # Wave V-2 (break-5a): Vendors cert expiry watcher tick -- scans active namespaces
+        "cron.vendors_cert_expiry_watcher.namespace_scan",
     }
 )
 
