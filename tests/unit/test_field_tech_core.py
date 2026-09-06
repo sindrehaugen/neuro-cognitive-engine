@@ -130,6 +130,13 @@ def _patch_scoped_session(monkeypatch: pytest.MonkeyPatch) -> None:
         _fake_scoped,
         raising=False,
     )
+    mock_assert_owner = AsyncMock(return_value=None)
+    for mod in ("work_orders", "checklist", "photo", "scan", "time_entry"):
+        monkeypatch.setattr(
+            f"nce.vertical_modules.field_tech.{mod}.assert_owner",
+            mock_assert_owner,
+            raising=False,
+        )
     monkeypatch.setattr(
         "nce.vertical_modules.field_tech.outcome.scoped_pg_session",
         _fake_scoped,

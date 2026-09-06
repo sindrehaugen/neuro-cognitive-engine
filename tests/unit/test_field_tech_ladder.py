@@ -61,6 +61,13 @@ def _patch_scoped_session(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("nce.vertical_modules.field_tech.scan.scoped_pg_session", _fake_scoped)
     monkeypatch.setattr("nce.vertical_modules.field_tech.checklist.scoped_pg_session", _fake_scoped)
+    mock_assert_owner = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        "nce.vertical_modules.field_tech.scan.assert_owner", mock_assert_owner, raising=False
+    )
+    monkeypatch.setattr(
+        "nce.vertical_modules.field_tech.checklist.assert_owner", mock_assert_owner, raising=False
+    )
 
 
 def test_status_state_literal_includes_tested() -> None:
