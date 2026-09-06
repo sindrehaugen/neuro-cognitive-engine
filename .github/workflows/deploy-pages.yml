@@ -20,6 +20,13 @@ concurrency:
 
 jobs:
   deploy:
+    # GitHub Pages is not enabled on this repository (GET /repos/.../pages -> 404),
+    # so `actions/configure-pages` fails after a green build and this workflow has
+    # been red on EVERY push to main since the 2026-09-05 repo move. A permanently
+    # red check trains readers to ignore red, which is worse than not running.
+    # The gate is `has_pages` rather than a deletion: enable Pages in repository
+    # settings and this deploys again with no workflow change.
+    if: github.event.repository.has_pages
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
