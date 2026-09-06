@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 244  # 240 baseline + 4 Resources tools (Wave RS-1)
+_EXPECTED_TOTAL = 245  # 244 baseline + 1 Economy tool (Wave E-3)
 
 
 def test_registry_has_expected_entries():
@@ -241,6 +241,8 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # MLV15D-RS1 -- Resources master-data mutations (2 tools)
         "resources_create",
         "resources_update",
+        # MLV15B-E3 -- Economy invoice approval cascade (Wave E-3)
+        "economy_approve_invoice",
     }
 )
 
@@ -253,7 +255,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 108  # 106 baseline + 2 Resources tools (Wave RS-1)
+    assert len(MUTATION_TOOLS) == 109  # 108 baseline + 1 Economy tool (Wave E-3)
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -532,6 +534,8 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         # MLV15D-RS1 -- Resources master-data admin tools (2 tools)
         "resources_create",
         "resources_update",
+        # MLV15B-E3 -- Economy invoice approval cascade (Wave E-3)
+        "economy_approve_invoice",
     }
 )
 
@@ -544,7 +548,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 69  # 67 baseline + 2 Resources tools (Wave RS-1)
+    assert len(ADMIN_ONLY_TOOLS) == 70  # 69 baseline + 1 Economy tool (Wave E-3)
 
 
 # ---------------------------------------------------------------------------

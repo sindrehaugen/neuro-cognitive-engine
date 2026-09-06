@@ -4220,6 +4220,81 @@ TOOLS = [
         },
     ),
     Tool(
+        name="economy_approve_invoice",
+        description=(
+            "[ADMIN] Execute the 7-effect invoice approval cascade (Governed Actor tool). "
+            "Applies actual_cost to matched BOM lines, records GL postings, closes invoice "
+            "approval idempotently. Enforces confirm-first governance (confirm=True required) "
+            "and fails closed on OCR-derived figures."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "approval_id": {
+                    "type": "string",
+                    "description": "Unique idempotency key for this approval execution.",
+                },
+                "quote_id": {
+                    "type": "string",
+                    "description": "Sales quote identifier (root for actual_cost aggregation).",
+                },
+                "project_id": {
+                    "type": "string",
+                    "description": "Optional project identifier echoed into cascade effects.",
+                },
+                "invoice_id": {
+                    "type": "string",
+                    "description": "Optional supplier invoice identifier echoed into cascade effects.",
+                },
+                "supplier_id": {
+                    "type": "string",
+                    "description": "Optional supplier identifier echoed into cascade effects.",
+                },
+                "invoice_amount": {
+                    "type": "number",
+                    "description": "Optional invoice total amount.",
+                },
+                "invoice_postings": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": "Optional invoice-level GL postings.",
+                },
+                "lines": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": (
+                        "Optional list of matched BOM line actual cost records: "
+                        "[{\"bom_line_label\": str, \"actual_cost\": float, \"postings\": list}]."
+                    ),
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "Confirm-first gate. False (default) returns pending_approval; "
+                        "True executes the cascade."
+                    ),
+                },
+                "is_ocr": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Flag indicating if invoice amounts are OCR-derived (fails closed).",
+                },
+                "ocr_derived": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Alias for is_ocr (fails closed).",
+                },
+                "document_format": {
+                    "type": "string",
+                    "description": "Source document format (ocr_pdf / ocr_image fail closed).",
+                },
+            },
+            "required": ["namespace_id", "approval_id", "quote_id"],
+        },
+    ),
+    Tool(
         name="detect_causal_cycles",
         description=(
             "[ADMIN] Detect cycles in the event_parents causal DAG for a namespace. "

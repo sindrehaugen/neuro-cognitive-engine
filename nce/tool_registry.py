@@ -1012,6 +1012,12 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    "economy_approve_invoice": ToolSpec(
+        _h(economy_mcp_handlers, "handle_economy_approve_invoice"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
     # ------------------------------------------------------------------
     # Inventory vertical module tools (Batch 131, M11.W3) — stock-surface
     # ------------------------------------------------------------------
