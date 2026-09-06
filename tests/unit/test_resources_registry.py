@@ -37,6 +37,11 @@ def mock_engine(monkeypatch):
     async def mock_fetchrow(query, *args):
         # Query parsing for mock
         q = query.strip().lower()
+        if "node_ownership_registry" in q:
+            node_type = str(args[1]) if len(args) > 1 else ""
+            if node_type == "RESOURCE":
+                return {"owner_engine": "resources"}
+            return None
         if "select" in q and "from resources" in q and "where id = $1 and namespace_id = $2" in q:
             res_id, ns_id = str(args[0]), str(args[1])
             for r in engine.rows.values():

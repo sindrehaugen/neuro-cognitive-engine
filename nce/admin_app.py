@@ -1374,6 +1374,26 @@ def build_admin_routes() -> list[Route]:
             endpoint=resources_handlers.api_resources_capacity_pulse,
             methods=["GET"],
         ),
+        Route(
+            "/api/resources",
+            endpoint=resources_handlers.api_resources_list,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/resources",
+            endpoint=resources_handlers.api_resources_create,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/resources/{id}",
+            endpoint=resources_handlers.api_resources_get,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/resources/{id}",
+            endpoint=resources_handlers.api_resources_update,
+            methods=["POST", "PATCH"],
+        ),
         # --- Business Insights Engine (Module 16) ---
         Route(
             "/api/business-insights/morning-brief",

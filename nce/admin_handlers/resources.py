@@ -54,6 +54,12 @@ from nce.vertical_modules.resources.forecast import (
 )
 from nce.vertical_modules.resources.material_flow import do_plan_material_flow
 from nce.vertical_modules.resources.planner import do_plan_allocation
+from nce.vertical_modules.resources.registry import (
+    do_create_resource,
+    do_get_resource,
+    do_list_resources,
+    do_update_resource,
+)
 from nce.vertical_modules.resources.travel import do_plan_travel
 
 log = logging.getLogger("nce.admin_handlers.resources")
@@ -426,3 +432,152 @@ async def api_resources_capacity_pulse(request: Any) -> JSONResponse:
         return JSONResponse({"error": str(exc)}, status_code=409)
     except Exception as exc:
         return admin_error_response("Failed to retrieve capacity pulse", exc)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/resources (Wave RS-1)
+# ---------------------------------------------------------------------------
+
+
+async def api_resources_create(request: Any) -> JSONResponse:
+    """POST /api/resources — register a new schedulable resource (Wave RS-1)."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "Request body must be a JSON object"}, status_code=422)
+
+    ns, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+
+    try:
+        _check_enabled(body)
+        result = await do_create_resource(admin_state.engine, body)
+        await bump_mcp_cache_generation(admin_state.engine, route="api_resources_create")
+        return JSONResponse(_json_safe(result), status_code=201)
+    except ResourcesDisabledError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    except (ResourceValidationError, ValueError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response("Failed to create resource", exc)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/resources/{id} (Wave RS-1)
+# ---------------------------------------------------------------------------
+
+
+async def api_resources_update(request: Any) -> JSONResponse:
+    """POST /api/resources/{id} — update a schedulable resource (Wave RS-1)."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    res_id = request.path_params.get("id")
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "Request body must be a JSON object"}, status_code=422)
+
+    ns_val = body.get("namespace_id") or request.query_params.get("namespace_id")
+    ns, err = _require_namespace_id(ns_val)
+    if err is not None:
+        return err
+
+    params = dict(body)
+    params["namespace_id"] = ns
+    params["resource_id"] = res_id
+
+    try:
+        _check_enabled(params)
+        result = await do_update_resource(admin_state.engine, params)
+        await bump_mcp_cache_generation(admin_state.engine, route="api_resources_update")
+        return JSONResponse(_json_safe(result), status_code=200)
+    except ResourceNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except ResourcesDisabledError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    except (ResourceValidationError, ValueError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response("Failed to update resource", exc)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/resources/{id} (Wave RS-1)
+# ---------------------------------------------------------------------------
+
+
+async def api_resources_get(request: Any) -> JSONResponse:
+    """GET /api/resources/{id} — retrieve details for a single resource (Wave RS-1)."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    res_id = request.path_params.get("id")
+    ns, err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if err is not None:
+        return err
+
+    params: dict[str, Any] = {"namespace_id": ns, "resource_id": res_id}
+    try:
+        _check_enabled(params)
+        result = await do_get_resource(admin_state.engine, params)
+        return JSONResponse(_json_safe(result), status_code=200)
+    except ResourceNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except ResourcesDisabledError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    except (ResourceValidationError, ValueError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response("Failed to retrieve resource", exc)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/resources (Wave RS-1)
+# ---------------------------------------------------------------------------
+
+
+async def api_resources_list(request: Any) -> JSONResponse:
+    """GET /api/resources — list resources with optional filter & pagination (Wave RS-1)."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    ns, err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if err is not None:
+        return err
+
+    params: dict[str, Any] = {"namespace_id": ns}
+    if "kind" in request.query_params:
+        params["kind"] = request.query_params["kind"]
+    if "limit" in request.query_params:
+        params["limit"] = request.query_params["limit"]
+    if "offset" in request.query_params:
+        params["offset"] = request.query_params["offset"]
+
+    try:
+        _check_enabled(params)
+        result = await do_list_resources(admin_state.engine, params)
+        return JSONResponse(_json_safe(result), status_code=200)
+    except ResourcesDisabledError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    except (ResourceValidationError, ValueError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response("Failed to list resources", exc)

@@ -5858,6 +5858,92 @@ TOOLS = [
             "required": ["namespace_id", "resource_id"],
         },
     ),
+    Tool(
+        name="resources_create",
+        description="Create and register a new schedulable resource (employee, contractor, vehicle, tool). Admin-only mutation.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "kind": {
+                    "type": "string",
+                    "enum": ["employee", "contractor", "vehicle", "tool"],
+                    "description": "Resource kind (employee, contractor, vehicle, tool).",
+                },
+                "display_name": {"type": "string", "description": "Human-readable resource name."},
+                "ref_id": {
+                    "type": "string",
+                    "description": "Optional upstream identity (e.g. employee_id, contractor_id).",
+                },
+                "attrs": {
+                    "type": "object",
+                    "description": "Arbitrary metadata attributes dictionary.",
+                },
+            },
+            "required": ["namespace_id", "kind", "display_name"],
+        },
+    ),
+    Tool(
+        name="resources_update",
+        description="Update mutable attributes or display name of a schedulable resource. Admin-only mutation.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "resource_id": {"type": "string", "description": "Target resource UUID."},
+                "display_name": {
+                    "type": "string",
+                    "description": "Optional updated human-readable name.",
+                },
+                "attrs": {
+                    "type": "object",
+                    "description": "Optional dictionary of attributes to update/merge.",
+                },
+            },
+            "required": ["namespace_id", "resource_id"],
+        },
+    ),
+    Tool(
+        name="resources_get_resource",
+        description="Retrieve details for a single schedulable resource by ID. Cacheable read.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "resource_id": {"type": "string", "description": "Target resource UUID."},
+            },
+            "required": ["namespace_id", "resource_id"],
+        },
+    ),
+    Tool(
+        name="resources_list_resources",
+        description="List schedulable resources with optional kind filter and pagination. Cacheable read.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "kind": {
+                    "type": "string",
+                    "enum": ["employee", "contractor", "vehicle", "tool"],
+                    "description": "Optional resource kind filter.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 50,
+                    "minimum": 1,
+                    "maximum": 200,
+                    "description": "Maximum number of resources to return.",
+                },
+                "offset": {
+                    "type": "integer",
+                    "default": 0,
+                    "minimum": 0,
+                    "description": "Pagination offset.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
     # ML17-B5 (M17.W5) -- Customer Portal Engine (9 tools)
     Tool(
         name="customer_portal_room_tracker",
