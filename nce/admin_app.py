@@ -620,8 +620,13 @@ def build_admin_routes() -> list[Route]:
             methods=["GET"],
         ),
         # ------------------------------------------------------------------
-        # Procurement vertical module endpoints (M1.W4 / M1.W7)
+        # Procurement vertical module endpoints (M1.W4 / M1.W7 / PR-3)
         # ------------------------------------------------------------------
+        Route(
+            "/api/procurement/savings",
+            endpoint=procurement_handlers.api_procurement_aggregate_savings,
+            methods=["GET", "POST"],
+        ),
         Route(
             "/api/procurement/tco",
             endpoint=procurement_handlers.api_procurement_calculate_tco,

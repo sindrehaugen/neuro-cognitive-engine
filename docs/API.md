@@ -185,6 +185,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/procurement/frontier/whatif-spend` | `api_procurement_whatif_spend` |
 | POST | `/api/procurement/match` | `api_procurement_evaluate_match` |
 | POST | `/api/procurement/rank` | `api_procurement_rank_suppliers` |
+| GET,POST | `/api/procurement/savings` | `api_procurement_aggregate_savings` |
 | POST | `/api/procurement/sync` | `api_procurement_sync_now` |
 | GET | `/api/procurement/sync/status` | `api_procurement_sync_status` |
 | POST | `/api/procurement/tco` | `api_procurement_calculate_tco` |
@@ -414,6 +415,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `migration_status` |  |  |  | yes |
 | `neuromorphic_search` |  |  | yes |  |
 | `pricing_resolve` |  |  | yes |  |
+| `procurement_aggregate_savings` |  |  | yes |  |
 | `procurement_calculate_tco` |  |  | yes |  |
 | `procurement_evaluate_match` |  |  | yes |  |
 | `procurement_forecast_rebate` |  |  | yes |  |
@@ -514,4 +516,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 251 REST endpoints, 245 MCP tools._
+_Totals: 252 REST endpoints, 246 MCP tools._

@@ -7,6 +7,7 @@ Public entry-points:
   ``handle_procurement_calculate_tco``  — TCO breakdown for one (supplier, bom_line) pair.
   ``handle_procurement_rank_suppliers``  — Rank supplier candidates for a BOM line.
   ``handle_procurement_evaluate_match``  — Three-way match evaluation (PO × GR × invoice).
+  ``handle_procurement_aggregate_savings`` — Savings aggregation and leakage candidates.
 
 W12 Advisor (frontier) entry-points:
   ``handle_procurement_forecast_rebate``   — Forecast year-end rebate band.
@@ -36,6 +37,7 @@ from nce.vertical_modules.procurement.po import (
     do_submit_po,
 )
 from nce.vertical_modules.procurement.ranking import do_rank_suppliers
+from nce.vertical_modules.procurement.savings import do_aggregate_savings
 from nce.vertical_modules.procurement.tco import (
     do_calculate_tco,
     load_procurement_config,
@@ -219,6 +221,20 @@ async def handle_procurement_evaluate_match(engine: NCEEngine, arguments: dict[s
     goods_receipt: dict[str, Any] = dict(arguments.get("goods_receipt") or {})
     invoice: dict[str, Any] = dict(arguments.get("invoice") or {})
     result = do_evaluate_three_way_match(tolerances, po, goods_receipt, invoice)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_procurement_aggregate_savings(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: procurement_aggregate_savings — aggregate realized/lost savings and leakage candidates.
+
+    Required arguments:
+        namespace_id (str, UUID)
+        period_start (str) — inclusive start date (ISO 8601, YYYY-MM-DD).
+        period_end   (str) — exclusive end date (ISO 8601, YYYY-MM-DD).
+    """
+    require_namespace_id(arguments)
+    result = await do_aggregate_savings(engine, arguments)
     return json.dumps(result, default=str)
 
 

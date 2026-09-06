@@ -58,6 +58,10 @@ _CONTRACT_SOURCE: dict[str, tuple[str, str]] = {
         "nce/entity_resolution/mcp_handlers.py",
         "handle_merge_queue_reject",
     ),
+    "procurement_aggregate_savings": (
+        "nce/vertical_modules/procurement/mcp_handlers.py",
+        "handle_procurement_aggregate_savings",
+    ),
     "procurement_calculate_tco": (
         "nce/vertical_modules/procurement/mcp_handlers.py",
         "handle_procurement_calculate_tco",
