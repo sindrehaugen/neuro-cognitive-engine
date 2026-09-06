@@ -25,7 +25,7 @@ from uuid import UUID
 import asyncpg  # type: ignore[import-untyped]
 
 from nce.entity_resolution.ownership import assert_owner
-from nce.events.emit import emit_graph_write
+from nce.events.bus import publish
 
 log = logging.getLogger("nce.vertical_modules.procurement.po_line")
 
@@ -351,11 +351,12 @@ async def update_po_line_status(
         "project_value": project_value,
     }
 
-    await emit_graph_write(
+    await publish(
         conn,
-        ns_uuid,
-        NODE_TYPE_PO_LINE,
-        "status_changed",
+        namespace_id=ns_uuid,
+        node_type=NODE_TYPE_PO_LINE,
+        op="status_changed",
+        aggregate_id=lbl,
         payload=payload,
     )
 
