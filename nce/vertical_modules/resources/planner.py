@@ -17,7 +17,6 @@ from uuid import uuid4
 
 from nce.config import cfg
 from nce.db_utils import scoped_pg_session
-from nce.decision_feedback import record_decision_feedback
 from nce.vertical_modules.resources._guard import (
     ResourceValidationError,
     require_resources_enabled,
@@ -360,6 +359,8 @@ async def do_record_allocation_outcome(engine: Any, params: dict[str, Any]) -> d
     on_time = bool(params.get("on_time", True))
     decision = "held" if on_time and quality_score >= 0.8 else "deviated"
     demand_kind = str(params.get("demand_kind") or "project")
+    from nce.decision_feedback import record_decision_feedback
+
     df_record = await record_decision_feedback(
         pool,
         ns_id,

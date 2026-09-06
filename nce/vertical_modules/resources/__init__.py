@@ -5,6 +5,17 @@ The capacity + scheduling brain coordinating people, contractors, vehicles, and 
 
 from __future__ import annotations
 
+from nce.vertical_modules.resources import (
+    allocations,
+    capacity,
+    field_schedule,
+    forecast,
+    material_flow,
+    planner,
+    registry,
+    travel,
+    watcher,
+)
 from nce.vertical_modules.resources._guard import (
     ResourceConcurrencyError,
     ResourceNotFoundError,
@@ -59,7 +70,9 @@ __all__ = [
     "ResourcesError",
     "VALID_ALLOCATION_STATUSES",
     "VALID_RESOURCE_KINDS",
+    "allocations",
     "calculate_norwegian_diett",
+    "capacity",
     "do_create_resource",
     "do_detect_conflicts",
     "do_field_schedule",
@@ -74,11 +87,18 @@ __all__ = [
     "do_reserve",
     "do_resolve_capacity",
     "do_update_resource",
+    "field_schedule",
+    "forecast",
     "get_morning_brief_capacity_pulse",
     "handle_hr_cert_change",
     "load_allocation_weights",
     "load_travel_policy",
+    "material_flow",
+    "planner",
     "redact_contractor_view",
     "register_resources_event_subscribers",
+    "registry",
     "require_resources_enabled",
+    "travel",
+    "watcher",
 ]
