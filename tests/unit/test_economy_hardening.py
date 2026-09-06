@@ -43,6 +43,7 @@ _NAMESPACE_ID = "00000000-0000-4000-8000-000000000099"
 
 _ECONOMY_TOOLS: frozenset[str] = frozenset(
     {
+        "economy_approve_invoice",
         "economy_match_invoice",
         "economy_compute_periodisering",
         "economy_emit_event",
