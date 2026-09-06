@@ -590,5 +590,8 @@ class TestProjectAdvancePhaseToolRegistry:
         +2 ML13-B3 HR tools, M13.W3 -- hr_build_onboarding_quest, hr_log_one_on_one;
         +5 ML14-B3 marketing tools, M14.W3;
         +2 ML10b-P2/P3 support tools -- support_dispatch_work_order, support_sync_now;
-        +1 ML15-B7 resources tool -- resources_plan_material_flow)."""
-        assert len(ADMIN_ONLY_TOOLS) == 42
+        +1 ML15-B7 resources tool -- resources_plan_material_flow;
+        +6 ML16 business insights tools, M16 -- every BI tool is admin_only:
+        the engine composes cross-engine financial and personnel roll-ups, so
+        no non-admin principal may reach any of them)."""
+        assert len(ADMIN_ONLY_TOOLS) == 48

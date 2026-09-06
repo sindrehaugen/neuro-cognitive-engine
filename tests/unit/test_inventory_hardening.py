@@ -51,15 +51,15 @@ _NAMESPACE_ID = "00000000-0000-4000-8000-000000000001"
 _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
-# --- MEASURED on branch ml17/customer-portal-engine --------------------------
-_TOTAL_TOOLS = 196  # 187 baseline + 9 customer portal tools (Module 17)
+# --- MEASURED on branch ml16/business-insights-engine ------------------------
+_TOTAL_TOOLS = 202  # 196 baseline + 6 business insights tools (Module 16)
 _MUTATION_TOOLS = (
     83  # 81 baseline + 2 customer portal tools (raise_service_request, register_expansion_interest)
 )
 _CACHEABLE_TOOLS = (
-    73  # 67 baseline + 6 customer portal tools (tracker, overview, assets, docs, sla, invoices)
+    76  # 73 baseline + 3 business insights tools (morning_brief, risk_radar, kpi_dashboard)
 )
-_ADMIN_ONLY_TOOLS = 42  # 42 baseline + 0 customer portal tools
+_ADMIN_ONLY_TOOLS = 48  # 42 baseline + 6 business insights tools
 _MIGRATION_TOOLS = 5
 
 

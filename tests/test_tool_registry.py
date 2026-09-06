@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 196  # 187 baseline + 9 Customer Portal Engine tools
+_EXPECTED_TOTAL = 202  # 196 baseline + 6 Business Insights tools (Module 16)
 
 
 def test_registry_has_expected_entries():
@@ -337,6 +337,10 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "customer_portal_list_documents",
         "customer_portal_sla_status",
         "customer_portal_list_invoices",
+        # ML16 (Business Insights Engine) -- executive watcher reads (3 cacheable tools)
+        "business_insights_morning_brief",
+        "business_insights_risk_radar",
+        "business_insights_kpi_dashboard",
     }
 )
 
@@ -349,7 +353,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 73  # 67 baseline + 6 customer portal tools
+    assert len(CACHEABLE_TOOLS) == 76  # 73 baseline + 3 business insights tools
 
 
 # ---------------------------------------------------------------------------
@@ -428,6 +432,13 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "support_sync_now",
         # ML15-B7 (M15.W7) -- Resources Engine admin_only tools (1 tool)
         "resources_plan_material_flow",
+        # ML16 (Business Insights Engine) -- executive/board admin-only tools (6 tools)
+        "business_insights_morning_brief",
+        "business_insights_risk_radar",
+        "business_insights_run_scenario",
+        "business_insights_generate_board_pack",
+        "business_insights_kpi_dashboard",
+        "business_insights_ask_business",
     }
 )
 
@@ -440,7 +451,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 42  # 41 baseline + 1 resources tool
+    assert len(ADMIN_ONLY_TOOLS) == 48  # 42 baseline + 6 business insights tools
 
 
 # ---------------------------------------------------------------------------

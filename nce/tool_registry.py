@@ -40,6 +40,9 @@ from nce.entity_resolution import mcp_handlers as entity_resolution_mcp_handlers
 from nce.pricing import mcp_handlers as pricing_mcp_handlers
 from nce.vertical_modules.agreements import mcp_handlers as agreements_mcp_handlers
 from nce.vertical_modules.assets import mcp_handlers as assets_mcp_handlers
+from nce.vertical_modules.business_insights import (
+    mcp_handlers as business_insights_mcp_handlers,
+)
 from nce.vertical_modules.customer_portal import (
     mcp_handlers as customer_portal_mcp_handlers,
 )
@@ -1258,6 +1261,43 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         _h(customer_portal_mcp_handlers, "handle_customer_portal_register_expansion_interest"),
         cacheable=False,
         mutation=True,
+    ),
+    # ML16 (Business Insights Engine) — Module 16 executive decision support
+    "business_insights_morning_brief": ToolSpec(
+        _h(business_insights_mcp_handlers, "handle_business_insights_morning_brief"),
+        cacheable=True,
+        admin_only=True,
+        mutation=False,
+    ),
+    "business_insights_risk_radar": ToolSpec(
+        _h(business_insights_mcp_handlers, "handle_business_insights_risk_radar"),
+        cacheable=True,
+        admin_only=True,
+        mutation=False,
+    ),
+    "business_insights_run_scenario": ToolSpec(
+        _h(business_insights_mcp_handlers, "handle_business_insights_run_scenario"),
+        cacheable=False,
+        admin_only=True,
+        mutation=False,
+    ),
+    "business_insights_generate_board_pack": ToolSpec(
+        _h(business_insights_mcp_handlers, "handle_business_insights_generate_board_pack"),
+        cacheable=False,
+        admin_only=True,
+        mutation=False,
+    ),
+    "business_insights_kpi_dashboard": ToolSpec(
+        _h(business_insights_mcp_handlers, "handle_business_insights_kpi_dashboard"),
+        cacheable=True,
+        admin_only=True,
+        mutation=False,
+    ),
+    "business_insights_ask_business": ToolSpec(
+        _h(business_insights_mcp_handlers, "handle_business_insights_ask_business"),
+        cacheable=False,
+        admin_only=True,
+        mutation=False,
     ),
 }
 
