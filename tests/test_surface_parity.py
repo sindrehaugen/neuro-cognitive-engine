@@ -11,6 +11,14 @@ the test fails until the allowlist entry is removed.
 Copying the design of ``tests/test_producer_coverage.py``, this census operates via
 pure AST inspection (covering both ``FunctionDef`` and ``AsyncFunctionDef``) to prevent
 silent omissions from grep-based or sync-only scanning.
+
+**Unobserved surfaces (audited per Phase 4 Wave T-5 / Charter §13 Question 3):**
+1. *Dynamic dispatch*: Core invocations performed via ``getattr(module, 'do_' + name)`` or
+   reflection without an explicit AST call node.
+2. *Non-do_* helpers*: Internal helper functions that do not follow the ``do_*`` or
+   ``async def do_*`` naming convention are outside this census.
+3. *Dead branches in reached cores*: Function-level AST reachability proves entry points
+   can reach a core, but does not assert line-level execution of inner branches.
 """
 
 from __future__ import annotations

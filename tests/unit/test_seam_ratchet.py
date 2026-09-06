@@ -9,6 +9,13 @@ or through catalogued event selectors.
 Legitimate duck-typing (such as `hasattr(engine_or_pool, "pg_pool")` or core capability
 checks like `hasattr(engine, "verify_memory")`) is explicitly permitted; the ratchet
 strictly matches on `VERTICAL_MODULE_NAMES`.
+
+**Unobserved surfaces (audited per Phase 4 Wave T-5 / Charter §13 Question 3):**
+1. *Dictionary-based lookups*: Dynamic checks via ``getattr(engine, dynamic_var)`` or
+   ``engine.__dict__.get(...)`` that do not use literal attribute names.
+2. *Probes on non-vertical symbols*: Only engine names in ``VERTICAL_MODULE_NAMES`` are
+   governed; shared core primitives or external dependencies are unconstrained here.
+3. *IPC and network boundaries*: Cross-engine HTTP/REST calls or external event brokers.
 """
 
 from __future__ import annotations
