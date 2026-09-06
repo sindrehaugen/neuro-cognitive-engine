@@ -243,7 +243,11 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/system-design/topology` | `api_system_design_get_topology` |
 | POST | `/api/system-design/topology` | `api_system_design_author_topology` |
 | POST | `/api/system-design/validate` | `api_system_design_validate_design_graph` |
+| POST | `/api/vendors/certs/upsert` | `api_vendors_upsert_cert` |
+| POST | `/api/vendors/contractors/upsert` | `api_vendors_upsert_contractor` |
+| GET | `/api/vendors/contractors/{id}` | `api_vendors_get_contractor` |
 | GET | `/api/vendors/scorecard` | `api_vendors_scorecard` |
+| POST | `/api/vendors/upsert` | `api_vendors_upsert` |
 | GET | `/api/vendors/{id}` | `api_vendors_get_vendor` |
 | GET | `/healthz` | `get_healthz` |
 | GET | `/public-api/sales/quotes/{id}` | `api_sales_quote_public` |
@@ -473,11 +477,15 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_compute_performance` |  |  | yes |  |
 | `vendors_compute_scorecard` |  |  | yes |  |
 | `vendors_detect_reliability_degradation` |  |  | yes |  |
+| `vendors_get_contractor` |  |  | yes |  |
 | `vendors_get_tier_status` |  |  | yes |  |
 | `vendors_get_vendor` |  |  | yes |  |
 | `vendors_match_contractor` |  |  | yes |  |
 | `vendors_recall_similar_jobs` |  |  | yes |  |
 | `vendors_reliability_radar` |  |  | yes |  |
+| `vendors_upsert_cert` | yes | yes |  |  |
+| `vendors_upsert_contractor` | yes | yes |  |  |
+| `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 238 REST endpoints, 224 MCP tools._
+_Totals: 242 REST endpoints, 228 MCP tools._
