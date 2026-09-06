@@ -122,10 +122,124 @@ def test_a_real_value_in_the_base_file_is_never_overridden(tree: Path) -> None:
 
 
 def test_a_weak_generated_value_is_replaced(tree: Path) -> None:
-    """Guard against over-correcting: a *weak* generated value must still be fixed."""
+    """Guard against over-correcting: a *weak* generated value must still be fixed.
+
+    Uses NCE_JWT_SECRET, not the master key: the master key is write-once (see
+    below) and is deliberately exempt from this.
+    """
     mod = _load_script(tree)
+    mod.GENERATED.write_text("NCE_JWT_SECRET=short\n", encoding="utf-8")
+    mod.main()
+    vals = mod._parse_env_text(mod.GENERATED.read_text(encoding="utf-8"))
+    assert vals["NCE_JWT_SECRET"] != "short"
+    assert len(vals["NCE_JWT_SECRET"]) >= 32
+
+
+def test_a_weak_master_key_is_kept_not_rotated(tree: Path) -> None:
+    """A short master key must FAIL AT BOOT, not be silently replaced here.
+
+    nce/signing.py refuses a master key under 32 bytes by name, at boot. Keeping
+    a weak one therefore surfaces loudly and recoverably; rotating it destroys
+    the ability to unwrap every DEK in the database. Refuse-loudly beats
+    re-key-silently, so the write-once rule outranks the strength rule here.
+    """
+    mod = _load_script(tree)
+    mod.SECRETS_DIR = tree / "deploy" / "secrets"
     mod.GENERATED.write_text("NCE_MASTER_KEY=short\n", encoding="utf-8")
     mod.main()
     vals = mod._parse_env_text(mod.GENERATED.read_text(encoding="utf-8"))
-    assert vals["NCE_MASTER_KEY"] != "short"
+    assert vals["NCE_MASTER_KEY"] == "short", (
+        "a weak master key was rotated rather than left to fail at boot"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Write-once secrets — the master key must be structurally unrotatable here
+# ---------------------------------------------------------------------------
+#
+# The boot guard (orchestrator._verify_master_key_matches_data) already refuses
+# in production when the master key cannot open its data. It is not sufficient
+# on its own, for two reasons this file exists to pin:
+#
+#   1. It runs at BOOT, on the READ path. This script runs BEFORE boot, on the
+#      WRITE path, and produces the file boot then reads.
+#   2. secret_env() gives NCE_MASTER_KEY_FILE precedence over the plain env var.
+#      worker/cron/admin/a2a mount the key as a file and would boot correctly on
+#      it, leaving the boot guard silent, while webhook-receiver — which has no
+#      *_FILE override — runs on the rotated env value. A guard cannot detect a
+#      divergence it is never exposed to.
+#
+# So rotation is prevented at the only place that can cause it.
+
+
+def _seed_secret_file(tree: Path, name: str, value: str) -> None:
+    d = tree / "deploy" / "secrets"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / name).write_text(value + "\n", encoding="utf-8")
+
+
+def test_master_key_is_never_rotated_once_a_secret_file_exists(tree: Path) -> None:
+    original = "m" * 48
+    _seed_secret_file(tree, "nce_master_key", original)
+    mod = _load_script(tree)
+    mod.SECRETS_DIR = tree / "deploy" / "secrets"
+
+    for _ in range(3):
+        mod.main()
+        vals = mod._parse_env_text(mod.GENERATED.read_text(encoding="utf-8"))
+        assert vals["NCE_MASTER_KEY"] == original, (
+            "the master key was rotated. Rotating it is not a configuration "
+            "change, it is data loss: content is encrypted under per-memory DEKs "
+            "wrapped by this key."
+        )
+
+
+def test_a_divergent_env_copy_is_reconciled_to_the_secret_file(tree: Path) -> None:
+    """The split-brain shape itself: env and file holding different master keys.
+
+    The file is authoritative because that is what ``*_FILE`` mounts into the
+    containers, and therefore what the running stack actually used.
+    """
+    truth = "t" * 48
+    drifted = "d" * 48
+    _seed_secret_file(tree, "nce_master_key", truth)
+    (tree / "deploy" / "compose.stack.env.generated").write_text(
+        f"NCE_MASTER_KEY={drifted}\n", encoding="utf-8"
+    )
+    mod = _load_script(tree)
+    mod.SECRETS_DIR = tree / "deploy" / "secrets"
+    mod.main()
+
+    vals = mod._parse_env_text(mod.GENERATED.read_text(encoding="utf-8"))
+    assert vals["NCE_MASTER_KEY"] == truth, (
+        "the env copy was left diverging from the Docker-secret file — this is "
+        "exactly the state in which webhook-receiver runs on a different master "
+        "key from worker/cron/admin/a2a, with every container reporting healthy."
+    )
+
+
+def test_first_ever_run_still_generates_a_master_key(tree: Path) -> None:
+    """Guard the guard: write-once must not mean never-written."""
+    mod = _load_script(tree)
+    mod.SECRETS_DIR = tree / "deploy" / "secrets"  # does not exist
+    mod.main()
+    vals = mod._parse_env_text(mod.GENERATED.read_text(encoding="utf-8"))
     assert len(vals["NCE_MASTER_KEY"]) >= 32
+
+
+def test_write_once_covers_the_master_key(tree: Path) -> None:
+    """If this set is ever emptied, every test above passes vacuously."""
+    mod = _load_script(tree)
+    assert "NCE_MASTER_KEY" in mod.WRITE_ONCE
+    assert mod.WRITE_ONCE["NCE_MASTER_KEY"] == "nce_master_key"
+
+
+def test_fingerprint_matches_the_orchestrator_and_never_leaks_the_secret(tree: Path) -> None:
+    """The printed fingerprint must be comparable to what the orchestrator logs."""
+    import hashlib
+
+    mod = _load_script(tree)
+    value = "s" * 40
+    fp = mod._fingerprint(value)
+    assert fp == hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+    assert value not in fp
