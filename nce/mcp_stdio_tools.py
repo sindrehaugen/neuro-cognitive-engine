@@ -3385,6 +3385,241 @@ TOOLS = [
         },
     ),
     Tool(
+        name="agreements_coverage_matrix",
+        description=(
+            "READ-ONLY agreement coverage/gap matrix. Cross-joins agreements against "
+            "Economy GL spend to detect leakage, expiring agreements, and low-confidence "
+            "extractions in the review queue."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "since_iso": {
+                    "type": "string",
+                    "description": "Optional; ISO timestamp lower bound for GL spend analysis.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="agreements_reconcile_kickback",
+        description=(
+            "READ-ONLY supplier kickback reconciliation. Reconciles an agreement's "
+            "kickback tiers against real Economy GL spend. Enforces §9.3 sign-off gate "
+            "(only auto_green agreements proceed)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "agreement_id": {"type": "string", "description": "Agreement UUID to reconcile."},
+                "since_iso": {
+                    "type": "string",
+                    "description": "Optional; inclusive GL date lower bound.",
+                },
+                "until_iso": {
+                    "type": "string",
+                    "description": "Optional; inclusive GL date upper bound.",
+                },
+                "projected_kickback_nok": {
+                    "type": "number",
+                    "description": "Optional; forecast figure to check drift against.",
+                },
+            },
+            "required": ["namespace_id", "agreement_id"],
+        },
+    ),
+    Tool(
+        name="agreements_run_compliance_audit",
+        description=(
+            "Rebate/kickback compliance audit gate. Verifies rebate overrides against "
+            "human-signed agreements to prevent anti-competitive steering and fraud. "
+            "Fails closed on any policy violation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "po_number": {"type": "string", "description": "Purchase order number."},
+                "supplier_id": {"type": "string", "description": "Supplier identifier or orgnr."},
+                "rebate_amount": {
+                    "type": "number",
+                    "description": "Requested rebate override amount (finite, non-negative).",
+                },
+                "agreement_id": {
+                    "type": "string",
+                    "description": "Optional; disambiguates governing agreement.",
+                },
+            },
+            "required": ["namespace_id", "po_number", "supplier_id", "rebate_amount"],
+        },
+    ),
+    Tool(
+        name="agreements_extract",
+        description=(
+            "OCR extraction and confidence gating for agreement documents. "
+            "Actor tool (mutation, admin-only). Runs OCR on a source document reference, "
+            "stores run history and review queue entries, and auto-promotes to graph/memories "
+            "only if overall confidence meets threshold."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "source_doc_ref": {
+                    "type": "string",
+                    "description": "SharePoint or object store document reference pointer.",
+                },
+            },
+            "required": ["namespace_id", "source_doc_ref"],
+        },
+    ),
+    Tool(
+        name="agreements_create",
+        description=(
+            "Author a new agreement graph-natively (Oneflow CLM path). "
+            "Actor tool (mutation, admin-only). Instantiates an agreement and term nodes "
+            "in DRAFT state with confidence 1.0."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "supplier_id": {
+                    "type": "string",
+                    "description": "Optional; supplier identifier for Vendor -under-> edge.",
+                },
+                "customer_id": {
+                    "type": "string",
+                    "description": "Optional; customer identifier for Customer -under-> edge.",
+                },
+                "terms": {
+                    "type": "object",
+                    "description": "Optional; flat dictionary of commercial terms (paymentTermsDays, frameDiscountPct, kickbackTiers).",
+                },
+                "agreement_id": {
+                    "type": "string",
+                    "description": "Optional; explicit agreement UUID.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="agreements_suggest_revision",
+        description=(
+            "Record a proposed revision to an agreement clause. "
+            "Actor tool (mutation, admin-only). Propose-only revision suggestion appended "
+            "to v3_cognitive_ledger without modifying active agreement terms."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "agreement_id": {"type": "string", "description": "Agreement UUID."},
+                "field": {"type": "string", "description": "Term field to change."},
+                "proposed_value": {
+                    "description": "Proposed new value for the field.",
+                },
+                "rationale": {
+                    "type": "string",
+                    "description": "Optional; explanation of reason for proposed revision.",
+                },
+                "author": {
+                    "type": "string",
+                    "description": "Optional; author identifier of suggestion.",
+                },
+            },
+            "required": ["namespace_id", "agreement_id", "field", "proposed_value"],
+        },
+    ),
+    Tool(
+        name="agreements_request_signature",
+        description=(
+            "Open a signing session for an agreement. "
+            "Actor tool (mutation, admin-only). Initiates e-signature flow and records "
+            "request session."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "agreement_id": {"type": "string", "description": "Agreement UUID."},
+                "document": {
+                    "type": "string",
+                    "description": "Contract content or document string to be signed.",
+                },
+                "signer": {"type": "string", "description": "Signer identifier or email."},
+            },
+            "required": ["namespace_id", "agreement_id", "document", "signer"],
+        },
+    ),
+    Tool(
+        name="agreements_record_signature",
+        description=(
+            "Record a completed agreement signature callback. "
+            "Actor tool (mutation, admin-only). Performs tamper check on signed document, "
+            "updates agreement state to SIGNED."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "agreement_id": {"type": "string", "description": "Agreement UUID."},
+                "session_id": {
+                    "type": "string",
+                    "description": "Signing session ID from request_signature.",
+                },
+                "signed_document": {
+                    "type": "string",
+                    "description": "Returned signed document content for tamper checking.",
+                },
+                "signer": {"type": "string", "description": "Signer identifier."},
+            },
+            "required": [
+                "namespace_id",
+                "agreement_id",
+                "session_id",
+                "signed_document",
+                "signer",
+            ],
+        },
+    ),
+    Tool(
+        name="agreements_review_extraction",
+        description=(
+            "Human review of an extracted agreement. "
+            "Operator tool (mutation, admin-only). Accepts/rejects/corrects extracted terms "
+            "in the review queue. When decision is 'confirm', writes verified terms to graph and memories."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "agreement_id": {
+                    "type": "string",
+                    "description": "Agreement UUID in review queue.",
+                },
+                "decision": {
+                    "type": "string",
+                    "enum": ["confirm", "reject"],
+                    "description": "Review decision: 'confirm' or 'reject'.",
+                },
+                "reviewed_by": {
+                    "type": "string",
+                    "description": "Reviewer username/identifier.",
+                },
+                "corrected_terms": {
+                    "type": "object",
+                    "description": "Optional; reviewer-corrected terms mapping.",
+                },
+            },
+            "required": ["namespace_id", "agreement_id", "decision", "reviewed_by"],
+        },
+    ),
+    Tool(
         name="sales_get_signed_baseline",
         description=(
             "Read the Sales-frozen SIGNED_BASELINE for one quote. Read-only, and the "
