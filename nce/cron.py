@@ -1623,6 +1623,69 @@ async def reschedule_jobs() -> str:
     return f"rescheduled {len(rescheduled)} jobs"
 
 
+async def _assets_telemetry_tick(pool: asyncpg.Pool) -> None:
+    """APScheduler job: periodic manufacturer telemetry pull for assets (Wave A-1).
+
+    Runs every 5 minutes. Scans namespaces with active assets,
+    calls do_pull_telemetry for each asset, and writes telemetry_samples idempotently.
+    """
+    ttl = 300
+    lock: CronLock | None = await acquire_cron_lock("assets_telemetry_sync", ttl)
+    if lock is None:
+        log.debug("Skipping assets_telemetry_sync — lock held by another instance")
+        return
+
+    try:
+        from nce.orchestrator import NCEEngine
+        from nce.vertical_modules.assets.telemetry import do_pull_telemetry
+
+        # Scan active namespaces that contain assets
+        async with unmanaged_pg_connection(pool, site="cron.assets_telemetry.scan") as conn:
+            rows = await conn.fetch(
+                """
+                SELECT DISTINCT namespace_id, id AS asset_id
+                FROM assets
+                WHERE status != 'decommissioned'
+                LIMIT 100
+                """
+            )
+
+        if not rows:
+            return
+
+        engine = NCEEngine()
+        engine.pg_pool = pool
+
+        for row in rows:
+            ns_id = row["namespace_id"]
+            asset_id = row["asset_id"]
+            try:
+                await do_pull_telemetry(
+                    engine,
+                    {
+                        "namespace_id": str(ns_id),
+                        "asset_id": str(asset_id),
+                        "platform": "ymcs",
+                    },
+                )
+            except Exception as exc:
+                log.warning(
+                    "assets_telemetry_tick failed for asset=%s ns=%s: %s",
+                    asset_id,
+                    ns_id,
+                    exc,
+                )
+    except _CRON_TICK_ERRORS as exc:
+        log.exception("assets_telemetry_tick failed unexpectedly")
+        await _dispatch_throttled_alert(
+            "cron.assets_telemetry_sync.global",
+            "Cron Job Failed: assets_telemetry_sync",
+            f"Assets telemetry sync tick failed unexpectedly: {type(exc).__name__}: {exc}",
+        )
+    finally:
+        await release_cron_lock(lock)
+
+
 async def async_main() -> None:
     global scheduler
 
@@ -1893,6 +1956,16 @@ async def async_main() -> None:
         IntervalTrigger(minutes=retention_minutes),
         args=[pool],
         id="event_retention",
+        coalesce=True,
+        max_instances=1,
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _assets_telemetry_tick,
+        IntervalTrigger(minutes=5),
+        args=[pool],
+        id="assets_telemetry_sync",
         coalesce=True,
         max_instances=1,
         replace_existing=True,

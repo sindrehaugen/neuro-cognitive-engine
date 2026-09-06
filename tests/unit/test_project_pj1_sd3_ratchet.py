@@ -90,7 +90,7 @@ def test_do_record_project_outcome_removed_from_internal_cores() -> None:
         data = json.load(f)
     allowlist = set(data.keys()) if isinstance(data, dict) else set(data)
     assert "nce/vertical_modules/project/recall.py::do_record_project_outcome" not in allowlist
-    assert len(allowlist) == 69
+    assert len(allowlist) <= 69  # Shrink-only allowlist (68 after Wave RS-3)
 
 
 # ---------------------------------------------------------------------------

@@ -189,11 +189,6 @@
     "owner": "MLV15B-PJ5",
     "reason": "Project task sync from BOM changes; scheduled for activation with parked automation in Wave PJ-5."
   },
-  "nce/vertical_modules/resources/planner.py::do_record_allocation_outcome": {
-    "engine": "resources",
-    "owner": "MLV15C-C10",
-    "reason": "Resource schedule outcome feedback recorder; awaits C10 decision feedback keystone in MLV15C."
-  },
   "nce/vertical_modules/resources/registry.py::do_create_resource": {
     "engine": "resources",
     "owner": "MLV15D-RS1",

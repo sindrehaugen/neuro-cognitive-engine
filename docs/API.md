@@ -409,6 +409,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `resources_plan_allocation` |  |  |  |  |
 | `resources_plan_material_flow` | yes | yes |  |  |
 | `resources_plan_travel` |  | yes |  |  |
+| `resources_record_allocation_outcome` | yes | yes |  |  |
 | `resources_release` |  | yes |  |  |
 | `resources_reserve` |  | yes |  |  |
 | `resources_resolve_capacity` |  |  | yes |  |
@@ -463,4 +464,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_reliability_radar` |  |  | yes |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 228 REST endpoints, 217 MCP tools._
+_Totals: 228 REST endpoints, 218 MCP tools._

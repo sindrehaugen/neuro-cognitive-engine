@@ -5232,6 +5232,47 @@ TOOLS = [
             "required": ["namespace_id", "allocation_id", "itinerary"],
         },
     ),
+    Tool(
+        name="resources_record_allocation_outcome",
+        description=(
+            "Record resource allocation outcome (rating, quality, on-time, notes). "
+            "admin_only; mutation. Appends to v3_cognitive_ledger and logs to C10 "
+            "decision feedback service."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "resource_id": {"type": "string", "description": "Resource UUID."},
+                "allocation_id": {"type": "string", "description": "Optional allocation UUID."},
+                "rating": {
+                    "type": "number",
+                    "description": "Allocation performance rating (1.0 - 5.0, default 5.0).",
+                },
+                "quality_score": {
+                    "type": "number",
+                    "description": "Work quality score (0.0 - 1.0, default 1.0).",
+                },
+                "demand_kind": {
+                    "type": "string",
+                    "description": "Demand kind (e.g. 'project', 'service', 'warranty').",
+                },
+                "on_time": {
+                    "type": "boolean",
+                    "description": "Whether the resource arrived/delivered on time (default true).",
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Optional retrospective notes on resource allocation.",
+                },
+                "actor": {
+                    "type": "string",
+                    "description": "Actor recording the outcome.",
+                },
+            },
+            "required": ["namespace_id", "resource_id"],
+        },
+    ),
     # ML17-B5 (M17.W5) -- Customer Portal Engine (9 tools)
     Tool(
         name="customer_portal_room_tracker",

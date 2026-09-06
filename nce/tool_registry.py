@@ -1320,6 +1320,13 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         cacheable=False,
         mutation=True,
     ),
+    # Resources Engine — outcome recording (Wave RS-3)
+    "resources_record_allocation_outcome": ToolSpec(
+        _h(resources_mcp_handlers, "handle_resources_record_allocation_outcome"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
     # ML17-B5 (M17.W5) -- Customer Portal Engine (9 tools)
     "customer_portal_room_tracker": ToolSpec(
         _h(customer_portal_mcp_handlers, "handle_customer_portal_room_tracker"),
