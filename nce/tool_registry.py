@@ -956,6 +956,30 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=True,
     ),
+    "assets_seed_from_bom": ToolSpec(
+        _h(assets_mcp_handlers, "handle_assets_seed_from_bom"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    "assets_pull_telemetry": ToolSpec(
+        _h(assets_mcp_handlers, "handle_assets_pull_telemetry"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "assets_attach_sla": ToolSpec(
+        _h(assets_mcp_handlers, "handle_assets_attach_sla"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    "assets_compute_health": ToolSpec(
+        _h(assets_mcp_handlers, "handle_assets_compute_health"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
     # ------------------------------------------------------------------
     # Support vertical module tools (Module 10, Wave 5, ML10-B5)
     # ------------------------------------------------------------------

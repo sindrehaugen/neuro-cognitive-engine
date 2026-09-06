@@ -91,8 +91,13 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/agreements/review` | `api_agreements_review` |
 | GET | `/api/agreements/{id}` | `api_agreements_detail` |
 | GET | `/api/assets` | `api_assets_list` |
+| GET | `/api/assets/health` | `api_assets_health` |
+| POST | `/api/assets/seed-from-bom` | `api_assets_seed_from_bom` |
+| POST | `/api/assets/sla/attach` | `api_assets_attach_sla` |
 | GET | `/api/assets/{id}` | `api_assets_get` |
+| GET | `/api/assets/{id}/health` | `api_assets_health` |
 | POST | `/api/assets/{id}/lifecycle` | `api_assets_advance_lifecycle` |
+| POST | `/api/assets/{id}/telemetry` | `api_assets_pull_telemetry` |
 | POST | `/api/business-insights/ask` | `api_business_insights_ask` |
 | GET,POST | `/api/business-insights/board-pack` | `api_business_insights_board_pack` |
 | GET | `/api/business-insights/kpi-dashboard` | `api_business_insights_kpi_dashboard` |
@@ -242,9 +247,13 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `abort_migration` |  | yes |  | yes |
 | `agreements_lookup_terms` |  |  | yes |  |
 | `assets_advance_lifecycle` |  | yes |  |  |
+| `assets_attach_sla` |  | yes |  |  |
+| `assets_compute_health` |  | yes |  |  |
 | `assets_get` |  |  | yes |  |
 | `assets_list` |  |  | yes |  |
 | `assets_ping` |  |  | yes |  |
+| `assets_pull_telemetry` | yes | yes |  |  |
+| `assets_seed_from_bom` |  | yes |  |  |
 | `boost_memory` |  | yes |  |  |
 | `bridge_status` |  |  |  |  |
 | `business_insights_ask_business` | yes |  |  |  |
@@ -435,4 +444,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_reliability_radar` |  |  | yes |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 215 REST endpoints, 202 MCP tools._
+_Totals: 220 REST endpoints, 206 MCP tools._

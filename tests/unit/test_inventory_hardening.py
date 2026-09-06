@@ -51,15 +51,12 @@ _NAMESPACE_ID = "00000000-0000-4000-8000-000000000001"
 _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
-# --- MEASURED on branch ml16/business-insights-engine ------------------------
-_TOTAL_TOOLS = 202  # 196 baseline + 6 business insights tools (Module 16)
-_MUTATION_TOOLS = (
-    83  # 81 baseline + 2 customer portal tools (raise_service_request, register_expansion_interest)
-)
-_CACHEABLE_TOOLS = (
-    76  # 73 baseline + 3 business insights tools (morning_brief, risk_radar, kpi_dashboard)
-)
-_ADMIN_ONLY_TOOLS = 48  # 42 baseline + 6 business insights tools
+# --- MEASURED on branch ml9b/assets-completion ------------------------------
+# python -c "import nce.tool_registry as tr; print(len(tr.TOOL_REGISTRY))"
+_TOTAL_TOOLS = 206  # 202 baseline + 4 assets completion tools (ML9b P1+P2)
+_MUTATION_TOOLS = 87  # 83 baseline + 4 mutating assets tools
+_CACHEABLE_TOOLS = 76  # unchanged by ML9b
+_ADMIN_ONLY_TOOLS = 49  # 48 baseline + 1 admin_only assets tool (pull_telemetry)
 _MIGRATION_TOOLS = 5
 
 

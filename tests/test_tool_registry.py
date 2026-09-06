@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 202  # 196 baseline + 6 Business Insights tools (Module 16)
+_EXPECTED_TOTAL = 206  # 202 baseline + 4 Assets completion tools (ML9b P1+P2)
 
 
 def test_registry_has_expected_entries():
@@ -129,6 +129,11 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # MCP tools table in docs/vertical_engines/09-assets-engine.md
         # specifies cacheable=N, admin_only=N, mutation=Y for this tool.
         "assets_advance_lifecycle",
+        # ML9b-P1/P2: Assets tools
+        "assets_seed_from_bom",
+        "assets_pull_telemetry",
+        "assets_attach_sla",
+        "assets_compute_health",
         # Batch 067c (M6.W13b) — System Design authoring: the first external
         # write path into the design graph. mutation=True is what makes the
         # dispatch loop bump the MCP cache generation, which is the only thing
@@ -216,7 +221,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 83  # 81 baseline + 2 customer portal tools
+    assert len(MUTATION_TOOLS) == 87  # 83 baseline + 4 assets completion tools
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -439,6 +444,8 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "business_insights_generate_board_pack",
         "business_insights_kpi_dashboard",
         "business_insights_ask_business",
+        # ML9b-P1 -- Assets Engine admin_only tools (operator/cron telemetry pull)
+        "assets_pull_telemetry",
     }
 )
 
@@ -451,7 +458,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 48  # 42 baseline + 6 business insights tools
+    assert len(ADMIN_ONLY_TOOLS) == 49  # 48 baseline + 1 assets tool (pull_telemetry)
 
 
 # ---------------------------------------------------------------------------

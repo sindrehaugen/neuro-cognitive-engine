@@ -1,0 +1,17 @@
+{
+  "_comment": "Config-as-IP: Asset health scoring weights, degraded threshold, and lifespan parameters. Module-local per charter §3.",
+  "weights": {
+    "telemetry_weight": 0.35,
+    "mtbf_weight": 0.25,
+    "tickets_weight": 0.20,
+    "age_weight": 0.20
+  },
+  "thresholds": {
+    "degraded_threshold": 60.0,
+    "predictive_failure_threshold": 0.60
+  },
+  "defaults": {
+    "expected_lifespan_days": 1825,
+    "baseline_mtbf_years": 10.0
+  }
+}

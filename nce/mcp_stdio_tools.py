@@ -2469,6 +2469,89 @@ TOOLS = [
         },
     ),
     Tool(
+        name="assets_seed_from_bom",
+        description=(
+            "Seed an asset register row from a BOM line at install handover. Actor; mutation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "bom_line_id": {
+                    "type": "string",
+                    "description": "Originating BOM line identifier.",
+                },
+                "serial": {
+                    "type": "string",
+                    "description": "Optional physical device serial number.",
+                },
+                "functional_location_id": {
+                    "type": "string",
+                    "description": "Optional room / functional location identifier.",
+                },
+            },
+            "required": ["namespace_id", "bom_line_id"],
+        },
+    ),
+    Tool(
+        name="assets_pull_telemetry",
+        description=(
+            "Pull telemetry samples for an asset from manufacturer adapter. Operator/cron; mutation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "asset_id": {"type": "string", "description": "Target asset UUID."},
+                "platform": {
+                    "type": "string",
+                    "description": "Optional telemetry adapter platform (mock, crestron, qsys, neat, huddly, poly).",
+                },
+            },
+            "required": ["namespace_id", "asset_id"],
+        },
+    ),
+    Tool(
+        name="assets_attach_sla",
+        description=("Attach per-room SLA coverage link to an agreement. Actor; mutation."),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "agreement_id": {"type": "string", "description": "Agreement UUID."},
+                "functional_location_id": {
+                    "type": "string",
+                    "description": "Room / functional location identifier.",
+                },
+                "namespace_slug": {"type": "string", "description": "Optional namespace slug."},
+            },
+            "required": ["namespace_id", "agreement_id", "functional_location_id"],
+        },
+    ),
+    Tool(
+        name="assets_compute_health",
+        description=(
+            "Compute asset health score by fusing telemetry, NetBox MTBF, open tickets, and age. "
+            "Declares input coverage and triggers DEGRADED transition past threshold. Watcher; mutation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "asset_id": {"type": "string", "description": "Asset UUID to evaluate."},
+                "degraded_threshold": {
+                    "type": "number",
+                    "description": "Optional override for DEGRADED threshold (default 60.0).",
+                },
+                "mtbf_prob_fail": {
+                    "type": "number",
+                    "description": "Optional failure probability from NetBox MTBF (0.0 - 1.0).",
+                },
+            },
+            "required": ["namespace_id", "asset_id"],
+        },
+    ),
+    Tool(
         name="vendors_get_vendor",
         description="Fetch a single vendor. Watcher; read-only, cacheable.",
         inputSchema={
