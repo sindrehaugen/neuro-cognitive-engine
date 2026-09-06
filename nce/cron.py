@@ -1743,6 +1743,9 @@ async def async_main() -> None:
     # already build for their own core calls. Module-qualified because
     # automation and tasks each define a DIFFERENT register_engine.
     _relay_engine = SimpleNamespace(pg_pool=pool)
+    from nce.engine_registry import populate_engine_modules
+
+    populate_engine_modules(_relay_engine)
     project_tasks.register_engine(_relay_engine)
     project_automation.register_engine(_relay_engine)
     project_tasks.register_bom_task_subscriber()
