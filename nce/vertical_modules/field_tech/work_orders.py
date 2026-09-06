@@ -24,6 +24,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from nce.db_utils import scoped_pg_session
+from nce.entity_resolution.ownership import assert_owner
 
 log = logging.getLogger("nce.vertical_modules.field_tech.work_orders")
 
@@ -166,8 +167,9 @@ async def do_create_work_order(engine: Any, params: dict[str, Any]) -> dict[str,
             f"field_tech:{work_order_id}",
         )
 
-        # 2. Graph Node for WORK_ORDER
+        # 2. Graph Node for WORK_ORDER (Contract-A guarded)
         wo_label = f"WORK_ORDER:{work_order_id}"
+        await assert_owner(conn, ns_uuid, _NODE_TYPE_WORK_ORDER, _FIELD_TECH_ENGINE)
         await conn.execute(
             """
             INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)
@@ -190,16 +192,6 @@ async def do_create_work_order(engine: Any, params: dict[str, Any]) -> dict[str,
         source_target_label = f"{source_target_type}:{source_ref}"
         await conn.execute(
             """
-            INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)
-            VALUES ($1, $2, $3::uuid, 'agent')
-            ON CONFLICT (label, namespace_id) DO NOTHING
-            """,
-            source_target_label,
-            source_target_type,
-            ns_uuid,
-        )
-        await conn.execute(
-            """
             INSERT INTO kg_edges (subject_label, predicate, object_label, confidence, namespace_id, change_origin)
             VALUES ($1, 'for', $2, 1.0, $3::uuid, 'agent')
             ON CONFLICT (subject_label, predicate, object_label, namespace_id) DO NOTHING
@@ -214,15 +206,6 @@ async def do_create_work_order(engine: Any, params: dict[str, Any]) -> dict[str,
             loc_label = f"FUNCTIONAL_LOCATION:{location_id}"
             await conn.execute(
                 """
-                INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)
-                VALUES ($1, 'FUNCTIONAL_LOCATION', $2::uuid, 'agent')
-                ON CONFLICT (label, namespace_id) DO NOTHING
-                """,
-                loc_label,
-                ns_uuid,
-            )
-            await conn.execute(
-                """
                 INSERT INTO kg_edges (subject_label, predicate, object_label, confidence, namespace_id, change_origin)
                 VALUES ($1, 'at', $2, 1.0, $3::uuid, 'agent')
                 ON CONFLICT (subject_label, predicate, object_label, namespace_id) DO NOTHING
@@ -235,15 +218,6 @@ async def do_create_work_order(engine: Any, params: dict[str, Any]) -> dict[str,
         # 5. Graph Edges: WORK_ORDER -[installs]-> BOM_LINE
         for bl in bom_lines:
             bl_label = bl if bl.startswith("BOM_LINE:") else f"BOM_LINE:{bl}"
-            await conn.execute(
-                """
-                INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)
-                VALUES ($1, 'BOM_LINE', $2::uuid, 'agent')
-                ON CONFLICT (label, namespace_id) DO NOTHING
-                """,
-                bl_label,
-                ns_uuid,
-            )
             await conn.execute(
                 """
                 INSERT INTO kg_edges (subject_label, predicate, object_label, confidence, namespace_id, change_origin)
@@ -476,21 +450,10 @@ async def do_assign(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
             ns_uuid,
         )
 
-        # Graph node and edge for assignment
+        # Graph edge for assignment
         wo_label = f"WORK_ORDER:{work_order_id}"
         target_entity = "CONTRACTOR" if assignee_kind == "contractor" else "EMPLOYEE"
         assignee_label = f"{target_entity}:{assignee_id}"
-
-        await conn.execute(
-            """
-            INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)
-            VALUES ($1, $2, $3::uuid, 'agent')
-            ON CONFLICT (label, namespace_id) DO NOTHING
-            """,
-            assignee_label,
-            target_entity,
-            ns_uuid,
-        )
 
         await conn.execute(
             """

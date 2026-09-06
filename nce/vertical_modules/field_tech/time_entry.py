@@ -19,11 +19,13 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from nce.db_utils import scoped_pg_session
+from nce.entity_resolution.ownership import assert_owner
 
 log = logging.getLogger("nce.vertical_modules.field_tech.time_entry")
 
 EVENT_TYPE_TIME_LOGGED: str = "field_tech_time_logged"
 _NODE_TYPE_TIME_ENTRY = "FIELD_TECH_TIME_ENTRY"
+_OWNER_ENGINE = "field_tech"
 _ALLOWED_SOURCES = frozenset({"gps", "manual"})
 
 
@@ -180,6 +182,7 @@ async def do_log_time(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
         te_label = f"{_NODE_TYPE_TIME_ENTRY}:{time_entry_id}"
         wo_label = f"WORK_ORDER:{work_order_id}"
 
+        await assert_owner(conn, ns_uuid, _NODE_TYPE_TIME_ENTRY, _OWNER_ENGINE)
         await conn.execute(
             """
             INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)

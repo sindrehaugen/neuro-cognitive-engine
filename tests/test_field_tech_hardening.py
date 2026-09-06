@@ -93,7 +93,9 @@ async def field_tech_db_pool() -> AsyncGenerator[asyncpg.Pool, None]:
 
 
 async def _make_test_namespace(pool: asyncpg.Pool) -> uuid.UUID:
-    """Idempotently insert a test namespace row with field_tech enabled."""
+    """Idempotently insert a test namespace row with field_tech enabled and seed ownership registry."""
+    from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
+
     ns_id = uuid.uuid4()
     slug = f"test-field-tech-{ns_id.hex[:12]}"
     async with pool.acquire() as conn:
@@ -106,6 +108,7 @@ async def _make_test_namespace(pool: asyncpg.Pool) -> uuid.UUID:
             ns_id,
             slug,
         )
+        await seed_node_ownership_registry(conn, ns_id)
     return ns_id
 
 

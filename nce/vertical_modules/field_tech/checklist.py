@@ -20,11 +20,13 @@ from uuid import UUID, uuid4
 
 from nce.bom_lines import update_bom_line_status
 from nce.db_utils import scoped_pg_session
+from nce.entity_resolution.ownership import assert_owner
 
 log = logging.getLogger("nce.vertical_modules.field_tech.checklist")
 
 EVENT_TYPE_CHECKLIST_COMPLETED: str = "field_tech_checklist_completed"
 _NODE_TYPE_CHECKLIST = "FIELD_TECH_CHECKLIST"
+_OWNER_ENGINE = "field_tech"
 
 _TEMPLATES_PATH = (
     Path(__file__).resolve().parents[2] / "config_data" / "field-tech-checklist-templates.json"
@@ -176,6 +178,7 @@ async def do_complete_checklist(engine: Any, params: dict[str, Any]) -> dict[str
         cl_label = f"{_NODE_TYPE_CHECKLIST}:{checklist_id}"
         wo_label = f"WORK_ORDER:{work_order_id}"
 
+        await assert_owner(conn, ns_uuid, _NODE_TYPE_CHECKLIST, _OWNER_ENGINE)
         await conn.execute(
             """
             INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)

@@ -38,48 +38,8 @@ _FILE_DYNAMIC_MAP: dict[str, list[str]] = {
 }
 
 # Shrink-only allowlist: Vertical module files writing kg_nodes without assert_owner
-# Once a wave (e.g. FT-1 or HR-1) wraps graph writes in assert_owner, the file MUST be removed.
+# Once a wave (e.g. FT-2 or HR-1) wraps graph writes in assert_owner, the file MUST be removed.
 KNOWN_UNGUARDED_GRAPH_WRITERS: dict[str, dict[str, str]] = {
-    "nce/vertical_modules/field_tech/checklist.py": {
-        "engine": "field_tech",
-        "owner": "MLV15B",
-        "reason": (
-            "Field tech checklist writes FIELD_TECH_CHECKLIST node without assert_owner; "
-            "scheduled for remediation in v1.5 Phase 1 Wave FT-1."
-        ),
-    },
-    "nce/vertical_modules/field_tech/photo.py": {
-        "engine": "field_tech",
-        "owner": "MLV15B",
-        "reason": (
-            "Field tech photo attachment writes FIELD_TECH_PHOTO node without assert_owner; "
-            "scheduled for remediation in v1.5 Phase 1 Wave FT-1."
-        ),
-    },
-    "nce/vertical_modules/field_tech/scan.py": {
-        "engine": "field_tech",
-        "owner": "MLV15B",
-        "reason": (
-            "Field tech barcode scanner writes FIELD_TECH_SCAN and ASSET nodes without assert_owner; "
-            "scheduled for remediation in v1.5 Phase 1 Wave FT-1."
-        ),
-    },
-    "nce/vertical_modules/field_tech/time_entry.py": {
-        "engine": "field_tech",
-        "owner": "MLV15B",
-        "reason": (
-            "Field tech timesheet writes FIELD_TECH_TIME_ENTRY node without assert_owner; "
-            "scheduled for remediation in v1.5 Phase 1 Wave FT-1."
-        ),
-    },
-    "nce/vertical_modules/field_tech/work_orders.py": {
-        "engine": "field_tech",
-        "owner": "MLV15B",
-        "reason": (
-            "Field tech work order creation writes WORK_ORDER and FUNCTIONAL_LOCATION nodes without assert_owner; "
-            "scheduled for remediation in v1.5 Phase 1 Wave FT-1."
-        ),
-    },
     "nce/vertical_modules/hr/a2a.py": {
         "engine": "hr",
         "owner": "MLV15B",
@@ -377,7 +337,7 @@ def test_unregistered_entity_types_allowlist_is_shrink_only() -> None:
 
 
 def test_starting_baseline_matches_charter() -> None:
-    """Charter §6 verification: Exactly two vertical engines (field_tech 5 files, hr 1 file) are unguarded."""
+    """Charter §6 verification: After FT-2, field_tech is fully guarded (0 unguarded files); hr (1 file) remains."""
     writers, _, _ = _scan_kg_nodes_writers(_REPO_ROOT)
     unguarded_files_by_engine: dict[str, list[str]] = {}
 
@@ -390,11 +350,11 @@ def test_starting_baseline_matches_charter() -> None:
         eng: files for eng, files in unguarded_files_by_engine.items() if eng != "dynamics365"
     }
 
-    assert set(vertical_unguarded.keys()) == {"field_tech", "hr"}, (
-        f"Charter §6 violation: Expected exactly field_tech and hr to be unguarded, got: {list(vertical_unguarded.keys())}"
+    assert set(vertical_unguarded.keys()) == {"hr"}, (
+        f"Charter §6 violation: Expected only hr to be unguarded, got: {list(vertical_unguarded.keys())}"
     )
-    assert len(vertical_unguarded["field_tech"]) == 5, (
-        f"Charter §6 violation: Expected exactly 5 unguarded field_tech files, found {len(vertical_unguarded['field_tech'])}"
+    assert len(vertical_unguarded.get("field_tech", [])) == 0, (
+        f"Charter §6 violation: Expected 0 unguarded field_tech files, found {len(vertical_unguarded.get('field_tech', []))}"
     )
     assert len(vertical_unguarded["hr"]) == 1, (
         f"Charter §6 violation: Expected exactly 1 unguarded hr file, found {len(vertical_unguarded['hr'])}"
