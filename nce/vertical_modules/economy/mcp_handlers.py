@@ -33,6 +33,7 @@ from nce.db_utils import scoped_pg_session
 from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import McpError, mcp_handler
 from nce.vertical_modules.economy._guard import EconomyDisabledError, require_economy_enabled
+from nce.vertical_modules.economy.cascade import do_cascade_on_approval
 from nce.vertical_modules.economy.close_narrative import do_generate_close_narrative
 from nce.vertical_modules.economy.dunning import do_compute_dunning
 from nce.vertical_modules.economy.events import UnbalancedPostingsError, do_emit_financial_event
@@ -570,6 +571,147 @@ async def handle_economy_generate_close_narrative(
             {
                 "error": (
                     f"economy_generate_close_narrative: result contains a non-finite value and "
+                    f"cannot be serialized ({exc})"
+                )
+            },
+            default=str,
+        )
+
+
+@mcp_handler
+async def handle_economy_approve_invoice(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: economy_approve_invoice — execute 7-effect invoice approval cascade (Governed Actor tool).
+
+    Required arguments:
+        namespace_id (str, UUID)
+        approval_id  (str) — idempotency key for this approval execution
+        quote_id     (str) — Sales quote identifier (actual_cost aggregation root)
+
+    Optional arguments:
+        project_id       (str) — optional project identifier echoed into effects
+        invoice_id       (str) — optional invoice identifier echoed into effects
+        supplier_id      (str) — optional supplier identifier echoed into effects
+        invoice_amount   (int|float|Decimal) — optional invoice total amount
+        invoice_postings (list[dict]) — optional invoice-level GL postings
+        lines            (list[dict]) — list of matched BOM line actual cost records:
+                            [{"bom_line_label": str, "actual_cost": int|float|Decimal, "postings": list[dict]|None}]
+        confirm          (bool) — confirm-first gate: False (default) returns pending_approval; True executes
+        is_ocr           (bool) — flag indicating whether invoice amounts are OCR-derived (fails closed)
+        ocr_derived      (bool) — alias for is_ocr (fails closed)
+        document_format  (str) — source document format (ocr_pdf / ocr_image fail closed)
+
+    Returns a JSON string with approval results or status envelope:
+        {"status": "pending_approval", ...} when confirm is False,
+        {"status": "executed", "result": {...}} on confirmed execution,
+        or {"error": "..."} on validation failure / OCR refusal.
+    """
+    try:
+        await _check_economy_enabled(engine, arguments)
+        ns_uuid = require_namespace_id(arguments)
+
+        approval_id = str(arguments.get("approval_id") or "").strip()
+        if not approval_id:
+            raise ValueError("approval_id is required (idempotency key)")
+
+        quote_id = str(arguments.get("quote_id") or "").strip()
+        if not quote_id:
+            raise ValueError("quote_id is required")
+
+        confirm = bool(arguments.get("confirm", False))
+        if not confirm:
+            return json.dumps(
+                {
+                    "status": "pending_approval",
+                    "action_type": "economy_approve_invoice",
+                    "approval_id": approval_id,
+                    "quote_id": quote_id,
+                    "message": (
+                        "Human confirmation required to execute invoice approval cascade. "
+                        "Set confirm=True to execute."
+                    ),
+                },
+                default=str,
+            )
+
+        invoice_id = arguments.get("invoice_id")
+
+        # Fail closed on OCR-derived invoice figures (OQ-2 advisor-only posture)
+        is_ocr = bool(
+            arguments.get("is_ocr")
+            or arguments.get("ocr_derived")
+            or arguments.get("document_format") in ("ocr_pdf", "ocr_image")
+        )
+        if not is_ocr and isinstance(arguments.get("lines"), list):
+            for line in arguments["lines"]:
+                if isinstance(line, dict) and (line.get("is_ocr") or line.get("ocr_derived")):
+                    is_ocr = True
+                    break
+
+        if not is_ocr and invoice_id and getattr(engine, "pg_pool", None) is not None:
+            try:
+                async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
+                    ocr_row = await conn.fetchrow(
+                        """
+                        SELECT metadata->>'document_format' AS fmt,
+                               metadata->>'requires_review' AS req_rev
+                        FROM memories
+                        WHERE namespace_id = $1::uuid
+                          AND metadata->>'invoice_id' = $2
+                        LIMIT 1
+                        """,
+                        str(ns_uuid),
+                        str(invoice_id),
+                    )
+                    if ocr_row and (
+                        ocr_row["fmt"] in ("ocr_pdf", "ocr_image")
+                        or str(ocr_row["req_rev"]).lower() == "true"
+                    ):
+                        is_ocr = True
+            except Exception as e:
+                log.warning("[economy] Failed to check memories for OCR invoice: %s", e)
+
+        if is_ocr:
+            raise ValueError(
+                "Refusing automated approval on OCR-derived invoice amount: "
+                "OCR extraction requires human review / advisor-only (OQ-2)"
+            )
+
+        params = {
+            "namespace_id": ns_uuid,
+            "approval_id": approval_id,
+            "quote_id": quote_id,
+            "project_id": arguments.get("project_id"),
+            "invoice_id": invoice_id,
+            "supplier_id": arguments.get("supplier_id"),
+            "invoice_amount": arguments.get("invoice_amount"),
+            "invoice_postings": arguments.get("invoice_postings"),
+            "lines": arguments.get("lines"),
+        }
+        cascade_result = await do_cascade_on_approval(engine, params)
+        result_payload = {
+            "status": "executed",
+            "approval_id": approval_id,
+            "result": cascade_result,
+        }
+    except McpError:
+        raise
+    except (ValueError, KeyError, TypeError, UnbalancedPostingsError) as exc:
+        return json.dumps({"error": str(exc)}, default=str)
+    except Exception as exc:
+        log.exception("[economy] handle_economy_approve_invoice unexpected error")
+        return json.dumps({"error": str(exc)}, default=str)
+
+    try:
+        return json.dumps(result_payload, default=str, allow_nan=False)
+    except ValueError as exc:
+        log.error(
+            "[economy] handle_economy_approve_invoice result not JSON-serializable: %s",
+            exc,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    f"economy_approve_invoice: result contains a non-finite value and "
                     f"cannot be serialized ({exc})"
                 )
             },

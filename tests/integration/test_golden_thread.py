@@ -196,7 +196,7 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         index=17,
         name="actual_cost",
         canonical_label="actual_cost",
-        is_broken=True,
+        is_broken=False,
         review_break="break-3",
         phase1_wave="E-3",
         description="Economy invoice approval cascades to write actual_cost on BOM_LINE",
@@ -474,10 +474,6 @@ class TestGoldenThreadSteps:
 
         assert callable(do_cascade_on_approval)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="break-3: economy cascade on approval uncalled; actual_cost on BOM_LINE unwritten (Wave E-3)",
-    )
     def test_step_17_actual_cost(self) -> None:
         """Step 17: actual_cost written to BOM_LINE by economy cascade."""
         # Seam verification: economy_approve_invoice tool must exist in tool_registry
@@ -621,7 +617,7 @@ class TestGoldenThreadPipeline:
 
     @pytest.mark.xfail(
         strict=True,
-        reason="break-3: Golden Thread pipeline halts at next broken seam (actual_cost on BOM_LINE unwritten, Wave E-3)",
+        reason="break-5a: Golden Thread pipeline halts at next broken seam (cert expiry invalidates allocation, Wave HR-1/V-2)",
     )
     def test_golden_thread_full_e2e_pipeline(self) -> None:
         """Execute full scenario pipeline end-to-end.
@@ -630,7 +626,8 @@ class TestGoldenThreadPipeline:
         Step 8 (BOM_LINE ORDERED) was closed by Wave PR-1.
         Step 11 (BOM_LINE DELIVERED / GOODS_RECEIPT.created) was closed by Wave IN-1.
         Steps 13 & 14 (BOM_LINE INSTALLED & TESTED) were closed by Wave FT-1.
-        Halts at Step 17 (actual_cost on BOM_LINE / economy cascade) until Wave E-3 lands.
+        Step 17 (actual_cost on BOM_LINE / economy cascade) was closed by Wave E-3.
+        Halts at Step 23 (cert expiry invalidates resource allocation) until Wave HR-1/V-2 lands.
         """
         engine = NCEEngine()
         assert engine is not None
@@ -750,10 +747,58 @@ class TestGoldenThreadPipeline:
 
         assert callable(do_cascade_on_approval)
 
-        # Step 17: actual_cost written to BOM_LINE by economy cascade (Fifth Seam Break - Wave E-3)
+        # Step 17: actual_cost written to BOM_LINE by economy cascade (Closed by Wave E-3)
         if "economy_approve_invoice" not in TOOL_REGISTRY:
             raise AssertionError(
                 "break-3: pipeline halted at step 17: economy_approve_invoice missing / actual_cost unwritten (Wave E-3)"
+            )
+
+        # Step 18: Support ticket
+        from nce.vertical_modules.support.tickets import do_open_ticket
+
+        assert callable(do_open_ticket)
+
+        # Step 19: Dispatch
+        from nce.vertical_modules.support.dispatch import do_dispatch_work_order
+
+        assert callable(do_dispatch_work_order)
+
+        # Step 20: Work Order (Closed by Wave SU-1/FT-3)
+        from nce.events import catalogue
+
+        ticket_contract = getattr(catalogue, "EVENT_CATALOGUE", {}).get("TICKET.dispatched")
+        if ticket_contract is None or not ticket_contract.producers:
+            raise AssertionError(
+                "break-5b: pipeline halted at step 20: TICKET.dispatched uncatalogued or missing producers (Wave SU-1/FT-3)"
+            )
+
+        # Step 21: Field Tech outcome
+        from nce.vertical_modules.field_tech.outcome import do_record_outcome
+
+        assert callable(do_record_outcome)
+
+        # Step 22: Cert expiry check
+        from nce.vertical_modules.vendors.certs import do_check_cert_expiry
+
+        assert callable(do_check_cert_expiry)
+
+        # Step 23: Cert expiry invalidates resource allocation (Sixth Seam Break - Wave HR-1/V-2)
+        import ast
+        import pathlib
+
+        hr_dir = pathlib.Path("nce/vertical_modules/hr")
+        found = False
+        for py_file in hr_dir.glob("*.py"):
+            tree = ast.parse(py_file.read_bytes().decode("utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Call):
+                    fn = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+                    if fn in ("emit_graph_write", "emit_event", "append_event"):
+                        found = True
+                        break
+        if not found:
+            raise AssertionError(
+                "break-5a: pipeline halted at step 23: HR engine emits zero C4 events; CERTIFICATION.EXPIRED unproduced (Wave HR-1/V-2)"
             )
 
 
@@ -796,13 +841,13 @@ class TestGoldenThreadPositiveControls:
         plus the degradation register check (Step 28).
         Wave S-2a closed Step 5, Wave CP-1 closed Step 25, Wave I-5 closed Step 28,
         Wave PR-1 closed Step 8, Wave IN-1 closed Step 11, Wave FT-1 closed Steps 13 & 14,
-        Wave SU-1/FT-3 closed Step 20, and Wave PJ-1/SD-2 closed Step 27,
-        burning down to 2 broken steps.
+        Wave SU-1/FT-3 closed Step 20, Wave PJ-1/SD-2 closed Step 27,
+        and Wave E-3 closed Step 17, burning down to 1 broken step.
         """
         broken_steps = [s for s in GOLDEN_THREAD_STEPS if s.is_broken]
-        assert len(broken_steps) == 2
+        assert len(broken_steps) == 1
         broken_indices = {s.index for s in broken_steps}
-        assert broken_indices == {17, 23}
+        assert broken_indices == {23}
 
     def test_positive_control_broken_steps_have_remediation_waves(self) -> None:
         """Verify every broken step specifies a responsible Phase 1 remediation wave."""

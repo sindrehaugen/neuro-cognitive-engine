@@ -4,11 +4,6 @@
     "owner": "MLV15B-CP2",
     "reason": "Expiring customer document token access core; scheduled for customer portal API route in Wave CP-2."
   },
-  "nce/vertical_modules/economy/cascade.py::do_cascade_on_approval": {
-    "engine": "economy",
-    "owner": "MLV15B-E3",
-    "reason": "Financial event cascade on invoice approval; awaits upstream caller when invoice approval lands in Wave E-3."
-  },
   "nce/vertical_modules/economy/contracts.py::do_upsert_contract": {
     "engine": "economy",
     "owner": "MLV15D-E1",

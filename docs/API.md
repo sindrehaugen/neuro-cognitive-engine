@@ -330,6 +330,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `diag_ingest_bundle` |  | yes |  |  |
 | `diag_list_anomalies` |  |  | yes |  |
 | `disconnect_bridge` |  | yes |  |  |
+| `economy_approve_invoice` | yes | yes |  |  |
 | `economy_compute_dunning` |  |  | yes |  |
 | `economy_compute_periodisering` |  |  | yes |  |
 | `economy_compute_recognition_schedule` |  |  | yes |  |
@@ -505,4 +506,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 247 REST endpoints, 240 MCP tools._
+_Totals: 247 REST endpoints, 241 MCP tools._
