@@ -65,6 +65,12 @@ def _make_mock_engine(
     conn.fetch.return_value = case_rows or []
     conn.execute.return_value = "UPDATE 1"
 
+    tx = MagicMock()
+    tx.__aenter__ = AsyncMock(return_value=tx)
+    tx.__aexit__ = AsyncMock(return_value=None)
+    conn.transaction = MagicMock(return_value=tx)
+    conn.is_in_transaction = MagicMock(return_value=True)
+
     ctx = AsyncMock()
     ctx.__aenter__.return_value = conn
     ctx.__aexit__.return_value = None

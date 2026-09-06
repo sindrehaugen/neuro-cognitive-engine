@@ -1156,6 +1156,7 @@ _additional_fork_provenance_types: tuple[str, ...] = (
     "business_insights_finding_surfaced",
     "business_insights_scenario_executed",
     "business_insights_board_pack_drafted",
+    "business_insights_access_audited",
 )
 for _fork_et in _additional_fork_provenance_types:
     assert _fork_et not in _HANDLER_REGISTRY, (

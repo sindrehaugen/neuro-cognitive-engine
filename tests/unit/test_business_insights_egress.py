@@ -14,6 +14,8 @@ Requirements per Charter §6:
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 from nce.vertical_modules.business_insights._guard import (
@@ -25,6 +27,24 @@ from nce.vertical_modules.business_insights.ask import do_ask_business
 class DummyConnection:
     def __init__(self):
         self.queries = []
+        self._in_tx = False
+
+    def transaction(self):
+        class _Tx:
+            def __init__(self, conn):
+                self.conn = conn
+
+            async def __aenter__(self):
+                self.conn._in_tx = True
+                return self
+
+            async def __aexit__(self, *args):
+                self.conn._in_tx = False
+
+        return _Tx(self)
+
+    def is_in_transaction(self):
+        return self._in_tx
 
     async def execute(self, query: str, *args):
         self.queries.append((query, args))
@@ -116,12 +136,17 @@ async def test_third_party_egress_authorized_and_audited():
             "timestamp": "2026-09-05T20:00:00Z",
         },
     }
-    result = await do_ask_business(engine, params)
-    assert result["status"] == "ok"
-    assert "answer" in result
-    assert "provenance" in result
+    with patch(
+        "nce.vertical_modules.business_insights.provenance.append_event",
+        new=AsyncMock(),
+    ) as mock_append:
+        result = await do_ask_business(engine, params)
+        assert result["status"] == "ok"
+        assert "answer" in result
+        assert "provenance" in result
 
-    # Verify audit in v3_cognitive_ledger was executed
-    conn = engine.pg_pool.conn
-    ledger_queries = [q for q, args in conn.queries if "v3_cognitive_ledger" in q]
-    assert len(ledger_queries) >= 1
+        # Verify audit was executed via append_event
+        mock_append.assert_awaited_once()
+        call_kwargs = mock_append.await_args.kwargs
+        assert call_kwargs["event_type"] == "business_insights_access_audited"
+        assert call_kwargs["params"]["action"] == "ASK_BUSINESS_QUERY"

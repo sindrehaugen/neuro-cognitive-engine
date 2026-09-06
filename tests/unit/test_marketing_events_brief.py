@@ -68,6 +68,11 @@ async def test_emit_marketing_event_success() -> None:
     mock_engine = MagicMock()
     mock_pool = MagicMock()
     mock_conn = AsyncMock()
+    tx = MagicMock()
+    tx.__aenter__ = AsyncMock(return_value=tx)
+    tx.__aexit__ = AsyncMock(return_value=None)
+    mock_conn.transaction = MagicMock(return_value=tx)
+    mock_conn.is_in_transaction = MagicMock(return_value=True)
 
     mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
     mock_engine.pg_pool = mock_pool

@@ -13,16 +13,17 @@ Graph contract:
       KPI_SNAPSHOT -[rolls_up]-> {ENGINE}
 
 Every claim resolves to derived_from edges.
-All accesses/generations write an audit row to v3_cognitive_ledger.
+All accesses/generations write an audit row to event_log via append_event.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
+
+from nce.event_log import append_event
 
 log = logging.getLogger("nce.vertical_modules.business_insights.provenance")
 
@@ -123,35 +124,25 @@ async def record_ledger_audit(
     referenced_nodes: list[str],
     details: dict[str, Any] | None = None,
 ) -> None:
-    """Record auditable access or generation event in v3_cognitive_ledger."""
+    """Record auditable access or generation event in append-only event_log."""
     if conn is None:
         return
     ns_uuid = UUID(str(namespace_id))
     now = datetime.now(timezone.utc)
-    entry_id = uuid4()
+    entry_id = str(uuid4())
     payload = {
+        "entry_id": entry_id,
         "actor": actor,
         "action": action,
         "referenced_nodes": referenced_nodes,
         "details": details or {},
         "recorded_at": now.isoformat(),
     }
-    try:
-        await conn.execute(
-            """
-            INSERT INTO v3_cognitive_ledger (
-                id, namespace_id, entity_id, entity_type, change_type,
-                author, metadata, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            """,
-            entry_id,
-            ns_uuid,
-            str(entry_id),
-            "BUSINESS_INSIGHTS_AUDIT",
-            action,
-            actor,
-            json.dumps(payload),
-            now,
+    async with conn.transaction():
+        await append_event(
+            conn=conn,
+            namespace_id=ns_uuid,
+            agent_id="business_insights_engine",
+            event_type="business_insights_access_audited",
+            params=payload,
         )
-    except Exception as exc:
-        log.warning("Failed to record access audit in v3_cognitive_ledger: %s", exc)

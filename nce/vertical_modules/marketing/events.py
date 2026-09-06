@@ -3,6 +3,12 @@ nce/vertical_modules/marketing/events.py
 ========================================
 Event types, contracts, and emission helpers for Module 14 (Marketing Engine).
 
+Event Emission Policy:
+----------------------
+Non-fatal secondary telemetry. Event writes are wrapped in active transactions.
+In the event of a database or emission failure, errors are logged at ERROR
+rather than failing the calling marketing operation.
+
 Charter M14.W7:
   - marketing_case_study_drafted
   - marketing_testimonial_requested
@@ -44,11 +50,12 @@ async def emit_marketing_event(
     ns_uuid = UUID(str(namespace_id))
     try:
         async with pool.acquire() as conn:
-            await append_event(
-                conn,
-                namespace_id=ns_uuid,
-                event_type=event_type,
-                params=params,
-            )
+            async with conn.transaction():
+                await append_event(
+                    conn,
+                    namespace_id=ns_uuid,
+                    event_type=event_type,
+                    params=params,
+                )
     except Exception as exc:
-        log.warning("Failed to emit marketing event %s: %s", event_type, exc)
+        log.error("Failed to emit marketing event %s: %s", event_type, exc)

@@ -24,6 +24,24 @@ from nce.vertical_modules.business_insights.scenario import do_run_scenario
 class DummyConnection:
     def __init__(self):
         self.queries = []
+        self._in_tx = False
+
+    def transaction(self):
+        class _Tx:
+            def __init__(self, conn):
+                self.conn = conn
+
+            async def __aenter__(self):
+                self.conn._in_tx = True
+                return self
+
+            async def __aexit__(self, *args):
+                self.conn._in_tx = False
+
+        return _Tx(self)
+
+    def is_in_transaction(self):
+        return self._in_tx
 
     async def execute(self, query: str, *args):
         self.queries.append((query, args))
@@ -33,7 +51,21 @@ class DummyConnection:
         return []
 
     async def fetchrow(self, query: str, *args):
-        return None
+        from datetime import datetime, timezone
+
+        return {
+            "seq": 1,
+            "occurred_at": datetime.now(timezone.utc),
+            "hash": b"0" * 32,
+            "chain_hash": b"0" * 32,
+        }
+
+    async def fetchval(self, query: str, *args):
+        from datetime import datetime, timezone
+
+        if "clock_timestamp" in query:
+            return datetime.now(timezone.utc)
+        return 1
 
 
 class DummyPool:
