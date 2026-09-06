@@ -202,7 +202,7 @@ async def handle_sales_request_signature(engine: NCEEngine, arguments: dict[str,
     namespace_id (str): Required. Caller namespace UUID.
     quote_id (str): Required. The Sales QUOTE identifier.
     signer (dict): Required. Signer details with non-empty 'name' and valid 'email'.
-    method (str, optional): Transport method ("manual", "oneflow", "criipto", "signicat"). Defaults to "manual".
+    method (str, optional): Transport method ("manual", "email_code", "oneflow", "criipto", "signicat"). Defaults to "manual".
     idempotency_key (str, optional): Caller-supplied idempotency key.
 
     Returns

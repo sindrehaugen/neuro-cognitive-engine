@@ -96,10 +96,10 @@ The public customer-facing quote surface (`GET /public-api/sales/quotes/{id}`, `
 
 Full C7 `SignTransport` protocol, the fire-and-pull anti-spoofing pattern, and `ManualTransport` semantics are documented in `docs/shared-core/pricing-signing-grounding.md` §2. Sales-specific wiring:
 
-- `nce/vertical_modules/sales/signing.py:24` instantiates a **module-level singleton** `_transport = ManualTransport()`. In this codebase snapshot, Sales is wired to the manual (zero-credential, in-memory) transport only — there is no `oneflow`/`criipto`/`signicat` transport instance constructed or selected at runtime in `signing.py`, even though `do_request_signature` accepts and validates those method names (`signing.py:55-57`, raises `ValueError` for anything outside `{"oneflow","criipto","signicat","manual"}`). Passing `method="oneflow"` today will still route through `_transport` (the `ManualTransport` instance) because `tm_method` is passed to `_transport.request_signature(...)`, not used to select a different transport object. **Do not treat `method` as functional provider selection until a per-method transport factory is wired in** — flagged as drift below.
+- `nce/vertical_modules/sales/signing.py` dynamically resolves the e-signature rail via `get_signing_transport(method)` (Wave Q-2). Supported transports are `manual` (credential-free in-memory transport) and `email_code` (native e-signature by emailed 6-digit OTP code, short-lived 15-minute TTL, attempt-capped, constant-time SHA-256 validation). Unbuilt vendor methods (`oneflow`, `criipto`, `signicat`) raise `UnimplementedTransportError` (`NotImplementedError` / `ValueError`), failing closed instead of silently downgrading to manual.
 - The freeze-triggering callback, `do_on_signed_callback`, is idempotent per `(quote_id, session_id)`: it checks `manual.signing_status == "signed"` before re-running the freeze+convert sequence (`signing.py:157-168`).
 - **Money-guard validation on signing (PR #56):** `do_on_signed_callback` enforces `_require_money_field` across commercial amounts. Missing margin or total fields, booleans, non-numeric strings, `NaN`/`Inf`, and out-of-range figures raise `MissingSignedAmountError` rather than freezing fabricated defaults.
-- Signing state (`signing_session_id`, `signing_status`, `signing_fingerprint`, `signer_name`) lives in `sales_read_model.manual` (JSONB), not a separate table.
+- Signing state (`signing_session_id`, `signing_status`, `signing_method`, `signing_security_tier`, `signing_fingerprint`, `document_hash`, `signer_name`, `signer_email`) lives in `sales_read_model.manual` (JSONB), not a separate table.
 
 ---
 
@@ -187,7 +187,7 @@ Contrary to the design spec's `NCE_SALES_*` family, the **only** environment con
 
 ## Appendix: drift/bugs flagged during this audit (not fixed)
 
-1. **`method` param on `do_request_signature` doesn't select a transport.** All methods (`oneflow`, `criipto`, `signicat`, `manual`) route through the single module-level `ManualTransport()` instance (§5). Passing `method="oneflow"` silently behaves identically to `"manual"`.
+1. ~~**`method` param on `do_request_signature` doesn't select a transport.**~~ **RESOLVED (Wave Q-2):** `get_signing_transport(method)` actively selects the transport rail (`manual`, `email_code`). Unbuilt vendor transports fail closed with `UnimplementedTransportError`.
 2. **Two independent flip-gate implementations** with different default windows (1 hour via the admin PUT route vs. 7 days via `do_flip_function`) and different query paths (§2.3).
 3. **`both`-mode D365 outage degrades to comparing NCE against itself**, producing false "clean parity" (§3.2) — operationally dangerous if used as the sole gate for a `both→nce` flip decision.
 4. **Public-quote allow-list field names don't match the D365 sync's actual field names**, so an un-enriched, D365-sourced-only quote renders near-empty on the public surface (§3.1, §4).
