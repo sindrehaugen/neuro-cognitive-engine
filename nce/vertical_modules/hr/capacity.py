@@ -20,6 +20,7 @@ from typing import Any
 from uuid import UUID
 
 from nce.db_utils import scoped_pg_session
+from nce.vertical_modules.hr._guard import assert_ranking_prohibited
 
 log = logging.getLogger("nce.vertical_modules.hr.capacity")
 
@@ -53,6 +54,9 @@ async def do_capacity(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
         - department: (optional) Filter by department (e.g. 'operations').
         - horizon_days: (optional, default 14) Forecast window in days.
     """
+    # 1. Enforce RL-1 / C9b policy before touching data
+    assert_ranking_prohibited(params)
+
     pool = _extract_pool(engine)
     ns_uuid = _parse_uuid(params.get("namespace_id"), "namespace_id")
 
