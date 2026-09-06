@@ -152,12 +152,15 @@ MOCK_PLATFORM = "mock"
 #: dispatch table of classes: all five share one stub implementation, so
 #: onboarding a sixth platform is a line here plus (later) its real adapter.
 VENDOR_PLATFORMS: dict[str, str] = {
-    "crestron": "Crestron XiO Cloud / Fusion xAPI",
-    "qsys": "Q-SYS Reflect Enterprise Manager API",
-    "neat": "Neat Pulse API",
+    "crestron": "Crestron XiO Cloud REST API",
     "huddly": "Huddly device API",
+    "neat": "Neat Pulse API",
     "poly": "Poly Lens API",
-    "ymcs": "Yamaha Management Console for Systems (YMCS) API",
+    "qsys": "Q-SYS Reflect Enterprise Manager API",
+    "sennheiser": "Sennheiser Control Cockpit API",
+    "shure": "Shure SystemOn / Cloud API",
+    "yealink": "Yealink Management Cloud Service (YMCS) API",
+    "ymcs": "Yealink Management Cloud Service (YMCS) API",
 }
 
 _TRUTHY = {"1", "true", "yes", "on"}
@@ -340,10 +343,30 @@ def select_telemetry_adapter(platform: str) -> TelemetryAdapter:
         raise ValueError(f"do_pull_telemetry: unknown telemetry platform {name!r} (known: {known})")
 
     if _real_adapter_enabled(name):
-        if name == "ymcs":
+        if name in ("ymcs", "yealink"):
             from nce.vertical_modules.assets.ymcs import YMCSTelemetryAdapter
 
-            return YMCSTelemetryAdapter()
+            return YMCSTelemetryAdapter(platform_name=name)
+        if name == "crestron":
+            from nce.vertical_modules.assets.xio_cloud import CrestronXiOCloudTelemetryAdapter
+
+            return CrestronXiOCloudTelemetryAdapter()
+        if name == "neat":
+            from nce.vertical_modules.assets.neat_pulse import NeatPulseTelemetryAdapter
+
+            return NeatPulseTelemetryAdapter()
+        if name == "sennheiser":
+            from nce.vertical_modules.assets.sennheiser import SennheiserTelemetryAdapter
+
+            return SennheiserTelemetryAdapter()
+        if name == "qsys":
+            from nce.vertical_modules.assets.qsys_reflect import QSysReflectTelemetryAdapter
+
+            return QSysReflectTelemetryAdapter()
+        if name == "shure":
+            from nce.vertical_modules.assets.shure_cloud import ShureCloudTelemetryAdapter
+
+            return ShureCloudTelemetryAdapter()
         return UnimplementedVendorAdapter(name, vendor_api)
     return MockTelemetryAdapter()
 

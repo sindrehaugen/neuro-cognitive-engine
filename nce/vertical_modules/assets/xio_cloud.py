@@ -1,12 +1,11 @@
 """
-nce/vertical_modules/assets/ymcs.py
-====================================
-Yealink Management Cloud Service (YMCS) Real Telemetry Adapter
-(Module 9, Telemetry Integration).
+nce/vertical_modules/assets/xio_cloud.py
+=========================================
+Crestron XiO Cloud Real Telemetry Adapter.
 
-Provides real read-only device telemetry for Yealink UC hardware (MeetingBar A20/A30,
-MVC-series Microsoft Teams Rooms, MeetingBoard, RoomPanel, CP-series) over REST/HTTP
-with strict timeouts (<5s).
+Provides real read-only device telemetry for Crestron hardware (Crestron Flex,
+DM-NVX AV-over-IP encoders/decoders, TS/TSS touch panels, AirMedia gateways)
+over the Crestron XiO Cloud REST API with strict timeouts (<5s).
 
 Rules:
 - Strictly read-only; no configuration mutation.
@@ -27,66 +26,59 @@ import httpx
 from nce.config import live_env_str
 from nce.vertical_modules.assets.telemetry import TelemetryAdapter, TelemetrySample
 
-log = logging.getLogger("nce.vertical_modules.assets.ymcs")
+log = logging.getLogger("nce.vertical_modules.assets.xio_cloud")
 
 _DEFAULT_TIMEOUT_S = 4.5  # < 5.0s per AV Operations rule
 
 
-class YMCSTelemetryAdapter(TelemetryAdapter):
-    """Real read-only telemetry adapter for Yealink YMCS / UC devices."""
+class CrestronXiOCloudTelemetryAdapter(TelemetryAdapter):
+    """Real read-only telemetry adapter for Crestron XiO Cloud managed devices."""
 
     def __init__(
         self,
         endpoint_url: str | None = None,
         api_key: str | None = None,
+        account_id: str | None = None,
         timeout: float = _DEFAULT_TIMEOUT_S,
-        platform_name: str = "ymcs",
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._endpoint_url = (
-            (
-                endpoint_url
-                or live_env_str("NCE_ASSETS_YMCS_ENDPOINT_URL")
-                or live_env_str("NCE_ASSETS_YEALINK_ENDPOINT_URL")
-                or ""
-            )
+            (endpoint_url or live_env_str("NCE_ASSETS_CRESTRON_ENDPOINT_URL") or "")
             .strip()
             .rstrip("/")
         )
-        self._api_key = (
-            api_key
-            or live_env_str("NCE_ASSETS_YMCS_API_KEY")
-            or live_env_str("NCE_ASSETS_YEALINK_API_KEY")
-        )
+        self._api_key = api_key or live_env_str("NCE_ASSETS_CRESTRON_API_KEY")
+        self._account_id = account_id or live_env_str("NCE_ASSETS_CRESTRON_ACCOUNT_ID")
         self._timeout = min(timeout, 4.9)
-        self._platform_name = platform_name
         self._transport = transport
 
     @property
     def platform(self) -> str:
-        return self._platform_name
+        return "crestron"
 
     async def fetch_samples(self, asset_id: UUID) -> Sequence[TelemetrySample]:
-        """Fetch telemetry readings for the specified asset from Yealink YMCS platform."""
+        """Fetch telemetry readings for the specified asset from Crestron XiO Cloud."""
         if not self._endpoint_url or not self._api_key:
             missing: list[str] = []
             if not self._endpoint_url:
-                missing.append("NCE_ASSETS_YMCS_ENDPOINT_URL")
+                missing.append("NCE_ASSETS_CRESTRON_ENDPOINT_URL")
             if not self._api_key:
-                missing.append("NCE_ASSETS_YMCS_API_KEY")
+                missing.append("NCE_ASSETS_CRESTRON_API_KEY")
             missing_str = ", ".join(missing)
             raise NotImplementedError(
-                f"do_pull_telemetry: real telemetry adapter for '{self._platform_name}' is unconfigured "
+                f"do_pull_telemetry: real telemetry adapter for 'crestron' is unconfigured "
                 f"(missing {missing_str})"
             )
 
         now = datetime.now(timezone.utc)
         headers = {
             "Accept": "application/json",
-            "Authorization": f"Bearer {self._api_key}",
+            "XiO-Subscription-Key": self._api_key,
         }
+        if self._account_id:
+            headers["XiO-Account-Id"] = self._account_id
 
-        url = f"{self._endpoint_url}/api/v1/devices/{asset_id}/telemetry"
+        url = f"{self._endpoint_url}/api/v1/devices/{asset_id}/status"
         try:
             async with httpx.AsyncClient(
                 timeout=self._timeout, transport=self._transport
@@ -107,26 +99,26 @@ class YMCSTelemetryAdapter(TelemetryAdapter):
                             metric=str(m_name),
                             value=float(m_val),
                             sampled_at=sampled_at,
-                            raw=data.get("raw", {"source": "ymcs"}),
+                            raw=data.get("raw", {"source": "crestron_xio_cloud"}),
                         )
                     )
             return samples
         except Exception as exc:
-            log.warning("YMCSTelemetryAdapter: network call failed for asset %s: %s", asset_id, exc)
+            log.warning(
+                "CrestronXiOCloudTelemetryAdapter: network call failed for asset %s: %s",
+                asset_id,
+                exc,
+            )
             try:
                 from nce.degradation import record_degradation
 
                 record_degradation(
                     namespace_id=str(asset_id),
                     engine="assets",
-                    code="ymcs_telemetry_unavailable",
-                    detail=f"YMCS telemetry query to {url} failed: {type(exc).__name__}: {exc}",
-                    onboarding_hint="Verify YMCS endpoint connectivity and API credentials.",
+                    code="crestron_telemetry_unavailable",
+                    detail=f"Crestron XiO Cloud query to {url} failed: {type(exc).__name__}: {exc}",
+                    onboarding_hint="Verify Crestron XiO Cloud endpoint URL and subscription keys.",
                 )
             except Exception:
                 pass
             return []
-
-
-#: Convenience alias for Yealink telemetry adapter
-YealinkTelemetryAdapter = YMCSTelemetryAdapter
