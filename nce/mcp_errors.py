@@ -25,9 +25,11 @@ Exception             Code     Message
 ``McpError``          (as-is)  (as-is)
 ``ScopeError``        -32005   Scope forbidden
 ``OwnershipError``    -32005   Not permitted to write this node type
+``PermissionError``   -32600   Permission denied (IDOR / security refusal)
 ``DeploymentConfigurationError`` -32603  Internal error (deployment not configured)
 ``RateLimitError``    -32029   Rate limit exceeded
 ``ValidationError``   -32602   Invalid parameters
+``ResourcesError``    -32602   Invalid parameters (domain validation)
 ``QuotaExceededError``  -32013   Resource quota exceeded
 ``ValueError``          -32602   Invalid parameters
 ``TypeError``           -32602   Invalid parameters
@@ -53,6 +55,15 @@ from nce.auth import RateLimitError, ScopeError
 from nce.config import DeploymentConfigurationError, cfg
 from nce.entity_resolution.ownership import OwnershipError
 from nce.quotas import QuotaExceededError
+
+try:
+    from nce.vertical_modules.resources._guard import ResourcesError
+except Exception:
+    ResourcesError = ()  # type: ignore[assignment,misc]
+
+_RESOURCES_ERRORS: tuple[type[BaseException], ...] = (
+    (ResourcesError,) if isinstance(ResourcesError, type) else ()
+)
 
 log = logging.getLogger(__name__)
 
@@ -274,6 +285,13 @@ def mcp_handler(handler_fn: F) -> F:
                 "Internal error",
                 data=deployment_not_configured_data(e),
             )
+        except PermissionError as e:
+            # IDOR or external scope violation — security refusal (-32600 Invalid request)
+            raise McpError(
+                MCP_INVALID_REQUEST,
+                "Permission denied",
+                data={"reason": "permission_denied", "detail": client_visible_detail(str(e))},
+            )
         except ValidationError as e:
             sanitized_errors = []
             for err in e.errors(include_url=False):
@@ -307,6 +325,12 @@ def mcp_handler(handler_fn: F) -> F:
                 data={"reason": "missing_field"},
             )
         except (ValueError, TypeError) as e:
+            raise McpError(
+                MCP_INVALID_PARAMS,
+                "Invalid parameters",
+                data=invalid_arguments_data(e),
+            )
+        except _RESOURCES_ERRORS as e:
             raise McpError(
                 MCP_INVALID_PARAMS,
                 "Invalid parameters",

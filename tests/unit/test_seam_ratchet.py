@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -68,9 +69,7 @@ def _scan_hasattr_engine_probes(tree: ast.AST, file_path: str = "") -> list[tupl
 
 # Known pre-existing seam offenders being closed by MLV15B (Wave CP-1).
 # This dictionary is shrink-only: once CP-1 closes an offender, the entry MUST be removed.
-KNOWN_SEAM_OFFENDERS: dict[str, set[str]] = {
-    "nce/vertical_modules/customer_portal/actions.py": {"support", "sales"},
-}
+KNOWN_SEAM_OFFENDERS: dict[str, set[str]] = {}
 
 
 def test_no_unlisted_hasattr_engine_probes_in_vertical_modules() -> None:
@@ -155,10 +154,14 @@ def sample_handoff(engine):
 async def test_customer_portal_actions_use_modules_registry() -> None:
     """Verify customer portal actions execute cleanly when engine.modules is provided."""
 
+    class MockSupport:
+        async def do_open_ticket(self, engine: Any, params: dict[str, Any]) -> dict[str, Any]:
+            return {"ticket": {"id": "tick-mock-1", "status": "open"}}
+
     class MockEngine:
         def __init__(self) -> None:
             self.modules = {
-                "support": object(),
+                "support": MockSupport(),
                 "sales": object(),
             }
 
