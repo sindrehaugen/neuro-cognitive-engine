@@ -40,6 +40,12 @@ from nce.vertical_modules.resources.planner import (
     do_plan_allocation,
     do_record_allocation_outcome,
 )
+from nce.vertical_modules.resources.registry import (
+    do_create_resource,
+    do_get_resource,
+    do_list_resources,
+    do_update_resource,
+)
 from nce.vertical_modules.resources.travel import do_plan_travel
 
 log = logging.getLogger("nce.vertical_modules.resources.mcp_handlers")
@@ -169,4 +175,52 @@ async def handle_resources_record_allocation_outcome(
     require_namespace_id(params)
     _check_resources_enabled(params)
     result = await do_record_allocation_outcome(engine, params)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_resources_create(
+    engine: Any,
+    params: dict[str, Any],
+) -> str:
+    """Create and register a new schedulable resource (Wave RS-1)."""
+    require_namespace_id(params)
+    _check_resources_enabled(params)
+    result = await do_create_resource(engine, params)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_resources_update(
+    engine: Any,
+    params: dict[str, Any],
+) -> str:
+    """Update mutable attributes or display_name of a resource (Wave RS-1)."""
+    require_namespace_id(params)
+    _check_resources_enabled(params)
+    result = await do_update_resource(engine, params)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_resources_get_resource(
+    engine: Any,
+    params: dict[str, Any],
+) -> str:
+    """Retrieve details for a single resource by ID (Wave RS-1)."""
+    require_namespace_id(params)
+    _check_resources_enabled(params)
+    result = await do_get_resource(engine, params)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_resources_list_resources(
+    engine: Any,
+    params: dict[str, Any],
+) -> str:
+    """List resources with optional kind filter and pagination (Wave RS-1)."""
+    require_namespace_id(params)
+    _check_resources_enabled(params)
+    result = await do_list_resources(engine, params)
     return json.dumps(result, default=str)

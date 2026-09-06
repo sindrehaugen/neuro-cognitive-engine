@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 240  # 233 baseline + 7 MLV15C tools
+_EXPECTED_TOTAL = 244  # 240 baseline + 4 Resources tools (Wave RS-1)
 
 
 def test_registry_has_expected_entries():
@@ -238,6 +238,9 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "resources_record_allocation_outcome",
         # Wave T-1 -- Trust dial set tier mutation
         "trust_dial_set_tier",
+        # MLV15D-RS1 -- Resources master-data mutations (2 tools)
+        "resources_create",
+        "resources_update",
     }
 )
 
@@ -250,7 +253,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 106  # 101 baseline + 5 MLV15C tools
+    assert len(MUTATION_TOOLS) == 108  # 106 baseline + 2 Resources tools (Wave RS-1)
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -396,6 +399,9 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "product_golden_record",
         # Wave T-1 -- Trust dial status read tool (cacheable)
         "trust_dial_get_status",
+        # MLV15D-RS1 -- Resources master-data cacheable reads (2 tools)
+        "resources_get_resource",
+        "resources_list_resources",
     }
 )
 
@@ -408,9 +414,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert (
-        len(CACHEABLE_TOOLS) == 91
-    )  # 89 baseline + 2 MLV15C tools (product_golden_record, trust_dial_get_status)
+    assert len(CACHEABLE_TOOLS) == 93  # 91 baseline + 2 Resources tools (Wave RS-1)
 
 
 # ---------------------------------------------------------------------------
@@ -525,6 +529,9 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "resources_record_allocation_outcome",
         # Wave T-1 -- Trust dial set tier admin_only tool
         "trust_dial_set_tier",
+        # MLV15D-RS1 -- Resources master-data admin tools (2 tools)
+        "resources_create",
+        "resources_update",
     }
 )
 
@@ -537,7 +544,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 67  # 63 baseline + 4 MLV15C tools
+    assert len(ADMIN_ONLY_TOOLS) == 69  # 67 baseline + 2 Resources tools (Wave RS-1)
 
 
 # ---------------------------------------------------------------------------

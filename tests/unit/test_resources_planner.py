@@ -34,6 +34,12 @@ def mock_engine(monkeypatch):
 
     async def mock_fetchrow(query, *args):
         q = query.strip().lower()
+        if "node_ownership_registry" in q:
+            node_type = str(args[1]) if len(args) > 1 else ""
+            if node_type in ("RESOURCE", "ALLOCATION", "TRAVEL_LEG"):
+                return {"owner_engine": "resources"}
+            return None
+
         if "from v3_cognitive_ledger" in q and "tlx_scores->>'resource_id' = $2" in q:
             ns_id = str(args[0])
             res_id = str(args[1])

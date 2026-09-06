@@ -202,6 +202,8 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/replay/observe` | `api_replay_observe` |
 | GET | `/api/replay/provenance/{memory_id}` | `api_event_provenance` |
 | GET | `/api/replay/status/{run_id}` | `api_replay_status` |
+| GET | `/api/resources` | `api_resources_list` |
+| POST | `/api/resources` | `api_resources_create` |
 | GET | `/api/resources/capacity` | `api_resources_resolve_capacity` |
 | GET | `/api/resources/conflicts` | `api_resources_detect_conflicts` |
 | GET | `/api/resources/field-schedule` | `api_resources_field_schedule` |
@@ -212,6 +214,8 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/resources/release` | `api_resources_release` |
 | POST | `/api/resources/reserve` | `api_resources_reserve` |
 | POST | `/api/resources/travel` | `api_resources_plan_travel` |
+| GET | `/api/resources/{id}` | `api_resources_get` |
+| PATCH,POST | `/api/resources/{id}` | `api_resources_update` |
 | GET | `/api/sales/agreements` | `api_admin_sales_agreements` |
 | GET | `/api/sales/agreements/{id}` | `api_admin_sales_agreement_detail` |
 | GET | `/api/sales/customers` | `api_admin_sales_customers` |
@@ -438,9 +442,12 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `replay_status` | yes |  |  |  |
 | `resolve` |  |  | yes |  |
 | `resolve_contradiction` |  | yes |  |  |
+| `resources_create` | yes | yes |  |  |
 | `resources_detect_conflicts` |  |  | yes |  |
 | `resources_field_schedule` |  |  | yes |  |
 | `resources_forecast_demand` |  |  | yes |  |
+| `resources_get_resource` |  |  | yes |  |
+| `resources_list_resources` |  |  | yes |  |
 | `resources_plan_allocation` |  |  |  |  |
 | `resources_plan_material_flow` | yes | yes |  |  |
 | `resources_plan_travel` |  | yes |  |  |
@@ -448,6 +455,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `resources_release` |  | yes |  |  |
 | `resources_reserve` |  | yes |  |  |
 | `resources_resolve_capacity` |  |  | yes |  |
+| `resources_update` | yes | yes |  |  |
 | `rotate_signing_key` |  | yes |  |  |
 | `sales_add_quote_line` |  | yes |  |  |
 | `sales_get_quote_lines` |  |  |  |  |
@@ -505,4 +513,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 247 REST endpoints, 240 MCP tools._
+_Totals: 251 REST endpoints, 244 MCP tools._
