@@ -25,6 +25,26 @@ async def get_health_v1(request):
     return await get_health(request)
 
 
+async def get_degradations(request):
+    """GET /api/health/degradations — per-namespace degradation register."""
+    from nce.degradation import get_degradation_register
+
+    ns_param = request.query_params.get("namespace_id")
+    reg = get_degradation_register()
+    degradations = reg.get_degradations(namespace_id=ns_param)
+    total = reg.total_count(namespace_id=ns_param)
+    summary = reg.get_summary()
+
+    return JSONResponse(
+        {
+            "status": "ok",
+            "total_degradations": total,
+            "degradations": degradations,
+            "summary": summary,
+        }
+    )
+
+
 async def trigger_gc(request):
     if not admin_state.engine:
         return JSONResponse({"error": "Engine not connected"}, status_code=503)

@@ -103,6 +103,18 @@ async def do_kpi_dashboard(engine: Any, params: dict[str, Any]) -> dict[str, Any
                 "provenance": None,
                 "degraded": True,
             }
+            try:
+                from nce.degradation import record_degradation
+
+                record_degradation(
+                    namespace_id=ns_uuid,
+                    engine="business_insights",
+                    code=f"kpi_{source_engine}_unlanded",
+                    detail=f"KPI {kpi_key} unavailable because upstream engine {source_engine} is not live.",
+                    onboarding_hint=f"Deploy {source_engine} engine to unlock {kpi_key} KPI metrics.",
+                )
+            except Exception:
+                log.warning("Failed to record degradation event", exc_info=True)
         else:
             # Live engine default synthetic/computed roll-up baseline
             computed_val = 100.0 if kpi_def.get("format") == "percentage" else 50000.0

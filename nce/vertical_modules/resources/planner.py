@@ -211,6 +211,18 @@ async def do_plan_allocation(engine: Any, params: dict[str, Any]) -> dict[str, A
                         "avg_rating": None,
                         "avg_quality": None,
                     }
+                    try:
+                        from nce.degradation import record_degradation
+
+                        record_degradation(
+                            namespace_id=ns_id,
+                            engine="resources",
+                            code="unobserved_outcome_history",
+                            detail=f"Resource {cand_id} has 0 historical outcomes in cognitive ledger; defaulted to 0.8 neutral score.",
+                            onboarding_hint="Design recall is similarity-only: 0 attributed outcomes; record 5 to unlock.",
+                        )
+                    except Exception:
+                        log.warning("Failed to record degradation event", exc_info=True)
 
                 composite = (
                     (w_skill * s_skill)
