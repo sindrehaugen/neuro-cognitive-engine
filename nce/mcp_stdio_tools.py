@@ -3458,6 +3458,169 @@ TOOLS = [
         },
     ),
     Tool(
+        name="economy_forecast_cashflow",
+        description=(
+            "READ-ONLY ADVISOR: Monte Carlo cashflow forecast. Runs independent simulation passes "
+            "over caller-supplied forecast periods and returns P10/P50/P90 cashflow and balance percentiles; "
+            "writes nothing. The caller must provide a deterministic integer seed."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "seed": {
+                    "type": "integer",
+                    "description": "Deterministic RNG seed (required, must not be None or boolean).",
+                },
+                "params": {
+                    "type": "object",
+                    "description": (
+                        "Forecast params: 'periods' (list of objects with 'period', 'expected_net', "
+                        "and 'uncertainty_pct'), optional 'iterations' (1..100000), optional 'opening_balance'."
+                    ),
+                    "properties": {
+                        "periods": {
+                            "type": "array",
+                            "items": {"type": "object"},
+                            "description": "Forecast periods in chronological order.",
+                        },
+                        "iterations": {
+                            "type": "integer",
+                            "description": "Monte Carlo iteration count (default 1000).",
+                        },
+                        "opening_balance": {
+                            "type": ["string", "number"],
+                            "description": "Opening cash balance (default 0).",
+                        },
+                    },
+                },
+            },
+            "required": ["namespace_id", "seed"],
+        },
+    ),
+    Tool(
+        name="economy_snapshot_mrr_arr_churn",
+        description=(
+            "READ-ONLY ADVISOR: MRR/ARR and churn snapshot. Computes steady-state monthly recurring revenue, "
+            "annualized recurring revenue, churned MRR, and churn rate from contract states; writes nothing."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "contracts": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "annual_amount": {
+                                "type": ["string", "number"],
+                                "description": "Annual recurring contract value.",
+                            },
+                            "status": {
+                                "type": "string",
+                                "enum": ["active", "churned"],
+                                "description": "Contract status.",
+                            },
+                        },
+                        "required": ["annual_amount", "status"],
+                    },
+                    "description": "List of contracts to snapshot.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="economy_compute_dunning",
+        description=(
+            "READ-ONLY ADVISOR: Norwegian dunning and credit policy. Evaluates a 0-100 credit risk score "
+            "against policy boundaries, returning dunning tier (LOW/STANDARD/ELEVATED/CRITICAL), reminder schedule, "
+            "and escalation requirements (100% HW-signing and Lindorff handoff for score > 60); writes nothing."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "customer": {
+                    "type": "object",
+                    "properties": {
+                        "credit_risk_score": {
+                            "type": "number",
+                            "description": "Bisnode default risk score in [0, 100].",
+                        },
+                        "customer_id": {
+                            "type": "string",
+                            "description": "Optional opaque customer identifier echoed in response.",
+                        },
+                    },
+                    "required": ["credit_risk_score"],
+                    "description": "Customer credit profile.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="economy_compute_recognition_schedule",
+        description=(
+            "READ-ONLY ADVISOR: 12-month ratable revenue recognition schedule. Generates a 12-period ratable schedule "
+            "with exact remainder absorption on the 12th month and finagoRef keys; writes nothing."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "contract_id": {"type": "string", "description": "Contract identifier."},
+                "annual_amount": {
+                    "type": ["string", "number"],
+                    "description": "Annual contract amount (> 0).",
+                },
+                "start_period": {
+                    "type": "string",
+                    "description": "First recognition month formatted as 'YYYY-MM'.",
+                },
+            },
+            "required": ["namespace_id", "contract_id", "annual_amount", "start_period"],
+        },
+    ),
+    Tool(
+        name="economy_gl_sync_status",
+        description=(
+            "READ-ONLY ADVISOR: GL continuous-reconciliation health and sync status. Queries recent "
+            "reconciliation activity from the shared divergence log and returns divergence counts and clean status."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "window_hours": {
+                    "type": "number",
+                    "description": "Lookback window in hours (default 24.0, must be > 0).",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="economy_generate_close_narrative",
+        description=(
+            "READ-ONLY ADVISOR: C9a retrieval-grounded period-close narrative. Generates a close narrative "
+            "grounded in verified knowledge graph nodes and citations for the accounting period; writes nothing."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "period_id": {
+                    "type": "string",
+                    "description": "Accounting period identifier (e.g. '2026-08').",
+                },
+            },
+            "required": ["namespace_id", "period_id"],
+        },
+    ),
+    Tool(
         name="detect_causal_cycles",
         description=(
             "[ADMIN] Detect cycles in the event_parents causal DAG for a namespace. "

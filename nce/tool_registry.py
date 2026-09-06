@@ -830,6 +830,42 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    "economy_forecast_cashflow": ToolSpec(
+        _h(economy_mcp_handlers, "handle_economy_forecast_cashflow"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "economy_snapshot_mrr_arr_churn": ToolSpec(
+        _h(economy_mcp_handlers, "handle_economy_snapshot_mrr_arr_churn"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "economy_compute_dunning": ToolSpec(
+        _h(economy_mcp_handlers, "handle_economy_compute_dunning"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "economy_compute_recognition_schedule": ToolSpec(
+        _h(economy_mcp_handlers, "handle_economy_compute_recognition_schedule"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "economy_gl_sync_status": ToolSpec(
+        _h(economy_mcp_handlers, "handle_economy_gl_sync_status"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "economy_generate_close_narrative": ToolSpec(
+        _h(economy_mcp_handlers, "handle_economy_generate_close_narrative"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # ------------------------------------------------------------------
     # Inventory vertical module tools (Batch 131, M11.W3) — stock-surface
     # ------------------------------------------------------------------
