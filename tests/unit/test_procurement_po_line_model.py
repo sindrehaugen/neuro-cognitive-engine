@@ -231,8 +231,8 @@ async def test_update_po_line_status_valid_transition():
     mock_conn.fetchrow.side_effect = fetchrow_side_effect
 
     with patch(
-        "nce.vertical_modules.procurement.po_line.emit_graph_write", new_callable=AsyncMock
-    ) as mock_emit:
+        "nce.vertical_modules.procurement.po_line.publish", new_callable=AsyncMock
+    ) as mock_publish:
         res = await update_po_line_status(
             mock_conn,
             ns,
@@ -247,13 +247,12 @@ async def test_update_po_line_status_valid_transition():
         assert res["bom_line_label"] == "BOM_LINE:DES-1:BL-99"
         assert res["project_value"] == 50000.0
 
-        # Verify emit_graph_write was called with correct parameters
-        mock_emit.assert_awaited_once()
-        args, kwargs = mock_emit.call_args
-        # emit_graph_write(conn, ns, node_type, op, payload=...)
-        assert args[1] == ns
-        assert args[2] == "PO_LINE"
-        assert args[3] == "status_changed"
+        # Verify publish was called with correct parameters
+        mock_publish.assert_awaited_once()
+        _, kwargs = mock_publish.call_args
+        assert kwargs["namespace_id"] == ns
+        assert kwargs["node_type"] == "PO_LINE"
+        assert kwargs["op"] == "status_changed"
 
         payload = kwargs["payload"]
         assert payload["po_number"] == "PO-999"
@@ -277,8 +276,8 @@ async def test_update_po_line_status_invalid_transition_raises():
     }
 
     with patch(
-        "nce.vertical_modules.procurement.po_line.emit_graph_write", new_callable=AsyncMock
-    ) as mock_emit:
+        "nce.vertical_modules.procurement.po_line.publish", new_callable=AsyncMock
+    ) as mock_publish:
         with pytest.raises(ValueError, match="Invalid PO_LINE status transition"):
             await update_po_line_status(
                 mock_conn,
@@ -288,8 +287,8 @@ async def test_update_po_line_status_invalid_transition_raises():
                 new_status=POLineStatus.DRAFT,
             )
 
-        # Ensure emit_graph_write was NOT called
-        mock_emit.assert_not_called()
+        # Ensure publish was NOT called
+        mock_publish.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -316,17 +315,17 @@ async def test_emitted_event_payload_satisfies_project_automation():
 
     captured_event = {}
 
-    async def fake_emit_graph_write(conn, ns_val, node_type, op, payload=None):
+    async def fake_publish(conn, *, namespace_id, node_type, op, aggregate_id, payload):
         captured_event["event"] = {
-            "namespace_id": str(ns_val),
+            "namespace_id": str(namespace_id),
             "node_type": node_type,
             "op": op,
             "payload": payload,
         }
 
     with patch(
-        "nce.vertical_modules.procurement.po_line.emit_graph_write",
-        side_effect=fake_emit_graph_write,
+        "nce.vertical_modules.procurement.po_line.publish",
+        side_effect=fake_publish,
     ):
         await update_po_line_status(
             mock_conn,

@@ -149,21 +149,6 @@
     "owner": "MLV15D-M2",
     "reason": "Customer testimonial retraction core; scheduled for admin tool surface in MLV15D Wave M-2."
   },
-  "nce/vertical_modules/procurement/bids.py::do_resolve_bids": {
-    "engine": "procurement",
-    "owner": "MLV15D-PR4",
-    "reason": "Multi-supplier bid resolution engine; scheduled for unified pricing integration in MLV15D Wave PR-4."
-  },
-  "nce/vertical_modules/procurement/po.py::do_generate_po": {
-    "engine": "procurement",
-    "owner": "MLV15B-PR1",
-    "reason": "Purchase order generation core; scheduled for MCP tool and actor confirmation in v1.5 Phase 1 Wave PR-1."
-  },
-  "nce/vertical_modules/procurement/po.py::do_submit_po": {
-    "engine": "procurement",
-    "owner": "MLV15B-PR1",
-    "reason": "Purchase order submission core; scheduled to emit PO_LINE.status_changed in v1.5 Phase 1 Wave PR-1."
-  },
   "nce/vertical_modules/procurement/recalibration.py::do_recalibrate_supplier": {
     "engine": "procurement",
     "owner": "MLV15D-PR6",
