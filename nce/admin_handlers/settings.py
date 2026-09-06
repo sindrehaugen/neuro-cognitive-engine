@@ -7,7 +7,7 @@ from typing import Any
 from starlette.responses import JSONResponse
 
 from nce import admin_state
-from nce.admin_handlers._shared import UTC, logger
+from nce.admin_handlers._shared import UTC, bump_mcp_cache_generation, logger
 from nce.config import cfg
 from nce.settings_registry import (
     REGISTRY,
@@ -862,6 +862,14 @@ async def api_admin_settings_patch(request: Any) -> JSONResponse:
     for key in updated_keys:
         settings_store._local_cache.pop(key, None)
 
+    # A settings write changes the configuration every cacheable MCP read is
+    # computed under, and a REST handler never reaches the MCP dispatch loop
+    # that bumps the generation counter. Without this, `cacheable=True` results
+    # computed under the old settings stay readable for MCP_CACHE_TTL_S (300 s),
+    # silently. Called after the write, so one that raised does not discard a
+    # still-valid cache.
+    await bump_mcp_cache_generation(admin_state.engine, route="api_admin_settings_patch")
+
     return JSONResponse({"settings": results}, status_code=207)
 
 
@@ -1003,6 +1011,14 @@ async def api_admin_settings_reset(request: Any) -> JSONResponse:
 
     for key in keys:
         settings_store._local_cache.pop(key, None)
+
+    # A settings write changes the configuration every cacheable MCP read is
+    # computed under, and a REST handler never reaches the MCP dispatch loop
+    # that bumps the generation counter. Without this, `cacheable=True` results
+    # computed under the old settings stay readable for MCP_CACHE_TTL_S (300 s),
+    # silently. Called after the write, so one that raised does not discard a
+    # still-valid cache.
+    await bump_mcp_cache_generation(admin_state.engine, route="api_admin_settings_reset")
 
     return JSONResponse({"status": "reset", "keys": keys})
 
@@ -1187,5 +1203,13 @@ async def api_admin_settings_reload(request: Any) -> JSONResponse:
     }
     if last_event_id:
         response_payload["last_event_id"] = last_event_id
+
+    # A settings write changes the configuration every cacheable MCP read is
+    # computed under, and a REST handler never reaches the MCP dispatch loop
+    # that bumps the generation counter. Without this, `cacheable=True` results
+    # computed under the old settings stay readable for MCP_CACHE_TTL_S (300 s),
+    # silently. Called after the write, so one that raised does not discard a
+    # still-valid cache.
+    await bump_mcp_cache_generation(admin_state.engine, route="api_admin_settings_reload")
 
     return JSONResponse(response_payload)
