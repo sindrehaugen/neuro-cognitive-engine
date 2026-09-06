@@ -18,6 +18,7 @@ from uuid import UUID
 
 from nce.bom_lines import update_bom_line_status
 from nce.db_utils import scoped_pg_session
+from nce.entity_resolution.ownership import assert_owner
 
 log = logging.getLogger("nce.vertical_modules.field_tech.scan")
 
@@ -25,6 +26,7 @@ EVENT_TYPE_SERIAL_SCANNED: str = "field_tech_serial_scanned"
 _NODE_TYPE_SCAN = "FIELD_TECH_SCAN"
 _NODE_TYPE_ASSET = "ASSET"
 _NODE_TYPE_BOM_LINE = "BOM_LINE"
+_OWNER_ENGINE = "field_tech"
 
 
 def _extract_pool(engine_or_pool: Any) -> Any:
@@ -84,7 +86,8 @@ async def do_scan_serial(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
         asset_label = f"{_NODE_TYPE_ASSET}:{serial.upper()}"
         wo_label = f"WORK_ORDER:{work_order_id}"
 
-        # 2. Insert scan node
+        # 2. Insert scan node (Contract-A guarded)
+        await assert_owner(conn, ns_uuid, _NODE_TYPE_SCAN, _OWNER_ENGINE)
         await conn.execute(
             """
             INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)
@@ -96,17 +99,36 @@ async def do_scan_serial(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
             ns_uuid,
         )
 
-        # 3. Insert seed ASSET node
-        await conn.execute(
-            """
-            INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)
-            VALUES ($1, $2, $3::uuid, 'agent')
-            ON CONFLICT (label, namespace_id) DO NOTHING
-            """,
-            asset_label,
-            _NODE_TYPE_ASSET,
-            ns_uuid,
+        # 3. Route ASSET node & relational registration to Assets engine via I-0 registry (Contract A)
+        raw_bom = (
+            bom_line_id[len("BOM_LINE:") :] if bom_line_id.startswith("BOM_LINE:") else bom_line_id
         )
+        seed_params = {
+            "namespace_id": str(ns_uuid),
+            "bom_line_id": raw_bom,
+            "serial": serial,
+            "functional_location_id": params.get("functional_location_id")
+            or params.get("location_id")
+            or (wo["location_id"] if wo and "location_id" in wo and wo["location_id"] else None),
+        }
+        modules = getattr(engine, "modules", None)
+        if modules is not None:
+            try:
+                for_ns = getattr(modules, "for_namespace", None)
+                scoped_reg = for_ns(str(ns_uuid)) if callable(for_ns) else modules
+                if "assets" in scoped_reg:
+                    assets_mod = scoped_reg["assets"]
+                    if hasattr(assets_mod, "do_seed_asset_from_bom"):
+                        await assets_mod.do_seed_asset_from_bom(engine, seed_params)
+            except Exception as exc:
+                log.debug("Assets registry seed invocation skipped: %s", exc)
+        else:
+            try:
+                from nce.vertical_modules.assets.seed import do_seed_asset_from_bom
+
+                await do_seed_asset_from_bom(engine, seed_params)
+            except Exception as exc:
+                log.debug("Direct do_seed_asset_from_bom invocation skipped: %s", exc)
 
         # 4. Insert seed edge: BOM_LINE -[installed_as]-> ASSET
         await conn.execute(
@@ -188,17 +210,6 @@ async def do_scan_serial(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
             else:
                 intent_label = f"FUNCTIONAL_LOCATION:{loc_str}"
             asbuilt_label = f"AsBuilt:{intent_label}"
-
-            # Upsert AsBuilt FUNCTIONAL_LOCATION node
-            await conn.execute(
-                """
-                INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)
-                VALUES ($1, 'FUNCTIONAL_LOCATION', $2::uuid, 'agent')
-                ON CONFLICT (label, namespace_id) DO NOTHING
-                """,
-                asbuilt_label,
-                ns_uuid,
-            )
 
             # Promoted_to_asbuilt edge: intent -> as-built
             await conn.execute(

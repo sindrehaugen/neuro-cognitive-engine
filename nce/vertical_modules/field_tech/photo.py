@@ -16,10 +16,12 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from nce.db_utils import scoped_pg_session
+from nce.entity_resolution.ownership import assert_owner
 
 log = logging.getLogger("nce.vertical_modules.field_tech.photo")
 
 _NODE_TYPE_PHOTO = "FIELD_TECH_PHOTO"
+_OWNER_ENGINE = "field_tech"
 
 
 def _extract_pool(engine_or_pool: Any) -> Any:
@@ -73,7 +75,8 @@ async def do_attach_photo(engine: Any, params: dict[str, Any]) -> dict[str, Any]
         photo_label = f"{_NODE_TYPE_PHOTO}:{photo_id}"
         wo_label = f"WORK_ORDER:{work_order_id}"
 
-        # Upsert photo node with blob_ref in properties / change_origin
+        # Upsert photo node with blob_ref in properties / change_origin (Contract-A guarded)
+        await assert_owner(conn, ns_uuid, _NODE_TYPE_PHOTO, _OWNER_ENGINE)
         await conn.execute(
             """
             INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)

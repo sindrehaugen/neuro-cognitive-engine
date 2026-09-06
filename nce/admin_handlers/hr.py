@@ -37,17 +37,24 @@ from nce.vertical_modules.hr._guard import (
     HrRankingProhibitedError,
     require_hr_enabled,
 )
-from nce.vertical_modules.hr.absences import do_register_absence
+from nce.vertical_modules.hr.absences import do_query_absences, do_register_absence
 from nce.vertical_modules.hr.capacity import do_capacity
 from nce.vertical_modules.hr.certs import do_cert_status
 from nce.vertical_modules.hr.coaching import do_coach
-from nce.vertical_modules.hr.onboarding import do_build_onboarding_quest
+from nce.vertical_modules.hr.compliance import (
+    do_query_compliance_deadlines,
+    do_update_absence_compliance,
+)
+from nce.vertical_modules.hr.onboarding import (
+    do_build_onboarding_quest,
+    do_get_onboarding_progress,
+)
 from nce.vertical_modules.hr.profile import (
     do_create_employee,
     do_get_employee,
     do_query_employees,
 )
-from nce.vertical_modules.hr.skills import do_match_skills
+from nce.vertical_modules.hr.skills import do_match_skills, do_record_skill
 
 log = logging.getLogger("nce.admin_handlers.hr")
 
@@ -528,3 +535,206 @@ async def api_hr_sync_now(request: Any) -> JSONResponse:
 
     await bump_mcp_cache_generation(admin_state.engine)
     return JSONResponse({"ok": True, "status": "completed", "synced_records": 0})
+
+
+# ---------------------------------------------------------------------------
+# POST /api/hr/skills
+# ---------------------------------------------------------------------------
+
+
+async def api_hr_record_skill(request: Any) -> JSONResponse:
+    """POST /api/hr/skills — record or update an employee skill."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    body, err = await _parse_json_body(request)
+    if err:
+        return err
+
+    namespace_id, err = _require_namespace_id(
+        request.query_params.get("namespace_id") or body.get("namespace_id")
+    )
+    if err:
+        return err
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_hr_enabled(pool, namespace_id)
+    except HrDisabledError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+    params = dict(body)
+    params["namespace_id"] = namespace_id
+
+    try:
+        res = await do_record_skill(admin_state.engine, params)
+        await bump_mcp_cache_generation(admin_state.engine, route="api_hr_record_skill")
+        return JSONResponse({"ok": True, **res}, status_code=201)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        log.exception("api_hr_record_skill error: %s", exc)
+        return admin_error_response("Internal skill recording error", exc)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/hr/absences
+# ---------------------------------------------------------------------------
+
+
+async def api_hr_absences(request: Any) -> JSONResponse:
+    """GET /api/hr/absences — query absences with caller privacy scoping."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
+    if err:
+        return err
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_hr_enabled(pool, namespace_id)
+    except HrDisabledError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+    params: dict[str, Any] = {
+        "namespace_id": namespace_id,
+        "caller_role": request.query_params.get("caller_role", "peer"),
+    }
+    if "employee_id" in request.query_params:
+        params["employee_id"] = request.query_params["employee_id"]
+    if "absence_type" in request.query_params:
+        params["absence_type"] = request.query_params["absence_type"]
+    elif "type" in request.query_params:
+        params["absence_type"] = request.query_params["type"]
+    if "caller_employee_id" in request.query_params:
+        params["caller_employee_id"] = request.query_params["caller_employee_id"]
+
+    try:
+        res = await do_query_absences(admin_state.engine, params)
+        return JSONResponse({"ok": True, **res})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        log.exception("api_hr_absences error: %s", exc)
+        return admin_error_response("Internal absence query error", exc)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/hr/compliance/deadlines
+# ---------------------------------------------------------------------------
+
+
+async def api_hr_compliance_deadlines(request: Any) -> JSONResponse:
+    """GET /api/hr/compliance/deadlines — query active statutory sick leave compliance deadlines."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
+    if err:
+        return err
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_hr_enabled(pool, namespace_id)
+    except HrDisabledError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+    params: dict[str, Any] = {
+        "namespace_id": namespace_id,
+        "only_alerts": request.query_params.get("only_alerts", "").lower() in ("true", "1", "yes"),
+    }
+
+    try:
+        res = await do_query_compliance_deadlines(admin_state.engine, params)
+        return JSONResponse({"ok": True, **res})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        log.exception("api_hr_compliance_deadlines error: %s", exc)
+        return admin_error_response("Internal compliance deadlines error", exc)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/hr/compliance/milestones
+# ---------------------------------------------------------------------------
+
+
+async def api_hr_update_absence_compliance(request: Any) -> JSONResponse:
+    """POST /api/hr/compliance/milestones — record completion or advancement of compliance milestone."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    body, err = await _parse_json_body(request)
+    if err:
+        return err
+
+    namespace_id, err = _require_namespace_id(
+        request.query_params.get("namespace_id") or body.get("namespace_id")
+    )
+    if err:
+        return err
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_hr_enabled(pool, namespace_id)
+    except HrDisabledError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+    params = dict(body)
+    params["namespace_id"] = namespace_id
+
+    try:
+        res = await do_update_absence_compliance(admin_state.engine, params)
+        await bump_mcp_cache_generation(
+            admin_state.engine, route="api_hr_update_absence_compliance"
+        )
+        return JSONResponse({"ok": True, **res})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        log.exception("api_hr_update_absence_compliance error: %s", exc)
+        return admin_error_response("Internal compliance milestone update error", exc)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/hr/onboarding/{id}/progress
+# ---------------------------------------------------------------------------
+
+
+async def api_hr_onboarding_progress(request: Any) -> JSONResponse:
+    """GET /api/hr/onboarding/{id}/progress — retrieve onboarding quest progress summary."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    employee_id = request.path_params.get("id")
+    if not employee_id:
+        return JSONResponse({"error": "Missing employee id path parameter"}, status_code=422)
+
+    namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
+    if err:
+        return err
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_hr_enabled(pool, namespace_id)
+    except HrDisabledError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+    params: dict[str, Any] = {
+        "namespace_id": namespace_id,
+        "employee_id": employee_id,
+    }
+    if "role" in request.query_params:
+        params["role"] = request.query_params["role"]
+    if "department" in request.query_params:
+        params["department"] = request.query_params["department"]
+
+    try:
+        res = await do_get_onboarding_progress(admin_state.engine, params)
+        return JSONResponse({"ok": True, **res})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        log.exception("api_hr_onboarding_progress error: %s", exc)
+        return admin_error_response("Internal onboarding progress error", exc)
