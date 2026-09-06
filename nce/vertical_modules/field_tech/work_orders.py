@@ -479,3 +479,124 @@ async def do_assign(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
     if res.get("due_at"):
         res["due_at"] = res["due_at"].isoformat()
     return res
+
+
+# ---------------------------------------------------------------------------
+# C4 Outbox Event Handling & Registration (Wave SU-1 / FT-3)
+# ---------------------------------------------------------------------------
+
+EVENT_TICKET_DISPATCHED: str = "TICKET.dispatched"
+
+
+async def handle_ticket_dispatched(
+    conn: Any,
+    event: dict[str, Any],
+) -> None:
+    """Outbox handler: TICKET.dispatched -> seed WORK_ORDER record and graph node.
+
+    Emitted by support/dispatch.py when a ticket is dispatched to field service.
+    Field Tech asserts single-writer ownership over WORK_ORDER (Contract A)
+    and idempotently creates the work order record and kg_nodes entry.
+    """
+    payload = event.get("payload") or {}
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except (json.JSONDecodeError, ValueError):
+            payload = {}
+
+    ns_val = event.get("namespace_id") or payload.get("namespace_id")
+    if not ns_val:
+        log.warning("[field_tech.work_orders] TICKET.dispatched missing namespace_id")
+        return
+    ns_uuid = _parse_uuid(ns_val, "namespace_id")
+
+    ticket_id = str(payload.get("ticket_id") or "").strip()
+    work_order_id = str(payload.get("work_order_id") or "").strip()
+    if not (ticket_id and work_order_id):
+        log.warning("[field_tech.work_orders] TICKET.dispatched missing ticket_id or work_order_id")
+        return
+
+    summary = str(payload.get("summary") or f"Dispatched ticket {ticket_id}").strip()
+    priority = str(payload.get("priority") or "medium").lower()
+    if priority not in _ALLOWED_PRIORITIES:
+        priority = "medium"
+
+    # 1. Assert Contract-A single-writer ownership for WORK_ORDER node
+    await assert_owner(conn, ns_uuid, _NODE_TYPE_WORK_ORDER, _FIELD_TECH_ENGINE)
+
+    # 2. Idempotently insert into work_orders table
+    await conn.execute(
+        """
+        INSERT INTO work_orders (
+            work_order_id,
+            namespace_id,
+            kind,
+            source_kind,
+            source_ref,
+            status,
+            priority,
+            summary,
+            created_at,
+            updated_at
+        ) VALUES (
+            $1, $2::uuid, 'service', 'ticket', $3, 'dispatched', $4, $5, NOW(), NOW()
+        )
+        ON CONFLICT (work_order_id, namespace_id) DO UPDATE
+            SET status = EXCLUDED.status,
+                updated_at = NOW()
+        """,
+        work_order_id,
+        ns_uuid,
+        ticket_id,
+        priority,
+        summary,
+    )
+
+    # 3. Idempotently insert WORK_ORDER node into kg_nodes (Contract A: field_tech owns WORK_ORDER)
+    wo_label = f"WORK_ORDER:{work_order_id}"
+    await conn.execute(
+        """
+        INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)
+        VALUES ($1, $2, $3::uuid, 'agent')
+        ON CONFLICT (label, namespace_id) DO NOTHING
+        """,
+        wo_label,
+        _NODE_TYPE_WORK_ORDER,
+        ns_uuid,
+    )
+
+    # 4. Insert graph edge: WORK_ORDER -[for]-> TICKET
+    ticket_label = f"TICKET:{ticket_id}"
+    await conn.execute(
+        """
+        INSERT INTO kg_edges (subject_label, predicate, object_label, confidence, namespace_id, change_origin)
+        VALUES ($1, 'for', $2, 1.0, $3::uuid, 'agent')
+        ON CONFLICT (subject_label, predicate, object_label, namespace_id) DO NOTHING
+        """,
+        wo_label,
+        ticket_label,
+        ns_uuid,
+    )
+
+    log.info(
+        "[field_tech] handled TICKET.dispatched: ticket_id=%s -> work_order_id=%s ns=%s",
+        ticket_id,
+        work_order_id,
+        str(ns_uuid)[:8],
+    )
+    return None
+
+
+def register_field_tech_subscribers() -> None:
+    """Register Field Tech event subscribers for C4 transactional outbox bus.
+
+    Idempotent module-level registration called during server / cron bootstrap.
+    """
+    from nce.events.bus import subscribe
+
+    subscribe(
+        {"node_type": "TICKET", "op": "dispatched"},
+        handle_ticket_dispatched,
+    )
+    log.info("[field_tech] subscribed to TICKET.dispatched via C4 bus")

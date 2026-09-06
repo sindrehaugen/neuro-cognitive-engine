@@ -30,6 +30,7 @@ from nce.vertical_modules.field_tech.work_orders import (
     do_create_work_order,
     do_get_work_order,
     do_query_work_order,
+    register_field_tech_subscribers,
 )
 
 __all__ = [
@@ -45,4 +46,5 @@ __all__ = [
     "do_partner_view",
     "do_record_outcome",
     "do_dispatch",
+    "register_field_tech_subscribers",
 ]

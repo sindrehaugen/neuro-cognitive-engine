@@ -61,6 +61,15 @@ EVENT_CATALOGUE: Mapping[str, EventContract] = {
         status="ACTIVE",
         description="Emitted when incoming goods receipt is posted in the warehouse.",
     ),
+    "TICKET.dispatched": EventContract(
+        selector="TICKET.dispatched",
+        node_type="TICKET",
+        op="dispatched",
+        declared_producers=("nce/vertical_modules/support/dispatch.py",),
+        declared_consumers=("nce/vertical_modules/field_tech/work_orders.py",),
+        status="ACTIVE",
+        description="Emitted when a support ticket is dispatched to Field Tech as a work order.",
+    ),
     "BOM_LINE.status_changed": EventContract(
         selector="BOM_LINE.status_changed",
         node_type="BOM_LINE",
