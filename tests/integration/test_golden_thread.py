@@ -747,7 +747,7 @@ class TestGoldenThreadPositiveControls:
         burning down to 8 broken steps.
         """
         broken_steps = [s for s in GOLDEN_THREAD_STEPS if s.is_broken]
-        assert len(broken_steps) == 9
+        assert len(broken_steps) == 8
         broken_indices = {s.index for s in broken_steps}
         assert broken_indices == {8, 11, 13, 14, 17, 20, 23, 27}
 
