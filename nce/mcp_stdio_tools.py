@@ -2617,6 +2617,50 @@ TOOLS = [
             "required": ["namespace_id", "quote_id", "signed_by", "signature_ref"],
         },
     ),
+    Tool(
+        name="project_record_outcome",
+        description=(
+            "Record final project outcome (margin drift, slip reason, delivery rating). "
+            "admin_only; mutation. Stores outcome memory, writes kg_edges has_outcome "
+            "edge with confidence, logs decision feedback, and unblocks G5 transition."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "project_id": {"type": "string", "description": "Project UUID or identifier."},
+                "description": {
+                    "type": "string",
+                    "description": "Project outcome description for semantic embedding and recall.",
+                },
+                "slip_reason": {
+                    "type": "string",
+                    "description": "Reason for schedule or budget variance, or 'on_time_on_budget'.",
+                },
+                "margin_drift": {
+                    "type": "number",
+                    "description": "Actual minus planned margin (positive = gain, negative = slip).",
+                },
+                "gate_dwell_time": {
+                    "type": "integer",
+                    "description": "Days spent in final execution gates.",
+                },
+                "confidence": {
+                    "type": "number",
+                    "description": "Confidence score for outcome attribution (0.0 - 1.0, default 1.0).",
+                },
+                "waived": {
+                    "type": "boolean",
+                    "description": "Whether outcome recording was waived by authorized human actor.",
+                },
+                "actor": {
+                    "type": "string",
+                    "description": "Actor attributing or waiving the outcome.",
+                },
+            },
+            "required": ["namespace_id", "project_id", "description", "slip_reason"],
+        },
+    ),
     # -----------------------------------------------------------------
     # OQ-3 tranche 3 (2026-09-01) — the two tools whose CORE raises an
     # explicit "'x' is required", so the required/optional split is read
@@ -2812,6 +2856,79 @@ TOOLS = [
                 },
             },
             "required": ["namespace_id", "product_id", "trigger_context"],
+        },
+    ),
+    Tool(
+        name="product_ingest_spec",
+        description=(
+            "Ingest raw spec or datasheet text for a product into the cognitive-recall "
+            "substrate (memories + v3_cognitive_ledger). Behind the C2 governed gate: "
+            "without confirm=true it returns {'status': 'pending_approval'} and writes "
+            "nothing. With confirm=true it runs once, idempotent on replay."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "product_id": {
+                    "type": "string",
+                    "description": "Identifier or SKU of the product being documented.",
+                },
+                "spec_text": {
+                    "type": "string",
+                    "description": "Raw specification or datasheet text to ingest and embed.",
+                },
+                "source": {
+                    "type": "string",
+                    "default": "product_spec",
+                    "description": "Provenance source label (e.g. 'product_spec', 'datasheet').",
+                },
+                "trigger": {
+                    "type": "string",
+                    "default": "manual",
+                    "description": "Trigger label (e.g. 'manual', 'webhook', 'sync').",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "Optional; must be true for the side effect to run. Defaults to "
+                        "false, which returns pending_approval."
+                    ),
+                },
+                "idempotency_key": {
+                    "type": "string",
+                    "description": (
+                        "Optional override. When absent a stable hash of "
+                        "(product_id, spec_hash, source) is derived."
+                    ),
+                },
+            },
+            "required": ["namespace_id", "product_id", "spec_text"],
+        },
+    ),
+    Tool(
+        name="product_golden_record",
+        description=(
+            "Compute and fetch the field-level golden record for a product. Resolves field "
+            "winners via C1 survivorship, persists provenance to v3_cognitive_ledger, and "
+            "returns quality grade, completeness score, and publish gate status."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "product_id": {
+                    "type": "string",
+                    "description": "UUID of the product.",
+                },
+                "channel": {
+                    "type": "string",
+                    "default": "b2b_portal",
+                    "description": "Target channel for completeness scoring (default 'b2b_portal').",
+                },
+            },
+            "required": ["namespace_id", "product_id"],
         },
     ),
     Tool(
@@ -4238,6 +4355,13 @@ TOOLS = [
                     "description": (
                         "Natural-language description of the room or design requirement "
                         "to match against past designs."
+                    ),
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": (
+                        "Number of past designs to recall (bounded 1-50, default 3). "
+                        "Sales commissioning passes top_k=1 to limit recall scope."
                     ),
                 },
             },
@@ -5693,6 +5817,47 @@ TOOLS = [
             "required": ["namespace_id", "allocation_id", "itinerary"],
         },
     ),
+    Tool(
+        name="resources_record_allocation_outcome",
+        description=(
+            "Record resource allocation outcome (rating, quality, on-time, notes). "
+            "admin_only; mutation. Appends to v3_cognitive_ledger and logs to C10 "
+            "decision feedback service."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "resource_id": {"type": "string", "description": "Resource UUID."},
+                "allocation_id": {"type": "string", "description": "Optional allocation UUID."},
+                "rating": {
+                    "type": "number",
+                    "description": "Allocation performance rating (1.0 - 5.0, default 5.0).",
+                },
+                "quality_score": {
+                    "type": "number",
+                    "description": "Work quality score (0.0 - 1.0, default 1.0).",
+                },
+                "demand_kind": {
+                    "type": "string",
+                    "description": "Demand kind (e.g. 'project', 'service', 'warranty').",
+                },
+                "on_time": {
+                    "type": "boolean",
+                    "description": "Whether the resource arrived/delivered on time (default true).",
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Optional retrospective notes on resource allocation.",
+                },
+                "actor": {
+                    "type": "string",
+                    "description": "Actor recording the outcome.",
+                },
+            },
+            "required": ["namespace_id", "resource_id"],
+        },
+    ),
     # ML17-B5 (M17.W5) -- Customer Portal Engine (9 tools)
     Tool(
         name="customer_portal_room_tracker",
@@ -6017,6 +6182,92 @@ TOOLS = [
                 },
             },
             "required": ["namespace_id", "query"],
+        },
+    ),
+    Tool(
+        name="decision_feedback_record",
+        description=(
+            "Record ground-truth human decision or outcome feedback across vertical engines "
+            "(product, procurement, economy, resources, field_tech) into the tenant-isolated decision_feedback ledger."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Tenant namespace UUID",
+                },
+                "engine": {
+                    "type": "string",
+                    "description": "Source engine (e.g. 'product', 'procurement', 'economy', 'resources', 'field_tech')",
+                },
+                "decision": {
+                    "type": "string",
+                    "description": "Human decision or outcome (e.g. 'accept', 'override', 'held', 'deviated', 'succeeded', 'rework')",
+                },
+                "context_id": {
+                    "type": "string",
+                    "description": "Optional entity identifier (e.g. BOM line, supplier ID, invoice ID, work order ID)",
+                },
+                "proposal": {
+                    "type": "object",
+                    "description": "Engine proposal or recommendation before human decision",
+                },
+                "delta": {
+                    "type": "object",
+                    "description": "Difference between proposal and human decision",
+                },
+                "actor": {
+                    "type": "string",
+                    "description": "Actor identifier or role (default 'human')",
+                    "default": "human",
+                },
+            },
+            "required": ["namespace_id", "engine", "decision"],
+        },
+    ),
+    Tool(
+        name="trust_dial_get_status",
+        description=(
+            "Get the current and proposed autonomy tier for a tenant based on C10 "
+            "measured decision precision (EU-AI-Act compliant explainability). cacheable."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "engine": {
+                    "type": "string",
+                    "description": "Optional engine filter (e.g. 'system_design', 'resources').",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="trust_dial_set_tier",
+        description=(
+            "Explicitly confirm or set a tenant's autonomy tier (1-4). "
+            "admin_only; mutation. A human must raise tiers; autonomy never raises itself."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "tier": {
+                    "type": "integer",
+                    "description": "Autonomy tier (1=autonomous, 2=actor_confirm, 3=advisor_pl_review, 4=advisor_only).",
+                },
+                "engine": {
+                    "type": "string",
+                    "description": "Optional engine identifier (defaults to global).",
+                },
+                "actor": {
+                    "type": "string",
+                    "description": "Actor identifier setting the tier (defaults to 'admin').",
+                },
+            },
+            "required": ["namespace_id", "tier"],
         },
     ),
 ]

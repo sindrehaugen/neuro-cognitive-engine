@@ -320,6 +320,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `d365_query_case` |  |  | yes |  |
 | `d365_sync_now` | yes | yes |  |  |
 | `d365_sync_status` |  |  |  |  |
+| `decision_feedback_record` | yes | yes |  |  |
 | `delete_snapshot` |  | yes |  |  |
 | `describe_schema` |  |  |  |  |
 | `detect_causal_cycles` | yes |  |  |  |
@@ -418,6 +419,8 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `procurement_whatif_spend` |  |  | yes |  |
 | `product_enrich` |  | yes |  |  |
 | `product_get` |  |  | yes |  |
+| `product_golden_record` |  |  | yes |  |
+| `product_ingest_spec` |  | yes |  |  |
 | `product_match_bom_line` |  |  |  |  |
 | `product_price` |  |  | yes |  |
 | `product_related` |  |  | yes |  |
@@ -425,6 +428,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `project_advance_phase` | yes | yes |  |  |
 | `project_can_enter_phase` |  |  | yes |  |
 | `project_convert_signed_quote` | yes | yes |  |  |
+| `project_record_outcome` | yes | yes |  |  |
 | `project_suggest_pl` |  |  | yes |  |
 | `purge_dlq` |  | yes |  |  |
 | `replay_dlq` |  | yes |  |  |
@@ -440,6 +444,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `resources_plan_allocation` |  |  |  |  |
 | `resources_plan_material_flow` | yes | yes |  |  |
 | `resources_plan_travel` |  | yes |  |  |
+| `resources_record_allocation_outcome` | yes | yes |  |  |
 | `resources_release` |  | yes |  |  |
 | `resources_reserve` |  | yes |  |  |
 | `resources_resolve_capacity` |  |  | yes |  |
@@ -480,6 +485,8 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `system_design_to_quote` |  | yes |  |  |
 | `system_design_validate_design_graph` |  |  |  |  |
 | `trigger_consolidation` |  | yes |  |  |
+| `trust_dial_get_status` |  |  | yes |  |
+| `trust_dial_set_tier` | yes | yes |  |  |
 | `unredact_memory` | yes | yes |  |  |
 | `validate_migration` |  |  |  | yes |
 | `vendors_calibrate_weights` |  |  | yes |  |
@@ -498,4 +505,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 247 REST endpoints, 233 MCP tools._
+_Totals: 247 REST endpoints, 240 MCP tools._

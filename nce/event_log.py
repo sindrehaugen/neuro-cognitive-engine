@@ -389,6 +389,8 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "portal_service_requests": "namespace_id",
     # Business Insights engine (Module 16, Wave 1): KPI snapshots & roll-up trends.
     "business_insights_kpi_snapshots": "namespace_id",
+    # C10 Decision-Feedback Service (Cross-Engine, Wave 1): ground-truth human decision signal.
+    "decision_feedback": "namespace_id",
 }
 
 

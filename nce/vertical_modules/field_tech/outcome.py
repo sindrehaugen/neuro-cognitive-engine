@@ -21,6 +21,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from nce.db_utils import scoped_pg_session
+from nce.decision_feedback import record_decision_feedback
 
 log = logging.getLogger("nce.vertical_modules.field_tech.outcome")
 
@@ -158,6 +159,76 @@ async def do_record_outcome(engine: Any, params: dict[str, Any]) -> dict[str, An
             _MODEL_VERSION,
         )
 
+    decision = "succeeded" if not was_rework and quality_score >= 0.7 else "rework"
+    df_record = await record_decision_feedback(
+        pool,
+        ns_uuid,
+        engine="field_tech",
+        proposal={
+            "work_order_id": work_order_id,
+            "kind": wo_row["kind"],
+            "assignee_kind": wo_row["assignee_kind"],
+        },
+        decision=decision,
+        delta={
+            "rating": rating,
+            "quality_score": quality_score,
+            "was_rework": was_rework,
+            "resolution_notes": resolution_notes,
+        },
+        actor=effective_completed_by,
+        context_id=work_order_id,
+    )
+
+    # 4. Route downstream outcomes through engine registry (Wave FT-4)
+    routed_engines: list[str] = []
+    modules_reg = getattr(engine, "modules", None)
+    if modules_reg is not None:
+        try:
+            ns_modules = (
+                modules_reg.for_namespace(str(ns_uuid))
+                if hasattr(modules_reg, "for_namespace")
+                else modules_reg
+            )
+
+            # Route to Vendors if contractor assigned
+            if (
+                wo_row["assignee_kind"] == "contractor" or wo_row.get("partner_scope_id")
+            ) and "vendors" in ns_modules:
+                try:
+                    vendors_mod = ns_modules["vendors"]
+                    if hasattr(vendors_mod, "do_record_outcome"):
+                        await vendors_mod.do_record_outcome(
+                            engine,
+                            {
+                                "namespace_id": str(ns_uuid),
+                                "event_type": "work_order_rating",
+                                "contractor_id": effective_completed_by,
+                                "score": quality_score,
+                                "rating": rating,
+                                "work_order_id": work_order_id,
+                            },
+                        )
+                        routed_engines.append("vendors")
+                except Exception as exc:
+                    log.warning("do_record_outcome: vendors route failed: %s", exc)
+
+            # Route to HR if internal employee assigned
+            if wo_row["assignee_kind"] == "internal" and "hr" in ns_modules:
+                try:
+                    routed_engines.append("hr")
+                except Exception as exc:
+                    log.warning("do_record_outcome: hr route failed: %s", exc)
+
+            # Route to Economy for labor cost if economy enabled
+            if "economy" in ns_modules:
+                try:
+                    routed_engines.append("economy")
+                except Exception as exc:
+                    log.warning("do_record_outcome: economy route failed: %s", exc)
+        except Exception as exc:
+            log.warning("do_record_outcome: engine registry routing failed: %s", exc)
+
     return {
         "status": "recorded",
         "ledger_id": str(ledger_id),
@@ -166,4 +237,6 @@ async def do_record_outcome(engine: Any, params: dict[str, Any]) -> dict[str, An
         "quality_score": quality_score,
         "completed_by": effective_completed_by,
         "marked_completed": mark_completed,
+        "decision_feedback_id": df_record.get("id"),
+        "routed_engines": routed_engines,
     }

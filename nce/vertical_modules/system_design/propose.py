@@ -121,31 +121,67 @@ def _apply_outcome_weights(
     candidates: list[dict[str, Any]],
     *,
     enabled: bool,
-) -> list[dict[str, Any]]:
-    """Apply outcome-based discount factors to recall candidates.
+    outcomes: dict[str, dict[str, Any]] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Apply outcome-based discount/boost factors to recall candidates (Wave SD-2).
 
-    DORMANT — when ``enabled`` is False (the only supported mode for now),
-    candidates are returned UNCHANGED in pure cosine-similarity order.
-
-    Future activation (once Project/Support engines backfill the ledger):
-      - Discount scores by change-order frequency (more COs → lower weight).
-      - Discount by open support-ticket pressure.
-      - Boost by gross-margin realisation rate.
-    The maths will live here when ``NCE_SYSTEM_DESIGN_OUTCOME_WEIGHTING_ENABLED``
-    is flipped to True.  Until then, do NOT reorder — ranking is pure similarity.
+    When ``enabled`` is True and outcome data exists:
+      - Projects with successful outcomes (high confidence / positive margin) are boosted.
+      - Projects with slips / rework are discounted.
+    Computes a strict coverage indicator:
+      - "similarity-only: 0 attributed outcomes" when no outcomes exist.
+      - "outcome-weighted: M/N attributed outcomes" when M outcomes are attributed.
     """
-    if not enabled:
-        # Pure-similarity order: return unchanged.
-        return candidates
+    outcomes = outcomes or {}
+    total_count = len(candidates)
+    attributed_count = 0
 
-    # TODO (Wave N): implement discount-by-change-orders/tickets/margin once
-    # Project and Support engines publish their ledger entries to
-    # v3_cognitive_ledger.  Gate on NCE_SYSTEM_DESIGN_OUTCOME_WEIGHTING_ENABLED.
-    raise NotImplementedError(
-        "_apply_outcome_weights is dormant; set "
-        "NCE_SYSTEM_DESIGN_OUTCOME_WEIGHTING_ENABLED=false (default) "
-        "to use pure-similarity ranking."
+    enriched: list[dict[str, Any]] = []
+    for c in candidates:
+        cand = dict(c)
+        name = cand.get("name") or ""
+        proj_meta = cand.get("metadata")
+        if isinstance(proj_meta, str):
+            try:
+                proj_meta = json.loads(proj_meta)
+            except (json.JSONDecodeError, TypeError):
+                proj_meta = {}
+        elif not isinstance(proj_meta, dict):
+            proj_meta = {}
+
+        proj_id = proj_meta.get("project_id") or name
+        outcome_data = outcomes.get(proj_id) or outcomes.get(name)
+
+        if outcome_data:
+            attributed_count += 1
+            cand["attributed_outcome"] = True
+            conf = float(outcome_data.get("confidence", 1.0))
+            cand["outcome_confidence"] = conf
+            drift = float(outcome_data.get("margin_drift", 0.0))
+            weight_factor = max(0.2, min(2.0, 1.0 + drift)) if drift != 0.0 else (0.5 + 0.5 * conf)
+            base_sim = float(cand.get("similarity", 0.0))
+            cand["weighted_score"] = round(base_sim * weight_factor, 4)
+        else:
+            cand["attributed_outcome"] = False
+            cand["outcome_confidence"] = None
+            cand["weighted_score"] = round(float(cand.get("similarity", 0.0)), 4)
+
+        enriched.append(cand)
+
+    if enabled and attributed_count > 0:
+        enriched.sort(key=lambda x: x.get("weighted_score", 0.0), reverse=True)
+
+    status = (
+        "similarity-only: 0 attributed outcomes"
+        if attributed_count == 0
+        else f"outcome-weighted: {attributed_count}/{total_count} attributed outcomes"
     )
+    coverage = {
+        "attributed_outcomes": attributed_count,
+        "total_candidates": total_count,
+        "status": status,
+    }
+    return enriched, coverage
 
 
 # ---------------------------------------------------------------------------
@@ -267,26 +303,90 @@ async def do_propose_design(
     if not room_brief:
         raise ValueError("do_propose_design: 'room_brief' is required in params")
 
-    top_k: int = cfg.NCE_SYSTEM_DESIGN_RECALL_TOP_K
+    raw_top_k = params.get("top_k")
+    if raw_top_k is not None:
+        try:
+            val = int(raw_top_k)
+            top_k = max(1, min(val, 50))
+        except (TypeError, ValueError):
+            top_k = cfg.NCE_SYSTEM_DESIGN_RECALL_TOP_K
+    else:
+        top_k = cfg.NCE_SYSTEM_DESIGN_RECALL_TOP_K
     outcome_weighting_enabled: bool = cfg.NCE_SYSTEM_DESIGN_OUTCOME_WEIGHTING_ENABLED
 
     # 1. Embed the room brief (outside the DB transaction per scoped_pg_session
     #    contract — no slow I/O inside the transaction).
     query_vec: list[float] = await embed(room_brief)
 
-    # 2. Recall top-K similar DESIGN/PROJECT memories (RLS-scoped).
+    # 2. Recall top-K similar DESIGN/PROJECT memories (RLS-scoped) and fetch outcome evidence.
+    outcomes: dict[str, dict[str, Any]] = {}
     async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
         candidates = await _recall_similar_designs(conn, ns_uuid, query_vec, top_k)
 
+        # Check per-namespace outcome weighting override
+        ns_metadata_row = await conn.fetchrow(
+            "SELECT metadata FROM namespaces WHERE id = $1::uuid",
+            str(ns_uuid),
+        )
+        ns_metadata = (
+            json.loads(ns_metadata_row["metadata"])
+            if ns_metadata_row and isinstance(ns_metadata_row["metadata"], str)
+            else (ns_metadata_row["metadata"] if ns_metadata_row else {})
+        ) or {}
+        if not outcome_weighting_enabled:
+            outcome_weighting_enabled = bool(
+                ns_metadata.get("system_design", {}).get("outcome_weighting_enabled", False)
+            )
+
+        cand_names = [r["name"] for r in candidates if r.get("name")]
+        if cand_names:
+            outcome_rows = await conn.fetch(
+                """
+                SELECT subject_label, confidence, object_label
+                FROM kg_edges
+                WHERE namespace_id = $1::uuid
+                  AND predicate = 'has_outcome'
+                  AND subject_label = ANY($2::text[])
+                """,
+                str(ns_uuid),
+                cand_names,
+            )
+            for row in outcome_rows:
+                outcomes[row["subject_label"]] = {
+                    "confidence": float(row["confidence"])
+                    if row["confidence"] is not None
+                    else 1.0,
+                    "object_label": row["object_label"],
+                }
+
     log.info(
-        "do_propose_design: ns=%s recalled %d candidate(s) (top_k=%d)",
+        "do_propose_design: ns=%s recalled %d candidate(s) (top_k=%d, attributed_outcomes=%d)",
         ns_uuid,
         len(candidates),
         top_k,
+        len(outcomes),
     )
 
-    # 3. Apply (dormant) outcome-weighting.
-    ranked = _apply_outcome_weights(candidates, enabled=outcome_weighting_enabled)
+    # 3. Apply outcome-weighting and compute coverage figure.
+    ranked, coverage = _apply_outcome_weights(
+        candidates,
+        enabled=outcome_weighting_enabled,
+        outcomes=outcomes,
+    )
+
+    if outcome_weighting_enabled and coverage["attributed_outcomes"] == 0 and len(candidates) > 0:
+        try:
+            from nce.degradation import record_degradation
+
+            record_degradation(
+                namespace_id=str(ns_uuid),
+                engine="system_design",
+                code="similarity_only_zero_outcomes",
+                detail=f"Design recall has 0 attributed outcomes for {len(candidates)} candidates.",
+                onboarding_hint="Design recall is similarity-only: 0 attributed outcomes; record 5 to unlock.",
+            )
+        except Exception:
+            log.warning("Failed to record degradation event in propose_design", exc_info=True)
 
     # 4. Build proposed BOM lines from ranked evidence.
     proposed_lines = _build_proposed_lines(ranked)
@@ -300,12 +400,31 @@ async def do_propose_design(
             "node_type": r.get("node_type", ""),
             "similarity": float(r.get("similarity", 0.0)),
             "distance": float(r.get("distance", 0.0)),
+            "weighted_score": float(r.get("weighted_score", r.get("similarity", 0.0))),
+            "attributed_outcome": bool(r.get("attributed_outcome", False)),
+            "outcome_confidence": r.get("outcome_confidence"),
         }
         for r in ranked
     ]
 
+    # 6. Fetch Trust Dial autonomy badge (Wave T-1 EU-AI-Act transparency)
+    trust_dial_badge: dict[str, Any] | None = None
+    try:
+        from nce.trust_dial import get_trust_dial_status
+
+        trust_dial_badge = await get_trust_dial_status(
+            engine,
+            ns_uuid,
+            engine="system_design",
+        )
+    except Exception as exc:
+        log.warning("do_propose_design: failed to fetch trust dial badge: %s", exc)
+
     return {
         "proposed_lines": proposed_lines,
         "recall_evidence": recall_evidence,
-        "outcome_weighting_applied": outcome_weighting_enabled,
+        "outcome_weighting_applied": outcome_weighting_enabled
+        and (coverage["attributed_outcomes"] > 0),
+        "coverage": coverage,
+        "trust_dial": trust_dial_badge,
     }

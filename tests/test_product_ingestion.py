@@ -71,14 +71,19 @@ class TestDoIngestSpec:
         self, pg_pool: asyncpg.Pool, pg_admin_conn: asyncpg.Connection, ns_a: uuid.UUID
     ) -> None:
         """Ingesting spec text writes exactly one memories row, namespace-scoped."""
+        from nce.db_utils import scoped_pg_session
+
         product_id = f"sku-{uuid.uuid4().hex[:8]}"
 
-        result = await do_ingest_spec(
-            pg_pool,
-            ns_a,
-            product_id=product_id,
-            spec_text=_SAMPLE_SPEC,
-        )
+        async with scoped_pg_session(pg_pool, ns_a) as conn:
+            result = await do_ingest_spec(
+                conn,
+                ns_a,
+                idempotency_key=f"idem-{uuid.uuid4().hex}",
+                confirm=True,
+                product_id=product_id,
+                spec_text=_SAMPLE_SPEC,
+            )
 
         assert "memory_id" in result, f"Expected memory_id in result, got: {result}"
         memory_id = result["memory_id"]
@@ -103,16 +108,21 @@ class TestDoIngestSpec:
         self, pg_pool: asyncpg.Pool, pg_admin_conn: asyncpg.Connection, ns_a: uuid.UUID
     ) -> None:
         """Each ingest produces a matching v3_cognitive_ledger entry."""
+        from nce.db_utils import scoped_pg_session
+
         product_id = f"sku-{uuid.uuid4().hex[:8]}"
 
-        result = await do_ingest_spec(
-            pg_pool,
-            ns_a,
-            product_id=product_id,
-            spec_text=_SAMPLE_SPEC,
-            source="datasheet",
-            trigger="webhook",
-        )
+        async with scoped_pg_session(pg_pool, ns_a) as conn:
+            result = await do_ingest_spec(
+                conn,
+                ns_a,
+                idempotency_key=f"idem-{uuid.uuid4().hex}",
+                confirm=True,
+                product_id=product_id,
+                spec_text=_SAMPLE_SPEC,
+                source="datasheet",
+                trigger="webhook",
+            )
         memory_id = result["memory_id"]
 
         ledger_row = await pg_admin_conn.fetchrow(
@@ -136,14 +146,19 @@ class TestDoIngestSpec:
         ns_b: uuid.UUID,
     ) -> None:
         """Namespace B cannot see memories written into namespace A."""
+        from nce.db_utils import scoped_pg_session
+
         product_id = f"sku-{uuid.uuid4().hex[:8]}"
 
-        result = await do_ingest_spec(
-            pg_pool,
-            ns_a,
-            product_id=product_id,
-            spec_text=_SAMPLE_SPEC,
-        )
+        async with scoped_pg_session(pg_pool, ns_a) as conn:
+            result = await do_ingest_spec(
+                conn,
+                ns_a,
+                idempotency_key=f"idem-{uuid.uuid4().hex}",
+                confirm=True,
+                product_id=product_id,
+                spec_text=_SAMPLE_SPEC,
+            )
         memory_id = result["memory_id"]
 
         # Querying as namespace B must return no row (RLS isolation).
@@ -159,18 +174,25 @@ class TestDoIngestSpec:
         self, pg_pool: asyncpg.Pool, ns_a: uuid.UUID
     ) -> None:
         """Empty or whitespace-only spec text is skipped gracefully."""
-        result = await do_ingest_spec(
-            pg_pool,
-            ns_a,
-            product_id="sku-empty",
-            spec_text="   ",
-        )
+        from nce.db_utils import scoped_pg_session
+
+        async with scoped_pg_session(pg_pool, ns_a) as conn:
+            result = await do_ingest_spec(
+                conn,
+                ns_a,
+                idempotency_key=f"idem-{uuid.uuid4().hex}",
+                confirm=True,
+                product_id="sku-empty",
+                spec_text="   ",
+            )
         assert result.get("skipped") == "empty spec_text"
 
     async def test_degraded_embedding_still_writes_row(
         self, pg_pool: asyncpg.Pool, pg_admin_conn: asyncpg.Connection, ns_a: uuid.UUID
     ) -> None:
         """When the embedding backend is degraded, the memories + ledger rows are still written."""
+        from nce.db_utils import scoped_pg_session
+
         product_id = f"sku-{uuid.uuid4().hex[:8]}"
 
         # Simulate a degraded embedding backend: embed_batch returns a deterministic
@@ -187,12 +209,15 @@ class TestDoIngestSpec:
         ):
             mock_flag.get.return_value = True
 
-            result = await do_ingest_spec(
-                pg_pool,
-                ns_a,
-                product_id=product_id,
-                spec_text=_SAMPLE_SPEC,
-            )
+            async with scoped_pg_session(pg_pool, ns_a) as conn:
+                result = await do_ingest_spec(
+                    conn,
+                    ns_a,
+                    idempotency_key=f"idem-{uuid.uuid4().hex}",
+                    confirm=True,
+                    product_id=product_id,
+                    spec_text=_SAMPLE_SPEC,
+                )
 
         assert "memory_id" in result, f"Expected memory_id even in degraded mode: {result}"
         assert result["degraded"] is True

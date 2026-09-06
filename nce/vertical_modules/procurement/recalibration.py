@@ -43,6 +43,7 @@ from typing import Any
 import asyncpg  # type: ignore[import-untyped]
 
 from nce.db_utils import scoped_pg_session
+from nce.decision_feedback import record_decision_feedback
 
 log = logging.getLogger("nce.vertical_modules.procurement.recalibration")
 
@@ -130,14 +131,30 @@ async def do_record_match_decision(
             _MODEL_VERSION,
         )
 
+    df_record = await record_decision_feedback(
+        pg_pool,
+        namespace_id,
+        engine="procurement",
+        proposal={"supplier_id": supplier_id, "score": score},
+        decision=decision,
+        delta={"supplier_id": supplier_id, "score": score},
+        actor="human",
+        context_id=supplier_id,
+    )
+
     log.info(
-        "[PROCUREMENT-RECAL] decision recorded supplier_id=%s decision=%s score=%.2f ledger_id=%s",
+        "[PROCUREMENT-RECAL] decision recorded supplier_id=%s decision=%s score=%.2f ledger_id=%s df_id=%s",
         supplier_id,
         decision,
         score,
         ledger_id,
+        df_record.get("id"),
     )
-    return {"ledger_id": str(ledger_id), "supplier_id": supplier_id}
+    return {
+        "ledger_id": str(ledger_id),
+        "supplier_id": supplier_id,
+        "decision_feedback_id": df_record.get("id"),
+    }
 
 
 async def do_recalibrate_supplier(

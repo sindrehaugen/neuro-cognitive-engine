@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 233  # 228 baseline + 5 HR tools (Wave HR-2)
+_EXPECTED_TOTAL = 240  # 233 baseline + 7 MLV15C tools
 
 
 def test_registry_has_expected_entries():
@@ -228,6 +228,16 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # MLV15D-HR2 -- HR surface completion Actor mutations (2 tools)
         "hr_record_skill",
         "hr_update_absence_compliance",
+        # Wave C10 -- Decision Feedback service mutation
+        "decision_feedback_record",
+        # Wave P-2 -- Product Spec Ingestion mutation
+        "product_ingest_spec",
+        # Wave PJ-1 -- Project record outcome mutation
+        "project_record_outcome",
+        # Wave RS-3 -- Resources record allocation outcome mutation
+        "resources_record_allocation_outcome",
+        # Wave T-1 -- Trust dial set tier mutation
+        "trust_dial_set_tier",
     }
 )
 
@@ -240,7 +250,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 101  # 99 baseline + 2 HR tools (Wave HR-2)
+    assert len(MUTATION_TOOLS) == 106  # 101 baseline + 5 MLV15C tools
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -382,6 +392,10 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "hr_query_absences",
         "hr_compliance_deadlines",
         "hr_get_onboarding_progress",
+        # Wave P-3 -- Product golden record read tool (cacheable)
+        "product_golden_record",
+        # Wave T-1 -- Trust dial status read tool (cacheable)
+        "trust_dial_get_status",
     }
 )
 
@@ -394,7 +408,9 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 89  # 86 baseline + 3 HR tools (Wave HR-2)
+    assert (
+        len(CACHEABLE_TOOLS) == 91
+    )  # 89 baseline + 2 MLV15C tools (product_golden_record, trust_dial_get_status)
 
 
 # ---------------------------------------------------------------------------
@@ -501,6 +517,14 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         # MLV15D-HR2 -- HR surface completion admin tools (2 tools)
         "hr_record_skill",
         "hr_update_absence_compliance",
+        # Wave C10 -- Decision Feedback service admin_only tool
+        "decision_feedback_record",
+        # Wave PJ-1 -- Project record outcome admin_only tool
+        "project_record_outcome",
+        # Wave RS-3 -- Resources record allocation outcome admin_only tool
+        "resources_record_allocation_outcome",
+        # Wave T-1 -- Trust dial set tier admin_only tool
+        "trust_dial_set_tier",
     }
 )
 
@@ -513,9 +537,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert (
-        len(ADMIN_ONLY_TOOLS) == 63
-    )  # 52 baseline (incl. PR-1 #35) + 6 Agreements tools (Wave AG-2) + 3 Vendors tools (Wave V-1) + 2 HR tools (Wave HR-2)
+    assert len(ADMIN_ONLY_TOOLS) == 67  # 63 baseline + 4 MLV15C tools
 
 
 # ---------------------------------------------------------------------------

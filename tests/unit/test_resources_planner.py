@@ -177,6 +177,10 @@ def mock_engine(monkeypatch):
         "nce.vertical_modules.resources.planner.scoped_pg_session",
         lambda pool, ns: MockContextManager(),
     )
+    monkeypatch.setattr(
+        "nce.decision_feedback.scoped_pg_session",
+        lambda pool, ns: MockContextManager(),
+    )
 
     return engine
 

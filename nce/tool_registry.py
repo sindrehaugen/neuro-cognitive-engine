@@ -29,11 +29,13 @@ from nce import (
     catalog_mcp_handlers,
     code_mcp_handlers,
     contradiction_mcp_handlers,
+    decision_feedback,
     graph_mcp_handlers,
     memory_mcp_handlers,
     migration_mcp_handlers,
     replay_mcp_handlers,
     snapshot_mcp_handlers,
+    trust_dial,
 )
 from nce.admin_handlers import settings as settings_mcp_handlers
 from nce.entity_resolution import mcp_handlers as entity_resolution_mcp_handlers
@@ -407,6 +409,29 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         _h(catalog_mcp_handlers, "handle_describe_schema"),
     ),
     # ------------------------------------------------------------------
+    # Decision feedback tools (C10 cross-engine feedback service)
+    # ------------------------------------------------------------------
+    "decision_feedback_record": ToolSpec(
+        _h(decision_feedback, "handle_record_decision_feedback"),
+        admin_only=True,
+        mutation=True,
+    ),
+    # ------------------------------------------------------------------
+    # Trust Dial tools (Wave T-1 roadmap capstone)
+    # ------------------------------------------------------------------
+    "trust_dial_get_status": ToolSpec(
+        _h(trust_dial, "handle_trust_dial_get_status"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "trust_dial_set_tier": ToolSpec(
+        _h(trust_dial, "handle_trust_dial_set_tier"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    # ------------------------------------------------------------------
     # Dynamics 365 / Dataverse vertical module tools
     # ------------------------------------------------------------------
     "d365_query_case": ToolSpec(
@@ -468,6 +493,19 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         _h(product_mcp_handlers, "handle_product_enrich"),
         mutation=True,
         cacheable=False,
+        admin_only=False,
+    ),
+    # Product vertical module tools (v1.5 Phase 2 Waves P-2 / P-3)
+    "product_ingest_spec": ToolSpec(
+        _h(product_mcp_handlers, "handle_product_ingest_spec"),
+        mutation=True,
+        cacheable=False,
+        admin_only=False,
+    ),
+    "product_golden_record": ToolSpec(
+        _h(product_mcp_handlers, "handle_product_golden_record"),
+        cacheable=True,
+        mutation=False,
         admin_only=False,
     ),
     # ------------------------------------------------------------------
@@ -682,6 +720,13 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         cacheable=True,
         admin_only=False,
         mutation=False,
+    ),
+    # Project vertical module tools (v1.5 Phase 2 Wave PJ-1) — G5 outcome recorder
+    "project_record_outcome": ToolSpec(
+        _h(project_mcp_handlers, "handle_project_record_outcome"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
     ),
     # ------------------------------------------------------------------
     # Diagnostic Log Digestion Engine vertical module tools (Batch 77)
@@ -1412,6 +1457,13 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
     "resources_plan_travel": ToolSpec(
         _h(resources_mcp_handlers, "handle_resources_plan_travel"),
         cacheable=False,
+        mutation=True,
+    ),
+    # Resources Engine — outcome recording (Wave RS-3)
+    "resources_record_allocation_outcome": ToolSpec(
+        _h(resources_mcp_handlers, "handle_resources_record_allocation_outcome"),
+        cacheable=False,
+        admin_only=True,
         mutation=True,
     ),
     # ML17-B5 (M17.W5) -- Customer Portal Engine (9 tools)

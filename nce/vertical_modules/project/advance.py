@@ -381,6 +381,31 @@ async def do_advance_phase(
     if target_phase == current_phase:
         return {"ok": True, "phase": current_phase, "noop": True}
 
+    # For G5 entry, auto-resolve "outcomes_recorded_or_waived" if an outcome edge exists in the graph.
+    if target_phase == "G5" and "outcomes_recorded_or_waived" not in criteria_met:
+        try:
+            async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
+                outcome_edge = await conn.fetchval(
+                    """
+                    SELECT 1 FROM kg_edges
+                    WHERE subject_label = $1
+                      AND predicate = 'has_outcome'
+                      AND namespace_id = $2::uuid
+                    LIMIT 1
+                    """,
+                    project_label,
+                    str(ns_uuid),
+                )
+                if outcome_edge:
+                    criteria_met.append("outcomes_recorded_or_waived")
+        except Exception as exc:
+            log.warning(
+                "do_advance_phase: failed to query outcome edge for G5 ns=%s project=%s: %s",
+                ns_uuid,
+                project_label,
+                exc,
+            )
+
     # --- Step 3: Pure gate check (no DB, no side-effects) -------------------
     gate_result = can_enter_phase(
         {"current_phase": current_phase, "criteria_met": criteria_met},

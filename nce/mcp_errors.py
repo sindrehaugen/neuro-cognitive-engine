@@ -56,14 +56,17 @@ from nce.config import DeploymentConfigurationError, cfg
 from nce.entity_resolution.ownership import OwnershipError
 from nce.quotas import QuotaExceededError
 
-try:
-    from nce.vertical_modules.resources._guard import ResourcesError
-except Exception:
-    ResourcesError = ()  # type: ignore[assignment,misc]
 
-_RESOURCES_ERRORS: tuple[type[BaseException], ...] = (
-    (ResourcesError,) if isinstance(ResourcesError, type) else ()
-)
+def _get_resources_errors() -> tuple[type[BaseException], ...]:
+    try:
+        from nce.vertical_modules.resources._guard import ResourcesError
+
+        if isinstance(ResourcesError, type):
+            return (ResourcesError,)
+    except Exception:
+        pass
+    return ()
+
 
 log = logging.getLogger(__name__)
 
@@ -330,7 +333,7 @@ def mcp_handler(handler_fn: F) -> F:
                 "Invalid parameters",
                 data=invalid_arguments_data(e),
             )
-        except _RESOURCES_ERRORS as e:
+        except _get_resources_errors() as e:
             raise McpError(
                 MCP_INVALID_PARAMS,
                 "Invalid parameters",

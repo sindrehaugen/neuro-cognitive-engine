@@ -157,6 +157,7 @@ VENDOR_PLATFORMS: dict[str, str] = {
     "neat": "Neat Pulse API",
     "huddly": "Huddly device API",
     "poly": "Poly Lens API",
+    "ymcs": "Yamaha Management Console for Systems (YMCS) API",
 }
 
 _TRUTHY = {"1", "true", "yes", "on"}
@@ -339,6 +340,10 @@ def select_telemetry_adapter(platform: str) -> TelemetryAdapter:
         raise ValueError(f"do_pull_telemetry: unknown telemetry platform {name!r} (known: {known})")
 
     if _real_adapter_enabled(name):
+        if name == "ymcs":
+            from nce.vertical_modules.assets.ymcs import YMCSTelemetryAdapter
+
+            return YMCSTelemetryAdapter()
         return UnimplementedVendorAdapter(name, vendor_api)
     return MockTelemetryAdapter()
 

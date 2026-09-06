@@ -60,6 +60,8 @@ UNMANAGED_PG_AUDITED_SITES: Final[frozenset[str]] = frozenset(
         # only (no opt-in filter, scans all namespaces); same shape/blast as the
         # other ``*.namespace_scan`` global reads above.
         "cron.inventory_stock_watcher.namespace_scan",
+        # Wave A-1 (M9.W5): assets telemetry watcher tick -- scans active telemetry devices
+        "cron.assets_telemetry.scan",
     }
 )
 

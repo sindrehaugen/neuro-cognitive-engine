@@ -356,6 +356,7 @@ async def handle_product_enrich(engine: NCEEngine, arguments: dict[str, Any]) ->
             confirm=confirm,
             product_id=product_id,
             trigger_context=trigger_context,
+            engine_or_pool=engine.pg_pool,
         )
 
     return json.dumps(result, default=str)
@@ -373,6 +374,73 @@ async def handle_product_match_bom_line(engine: NCEEngine, arguments: dict[str, 
     from nce.vertical_modules.product.matching import do_match_bom_line
 
     result = await do_match_bom_line(engine, arguments)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_product_ingest_spec(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: product_ingest_spec — ingest product spec/datasheet text into cognitive substrate.
+
+    Goes through the C2 ``@governed`` gate (confirm-only default).  Without
+    ``confirm=True`` the tool returns ``{"status": "pending_approval", ...}``.
+    With ``confirm=True`` it runs once (idempotent on replay) and writes to
+    ``memories`` and ``v3_cognitive_ledger`` (FORCE RLS).
+    """
+    await _check_product_enabled(engine, arguments)
+
+    import uuid as _uuid
+
+    from nce.db_utils import scoped_pg_session
+    from nce.mcp_args import require_namespace_id
+    from nce.vertical_modules.product.ingestion import (
+        _derive_ingest_idempotency_key,
+        do_ingest_spec,
+    )
+
+    namespace_id = require_namespace_id(arguments)
+    product_id = str(arguments.get("product_id") or "").strip()
+    if not product_id:
+        raise ValueError("'product_id' is required")
+    spec_text = str(arguments.get("spec_text") or "").strip()
+    if not spec_text:
+        raise ValueError("'spec_text' is required")
+
+    source = str(arguments.get("source") or "product_spec").strip()
+    trigger = str(arguments.get("trigger") or "manual").strip()
+    confirm = bool(arguments.get("confirm", False))
+
+    caller_key = str(arguments.get("idempotency_key") or "").strip()
+    if caller_key:
+        idem_key = caller_key
+    else:
+        idem_key = _derive_ingest_idempotency_key(product_id, spec_text, source)
+
+    async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+        result = await do_ingest_spec(
+            conn,
+            _uuid.UUID(namespace_id),
+            idempotency_key=idem_key,
+            confirm=confirm,
+            product_id=product_id,
+            spec_text=spec_text,
+            source=source,
+            trigger=trigger,
+        )
+
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_product_golden_record(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: product_golden_record — compute and fetch field-level golden record for a product.
+
+    Resolves field winners via C1 survivorship, writes provenance to v3_cognitive_ledger,
+    and returns quality grade, completeness score, and publish gate status.
+    """
+    await _check_product_enabled(engine, arguments)
+    from nce.vertical_modules.product.golden_record import do_golden_record
+
+    result = await do_golden_record(engine, arguments)
     return json.dumps(result, default=str)
 
 

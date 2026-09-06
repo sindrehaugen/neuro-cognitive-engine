@@ -36,7 +36,7 @@ _FORBIDDEN: frozenset[str] = frozenset(
     {"cost", "cost_price", "bid_price", "bid_id", "margin", "unit_cost"}
 )
 
-# Exact set of Product MCP tool names (Waves 3–7).
+# Exact set of Product MCP tool names (Waves 3–7 + Waves P-2/P-3).
 _PRODUCT_TOOLS: frozenset[str] = frozenset(
     {
         "product_search",
@@ -45,6 +45,8 @@ _PRODUCT_TOOLS: frozenset[str] = frozenset(
         "product_related",
         "product_match_bom_line",
         "product_enrich",
+        "product_ingest_spec",
+        "product_golden_record",
     }
 )
 
@@ -135,7 +137,7 @@ def test_no_forbidden_column_in_public_shape(shape: dict[str, Any]) -> None:
 
 
 def test_exact_product_tool_count() -> None:
-    """Product tools registered in TOOL_REGISTRY must be exactly the 6 listed tools."""
+    """Product tools registered in TOOL_REGISTRY must be exactly the 8 listed tools."""
     from nce.tool_registry import TOOL_REGISTRY
 
     registered_product = {name for name in TOOL_REGISTRY if name.startswith("product_")}

@@ -36,7 +36,10 @@ from nce.vertical_modules.resources.capacity import do_resolve_capacity
 from nce.vertical_modules.resources.field_schedule import do_field_schedule
 from nce.vertical_modules.resources.forecast import do_forecast_demand
 from nce.vertical_modules.resources.material_flow import do_plan_material_flow
-from nce.vertical_modules.resources.planner import do_plan_allocation
+from nce.vertical_modules.resources.planner import (
+    do_plan_allocation,
+    do_record_allocation_outcome,
+)
 from nce.vertical_modules.resources.travel import do_plan_travel
 
 log = logging.getLogger("nce.vertical_modules.resources.mcp_handlers")
@@ -154,4 +157,16 @@ async def handle_resources_plan_travel(
     require_namespace_id(params)
     _check_resources_enabled(params)
     result = await do_plan_travel(engine, params)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_resources_record_allocation_outcome(
+    engine: Any,
+    params: dict[str, Any],
+) -> str:
+    """Record resource allocation outcome feedback to cognitive ledger and C10 decision feedback."""
+    require_namespace_id(params)
+    _check_resources_enabled(params)
+    result = await do_record_allocation_outcome(engine, params)
     return json.dumps(result, default=str)

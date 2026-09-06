@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from nce.db_utils import scoped_pg_session
+from nce.decision_feedback import record_decision_feedback
 from nce.entity_resolution.resolver import resolve
 from nce.mcp_args import require_namespace_id
 
@@ -223,11 +224,39 @@ async def do_record_match_decision(
             matched_score,
         )
 
+    actor = str(params.get("actor") or "human").strip()
+    proposal = {
+        "bom_line": bom_line,
+        "chosen_sku": chosen_sku,
+        "rejected_sku": rejected_sku,
+        "matched_score": matched_score,
+    }
+    delta = {
+        "chosen_sku": chosen_sku,
+        "rejected_sku": rejected_sku,
+        "matched_score": matched_score,
+    }
+    df_record = await record_decision_feedback(
+        engine,
+        namespace_id,
+        engine="product",
+        proposal=proposal,
+        decision=decision,
+        delta=delta,
+        actor=actor,
+        context_id=bom_line,
+    )
+
     log.info(
-        "do_record_match_decision: namespace=%s decision=%s feedback_id=%s",
+        "do_record_match_decision: namespace=%s decision=%s feedback_id=%s df_id=%s",
         namespace_id,
         decision,
         feedback_id,
+        df_record.get("id"),
     )
 
-    return {"feedback_id": str(feedback_id), "decision": decision}
+    return {
+        "feedback_id": str(feedback_id),
+        "decision": decision,
+        "decision_feedback_id": df_record.get("id"),
+    }

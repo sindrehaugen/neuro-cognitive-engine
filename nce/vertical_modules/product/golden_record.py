@@ -265,7 +265,7 @@ def _run_publish_gate(
 
 
 async def do_golden_record(
-    engine: NCEEngine,
+    engine: NCEEngine | asyncpg.Pool,
     params: dict[str, Any],
 ) -> dict[str, Any]:
     """Compute the field-level golden record for a single product.
@@ -277,7 +277,7 @@ async def do_golden_record(
     Parameters
     ----------
     engine:
-        Live NCEEngine instance (provides ``pg_pool``).
+        Live NCEEngine instance or asyncpg connection pool.
     params:
         ``namespace_id``  (str, required)
         ``product_id``    (str UUID, required)
@@ -311,7 +311,13 @@ async def do_golden_record(
     if channel not in CHANNEL_REQUIRED_FIELDS:
         channel = "b2b_portal"
 
-    async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+    pool = (
+        engine.pg_pool
+        if ("pg_pool" in getattr(engine, "__dict__", {}) or hasattr(type(engine), "pg_pool"))
+        else engine
+    )
+
+    async with scoped_pg_session(pool, namespace_id) as conn:
         etim_specs = await _fetch_product_etim_specs(conn, product_id)
         if not etim_specs and not await _product_exists(conn, product_id):
             raise ValueError(f"product_id={product_id_raw!r} not found in namespace")
@@ -341,17 +347,16 @@ async def do_golden_record(
     for field_name, candidates in candidates_by_field.items():
         winner = field_winners[field_name]
         try:
-            async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
-                await append_survivorship_provenance(
-                    engine.pg_pool,
-                    namespace_id=namespace_id,
-                    entity_id=product_id_raw,
-                    field_name=field_name,
-                    winning_value=winner["value"],
-                    winning_source=winner["source"],
-                    reason=winner["reason"],
-                    all_candidates=candidates_by_field[field_name],
-                )
+            await append_survivorship_provenance(
+                pool,
+                namespace_id=namespace_id,
+                entity_id=product_id_raw,
+                field_name=field_name,
+                winning_value=winner["value"],
+                winning_source=winner["source"],
+                reason=winner["reason"],
+                all_candidates=candidates_by_field[field_name],
+            )
         except Exception:
             log.warning(
                 "[golden_record] provenance append failed product=%s field=%r — continuing",

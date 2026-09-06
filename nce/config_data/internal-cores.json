@@ -89,16 +89,6 @@
     "owner": "MLV15D-PR3",
     "reason": "Procurement savings aggregation analytics; scheduled for REST route and tool in MLV15D Wave PR-3."
   },
-  "nce/vertical_modules/product/golden_record.py::do_golden_record": {
-    "engine": "product",
-    "owner": "MLV15C-P3",
-    "reason": "Master golden record materializer; scheduled for trigger on accepted enrichment in MLV15C Wave P-3."
-  },
-  "nce/vertical_modules/product/ingestion.py::do_ingest_spec": {
-    "engine": "product",
-    "owner": "MLV15C-P2",
-    "reason": "Product specification document ingestion core; scheduled for tool exposure in MLV15C Wave P-2."
-  },
   "nce/vertical_modules/project/case_study.py::do_generate_case_study_edge": {
     "engine": "project",
     "owner": "MLV15B-PJ2",
@@ -109,20 +99,10 @@
     "owner": "MLV15C-PJ3",
     "reason": "Similarity recall query over completed projects; scheduled for cacheable tool in MLV15C Wave PJ-3."
   },
-  "nce/vertical_modules/project/recall.py::do_record_project_outcome": {
-    "engine": "project",
-    "owner": "MLV15C-PJ1",
-    "reason": "Project completion outcome recorder at G5; scheduled for wiring in MLV15C Wave PJ-1."
-  },
   "nce/vertical_modules/project/tasks.py::do_sync_bom_tasks": {
     "engine": "project",
     "owner": "MLV15B-PJ5",
     "reason": "Project task sync from BOM changes; scheduled for activation with parked automation in Wave PJ-5."
-  },
-  "nce/vertical_modules/resources/planner.py::do_record_allocation_outcome": {
-    "engine": "resources",
-    "owner": "MLV15C-C10",
-    "reason": "Resource schedule outcome feedback recorder; awaits C10 decision feedback keystone in MLV15C."
   },
   "nce/vertical_modules/resources/registry.py::do_create_resource": {
     "engine": "resources",

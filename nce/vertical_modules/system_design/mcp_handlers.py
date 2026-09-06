@@ -1134,11 +1134,8 @@ async def handle_system_design_propose_design(engine: NCEEngine, arguments: dict
     sales commission silently. Pinned by
     ``tests/unit/test_propose_design_surface_passthrough.py``.
 
-    NOTE: ``top_k`` is deliberately NOT accepted. ``commission.py`` passes it and
-    the core ignores it -- ``do_propose_design`` reads only ``namespace_id`` and
-    ``room_brief`` from params and takes its recall width from
-    ``cfg.NCE_SYSTEM_DESIGN_RECALL_TOP_K``. Advertising ``top_k`` here would
-    publish a knob that does nothing.
+    NOTE: ``top_k`` is optional (int, bounded [1, 50]). Defaults to
+    ``cfg.NCE_SYSTEM_DESIGN_RECALL_TOP_K`` if not supplied (Wave SD-3).
     """
     require_namespace_id(arguments)
     if not arguments.get("room_brief"):
