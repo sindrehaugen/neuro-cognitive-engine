@@ -836,6 +836,36 @@ def build_admin_routes() -> list[Route]:
             endpoint=economy_handlers.api_economy_emit_event,
             methods=["POST"],
         ),
+        Route(
+            "/api/economy/forecast",
+            endpoint=economy_handlers.api_economy_forecast,
+            methods=["GET", "POST"],
+        ),
+        Route(
+            "/api/economy/mrr-arr-churn",
+            endpoint=economy_handlers.api_economy_mrr_arr_churn,
+            methods=["GET", "POST"],
+        ),
+        Route(
+            "/api/economy/dunning",
+            endpoint=economy_handlers.api_economy_dunning,
+            methods=["GET", "POST"],
+        ),
+        Route(
+            "/api/economy/recognition-schedule",
+            endpoint=economy_handlers.api_economy_recognition_schedule,
+            methods=["GET", "POST"],
+        ),
+        Route(
+            "/api/economy/gl-sync-status",
+            endpoint=economy_handlers.api_economy_gl_sync_status,
+            methods=["GET", "POST"],
+        ),
+        Route(
+            "/api/economy/close-narrative",
+            endpoint=economy_handlers.api_economy_close_narrative,
+            methods=["GET", "POST"],
+        ),
         # ------------------------------------------------------------------
         # Inventory vertical module endpoints (Batch 131, M11.W3) — stock-surface
         # ------------------------------------------------------------------

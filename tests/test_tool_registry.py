@@ -26,7 +26,9 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 207  # 202 baseline + 4 Assets completion tools (ML9b P1+P2) + 1 Sales signing request (Wave S-2a)
+_EXPECTED_TOTAL = (
+    213  # 206 baseline + 6 Economy tools (MLV15D Wave E-1) + 1 Sales signing request (Wave S-2a)
+)
 
 
 def test_registry_has_expected_entries():
@@ -298,6 +300,13 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "economy_match_invoice",
         "economy_compute_periodisering",
         "economy_emit_event",
+        # Economy vertical module (MLV15D Wave E-1) — surface completion reads, cacheable
+        "economy_forecast_cashflow",
+        "economy_snapshot_mrr_arr_churn",
+        "economy_compute_dunning",
+        "economy_compute_recognition_schedule",
+        "economy_gl_sync_status",
+        "economy_generate_close_narrative",
         # Inventory vertical module (Batch 131, M11.W3) — Watcher read, cacheable
         "inventory_stock_levels",
         # Assets vertical module (Batch 141, M9.W1) — skeleton ping, cacheable
@@ -362,7 +371,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 76  # 73 baseline + 3 business insights tools
+    assert len(CACHEABLE_TOOLS) == 82  # 76 baseline + 6 economy surface completion tools
 
 
 # ---------------------------------------------------------------------------

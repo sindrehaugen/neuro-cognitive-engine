@@ -53,10 +53,10 @@ _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
 # --- MEASURED on branch mlv15b/close-the-loop --------------------------------
 # python -c "import nce.tool_registry as tr; print(len(tr.TOOL_REGISTRY))"
-_TOTAL_TOOLS = 207  # 202 baseline + 4 assets tools + 1 sales signing request
-_MUTATION_TOOLS = 88  # 83 baseline + 4 mutating assets tools + 1 sales signing request
-_CACHEABLE_TOOLS = 76  # unchanged
-_ADMIN_ONLY_TOOLS = 50  # 48 baseline + 1 admin_only assets tool + 1 sales signing request
+_TOTAL_TOOLS = 213  # 206 baseline + 6 economy surface completion tools (MLV15D Wave E-1) + 1 sales signing request (Wave S-2a)
+_MUTATION_TOOLS = 88  # 87 baseline + 1 sales signing request
+_CACHEABLE_TOOLS = 82  # 76 baseline + 6 economy surface completion tools
+_ADMIN_ONLY_TOOLS = 50  # 49 baseline + 1 sales signing request
 _MIGRATION_TOOLS = 5
 
 

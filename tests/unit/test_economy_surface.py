@@ -27,6 +27,7 @@ All tests are pure unit tests (no DB, no Redis, no real config-file load —
 from __future__ import annotations
 
 import json
+from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -207,6 +208,11 @@ def _make_request(body: dict[str, Any] | None = None) -> MagicMock:
     return req
 
 
+@asynccontextmanager
+async def _fake_scoped(*args: Any, **kwargs: Any):
+    yield MagicMock()
+
+
 # ---------------------------------------------------------------------------
 # 1. Package imports
 # ---------------------------------------------------------------------------
@@ -224,7 +230,17 @@ def test_package_imports() -> None:
 
 @pytest.mark.parametrize(
     "tool_name",
-    ["economy_match_invoice", "economy_compute_periodisering", "economy_emit_event"],
+    [
+        "economy_match_invoice",
+        "economy_compute_periodisering",
+        "economy_emit_event",
+        "economy_forecast_cashflow",
+        "economy_snapshot_mrr_arr_churn",
+        "economy_compute_dunning",
+        "economy_compute_recognition_schedule",
+        "economy_gl_sync_status",
+        "economy_generate_close_narrative",
+    ],
 )
 def test_economy_tools_registered_with_correct_flags(tool_name: str) -> None:
     from nce.tool_registry import TOOL_REGISTRY
@@ -248,8 +264,14 @@ def test_tool_count_includes_economy_tools() -> None:
     assert "economy_match_invoice" in TOOL_REGISTRY
     assert "economy_compute_periodisering" in TOOL_REGISTRY
     assert "economy_emit_event" in TOOL_REGISTRY
-    assert len(TOOL_REGISTRY) >= 112, (
-        f"Expected at least 112 tools (+3 economy from Batch 119), "
+    assert "economy_forecast_cashflow" in TOOL_REGISTRY
+    assert "economy_snapshot_mrr_arr_churn" in TOOL_REGISTRY
+    assert "economy_compute_dunning" in TOOL_REGISTRY
+    assert "economy_compute_recognition_schedule" in TOOL_REGISTRY
+    assert "economy_gl_sync_status" in TOOL_REGISTRY
+    assert "economy_generate_close_narrative" in TOOL_REGISTRY
+    assert len(TOOL_REGISTRY) == 213, (
+        f"Expected 213 tools (+6 economy from MLV15D Wave E-1, +1 sales from Wave S-2a), "
         f"got {len(TOOL_REGISTRY)}: {sorted(TOOL_REGISTRY)}"
     )
 
@@ -382,6 +404,12 @@ def test_economy_routes_mounted_in_admin_app() -> None:
     assert "/api/economy/match-invoice" in paths
     assert "/api/economy/periodisering" in paths
     assert "/api/economy/emit-event" in paths
+    assert "/api/economy/forecast" in paths
+    assert "/api/economy/mrr-arr-churn" in paths
+    assert "/api/economy/dunning" in paths
+    assert "/api/economy/recognition-schedule" in paths
+    assert "/api/economy/gl-sync-status" in paths
+    assert "/api/economy/close-narrative" in paths
 
 
 @pytest.mark.asyncio
@@ -902,3 +930,313 @@ async def test_mcp_emit_event_no_reserved_keys_still_succeeds() -> None:
     parsed = json.loads(result)
     assert "error" not in parsed
     assert len(parsed["hash"]) == 64
+
+
+# ---------------------------------------------------------------------------
+# MLV15D Wave E-1: Surface completion tests for 6 cacheable read tools
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_handle_forecast_cashflow_success_and_missing_ns() -> None:
+    from nce.vertical_modules.economy.mcp_handlers import handle_economy_forecast_cashflow
+
+    engine = _make_engine()
+    args = {
+        "namespace_id": _NAMESPACE_ID,
+        "seed": 42,
+        "params": {
+            "periods": [
+                {"period": "2026-01", "expected_net": 10000, "uncertainty_pct": 0.1},
+                {"period": "2026-02", "expected_net": 15000, "uncertainty_pct": 0.2},
+            ],
+            "iterations": 100,
+            "opening_balance": 50000,
+        },
+    }
+    res = await handle_economy_forecast_cashflow(engine, args)
+    parsed = json.loads(res)
+    assert "error" not in parsed
+    assert parsed["seed"] == 42
+    assert parsed["iterations"] == 100
+    assert len(parsed["periods"]) == 2
+    assert "net_p50" in parsed["periods"][0]
+
+    # Missing namespace_id returns {"error": ...}
+    res_no_ns = await handle_economy_forecast_cashflow(engine, {"seed": 42})
+    assert "error" in json.loads(res_no_ns)
+
+
+@pytest.mark.asyncio
+async def test_handle_snapshot_mrr_arr_churn_success_and_missing_ns() -> None:
+    from nce.vertical_modules.economy.mcp_handlers import (
+        handle_economy_snapshot_mrr_arr_churn,
+    )
+
+    engine = _make_engine()
+    args = {
+        "namespace_id": _NAMESPACE_ID,
+        "contracts": [
+            {"annual_amount": 12000, "status": "active"},
+            {"annual_amount": 6000, "status": "churned"},
+        ],
+    }
+    res = await handle_economy_snapshot_mrr_arr_churn(engine, args)
+    parsed = json.loads(res)
+    assert "error" not in parsed
+    assert parsed["mrr"] == "1000.00"
+    assert parsed["arr"] == "12000.00"
+    assert parsed["churned_mrr"] == "500.00"
+    assert parsed["active_count"] == 1
+    assert parsed["churned_count"] == 1
+
+    res_no_ns = await handle_economy_snapshot_mrr_arr_churn(engine, {})
+    assert "error" in json.loads(res_no_ns)
+
+
+@pytest.mark.asyncio
+async def test_handle_compute_dunning_success_and_missing_ns() -> None:
+    from nce.vertical_modules.economy.mcp_handlers import handle_economy_compute_dunning
+
+    engine = _make_engine()
+    args = {
+        "namespace_id": _NAMESPACE_ID,
+        "customer": {"credit_risk_score": 75, "customer_id": "cust-test"},
+    }
+    res = await handle_economy_compute_dunning(engine, args)
+    parsed = json.loads(res)
+    assert "error" not in parsed
+    assert parsed["tier"] == "CRITICAL"
+    assert parsed["hw_signing_required"] is True
+    assert parsed["lindorff_handoff"] is True
+    assert parsed["customer_id"] == "cust-test"
+
+    res_no_ns = await handle_economy_compute_dunning(
+        engine, {"customer": {"credit_risk_score": 50}}
+    )
+    assert "error" in json.loads(res_no_ns)
+
+
+@pytest.mark.asyncio
+async def test_handle_compute_recognition_schedule_success_and_missing_ns() -> None:
+    from nce.vertical_modules.economy.mcp_handlers import (
+        handle_economy_compute_recognition_schedule,
+    )
+
+    engine = _make_engine()
+    args = {
+        "namespace_id": _NAMESPACE_ID,
+        "contract_id": "contract-123",
+        "annual_amount": 1200,
+        "start_period": "2026-03",
+    }
+    res = await handle_economy_compute_recognition_schedule(engine, args)
+    parsed = json.loads(res)
+    assert "error" not in parsed
+    assert parsed["contract_id"] == "contract-123"
+    assert len(parsed["periods"]) == 12
+    assert parsed["total_recognized"] == "1200.00"
+
+    res_no_ns = await handle_economy_compute_recognition_schedule(engine, {"contract_id": "c1"})
+    assert "error" in json.loads(res_no_ns)
+
+
+@pytest.mark.asyncio
+async def test_handle_gl_sync_status_success_and_missing_ns() -> None:
+    from nce.vertical_modules.economy.mcp_handlers import handle_economy_gl_sync_status
+
+    engine = _make_engine()
+    with patch(
+        "nce.vertical_modules.economy.mcp_handlers.do_gl_sync_status",
+        new=AsyncMock(
+            return_value={
+                "namespace_id": _NAMESPACE_ID,
+                "engine": "economy",
+                "clean": True,
+                "divergence_count": 0,
+            }
+        ),
+    ):
+        res = await handle_economy_gl_sync_status(engine, {"namespace_id": _NAMESPACE_ID})
+        parsed = json.loads(res)
+        assert "error" not in parsed
+        assert parsed["clean"] is True
+
+    res_no_ns = await handle_economy_gl_sync_status(engine, {})
+    assert "error" in json.loads(res_no_ns)
+
+
+@pytest.mark.asyncio
+async def test_handle_generate_close_narrative_success_and_missing_ns() -> None:
+    from nce.vertical_modules.economy.mcp_handlers import (
+        handle_economy_generate_close_narrative,
+    )
+
+    engine = _make_engine()
+    with (
+        patch(
+            "nce.vertical_modules.economy.mcp_handlers.scoped_pg_session",
+            _fake_scoped,
+        ),
+        patch(
+            "nce.vertical_modules.economy.mcp_handlers.do_generate_close_narrative",
+            new=AsyncMock(
+                return_value={
+                    "period_id": "2026-08",
+                    "prose": "Period 2026-08 close narrative",
+                    "citations": [],
+                    "dropped": [],
+                }
+            ),
+        ),
+    ):
+        res = await handle_economy_generate_close_narrative(
+            engine, {"namespace_id": _NAMESPACE_ID, "period_id": "2026-08"}
+        )
+        parsed = json.loads(res)
+        assert "error" not in parsed
+        assert parsed["period_id"] == "2026-08"
+
+    res_no_ns = await handle_economy_generate_close_narrative(engine, {"period_id": "2026-08"})
+    assert "error" in json.loads(res_no_ns)
+
+
+# ---------------------------------------------------------------------------
+# MLV15D Wave E-1: REST routes tests for 6 cacheable read routes
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_api_economy_forecast_success() -> None:
+    from nce import admin_state
+    from nce.admin_handlers.economy import api_economy_forecast
+
+    with patch.object(admin_state, "engine", MagicMock()):
+        req = _make_request(
+            {
+                "namespace_id": _NAMESPACE_ID,
+                "seed": 42,
+                "periods": [{"period": "2026-01", "expected_net": 10000}],
+            }
+        )
+        resp = await api_economy_forecast(req)
+        body = json.loads(bytes(resp.body).decode("utf-8"))
+        assert resp.status_code == 200
+        assert body["status"] == "ok"
+        assert body["seed"] == 42
+
+
+@pytest.mark.asyncio
+async def test_api_economy_mrr_arr_churn_success() -> None:
+    from nce import admin_state
+    from nce.admin_handlers.economy import api_economy_mrr_arr_churn
+
+    with patch.object(admin_state, "engine", MagicMock()):
+        req = _make_request(
+            {
+                "namespace_id": _NAMESPACE_ID,
+                "contracts": [{"annual_amount": 24000, "status": "active"}],
+            }
+        )
+        resp = await api_economy_mrr_arr_churn(req)
+        body = json.loads(bytes(resp.body).decode("utf-8"))
+        assert resp.status_code == 200
+        assert body["status"] == "ok"
+        assert body["mrr"] == "2000.00"
+
+
+@pytest.mark.asyncio
+async def test_api_economy_dunning_success() -> None:
+    from nce import admin_state
+    from nce.admin_handlers.economy import api_economy_dunning
+
+    with patch.object(admin_state, "engine", MagicMock()):
+        req = _make_request(
+            {
+                "namespace_id": _NAMESPACE_ID,
+                "credit_risk_score": 35,
+                "customer_id": "cust-low",
+            }
+        )
+        resp = await api_economy_dunning(req)
+        body = json.loads(bytes(resp.body).decode("utf-8"))
+        assert resp.status_code == 200
+        assert body["status"] == "ok"
+        assert body["tier"] == "STANDARD"
+
+
+@pytest.mark.asyncio
+async def test_api_economy_recognition_schedule_success() -> None:
+    from nce import admin_state
+    from nce.admin_handlers.economy import api_economy_recognition_schedule
+
+    with patch.object(admin_state, "engine", MagicMock()):
+        req = _make_request(
+            {
+                "namespace_id": _NAMESPACE_ID,
+                "contract_id": "c-99",
+                "annual_amount": 12000,
+                "start_period": "2026-01",
+            }
+        )
+        resp = await api_economy_recognition_schedule(req)
+        body = json.loads(bytes(resp.body).decode("utf-8"))
+        assert resp.status_code == 200
+        assert body["status"] == "ok"
+        assert len(body["periods"]) == 12
+
+
+@pytest.mark.asyncio
+async def test_api_economy_gl_sync_status_success() -> None:
+    from nce import admin_state
+    from nce.admin_handlers.economy import api_economy_gl_sync_status
+
+    with patch.object(admin_state, "engine", MagicMock()):
+        with patch(
+            "nce.admin_handlers.economy.do_gl_sync_status",
+            new=AsyncMock(
+                return_value={
+                    "namespace_id": _NAMESPACE_ID,
+                    "engine": "economy",
+                    "clean": True,
+                    "divergence_count": 0,
+                }
+            ),
+        ):
+            req = _make_request({"namespace_id": _NAMESPACE_ID})
+            resp = await api_economy_gl_sync_status(req)
+            body = json.loads(bytes(resp.body).decode("utf-8"))
+            assert resp.status_code == 200
+            assert body["status"] == "ok"
+            assert body["clean"] is True
+
+
+@pytest.mark.asyncio
+async def test_api_economy_close_narrative_success() -> None:
+    from nce import admin_state
+    from nce.admin_handlers.economy import api_economy_close_narrative
+
+    with patch.object(admin_state, "engine", MagicMock()):
+        with (
+            patch(
+                "nce.admin_handlers.economy.scoped_pg_session",
+                _fake_scoped,
+            ),
+            patch(
+                "nce.admin_handlers.economy.do_generate_close_narrative",
+                new=AsyncMock(
+                    return_value={
+                        "period_id": "2026-08",
+                        "prose": "Close narrative for 2026-08",
+                        "citations": [],
+                        "dropped": [],
+                    }
+                ),
+            ),
+        ):
+            req = _make_request({"namespace_id": _NAMESPACE_ID, "period_id": "2026-08"})
+            resp = await api_economy_close_narrative(req)
+            body = json.loads(bytes(resp.body).decode("utf-8"))
+            assert resp.status_code == 200
+            assert body["status"] == "ok"
+            assert body["period_id"] == "2026-08"
