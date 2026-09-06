@@ -29,15 +29,24 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+from nce.db_utils import scoped_pg_session
 from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import McpError, mcp_handler
 from nce.vertical_modules.economy._guard import EconomyDisabledError, require_economy_enabled
+from nce.vertical_modules.economy.close_narrative import do_generate_close_narrative
+from nce.vertical_modules.economy.dunning import do_compute_dunning
 from nce.vertical_modules.economy.events import UnbalancedPostingsError, do_emit_financial_event
+from nce.vertical_modules.economy.finago import do_gl_sync_status
+from nce.vertical_modules.economy.forecast import do_forecast_cashflow
 from nce.vertical_modules.economy.matching import do_match_invoice, load_economy_thresholds
 from nce.vertical_modules.economy.ngaap import (
     do_compute_bucket_targets,
     load_finago_account_mapping,
     load_finago_chart_of_accounts,
+)
+from nce.vertical_modules.economy.recurring import (
+    do_compute_recognition_schedule,
+    do_snapshot_mrr_arr_churn,
 )
 
 if TYPE_CHECKING:
@@ -279,6 +288,289 @@ async def handle_economy_emit_event(engine: NCEEngine, arguments: dict[str, Any]
                 "error": (
                     f"economy_emit_event: result contains a non-finite value and cannot be "
                     f"serialized ({exc})"
+                )
+            },
+            default=str,
+        )
+
+
+@mcp_handler
+async def handle_economy_forecast_cashflow(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: economy_forecast_cashflow — Monte Carlo cashflow forecast (READ-ONLY Advisor).
+
+    Required arguments:
+        namespace_id (str, UUID)
+        seed         (int) — deterministic seed (required, must not be None/bool).
+        params       (dict) — forecast params with 'periods' (list of dicts).
+                     Can also pass 'periods', 'iterations', 'opening_balance' at top level.
+
+    Returns a JSON string: simulation results (P10/P50/P90 net and balance),
+    or {"error": "..."} on validation failure.
+    """
+    try:
+        await _check_economy_enabled(engine, arguments)
+        seed = arguments.get("seed")
+        if "params" in arguments and isinstance(arguments["params"], dict):
+            params = dict(arguments["params"])
+        else:
+            params = {k: v for k, v in arguments.items() if k not in ("namespace_id", "seed")}
+        result = do_forecast_cashflow(seed, params)
+    except McpError:
+        raise
+    except (ValueError, KeyError, TypeError) as exc:
+        return json.dumps({"error": str(exc)}, default=str)
+    except Exception as exc:
+        log.exception("[economy] handle_economy_forecast_cashflow unexpected error")
+        return json.dumps({"error": str(exc)}, default=str)
+
+    try:
+        return json.dumps(result, default=str, allow_nan=False)
+    except ValueError as exc:
+        log.error(
+            "[economy] handle_economy_forecast_cashflow result not JSON-serializable: %s",
+            exc,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    f"economy_forecast_cashflow: result contains a non-finite value and cannot "
+                    f"be serialized ({exc})"
+                )
+            },
+            default=str,
+        )
+
+
+@mcp_handler
+async def handle_economy_snapshot_mrr_arr_churn(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: economy_snapshot_mrr_arr_churn — MRR/ARR/churn snapshot (READ-ONLY Advisor).
+
+    Required arguments:
+        namespace_id (str, UUID)
+    Optional arguments:
+        contracts    (list[dict]) — list of contract dicts with annual_amount and status.
+                     May also be passed inside params: {"contracts": [...]}.
+
+    Returns a JSON string: snapshot dict with mrr, arr, churned_mrr, churn_rate, counts,
+    or {"error": "..."} on validation failure.
+    """
+    try:
+        await _check_economy_enabled(engine, arguments)
+        if "params" in arguments and isinstance(arguments["params"], dict):
+            params = dict(arguments["params"])
+        else:
+            params = {"contracts": arguments.get("contracts")}
+        result = do_snapshot_mrr_arr_churn(params)
+    except McpError:
+        raise
+    except (ValueError, KeyError, TypeError) as exc:
+        return json.dumps({"error": str(exc)}, default=str)
+    except Exception as exc:
+        log.exception("[economy] handle_economy_snapshot_mrr_arr_churn unexpected error")
+        return json.dumps({"error": str(exc)}, default=str)
+
+    try:
+        return json.dumps(result, default=str, allow_nan=False)
+    except ValueError as exc:
+        log.error(
+            "[economy] handle_economy_snapshot_mrr_arr_churn result not JSON-serializable: %s",
+            exc,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    f"economy_snapshot_mrr_arr_churn: result contains a non-finite value and "
+                    f"cannot be serialized ({exc})"
+                )
+            },
+            default=str,
+        )
+
+
+@mcp_handler
+async def handle_economy_compute_dunning(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: economy_compute_dunning — Norwegian dunning / credit policy (READ-ONLY Advisor).
+
+    Required arguments:
+        namespace_id (str, UUID)
+        customer     (dict) — with 'credit_risk_score' (0-100) and optional 'customer_id'.
+                     May also be passed as top-level 'credit_risk_score' and 'customer_id'.
+
+    Returns a JSON string: tier, reminder_days, hw_signing_required, lindorff_handoff, reasons,
+    or {"error": "..."} on validation failure.
+    """
+    try:
+        await _check_economy_enabled(engine, arguments)
+        if "customer" in arguments and isinstance(arguments["customer"], dict):
+            customer = dict(arguments["customer"])
+        else:
+            customer = {k: v for k, v in arguments.items() if k != "namespace_id"}
+        result = do_compute_dunning(customer)
+    except McpError:
+        raise
+    except (ValueError, KeyError, TypeError) as exc:
+        return json.dumps({"error": str(exc)}, default=str)
+    except Exception as exc:
+        log.exception("[economy] handle_economy_compute_dunning unexpected error")
+        return json.dumps({"error": str(exc)}, default=str)
+
+    try:
+        return json.dumps(result, default=str, allow_nan=False)
+    except ValueError as exc:
+        log.error(
+            "[economy] handle_economy_compute_dunning result not JSON-serializable: %s",
+            exc,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    f"economy_compute_dunning: result contains a non-finite value and cannot "
+                    f"be serialized ({exc})"
+                )
+            },
+            default=str,
+        )
+
+
+@mcp_handler
+async def handle_economy_compute_recognition_schedule(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: economy_compute_recognition_schedule — 12-month ratable recognition schedule (READ-ONLY Advisor).
+
+    Required arguments:
+        namespace_id  (str, UUID)
+        contract_id   (str) — contract identifier
+        annual_amount (number) — annual recurring revenue (> 0)
+        start_period  (str) — 'YYYY-MM'
+        (Arguments may be passed at top-level or nested under 'params'.)
+
+    Returns a JSON string: 12-period ratable schedule with finago_ref and exact amounts,
+    or {"error": "..."} on validation failure.
+    """
+    try:
+        await _check_economy_enabled(engine, arguments)
+        if "params" in arguments and isinstance(arguments["params"], dict):
+            params = dict(arguments["params"])
+        else:
+            params = {k: v for k, v in arguments.items() if k != "namespace_id"}
+        result = do_compute_recognition_schedule(params)
+    except McpError:
+        raise
+    except (ValueError, KeyError, TypeError) as exc:
+        return json.dumps({"error": str(exc)}, default=str)
+    except Exception as exc:
+        log.exception("[economy] handle_economy_compute_recognition_schedule unexpected error")
+        return json.dumps({"error": str(exc)}, default=str)
+
+    try:
+        return json.dumps(result, default=str, allow_nan=False)
+    except ValueError as exc:
+        log.error(
+            "[economy] handle_economy_compute_recognition_schedule result not JSON-serializable: %s",
+            exc,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    f"economy_compute_recognition_schedule: result contains a non-finite value and "
+                    f"cannot be serialized ({exc})"
+                )
+            },
+            default=str,
+        )
+
+
+@mcp_handler
+async def handle_economy_gl_sync_status(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: economy_gl_sync_status — GL reconciliation sync status (READ-ONLY Advisor).
+
+    Required arguments:
+        namespace_id (str, UUID)
+    Optional arguments:
+        window_hours (float, default 24.0)
+
+    Returns a JSON string: divergence counts, last_divergence_at, clean status,
+    or {"error": "..."} on validation failure.
+    """
+    try:
+        await _check_economy_enabled(engine, arguments)
+        ns_uuid = require_namespace_id(arguments)
+        params: dict[str, Any] = {"namespace_id": ns_uuid}
+        if "window_hours" in arguments:
+            params["window_hours"] = arguments["window_hours"]
+        result = await do_gl_sync_status(engine, params)
+    except McpError:
+        raise
+    except (ValueError, KeyError, TypeError) as exc:
+        return json.dumps({"error": str(exc)}, default=str)
+    except Exception as exc:
+        log.exception("[economy] handle_economy_gl_sync_status unexpected error")
+        return json.dumps({"error": str(exc)}, default=str)
+
+    try:
+        return json.dumps(result, default=str, allow_nan=False)
+    except ValueError as exc:
+        log.error(
+            "[economy] handle_economy_gl_sync_status result not JSON-serializable: %s",
+            exc,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    f"economy_gl_sync_status: result contains a non-finite value and cannot "
+                    f"be serialized ({exc})"
+                )
+            },
+            default=str,
+        )
+
+
+@mcp_handler
+async def handle_economy_generate_close_narrative(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: economy_generate_close_narrative — C9a grounded period-close narrative (READ-ONLY Advisor).
+
+    Required arguments:
+        namespace_id (str, UUID)
+        period_id    (str) — e.g. '2026-08'
+
+    Returns a JSON string: period_id, prose, citations, dropped claims,
+    or {"error": "..."} on validation failure.
+    """
+    try:
+        await _check_economy_enabled(engine, arguments)
+        ns_uuid = require_namespace_id(arguments)
+        period_id = arguments.get("period_id")
+        if not period_id:
+            raise ValueError("period_id is required")
+        async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
+            result = await do_generate_close_narrative(
+                conn, namespace_id=ns_uuid, period_id=str(period_id)
+            )
+    except McpError:
+        raise
+    except (ValueError, KeyError, TypeError) as exc:
+        return json.dumps({"error": str(exc)}, default=str)
+    except Exception as exc:
+        log.exception("[economy] handle_economy_generate_close_narrative unexpected error")
+        return json.dumps({"error": str(exc)}, default=str)
+
+    try:
+        return json.dumps(result, default=str, allow_nan=False)
+    except ValueError as exc:
+        log.error(
+            "[economy] handle_economy_generate_close_narrative result not JSON-serializable: %s",
+            exc,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    f"economy_generate_close_narrative: result contains a non-finite value and "
+                    f"cannot be serialized ({exc})"
                 )
             },
             default=str,

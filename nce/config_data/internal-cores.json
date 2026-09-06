@@ -59,11 +59,6 @@
     "owner": "MLV15B-E3",
     "reason": "Financial event cascade on invoice approval; awaits upstream caller when invoice approval lands in Wave E-3."
   },
-  "nce/vertical_modules/economy/close_narrative.py::do_generate_close_narrative": {
-    "engine": "economy",
-    "owner": "MLV15D-E1",
-    "reason": "Monthly accounting close narrative generator; scheduled for exposure as an economy tool in MLV15D Wave E-1."
-  },
   "nce/vertical_modules/economy/contracts.py::do_upsert_contract": {
     "engine": "economy",
     "owner": "MLV15D-E1",
@@ -74,25 +69,10 @@
     "owner": "MLV15D-E1",
     "reason": "Financial contract validation rule engine; scheduled for tool exposure in MLV15D Wave E-1."
   },
-  "nce/vertical_modules/economy/dunning.py::do_compute_dunning": {
-    "engine": "economy",
-    "owner": "MLV15D-E1",
-    "reason": "Accounts receivable dunning and collections calculator; scheduled for tool and cron exposure in MLV15D Wave E-1."
-  },
-  "nce/vertical_modules/economy/finago.py::do_gl_sync_status": {
-    "engine": "economy",
-    "owner": "MLV15B-AG1",
-    "reason": "General ledger synchronization status inspector; awaiting surface exposure in v1.5 Phase 1 Wave AG-1."
-  },
   "nce/vertical_modules/economy/finago.py::do_reconcile_gl": {
     "engine": "economy",
     "owner": "MLV15B-AG1",
     "reason": "General ledger reconciliation engine with Finago ERP; awaiting integration in v1.5 Phase 1 Wave AG-1."
-  },
-  "nce/vertical_modules/economy/forecast.py::do_forecast_cashflow": {
-    "engine": "economy",
-    "owner": "MLV15D-E1",
-    "reason": "Cash flow forecasting model; planned for cacheable read tool and BI feed exposure in MLV15D Wave E-1."
   },
   "nce/vertical_modules/economy/ingestion.py::do_get_invoice_watermark": {
     "engine": "economy",
