@@ -148,6 +148,18 @@ def test_package_imports() -> None:
             "assets_advance_lifecycle",
             {"cacheable": False, "admin_only": False, "mutation": True, "migration": False},
         ),
+        (
+            "assets_seed_from_bom",
+            {"cacheable": False, "admin_only": False, "mutation": True, "migration": False},
+        ),
+        (
+            "assets_pull_telemetry",
+            {"cacheable": False, "admin_only": True, "mutation": True, "migration": False},
+        ),
+        (
+            "assets_attach_sla",
+            {"cacheable": False, "admin_only": False, "mutation": True, "migration": False},
+        ),
     ],
 )
 def test_assets_tools_registered_with_correct_flags(
@@ -168,7 +180,11 @@ def test_tool_count_updated_for_assets_surface() -> None:
     assert "assets_get" in TOOL_REGISTRY
     assert "assets_list" in TOOL_REGISTRY
     assert "assets_advance_lifecycle" in TOOL_REGISTRY
-    assert len(TOOL_REGISTRY) == 202, (
+    assert "assets_seed_from_bom" in TOOL_REGISTRY
+    assert "assets_pull_telemetry" in TOOL_REGISTRY
+    assert "assets_attach_sla" in TOOL_REGISTRY
+    assert "assets_compute_health" in TOOL_REGISTRY
+    assert len(TOOL_REGISTRY) == 206, (
         f"Expected 135 tools (116 + 3 assets from Batch 143, M9.W3 + 1 system_design "
         f"from Batch 067b, M6.W13a + 2 system_design authoring tools from "
         f"Batch 067c, M6.W13b + 1 system_design validator from Batch 067d, M6.W13c "
@@ -558,6 +574,9 @@ def test_assets_routes_mounted_in_admin_app() -> None:
     assert "/api/assets" in paths
     assert "/api/assets/{id}" in paths
     assert "/api/assets/{id}/lifecycle" in paths
+    assert "/api/assets/seed-from-bom" in paths
+    assert "/api/assets/sla/attach" in paths
+    assert "/api/assets/{id}/telemetry" in paths
 
 
 @pytest.mark.asyncio

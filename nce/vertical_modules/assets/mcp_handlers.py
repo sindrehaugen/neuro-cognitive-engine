@@ -68,7 +68,11 @@ from uuid import UUID
 from nce.db_utils import scoped_pg_session
 from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import mcp_handler
+from nce.vertical_modules.assets.health import do_compute_health
 from nce.vertical_modules.assets.lifecycle import advance
+from nce.vertical_modules.assets.seed import do_seed_asset_from_bom
+from nce.vertical_modules.assets.sla import do_attach_sla
+from nce.vertical_modules.assets.telemetry import do_pull_telemetry
 
 if TYPE_CHECKING:
     from nce.orchestrator import NCEEngine
@@ -346,4 +350,52 @@ async def handle_assets_advance_lifecycle(engine: NCEEngine, arguments: dict[str
     adapter — all logic lives in :func:`do_advance_lifecycle`.
     """
     result = await do_advance_lifecycle(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_assets_seed_from_bom(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: assets_seed_from_bom — seed one asset row from a BOM line (Actor).
+
+    Requires ``namespace_id`` and ``bom_line_id``. Thin adapter — all logic
+    lives in :func:`do_seed_asset_from_bom`.
+    """
+    require_namespace_id(arguments)
+    result = await do_seed_asset_from_bom(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_assets_pull_telemetry(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: assets_pull_telemetry — pull telemetry samples for an asset (Operator/cron).
+
+    Requires ``namespace_id`` and ``asset_id``. Thin adapter — all logic
+    lives in :func:`do_pull_telemetry`.
+    """
+    require_namespace_id(arguments)
+    result = await do_pull_telemetry(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_assets_attach_sla(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: assets_attach_sla — attach room SLA coverage link (Actor).
+
+    Requires ``namespace_id``, ``agreement_id``, and ``functional_location_id``.
+    Thin adapter — all logic lives in :func:`do_attach_sla`.
+    """
+    require_namespace_id(arguments)
+    result = await do_attach_sla(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_assets_compute_health(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: assets_compute_health — compute asset health score (Watcher).
+
+    Requires ``namespace_id`` and ``asset_id``. Thin adapter — all logic
+    lives in :func:`do_compute_health`.
+    """
+    require_namespace_id(arguments)
+    result = await do_compute_health(engine, dict(arguments))
     return json.dumps(result, default=str)

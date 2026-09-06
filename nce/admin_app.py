@@ -911,9 +911,23 @@ def build_admin_routes() -> list[Route]:
         # ------------------------------------------------------------------
         # Assets vertical module endpoints (Batch 143, M9.W3) — assets-surface
         # ------------------------------------------------------------------
-        # No literal path under /api/assets/ besides {id} and {id}/lifecycle,
-        # so there is no Starlette literal-vs-{id} ordering hazard here (unlike
-        # /api/product/enrichment/review vs /api/product/{id}).
+        # Literal paths under /api/assets/ must precede /api/assets/{id} to
+        # avoid Starlette route shadowing.
+        Route(
+            "/api/assets/seed-from-bom",
+            endpoint=assets_handlers.api_assets_seed_from_bom,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/assets/sla/attach",
+            endpoint=assets_handlers.api_assets_attach_sla,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/assets/health",
+            endpoint=assets_handlers.api_assets_health,
+            methods=["GET"],
+        ),
         Route(
             "/api/assets",
             endpoint=assets_handlers.api_assets_list,
@@ -928,6 +942,16 @@ def build_admin_routes() -> list[Route]:
             "/api/assets/{id}/lifecycle",
             endpoint=assets_handlers.api_assets_advance_lifecycle,
             methods=["POST"],
+        ),
+        Route(
+            "/api/assets/{id}/telemetry",
+            endpoint=assets_handlers.api_assets_pull_telemetry,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/assets/{id}/health",
+            endpoint=assets_handlers.api_assets_health,
+            methods=["GET"],
         ),
         # ------------------------------------------------------------------
         # Support vertical module endpoints (Module 10, Wave 6, ML10-B6)
