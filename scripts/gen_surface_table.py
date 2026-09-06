@@ -3,20 +3,27 @@ import ast
 import os
 import subprocess
 
-VERTICAL_ENGINES = [
-    "agreements",
-    "diagnostics",
-    "dynamics365",
-    "economy",
-    "inventory",
-    "netbox",
-    "procurement",
-    "product",
-    "project",
-    "sales",
-    "system_design",
-    "vendors",
-]
+VERTICAL_ENGINES: list[str] = []
+
+
+def discover_vertical_engines(repo, baseline):
+    """Every package under ``nce/vertical_modules/``, read from the tree itself.
+
+    This list used to be a hard-coded twelve. Six engines merged on 2026-09-05
+    and `assets` before them, and none of them appeared in the generated surface
+    table -- their tools and routes were silently attributed to `shared`, which
+    is exactly the kind of drift this generator exists to prevent. Deriving the
+    list from the tree means a new engine cannot be omitted by forgetting to
+    edit this file.
+    """
+    paths = git_ls_tree(repo, baseline, "nce/vertical_modules/")
+    engines = set()
+    for path in paths:
+        parts = path.split("/")
+        if len(parts) >= 3 and parts[0] == "nce" and parts[1] == "vertical_modules":
+            if not parts[2].endswith(".py"):
+                engines.add(parts[2])
+    return sorted(engines)
 
 
 def git_ls_tree(repo, baseline, path=""):
@@ -24,13 +31,13 @@ def git_ls_tree(repo, baseline, path=""):
     if not path:
         cmd.pop()
         cmd.pop()
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True, encoding="utf-8")
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
 def git_show(repo, baseline, path):
     cmd = ["git", "-C", repo, "show", f"{baseline}:{path}"]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True, encoding="utf-8")
     return result.stdout
 
 
@@ -187,7 +194,13 @@ def find_do_functions(repo, baseline, engine_dir):
             code = git_show(repo, baseline, f)
             tree = ast.parse(code)
             for node in ast.walk(tree):
-                if isinstance(node, ast.FunctionDef) and node.name.startswith("do_"):
+                # ast.FunctionDef alone missed every `async def do_*` core, which is
+                # most of them: this column read 0 for eleven engines that have dozens.
+                # A generated table that undercounts is worse than none, because it
+                # gets quoted as a measurement.
+                if isinstance(
+                    node, (ast.FunctionDef, ast.AsyncFunctionDef)
+                ) and node.name.startswith("do_"):
                     do_functions.append({"name": node.name, "file": f})
         except Exception:
             pass
@@ -203,6 +216,8 @@ def main():
     parser.add_argument("--out", required=True, help="Output markdown path")
     args = parser.parse_args()
 
+    global VERTICAL_ENGINES
+    VERTICAL_ENGINES = discover_vertical_engines(args.repo, args.baseline)
     all_engines = list(VERTICAL_ENGINES) + ["shared"]
     engine_data = {eng: {"tools": [], "routes": [], "do_functions": []} for eng in all_engines}
 
