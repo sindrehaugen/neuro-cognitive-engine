@@ -551,6 +551,26 @@ async def do_convert_signed_quote(
         degraded_reasons,
     )
 
+    if degraded_reasons:
+        try:
+            from nce.degradation import record_degradation
+
+            for reason in degraded_reasons:
+                hint = (
+                    "Connect Sales signed quote freeze (Wave S-2a) to link projects with verified baselines."
+                    if reason == _DEGRADED_NO_SALES_BASELINE
+                    else "Create BOM_LINE nodes in the Knowledge Graph to link project bill of materials."
+                )
+                record_degradation(
+                    namespace_id=ns_uuid,
+                    engine="project",
+                    code=reason,
+                    detail=_DEGRADED_DETAIL.get(reason, reason),
+                    onboarding_hint=hint,
+                )
+        except Exception:
+            log.warning("Failed to record degradation event", exc_info=True)
+
     return {
         "project_id": project_label,
         "gate": _GATE_G0,

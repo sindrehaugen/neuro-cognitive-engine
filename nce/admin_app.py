@@ -173,6 +173,11 @@ def build_admin_routes() -> list[Route]:
         Route("/styles.css", endpoint=h.serve_styles),
         Route("/api/health", endpoint=h.get_health, methods=["GET"]),
         Route("/api/health/v1", endpoint=h.get_health_v1, methods=["GET"]),
+        Route(
+            "/api/health/degradations",
+            endpoint=h.get_degradations,
+            methods=["GET"],
+        ),
         Route("/api/gc/trigger", endpoint=h.trigger_gc, methods=["POST"]),
         Route("/api/search", endpoint=h.api_search, methods=["POST"]),
         Route("/api/replay/observe", endpoint=h.api_replay_observe, methods=["POST"]),

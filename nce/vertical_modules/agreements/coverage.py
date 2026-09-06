@@ -455,6 +455,20 @@ async def do_coverage_matrix(
         )
         gl_available = False
 
+    if not gl_available:
+        try:
+            from nce.degradation import record_degradation
+
+            record_degradation(
+                namespace_id=ns_uuid,
+                engine="agreements",
+                code=_GL_UNAVAILABLE,
+                detail="Economy engine GL rows unavailable; leakage detection skipped while expiry and review terms were evaluated.",
+                onboarding_hint="Deploy Economy engine (Module 8) GL records to enable contract spend leakage detection.",
+            )
+        except Exception:
+            log.warning("Failed to record degradation event", exc_info=True)
+
     # Step 2: fetch agreements + resolve identities inside a single scoped session.
     async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
         agreements = await _fetch_agreements(conn, ns_uuid)

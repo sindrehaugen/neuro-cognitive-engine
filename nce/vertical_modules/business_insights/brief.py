@@ -116,6 +116,18 @@ async def do_morning_brief(engine: Any, params: dict[str, Any]) -> dict[str, Any
             "provenance_nodes": [],
             "derived_from": [],
         }
+        try:
+            from nce.degradation import record_degradation
+
+            record_degradation(
+                namespace_id=ns_uuid,
+                engine="business_insights",
+                code="resources_unlanded_slice",
+                detail="Resources engine (Module 15) is not landed; capacity slice grace-degraded.",
+                onboarding_hint="Enable Module 15 (Resources) to unlock operational capacity metrics.",
+            )
+        except Exception:
+            log.warning("Failed to record degradation event", exc_info=True)
     else:
         cap_provenance = ["RESOURCE_ALLOCATION:88"]
         cap_finding = {

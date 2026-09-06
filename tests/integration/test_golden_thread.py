@@ -293,7 +293,7 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         index=28,
         name="degradations",
         canonical_label="degradation register empty",
-        is_broken=True,
+        is_broken=False,
         review_break="break-degradations",
         phase1_wave="I-5",
         description="GET /api/health/degradations mounted and reports zero active degradations",
@@ -606,13 +606,10 @@ class TestGoldenThreadSteps:
                 "break-4: project_record_outcome tool not registered; design recall is similarity-only (Wave PJ-1/SD-2)"
             )
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="break-degradations: degradations register non-empty or GET /api/health/degradations unmounted (Wave I-5)",
-    )
     def test_step_28_degradation_register(self) -> None:
         """Step 28: assert degradation register is mounted and empty."""
         from nce.admin_app import app
+        from nce.degradation import get_degradation_register
 
         paths = [
             r.path for r in app.routes if getattr(r, "path", None) == "/api/health/degradations"
@@ -620,6 +617,12 @@ class TestGoldenThreadSteps:
         if not paths:
             raise AssertionError(
                 "break-degradations: GET /api/health/degradations route is not mounted (Wave I-5)"
+            )
+        reg = get_degradation_register()
+        total = reg.total_count()
+        if total > 0:
+            raise AssertionError(
+                f"break-degradations: degradation register non-empty: total={total} events: {reg.get_degradations()}"
             )
 
 
@@ -740,12 +743,13 @@ class TestGoldenThreadPositiveControls:
 
         Originally 10 seam breaks (Steps 5, 8, 11, 13, 14, 17, 20, 23, 25, 27)
         plus the degradation register check (Step 28).
-        Wave S-2a closed Step 5, and Wave CP-1 closed Step 25, burning down to 9 broken steps.
+        Wave S-2a closed Step 5, Wave CP-1 closed Step 25 and Wave I-5 closed Step 28,
+        burning down to 8 broken steps.
         """
         broken_steps = [s for s in GOLDEN_THREAD_STEPS if s.is_broken]
-        assert len(broken_steps) == 9
+        assert len(broken_steps) == 8
         broken_indices = {s.index for s in broken_steps}
-        assert broken_indices == {8, 11, 13, 14, 17, 20, 23, 27, 28}
+        assert broken_indices == {8, 11, 13, 14, 17, 20, 23, 27}
 
     def test_positive_control_broken_steps_have_remediation_waves(self) -> None:
         """Verify every broken step specifies a responsible Phase 1 remediation wave."""
