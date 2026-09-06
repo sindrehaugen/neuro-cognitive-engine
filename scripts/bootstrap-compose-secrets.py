@@ -87,7 +87,13 @@ KEY_SPECS: list[tuple[str, Callable[[str], bool]]] = [
             _weak(v, min_len=8)
             or v.lower() in ("changeme", "admin", "password")
             or "replace_me" in v.lower()
-            or not v.startswith("$pbkdf2$")
+            # _hash_pbkdf2 writes the DOUBLED form ($$pbkdf2$$...): a single $ in a
+            # compose env file is interpolation, so the hash has to be escaped on
+            # disk. This predicate only accepted the single-$ form, so the hash the
+            # script itself had just written always failed its own strength check —
+            # NCE_ADMIN_PASSWORD was guaranteed to rotate on every single run,
+            # independently of the idempotency bug in main(). Accept both.
+            or not (v.startswith("$pbkdf2$") or v.startswith("$$pbkdf2$$"))
         ),
     ),
     (
@@ -172,20 +178,35 @@ def main() -> None:
     _ensure_base_env()
 
     base_vals = _parse_env_text(BASE_ENV.read_text(encoding="utf-8"))
-    overrides: dict[str, str] = {}
-    for key, is_weak in KEY_SPECS:
-        cur = base_vals.get(key, "")
-        if is_weak(cur):
-            overrides[key] = _gen_for_key(key)
 
     existing_gen = {}
     if GENERATED.is_file():
         existing_gen = _parse_env_text(GENERATED.read_text(encoding="utf-8"))
 
-    # Preserve previously generated strong values unless base file was fixed
     merged: dict[str, str] = {k: v for k, v in existing_gen.items() if not k.startswith("#")}
-    for k, v in overrides.items():
-        merged[k] = v
+
+    # 🔴 A key is generated ONLY when the base file's value is weak AND the
+    # generated file does not already hold a strong one.
+    #
+    # This loop used to generate for every base-weak key and then assign into
+    # `merged` unconditionally, which overwrote the values the line above had
+    # just preserved. The docstring said "Idempotent"; the code rotated EVERY
+    # secret on EVERY run, NCE_MASTER_KEY included. `make up` calls this before
+    # `docker compose up`, so running `make up` twice re-keyed the stack.
+    #
+    # The blast radius is not symmetric. Four services take the master key via
+    # NCE_MASTER_KEY_FILE, which wins over the env var, but webhook-receiver has
+    # no *_FILE override and reads NCE_MASTER_KEY straight from this file — so a
+    # rotation here gives one service a different master key from the other four
+    # while every container still reports healthy. That is the exact shape of the
+    # 2026-09-02 outage in which the deployed stack could not decrypt its own
+    # active signing key for 26 hours.
+    for key, is_weak in KEY_SPECS:
+        if not is_weak(base_vals.get(key, "")):
+            continue  # base file carries a real value; nothing to override
+        if key in merged and not is_weak(merged[key]):
+            continue  # a strong generated value already exists — keep it
+        merged[key] = _gen_for_key(key)
 
     if not merged:
         stub = HEADER + "\n# No weak secrets detected; nothing to generate.\n"
