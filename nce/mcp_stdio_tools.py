@@ -3302,6 +3302,121 @@ TOOLS = [
         },
     ),
     Tool(
+        name="vendors_upsert_vendor",
+        description=(
+            "Upsert a vendor organization record and graph node. Uses C1 entity resolution "
+            "over orgnr and name to deduplicate or merge feed and admin fields. Mutation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "orgnr": {"type": "string", "description": "Organization registration number."},
+                "name": {"type": "string", "description": "Vendor organization name."},
+                "feed_fields": {
+                    "type": "object",
+                    "description": "Optional dictionary of external feed attributes.",
+                },
+                "admin_fields": {
+                    "type": "object",
+                    "description": "Optional dictionary of administrator-entered attributes.",
+                },
+                "source_id": {
+                    "type": "string",
+                    "description": "Optional external source identifier.",
+                },
+                "source_type": {
+                    "type": "string",
+                    "enum": ["feed", "admin"],
+                    "description": "Source type discriminator ('feed' or 'admin').",
+                },
+            },
+            "required": ["namespace_id", "orgnr", "name"],
+        },
+    ),
+    Tool(
+        name="vendors_upsert_contractor",
+        description=(
+            "Upsert a contractor profile and CONTRACTOR graph node under a partner scope. Mutation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "contractor_id": {"type": "string", "description": "Contractor ID or label."},
+                "partner_scope_id": {
+                    "type": "string",
+                    "description": "External partner scope UUID.",
+                },
+                "profile": {
+                    "type": "object",
+                    "description": "Optional contractor profile dictionary.",
+                },
+                "rates": {
+                    "type": "object",
+                    "description": "Optional billing rates dictionary.",
+                },
+                "skills": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional list of contractor skills.",
+                },
+                "availability": {
+                    "type": "object",
+                    "description": "Optional availability schedule metadata.",
+                },
+                "performance_score": {
+                    "type": "number",
+                    "description": "Optional historical performance score.",
+                },
+            },
+            "required": ["namespace_id", "contractor_id", "partner_scope_id"],
+        },
+    ),
+    Tool(
+        name="vendors_get_contractor",
+        description=("Retrieve a single contractor profile and graph node metadata. Read-only."),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "contractor_id": {"type": "string", "description": "Contractor ID or label."},
+                "partner_scope_id": {
+                    "type": "string",
+                    "description": "Optional external partner scope UUID for RLS context.",
+                },
+            },
+            "required": ["namespace_id", "contractor_id"],
+        },
+    ),
+    Tool(
+        name="vendors_upsert_cert",
+        description=(
+            "Upsert a contractor certification node in the graph and its metadata in MongoDB. "
+            "Mutation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "contractor_id": {"type": "string", "description": "Contractor ID or label."},
+                "cert_name": {
+                    "type": "string",
+                    "description": "Certification identifier or name.",
+                },
+                "expiry_date": {
+                    "type": "string",
+                    "description": "Certification expiration date (YYYY-MM-DD).",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Optional friendly certification title.",
+                },
+            },
+            "required": ["namespace_id", "contractor_id", "cert_name", "expiry_date"],
+        },
+    ),
+    Tool(
         name="pricing_resolve",
         description=(
             "Resolve pricing for a (product, customer) pair via the C6 shared pricing "

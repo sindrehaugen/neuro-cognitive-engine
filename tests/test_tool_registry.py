@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 224  # 215 baseline (incl. Wave PR-1 #35) + 9 Agreements tools (Wave AG-2)
+_EXPECTED_TOTAL = 228  # 224 baseline + 4 Vendors tools (Wave V-1)
 
 
 def test_registry_has_expected_entries():
@@ -221,6 +221,10 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "agreements_request_signature",
         "agreements_record_signature",
         "agreements_review_extraction",
+        # MLV15D-V1 -- Vendors master-data mutations (3 tools)
+        "vendors_upsert_vendor",
+        "vendors_upsert_contractor",
+        "vendors_upsert_cert",
     }
 )
 
@@ -233,9 +237,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert (
-        len(MUTATION_TOOLS) == 96
-    )  # 90 baseline (incl. PR-1 #35) + 6 Agreements tools (Wave AG-2)
+    assert len(MUTATION_TOOLS) == 99  # 96 baseline + 3 Vendors tools (Wave V-1)
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -371,6 +373,8 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "agreements_coverage_matrix",
         "agreements_reconcile_kickback",
         "agreements_run_compliance_audit",
+        # MLV15D-V1 -- Vendors cacheable read (1 tool)
+        "vendors_get_contractor",
     }
 )
 
@@ -383,7 +387,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 85  # 76 baseline + 6 economy + 3 agreements tools
+    assert len(CACHEABLE_TOOLS) == 86  # 76 baseline + 6 economy + 3 agreements + 1 vendors tools
 
 
 # ---------------------------------------------------------------------------
@@ -483,6 +487,10 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "agreements_request_signature",
         "agreements_record_signature",
         "agreements_review_extraction",
+        # MLV15D-V1 -- Vendors master-data admin tools (3 tools)
+        "vendors_upsert_vendor",
+        "vendors_upsert_contractor",
+        "vendors_upsert_cert",
     }
 )
 
@@ -496,8 +504,8 @@ def test_admin_only_tools_exact_match():
 
 def test_admin_only_tools_count():
     assert (
-        len(ADMIN_ONLY_TOOLS) == 58
-    )  # 52 baseline (incl. PR-1 #35) + 6 Agreements tools (Wave AG-2)
+        len(ADMIN_ONLY_TOOLS) == 61
+    )  # 52 baseline (incl. PR-1 #35) + 6 Agreements tools (Wave AG-2) + 3 Vendors tools (Wave V-1)
 
 
 # ---------------------------------------------------------------------------
