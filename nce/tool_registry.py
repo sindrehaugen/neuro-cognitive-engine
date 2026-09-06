@@ -479,6 +479,19 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         cacheable=False,
         admin_only=False,
     ),
+    # Product vertical module tools (v1.5 Phase 2 Waves P-2 / P-3)
+    "product_ingest_spec": ToolSpec(
+        _h(product_mcp_handlers, "handle_product_ingest_spec"),
+        mutation=True,
+        cacheable=False,
+        admin_only=False,
+    ),
+    "product_golden_record": ToolSpec(
+        _h(product_mcp_handlers, "handle_product_golden_record"),
+        cacheable=True,
+        mutation=False,
+        admin_only=False,
+    ),
     # ------------------------------------------------------------------
     # Procurement vertical module tools (M1.W4) — Advisor: read-only
     # ------------------------------------------------------------------

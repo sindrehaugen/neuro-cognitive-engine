@@ -277,6 +277,7 @@ async def do_enrich_product(
     product_id: str,
     trigger_context: dict[str, Any],
     provider: LLMProvider | None = None,
+    engine_or_pool: Any | None = None,
 ) -> dict[str, Any]:
     """Enrich exactly ONE product's missing fields under the C2 ``@governed`` gate.
 
@@ -422,10 +423,137 @@ async def do_enrich_product(
                 verbalized,
             )
 
+    # Trigger golden record materialization when fields were auto-merged
+    if auto_merged > 0:
+        pool_to_use = engine_or_pool
+        if pool_to_use is None and hasattr(conn, "_pool"):
+            pool_to_use = getattr(conn, "_pool", None)
+        if pool_to_use is not None:
+            try:
+                from nce.vertical_modules.product.golden_record import do_golden_record
+
+                await do_golden_record(
+                    pool_to_use,
+                    {
+                        "namespace_id": str(namespace_id),
+                        "product_id": str(product_id),
+                    },
+                )
+            except Exception:
+                log.warning(
+                    "[enrich] golden record write after auto_merge failed for product=%s",
+                    product_id,
+                    exc_info=True,
+                )
+
     return {
         "product_id": product_id,
         "proposals_written": proposals_written,
         "auto_merged": auto_merged,
         "needs_review_count": needs_review_count,
         "min_confidence_threshold": min_conf,
+    }
+
+
+async def accept_enrichment_proposal(
+    conn: asyncpg.Connection,
+    namespace_id: Any,
+    *,
+    enrichment_id: uuid.UUID | str,
+    engine_or_pool: Any | None = None,
+) -> dict[str, Any]:
+    """Accept an enrichment proposal from product_enrichment_log, merge it, and trigger golden record.
+
+    Parameters
+    ----------
+    conn:
+        asyncpg connection inside a transaction.
+    namespace_id:
+        Tenant namespace UUID.
+    enrichment_id:
+        UUID of the product_enrichment_log row to accept.
+    engine_or_pool:
+        Optional pool or engine used to run do_golden_record.
+
+    Returns
+    -------
+    dict with status, enrichment_id, product_id, field_name, golden_record.
+    """
+    row = await conn.fetchrow(
+        """
+        SELECT id, product_id, field_name, field_value, confidence, product_source_id
+        FROM   product_enrichment_log
+        WHERE  id = $1::uuid
+          AND  needs_review = true
+        """,
+        uuid.UUID(str(enrichment_id)),
+    )
+    if row is None:
+        raise ValueError(f"enrichment proposal {enrichment_id!r} not found or already reviewed")
+
+    product_id_str = str(row["product_id"])
+    field_name = str(row["field_name"])
+    field_value = row["field_value"]
+    source = row["product_source_id"]
+    confidence = float(row["confidence"]) if row["confidence"] is not None else 1.0
+
+    # 1. Mark as reviewed in product_enrichment_log
+    await conn.execute(
+        """
+        UPDATE product_enrichment_log
+        SET    needs_review = false
+        WHERE  id = $1::uuid
+        """,
+        row["id"],
+    )
+
+    # 2. Merge field into product_catalog.etim_specs
+    patch = {
+        field_name: {
+            "value": field_value,
+            "confidence": confidence,
+            "source": source or "human_accepted",
+            "verbalized": "accepted",
+        }
+    }
+    await conn.execute(
+        """
+        UPDATE product_catalog
+        SET    etim_specs = etim_specs || $1::jsonb,
+               updated_at = now()
+        WHERE  id = $2::uuid
+        """,
+        json.dumps(patch),
+        uuid.UUID(product_id_str),
+    )
+
+    # 3. Write golden record after accepted enrichment
+    golden_res = None
+    pool_to_use = engine_or_pool
+    if pool_to_use is None and hasattr(conn, "_pool"):
+        pool_to_use = getattr(conn, "_pool", None)
+    if pool_to_use is not None:
+        try:
+            from nce.vertical_modules.product.golden_record import do_golden_record
+
+            golden_res = await do_golden_record(
+                pool_to_use,
+                {
+                    "namespace_id": str(namespace_id),
+                    "product_id": product_id_str,
+                },
+            )
+        except Exception:
+            log.warning(
+                "[enrich] golden record write after accept failed for product=%s",
+                product_id_str,
+                exc_info=True,
+            )
+
+    return {
+        "status": "accepted",
+        "enrichment_id": str(enrichment_id),
+        "product_id": product_id_str,
+        "field_name": field_name,
+        "golden_record": golden_res,
     }

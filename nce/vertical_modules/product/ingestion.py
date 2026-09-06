@@ -27,6 +27,7 @@ Constraints respected:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import uuid
@@ -34,16 +35,38 @@ from typing import Any
 
 import asyncpg  # type: ignore[import-untyped]
 
+from nce.autonomy.governor import governed
+
 log = logging.getLogger("nce.vertical_modules.product.ingestion")
 
 # Agent label written to memories.agent_id for spec ingest rows.
 _AGENT_ID = "product-spec-ingest"
 
 
+def _derive_ingest_idempotency_key(
+    product_id: str,
+    spec_text: str,
+    source: str = "product_spec",
+) -> str:
+    """Derive a stable SHA-256 idempotency key for spec ingestion."""
+    payload = json.dumps(
+        {
+            "product_id": str(product_id).strip(),
+            "spec_hash": hashlib.sha256(spec_text.strip().encode("utf-8")).hexdigest(),
+            "source": str(source).strip(),
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+@governed(action_type="product_ingest_spec")
 async def do_ingest_spec(
-    pg_pool: asyncpg.Pool,
+    conn: asyncpg.Connection,
     namespace_id: uuid.UUID,
     *,
+    idempotency_key: str,
+    confirm: bool = False,
     product_id: str,
     spec_text: str,
     source: str = "product_spec",
@@ -51,12 +74,21 @@ async def do_ingest_spec(
 ) -> dict[str, Any]:
     """Ingest raw spec / datasheet text for a product into the cognitive-recall substrate.
 
+    Behind the C2 ``@governed`` gate (confirm-only default).  Without
+    ``confirm=True`` the decorator returns ``{"status": "pending_approval", ...}``.
+    With ``confirm=True`` it runs once (idempotent on replay) and writes to
+    ``memories`` and ``v3_cognitive_ledger``.
+
     Parameters
     ----------
-    pg_pool:
-        asyncpg connection pool.  RLS context is set inside ``scoped_pg_session``.
+    conn:
+        asyncpg connection inside an active transaction (``scoped_pg_session``).
     namespace_id:
         Tenant namespace UUID — all writes are scoped to this namespace.
+    idempotency_key:
+        Unique idempotency key for dedup and audit in ``action_idempotency``.
+    confirm:
+        ``False`` (default) returns pending approval; ``True`` executes.
     product_id:
         Identifier of the product whose spec text is being ingested (stored in
         ``memories.payload_ref`` and in the ledger metadata).
@@ -80,7 +112,7 @@ async def do_ingest_spec(
         return {"skipped": "empty spec_text"}
 
     # ------------------------------------------------------------------
-    # 1. Embed — outside the pg transaction (slow I/O must not hold a lock)
+    # 1. Embed — outside or before PG row insert
     # ------------------------------------------------------------------
     from nce import embeddings as _embeddings
 
@@ -90,10 +122,8 @@ async def do_ingest_spec(
 
     # ------------------------------------------------------------------
     # 2. INSERT memories + 3. INSERT v3_cognitive_ledger
-    #    Both writes inside one scoped session so they share the transaction.
+    #    Both writes executed on the governed connection.
     # ------------------------------------------------------------------
-    from nce.db_utils import scoped_pg_session
-
     memory_id = uuid.uuid4()
     vector_str = f"[{','.join(str(v) for v in vector)}]" if vector else None
 
@@ -111,53 +141,52 @@ async def do_ingest_spec(
     # the memory UUID so the constraint is satisfied and the value is traceable.
     payload_ref = memory_id.hex[:24]
 
-    async with scoped_pg_session(pg_pool, namespace_id) as conn:
-        await conn.execute(
-            """
-            INSERT INTO memories (
-                id, namespace_id, agent_id, content_fts,
-                payload_ref, memory_type, assertion_type,
-                embedding, pii_redacted, metadata
-            ) VALUES (
-                $1::uuid, $2::uuid, $3, to_tsvector('english', $4),
-                $5, $6, $7, $8::vector, $9, $10::jsonb
-            )
-            """,
-            str(memory_id),
-            str(namespace_id),
-            _AGENT_ID,
-            spec_text[:4000],
-            payload_ref,
-            "episodic",
-            "observation",
-            vector_str,
-            False,
-            json.dumps(row_metadata),
+    await conn.execute(
+        """
+        INSERT INTO memories (
+            id, namespace_id, agent_id, content_fts,
+            payload_ref, memory_type, assertion_type,
+            embedding, pii_redacted, metadata
+        ) VALUES (
+            $1::uuid, $2::uuid, $3, to_tsvector('english', $4),
+            $5, $6, $7, $8::vector, $9, $10::jsonb
         )
+        """,
+        str(memory_id),
+        str(namespace_id),
+        _AGENT_ID,
+        spec_text[:4000],
+        payload_ref,
+        "episodic",
+        "observation",
+        vector_str,
+        False,
+        json.dumps(row_metadata),
+    )
 
-        await conn.execute(
-            """
-            INSERT INTO v3_cognitive_ledger (
-                memory_id, namespace_id, empathic_tensor,
-                tlx_scores, vad_scores, model_version
-            ) VALUES (
-                $1::uuid, $2::uuid, $3::float[], $4::jsonb, $5::jsonb, $6
-            )
-            """,
-            str(memory_id),
-            str(namespace_id),
-            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            json.dumps(
-                {
-                    "source": source,
-                    "trigger": trigger,
-                    "product_id": product_id,
-                    "degraded_embedding": degraded,
-                }
-            ),
-            json.dumps({}),
-            "1.0",
+    await conn.execute(
+        """
+        INSERT INTO v3_cognitive_ledger (
+            memory_id, namespace_id, empathic_tensor,
+            tlx_scores, vad_scores, model_version
+        ) VALUES (
+            $1::uuid, $2::uuid, $3::float[], $4::jsonb, $5::jsonb, $6
         )
+        """,
+        str(memory_id),
+        str(namespace_id),
+        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        json.dumps(
+            {
+                "source": source,
+                "trigger": trigger,
+                "product_id": product_id,
+                "degraded_embedding": degraded,
+            }
+        ),
+        json.dumps({}),
+        "1.0",
+    )
 
     log.info(
         "[PRODUCT-INGEST] spec ingested product_id=%s memory_id=%s degraded=%s",

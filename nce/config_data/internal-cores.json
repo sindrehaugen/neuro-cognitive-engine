@@ -174,16 +174,6 @@
     "owner": "MLV15D-PR3",
     "reason": "Procurement savings aggregation analytics; scheduled for REST route and tool in MLV15D Wave PR-3."
   },
-  "nce/vertical_modules/product/golden_record.py::do_golden_record": {
-    "engine": "product",
-    "owner": "MLV15C-P3",
-    "reason": "Master golden record materializer; scheduled for trigger on accepted enrichment in MLV15C Wave P-3."
-  },
-  "nce/vertical_modules/product/ingestion.py::do_ingest_spec": {
-    "engine": "product",
-    "owner": "MLV15C-P2",
-    "reason": "Product specification document ingestion core; scheduled for tool exposure in MLV15C Wave P-2."
-  },
   "nce/vertical_modules/project/case_study.py::do_generate_case_study_edge": {
     "engine": "project",
     "owner": "MLV15B-PJ2",

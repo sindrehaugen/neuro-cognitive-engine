@@ -574,8 +574,9 @@ class TestProjectAdvancePhaseToolRegistry:
         +2 ML17-B5 customer portal tools (raise_service_request, register_expansion_interest);
         +4 ML9b Assets completion tools (seed_from_bom, pull_telemetry, attach_sla,
         +1 MLV15B-S2a sales tool (sales_request_signature);
-        +1 Wave C10 decision_feedback_record tool."""
-        assert len(MUTATION_TOOLS) == 89
+        +1 Wave C10 decision_feedback_record tool;
+        +1 Wave P-2 product_ingest_spec tool."""
+        assert len(MUTATION_TOOLS) == 90
 
     def test_admin_only_count(self) -> None:
         """Admin-only tools must total 32 (unified realignment registry;

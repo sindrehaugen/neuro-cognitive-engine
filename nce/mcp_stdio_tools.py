@@ -2815,6 +2815,79 @@ TOOLS = [
         },
     ),
     Tool(
+        name="product_ingest_spec",
+        description=(
+            "Ingest raw spec or datasheet text for a product into the cognitive-recall "
+            "substrate (memories + v3_cognitive_ledger). Behind the C2 governed gate: "
+            "without confirm=true it returns {'status': 'pending_approval'} and writes "
+            "nothing. With confirm=true it runs once, idempotent on replay."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "product_id": {
+                    "type": "string",
+                    "description": "Identifier or SKU of the product being documented.",
+                },
+                "spec_text": {
+                    "type": "string",
+                    "description": "Raw specification or datasheet text to ingest and embed.",
+                },
+                "source": {
+                    "type": "string",
+                    "default": "product_spec",
+                    "description": "Provenance source label (e.g. 'product_spec', 'datasheet').",
+                },
+                "trigger": {
+                    "type": "string",
+                    "default": "manual",
+                    "description": "Trigger label (e.g. 'manual', 'webhook', 'sync').",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "Optional; must be true for the side effect to run. Defaults to "
+                        "false, which returns pending_approval."
+                    ),
+                },
+                "idempotency_key": {
+                    "type": "string",
+                    "description": (
+                        "Optional override. When absent a stable hash of "
+                        "(product_id, spec_hash, source) is derived."
+                    ),
+                },
+            },
+            "required": ["namespace_id", "product_id", "spec_text"],
+        },
+    ),
+    Tool(
+        name="product_golden_record",
+        description=(
+            "Compute and fetch the field-level golden record for a product. Resolves field "
+            "winners via C1 survivorship, persists provenance to v3_cognitive_ledger, and "
+            "returns quality grade, completeness score, and publish gate status."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "product_id": {
+                    "type": "string",
+                    "description": "UUID of the product.",
+                },
+                "channel": {
+                    "type": "string",
+                    "default": "b2b_portal",
+                    "description": "Target channel for completeness scoring (default 'b2b_portal').",
+                },
+            },
+            "required": ["namespace_id", "product_id"],
+        },
+    ),
+    Tool(
         name="resolve",
         description=(
             "RANK AND SCORE existing kg_nodes against a candidate. Read-only: this tool "
