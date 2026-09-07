@@ -476,6 +476,15 @@ EVENT_CATALOGUE: Mapping[str, EventContract] = {
         status="UNCONSUMED",
         description="Emitted when a vendor supplier profile is created or updated.",
     ),
+    "TICKET.sla_breached": EventContract(
+        selector="TICKET.sla_breached",
+        node_type="TICKET",
+        op="sla_breached",
+        declared_producers=("nce/vertical_modules/support/sla.py",),
+        declared_consumers=(),
+        status="UNCONSUMED",
+        description="Emitted when a support service ticket breaches its first-response or resolution SLA deadline.",
+    ),
     # ---------------------------------------------------------------------------
     # System design component retirement and deletion lifecycles
     # ---------------------------------------------------------------------------
