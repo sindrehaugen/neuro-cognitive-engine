@@ -1384,6 +1384,24 @@ class TestGoldenThreadSteps:
             )
             assert mem_cnt >= 1, "Project outcome memory not recorded in memories table"
 
+            # C10's decision-feedback signal must LAND, not merely be attempted.
+            # recall.py passed `conn` to record_decision_feedback(), which needs a
+            # pool, so every write raised and was swallowed as a warning. The tool
+            # still returned ok -- which is why asserting on the return value, as
+            # this step originally did, proved nothing.
+            fb_cnt = await conn.fetchval(
+                """
+                SELECT count(*) FROM decision_feedback
+                WHERE namespace_id = $1 AND engine = 'project' AND context_id = $2
+                """,
+                ctx.namespace_id,
+                f"PROJECT:{ctx.quote_id.upper()}",
+            )
+            assert fb_cnt >= 1, (
+                "decision_feedback row not written for the project outcome -- C10's "
+                "learning loop is silently dead"
+            )
+
     async def test_step_27_design_recall(self, scenario: GoldenThreadScenarioContext) -> None:
         """Step 27: design recall returns outcome-weighted similar project."""
         ctx = scenario

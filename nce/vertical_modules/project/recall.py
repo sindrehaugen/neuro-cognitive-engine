@@ -384,12 +384,19 @@ async def do_record_project_outcome(
             str(ns_uuid),
         )
 
-        # Record decision feedback signal
+        # Record decision feedback signal.
+        #
+        # record_decision_feedback() calls _extract_pool() and opens its OWN
+        # RLS-scoped session, so it needs the ENGINE (or a pool) -- not `conn`.
+        # Passing `conn` raised "'Connection' object has no attribute 'acquire'"
+        # on every call, and the except below turned that into a warning nobody
+        # read: C10's decision-feedback loop wrote nothing at all. Found by
+        # running the Golden Thread against a live database, not by any test.
         try:
             from nce.decision_feedback import record_decision_feedback
 
             await record_decision_feedback(
-                conn,
+                engine,
                 namespace_id=ns_uuid,
                 engine="project",
                 context_id=project_id,
@@ -399,7 +406,28 @@ async def do_record_project_outcome(
                 actor=actor,
             )
         except Exception as exc:
-            log.warning("do_record_project_outcome: decision feedback write failed: %s", exc)
+            # Non-fatal -- an outcome record is still worth keeping without its
+            # feedback signal -- but never again merely a warning. ERROR plus the
+            # degradation register means a dropped signal is VISIBLE at
+            # GET /api/health/degradations instead of living in a log nobody tails.
+            log.error(
+                "do_record_project_outcome: decision feedback write failed: %s", exc, exc_info=True
+            )
+            try:
+                from nce.degradation import record_degradation
+
+                record_degradation(
+                    namespace_id=ns_uuid,
+                    engine="project",
+                    code="decision_feedback_write_failed",
+                    detail=f"{type(exc).__name__}: {exc}",
+                    onboarding_hint=(
+                        "The project outcome was recorded but its decision-feedback signal was "
+                        "not. C10 learning is degraded until this is resolved."
+                    ),
+                )
+            except Exception:  # pragma: no cover - the register must never mask the real error
+                log.exception("do_record_project_outcome: degradation register unavailable")
 
     return {
         "ok": True,
