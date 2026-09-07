@@ -288,3 +288,44 @@ async def test_sd2_per_namespace_override_can_disable_outcome_weighting() -> Non
         assert res["outcome_weighting_applied"] is False
         assert res["coverage"]["attributed_outcomes"] == 0
         assert res["coverage"]["status"] == "similarity-only: 0 attributed outcomes"
+
+
+def test_sd2_ordering_high_conf_moderate_conf_no_data_low_conf() -> None:
+    """Wave C-SD2: Attributed outcome ordering pins high-conf > mod-conf > no-data > low-conf.
+
+    Resolves ML-orch §13 inquiry:
+      - High-confidence on-budget outcome (conf=1.0, drift=0.0): factor 1.25 -> ranks #1
+      - Moderate-confidence on-budget outcome (conf=0.6, drift=0.0): factor 1.05 -> ranks #2 (beats unmeasured)
+      - No outcome data at all (unmeasured): factor 1.00 -> ranks #3 (neutral baseline)
+      - Low-confidence on-budget outcome (conf=0.2, drift=0.0): factor 0.85 -> ranks #4 (discounted)
+    """
+    candidates = [
+        {"name": "c_low", "similarity": 0.80, "metadata": {"project_id": "P-LOW"}},
+        {"name": "c_nodata", "similarity": 0.80, "metadata": {"project_id": "P-NONE"}},
+        {"name": "c_mod", "similarity": 0.80, "metadata": {"project_id": "P-MOD"}},
+        {"name": "c_high", "similarity": 0.80, "metadata": {"project_id": "P-HIGH"}},
+    ]
+    outcomes = {
+        "P-HIGH": {"confidence": 1.0, "margin_drift": 0.0},
+        "P-MOD": {"confidence": 0.6, "margin_drift": 0.0},
+        "P-LOW": {"confidence": 0.2, "margin_drift": 0.0},
+    }
+
+    ranked, coverage = _apply_outcome_weights(candidates, enabled=True, outcomes=outcomes)
+
+    assert coverage["attributed_outcomes"] == 3
+    assert coverage["total_candidates"] == 4
+    assert coverage["status"] == "outcome-weighted: 3/4 attributed outcomes"
+
+    # Assert exact ordering: high-conf > moderate-conf > no-data > low-conf
+    assert [c["name"] for c in ranked] == ["c_high", "c_mod", "c_nodata", "c_low"]
+    assert ranked[0]["weighted_score"] == pytest.approx(1.00)
+    assert ranked[1]["weighted_score"] == pytest.approx(0.84)
+    assert ranked[2]["weighted_score"] == pytest.approx(0.80)
+    assert ranked[3]["weighted_score"] == pytest.approx(0.68)
+    assert (
+        ranked[0]["weighted_score"]
+        > ranked[1]["weighted_score"]
+        > ranked[2]["weighted_score"]
+        > ranked[3]["weighted_score"]
+    )

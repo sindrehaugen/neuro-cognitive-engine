@@ -166,7 +166,11 @@ def _apply_outcome_weights(
             conf = float(outcome_data.get("confidence", 1.0))
             cand["outcome_confidence"] = conf
             drift = float(outcome_data.get("margin_drift", 0.0))
-            weight_factor = max(0.2, min(2.0, 1.0 + drift)) if drift != 0.0 else (0.5 + 0.5 * conf)
+            weight_factor = (
+                max(0.2, min(2.0, 1.0 + drift))
+                if drift != 0.0
+                else max(0.2, min(2.0, 1.0 + (conf - 0.5) * 0.5))
+            )
             base_sim = float(cand.get("similarity", 0.0))
             cand["weighted_score"] = round(base_sim * weight_factor, 4)
         else:
