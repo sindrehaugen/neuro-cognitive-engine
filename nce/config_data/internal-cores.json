@@ -109,11 +109,6 @@
     "owner": "MLV15C-SD2",
     "reason": "Historical win/loss recall core; dormant pending decision feedback loop integration in Phase 1."
   },
-  "nce/vertical_modules/sales/commission.py::do_calculate_commission": {
-    "engine": "sales",
-    "owner": "MLV15B-S6",
-    "reason": "Commission calculation pure core; scheduled for read-surface exposure alongside SD-3 in v1.5 Phase 1 Wave S-6."
-  },
   "nce/vertical_modules/sales/commission.py::do_initiate_quote_flow": {
     "engine": "sales",
     "owner": "MLV15B-S2a",

@@ -837,6 +837,14 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=True,
         mutation=True,
     ),
+    # Sales commission calculation surface completion (Wave S-6)
+    # Advisor tool: admin_only=False, mutation=False, cacheable=True.
+    "sales_calculate_commission": ToolSpec(
+        _h(sales_mcp_handlers, "handle_sales_calculate_commission"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # ------------------------------------------------------------------
     # Vendors vertical module tools (Batch 096)
     # ------------------------------------------------------------------

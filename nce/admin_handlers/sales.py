@@ -16,6 +16,7 @@ Exports:
   ``api_admin_sales_quote_detail`` — GET  /api/sales/quotes/{id}
   ``api_admin_sales_targets_get`` — GET  /api/sales/targets
   ``api_admin_sales_targets_put`` — PUT  /api/sales/targets
+  ``api_admin_sales_calculate_commission`` — GET  /api/sales/commission
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ from nce.admin_handlers._shared import (
 )
 from nce.db_utils import scoped_pg_session
 from nce.source_mode.divergence import flip_blocked
+from nce.vertical_modules.sales.commission import do_calculate_commission
 from nce.vertical_modules.sales.read_model import (
     do_get_targets,
     do_set_target,
@@ -968,3 +970,53 @@ async def api_admin_sales_edit_deal(request) -> JSONResponse:
             status_code=500,
             log_event="api_admin_sales_edit_deal",
         )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/sales/commission
+# ---------------------------------------------------------------------------
+
+
+async def api_admin_sales_calculate_commission(request) -> JSONResponse:
+    """GET /api/sales/commission
+
+    Calculate reproducible DB-weighted sales commissions from ledger events or deal items.
+
+    Query parameters:
+        namespace_id (str, required): Active namespace UUID.
+        seller_id    (str, optional): Seller ID to filter historical deals won.
+
+    Response (JSON):
+        {
+          "ok": True,
+          "seller_id": str | None,
+          "total_commission": float,
+          "commissions": list[dict],
+          "config_version": str,
+        }
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id = str(request.query_params.get("namespace_id") or "").strip()
+    if err_resp := _validate_namespace_query_param(namespace_id):
+        return err_resp
+
+    params: dict[str, Any] = {"namespace_id": namespace_id}
+    seller_id = request.query_params.get("seller_id")
+    if seller_id is not None and str(seller_id).strip():
+        params["seller_id"] = str(seller_id).strip()
+
+    try:
+        result = await do_calculate_commission(admin_state.engine, params)
+        return JSONResponse(result, status_code=200)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Sales calculate commission error",
+            exc,
+            status_code=500,
+            log_event="api_admin_sales_calculate_commission",
+        )
+
