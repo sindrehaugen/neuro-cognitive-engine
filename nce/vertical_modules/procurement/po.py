@@ -347,44 +347,122 @@ def _derive_submit_idempotency_key(namespace_id: str, po_number: str) -> str:
 
 
 async def _call_agreements_compliance_audit(
-    a2a_client: Any,
+    a2a_client: Any | None,
     po_number: str,
     supplier_id: str,
     rebate_amount: float,
     namespace_id: str,
+    *,
+    engine: Any | None = None,
 ) -> dict[str, Any]:
-    """Call Agreements Module 3 compliance-audit tool via A2A.
+    """Call Agreements Module 3 compliance-audit tool via engine.modules or A2A.
 
     Returns ``{"approved": True, ...}`` when Agreements accepts the rebate.
     Raises ``Exception`` on any error (unavailability, refusal, timeout) so
     the caller's fail-closed path triggers.
 
-    Since Agreements (Module 3) is not yet built, this call will always fail
-    in production — the fail-closed path (human-confirm) correctly fires.
-
     Parameters
     ----------
     a2a_client:
-        An A2A client with an async ``call_tool(tool_name, params)`` method.
-        The client must implement the Agreements compliance-audit tool interface.
+        Optional A2A client with an async ``call_tool(tool_name, params)`` method.
     po_number, supplier_id, rebate_amount, namespace_id:
         PO identity and rebate details forwarded to the Agreements tool.
+    engine:
+        Optional NCEEngine instance providing ``engine.modules["agreements"]``.
     """
-    result: dict[str, Any] = await a2a_client.call_tool(
-        "agreements.compliance_audit",
-        {
-            "po_number": po_number,
-            "supplier_id": supplier_id,
-            "rebate_amount": rebate_amount,
-            "namespace_id": namespace_id,
-        },
-    )
-    if not result.get("approved"):
-        raise ValueError(
-            f"Agreements compliance-audit rejected rebate override: po={po_number!r} "
-            f"supplier={supplier_id!r} result={result!r}"
+    # 1. Prefer in-process cross-engine wiring via engine.modules (Wave AG-3 / PR-5)
+    if engine is not None and getattr(engine, "modules", None) is not None:
+        from nce.engine_registry import EngineDisabledError, EngineUnavailableError
+
+        try:
+            scoped = (
+                engine.modules.for_namespace(namespace_id)
+                if hasattr(engine.modules, "for_namespace")
+                else engine.modules
+            )
+            agreements_mod = scoped["agreements"]
+        except EngineDisabledError as exc:
+            log.warning(
+                "[submit-po] Agreements engine disabled for namespace %s: %s",
+                namespace_id,
+                exc,
+            )
+            try:
+                from nce.degradation import record_degradation
+
+                record_degradation(
+                    namespace_id=str(namespace_id),
+                    engine="procurement",
+                    code="agreements_module_disabled",
+                    detail=f"Agreements engine is disabled for namespace {namespace_id}; rebate override audit cannot proceed.",
+                    onboarding_hint="Enable the Agreements module for this namespace or remove rebate_override flag.",
+                )
+            except Exception:
+                pass
+            raise ValueError(
+                f"Agreements compliance-audit failed closed: Agreements engine disabled for namespace {namespace_id}"
+            ) from exc
+        except (EngineUnavailableError, KeyError) as exc:
+            log.warning("[submit-po] Agreements engine not found in registry: %s", exc)
+            raise RuntimeError("Agreements engine not found in engine registry") from exc
+
+        audit_fn = getattr(agreements_mod, "do_run_compliance_audit", None)
+        if audit_fn is None:
+            raise RuntimeError("Agreements module does not export do_run_compliance_audit")
+
+        result = await audit_fn(
+            engine,
+            {
+                "namespace_id": namespace_id,
+                "po_number": po_number,
+                "supplier_id": supplier_id,
+                "rebate_amount": rebate_amount,
+            },
         )
-    return result
+        if isinstance(result, str):
+            import json
+
+            result = json.loads(result)
+
+        if not result.get("approved"):
+            reason = (
+                result.get("reason")
+                or result.get("detail")
+                or result.get("note")
+                or "rejected by compliance policy"
+            )
+            raise ValueError(
+                f"Agreements compliance-audit rejected rebate override: po={po_number!r} "
+                f"supplier={supplier_id!r} reason={reason!r}"
+            )
+        return result
+
+    # 2. Fall back to A2A client if provided
+    if a2a_client is not None:
+        result = await a2a_client.call_tool(
+            "agreements.compliance_audit",
+            {
+                "po_number": po_number,
+                "supplier_id": supplier_id,
+                "rebate_amount": rebate_amount,
+                "namespace_id": namespace_id,
+            },
+        )
+        if isinstance(result, str):
+            import json
+
+            result = json.loads(result)
+        if not result.get("approved"):
+            raise ValueError(
+                f"Agreements compliance-audit rejected rebate override: po={po_number!r} "
+                f"supplier={supplier_id!r} result={result!r}"
+            )
+        return result
+
+    # 3. Neither engine.modules nor a2a_client provided -> fail closed
+    raise RuntimeError(
+        "Agreements cross-engine module or A2A client not provided; cannot audit rebate override."
+    )
 
 
 async def _audit_rebate_decision(
@@ -563,6 +641,7 @@ async def do_submit_po(
     transport: PoTransport | None = None,
     a2a_client: Any | None = None,
     redis_client: Any = None,
+    engine: Any | None = None,
 ) -> dict[str, Any]:
     """Submit a draft PO through the C2 autonomy gate (Wave 11 — sharpest blast radius).
 
@@ -574,9 +653,9 @@ async def do_submit_po(
        trips ``_governed_place_po``'s policy gate → ``pending_approval``.
        Ceiling defaults to 0 (everything requires human-confirm).
     3. **rebate_override gate** — when ``rebate_override=True`` (flag from Wave 2
-       ranking), Agreements compliance-audit is called via A2A **before**
-       ``_governed_place_po`` records the idempotency key.  Fail-closed:
-       if ``a2a_client`` is ``None``, the call errors, or Agreements rejects
+       ranking), Agreements compliance-audit is called via engine.modules (Wave AG-3 / PR-5)
+       or A2A **before** ``_governed_place_po`` records the idempotency key.  Fail-closed:
+       if neither ``engine.modules`` nor ``a2a_client`` is provided, the call errors, or Agreements rejects
        → ``pending_approval`` is returned immediately; no key is burned, no
        transport is called.  Every decision (approved/rejected/unavailable)
        is appended to ``event_log``.
@@ -610,16 +689,17 @@ async def do_submit_po(
     po_value:
         Monetary value of the PO checked against the ceiling gate.
     rebate_override:
-        ``True`` (from Wave 2 ranking) triggers Agreements A2A compliance audit.
+        ``True`` (from Wave 2 ranking) triggers Agreements compliance audit.
     rebate_amount:
         Rebate amount forwarded to the Agreements compliance check.
     transport:
         ``PoTransport`` adapter; defaults to ``NetsetPoTransport`` (🔴 stub).
     a2a_client:
-        A2A client with ``call_tool(tool_name, params)`` for reaching Agreements.
-        ``None`` → rebate gate fails closed immediately.
+        Optional A2A client with ``call_tool(tool_name, params)`` for reaching Agreements.
     redis_client:
         Redis client for the kill-switch gate inside ``_governed_place_po``.
+    engine:
+        Optional NCEEngine instance providing ``engine.modules["agreements"]``.
 
     Returns
     -------
@@ -644,9 +724,10 @@ async def do_submit_po(
     # ------------------------------------------------------------------
     if rebate_override and confirm:
         try:
-            if a2a_client is None:
+            has_engine_modules = engine is not None and getattr(engine, "modules", None) is not None
+            if a2a_client is None and not has_engine_modules:
                 raise RuntimeError(
-                    "Agreements A2A client not provided; cannot audit rebate override."
+                    "Agreements cross-engine module or A2A client not provided; cannot audit rebate override."
                 )
             await _call_agreements_compliance_audit(
                 a2a_client,
@@ -654,6 +735,7 @@ async def do_submit_po(
                 supplier_id=supplier_id,
                 rebate_amount=rebate_amount,
                 namespace_id=ns_str,
+                engine=engine,
             )
             # Approved — audit the pass decision before delegating to the governed executor.
             await _audit_rebate_decision(

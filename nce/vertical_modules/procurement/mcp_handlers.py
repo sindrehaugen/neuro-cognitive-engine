@@ -418,5 +418,6 @@ async def handle_procurement_submit_po(engine: NCEEngine, arguments: dict[str, A
             transport=transport,
             a2a_client=a2a_client,
             redis_client=redis_client,
+            engine=engine,
         )
     return json.dumps(result, default=str)
