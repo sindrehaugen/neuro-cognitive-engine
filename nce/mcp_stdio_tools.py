@@ -4156,6 +4156,28 @@ TOOLS = [
         },
     ),
     Tool(
+        name="sales_calculate_commission",
+        description=(
+            "Calculate reproducible DB-weighted sales commissions from ledger events or deal items. "
+            "Evaluates deal won events or direct deal lines against sales-commission config rates."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "seller_id": {
+                    "type": "string",
+                    "description": "Optional seller identifier to filter historical deal won events.",
+                },
+                "deal_data": {
+                    "type": "object",
+                    "description": "Optional direct deal dictionary containing line items for commission calculation.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
         name="sales_ping",
         description=(
             'Liveness probe for the Sales vertical. Returns {"ok": true, "engine": "sales"}.'

@@ -175,8 +175,8 @@ def test_tool_count_updated_for_inventory() -> None:
     assert "inventory_stock_levels" in TOOL_REGISTRY
     assert "inventory_transfer_stock" in TOOL_REGISTRY
     assert "inventory_record_consumption" in TOOL_REGISTRY
-    assert len(TOOL_REGISTRY) == 252, (
-        f"Expected 252 tools (repo-wide ratchet), "
+    assert len(TOOL_REGISTRY) == 253, (
+        f"Expected 253 tools (repo-wide ratchet), "
         f"from Batch 141 + 3 assets tools from Batch 143 + 1 system_design tool "
         f"from Batch 067b + 2 system_design authoring tools from Batch 067c "
         f"+ 1 system_design validator from Batch 067d "
