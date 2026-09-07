@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from nce.vertical_modules.customer_portal.auth import evaluate_customer_scope_access
+from nce.vertical_modules.customer_portal.auth import enforce_customer_scope
 
 # Forbidden internal keywords that must never be echoed or accepted in generation
 _FORBIDDEN_INTERNAL_PATTERNS = re.compile(
@@ -34,12 +34,7 @@ _INJECTION_PATTERNS = re.compile(
 
 async def do_advisor_answer(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
     """Generate customer-safe advisor response under strict isolation and prompt sandboxing."""
-    cust_scope = params.get("customer_scope_id")
-    target_scope = params.get("target_scope_id", cust_scope)
-    if not evaluate_customer_scope_access(cust_scope, target_scope):
-        raise PermissionError(
-            f"IDOR attempt: scope {cust_scope} denied access to scope {target_scope}"
-        )
+    cust_scope = enforce_customer_scope(params)
 
     raw_query = str(params.get("query", "")).strip()
     room_id = params.get("room_id")

@@ -565,6 +565,16 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "sales_edit_deal",
         # MLV15D-E2 -- Economy outbound EHF generation ([ADMIN])
         "economy_generate_ehf",
+        # Wave T-6 / Estate Review -- Customer Portal Engine internal MCP admin tools (9 tools)
+        "customer_portal_room_tracker",
+        "customer_portal_room_overview",
+        "customer_portal_asset_register",
+        "customer_portal_list_documents",
+        "customer_portal_sla_status",
+        "customer_portal_list_invoices",
+        "customer_portal_advisor_answer",
+        "customer_portal_raise_service_request",
+        "customer_portal_register_expansion_interest",
     }
 )
 
@@ -577,7 +587,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 77  # 76 baseline + 1 Economy EHF tool (Wave E-2)
+    assert len(ADMIN_ONLY_TOOLS) == 86  # 77 baseline + 9 Customer Portal tools (Wave T-6)
 
 
 # ---------------------------------------------------------------------------

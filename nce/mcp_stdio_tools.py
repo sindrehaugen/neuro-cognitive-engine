@@ -6405,12 +6405,12 @@ TOOLS = [
                 "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
                 "customer_scope_id": {
                     "type": "string",
-                    "description": "Optional customer scope UUID.",
+                    "description": "Customer scope UUID.",
                 },
                 "room_id": {"type": "string", "description": "Target room identifier."},
                 "site_id": {"type": "string", "description": "Optional site identifier."},
             },
-            "required": ["namespace_id"],
+            "required": ["namespace_id", "customer_scope_id"],
         },
     ),
     Tool(
@@ -6422,11 +6422,11 @@ TOOLS = [
                 "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
                 "customer_scope_id": {
                     "type": "string",
-                    "description": "Optional customer scope UUID.",
+                    "description": "Customer scope UUID.",
                 },
                 "site_id": {"type": "string", "description": "Optional site identifier."},
             },
-            "required": ["namespace_id"],
+            "required": ["namespace_id", "customer_scope_id"],
         },
     ),
     Tool(
@@ -6438,11 +6438,11 @@ TOOLS = [
                 "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
                 "customer_scope_id": {
                     "type": "string",
-                    "description": "Optional customer scope UUID.",
+                    "description": "Customer scope UUID.",
                 },
                 "room_id": {"type": "string", "description": "Target room identifier."},
             },
-            "required": ["namespace_id"],
+            "required": ["namespace_id", "customer_scope_id"],
         },
     ),
     Tool(
@@ -6454,10 +6454,10 @@ TOOLS = [
                 "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
                 "customer_scope_id": {
                     "type": "string",
-                    "description": "Optional customer scope UUID.",
+                    "description": "Customer scope UUID.",
                 },
             },
-            "required": ["namespace_id"],
+            "required": ["namespace_id", "customer_scope_id"],
         },
     ),
     Tool(
@@ -6469,10 +6469,10 @@ TOOLS = [
                 "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
                 "customer_scope_id": {
                     "type": "string",
-                    "description": "Optional customer scope UUID.",
+                    "description": "Customer scope UUID.",
                 },
             },
-            "required": ["namespace_id"],
+            "required": ["namespace_id", "customer_scope_id"],
         },
     ),
     Tool(
@@ -6484,10 +6484,10 @@ TOOLS = [
                 "namespace_id": {"type": "string", "description": "Tenant namespace UUID."},
                 "customer_scope_id": {
                     "type": "string",
-                    "description": "Optional customer scope UUID.",
+                    "description": "Customer scope UUID.",
                 },
             },
-            "required": ["namespace_id"],
+            "required": ["namespace_id", "customer_scope_id"],
         },
     ),
     Tool(
@@ -6500,11 +6500,11 @@ TOOLS = [
                 "query": {"type": "string", "description": "Customer question or inquiry."},
                 "customer_scope_id": {
                     "type": "string",
-                    "description": "Optional customer scope UUID.",
+                    "description": "Customer scope UUID.",
                 },
                 "room_id": {"type": "string", "description": "Optional room identifier."},
             },
-            "required": ["namespace_id", "query"],
+            "required": ["namespace_id", "customer_scope_id", "query"],
         },
     ),
     Tool(
@@ -6521,7 +6521,7 @@ TOOLS = [
                 },
                 "customer_scope_id": {
                     "type": "string",
-                    "description": "Optional customer scope UUID.",
+                    "description": "Customer scope UUID.",
                 },
                 "request_id": {
                     "type": "string",
@@ -6536,7 +6536,7 @@ TOOLS = [
                     "description": "Whether out-of-scope spend is pre-authorized.",
                 },
             },
-            "required": ["namespace_id", "room_id", "summary"],
+            "required": ["namespace_id", "customer_scope_id", "room_id", "summary"],
         },
     ),
     Tool(
@@ -6557,14 +6557,14 @@ TOOLS = [
                 "category": {"type": "string", "description": "Optional equipment category."},
                 "customer_scope_id": {
                     "type": "string",
-                    "description": "Optional customer scope UUID.",
+                    "description": "Customer scope UUID.",
                 },
                 "estimated_users": {
                     "type": "integer",
                     "description": "Optional estimated room users.",
                 },
             },
-            "required": ["namespace_id", "room_id", "description"],
+            "required": ["namespace_id", "customer_scope_id", "room_id", "description"],
         },
     ),
     # Module 16: Business Insights Engine

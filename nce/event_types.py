@@ -37,6 +37,7 @@ EventType = Literal[
     "namespace_metadata_updated",
     "namespace_impersonated",
     "partner_scope_impersonated",
+    "customer_scope_impersonated",
     # Soft-delete / lifecycle (``namespace_deleted`` removed — WORM FK blocks emit-then-hard-delete).
     "namespace_deletion_requested",
     "namespace_disabled",
@@ -178,6 +179,7 @@ EVENT_REQUIRED_PARAM_KEYS: Final[dict[str, frozenset[str]]] = {
     "namespace_access_revoked": frozenset({"revoking_namespace_id", "revokee_namespace_id"}),
     "namespace_impersonated": frozenset({"impersonated_namespace_id", "impersonating_agent"}),
     "partner_scope_impersonated": frozenset({"partner_scope_id", "caller_identity"}),
+    "customer_scope_impersonated": frozenset({"customer_scope_id", "caller_identity"}),
     "migration_start_requested": frozenset({"target_model_id"}),
     "migration_commit_requested": frozenset({"migration_id"}),
     "migration_abort_requested": frozenset({"migration_id"}),

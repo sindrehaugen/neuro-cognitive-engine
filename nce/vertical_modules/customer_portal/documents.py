@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from nce.vertical_modules.customer_portal.auth import evaluate_customer_scope_access
+from nce.vertical_modules.customer_portal.auth import enforce_customer_scope
 from nce.vertical_modules.customer_portal.redaction import project_customer_safe
 
 
@@ -51,12 +51,7 @@ def _is_grant_valid(doc: dict[str, Any], now: datetime | None = None) -> bool:
 
 async def do_list_documents(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
     """List active, unexpired document shares granted to customer."""
-    cust_scope = params.get("customer_scope_id")
-    target_scope = params.get("target_scope_id", cust_scope)
-    if not evaluate_customer_scope_access(cust_scope, target_scope):
-        raise PermissionError(
-            f"IDOR attempt: scope {cust_scope} denied access to scope {target_scope}"
-        )
+    cust_scope = enforce_customer_scope(params)
 
     raw_docs = params.get("documents", [])
     now = datetime.now(timezone.utc)
@@ -76,12 +71,7 @@ async def do_list_documents(engine: Any, params: dict[str, Any]) -> dict[str, An
 
 async def do_get_document(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
     """Retrieve metadata and access ref for a single granted document share."""
-    cust_scope = params.get("customer_scope_id")
-    target_scope = params.get("target_scope_id", cust_scope)
-    if not evaluate_customer_scope_access(cust_scope, target_scope):
-        raise PermissionError(
-            f"IDOR attempt: scope {cust_scope} denied access to scope {target_scope}"
-        )
+    enforce_customer_scope(params)
 
     share_id = params.get("share_id", "")
     doc = params.get("document", {})
