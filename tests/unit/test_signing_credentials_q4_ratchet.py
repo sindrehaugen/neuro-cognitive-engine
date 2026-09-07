@@ -164,9 +164,9 @@ async def test_signing_credentials_write_only_contract(
     # 1. Save response check
     assert save_result["status"] == "ok"
     assert save_result["provider"] == "criipto"
-    assert save_result["client_id"] == "criipto-client-prod"
-    assert save_result["configured"] is True
-    assert save_result["secret_fingerprint"] == "••••9988"
+    assert save_result["secret_fingerprint"].startswith("sha256:")
+    assert len(save_result["secret_fingerprint"]) == 15
+    assert "9988" not in save_result["secret_fingerprint"]
     assert "client_secret" not in save_result
     assert "encrypted_secret" not in save_result
 
@@ -176,7 +176,7 @@ async def test_signing_credentials_write_only_contract(
     assert status["configured"] is True
     assert status["provider"] == "criipto"
     assert status["client_id"] == "criipto-client-prod"
-    assert status["secret_fingerprint"] == "••••9988"
+    assert status["secret_fingerprint"] == save_result["secret_fingerprint"]
     assert "client_secret" not in status
     assert "encrypted_secret" not in status
 
@@ -453,8 +453,9 @@ async def test_worm_audit_event_appended_on_write(fake_db: FakeDb, master_key: M
         assert params["actor"] == "admin@enterprise.no"
         changes = params["changes"]["signing_credentials"]
         assert changes["provider"] == "criipto"
-        assert changes["client_id"] == "cid-prod-88"
-        assert changes["secret_fingerprint"] == "••••7788"
+        assert changes["secret_fingerprint"].startswith("sha256:")
+        assert len(changes["secret_fingerprint"]) == 15
+        assert "7788" not in changes["secret_fingerprint"]
         assert changes["action"] == "saved"
 
         # Plaintext secret MUST NOT be present in params
@@ -493,8 +494,17 @@ async def test_delete_signing_credential(fake_db: FakeDb, master_key: MasterKey)
 
 
 def test_compute_secret_fingerprint() -> None:
-    assert compute_secret_fingerprint("12345678") == "••••5678"
-    assert compute_secret_fingerprint("abc") == "••••abc"
+    fp1 = compute_secret_fingerprint("12345678")
+    assert fp1.startswith("sha256:")
+    assert len(fp1) == 15  # sha256: (7) + 8 hex chars
+    assert "12345678" not in fp1
+    assert "5678" not in fp1
+
+    fp2 = compute_secret_fingerprint("abc")
+    assert fp2.startswith("sha256:")
+    assert len(fp2) == 15
+    assert "abc" not in fp2
+
     assert compute_secret_fingerprint("") == "••••none"
     assert compute_secret_fingerprint("    ") == "••••none"
 
@@ -560,7 +570,9 @@ async def test_admin_handlers_save_and_status(fake_db: FakeDb, master_key: Maste
     save_body = json.loads(save_resp.body.decode("utf-8"))
     assert save_body["status"] == "ok"
     assert save_body["provider"] == "criipto"
-    assert save_body["secret_fingerprint"] == "••••4321"
+    assert save_body["secret_fingerprint"].startswith("sha256:")
+    assert len(save_body["secret_fingerprint"]) == 15
+    assert "4321" not in save_body["secret_fingerprint"]
     assert "client_secret" not in save_body
 
     # 2. Test GET status
@@ -574,7 +586,7 @@ async def test_admin_handlers_save_and_status(fake_db: FakeDb, master_key: Maste
     status_body = json.loads(status_resp.body.decode("utf-8"))
     assert status_body["configured"] is True
     assert status_body["client_id"] == "test-client-id"
-    assert status_body["secret_fingerprint"] == "••••4321"
+    assert status_body["secret_fingerprint"] == save_body["secret_fingerprint"]
 
     # 3. Test DELETE
     del_req = MagicMock(spec=Request)

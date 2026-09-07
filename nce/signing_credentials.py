@@ -15,6 +15,7 @@ and national eID brokers (e.g., Criipto, Signicat, Oneflow):
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import uuid
@@ -34,14 +35,14 @@ PrecedenceOrder = Literal["db_first", "env_first"]
 def compute_secret_fingerprint(secret: str) -> str:
     """Derive a safe, non-secret visual fingerprint for operator confirmation.
 
-    Never exposes more than the trailing 4 characters.
+    Uses a truncated SHA-256 digest prefix ('sha256:<8hex>') so live secret
+    material is never stored in WORM audit events or database columns.
     """
     cleaned = (secret or "").strip()
     if not cleaned:
         return "••••none"
-    if len(cleaned) <= 4:
-        return f"••••{cleaned}"
-    return f"••••{cleaned[-4:]}"
+    digest = hashlib.sha256(cleaned.encode("utf-8")).hexdigest()[:8]
+    return f"sha256:{digest}"
 
 
 def normalize_provider(provider: str) -> str:
