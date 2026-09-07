@@ -494,7 +494,9 @@ async def test_delete_signing_credential(fake_db: FakeDb, master_key: MasterKey)
 
 def test_compute_secret_fingerprint() -> None:
     assert compute_secret_fingerprint("12345678") == "••••5678"
-    assert compute_secret_fingerprint("abc") == "••••abc"
+    # A short secret gets a bare mask -- revealing it here would persist it to the
+    # WORM event_log. This line used to assert "••••abc", pinning that leak.
+    assert compute_secret_fingerprint("abc") == "••••"
     assert compute_secret_fingerprint("") == "••••none"
     assert compute_secret_fingerprint("    ") == "••••none"
 
@@ -588,3 +590,26 @@ async def test_admin_handlers_save_and_status(fake_db: FakeDb, master_key: Maste
     assert del_resp.status_code == 200
     del_body = json.loads(del_resp.body.decode("utf-8"))
     assert del_body["status"] == "ok"
+
+
+def test_short_secret_is_never_revealed_by_its_fingerprint() -> None:
+    """A short secret must not survive into the fingerprint.
+
+    The fingerprint is persisted into ``event_log`` as ``secret_fingerprint`` and
+    ``event_log`` is WORM, so anything revealed here is revealed permanently.
+    The earlier implementation returned the whole value for inputs of 4 characters
+    or fewer.
+    """
+    from nce.signing_credentials import compute_secret_fingerprint
+
+    for secret in ("a", "ab", "abc", "abcd", "abcde", "abcdef", "abcdefg"):
+        fp = compute_secret_fingerprint(secret)
+        assert secret not in fp, (
+            f"fingerprint {fp!r} contains the whole secret {secret!r} -- this value is "
+            "written to the WORM event_log and cannot be removed"
+        )
+        assert fp == "••••", f"short secrets must get a bare mask, got {fp!r}"
+
+    # Long enough: exactly the last four, and nothing more.
+    assert compute_secret_fingerprint("supersecrettail1234") == "••••1234"
+    assert compute_secret_fingerprint("") == "••••none"

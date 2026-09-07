@@ -31,16 +31,29 @@ logger = logging.getLogger("nce.signing_credentials")
 PrecedenceOrder = Literal["db_first", "env_first"]
 
 
+# Below this length the trailing 4 characters would be most of the secret,
+# so no tail is revealed at all.
+_MIN_LEN_FOR_TAIL = 8
+
+
 def compute_secret_fingerprint(secret: str) -> str:
     """Derive a safe, non-secret visual fingerprint for operator confirmation.
 
-    Never exposes more than the trailing 4 characters.
+    Reveals at most the trailing 4 characters, and only when the secret is long
+    enough that those 4 are a small fraction of it.
+
+    🔴 A short secret gets NO tail at all. This fingerprint is written into
+    ``event_log`` as ``secret_fingerprint``, and ``event_log`` is WORM -- it
+    cannot be deleted. The previous version returned ``f"••••{cleaned}"`` for
+    anything <= 4 characters, i.e. the ENTIRE secret, permanently. A real client
+    secret is never that short, but a typo or a truncated paste is, and the
+    operator UI accepts whatever it is given.
     """
     cleaned = (secret or "").strip()
     if not cleaned:
         return "••••none"
-    if len(cleaned) <= 4:
-        return f"••••{cleaned}"
+    if len(cleaned) < _MIN_LEN_FOR_TAIL:
+        return "••••"
     return f"••••{cleaned[-4:]}"
 
 
