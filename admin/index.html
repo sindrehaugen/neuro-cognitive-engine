@@ -727,6 +727,84 @@
             <pre class="whitespace-pre-wrap text-emerald-300" x-text="JSON.stringify(rlsLastResult, null, 2)"></pre>
           </div>
         </div>
+
+        <!-- 5: Signing provider credentials (Wave Q-4) -->
+        <div class="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm ring-1 ring-slate-900/5 lg:col-span-2">
+          <div class="flex items-center justify-between gap-2 mb-3">
+            <div>
+              <h3 class="text-[11px] font-bold uppercase tracking-widest text-slate-600">Signing Provider Credentials (BankID / eID Broker)</h3>
+              <p class="text-[10px] text-slate-400 mt-0.5">Write-only: secrets are encrypted at rest under NCE_MASTER_KEY and never displayed back</p>
+            </div>
+            <span class="text-[9px] font-mono text-slate-400">POST /api/admin/signing-credentials/save</span>
+          </div>
+
+          <!-- Add / Update Credential Form -->
+          <form @submit.prevent="saveSigningCred()" class="rounded-xl border border-slate-200 bg-slate-50/60 p-4 mb-4">
+            <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+              <div>
+                <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">Provider</label>
+                <select x-model="newSigningProvider" class="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 font-medium">
+                  <option value="criipto">Criipto (BankID / MitID / FTN)</option>
+                  <option value="signicat">Signicat (eID Broker)</option>
+                  <option value="oneflow">Oneflow</option>
+                  <option value="custom">Custom broker</option>
+                </select>
+              </div>
+              <div x-show="newSigningProvider === 'custom'">
+                <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">Custom Provider Name</label>
+                <input type="text" x-model="customSigningProvider" placeholder="e.g. scrive" class="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono">
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">Client ID</label>
+                <input type="text" x-model="newSigningClientId" placeholder="Broker Client ID" required class="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono">
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">Client Secret (Write-Only)</label>
+                <input type="password" x-model="newSigningClientSecret" placeholder="••••••••" required autocomplete="new-password" class="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono">
+              </div>
+              <div>
+                <button type="submit" :disabled="signingCredsSaving || !targetNs" class="w-full rounded-lg bg-slate-900 text-white px-3 py-1.5 text-xs font-bold hover:bg-slate-800 disabled:opacity-50 transition shadow-sm">
+                  <span x-show="!signingCredsSaving">Save Credential</span>
+                  <span x-show="signingCredsSaving">Encrypting…</span>
+                </button>
+              </div>
+            </div>
+            <p class="text-[10px] text-slate-500 mt-2" x-show="!targetNs">Select or enter a target namespace above to manage signing credentials.</p>
+          </form>
+
+          <!-- Status Table -->
+          <div class="overflow-x-auto rounded-lg border border-slate-100">
+            <table class="w-full text-[11px]">
+              <thead class="bg-slate-50 text-slate-500">
+                <tr>
+                  <th class="text-left px-3 py-2 font-bold">Provider</th>
+                  <th class="text-left px-3 py-2 font-bold">Client ID</th>
+                  <th class="text-left px-3 py-2 font-bold">Secret Fingerprint</th>
+                  <th class="text-left px-3 py-2 font-bold">Status</th>
+                  <th class="text-left px-3 py-2 font-bold">Last Updated</th>
+                  <th class="text-right px-3 py-2 font-bold">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="cred in signingCreds" :key="cred.provider">
+                  <tr class="border-t border-slate-100 hover:bg-slate-50/80">
+                    <td class="px-3 py-2 font-bold uppercase text-slate-800" x-text="cred.provider"></td>
+                    <td class="px-3 py-2 font-mono text-slate-700" x-text="cred.client_id"></td>
+                    <td class="px-3 py-2 font-mono text-accent-pink" x-text="cred.secret_fingerprint"></td>
+                    <td class="px-3 py-2">
+                      <span class="rounded px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800">CONFIGURED</span>
+                    </td>
+                    <td class="px-3 py-2 text-slate-500 font-mono text-[10px]" x-text="cred.updated_at"></td>
+                    <td class="px-3 py-2 text-right">
+                      <button type="button" @click="deleteSigningCred(cred.provider)" class="text-red-600 hover:text-red-800 text-[10px] font-bold">Delete</button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+            <p x-show="!signingCredsLoading && signingCreds.length === 0" class="text-xs text-slate-500 px-4 py-3">No signing provider credentials configured for this namespace.</p>
+          </div>
+        </div>
       </div>
     </section>
     </div>
@@ -3701,12 +3779,25 @@
         rlsLastResult: null,
         rlsTerminalOpen: false,
 
+        signingCreds: [],
+        signingCredsLoading: false,
+        signingCredsError: '',
+        signingCredsSaving: false,
+        newSigningProvider: 'criipto',
+        customSigningProvider: '',
+        newSigningClientId: '',
+        newSigningClientSecret: '',
+
         mount() {
-          if (this.defaultNs) this.targetNs = this.defaultNs;
+          if (this.defaultNs) {
+            this.targetNs = this.defaultNs;
+            this.fetchSigningCreds();
+          }
           window.addEventListener('trimcp-apply-ns-filter', (e) => {
             const nid = e.detail?.namespace_id;
             if (!nid) return;
             this.targetNs = nid;
+            this.fetchSigningCreds();
           });
         },
 
@@ -3809,6 +3900,7 @@
               })(),
             ];
             if (this.targetNs) {
+              tasks.push(this.fetchSigningCreds());
               tasks.push(
                 (async () => {
                   this.wormLoading = true;
@@ -3919,6 +4011,88 @@
             this.rlsTerminalOpen = true;
           } finally {
             this.rlsTestLoading = false;
+          }
+        },
+
+        async fetchSigningCreds() {
+          if (!this.targetNs) {
+            this.signingCreds = [];
+            return;
+          }
+          this.signingCredsLoading = true;
+          this.signingCredsError = '';
+          try {
+            const r = await signedFetch(
+              undefined,
+              '/api/admin/signing-credentials/status?namespace_id=' + encodeURIComponent(this.targetNs)
+            );
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || j.detail || 'signing creds status');
+            this.signingCreds = Array.isArray(j.credentials) ? j.credentials : (j.configured ? [j] : []);
+          } catch (e) {
+            this.signingCredsError = String(e.message || e);
+            this.signingCreds = [];
+          } finally {
+            this.signingCredsLoading = false;
+          }
+        },
+
+        async saveSigningCred() {
+          if (!this.targetNs) {
+            this.toast('Set target namespace first', 'error');
+            return;
+          }
+          const provider = this.newSigningProvider === 'custom' ? this.customSigningProvider : this.newSigningProvider;
+          if (!provider) {
+            this.toast('Provider name is required', 'error');
+            return;
+          }
+          if (!this.newSigningClientId || !this.newSigningClientSecret) {
+            this.toast('Client ID and Secret are required', 'error');
+            return;
+          }
+          this.signingCredsSaving = true;
+          try {
+            const r = await signedFetch(
+              undefined,
+              '/api/admin/signing-credentials/save',
+              {
+                method: 'POST',
+                body: JSON.stringify({
+                  namespace_id: this.targetNs,
+                  provider: provider,
+                  client_id: this.newSigningClientId,
+                  client_secret: this.newSigningClientSecret,
+                }),
+              }
+            );
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || j.detail || 'save signing cred');
+            this.newSigningClientSecret = '';
+            this.toast('Signing credentials for ' + provider + ' saved securely (write-only)', 'ok');
+            await this.fetchSigningCreds();
+          } catch (e) {
+            this.toast('Failed to save signing credentials: ' + (e.message || e), 'error');
+          } finally {
+            this.signingCredsSaving = false;
+          }
+        },
+
+        async deleteSigningCred(provider) {
+          if (!this.targetNs || !provider) return;
+          if (!confirm('Delete signing credentials for ' + provider + '?')) return;
+          try {
+            const r = await signedFetch(
+              undefined,
+              '/api/admin/namespaces/' + encodeURIComponent(this.targetNs) + '/signing-credentials/' + encodeURIComponent(provider),
+              { method: 'DELETE' }
+            );
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || j.detail || 'delete signing cred');
+            this.toast('Signing credentials for ' + provider + ' deleted', 'ok');
+            await this.fetchSigningCreds();
+          } catch (e) {
+            this.toast('Failed to delete: ' + (e.message || e), 'error');
           }
         },
       }));

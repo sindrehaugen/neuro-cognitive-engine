@@ -2376,3 +2376,136 @@ async def api_admin_dlq_circuit_close(request):
             ),
         }
     )
+
+
+async def api_admin_signing_credentials_save(request):
+    """POST /api/admin/signing-credentials/save or POST /api/admin/namespaces/{namespace_id}/signing-credentials"""
+    if not admin_state.engine or not admin_state.engine.pg_pool:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    raw_ns = request.path_params.get("namespace_id") or data.get("namespace_id")
+    if not raw_ns:
+        return JSONResponse({"error": "namespace_id is required"}, status_code=400)
+    try:
+        ns_uuid = uuid.UUID(str(raw_ns))
+    except ValueError:
+        return JSONResponse({"error": "Invalid namespace_id format"}, status_code=422)
+
+    provider = data.get("provider")
+    client_id = data.get("client_id")
+    client_secret = data.get("client_secret")
+    actor = data.get("actor", "admin")
+    metadata = data.get("metadata", {})
+
+    if not provider or not isinstance(provider, str):
+        return JSONResponse({"error": "provider is required"}, status_code=400)
+    if not client_id or not isinstance(client_id, str):
+        return JSONResponse({"error": "client_id is required"}, status_code=400)
+    if not client_secret or not isinstance(client_secret, str):
+        return JSONResponse({"error": "client_secret is required"}, status_code=400)
+
+    try:
+        from nce.auth import set_namespace_context
+        from nce.signing_credentials import save_signing_credential
+
+        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+            async with conn.transaction():
+                await set_namespace_context(conn, ns_uuid)
+                result = await save_signing_credential(
+                    conn=conn,
+                    namespace_id=ns_uuid,
+                    provider=provider,
+                    client_id=client_id,
+                    client_secret=client_secret,
+                    actor=actor,
+                    metadata=metadata,
+                )
+        return JSONResponse(result)
+    except Exception as exc:
+        _shared.logger.error("api_admin_signing_credentials_save failed for provider=%s", provider)
+        return admin_error_response(
+            "Failed to save signing credentials",
+            exc,
+            log_event="api_admin_signing_credentials_save failed",
+        )
+
+
+async def api_admin_signing_credentials_status(request):
+    """GET /api/admin/signing-credentials/status or GET /api/admin/namespaces/{namespace_id}/signing-credentials"""
+    if not admin_state.engine or not admin_state.engine.pg_pool:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    raw_ns = request.path_params.get("namespace_id") or request.query_params.get("namespace_id")
+    if not raw_ns:
+        return JSONResponse({"error": "namespace_id is required"}, status_code=400)
+    try:
+        ns_uuid = uuid.UUID(str(raw_ns))
+    except ValueError:
+        return JSONResponse({"error": "Invalid namespace_id format"}, status_code=422)
+
+    provider = request.query_params.get("provider")
+    try:
+        from nce.auth import set_namespace_context
+        from nce.signing_credentials import get_signing_credential_status
+
+        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+            await set_namespace_context(conn, ns_uuid)
+            result = await get_signing_credential_status(
+                conn=conn,
+                namespace_id=ns_uuid,
+                provider=provider,
+            )
+        return JSONResponse({"credentials": result} if isinstance(result, list) else result)
+    except Exception as exc:
+        _shared.logger.error("api_admin_signing_credentials_status failed")
+        return admin_error_response(
+            "Failed to load signing credentials status",
+            exc,
+            log_event="api_admin_signing_credentials_status failed",
+        )
+
+
+async def api_admin_signing_credentials_delete(request):
+    """DELETE /api/admin/signing-credentials or DELETE /api/admin/namespaces/{namespace_id}/signing-credentials/{provider}"""
+    if not admin_state.engine or not admin_state.engine.pg_pool:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    raw_ns = request.path_params.get("namespace_id") or request.query_params.get("namespace_id")
+    if not raw_ns:
+        return JSONResponse({"error": "namespace_id is required"}, status_code=400)
+    try:
+        ns_uuid = uuid.UUID(str(raw_ns))
+    except ValueError:
+        return JSONResponse({"error": "Invalid namespace_id format"}, status_code=422)
+
+    provider = request.path_params.get("provider") or request.query_params.get("provider")
+    if not provider:
+        return JSONResponse({"error": "provider is required"}, status_code=400)
+
+    try:
+        from nce.auth import set_namespace_context
+        from nce.signing_credentials import delete_signing_credential
+
+        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+            async with conn.transaction():
+                await set_namespace_context(conn, ns_uuid)
+                result = await delete_signing_credential(
+                    conn=conn,
+                    namespace_id=ns_uuid,
+                    provider=provider,
+                )
+        return JSONResponse(result)
+    except Exception as exc:
+        _shared.logger.error(
+            "api_admin_signing_credentials_delete failed for provider=%s", provider
+        )
+        return admin_error_response(
+            "Failed to delete signing credentials",
+            exc,
+            log_event="api_admin_signing_credentials_delete failed",
+        )

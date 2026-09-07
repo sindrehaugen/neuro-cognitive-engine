@@ -263,6 +263,36 @@ def build_admin_routes() -> list[Route]:
             methods=["POST"],
         ),
         Route(
+            "/api/admin/signing-credentials/save",
+            endpoint=h.api_admin_signing_credentials_save,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/admin/signing-credentials/status",
+            endpoint=h.api_admin_signing_credentials_status,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/admin/signing-credentials",
+            endpoint=h.api_admin_signing_credentials_delete,
+            methods=["DELETE"],
+        ),
+        Route(
+            "/api/admin/namespaces/{namespace_id}/signing-credentials",
+            endpoint=h.api_admin_signing_credentials_save,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/admin/namespaces/{namespace_id}/signing-credentials",
+            endpoint=h.api_admin_signing_credentials_status,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/admin/namespaces/{namespace_id}/signing-credentials/{provider}",
+            endpoint=h.api_admin_signing_credentials_delete,
+            methods=["DELETE"],
+        ),
+        Route(
             "/api/admin/pii-redactions",
             endpoint=h.api_admin_pii_redactions_list,
             methods=["GET"],
