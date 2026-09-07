@@ -176,7 +176,12 @@ async def test_on_hr_cert_event_relay(mock_engine):
         ),
     }
 
-    await on_hr_cert_event(mock_engine, event)
+    # The relay passes its polling connection as the first argument; the engine
+    # comes from the process registry, so register it the way startup does.
+    from nce.vertical_modules.resources import watcher as w
+
+    w.register_engine(mock_engine)
+    await on_hr_cert_event(MagicMock(), event)
     # Proves relay integration executes cleanly without exception
 
 

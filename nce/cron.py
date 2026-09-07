@@ -1903,6 +1903,7 @@ async def async_main() -> None:
     )
     from nce.vertical_modules.project import automation as project_automation
     from nce.vertical_modules.project import tasks as project_tasks
+    from nce.vertical_modules.resources import watcher as resources_watcher
     from nce.vertical_modules.resources.watcher import (
         register_resources_event_subscribers,
     )
@@ -1932,6 +1933,9 @@ async def async_main() -> None:
     populate_engine_modules(_relay_engine)
     project_tasks.register_engine(_relay_engine)
     project_automation.register_engine(_relay_engine)
+    # RS-4's on_hr_cert_event opens its own scoped_pg_session off engine.pg_pool,
+    # which is exactly what this SimpleNamespace carries.
+    resources_watcher.register_engine(_relay_engine)
     project_tasks.register_bom_task_subscriber()
     project_automation.register_automation_subscribers()
 

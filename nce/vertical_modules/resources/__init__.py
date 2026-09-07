@@ -60,6 +60,9 @@ from nce.vertical_modules.resources.watcher import (
     handle_hr_cert_change,
     register_resources_event_subscribers,
 )
+from nce.vertical_modules.resources.watcher import (
+    register_engine as register_watcher_engine,
+)
 
 __all__ = [
     "CONTRACTOR_ALLOWED_ALLOCATION_FIELDS",
@@ -91,6 +94,7 @@ __all__ = [
     "forecast",
     "get_morning_brief_capacity_pulse",
     "handle_hr_cert_change",
+    "register_watcher_engine",
     "load_allocation_weights",
     "load_travel_policy",
     "material_flow",

@@ -11,6 +11,7 @@ Verifies:
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -245,8 +246,16 @@ def test_catalogue_certification_expired_contract() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_hr_cert_change_works_with_raw_connection() -> None:
-    """handle_hr_cert_change works when passed a raw asyncpg.Connection (outbox relay)."""
+async def test_handle_hr_cert_change_opens_its_own_rls_scoped_session(monkeypatch) -> None:
+    """The watcher writes on an RLS-scoped session it opens itself.
+
+    The relay hands subscribers its polling connection, which deliberately
+    carries no ``nce.namespace_id`` (see ``nce/outbox_relay.py``).  So the
+    handler must be given the ENGINE and open ``scoped_pg_session`` off its
+    pool -- the same shape ``project.tasks._handle_bom_line_status_changed``
+    uses.  This test passes a pool-shaped engine, which is what production
+    passes; a raw connection here would prove nothing about the live path.
+    """
     ns_id = uuid4()
     tech_id = uuid4()
     alloc_id = str(uuid4())
@@ -291,14 +300,121 @@ async def test_handle_hr_cert_change_works_with_raw_connection() -> None:
         "valid_to": (date.today() - timedelta(days=1)).isoformat(),
     }
 
-    # Call handle_hr_cert_change directly passing mock_conn (as outbox relay does)
-    await handle_hr_cert_change(mock_conn, payload)
+    # Pool-shaped engine, and the scoped session yields the mock connection --
+    # so the assertion below is about what the handler WRITES, while the session
+    # boundary itself is asserted by test_watcher_never_writes_on_the_relay_conn.
+    class _Session:
+        async def __aenter__(self):
+            return mock_conn
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+    seen: dict[str, object] = {}
+
+    def _fake_scoped(pool, ns):
+        seen["pool"] = pool
+        seen["ns"] = ns
+        return _Session()
+
+    monkeypatch.setattr("nce.vertical_modules.resources.watcher.scoped_pg_session", _fake_scoped)
+
+    engine = SimpleNamespace(pg_pool=MagicMock())
+    await handle_hr_cert_change(engine, payload)
+
+    # It opened the session off the ENGINE'S POOL, not off some connection it
+    # was handed -- this is the whole point of the fix.
+    assert seen["pool"] is engine.pg_pool
+    assert str(seen["ns"]) == str(ns_id)
 
     # Verify allocation was updated
     mock_conn.execute.assert_awaited_once()
     sql_call = mock_conn.execute.await_args[0][0]
     assert "UPDATE allocations" in sql_call
     assert "status = $2" in sql_call
+
+
+@pytest.mark.asyncio
+async def test_watcher_never_writes_on_the_relay_conn(monkeypatch) -> None:
+    """``on_hr_cert_event`` must not touch the connection the relay hands it.
+
+    A write on that connection runs with ``nce.namespace_id`` unset.  Under a
+    non-owner role that silently returns zero rows -- which looks exactly like
+    "no allocations needed invalidating", the very thing this seam exists to
+    detect.
+    """
+    from nce.vertical_modules.resources import watcher as w
+
+    ns_id = uuid4()
+    relay_conn = AsyncMock()
+
+    scoped_conn = AsyncMock()
+    scoped_conn.fetchrow.return_value = None
+
+    class _Session:
+        async def __aenter__(self):
+            return scoped_conn
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+    monkeypatch.setattr(
+        "nce.vertical_modules.resources.watcher.scoped_pg_session",
+        lambda pool, ns: _Session(),
+    )
+    monkeypatch.setitem(w._ENGINE_REGISTRY, "engine", SimpleNamespace(pg_pool=MagicMock()))
+
+    await w.on_hr_cert_event(
+        relay_conn,
+        {
+            "namespace_id": str(ns_id),
+            "payload": {"employee_id": "EMP-001", "cert_name": "HV", "status": "expired"},
+        },
+    )
+
+    relay_conn.fetchrow.assert_not_awaited()
+    relay_conn.fetch.assert_not_awaited()
+    relay_conn.execute.assert_not_awaited()
+    scoped_conn.fetchrow.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_watcher_raises_rather_than_returning_when_it_cannot_act() -> None:
+    """A bare return tells the relay the delivery succeeded and the event is lost.
+
+    The dedup row commits and the outbox row is marked published, so a handler
+    that logs-and-returns destroys the event it could not process.  Both failure
+    modes must raise.
+    """
+    from nce.vertical_modules.resources import watcher as w
+
+    saved = w._ENGINE_REGISTRY.pop("engine", None)
+    try:
+        with pytest.raises(w.IncompletePayloadError):
+            await w.on_hr_cert_event(AsyncMock(), {"payload": {"employee_id": "EMP-1"}})
+
+        with pytest.raises(w.EngineNotRegisteredError):
+            await w.on_hr_cert_event(
+                AsyncMock(),
+                {"namespace_id": str(uuid4()), "payload": {"employee_id": "EMP-1"}},
+            )
+    finally:
+        if saved is not None:
+            w._ENGINE_REGISTRY["engine"] = saved
+
+
+@pytest.mark.asyncio
+async def test_watcher_engine_is_registered_in_both_relay_processes() -> None:
+    """A registrar wired in only one relay process leaves the subscriber dead in the other."""
+    import pathlib as _pathlib
+
+    root = _pathlib.Path(__file__).resolve().parents[2]
+    for rel in ("nce/mcp_stdio_main.py", "nce/cron.py"):
+        text = (root / rel).read_text(encoding="utf-8")
+        assert "resources_watcher.register_engine(" in text, (
+            f"{rel} does not register an engine for the RS-4 subscriber; "
+            "on_hr_cert_event will raise EngineNotRegisteredError in that process"
+        )
 
 
 # ---------------------------------------------------------------------------
