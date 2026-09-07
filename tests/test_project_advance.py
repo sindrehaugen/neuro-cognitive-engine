@@ -625,5 +625,6 @@ class TestProjectAdvancePhaseToolRegistry:
         +1 MLV15B-E3 economy tool;
         +1 MLV15D-MK2 marketing tool;
         +4 MLV15D-S1 sales write tools;
-        +1 Wave C-PJ2 project_generate_case_study_edge tool)."""
-        assert len(ADMIN_ONLY_TOOLS) == 76
+        +1 Wave C-PJ2 project_generate_case_study_edge tool;
+        +1 Wave E-2 economy_generate_ehf tool)."""
+        assert len(ADMIN_ONLY_TOOLS) == 77

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from typing import TYPE_CHECKING, Any
 
 from nce.db_utils import scoped_pg_session
@@ -35,6 +36,7 @@ from nce.mcp_errors import McpError, mcp_handler
 from nce.vertical_modules.economy._guard import EconomyDisabledError, require_economy_enabled
 from nce.vertical_modules.economy.cascade import do_cascade_on_approval
 from nce.vertical_modules.economy.close_narrative import do_generate_close_narrative
+from nce.vertical_modules.economy.contracts import do_validate_contract
 from nce.vertical_modules.economy.dunning import do_compute_dunning
 from nce.vertical_modules.economy.events import UnbalancedPostingsError, do_emit_financial_event
 from nce.vertical_modules.economy.finago import do_gl_sync_status
@@ -44,6 +46,11 @@ from nce.vertical_modules.economy.ngaap import (
     do_compute_bucket_targets,
     load_finago_account_mapping,
     load_finago_chart_of_accounts,
+)
+from nce.vertical_modules.economy.peppol import (
+    do_generate_ehf,
+    do_generate_kid,
+    do_validate_kid,
 )
 from nce.vertical_modules.economy.recurring import (
     do_compute_recognition_schedule,
@@ -713,6 +720,189 @@ async def handle_economy_approve_invoice(engine: NCEEngine, arguments: dict[str,
                 "error": (
                     f"economy_approve_invoice: result contains a non-finite value and "
                     f"cannot be serialized ({exc})"
+                )
+            },
+            default=str,
+        )
+
+
+@mcp_handler
+async def handle_economy_generate_kid(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: economy_generate_kid — Norwegian KID generator (READ-ONLY Advisor).
+
+    Required arguments:
+        namespace_id (str, UUID)
+        base_number  (str) — 1-24 ASCII digits
+    Optional arguments:
+        variant      (str) — check digit scheme, default "MOD10"
+
+    Returns JSON string with base_number, check_digit, kid, and variant,
+    or {"error": "..."} on validation failure.
+    """
+    try:
+        await _check_economy_enabled(engine, arguments)
+        base_number = arguments.get("base_number")
+        if not base_number:
+            raise ValueError("economy_generate_kid: 'base_number' is required")
+        variant = arguments.get("variant", "MOD10")
+        result = do_generate_kid(str(base_number), variant=str(variant))
+    except McpError:
+        raise
+    except (ValueError, KeyError, TypeError, NotImplementedError) as exc:
+        return json.dumps({"error": str(exc)}, default=str)
+    except Exception as exc:
+        log.exception("[economy] handle_economy_generate_kid unexpected error")
+        return json.dumps({"error": str(exc)}, default=str)
+
+    try:
+        return json.dumps(result, default=str, allow_nan=False)
+    except ValueError as exc:
+        log.error("[economy] handle_economy_generate_kid result not JSON-serializable: %s", exc)
+        return json.dumps(
+            {
+                "error": (
+                    f"economy_generate_kid: result contains a non-finite value and cannot "
+                    f"be serialized ({exc})"
+                )
+            },
+            default=str,
+        )
+
+
+@mcp_handler
+async def handle_economy_validate_kid(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: economy_validate_kid — Norwegian KID validator (READ-ONLY Advisor).
+
+    Required arguments:
+        namespace_id (str, UUID)
+        kid          (str) — at least 2 ASCII digits (base + check digit)
+    Optional arguments:
+        variant      (str) — check digit scheme, default "MOD10"
+
+    Returns JSON string with kid, valid (bool), and variant,
+    or {"error": "..."} on validation failure.
+    """
+    try:
+        await _check_economy_enabled(engine, arguments)
+        kid = arguments.get("kid")
+        if not kid:
+            raise ValueError("economy_validate_kid: 'kid' is required")
+        variant = arguments.get("variant", "MOD10")
+        result = do_validate_kid(str(kid), variant=str(variant))
+    except McpError:
+        raise
+    except (ValueError, KeyError, TypeError, NotImplementedError) as exc:
+        return json.dumps({"error": str(exc)}, default=str)
+    except Exception as exc:
+        log.exception("[economy] handle_economy_validate_kid unexpected error")
+        return json.dumps({"error": str(exc)}, default=str)
+
+    try:
+        return json.dumps(result, default=str, allow_nan=False)
+    except ValueError as exc:
+        log.error("[economy] handle_economy_validate_kid result not JSON-serializable: %s", exc)
+        return json.dumps(
+            {
+                "error": (
+                    f"economy_validate_kid: result contains a non-finite value and cannot "
+                    f"be serialized ({exc})"
+                )
+            },
+            default=str,
+        )
+
+
+@mcp_handler
+async def handle_economy_generate_ehf(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: economy_generate_ehf — EHF 3.0 UBL XML generator ([ADMIN] privileged).
+
+    Required arguments:
+        namespace_id (str, UUID)
+        invoice      (dict) — UBL invoice dictionary
+    Optional arguments:
+        idempotency_key (str) — stable transmission correlation key
+
+    Returns JSON string with ehf_xml, sent, peppol_enabled, mode, and reason or transport_result.
+    """
+    try:
+        await _check_economy_enabled(engine, arguments)
+        ns_uuid = require_namespace_id(arguments)
+        invoice = arguments.get("invoice")
+        if not isinstance(invoice, dict) or not invoice:
+            raise ValueError("economy_generate_ehf: 'invoice' dict is required")
+        idempotency_key = str(arguments.get("idempotency_key") or uuid.uuid4())
+        result = await do_generate_ehf(
+            invoice, namespace_id=str(ns_uuid), idempotency_key=idempotency_key
+        )
+    except McpError:
+        raise
+    except (ValueError, KeyError, TypeError) as exc:
+        return json.dumps({"error": str(exc)}, default=str)
+    except Exception as exc:
+        log.exception("[economy] handle_economy_generate_ehf unexpected error")
+        return json.dumps({"error": str(exc)}, default=str)
+
+    try:
+        return json.dumps(result, default=str, allow_nan=False)
+    except ValueError as exc:
+        log.error("[economy] handle_economy_generate_ehf result not JSON-serializable: %s", exc)
+        return json.dumps(
+            {
+                "error": (
+                    f"economy_generate_ehf: result contains a non-finite value and cannot "
+                    f"be serialized ({exc})"
+                )
+            },
+            default=str,
+        )
+
+
+@mcp_handler
+async def handle_economy_validate_contract(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: economy_validate_contract — CPI uplift validator (READ-ONLY Advisor).
+
+    Required arguments:
+        namespace_id     (str, UUID)
+        contract_id      (str) — contract identifier in economy_contracts
+        proposed_cpi_pct (int, float, Decimal, str) — proposed CPI uplift fraction
+
+    Returns JSON string with ok, contract_id, cpi_cap, proposed_cpi_pct,
+    current_annual_amount, and renewal_annual_amount, or {"error": "..."} on validation refusal.
+    """
+    try:
+        await _check_economy_enabled(engine, arguments)
+        ns_uuid = require_namespace_id(arguments)
+        contract_id = arguments.get("contract_id")
+        if not contract_id:
+            raise ValueError("economy_validate_contract: 'contract_id' is required")
+        proposed_cpi_pct = arguments.get("proposed_cpi_pct")
+        if proposed_cpi_pct is None:
+            raise ValueError("economy_validate_contract: 'proposed_cpi_pct' is required")
+        params = {
+            "namespace_id": ns_uuid,
+            "contract_id": str(contract_id),
+            "proposed_cpi_pct": proposed_cpi_pct,
+        }
+        result = await do_validate_contract(engine, params)
+    except McpError:
+        raise
+    except (ValueError, KeyError, TypeError) as exc:
+        return json.dumps({"error": str(exc)}, default=str)
+    except Exception as exc:
+        log.exception("[economy] handle_economy_validate_contract unexpected error")
+        return json.dumps({"error": str(exc)}, default=str)
+
+    try:
+        return json.dumps(result, default=str, allow_nan=False)
+    except ValueError as exc:
+        log.error(
+            "[economy] handle_economy_validate_contract result not JSON-serializable: %s", exc
+        )
+        return json.dumps(
+            {
+                "error": (
+                    f"economy_validate_contract: result contains a non-finite value and cannot "
+                    f"be serialized ({exc})"
                 )
             },
             default=str,

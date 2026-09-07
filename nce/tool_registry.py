@@ -1065,6 +1065,31 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=True,
         mutation=True,
     ),
+    # Economy vertical module PEPPOL and validation tools (MLV15D Wave E-2)
+    "economy_generate_kid": ToolSpec(
+        _h(economy_mcp_handlers, "handle_economy_generate_kid"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "economy_validate_kid": ToolSpec(
+        _h(economy_mcp_handlers, "handle_economy_validate_kid"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "economy_generate_ehf": ToolSpec(
+        _h(economy_mcp_handlers, "handle_economy_generate_ehf"),
+        cacheable=False,
+        admin_only=True,
+        mutation=False,
+    ),
+    "economy_validate_contract": ToolSpec(
+        _h(economy_mcp_handlers, "handle_economy_validate_contract"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # ------------------------------------------------------------------
     # Inventory vertical module tools (Batch 131, M11.W3) — stock-surface
     # ------------------------------------------------------------------

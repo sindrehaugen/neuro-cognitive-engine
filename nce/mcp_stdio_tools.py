@@ -4501,6 +4501,108 @@ TOOLS = [
         },
     ),
     Tool(
+        name="economy_generate_kid",
+        description=(
+            "READ-ONLY ADVISOR: Norwegian KID (Kundeidentifikasjon) generator. "
+            "Generates a valid Norwegian KID from 1-24 base digits using the MOD10 (Luhn) check digit algorithm; writes nothing."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Caller namespace UUID.",
+                },
+                "base_number": {
+                    "type": "string",
+                    "description": "Base number of 1-24 ASCII digits.",
+                },
+                "variant": {
+                    "type": "string",
+                    "description": "KID check digit scheme (default 'MOD10').",
+                    "enum": ["MOD10", "MOD11"],
+                },
+            },
+            "required": ["namespace_id", "base_number"],
+        },
+    ),
+    Tool(
+        name="economy_validate_kid",
+        description=(
+            "READ-ONLY ADVISOR: Norwegian KID (Kundeidentifikasjon) validator. "
+            "Validates a complete KID string (base digits + trailing check digit) under the MOD10 algorithm; writes nothing."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Caller namespace UUID.",
+                },
+                "kid": {
+                    "type": "string",
+                    "description": "Complete KID string (at least 2 ASCII digits).",
+                },
+                "variant": {
+                    "type": "string",
+                    "description": "KID check digit scheme (default 'MOD10').",
+                    "enum": ["MOD10", "MOD11"],
+                },
+            },
+            "required": ["namespace_id", "kid"],
+        },
+    ),
+    Tool(
+        name="economy_generate_ehf",
+        description=(
+            "[ADMIN] Generate outbound EHF 3.0 UBL XML billing document. "
+            "Constructs valid PEPPOL BIS Billing 3.0 XML and conditionally transmits via PEPPOL network if NCE_ECONOMY_PEPPOL_ENABLED is true."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Caller namespace UUID.",
+                },
+                "invoice": {
+                    "type": "object",
+                    "description": "Invoice data dictionary with required UBL fields (invoice_id, issue_date, supplier, customer, lines, total).",
+                },
+                "idempotency_key": {
+                    "type": "string",
+                    "description": "Optional idempotency key for outbound transmission correlation.",
+                },
+            },
+            "required": ["namespace_id", "invoice"],
+        },
+    ),
+    Tool(
+        name="economy_validate_contract",
+        description=(
+            "READ-ONLY ADVISOR: Financial contract renewal and CPI uplift validator. "
+            "Validates proposed CPI uplift percentage against contract cpi_cap ceiling (max 5%) and computes renewal annual amount; writes nothing."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Caller namespace UUID.",
+                },
+                "contract_id": {
+                    "type": "string",
+                    "description": "Contract identifier in economy_contracts.",
+                },
+                "proposed_cpi_pct": {
+                    "type": ["number", "string"],
+                    "description": "Proposed CPI uplift fraction (e.g. 0.05 or '0.05' for 5%).",
+                },
+            },
+            "required": ["namespace_id", "contract_id", "proposed_cpi_pct"],
+        },
+    ),
+    Tool(
         name="detect_causal_cycles",
         description=(
             "[ADMIN] Detect cycles in the event_parents causal DAG for a namespace. "

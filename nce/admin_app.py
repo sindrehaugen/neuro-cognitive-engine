@@ -976,6 +976,26 @@ def build_admin_routes() -> list[Route]:
             endpoint=economy_handlers.api_economy_close_narrative,
             methods=["GET", "POST"],
         ),
+        Route(
+            "/api/economy/kid/generate",
+            endpoint=economy_handlers.api_economy_generate_kid,
+            methods=["GET", "POST"],
+        ),
+        Route(
+            "/api/economy/kid/validate",
+            endpoint=economy_handlers.api_economy_validate_kid,
+            methods=["GET", "POST"],
+        ),
+        Route(
+            "/api/economy/ehf/generate",
+            endpoint=economy_handlers.api_economy_generate_ehf,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/economy/contracts/validate",
+            endpoint=economy_handlers.api_economy_validate_contract,
+            methods=["POST"],
+        ),
         # ------------------------------------------------------------------
         # Inventory vertical module endpoints (Batch 131, M11.W3) — stock-surface
         # ------------------------------------------------------------------

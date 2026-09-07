@@ -116,10 +116,14 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/business-insights/risk-radar` | `api_business_insights_risk_radar` |
 | POST | `/api/business-insights/run-scenario` | `api_business_insights_run_scenario` |
 | GET,POST | `/api/economy/close-narrative` | `api_economy_close_narrative` |
+| POST | `/api/economy/contracts/validate` | `api_economy_validate_contract` |
 | GET,POST | `/api/economy/dunning` | `api_economy_dunning` |
+| POST | `/api/economy/ehf/generate` | `api_economy_generate_ehf` |
 | POST | `/api/economy/emit-event` | `api_economy_emit_event` |
 | GET,POST | `/api/economy/forecast` | `api_economy_forecast` |
 | GET,POST | `/api/economy/gl-sync-status` | `api_economy_gl_sync_status` |
+| GET,POST | `/api/economy/kid/generate` | `api_economy_generate_kid` |
+| GET,POST | `/api/economy/kid/validate` | `api_economy_validate_kid` |
 | POST | `/api/economy/match-invoice` | `api_economy_match_invoice` |
 | GET,POST | `/api/economy/mrr-arr-churn` | `api_economy_mrr_arr_churn` |
 | POST | `/api/economy/periodisering` | `api_economy_periodisering` |
@@ -349,9 +353,13 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `economy_emit_event` |  |  | yes |  |
 | `economy_forecast_cashflow` |  |  | yes |  |
 | `economy_generate_close_narrative` |  |  | yes |  |
+| `economy_generate_ehf` | yes |  |  |  |
+| `economy_generate_kid` |  |  | yes |  |
 | `economy_gl_sync_status` |  |  | yes |  |
 | `economy_match_invoice` |  |  | yes |  |
 | `economy_snapshot_mrr_arr_churn` |  |  | yes |  |
+| `economy_validate_contract` |  |  | yes |  |
+| `economy_validate_kid` |  |  | yes |  |
 | `evaluate_circuit_impact` |  |  |  |  |
 | `execute_query_template` |  |  |  |  |
 | `explain_config_change` | yes |  |  |  |
@@ -530,4 +538,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 259 REST endpoints, 253 MCP tools._
+_Totals: 263 REST endpoints, 257 MCP tools._

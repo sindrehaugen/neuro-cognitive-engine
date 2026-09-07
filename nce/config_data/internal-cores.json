@@ -9,11 +9,6 @@
     "owner": "MLV15D-E1",
     "reason": "Financial contract graph mutation core; scheduled for REST route and MCP tool exposure in MLV15D Wave E-1."
   },
-  "nce/vertical_modules/economy/contracts.py::do_validate_contract": {
-    "engine": "economy",
-    "owner": "MLV15D-E1",
-    "reason": "Financial contract validation rule engine; scheduled for tool exposure in MLV15D Wave E-1."
-  },
   "nce/vertical_modules/economy/finago.py::do_reconcile_gl": {
     "engine": "economy",
     "owner": "MLV15B-AG1",
@@ -28,21 +23,6 @@
     "engine": "economy",
     "owner": "MLV15D-E1",
     "reason": "Inbound invoice parsing and registration core; scheduled for webhook and tool exposure in MLV15D Wave E-1."
-  },
-  "nce/vertical_modules/economy/peppol.py::do_generate_ehf": {
-    "engine": "economy",
-    "owner": "MLV15D-E1",
-    "reason": "EHF 3.0 XML billing document generator; scheduled for export route exposure in MLV15D Wave E-1."
-  },
-  "nce/vertical_modules/economy/peppol.py::do_generate_kid": {
-    "engine": "economy",
-    "owner": "MLV15D-E1",
-    "reason": "Norwegian KID customer identification number generator; scheduled for exposure in MLV15D Wave E-1."
-  },
-  "nce/vertical_modules/economy/peppol.py::do_validate_kid": {
-    "engine": "economy",
-    "owner": "MLV15D-E1",
-    "reason": "Norwegian KID validation algorithm (mod10/mod11); scheduled for validation tool surface in MLV15D Wave E-1."
   },
   "nce/vertical_modules/economy/recalibration.py::do_recalibrate_supplier": {
     "engine": "economy",
