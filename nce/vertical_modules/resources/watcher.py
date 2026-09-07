@@ -67,13 +67,14 @@ async def handle_hr_cert_change(
         # 1. Resolve technician resource
         res_row = await conn.fetchrow(
             """
-            SELECT id, name, metadata
+            SELECT id, display_name, attrs
             FROM resources
             WHERE namespace_id = $1
               AND (
                   id::text = $2
-                  OR metadata->>'employee_id' = $2
-                  OR email = $2
+                  OR ref_id = $2
+                  OR attrs->>'employee_id' = $2
+                  OR attrs->>'email' = $2
               )
             LIMIT 1
             """,
@@ -174,7 +175,7 @@ async def handle_hr_cert_change(
             "namespace_id": str(ns_id),
             "employee_id": str(emp_id_raw),
             "resource_id": str(res_id),
-            "resource_name": res_row["name"],
+            "resource_name": res_row.get("display_name") or res_row.get("name") or "",
             "cert_name": cert_name,
             "cert_status": status,
             "valid_to": valid_to_dt.isoformat() if valid_to_dt else None,

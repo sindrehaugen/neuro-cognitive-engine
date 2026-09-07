@@ -1,15 +1,15 @@
-> **Status:** shipped · **Verified-against:** f47317a (main) · **Last-audited:** generated
+> **Status:** shipped · **Verified-against:** 749cda5 (main) · **Last-audited:** generated
 
 # Golden Thread — Seam Burndown
 
-> **Status:** shipped · **Verified-against:** f47317a (main) · **Last-audited:** generated
+> **Status:** shipped · **Verified-against:** 749cda5 (main) · **Last-audited:** generated
 
 **This page is generated from `tests/integration/test_golden_thread.py` — it cannot go stale.** A step is OPEN here if and only if its test carries `@pytest.mark.xfail(strict=True, reason="break-N: ...")` in that file; `strict=True` means the test SUITE fails (XPASS) the moment a seam closes while its marker is still on, forcing the marker's removal in the same commit. Regenerate with:
 ```
 python scripts/gen_golden_thread_seams.py --repo . --baseline HEAD --out docs/_generated/golden_thread_seams.md
 ```
 
-## Summary — 1 of 28 lifecycle steps broken, 1 distinct seam(s): `break-5a`
+## Summary — 0 of 28 lifecycle steps broken, 0 distinct seam(s): 
 
 | Step | Seam | Status | Reason (from the test file) |
 |---:|---|---|---|
@@ -35,11 +35,11 @@ python scripts/gen_golden_thread_seams.py --repo . --baseline HEAD --out docs/_g
 | 20 | Step 20: field tech work order created. (`test_step_20_work_order` — `tests/integration/test_golden_thread.py:1095`) | ✅ closed | — |
 | 21 | Step 21: work order outcome recorded. (`test_step_21_outcome` — `tests/integration/test_golden_thread.py:1118`) | ✅ closed | — |
 | 22 | Step 22: technician certification expiry evaluated. (`test_step_22_cert_expiry` — `tests/integration/test_golden_thread.py:1150`) | ✅ closed | — |
-| 23 | Step 23: certification expiry invalidates scheduled allocation. (`test_step_23_allocation_invalidated` — `tests/integration/test_golden_thread.py:1190`) | 🔴 OPEN | break-5a: HR cert expiry invalidates scheduled resource allocation (Wave HR-1/V-2) |
-| 24 | Step 24: customer raises portal request. (`test_step_24_portal_request` — `tests/integration/test_golden_thread.py:1232`) | ✅ closed | — |
-| 25 | Step 25: customer portal creates support ticket. (`test_step_25_portal_ticket` — `tests/integration/test_golden_thread.py:1247`) | ✅ closed | — |
-| 26 | Step 26: project outcome recorded at G5 phase gate. (`test_step_26_outcome_recorded` — `tests/integration/test_golden_thread.py:1260`) | ✅ closed | — |
-| 27 | Step 27: design recall returns outcome-weighted similar project. (`test_step_27_design_recall` — `tests/integration/test_golden_thread.py:1281`) | ✅ closed | — |
-| 28 | Step 28: degradation register reports zero active degradations. (`test_step_28_degradations` — `tests/integration/test_golden_thread.py:1306`) | ✅ closed | — |
+| 23 | Step 23: certification expiry invalidates scheduled allocation. (`test_step_23_allocation_invalidated` — `tests/integration/test_golden_thread.py:1186`) | ✅ closed | — |
+| 24 | Step 24: customer raises portal request. (`test_step_24_portal_request` — `tests/integration/test_golden_thread.py:1241`) | ✅ closed | — |
+| 25 | Step 25: customer portal creates support ticket. (`test_step_25_portal_ticket` — `tests/integration/test_golden_thread.py:1256`) | ✅ closed | — |
+| 26 | Step 26: project outcome recorded at G5 phase gate. (`test_step_26_outcome_recorded` — `tests/integration/test_golden_thread.py:1269`) | ✅ closed | — |
+| 27 | Step 27: design recall returns outcome-weighted similar project. (`test_step_27_design_recall` — `tests/integration/test_golden_thread.py:1290`) | ✅ closed | — |
+| 28 | Step 28: degradation register reports zero active degradations. (`test_step_28_degradations` — `tests/integration/test_golden_thread.py:1315`) | ✅ closed | — |
 
-**27 steps carry no `xfail` marker at all — their seam is proven live** by the test asserting the real production call path, not a mock.
+**28 steps carry no `xfail` marker at all — their seam is proven live** by the test asserting the real production call path, not a mock.
