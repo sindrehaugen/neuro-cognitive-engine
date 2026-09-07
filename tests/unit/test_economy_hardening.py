@@ -57,6 +57,7 @@ _ECONOMY_TOOLS: frozenset[str] = frozenset(
         "economy_validate_kid",
         "economy_generate_ehf",
         "economy_validate_contract",
+        "economy_get_gl_records",
     }
 )
 
