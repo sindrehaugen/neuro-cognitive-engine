@@ -95,9 +95,7 @@ class CustomerPortalAuthMiddleware(BaseHTTPMiddleware):
         # 2. Fallback header authentication (test/transitional mode)
         cust_scope_header = request.headers.get("x-customer-scope-id")
         if not cust_scope_header or not cust_scope_header.strip():
-            return JSONResponse(
-                {"error": "Unauthorized: customer scope required"}, status_code=401
-            )
+            return JSONResponse({"error": "Unauthorized: customer scope required"}, status_code=401)
 
         cust_scope_clean = cust_scope_header.strip()
         if cust_scope_clean == "00000000-0000-0000-0000-000000000000":
@@ -186,7 +184,11 @@ def verify_resource_ownership(
     if hasattr(engine, "resources") and isinstance(engine.resources, dict):
         res_dict = engine.resources
         entry = res_dict.get((resource_type, resource_id))
-        if entry is None and resource_type in res_dict and isinstance(res_dict[resource_type], dict):
+        if (
+            entry is None
+            and resource_type in res_dict
+            and isinstance(res_dict[resource_type], dict)
+        ):
             entry = res_dict[resource_type].get(resource_id)
         if entry is not None:
             owner_ns = entry.get("namespace_id") if isinstance(entry, dict) else entry[0]
@@ -259,13 +261,10 @@ async def portal_login(request: Request) -> JSONResponse:
     # In production, broker/magic-link token is verified cryptographically
     # For synthetic/staff authentication, resolve namespace and customer scope
     ns_id = (
-        body.get("namespace_id")
-        or request.headers.get("X-Namespace-ID")
-        or str(uuid.UUID(int=1))
+        body.get("namespace_id") or request.headers.get("X-Namespace-ID") or str(uuid.UUID(int=1))
     )
-    customer_scope_id = (
-        body.get("customer_scope_id")
-        or str(uuid.uuid5(uuid.NAMESPACE_DNS, f"customer.{email}"))
+    customer_scope_id = body.get("customer_scope_id") or str(
+        uuid.uuid5(uuid.NAMESPACE_DNS, f"customer.{email}")
     )
 
     session = default_session_store.create_session(
@@ -714,4 +713,3 @@ def build_customer_portal_app(engine: Any = None) -> Starlette:
     )
     app.state.engine = engine
     return app
-
