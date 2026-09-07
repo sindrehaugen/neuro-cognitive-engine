@@ -22,7 +22,7 @@ from nce.admin_handlers._shared import (
     admin_state,
     bump_mcp_cache_generation,
 )
-from nce.auth import validate_agent_id
+from nce.auth import resolve_partner_scope, validate_agent_id
 from nce.db_utils import scoped_pg_session
 from nce.vertical_modules.vendors import (
     do_get_contractor,
@@ -259,17 +259,22 @@ async def api_vendors_upsert_contractor(request: Any) -> JSONResponse:
     if not contractor_id:
         return JSONResponse({"error": "Missing required field: contractor_id"}, status_code=422)
 
-    partner_scope_id = data.get("partner_scope_id")
-    if not partner_scope_id:
-        return JSONResponse({"error": "Missing required field: partner_scope_id"}, status_code=422)
-
     try:
-        UUID(str(partner_scope_id))
+        partner_scope_id = await resolve_partner_scope(
+            request,
+            data.get("partner_scope_id"),
+            namespace_id=namespace_id,
+            engine=admin_state.engine,
+        )
     except ValueError as exc:
         return JSONResponse({"error": f"Invalid partner_scope_id: {exc}"}, status_code=422)
 
+    if not partner_scope_id:
+        return JSONResponse({"error": "Missing required field: partner_scope_id"}, status_code=422)
+
     params = dict(data)
     params["namespace_id"] = namespace_id
+    params["partner_scope_id"] = partner_scope_id
 
     try:
         result = await do_upsert_contractor(admin_state.engine, params)
@@ -278,19 +283,12 @@ async def api_vendors_upsert_contractor(request: Any) -> JSONResponse:
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=422)
     except Exception as exc:
-        return admin_error_response(
-            "Vendors upsert_contractor error",
-            exc,
-            status_code=500,
-            log_event="api_vendors_upsert_contractor",
-        )
+        log.exception("api_vendors_upsert_contractor error: %s", exc)
+        return admin_error_response("Internal upsert contractor error", exc)
 
 
 async def api_vendors_get_contractor(request: Any) -> JSONResponse:
-    """GET /api/vendors/contractors/{id}
-
-    Path parameter:
-        id (str): contractor_id (label or ID).
+    """GET /api/vendors/contractors/{id} — fetch contractor by ID.
 
     Query parameters:
         namespace_id (str, required): Active namespace UUID.
@@ -301,7 +299,6 @@ async def api_vendors_get_contractor(request: Any) -> JSONResponse:
 
     contractor_id = request.path_params.get("id", "").strip()
     namespace_id = request.query_params.get("namespace_id", "").strip()
-    partner_scope_id = request.query_params.get("partner_scope_id", "").strip() or None
 
     if not contractor_id:
         return JSONResponse({"error": "Path param 'id' is required"}, status_code=422)
@@ -316,11 +313,15 @@ async def api_vendors_get_contractor(request: Any) -> JSONResponse:
     except ValueError as exc:
         return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
 
-    if partner_scope_id:
-        try:
-            UUID(partner_scope_id)
-        except ValueError as exc:
-            return JSONResponse({"error": f"Invalid partner_scope_id: {exc}"}, status_code=422)
+    try:
+        partner_scope_id = await resolve_partner_scope(
+            request,
+            request.query_params.get("partner_scope_id"),
+            namespace_id=namespace_id,
+            engine=admin_state.engine,
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": f"Invalid partner_scope_id: {exc}"}, status_code=422)
 
     try:
         result = await do_get_contractor(
