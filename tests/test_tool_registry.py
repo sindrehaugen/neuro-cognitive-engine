@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 252  # 251 baseline + 1 Project case study edge tool (Wave C-PJ2)
+_EXPECTED_TOTAL = 253  # 251 baseline + 1 Project case study edge tool (Wave C-PJ2) + 1 Sales commission tool (Wave S-6)
 
 
 def test_registry_has_expected_entries():
@@ -414,6 +414,8 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         # MLV15D-RS1 -- Resources master-data cacheable reads (2 tools)
         "resources_get_resource",
         "resources_list_resources",
+        # Wave S-6 -- Sales commission calculation Advisor tool (cacheable)
+        "sales_calculate_commission",
     }
 )
 
@@ -426,7 +428,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 94  # 93 baseline + 1 Procurement savings tool (Wave PR-3)
+    assert len(CACHEABLE_TOOLS) == 95  # 94 baseline + 1 Sales commission tool (Wave S-6)
 
 
 # ---------------------------------------------------------------------------

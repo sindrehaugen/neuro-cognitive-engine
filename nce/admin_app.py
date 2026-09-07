@@ -588,6 +588,11 @@ def build_admin_routes() -> list[Route]:
             endpoint=sales_handlers.api_admin_sales_edit_deal,
             methods=["POST"],
         ),
+        Route(
+            "/api/sales/commission",
+            endpoint=sales_handlers.api_admin_sales_calculate_commission,
+            methods=["GET"],
+        ),
         # ------------------------------------------------------------------
         # Entity resolution admin endpoints
         # ------------------------------------------------------------------

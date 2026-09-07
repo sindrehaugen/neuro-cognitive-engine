@@ -34,6 +34,7 @@ from nce.db_utils import scoped_pg_session
 from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import mcp_handler
 from nce.vertical_modules.sales.baseline import get_signed_baseline
+from nce.vertical_modules.sales.commission import do_calculate_commission
 from nce.vertical_modules.sales.lines import do_add_quote_line, do_get_quote_lines
 from nce.vertical_modules.sales.signing import do_request_signature
 from nce.vertical_modules.sales.write_routing import (
@@ -410,4 +411,29 @@ async def handle_sales_edit_deal(engine: NCEEngine, arguments: dict[str, Any]) -
         params["source_id"] = str(arguments["source_id"]).strip()
 
     result = await do_edit_deal(engine, params)
+    return json.dumps(result)
+
+
+@mcp_handler
+async def handle_sales_calculate_commission(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: sales_calculate_commission — calculate DB-weighted sales commissions.
+
+    Arguments
+    ---------
+    namespace_id : str (required)
+    seller_id    : str (optional) — filter commission history by seller.
+    deal_data    : dict (optional) — direct deal items calculation.
+
+    Returns
+    -------
+    JSON body: dict containing commission calculation result.
+    """
+    ns = require_namespace_id(arguments)
+    params: dict[str, Any] = {"namespace_id": ns}
+    if "seller_id" in arguments and arguments["seller_id"] is not None:
+        params["seller_id"] = str(arguments["seller_id"]).strip()
+    if "deal_data" in arguments and isinstance(arguments["deal_data"], dict):
+        params["deal_data"] = arguments["deal_data"]
+
+    result = await do_calculate_commission(engine, params)
     return json.dumps(result)
