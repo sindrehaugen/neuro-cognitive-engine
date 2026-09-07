@@ -485,6 +485,15 @@ EVENT_CATALOGUE: Mapping[str, EventContract] = {
         status="UNCONSUMED",
         description="Emitted when a support service ticket breaches its first-response or resolution SLA deadline.",
     ),
+    "ABSENCE.compliance_alert": EventContract(
+        selector="ABSENCE.compliance_alert",
+        node_type="ABSENCE",
+        op="compliance_alert",
+        declared_producers=("nce/vertical_modules/hr/compliance.py",),
+        declared_consumers=("nce/vertical_modules/hr/compliance.py",),
+        status="ACTIVE",
+        description="Emitted when Norwegian statutory sick-leave compliance milestones are approaching or overdue.",
+    ),
     # ---------------------------------------------------------------------------
     # System design component retirement and deletion lifecycles
     # ---------------------------------------------------------------------------

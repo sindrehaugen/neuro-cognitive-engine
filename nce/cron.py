@@ -1273,6 +1273,75 @@ async def _support_sla_watcher_tick(pool: asyncpg.Pool) -> None:
         await release_cron_lock(lock)
 
 
+_HR_COMPLIANCE_WATCHER_INTERVAL_MINUTES: int = 60
+
+
+async def _hr_compliance_watcher_tick(pool: asyncpg.Pool) -> None:
+    """
+    APScheduler job: scan active sick-leave absences in namespaces and emit
+    ABSENCE.compliance_alert for statutory compliance milestones (Wave HR-5).
+    """
+    ttl = _HR_COMPLIANCE_WATCHER_INTERVAL_MINUTES * 60 + 60
+    lock: CronLock | None = await acquire_cron_lock("hr_compliance_watcher", ttl)
+    if lock is None:
+        log.debug("Skipping hr_compliance_watcher — lock held by another instance")
+        return
+    try:
+        from nce.vertical_modules.hr.compliance import do_check_compliance_deadlines
+
+        class _PoolEngine:
+            def __init__(self, p: asyncpg.Pool) -> None:
+                self.pg_pool = p
+
+        engine = _PoolEngine(pool)
+
+        async with unmanaged_pg_connection(
+            pool, site="cron.hr_compliance_watcher.namespace_scan"
+        ) as conn:
+            rows = await conn.fetch("SELECT id FROM namespaces")
+
+        for row in rows:
+            ns_id: UUID = row["id"]
+            try:
+                stats = await do_check_compliance_deadlines(engine, {"namespace_id": str(ns_id)})
+                log.debug(
+                    "hr_compliance_watcher tick namespace=%s checked=%d alerted=%d published=%d",
+                    ns_id,
+                    stats.get("checked", 0),
+                    stats.get("alerted", 0),
+                    stats.get("published", 0),
+                )
+                if stats.get("alerted", 0) > 0:
+                    alerts = stats.get("alerts", [])
+                    if alerts:
+                        sample_str = "; ".join(
+                            f"Absence {a['absence_id']} (Emp {a['employee_id']}, state {a['compliance_state']})"
+                            for a in alerts[:5]
+                        )
+                        await _dispatch_throttled_alert(
+                            f"cron.hr_compliance_watcher.{ns_id}",
+                            f"HR Compliance Alerts: Namespace {ns_id}",
+                            f"{len(alerts)} sick leave(s) with compliance alerts in namespace {ns_id}: {sample_str}",
+                        )
+            except _CRON_TICK_ERRORS as exc:
+                log.exception("hr_compliance_watcher tick failed for namespace=%s", ns_id)
+                await _dispatch_throttled_alert(
+                    f"cron.hr_compliance_watcher.{ns_id}",
+                    f"HR Compliance Watcher Failed: Namespace {ns_id}",
+                    f"HR compliance watcher tick failed for namespace {ns_id}: "
+                    f"{type(exc).__name__}: {exc}",
+                )
+    except _CRON_TICK_ERRORS as exc:
+        log.exception("hr_compliance_watcher tick failed unexpectedly")
+        await _dispatch_throttled_alert(
+            "cron.hr_compliance_watcher.global",
+            "Cron Job Failed: hr_compliance_watcher",
+            f"HR compliance watcher tick failed unexpectedly: {type(exc).__name__}: {exc}",
+        )
+    finally:
+        await release_cron_lock(lock)
+
+
 async def _actor_trust_tick(pool: asyncpg.Pool) -> None:
     """
     Hourly tick: recompute Laplace-smoothed trust scores in ``actor_trust``.
@@ -1971,6 +2040,9 @@ async def async_main() -> None:
     from nce.vertical_modules.field_tech.work_orders import (
         register_field_tech_subscribers,
     )
+    from nce.vertical_modules.hr.compliance import (
+        register_hr_compliance_subscribers,
+    )
     from nce.vertical_modules.project import automation as project_automation
     from nce.vertical_modules.project import tasks as project_tasks
     from nce.vertical_modules.resources import watcher as resources_watcher
@@ -1984,6 +2056,7 @@ async def async_main() -> None:
     register_system_design_subscribers()
     register_field_tech_subscribers()
     register_resources_event_subscribers()
+    register_hr_compliance_subscribers()
 
     # Module 7's three C4 selectors (M0.W20d) -- PO_LINE.status_changed,
     # GOODS_RECEIPT.created and BOM_LINE.status_changed. Their handlers were
@@ -2199,6 +2272,17 @@ async def async_main() -> None:
         replace_existing=True,
     )
 
+    hr_compliance_minutes = max(1, int(_HR_COMPLIANCE_WATCHER_INTERVAL_MINUTES))
+    scheduler.add_job(
+        _hr_compliance_watcher_tick,
+        IntervalTrigger(minutes=hr_compliance_minutes),
+        args=[pool],
+        id="hr_compliance_watcher",
+        coalesce=True,
+        max_instances=1,
+        replace_existing=True,
+    )
+
     scheduler.start()
     log.info(
         "Started bridge renewal scheduler: interval=%s min, lookahead=%s h",
@@ -2241,6 +2325,7 @@ async def async_main() -> None:
         _hr_cert_expiry_watcher_tick(pool),
         _vendors_cert_expiry_watcher_tick(pool, mongo_client),
         _support_sla_watcher_tick(pool),
+        _hr_compliance_watcher_tick(pool),
     ]
     if cfg.NCE_D365_ENABLED:
         startup_coros.append(_d365_sync_tick(pool))
