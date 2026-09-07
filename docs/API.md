@@ -62,6 +62,9 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/admin/namespaces/{namespace_id}` | `api_admin_namespaces_get` |
 | GET | `/api/admin/namespaces/{namespace_id}/bridges` | `api_admin_namespace_bridges` |
 | POST | `/api/admin/namespaces/{namespace_id}/metadata` | `api_admin_namespaces_update_metadata` |
+| GET | `/api/admin/namespaces/{namespace_id}/signing-credentials` | `api_admin_signing_credentials_status` |
+| POST | `/api/admin/namespaces/{namespace_id}/signing-credentials` | `api_admin_signing_credentials_save` |
+| DELETE | `/api/admin/namespaces/{namespace_id}/signing-credentials/{provider}` | `api_admin_signing_credentials_delete` |
 | GET | `/api/admin/pii-redactions` | `api_admin_pii_redactions_list` |
 | POST | `/api/admin/pricing/resolve` | `api_pricing_resolve` |
 | GET | `/api/admin/quotas` | `api_admin_quotas` |
@@ -81,6 +84,9 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/admin/settings/reset` | `api_admin_settings_reset` |
 | POST | `/api/admin/settings/rollback` | `api_admin_settings_rollback` |
 | GET | `/api/admin/settings/{key}` | `api_admin_settings_get` |
+| DELETE | `/api/admin/signing-credentials` | `api_admin_signing_credentials_delete` |
+| POST | `/api/admin/signing-credentials/save` | `api_admin_signing_credentials_save` |
+| GET | `/api/admin/signing-credentials/status` | `api_admin_signing_credentials_status` |
 | POST | `/api/admin/signing/mark-signed` | `api_admin_signing_mark_signed` |
 | GET | `/api/admin/signing/status` | `api_admin_signing_status` |
 | GET | `/api/admin/tools` | `api_admin_tools` |
@@ -538,4 +544,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 263 REST endpoints, 257 MCP tools._
+_Totals: 269 REST endpoints, 257 MCP tools._

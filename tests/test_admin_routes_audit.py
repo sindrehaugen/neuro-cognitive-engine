@@ -360,3 +360,80 @@ async def test_api_admin_security_test_rls_isolation() -> None:
         assert data["isolation_ok"] is True
         assert data["cross_tenant_rows_visible"] == 0
         assert data["same_tenant_rows_visible"] == 3
+
+
+@pytest.mark.asyncio
+async def test_api_admin_signing_credentials_routes() -> None:
+    mock_engine = MagicMock()
+    mock_conn = AsyncMock()
+    tx_cm = MagicMock()
+    tx_cm.__aenter__ = AsyncMock(return_value=None)
+    tx_cm.__aexit__ = AsyncMock(return_value=None)
+    mock_conn.transaction = MagicMock(return_value=tx_cm)
+    mock_engine.pg_pool.acquire.return_value.__aenter__.return_value = mock_conn
+
+    ns = uuid.uuid4()
+    sample_status = {
+        "configured": True,
+        "provider": "criipto",
+        "client_id": "test-id",
+        "secret_fingerprint": "••••1234",
+    }
+
+    with (
+        patch("nce.admin_state.engine", mock_engine),
+        patch("nce.auth.set_namespace_context", new=AsyncMock()),
+        patch(
+            "nce.signing_credentials.save_signing_credential",
+            new=AsyncMock(return_value={"status": "ok", **sample_status}),
+        ),
+        patch(
+            "nce.signing_credentials.get_signing_credential_status",
+            new=AsyncMock(return_value=sample_status),
+        ),
+    ):
+        from admin_server import (
+            api_admin_signing_credentials_save,
+            api_admin_signing_credentials_status,
+        )
+
+        # 1. Save route
+        req_save = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/api/admin/signing-credentials/save",
+            }
+        )
+
+        async def _json():
+            return {
+                "namespace_id": str(ns),
+                "provider": "criipto",
+                "client_id": "test-id",
+                "client_secret": "my-secret-1234",
+            }
+
+        req_save.json = _json  # type: ignore[method-assign]
+        resp_save = await api_admin_signing_credentials_save(req_save)
+        assert resp_save.status_code == 200
+        data_save = json.loads(resp_save.body.decode())
+        assert data_save["status"] == "ok"
+        assert data_save["secret_fingerprint"] == "••••1234"
+        assert "client_secret" not in data_save
+
+        # 2. Status route
+        req_status = Request(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": f"/api/admin/signing-credentials/status?namespace_id={ns}&provider=criipto",
+                "query_string": f"namespace_id={ns}&provider=criipto".encode(),
+            }
+        )
+        resp_status = await api_admin_signing_credentials_status(req_status)
+        assert resp_status.status_code == 200
+        data_status = json.loads(resp_status.body.decode())
+        assert data_status["configured"] is True
+        assert data_status["secret_fingerprint"] == "••••1234"
+        assert "client_secret" not in data_status
