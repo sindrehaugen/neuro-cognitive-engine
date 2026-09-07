@@ -1272,10 +1272,10 @@ class _Config:
     # Minimum 1 to prevent empty recall.  Default: 5.
     NCE_SYSTEM_DESIGN_RECALL_TOP_K: int = _int_env("NCE_SYSTEM_DESIGN_RECALL_TOP_K", 5, minimum=1)
     # Outcome-weighting discounts recall scores by change-order / support-ticket
-    # pressure and margin data from the Project/Support ledger.  DORMANT until
-    # those engines backfill the ledger — default False (pure-similarity ranking).
+    # pressure and margin data from the Project/Support ledger (Wave C-SD2).
+    # Default: True (outcome weighting active with coverage indicator).
     NCE_SYSTEM_DESIGN_OUTCOME_WEIGHTING_ENABLED: bool = _bool_env(
-        "NCE_SYSTEM_DESIGN_OUTCOME_WEIGHTING_ENABLED", False
+        "NCE_SYSTEM_DESIGN_OUTCOME_WEIGHTING_ENABLED", True
     )
 
     # --- Procurement Module 1 Wave 11 — PO submission autonomy ceiling ---

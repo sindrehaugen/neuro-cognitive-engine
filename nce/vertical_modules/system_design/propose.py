@@ -12,8 +12,9 @@ Design invariants (from the wave brief):
     Python dict only — it is NOT a column and NOT persisted.
   - SIMILARITY-FIRST: ranking is pure cosine similarity (1 - distance)
     over the ``memories`` table (halfvec pgvector).
-  - DORMANT outcome-weighting: ``_apply_outcome_weights`` is a stub gated
-    by ``NCE_SYSTEM_DESIGN_OUTCOME_WEIGHTING_ENABLED`` (default False).
+  - OUTCOME-WEIGHTING: ``_apply_outcome_weights`` adjusts recall scores
+    based on attributed project outcomes from ``kg_edges`` (predicate ``has_outcome``).
+    Gated by ``NCE_SYSTEM_DESIGN_OUTCOME_WEIGHTING_ENABLED`` (default True).
     When OFF, candidates are returned unchanged in pure-similarity order.
   - No migration, no new node types, no surface change (no MCP tool).
   - ``confidence`` lives on edges only (rule 7); this module does not
@@ -149,8 +150,15 @@ def _apply_outcome_weights(
         elif not isinstance(proj_meta, dict):
             proj_meta = {}
 
-        proj_id = proj_meta.get("project_id") or name
-        outcome_data = outcomes.get(proj_id) or outcomes.get(name)
+        proj_id = str(proj_meta.get("project_id") or name)
+        outcome_data = (
+            outcomes.get(proj_id)
+            or outcomes.get(name)
+            or outcomes.get(f"PROJECT:{proj_id}")
+            or outcomes.get(proj_id.removeprefix("PROJECT:"))
+            or (outcomes.get(f"PROJECT:{name}") if name else None)
+            or (outcomes.get(name.removeprefix("PROJECT:")) if name else None)
+        )
 
         if outcome_data:
             attributed_count += 1
@@ -333,13 +341,30 @@ async def do_propose_design(
             if ns_metadata_row and isinstance(ns_metadata_row["metadata"], str)
             else (ns_metadata_row["metadata"] if ns_metadata_row else {})
         ) or {}
-        if not outcome_weighting_enabled:
-            outcome_weighting_enabled = bool(
-                ns_metadata.get("system_design", {}).get("outcome_weighting_enabled", False)
-            )
+        ns_override = ns_metadata.get("system_design", {}).get("outcome_weighting_enabled")
+        if ns_override is not None:
+            outcome_weighting_enabled = bool(ns_override)
 
-        cand_names = [r["name"] for r in candidates if r.get("name")]
-        if cand_names:
+        cand_keys: set[str] = set()
+        for r in candidates:
+            cname = r.get("name")
+            if cname:
+                cand_keys.add(str(cname))
+                cand_keys.add(f"PROJECT:{cname}")
+                cand_keys.add(str(cname).removeprefix("PROJECT:"))
+            cmeta = r.get("metadata")
+            if isinstance(cmeta, str):
+                try:
+                    cmeta = json.loads(cmeta)
+                except Exception:
+                    cmeta = {}
+            if isinstance(cmeta, dict):
+                pid = cmeta.get("project_id")
+                if pid:
+                    cand_keys.add(str(pid))
+                    cand_keys.add(f"PROJECT:{pid}")
+
+        if outcome_weighting_enabled and cand_keys:
             outcome_rows = await conn.fetch(
                 """
                 SELECT subject_label, confidence, object_label
@@ -349,15 +374,19 @@ async def do_propose_design(
                   AND subject_label = ANY($2::text[])
                 """,
                 str(ns_uuid),
-                cand_names,
+                list(cand_keys),
             )
             for row in outcome_rows:
-                outcomes[row["subject_label"]] = {
+                subj = str(row["subject_label"])
+                data = {
                     "confidence": float(row["confidence"])
                     if row["confidence"] is not None
                     else 1.0,
                     "object_label": row["object_label"],
                 }
+                outcomes[subj] = data
+                outcomes[subj.removeprefix("PROJECT:")] = data
+                outcomes[f"PROJECT:{subj.removeprefix('PROJECT:')}"] = data
 
     log.info(
         "do_propose_design: ns=%s recalled %d candidate(s) (top_k=%d, attributed_outcomes=%d)",
