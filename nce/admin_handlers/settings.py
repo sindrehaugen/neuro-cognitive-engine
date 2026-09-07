@@ -309,7 +309,7 @@ async def handle_explain_config_change(engine: Any, arguments: dict[str, Any]) -
     async with pool.acquire(timeout=10.0) as conn:
         rows = await conn.fetch(
             """
-            SELECT event_id, event_type, agent_id, params, event_seq, occurred_at
+            SELECT id AS event_id, event_type, agent_id, params, event_seq, occurred_at
             FROM event_log
             WHERE event_type IN ('config_changed', 'config_reset')
             ORDER BY occurred_at ASC, event_seq ASC

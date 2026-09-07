@@ -477,7 +477,7 @@ async def api_admin_d365_namespace_update(request):
             existing["d365"] = d365_block
 
             await conn.execute(
-                "UPDATE namespaces SET metadata = $1::jsonb, updated_at = NOW() WHERE id = $2",
+                "UPDATE namespaces SET metadata = $1::jsonb WHERE id = $2",
                 json.dumps(existing),
                 ns_id,
             )
