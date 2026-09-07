@@ -77,7 +77,7 @@ There is no `marketing_assets` MCP tool and no `do_get_marketing_assets` core. `
 Similarly, `api_marketing_testimonials` (`admin_handlers/marketing.py:214-287`) queries `testimonials` directly (filterable by `status`, `customer_id`) rather than calling into a `do_*` function — there is no corresponding MCP tool for *listing* testimonials, only for creating (`marketing_request_testimonial`) and capturing (`marketing_capture_testimonial`) them.
 
 ### 3.3 Two `do_*` cores with no route or tool at all
-Per `nce/config_data/internal-cores.json:142-151`, two functions are formally tracked as unwired:
+Per `nce/config_data/internal-cores.json`, two functions are formally tracked as unwired:
 
 | Core | File | Tracked owner | Reason given |
 |---|---|---|---|
