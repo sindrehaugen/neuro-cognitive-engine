@@ -34,6 +34,7 @@ from nce.vertical_modules.support.mcp_handlers import (
 from nce.vertical_modules.support.proactive import do_open_proactive_telemetry_ticket
 from nce.vertical_modules.support.sla import (
     calculate_sla_targets,
+    do_check_sla_breaches,
     do_sla_clock,
     evaluate_sla_status,
     load_sla_profiles,
@@ -58,6 +59,7 @@ __all__ = [
     "TicketNotFoundError",
     "calculate_sla_targets",
     "compute_health_score",
+    "do_check_sla_breaches",
     "do_health_score",
     "do_open_proactive_telemetry_ticket",
     "do_open_ticket",

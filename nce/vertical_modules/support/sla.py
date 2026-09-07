@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from nce.db_utils import scoped_pg_session
+from nce.events.bus import publish
 from nce.vertical_modules.support.tickets import (
     TicketNotFoundError,
     _extract_pool,
@@ -90,14 +91,23 @@ def calculate_sla_targets(
     return base_time + resp_delta, base_time + res_delta
 
 
+def _ensure_dt(v: datetime.datetime | str | None) -> datetime.datetime | None:
+    if v is None:
+        return None
+    if isinstance(v, str):
+        dt = datetime.datetime.fromisoformat(v)
+        return dt if dt.tzinfo is not None else dt.replace(tzinfo=datetime.timezone.utc)
+    return v if v.tzinfo is not None else v.replace(tzinfo=datetime.timezone.utc)
+
+
 def evaluate_sla_status(
     *,
-    first_response_due: datetime.datetime | None,
-    resolution_due: datetime.datetime | None,
-    first_response_at: datetime.datetime | None = None,
-    resolved_at: datetime.datetime | None = None,
+    first_response_due: datetime.datetime | str | None,
+    resolution_due: datetime.datetime | str | None,
+    first_response_at: datetime.datetime | str | None = None,
+    resolved_at: datetime.datetime | str | None = None,
     paused_intervals: list[dict[str, Any]] | None = None,
-    now: datetime.datetime | None = None,
+    now: datetime.datetime | str | None = None,
 ) -> dict[str, Any]:
     """Compute deterministic countdowns, pause deductions, breach status and breach risk.
 
@@ -110,8 +120,11 @@ def evaluate_sla_status(
     paused_intervals: list of interval dicts with duration_seconds or paused_at/resumed_at.
     now: reference timestamp (default current UTC time).
     """
-    if now is None:
-        now = datetime.datetime.now(datetime.timezone.utc)
+    now_dt = _ensure_dt(now) or datetime.datetime.now(datetime.timezone.utc)
+    first_due_dt = _ensure_dt(first_response_due)
+    res_due_dt = _ensure_dt(resolution_due)
+    first_resp_dt = _ensure_dt(first_response_at)
+    resolved_dt = _ensure_dt(resolved_at)
 
     # 1. Deduct paused time
     paused_seconds = 0
@@ -121,42 +134,44 @@ def evaluate_sla_status(
             if "duration_seconds" in interval:
                 paused_seconds += int(interval["duration_seconds"])
             elif interval.get("paused_at"):
-                paused_dt = datetime.datetime.fromisoformat(interval["paused_at"])
-                if interval.get("resumed_at"):
-                    resumed_dt = datetime.datetime.fromisoformat(interval["resumed_at"])
-                    paused_seconds += max(int((resumed_dt - paused_dt).total_seconds()), 0)
-                else:
-                    # currently active pause
-                    is_paused = True
-                    paused_seconds += max(int((now - paused_dt).total_seconds()), 0)
+                paused_dt = _ensure_dt(interval["paused_at"])
+                if paused_dt is not None:
+                    if interval.get("resumed_at"):
+                        resumed_dt = _ensure_dt(interval["resumed_at"])
+                        if resumed_dt is not None:
+                            paused_seconds += max(int((resumed_dt - paused_dt).total_seconds()), 0)
+                    else:
+                        # currently active pause
+                        is_paused = True
+                        paused_seconds += max(int((now_dt - paused_dt).total_seconds()), 0)
 
     pause_delta = datetime.timedelta(seconds=paused_seconds)
 
     # 2. Check first response breach
     first_resp_breached = False
-    effective_first_due = (first_response_due + pause_delta) if first_response_due else None
+    effective_first_due = (first_due_dt + pause_delta) if first_due_dt else None
     remaining_first_resp = None
 
     if effective_first_due:
-        if first_response_at is not None:
-            first_resp_breached = first_response_at > effective_first_due
+        if first_resp_dt is not None:
+            first_resp_breached = first_resp_dt > effective_first_due
             remaining_first_resp = 0.0
         else:
-            first_resp_breached = now > effective_first_due
-            remaining_first_resp = max((effective_first_due - now).total_seconds(), 0.0)
+            first_resp_breached = now_dt > effective_first_due
+            remaining_first_resp = max((effective_first_due - now_dt).total_seconds(), 0.0)
 
     # 3. Check resolution breach
     res_breached = False
-    effective_res_due = (resolution_due + pause_delta) if resolution_due else None
+    effective_res_due = (res_due_dt + pause_delta) if res_due_dt else None
     remaining_res = None
 
     if effective_res_due:
-        if resolved_at is not None:
-            res_breached = resolved_at > effective_res_due
+        if resolved_dt is not None:
+            res_breached = resolved_dt > effective_res_due
             remaining_res = 0.0
         else:
-            res_breached = now > effective_res_due
-            remaining_res = max((effective_res_due - now).total_seconds(), 0.0)
+            res_breached = now_dt > effective_res_due
+            remaining_res = max((effective_res_due - now_dt).total_seconds(), 0.0)
 
     # 4. Synthesize breach status
     breached = first_resp_breached or res_breached
@@ -312,4 +327,243 @@ async def do_sla_clock(
         else None,
         "resolved_at": ticket_row["resolved_at"].isoformat() if ticket_row["resolved_at"] else None,
         **status_eval,
+    }
+
+
+_NODE_TYPE_TICKET: str = "TICKET"
+_OP_SLA_BREACHED: str = "sla_breached"
+
+
+async def do_check_sla_breaches(
+    engine_or_pool: Any,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    """Scan open service tickets in active namespace and idempotently emit TICKET.sla_breached.
+
+    Periodically called by the Support SLA breach watcher on cron (Wave SU-2).
+    For each open ticket, evaluates first-response and resolution deadlines,
+    updates persistent sla_clocks rows, appends audit records to service_tickets.events,
+    and publishes TICKET.sla_breached to the C4 transactional outbox.
+
+    Parameters
+    ----------
+    engine_or_pool:
+        NCEEngine instance or asyncpg.Pool.
+    params:
+        - namespace_id: (required) Tenant UUID string or UUID.
+        - now: (optional) Reference timestamp (defaults to current UTC time).
+        - ticket_id: (optional) Single ticket UUID to restrict the check.
+
+    Returns
+    -------
+    dict with:
+        - namespace_id: str
+        - checked: int
+        - breached: int (new or escalated breaches detected and published in this run)
+        - published: int
+        - total_active_breaches: int (total open tickets currently in breached state)
+        - breaches: list[dict]
+    """
+    pool = _extract_pool(engine_or_pool)
+    ns_uuid = _parse_uuid(params.get("namespace_id"), "namespace_id")
+
+    now_val = params.get("now")
+    if now_val is None:
+        now = datetime.datetime.now(datetime.timezone.utc)
+    elif isinstance(now_val, str):
+        now = datetime.datetime.fromisoformat(now_val)
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=datetime.timezone.utc)
+    elif isinstance(now_val, datetime.datetime):
+        now = (
+            now_val if now_val.tzinfo is not None else now_val.replace(tzinfo=datetime.timezone.utc)
+        )
+    else:
+        now = datetime.datetime.now(datetime.timezone.utc)
+
+    ticket_id_raw = params.get("ticket_id") or params.get("id")
+    target_ticket_id = _parse_uuid(ticket_id_raw, "ticket_id") if ticket_id_raw else None
+
+    checked_count = 0
+    newly_breached_count = 0
+    total_active_breaches = 0
+    published_count = 0
+    breached_tickets: list[dict[str, Any]] = []
+
+    async with scoped_pg_session(pool, ns_uuid) as conn:
+        if target_ticket_id:
+            ticket_rows = await conn.fetch(
+                """
+                SELECT t.id, t.status, t.priority, t.sla_profile,
+                       t.first_response_at, t.resolved_at, t.created_at,
+                       c.first_response_due, c.resolution_due, c.breached, c.breach_type,
+                       c.paused_intervals
+                FROM service_tickets t
+                LEFT JOIN sla_clocks c ON c.ticket_id = t.id AND c.namespace_id = t.namespace_id
+                WHERE t.namespace_id = $1::uuid AND t.id = $2::uuid
+                """,
+                ns_uuid,
+                target_ticket_id,
+            )
+        else:
+            ticket_rows = await conn.fetch(
+                """
+                SELECT t.id, t.status, t.priority, t.sla_profile,
+                       t.first_response_at, t.resolved_at, t.created_at,
+                       c.first_response_due, c.resolution_due, c.breached, c.breach_type,
+                       c.paused_intervals
+                FROM service_tickets t
+                LEFT JOIN sla_clocks c ON c.ticket_id = t.id AND c.namespace_id = t.namespace_id
+                WHERE t.namespace_id = $1::uuid
+                  AND t.status IN ('open', 'in_progress', 'waiting_customer', 'waiting_parts')
+                ORDER BY t.created_at ASC
+                """,
+                ns_uuid,
+            )
+
+        checked_count = len(ticket_rows)
+
+        for row in ticket_rows:
+            t_id = row["id"]
+            sla_prof = row["sla_profile"] or "standard"
+            priority = row["priority"] or "medium"
+            created_at = row["created_at"]
+            resp_due = row["first_response_due"]
+            res_due = row["resolution_due"]
+            was_breached = bool(row["breached"]) if row["breached"] is not None else False
+            old_breach_type = row["breach_type"]
+            raw_paused = row["paused_intervals"]
+
+            if resp_due is None or res_due is None:
+                # Seed missing sla_clocks targets
+                calc_resp, calc_res = calculate_sla_targets(sla_prof, priority, created_at)
+                resp_due = resp_due or calc_resp
+                res_due = res_due or calc_res
+                await conn.execute(
+                    """
+                    INSERT INTO sla_clocks (
+                        ticket_id, namespace_id, sla_profile,
+                        first_response_due, resolution_due,
+                        breached, breach_type, paused_intervals, updated_at
+                    ) VALUES (
+                        $1::uuid, $2::uuid, $3,
+                        $4::timestamptz, $5::timestamptz,
+                        FALSE, NULL, '[]'::jsonb, $6::timestamptz
+                    )
+                    ON CONFLICT (ticket_id) DO NOTHING
+                    """,
+                    t_id,
+                    ns_uuid,
+                    sla_prof,
+                    resp_due,
+                    res_due,
+                    now,
+                )
+
+            paused_intervals = raw_paused
+            if isinstance(paused_intervals, str):
+                try:
+                    paused_intervals = json.loads(paused_intervals)
+                except Exception:
+                    paused_intervals = []
+            elif not isinstance(paused_intervals, list):
+                paused_intervals = []
+
+            status_eval = evaluate_sla_status(
+                first_response_due=resp_due,
+                resolution_due=res_due,
+                first_response_at=row["first_response_at"],
+                resolved_at=row["resolved_at"],
+                paused_intervals=paused_intervals,
+                now=now,
+            )
+
+            is_breached = status_eval["breached"]
+            new_breach_type = status_eval["breach_type"]
+
+            if is_breached:
+                total_active_breaches += 1
+
+                # A new breach or an escalated breach (e.g. first_response -> both)
+                is_new_breach = (not was_breached) or (new_breach_type != old_breach_type)
+                if is_new_breach:
+                    newly_breached_count += 1
+
+                    # 1. Update sla_clocks
+                    await conn.execute(
+                        """
+                        UPDATE sla_clocks
+                        SET breached = TRUE,
+                            breach_type = $3,
+                            updated_at = $4::timestamptz
+                        WHERE ticket_id = $1::uuid AND namespace_id = $2::uuid
+                        """,
+                        t_id,
+                        ns_uuid,
+                        new_breach_type,
+                        now,
+                    )
+
+                    # 2. Append breach audit event to service_tickets.events
+                    breach_event = {
+                        "type": "sla_breached",
+                        "breach_type": new_breach_type,
+                        "at": now.isoformat(),
+                        "change_origin": "cron",
+                    }
+                    await conn.execute(
+                        """
+                        UPDATE service_tickets
+                        SET events = events || $1::jsonb,
+                            updated_at = $2::timestamptz
+                        WHERE id = $3::uuid AND namespace_id = $4::uuid
+                        """,
+                        json.dumps([breach_event]),
+                        now,
+                        t_id,
+                        ns_uuid,
+                    )
+
+                    # 3. Publish C4 transactional outbox event
+                    ticket_subject = f"TICKET:{t_id}"
+                    await publish(
+                        conn,
+                        namespace_id=ns_uuid,
+                        node_type=_NODE_TYPE_TICKET,
+                        op=_OP_SLA_BREACHED,
+                        aggregate_id=ticket_subject,
+                        payload={
+                            "ticket_id": str(t_id),
+                            "namespace_id": str(ns_uuid),
+                            "breach_type": new_breach_type,
+                            "sla_profile": sla_prof,
+                            "priority": priority,
+                            "first_response_due": status_eval["effective_first_response_due"],
+                            "resolution_due": status_eval["effective_resolution_due"],
+                            "breached_at": now.isoformat(),
+                            "status": row["status"],
+                        },
+                    )
+                    published_count += 1
+
+                breached_tickets.append(
+                    {
+                        "ticket_id": str(t_id),
+                        "breach_type": new_breach_type,
+                        "newly_breached": is_new_breach,
+                        "sla_profile": sla_prof,
+                        "priority": priority,
+                        "first_response_due": status_eval["effective_first_response_due"],
+                        "resolution_due": status_eval["effective_resolution_due"],
+                        "status": row["status"],
+                    }
+                )
+
+    return {
+        "namespace_id": str(ns_uuid),
+        "checked": checked_count,
+        "breached": newly_breached_count,
+        "published": published_count,
+        "total_active_breaches": total_active_breaches,
+        "breaches": breached_tickets,
     }
