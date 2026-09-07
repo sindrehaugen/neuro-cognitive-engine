@@ -112,6 +112,7 @@ def _runtime_selectors() -> set[str]:
     selectors as orphans.
     """
     from nce.vertical_modules.field_tech.work_orders import register_field_tech_subscribers
+    from nce.vertical_modules.hr.compliance import register_hr_compliance_subscribers
     from nce.vertical_modules.project import automation as project_automation
     from nce.vertical_modules.project import tasks as project_tasks
     from nce.vertical_modules.resources.watcher import register_resources_event_subscribers
@@ -123,6 +124,7 @@ def _runtime_selectors() -> set[str]:
         register_system_design_subscribers,
         register_field_tech_subscribers,
         register_resources_event_subscribers,
+        register_hr_compliance_subscribers,
         project_tasks.register_bom_task_subscriber,
         project_automation.register_automation_subscribers,
     ):

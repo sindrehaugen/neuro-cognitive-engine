@@ -28,11 +28,16 @@ from datetime import date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+import asyncpg
+
 from nce.db_utils import scoped_pg_session
+from nce.events.bus import publish
 
 log = logging.getLogger("nce.vertical_modules.hr.compliance")
 
 EVENT_TYPE_HR_COMPLIANCE_MILESTONE_RECORDED: str = "hr_compliance_milestone_recorded"
+_NODE_TYPE_ABSENCE: str = "ABSENCE"
+_OP_COMPLIANCE_ALERT: str = "compliance_alert"
 
 STATUTORY_OPPFOLGINGSPLAN_DAYS = 28  # 4 weeks
 STATUTORY_DIALOGMOTE_1_DAYS = 49  # 7 weeks
@@ -460,3 +465,251 @@ async def do_query_compliance_deadlines(engine: Any, params: dict[str, Any]) -> 
         "total_alerts": total_alerts,
         "records": results,
     }
+
+
+async def do_check_compliance_deadlines(
+    engine_or_pool: Any,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    """Scan active sick leave absences in namespace and idempotently emit ABSENCE.compliance_alert.
+
+    Periodically called by the HR compliance deadline watcher on cron (Wave HR-5).
+    For each active sick-leave record, evaluates Norwegian statutory milestones
+    (Oppfolgingsplan at 28d/21d, Dialogmote 1 at 49d/42d, Dialogmote 2 at 182d/168d),
+    updates persistent compliance_state and raw JSONB in absences, and publishes
+    ABSENCE.compliance_alert to the C4 transactional outbox under an atomic per-absence transaction.
+
+    Parameters
+    ----------
+    engine_or_pool:
+        NCEEngine instance or asyncpg.Pool.
+    params:
+        - namespace_id: (required) Tenant UUID string or UUID.
+        - as_of_date: (optional) Reference evaluation date (defaults to current date).
+        - absence_id: (optional) Restrict check to a single absence ID.
+
+    Returns
+    -------
+    dict with:
+        - namespace_id: str
+        - checked: int
+        - alerted: int (number of absences with new alerts emitted in this run)
+        - published: int (total individual alert events emitted in this run)
+        - total_active_sick_leaves: int
+        - alerts: list[dict]
+    """
+    pool = _extract_pool(engine_or_pool)
+    ns_uuid = _parse_uuid(params.get("namespace_id"), "namespace_id")
+
+    as_of_val = params.get("as_of_date") or params.get("now")
+    if as_of_val is None:
+        eval_date = date.today()
+    elif isinstance(as_of_val, datetime):
+        eval_date = as_of_val.date()
+    elif isinstance(as_of_val, date):
+        eval_date = as_of_val
+    elif isinstance(as_of_val, str):
+        try:
+            eval_date = date.fromisoformat(as_of_val[:10])
+        except Exception:
+            eval_date = date.today()
+    else:
+        eval_date = date.today()
+
+    target_absence_id = params.get("absence_id")
+    if target_absence_id is not None:
+        target_absence_id = str(target_absence_id).strip()
+
+    checked_count = 0
+    alerted_count = 0
+    published_count = 0
+    emitted_absence_alerts: list[dict[str, Any]] = []
+
+    async with scoped_pg_session(pool, ns_uuid) as conn:
+        if target_absence_id:
+            rows = await conn.fetch(
+                """
+                SELECT a.id, a.absence_id, a.employee_id, a.type,
+                       a.start_date, a.end_date, a.days, a.status,
+                       a.compliance_state, a.raw
+                FROM absences a
+                WHERE a.namespace_id = $1::uuid
+                  AND a.absence_id = $2
+                """,
+                ns_uuid,
+                target_absence_id,
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT a.id, a.absence_id, a.employee_id, a.type,
+                       a.start_date, a.end_date, a.days, a.status,
+                       a.compliance_state, a.raw
+                FROM absences a
+                WHERE a.namespace_id = $1::uuid
+                  AND a.type IN ('sick', 'sick_leave')
+                  AND a.status = 'approved'
+                  AND (a.end_date IS NULL OR a.end_date >= $2::date)
+                ORDER BY a.start_date ASC
+                """,
+                ns_uuid,
+                eval_date,
+            )
+
+        checked_count = len(rows)
+
+        for row in rows:
+            abs_id = row["absence_id"]
+            emp_id = row["employee_id"]
+            st_d = row["start_date"]
+            if isinstance(st_d, datetime):
+                st_d = st_d.date()
+
+            raw_data = (
+                json.loads(row["raw"]) if isinstance(row["raw"], str) else dict(row["raw"] or {})
+            )
+            comp = raw_data.get("compliance") or {}
+            emitted_alert_codes = list(comp.get("emitted_alert_codes") or [])
+
+            evaluation = evaluate_absence_compliance(
+                absence_type=row["type"],
+                start_date=st_d,
+                as_of_date=eval_date,
+                existing_compliance=comp,
+            )
+
+            current_alerts = evaluation.get("alerts", [])
+            new_alerts = [a for a in current_alerts if a.get("code") not in emitted_alert_codes]
+            new_state = evaluation.get("compliance_state", COMPLIANCE_STATE_NORMAL)
+            state_changed = new_state != row["compliance_state"]
+
+            if new_alerts or state_changed:
+                try:
+                    async with conn.transaction():
+                        # Update compliance structure
+                        comp["last_evaluation"] = evaluation
+                        if new_alerts:
+                            all_emitted = sorted(
+                                set(emitted_alert_codes)
+                                | {a["code"] for a in new_alerts if a.get("code")}
+                            )
+                            comp["emitted_alert_codes"] = all_emitted
+                        raw_data["compliance"] = comp
+
+                        # 1. Update absences table
+                        await conn.execute(
+                            """
+                            UPDATE absences
+                            SET compliance_state = $1,
+                                raw = $2::jsonb,
+                                updated_at = now()
+                            WHERE absence_id = $3 AND namespace_id = $4::uuid
+                            """,
+                            new_state,
+                            json.dumps(raw_data),
+                            abs_id,
+                            ns_uuid,
+                        )
+
+                        # 2. Publish outbox event if there are new alerts
+                        if new_alerts:
+                            await publish(
+                                conn,
+                                namespace_id=ns_uuid,
+                                node_type=_NODE_TYPE_ABSENCE,
+                                op=_OP_COMPLIANCE_ALERT,
+                                aggregate_id=f"ABSENCE:{abs_id}",
+                                payload={
+                                    "absence_id": abs_id,
+                                    "employee_id": emp_id,
+                                    "namespace_id": str(ns_uuid),
+                                    "compliance_state": new_state,
+                                    "alert_codes": [a["code"] for a in new_alerts],
+                                    "alerts": new_alerts,
+                                    "verneombud_alert": evaluation.get("verneombud_alert", False),
+                                    "as_of_date": eval_date.isoformat(),
+                                    "days_elapsed": evaluation.get("days_elapsed", 0),
+                                },
+                            )
+                            alerted_count += 1
+                            published_count += len(new_alerts)
+                            emitted_absence_alerts.append(
+                                {
+                                    "absence_id": abs_id,
+                                    "employee_id": emp_id,
+                                    "compliance_state": new_state,
+                                    "alerts": new_alerts,
+                                    "verneombud_alert": evaluation.get("verneombud_alert", False),
+                                }
+                            )
+                except Exception as exc:
+                    log.exception(
+                        "Failed to atomically persist and publish compliance alerts for absence=%s ns=%s: %s",
+                        abs_id,
+                        ns_uuid,
+                        exc,
+                    )
+                    continue
+
+    return {
+        "namespace_id": str(ns_uuid),
+        "checked": checked_count,
+        "alerted": alerted_count,
+        "published": published_count,
+        "total_active_sick_leaves": checked_count,
+        "alerts": emitted_absence_alerts,
+    }
+
+
+async def handle_absence_compliance_alert(
+    conn: asyncpg.Connection,
+    event: dict[str, Any],
+) -> None:
+    """Acknowledge or process one ABSENCE.compliance_alert event from the outbox relay.
+
+    Under the OutboxHandler contract:
+    - Returning None signals successful delivery (no post-commit action needed).
+    - Logs statutory alert details for auditability, telemetry, and monitoring.
+    - Must not raise unless there is an unrecoverable configuration error.
+    """
+    payload = event.get("payload") or {}
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except Exception:
+            payload = {}
+
+    absence_id = payload.get("absence_id") or event.get("aggregate_id")
+    employee_id = payload.get("employee_id")
+    compliance_state = payload.get("compliance_state")
+    alert_codes = payload.get("alert_codes", [])
+    ns_id = event.get("namespace_id")
+
+    log.info(
+        "[hr.compliance] statutory compliance alert delivered: absence_id=%s employee_id=%s state=%s alerts=%s ns=%s",
+        absence_id,
+        employee_id,
+        compliance_state,
+        alert_codes,
+        ns_id,
+    )
+    return None
+
+
+def register_hr_compliance_subscribers() -> None:
+    """Subscribe HR compliance outbox handlers to C4 transactional outbox bus.
+
+    Subscribes to ABSENCE.compliance_alert.
+    Idempotent: nce.events.bus.subscribe funnels through register_handler which
+    ignores duplicate registrations by function equality.
+    """
+    try:
+        from nce.events.bus import subscribe
+
+        subscribe(
+            {"node_type": _NODE_TYPE_ABSENCE, "op": _OP_COMPLIANCE_ALERT},
+            handle_absence_compliance_alert,
+        )
+        log.info("HR compliance outbox subscriber registered for ABSENCE.compliance_alert.")
+    except Exception as exc:
+        log.warning("Could not register HR compliance outbox subscriber: %s", exc)

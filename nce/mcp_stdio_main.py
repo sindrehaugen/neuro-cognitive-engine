@@ -96,6 +96,9 @@ async def run_stdio_server(*, app: Server | None = None, engine: NCEEngine | Non
         from nce.vertical_modules.field_tech.work_orders import (
             register_field_tech_subscribers,
         )
+        from nce.vertical_modules.hr.compliance import (
+            register_hr_compliance_subscribers,
+        )
         from nce.vertical_modules.project import automation as project_automation
         from nce.vertical_modules.project import tasks as project_tasks
         from nce.vertical_modules.resources import watcher as resources_watcher
@@ -119,6 +122,7 @@ async def run_stdio_server(*, app: Server | None = None, engine: NCEEngine | Non
         # opens its OWN scoped_pg_session and raises without a registry.
         resources_watcher.register_engine(engine)
         register_resources_event_subscribers()
+        register_hr_compliance_subscribers()
 
         # Module 7's three C4 selectors (M0.W20d). Same reason, same ordering:
         # PO_LINE.status_changed, GOODS_RECEIPT.created and
