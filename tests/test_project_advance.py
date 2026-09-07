@@ -586,8 +586,9 @@ class TestProjectAdvancePhaseToolRegistry:
         +2 MLV15D-RS1 resources tools;
         +1 MLV15B-E3 economy tool;
         +1 MLV15D-MK2 marketing tool;
+        +4 MLV15D-S1 sales write tools;
         +1 Wave C-PJ2 project_generate_case_study_edge tool."""
-        assert len(MUTATION_TOOLS) == 111
+        assert len(MUTATION_TOOLS) == 115
 
     def test_admin_only_count(self) -> None:
         """Admin-only tools must total 32 (unified realignment registry;
@@ -623,5 +624,6 @@ class TestProjectAdvancePhaseToolRegistry:
         +2 MLV15D-RS1 resources tools;
         +1 MLV15B-E3 economy tool;
         +1 MLV15D-MK2 marketing tool;
+        +4 MLV15D-S1 sales write tools;
         +1 Wave C-PJ2 project_generate_case_study_edge tool)."""
-        assert len(ADMIN_ONLY_TOOLS) == 72
+        assert len(ADMIN_ONLY_TOOLS) == 76

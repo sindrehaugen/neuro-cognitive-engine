@@ -67,13 +67,14 @@ async def handle_hr_cert_change(
         # 1. Resolve technician resource
         res_row = await conn.fetchrow(
             """
-            SELECT id, display_name, attrs
+            SELECT id, display_name, attrs, ref_id
             FROM resources
             WHERE namespace_id = $1
               AND (
                   id::text = $2
                   OR ref_id = $2
                   OR attrs->>'employee_id' = $2
+                  OR attrs->>'contractor_id' = $2
                   OR attrs->>'email' = $2
               )
             LIMIT 1

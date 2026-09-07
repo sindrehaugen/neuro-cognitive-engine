@@ -58,19 +58,23 @@ async def do_forecast_demand(engine: Any, params: dict[str, Any]) -> dict[str, A
         # 1. Fetch active resources
         res_rows = await conn.fetch(
             """
-            SELECT id, name, kind, capacity_pct, metadata
+            SELECT id, display_name, kind, attrs
             FROM resources
-            WHERE namespace_id = $1 AND active = true
+            WHERE namespace_id = $1
+              AND COALESCE(attrs->>'active', 'true') != 'false'
             """,
             ns_id,
         )
 
         active_resources = []
         for r in res_rows:
-            meta = (
-                json.loads(r["metadata"])
-                if isinstance(r["metadata"], str)
-                else (r["metadata"] or {})
+            raw_attrs = r["attrs"] if "attrs" in r else r.get("metadata", {})
+            meta = json.loads(raw_attrs) if isinstance(raw_attrs, str) else (raw_attrs or {})
+            res_name = r["display_name"] if "display_name" in r else r.get("name")
+            cap_val = (
+                meta.get("capacity_pct")
+                if meta.get("capacity_pct") is not None
+                else (r.get("capacity_pct") if hasattr(r, "get") else 100.0)
             )
             if role_filter and r["kind"] != role_filter and meta.get("role") != role_filter:
                 continue
@@ -81,9 +85,9 @@ async def do_forecast_demand(engine: Any, params: dict[str, Any]) -> dict[str, A
             active_resources.append(
                 {
                     "id": str(r["id"]),
-                    "name": r["name"],
+                    "name": res_name,
                     "kind": r["kind"],
-                    "capacity_pct": float(r["capacity_pct"]),
+                    "capacity_pct": float(cap_val if cap_val is not None else 100.0),
                     "metadata": meta,
                 }
             )
@@ -210,7 +214,11 @@ async def get_morning_brief_capacity_pulse(engine: Any, params: dict[str, Any]) 
 
     async with scoped_pg_session(pool, ns_id) as conn:
         res_rows = await conn.fetch(
-            "SELECT id, kind FROM resources WHERE namespace_id = $1 AND active = true",
+            """
+            SELECT id, kind FROM resources
+            WHERE namespace_id = $1
+              AND COALESCE(attrs->>'active', 'true') != 'false'
+            """,
             ns_id,
         )
         total_active = len(res_rows)

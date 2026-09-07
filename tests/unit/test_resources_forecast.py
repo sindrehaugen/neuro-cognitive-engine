@@ -31,7 +31,7 @@ def mock_engine(monkeypatch):
 
     async def mock_fetch(query, *args):
         q = query.strip().lower()
-        if "from resources" in q and "where namespace_id = $1 and active = true" in q:
+        if "from resources" in q and "where namespace_id = $1" in q:
             ns_id = str(args[0])
             res = [
                 r

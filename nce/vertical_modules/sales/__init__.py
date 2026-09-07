@@ -27,7 +27,12 @@ from nce.vertical_modules.sales.flip import (
     do_morning_brief_slice,
     do_stalled_deal_watcher,
 )
-from nce.vertical_modules.sales.graph import do_create_deal, do_edit_deal
+from nce.vertical_modules.sales.graph import (
+    do_create_customer,
+    do_create_deal,
+    do_create_lead,
+    do_edit_deal,
+)
 from nce.vertical_modules.sales.lines import do_add_quote_line, do_get_quote_lines
 from nce.vertical_modules.sales.read_model import (
     do_agreement_detail,
@@ -53,7 +58,9 @@ __all__ = [
     "do_add_quote_line",
     "do_agreement_detail",
     "do_calculate_commission",
+    "do_create_customer",
     "do_create_deal",
+    "do_create_lead",
     "do_customer_profile",
     "do_draft_quote",
     "do_edit_deal",

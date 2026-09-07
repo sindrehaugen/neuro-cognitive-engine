@@ -4016,6 +4016,146 @@ TOOLS = [
         },
     ),
     Tool(
+        name="sales_create_customer",
+        description=(
+            "Create a customer account through C5 write routing. "
+            "Governed mutation tool. Routes to native NCE graph / read-model or external D365 "
+            "based on active source mode. In 'nce' mode, enforces 'nce:' ID prefixing."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Customer identifier (e.g. 'CUST-001' or 'nce:cust-1').",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Optional customer or company name.",
+                },
+                "source_id": {
+                    "type": "string",
+                    "description": "Optional external or source identifier.",
+                },
+            },
+            "required": ["namespace_id", "customer_id"],
+        },
+    ),
+    Tool(
+        name="sales_create_lead",
+        description=(
+            "Create a sales lead through C5 write routing. "
+            "Governed mutation tool. Routes to native NCE graph / read-model or external D365 "
+            "based on active source mode. In 'nce' mode, enforces 'nce:' ID prefixing."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "lead_id": {
+                    "type": "string",
+                    "description": "Lead identifier (e.g. 'LEAD-001' or 'nce:lead-1').",
+                },
+                "customer_id": {
+                    "type": "string",
+                    "description": "Optional customer identifier associated with this lead.",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Optional lead topic or name.",
+                },
+                "confidence": {
+                    "type": "number",
+                    "description": "Optional edge confidence weight (0.0 to 1.0).",
+                },
+                "source_id": {
+                    "type": "string",
+                    "description": "Optional external or source identifier.",
+                },
+            },
+            "required": ["namespace_id", "lead_id"],
+        },
+    ),
+    Tool(
+        name="sales_create_deal",
+        description=(
+            "Create a pipeline deal through C5 write routing. "
+            "Governed mutation tool. Routes to native NCE graph / read-model or external D365 "
+            "based on active source mode. In 'nce' mode, enforces 'nce:' ID prefixing."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "deal_id": {
+                    "type": "string",
+                    "description": "Deal identifier (e.g. 'DEAL-001' or 'nce:deal-1').",
+                },
+                "customer_id": {
+                    "type": "string",
+                    "description": "Associated customer identifier.",
+                },
+                "quote_id": {
+                    "type": "string",
+                    "description": "Associated quote identifier.",
+                },
+                "opportunity_id": {
+                    "type": "string",
+                    "description": "Optional opportunity identifier.",
+                },
+                "lead_id": {
+                    "type": "string",
+                    "description": "Optional originating lead identifier.",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Optional deal name.",
+                },
+                "confidence": {
+                    "type": "number",
+                    "description": "Optional edge confidence weight.",
+                },
+                "source_id": {
+                    "type": "string",
+                    "description": "Optional external or source identifier.",
+                },
+            },
+            "required": ["namespace_id", "deal_id", "customer_id", "quote_id"],
+        },
+    ),
+    Tool(
+        name="sales_edit_deal",
+        description=(
+            "Edit a pipeline deal through C5 write routing. "
+            "Governed mutation tool. Prevents editing non-native D365 records without an "
+            "existing NCE mapping. Updates graph and read-model."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "deal_id": {
+                    "type": "string",
+                    "description": "Deal identifier to update.",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Optional updated deal name.",
+                },
+                "confidence": {
+                    "type": "number",
+                    "description": "Optional updated edge confidence weight.",
+                },
+                "source_id": {
+                    "type": "string",
+                    "description": "Optional external or source identifier.",
+                },
+            },
+            "required": ["namespace_id", "deal_id"],
+        },
+    ),
+    Tool(
         name="sales_ping",
         description=(
             'Liveness probe for the Sales vertical. Returns {"ok": true, "engine": "sales"}.'
