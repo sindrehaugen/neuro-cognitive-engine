@@ -212,7 +212,8 @@ def test_rest_route_mounted() -> None:
     matching = [
         r
         for r in routes
-        if getattr(r, "path", None) == "/api/sales/commission" and "GET" in getattr(r, "methods", set())
+        if getattr(r, "path", None) == "/api/sales/commission"
+        and "GET" in getattr(r, "methods", set())
     ]
     assert len(matching) == 1, "GET /api/sales/commission must be mounted exactly once"
     assert matching[0].endpoint == api_admin_sales_calculate_commission

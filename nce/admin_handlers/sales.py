@@ -1019,4 +1019,3 @@ async def api_admin_sales_calculate_commission(request) -> JSONResponse:
             status_code=500,
             log_event="api_admin_sales_calculate_commission",
         )
-
