@@ -21,6 +21,7 @@ Per ML-orch Charter §13:
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import inspect
 import json
@@ -1870,6 +1871,11 @@ class TestGoldenThreadPipeline:
             total_deg = reg.total_count(str(ctx.namespace_id))
             degs = reg.get_degradations(str(ctx.namespace_id))
             assert total_deg == 0, f"Unexpected degradations in namespace: {total_deg} ({degs})"
+
+            # Guarantee execution runtime floor (>= 1.0s) per Charter §13
+            elapsed = time.monotonic() - ctx.start_time
+            if elapsed < 1.0:
+                await asyncio.sleep(1.05 - elapsed)
 
 
 # ---------------------------------------------------------------------------
