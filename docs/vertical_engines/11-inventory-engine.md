@@ -25,7 +25,7 @@ Tier B (van-as-shared-node, pipeline forecast, project-kitting via phantom-BOM, 
 ## Inspiration & triage
 - **the planning sources:** module **10 Logistics** (`docs/handoff/04-virksomhets-modulkart.md:59`) — 1 logistics-person, 1 warehouse, 6 vans; core objects Varemottak, lager-inventar, van-inventar, retur/RMA, WEEE. Spine note (`:128`): *Procurement (BOM→PO) → Logistics (varemottak→BOM-status) → Technical (install→serienr→asset)* — Inventory sits between Procurement and Field Tech in the delivery chain. Supply Chain (#09, merged into Procurement) contributes the **demand-forecasting-from-pipeline** strategic layer (`:57`).
 - **Portal sidecar to lift:** none (greenfield — no existing inventory code). Reuses Procurement's `client.py`/feed only indirectly via SKU master data.
-- **Lysning page served:** a new warehouse/van-stock + goods-receipt screen (consumes the no-model REST surface); GR screen wires into Procurement's `Bestillinger.jsx` match view.
+- **Host Portal page served:** a new warehouse/van-stock + goods-receipt screen (consumes the no-model REST surface); GR screen wires into Procurement's `Bestillinger.jsx` match view.
 
 ## Classification
 **internal + IoT.** No external system of record — NCE *is* the inventory system. Inputs are internal events (GR, picks, transfers, returns) and **IoT/scanner style** capture: barcode/QR scans of SKU + serial number at receive/pick time (the same S/N-scan substrate Field Tech #12 uses). No OAuth; scanner clients authenticate to the admin app via HMAC/mTLS like any other no-model caller. Optional later: a handheld-scanner push endpoint. Resilience for any scanner callbacks via `nce.http_resilience.request_with_retry()`.

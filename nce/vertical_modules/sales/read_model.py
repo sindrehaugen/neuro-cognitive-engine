@@ -3,7 +3,7 @@ nce/vertical_modules/sales/read_model.py
 =========================================
 Native tenant-isolated sales read-model and query aggregations.
 
-Replaces the steps_d365 sidecar aggregations with native read functions
+Replaces the Portal's D365 sidecar aggregations with native read functions
 backed by sales_read_model and sales_targets tables. All queries are
 scoped via scoped_pg_session and explicit namespace_id parameters.
 """
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("nce.vertical_modules.sales.read_model")
 
-# ── IT vs AV classification patterns (copied from steps_d365/classify.py) ─────
+# ── IT vs AV classification patterns (copied from the Portal's D365 classification logic) ─────
 _AV_RE = re.compile(
     r"møterom|moterom|\bmtr\b|\bneat\b|projektor|prosjektor|lerret|skjerm|signage|\bled\b|"
     r"mikrofon|\bxlr\b|\bdsp\b|crestron|yealink|høyttaler|hoyttaler|videobar|"

@@ -25,7 +25,7 @@ Turn "did we get the invoice right, what does it do to the project, and when do 
   - the reference implementation (KID mod-10/11 — **mod-10 shipped Batch 128; mod-11 still pending a bank-arrangement decision, see Build phases B5**), the reference implementation (cashflow sim), `ehf-generator.ts` (outbound EHF).
   - **Tests are the runnable spec — lift verbatim:** `tests/finance/matching-score.test.ts`, `supplier-invoice-cascade.test.ts`, `cost-engine.test.ts`, `events.test.ts`, `matching-learning.test.ts`.
 - **Portal sidecars to lift:** finance flows + the Finago client surface (the GL *reader* used for reconciliation).
-- **Lysning page served:** financial pulse / close screens; feeds the **Morning-brief (#19)** financial slice.
+- **Host Portal page served:** financial pulse / close screens; feeds the **Morning-brief (#19)** financial slice.
 - **Crown-jewel context:** handoff §6 (bilag-matching), §7 (Finans/PFT), §8 (drift/recurring).
 
 ## Classification

@@ -4,7 +4,7 @@ nce/vertical_modules/product/sources/nettailer.py
 Nettailer/Netset CSV feed adapter for the Product Engine.
 
 Lifted from the Portal sidecar ``backend/integrations/nettailer_client.py``
-(alias map + quote-safe CSV parse) and ``backend/steps_product/sync.py``
+(alias map + quote-safe CSV parse) and the Portal product sidecar's sync module
 (streaming, idempotent row generator).
 
 Key invariants

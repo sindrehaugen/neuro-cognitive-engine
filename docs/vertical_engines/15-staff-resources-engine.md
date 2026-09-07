@@ -15,7 +15,7 @@ The **capacity + scheduling brain**. It plans and allocates every *schedulable* 
   - modulkart **10 Logistics** — van-restocking + materials flow to site (the warehouse→project bridge).
   - modulkart **11 External Techs** — elastic contractor capacity with restricted access.
 - **No single Portal sidecar** — greenfield like Field Tech (the tenant has no resource-planning system today; allocation lives in PLs' heads). This is a build, not a lift.
-- **Lysning surfaces served:** `Kalender.jsx` (the planning calendar/board), `MinManed.jsx` ("My Day"/"My Month" — a tech's personal schedule), `Mobil.jsx` (the mobile/field stub). These + Field Tech's work-order screens become the field webapp.
+- **Host Portal surfaces served:** `Kalender.jsx` (the planning calendar/board), `MinManed.jsx` ("My Day"/"My Month" — a tech's personal schedule), `Mobil.jsx` (the mobile/field stub). These + Field Tech's work-order screens become the field webapp.
 
 ## Classification
 **internal + AI (scheduling/optimisation).** No external system of its own; it composes over the cognitive graph and the other engines via A2A. Two **optional** outbound integrations, both config-gated and abstracted behind thin adapters (so the engine ships fully usable without them):
@@ -62,7 +62,7 @@ Registered in `nce/tool_registry.py` via `_h(...)` late-binding. AI-role tag per
 | `resources_plan_travel` | ✘ | ✘ | ✔ | Actor (Advisor for the plan, Actor on book) |
 
 ## REST routes
-No-model path for the BFF/Lysning planning board + the field webapp (admin app, HMAC/mTLS; handlers in `nce/admin_handlers/resources.py`):
+No-model path for the BFF/Host Portal planning board + the field webapp (admin app, HMAC/mTLS; handlers in `nce/admin_handlers/resources.py`):
 - `api_resources_resolve_capacity` (GET) — calendar/Gantt availability.
 - `api_resources_plan_allocation` (POST) — allocation suggestion for a demand.
 - `api_resources_reserve` / `api_resources_release` (POST) — book/free from the planning board.

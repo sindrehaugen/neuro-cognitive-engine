@@ -19,8 +19,8 @@ Turn "which distributor do we buy this BOM line from, and did we get what we pai
   - the reference implementation — event-sourced per-supplier recalibration (N=100).
   - the reference implementation — "money on the table"; the reference implementation, `bid-matcher.ts`, `generate-po.ts`.
   - Tests are the runnable spec — lift `tests/procurement-engine.test.ts`, `tests/finance/procurement-three-way-match.test.ts`, `procurement-scoring.test.ts`, `matching-learning.test.ts` alongside the engine.
-- **Portal sidecars to lift:** `backend/integrations/nettailer_client.py` (Netset Nettailer CSV export client — products/orderlines/supplierprices; streaming index for the ~295 MB feed) and `backend/steps_product/bidprices.py` (BID-price ingest: alias-map + honest column-report). These become `procurement/client.py` + the BID/supplier-price feed into `sync.py`.
-- **Lysning page served:** `Bestillinger.jsx` (the procurement/ordering page) — consumes the no-model REST surface.
+- **Portal sidecars to lift:** `backend/integrations/nettailer_client.py` (Netset Nettailer CSV export client — products/orderlines/supplierprices; streaming index for the ~295 MB feed) and the Portal product sidecar's bidprices module (BID-price ingest: alias-map + honest column-report). These become `procurement/client.py` + the BID/supplier-price feed into `sync.py`.
+- **Host Portal page served:** `Bestillinger.jsx` (the procurement/ordering page) — consumes the no-model REST surface.
 - **Crown-jewel doc:** `docs/specs/encore/encore-procurement-brief.md` (1376 lines, 10 closed business decisions) — the algorithm + scaling strategy.
 
 ## Classification

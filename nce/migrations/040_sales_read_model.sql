@@ -1,5 +1,5 @@
 -- 040_sales_read_model.sql
--- Native tenant-isolated sales read-model (replaces steps_d365.records).
+-- Native tenant-isolated sales read-model (replaces the Portal D365 records read-model).
 -- Scoped to namespace_id with GUC RLS policy.
 -- ============================================================================
 
