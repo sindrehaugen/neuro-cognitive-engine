@@ -28,6 +28,39 @@ from nce.events.catalogue import EVENT_CATALOGUE
 from nce.vertical_modules.support import do_check_sla_breaches
 
 
+class _RecordingTransaction:
+    """A usable async context manager that records whether it is currently open.
+
+    A bare ``AsyncMock`` returns an ``AsyncMock`` from ``.transaction()``, and
+    ``async with`` on that raises ``AttributeError: __aenter__`` -- the fake is
+    wrong, not the production code. Recording ``depth`` additionally lets a test
+    assert that the outbox write happened *inside* the transaction, which is the
+    property ``nce/events/bus.py:publish`` requires.
+    """
+
+    def __init__(self) -> None:
+        self.depth = 0
+        self.entered = 0
+
+    async def __aenter__(self) -> None:
+        self.depth += 1
+        self.entered += 1
+        return None
+
+    async def __aexit__(self, *exc: object) -> bool:
+        self.depth -= 1
+        return False
+
+
+def _fake_conn() -> AsyncMock:
+    """AsyncMock connection whose ``.transaction()`` works as an async CM."""
+    conn = AsyncMock()
+    tx = _RecordingTransaction()
+    conn.transaction = MagicMock(return_value=tx)
+    conn._tx = tx  # test-visible handle
+    return conn
+
+
 class _MockContextManager:
     def __init__(self, conn: Any) -> None:
         self.conn = conn
@@ -62,7 +95,7 @@ async def test_do_check_sla_breaches_first_response_breach(mock_engine) -> None:
     first_resp_due = created_at + datetime.timedelta(hours=4)
     res_due = created_at + datetime.timedelta(hours=24)
 
-    mock_conn = AsyncMock()
+    mock_conn = _fake_conn()
     mock_conn.fetch.return_value = [
         {
             "id": ticket_id,
@@ -134,7 +167,7 @@ async def test_do_check_sla_breaches_resolution_breach(mock_engine) -> None:
     res_due = created_at + datetime.timedelta(hours=24)
     first_resp_at = created_at + datetime.timedelta(hours=1)  # responded in 1h (< 4h)
 
-    mock_conn = AsyncMock()
+    mock_conn = _fake_conn()
     mock_conn.fetch.return_value = [
         {
             "id": ticket_id,
@@ -192,7 +225,7 @@ async def test_do_check_sla_breaches_escalates_to_both(mock_engine) -> None:
     first_resp_due = created_at + datetime.timedelta(hours=4)
     res_due = created_at + datetime.timedelta(hours=24)
 
-    mock_conn = AsyncMock()
+    mock_conn = _fake_conn()
     mock_conn.fetch.return_value = [
         {
             "id": ticket_id,
@@ -248,7 +281,7 @@ async def test_do_check_sla_breaches_within_deadlines_emits_nothing(mock_engine)
     first_resp_due = created_at + datetime.timedelta(hours=4)
     res_due = created_at + datetime.timedelta(hours=24)
 
-    mock_conn = AsyncMock()
+    mock_conn = _fake_conn()
     mock_conn.fetch.return_value = [
         {
             "id": ticket_id,
@@ -303,7 +336,7 @@ async def test_do_check_sla_breaches_paused_intervals_extend_deadline(mock_engin
     # Ticket paused for 2 hours (7200 seconds) -> effective first_response_due is 6 hours from created_at
     paused_intervals = [{"duration_seconds": 7200}]
 
-    mock_conn = AsyncMock()
+    mock_conn = _fake_conn()
     mock_conn.fetch.return_value = [
         {
             "id": ticket_id,
@@ -355,7 +388,7 @@ async def test_do_check_sla_breaches_idempotent_sweep_no_duplicate_publish(mock_
     first_resp_due = created_at + datetime.timedelta(hours=4)
     res_due = created_at + datetime.timedelta(hours=24)
 
-    mock_conn = AsyncMock()
+    mock_conn = _fake_conn()
     # Ticket already marked breached for 'both'
     mock_conn.fetch.return_value = [
         {
@@ -408,7 +441,7 @@ async def test_do_check_sla_breaches_seeds_missing_sla_clocks(mock_engine) -> No
     now = datetime.datetime(2026, 9, 7, 12, 0, 0, tzinfo=datetime.timezone.utc)
     created_at = now - datetime.timedelta(hours=1)
 
-    mock_conn = AsyncMock()
+    mock_conn = _fake_conn()
     # LEFT JOIN sla_clocks returns None for due dates and breached flags
     mock_conn.fetch.return_value = [
         {
@@ -481,7 +514,7 @@ async def test_cron_support_sla_watcher_tick_runs_with_lock() -> None:
 
     ns_id = uuid4()
     pool = MagicMock()
-    mock_conn = AsyncMock()
+    mock_conn = _fake_conn()
     mock_conn.fetch.return_value = [{"id": ns_id}]
 
     with (
@@ -532,3 +565,68 @@ async def test_cron_support_sla_watcher_tick_skips_when_lock_held() -> None:
         await _support_sla_watcher_tick(pool)
         mock_conn.assert_not_called()
         mock_release.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_outbox_publish_happens_inside_the_transaction(mock_engine) -> None:
+    """The outbox write must be enclosed by the same transaction as the state change.
+
+    ``nce/events/bus.py:publish`` requires it outright: "Callers must call this
+    inside an open transaction so post-commit semantics are preserved."
+
+    Why it matters concretely: without a transaction asyncpg autocommits each
+    statement, so ``sla_clocks.breached = TRUE`` lands BEFORE the outbox row. A
+    crash in between leaves the ticket marked breached with no event, and the
+    idempotency guard then computes ``is_new_breach = False`` forever -- the
+    breach is lost permanently.
+
+    A mock cannot prove rollback; only a live database can. What this proves is
+    the ordering property: publish runs while the transaction is open.
+    """
+    ns_id = uuid4()
+    ticket_id = uuid4()
+    now = datetime.datetime(2026, 9, 7, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    created_at = now - datetime.timedelta(hours=6)
+
+    mock_conn = _fake_conn()
+    mock_conn.fetch.return_value = [
+        {
+            "id": ticket_id,
+            "status": "open",
+            "priority": "medium",
+            "sla_profile": "standard",
+            "first_response_at": None,
+            "resolved_at": None,
+            "created_at": created_at,
+            "first_response_due": created_at + datetime.timedelta(hours=4),
+            "resolution_due": created_at + datetime.timedelta(hours=24),
+            "breached": False,
+            "breach_type": None,
+            "paused_intervals": [],
+        }
+    ]
+
+    depths: list[int] = []
+
+    async def _record_depth(*_a: object, **_k: object) -> None:
+        depths.append(mock_conn._tx.depth)
+
+    with (
+        patch(
+            "nce.vertical_modules.support.sla.scoped_pg_session",
+            return_value=_MockContextManager(mock_conn),
+        ),
+        patch("nce.vertical_modules.support.sla.publish", new=_record_depth),
+    ):
+        result = await do_check_sla_breaches(
+            mock_engine,
+            {"namespace_id": str(ns_id), "now": now},
+        )
+
+    assert result["published"] == 1, "fixture no longer produces a published breach"
+    assert depths, "publish() was never called"
+    assert all(d > 0 for d in depths), (
+        f"publish() ran OUTSIDE the transaction (depths {depths}); the outbox row would "
+        "commit separately from the state change it belongs to"
+    )
+    assert mock_conn._tx.entered >= 1

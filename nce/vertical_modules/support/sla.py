@@ -487,64 +487,75 @@ async def do_check_sla_breaches(
                 # A new breach or an escalated breach (e.g. first_response -> both)
                 is_new_breach = (not was_breached) or (new_breach_type != old_breach_type)
                 if is_new_breach:
-                    newly_breached_count += 1
+                    # 🔴 One transaction for all three writes. Without it asyncpg
+                    # autocommits each statement, so `sla_clocks.breached = TRUE`
+                    # lands BEFORE the outbox row. A crash in between leaves the
+                    # ticket marked breached with no event, and the idempotency
+                    # guard above then evaluates is_new_breach = False forever --
+                    # the breach is lost permanently. nce/events/bus.py:publish
+                    # states the requirement outright: "Callers must call this
+                    # inside an open transaction so post-commit semantics are
+                    # preserved." Per ticket, not per scan: one bad ticket must
+                    # not roll back the whole sweep.
+                    async with conn.transaction():
+                        newly_breached_count += 1
 
-                    # 1. Update sla_clocks
-                    await conn.execute(
-                        """
-                        UPDATE sla_clocks
-                        SET breached = TRUE,
-                            breach_type = $3,
-                            updated_at = $4::timestamptz
-                        WHERE ticket_id = $1::uuid AND namespace_id = $2::uuid
-                        """,
-                        t_id,
-                        ns_uuid,
-                        new_breach_type,
-                        now,
-                    )
+                        # 1. Update sla_clocks
+                        await conn.execute(
+                            """
+                            UPDATE sla_clocks
+                            SET breached = TRUE,
+                                breach_type = $3,
+                                updated_at = $4::timestamptz
+                            WHERE ticket_id = $1::uuid AND namespace_id = $2::uuid
+                            """,
+                            t_id,
+                            ns_uuid,
+                            new_breach_type,
+                            now,
+                        )
 
-                    # 2. Append breach audit event to service_tickets.events
-                    breach_event = {
-                        "type": "sla_breached",
-                        "breach_type": new_breach_type,
-                        "at": now.isoformat(),
-                        "change_origin": "cron",
-                    }
-                    await conn.execute(
-                        """
-                        UPDATE service_tickets
-                        SET events = events || $1::jsonb,
-                            updated_at = $2::timestamptz
-                        WHERE id = $3::uuid AND namespace_id = $4::uuid
-                        """,
-                        json.dumps([breach_event]),
-                        now,
-                        t_id,
-                        ns_uuid,
-                    )
-
-                    # 3. Publish C4 transactional outbox event
-                    ticket_subject = f"TICKET:{t_id}"
-                    await publish(
-                        conn,
-                        namespace_id=ns_uuid,
-                        node_type=_NODE_TYPE_TICKET,
-                        op=_OP_SLA_BREACHED,
-                        aggregate_id=ticket_subject,
-                        payload={
-                            "ticket_id": str(t_id),
-                            "namespace_id": str(ns_uuid),
+                        # 2. Append breach audit event to service_tickets.events
+                        breach_event = {
+                            "type": "sla_breached",
                             "breach_type": new_breach_type,
-                            "sla_profile": sla_prof,
-                            "priority": priority,
-                            "first_response_due": status_eval["effective_first_response_due"],
-                            "resolution_due": status_eval["effective_resolution_due"],
-                            "breached_at": now.isoformat(),
-                            "status": row["status"],
-                        },
-                    )
-                    published_count += 1
+                            "at": now.isoformat(),
+                            "change_origin": "cron",
+                        }
+                        await conn.execute(
+                            """
+                            UPDATE service_tickets
+                            SET events = events || $1::jsonb,
+                                updated_at = $2::timestamptz
+                            WHERE id = $3::uuid AND namespace_id = $4::uuid
+                            """,
+                            json.dumps([breach_event]),
+                            now,
+                            t_id,
+                            ns_uuid,
+                        )
+
+                        # 3. Publish C4 transactional outbox event
+                        ticket_subject = f"TICKET:{t_id}"
+                        await publish(
+                            conn,
+                            namespace_id=ns_uuid,
+                            node_type=_NODE_TYPE_TICKET,
+                            op=_OP_SLA_BREACHED,
+                            aggregate_id=ticket_subject,
+                            payload={
+                                "ticket_id": str(t_id),
+                                "namespace_id": str(ns_uuid),
+                                "breach_type": new_breach_type,
+                                "sla_profile": sla_prof,
+                                "priority": priority,
+                                "first_response_due": status_eval["effective_first_response_due"],
+                                "resolution_due": status_eval["effective_resolution_due"],
+                                "breached_at": now.isoformat(),
+                                "status": row["status"],
+                            },
+                        )
+                        published_count += 1
 
                 breached_tickets.append(
                     {
