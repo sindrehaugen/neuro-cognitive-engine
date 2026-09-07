@@ -1,0 +1,18 @@
+{
+  "allowed_fields": [
+    "id",
+    "namespace_id",
+    "account",
+    "amount_nok",
+    "gl_date",
+    "supplier_id",
+    "supplier_name",
+    "period_id",
+    "economy_source_id",
+    "event_id",
+    "event_type",
+    "line_no",
+    "change_origin",
+    "created_at"
+  ]
+}

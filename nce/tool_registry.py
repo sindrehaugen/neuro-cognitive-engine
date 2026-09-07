@@ -1090,6 +1090,13 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # Economy vertical module GL records tool (Wave B-AG1 / B-E2)
+    "economy_get_gl_records": ToolSpec(
+        _h(economy_mcp_handlers, "handle_economy_get_gl_records"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # ------------------------------------------------------------------
     # Inventory vertical module tools (Batch 131, M11.W3) — stock-surface
     # ------------------------------------------------------------------

@@ -4603,6 +4603,53 @@ TOOLS = [
         },
     ),
     Tool(
+        name="economy_get_gl_records",
+        description=(
+            "READ-ONLY ADVISOR: Query General Ledger records from economy_postings for a namespace. "
+            "Applies Contract C8 allow-list redaction (gl-records-redaction.json) to ensure sensitive fields "
+            "never leak. Supports date bounds (since_iso, until_iso), account and account prefix filtering, "
+            "period, and source ID filtering; writes nothing."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Caller namespace UUID.",
+                },
+                "since_iso": {
+                    "type": "string",
+                    "description": "Optional lower bound ISO datetime/date string (created_at >= since).",
+                },
+                "until_iso": {
+                    "type": "string",
+                    "description": "Optional upper bound ISO datetime/date string (created_at <= until).",
+                },
+                "account": {
+                    "type": "string",
+                    "description": "Optional exact GL account code (e.g. '4300').",
+                },
+                "account_prefix": {
+                    "type": "string",
+                    "description": "Optional account prefix string (e.g. '4').",
+                },
+                "period_id": {
+                    "type": "string",
+                    "description": "Optional accounting period identifier (e.g. '2026-08').",
+                },
+                "economy_source_id": {
+                    "type": "string",
+                    "description": "Optional source identifier.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Optional max records to return (default 5000, max 10000).",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
         name="detect_causal_cycles",
         description=(
             "[ADMIN] Detect cycles in the event_parents causal DAG for a namespace. "
