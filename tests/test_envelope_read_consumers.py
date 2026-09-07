@@ -133,13 +133,26 @@ async def _ensure_signing_key(pool: Any) -> None:
         get_active_key,
         rotate_key,
     )
+    from tests.conftest import _refresh_signing_when_decrypt_fails
 
     async with pool.acquire() as conn:
         try:
             await get_active_key(conn)
-        except NoActiveSigningKeyError:
-            await rotate_key(conn)
-        except SigningKeyDecryptionError:
+        except (NoActiveSigningKeyError, SigningKeyDecryptionError) as exc:
+            # This fixture's DSN defaults to the isolated database on :5433, but it reads
+            # NCE_INTEGRATION_PG_DSN -- the same variable the rebuild runbook points at the
+            # LIVE database.  ``rotate_key`` there retires the deployment's active key and
+            # re-wraps it under this shell's NCE_MASTER_KEY, orphaning the running stack.
+            # Rotation is opt-in and disposable-database-only, behind the flag
+            # tests/conftest.py already gates its own seeding on.
+            if not _refresh_signing_when_decrypt_fails():
+                pytest.skip(
+                    "No signing key this shell's NCE_MASTER_KEY can use "
+                    f"({type(exc).__name__}).  Rotating one here would orphan the "
+                    "deployment if NCE_INTEGRATION_PG_DSN points at it.  Set "
+                    "NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL=1 on a DISPOSABLE "
+                    "database only.",
+                )
             await rotate_key(conn)
 
 

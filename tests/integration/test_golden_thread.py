@@ -75,6 +75,7 @@ from nce.vertical_modules.support.tickets import do_open_ticket
 from nce.vertical_modules.system_design.devices import do_author_device_topology
 from nce.vertical_modules.system_design.graph import do_author_functional_location
 from nce.vertical_modules.system_design.propose import do_propose_design
+from tests.conftest import _refresh_signing_when_decrypt_fails
 
 pytestmark = pytest.mark.live
 
@@ -512,7 +513,28 @@ async def _setup_live_context() -> AsyncGenerator[GoldenThreadScenarioContext, N
 
         try:
             await get_active_key(conn)
-        except (NoActiveSigningKeyError, SigningKeyDecryptionError):
+        except (NoActiveSigningKeyError, SigningKeyDecryptionError) as exc:
+            # NEVER rotate unconditionally.  This fixture runs under ``-m live`` and the
+            # rebuild runbook points it at the DEPLOYED database.  ``rotate_key`` retires
+            # that deployment's active key and inserts a replacement wrapped under THIS
+            # shell's ``NCE_MASTER_KEY``, orphaning the running stack.  That is exactly
+            # what happened on 2026-09-07 at 01:46:27 and again at 10:55:05: both
+            # replacement keys were wrapped under ``tests/conftest.py``'s "x" * 32, and
+            # the containers kept reporting healthy while unable to sign anything.
+            #
+            # Rotation here is opt-in and disposable-database-only, behind the same flag
+            # ``tests/conftest.py`` already gates its own seeding on.  Without it, SKIP --
+            # a green run bought by destroying the deployment's key is not a pass.
+            if not _refresh_signing_when_decrypt_fails():
+                pytest.skip(
+                    "Live Golden Thread needs a signing key that this shell's "
+                    f"NCE_MASTER_KEY can use ({type(exc).__name__}).  Rotating one here "
+                    "would retire the deployment's active key and re-wrap it under this "
+                    "shell's master key, orphaning the running stack.  Either run with the "
+                    "deployment master key, or set "
+                    "NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL=1 -- on a DISPOSABLE "
+                    "database only.",
+                )
             await rotate_key(conn)
 
     engine = NCEEngine()
