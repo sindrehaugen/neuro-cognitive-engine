@@ -819,6 +819,11 @@ def build_admin_routes() -> list[Route]:
             endpoint=project_handlers.api_admin_project_status_report,
             methods=["GET"],
         ),
+        Route(
+            "/api/project/{id}/case-study",
+            endpoint=project_handlers.api_project_generate_case_study,
+            methods=["POST"],
+        ),
         # Agreements vertical module endpoints (Batch 107)
         Route(
             "/api/agreements",

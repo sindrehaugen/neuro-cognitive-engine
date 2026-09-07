@@ -29,6 +29,7 @@ from nce.admin_handlers._shared import (
     bump_mcp_cache_generation,
 )
 from nce.vertical_modules.project.advance import do_advance_phase, read_current_phase
+from nce.vertical_modules.project.case_study import do_generate_case_study_edge
 from nce.vertical_modules.project.convert import do_convert_signed_quote
 
 log = logging.getLogger("nce.admin_handlers.project")
@@ -442,3 +443,75 @@ async def api_admin_project_status_report(request) -> JSONResponse:
             status_code=500,
             log_event="api_admin_project_status_report",
         )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/project/{id}/case-study
+# ---------------------------------------------------------------------------
+
+
+async def api_project_generate_case_study(request) -> JSONResponse:
+    """POST /api/project/{id}/case-study
+
+    Generate a case study node and PROJECT -[generates]-> CASE_STUDY edge
+    for a project at terminal phase G6.
+
+    Path parameters:
+        id (str): Project label, e.g. ``PROJECT:Q123``.
+
+    Request body (JSON):
+        namespace_id (str, required): Active namespace UUID.
+        confidence   (float, optional): Edge confidence (default 1.0).
+
+    Response (JSON):
+        {"ok": True, "case_study_label": str, "edge": str}  HTTP 200
+        {"ok": False, "reason": "in_flight", "current_phase": str}  HTTP 409
+        {"ok": False, "error": str}  HTTP 400
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    project_id = request.path_params.get("id", "").strip()
+    if not project_id:
+        return JSONResponse({"error": "Missing path parameter: id"}, status_code=422)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
+
+    params: dict[str, Any] = {
+        "namespace_id": namespace_id,
+        "project_id": project_id,
+    }
+    if "confidence" in body:
+        try:
+            params["confidence"] = float(body["confidence"])
+        except (ValueError, TypeError):
+            return JSONResponse({"error": "Invalid confidence value"}, status_code=422)
+
+    try:
+        result = await do_generate_case_study_edge(admin_state.engine, params)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Project generate-case-study error",
+            exc,
+            status_code=500,
+            log_event="api_project_generate_case_study",
+        )
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_project_generate_case_study")
+
+    if result.get("ok"):
+        return JSONResponse(result)
+
+    if result.get("reason") == "in_flight":
+        return JSONResponse(result, status_code=409)
+
+    return JSONResponse(result, status_code=400)
