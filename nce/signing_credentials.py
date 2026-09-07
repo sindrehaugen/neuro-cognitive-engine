@@ -96,7 +96,7 @@ async def save_signing_credential(
     meta_dict = metadata or {}
     meta_json = json.dumps(meta_dict)
 
-    # Perform UPSERT into signing_credentials
+    # Perform UPSERT into signing_credentials within an atomic transaction
     sql = """
         INSERT INTO signing_credentials (
             namespace_id,
@@ -116,37 +116,38 @@ async def save_signing_credential(
             updated_at = now()
         RETURNING id, created_at, updated_at;
     """
-    row = await conn.fetchrow(
-        sql,
-        ns_uuid,
-        norm_provider,
-        clean_client_id,
-        encrypted_bytes,
-        fingerprint,
-        meta_json,
-    )
-    if not row:
-        raise RuntimeError(f"Failed to upsert signing credentials for provider={norm_provider}")
+    async with conn.transaction():
+        row = await conn.fetchrow(
+            sql,
+            ns_uuid,
+            norm_provider,
+            clean_client_id,
+            encrypted_bytes,
+            fingerprint,
+            meta_json,
+        )
+        if not row:
+            raise RuntimeError(f"Failed to upsert signing credentials for provider={norm_provider}")
 
-    # Append WORM audit event
-    await append_event(
-        conn=conn,
-        namespace_id=ns_uuid,
-        agent_id=actor,
-        event_type="config_changed",
-        params={
-            "actor": actor,
-            "changes": {
-                "signing_credentials": {
-                    "provider": norm_provider,
-                    "client_id": clean_client_id,
-                    "secret_fingerprint": fingerprint,
-                    "action": "saved",
-                }
+        # Append WORM audit event
+        await append_event(
+            conn=conn,
+            namespace_id=ns_uuid,
+            agent_id=actor,
+            event_type="config_changed",
+            params={
+                "actor": actor,
+                "changes": {
+                    "signing_credentials": {
+                        "provider": norm_provider,
+                        "client_id": clean_client_id,
+                        "secret_fingerprint": fingerprint,
+                        "action": "saved",
+                    }
+                },
+                "reason": f"Operator saved signing credentials for provider '{norm_provider}'",
             },
-            "reason": f"Operator saved signing credentials for provider '{norm_provider}'",
-        },
-    )
+        )
 
     return {
         "status": "ok",
@@ -246,26 +247,27 @@ async def delete_signing_credential(
     norm_provider = normalize_provider(provider)
 
     sql = "DELETE FROM signing_credentials WHERE namespace_id = $1 AND provider = $2 RETURNING id;"
-    row = await conn.fetchrow(sql, ns_uuid, norm_provider)
-    if not row:
-        return {"status": "not_found", "provider": norm_provider, "namespace_id": str(ns_uuid)}
+    async with conn.transaction():
+        row = await conn.fetchrow(sql, ns_uuid, norm_provider)
+        if not row:
+            return {"status": "not_found", "provider": norm_provider, "namespace_id": str(ns_uuid)}
 
-    await append_event(
-        conn=conn,
-        namespace_id=ns_uuid,
-        agent_id=actor,
-        event_type="config_changed",
-        params={
-            "actor": actor,
-            "changes": {
-                "signing_credentials": {
-                    "provider": norm_provider,
-                    "action": "deleted",
-                }
+        await append_event(
+            conn=conn,
+            namespace_id=ns_uuid,
+            agent_id=actor,
+            event_type="config_changed",
+            params={
+                "actor": actor,
+                "changes": {
+                    "signing_credentials": {
+                        "provider": norm_provider,
+                        "action": "deleted",
+                    }
+                },
+                "reason": f"Operator deleted signing credentials for provider '{norm_provider}'",
             },
-            "reason": f"Operator deleted signing credentials for provider '{norm_provider}'",
-        },
-    )
+        )
 
     return {"status": "ok", "provider": norm_provider, "namespace_id": str(ns_uuid)}
 

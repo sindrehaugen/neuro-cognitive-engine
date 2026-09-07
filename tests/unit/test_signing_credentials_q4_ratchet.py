@@ -107,9 +107,11 @@ class FakeDb:
 
         conn.fetchrow = AsyncMock(side_effect=fake_fetchrow)
         conn.fetch = AsyncMock(side_effect=fake_fetch)
-        conn.execute = AsyncMock(return_value="OK")
         conn.transaction = MagicMock(
-            return_value=AsyncMock(__aenter__=AsyncMock(), __aexit__=AsyncMock())
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=None),
+                __aexit__=AsyncMock(return_value=False),
+            )
         )
         return conn
 
@@ -342,11 +344,11 @@ async def test_precedence_resolution_both_orders(fake_db: FakeDb, master_key: Ma
 
 @pytest.mark.asyncio
 async def test_never_logged_redaction_on_failure(
-    caplog: pytest.LogCaptureFixture, master_key: MasterKey
+    caplog: pytest.LogCaptureFixture, master_key: MasterKey, fake_db: FakeDb
 ) -> None:
     """A deliberately failing save operation must NEVER leak the secret in logs or error messages."""
     canary_secret = "CANARY_SECRET_SUPER_SENSITIVE_99999"
-    failing_conn = AsyncMock()
+    failing_conn = fake_db.make_conn()
     # Simulate DB error during upsert
     failing_conn.fetchrow = AsyncMock(side_effect=RuntimeError("Simulated DB connection drop"))
 
