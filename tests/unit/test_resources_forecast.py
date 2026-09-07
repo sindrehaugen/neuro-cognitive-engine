@@ -326,3 +326,83 @@ async def test_do_forecast_demand_pipeline_tasks_via_payload_ref(mock_engine, mo
     assert res["pipeline_demand_hours"] == 250.0
     assert res["total_demand_hours"] == 250.0
     assert res["status"] == "deficit"
+    assert "complete: 1/1" in res["pipeline_coverage"]
+    assert res["excluded_tasks"] == 0
+
+
+@pytest.mark.asyncio
+async def test_do_forecast_demand_payload_error_records_degradation_and_honest_coverage(
+    mock_engine, monkeypatch
+):
+    """When fetch_episodes_raw_by_ref fails, degradation is recorded and coverage reports excluded tasks."""
+    ns_id = uuid4()
+    mock_engine.mongo_db = MagicMock()
+    fake_ref = "60d5ecb8b5c9c61234567891"
+    mock_engine.kg_nodes.append(
+        {
+            "label": "TASK:PRJ-300:001",
+            "entity_type": "PROJECT_TASK",
+            "namespace_id": str(ns_id),
+            "payload_ref": fake_ref,
+        }
+    )
+
+    degradations_recorded = []
+
+    def _mock_record_degradation(**kwargs):
+        degradations_recorded.append(kwargs)
+
+    monkeypatch.setattr("nce.degradation.record_degradation", _mock_record_degradation)
+
+    async def _failing_fetch_raw(db, refs):
+        raise RuntimeError("MongoDB connection timeout during payload resolution")
+
+    monkeypatch.setattr("nce.mongo_bulk.fetch_episodes_raw_by_ref", _failing_fetch_raw)
+
+    res = await do_forecast_demand(
+        mock_engine,
+        {"namespace_id": ns_id, "horizon_days": 30},
+    )
+    # The task could not be resolved from payload or edges -> excluded from pipeline hours
+    assert res["pipeline_demand_hours"] == 0.0
+    assert res["excluded_tasks"] == 1
+    assert "partial" in res["pipeline_coverage"] or "excluded" in res["pipeline_coverage"]
+    assert len(degradations_recorded) >= 1
+    deg = degradations_recorded[0]
+    assert deg["engine"] == "resources"
+    assert deg["code"] == "planned_task_payloads_unresolved"
+    assert "MongoDB connection timeout" in deg["detail"]
+
+
+@pytest.mark.asyncio
+async def test_do_forecast_demand_unconfigured_mongo_records_degradation(mock_engine, monkeypatch):
+    """When mongo_db is None on engine, degradation is recorded for unconfigured MongoDB."""
+    ns_id = uuid4()
+    mock_engine.mongo_db = None
+    fake_ref = "60d5ecb8b5c9c61234567892"
+    mock_engine.kg_nodes.append(
+        {
+            "label": "TASK:PRJ-400:001",
+            "entity_type": "PROJECT_TASK",
+            "namespace_id": str(ns_id),
+            "payload_ref": fake_ref,
+        }
+    )
+
+    degradations_recorded = []
+
+    def _mock_record_degradation(**kwargs):
+        degradations_recorded.append(kwargs)
+
+    monkeypatch.setattr("nce.degradation.record_degradation", _mock_record_degradation)
+
+    res = await do_forecast_demand(
+        mock_engine,
+        {"namespace_id": ns_id, "horizon_days": 30},
+    )
+    assert len(degradations_recorded) >= 1
+    deg = degradations_recorded[0]
+    assert deg["engine"] == "resources"
+    assert deg["code"] == "planned_task_payloads_unresolved"
+    assert "mongo_db is None" in deg["detail"]
+    assert res["excluded_tasks"] == 1

@@ -126,11 +126,17 @@ async def do_forecast_demand(engine: Any, params: dict[str, Any]) -> dict[str, A
         pipeline_demands = params.get("pipeline_demands") or []
         pipeline_hours = 0.0
 
+        pipeline_hours = 0.0
+        pipeline_coverage = "no pipeline demands"
+        excluded_tasks_count = 0
         if pipeline_demands:
             for d in pipeline_demands:
                 pipeline_hours += float(d.get("hours") or d.get("estimated_hours") or 0.0)
+            pipeline_coverage = f"provided_demands: {len(pipeline_demands)} projects"
         else:
             # Check for planned projects or project tasks in graph
+            task_rows = []
+            resolved_tasks_count = 0
             try:
                 task_rows = await conn.fetch(
                     """
@@ -147,13 +153,50 @@ async def do_forecast_demand(engine: Any, params: dict[str, Any]) -> dict[str, A
                         str(tr["payload_ref"]).strip() for tr in task_rows if tr.get("payload_ref")
                     ]
                     raw_payloads: dict[str, dict[str, Any]] = {}
-                    if refs and getattr(engine, "mongo_db", None) is not None:
-                        try:
-                            from nce.mongo_bulk import fetch_episodes_raw_by_ref
+                    if refs:
+                        if getattr(engine, "mongo_db", None) is not None:
+                            try:
+                                from nce.mongo_bulk import fetch_episodes_raw_by_ref
 
-                            raw_payloads = await fetch_episodes_raw_by_ref(engine.mongo_db, refs)
-                        except Exception as exc:
-                            log.debug("fetch_episodes_raw_by_ref failed: %s", exc)
+                                raw_payloads = await fetch_episodes_raw_by_ref(
+                                    engine.mongo_db, refs
+                                )
+                            except Exception as exc:
+                                log.warning("fetch_episodes_raw_by_ref failed: %s", exc)
+                                try:
+                                    from nce.degradation import record_degradation
+
+                                    record_degradation(
+                                        namespace_id=str(ns_id),
+                                        engine="resources",
+                                        code="planned_task_payloads_unresolved",
+                                        detail=f"{type(exc).__name__}: {exc}",
+                                        onboarding_hint="Demand forecast excludes planned project tasks until payload resolution works.",
+                                    )
+                                except Exception:
+                                    log.warning(
+                                        "Failed to record degradation for unresolved payloads",
+                                        exc_info=True,
+                                    )
+                        else:
+                            log.warning(
+                                "engine.mongo_db is None; planned project tasks payloads cannot be fetched from MongoDB."
+                            )
+                            try:
+                                from nce.degradation import record_degradation
+
+                                record_degradation(
+                                    namespace_id=str(ns_id),
+                                    engine="resources",
+                                    code="planned_task_payloads_unresolved",
+                                    detail="engine.mongo_db is None; planned project tasks payloads cannot be fetched from MongoDB.",
+                                    onboarding_hint="Demand forecast excludes planned project tasks until payload resolution works.",
+                                )
+                            except Exception:
+                                log.warning(
+                                    "Failed to record degradation for missing mongo_db",
+                                    exc_info=True,
+                                )
 
                     unresolved_labels: list[str] = []
                     for tr in task_rows:
@@ -165,6 +208,11 @@ async def do_forecast_demand(engine: Any, params: dict[str, Any]) -> dict[str, A
                                 pipeline_hours += float(
                                     doc.get("estimated_hours") or doc.get("hours") or 16.0
                                 )
+                                resolved_tasks_count += 1
+                            elif st in ("closed", "completed", "superseded", "cancelled"):
+                                resolved_tasks_count += 1
+                            else:
+                                unresolved_labels.append(tr["label"])
                         else:
                             unresolved_labels.append(tr["label"])
 
@@ -212,8 +260,40 @@ async def do_forecast_demand(engine: Any, params: dict[str, Any]) -> dict[str, A
                                 and st not in ("closed", "completed", "superseded", "cancelled")
                             ):
                                 pipeline_hours += info["hours"]
+                                resolved_tasks_count += 1
+                            elif st in ("closed", "completed", "superseded", "cancelled"):
+                                resolved_tasks_count += 1
+                            else:
+                                excluded_tasks_count += 1
+
+                    total_tasks = len(task_rows)
+                    if total_tasks > 0:
+                        if excluded_tasks_count > 0:
+                            pipeline_coverage = (
+                                f"partial: {resolved_tasks_count}/{total_tasks} planned tasks resolved "
+                                f"({excluded_tasks_count} excluded)"
+                            )
+                        else:
+                            pipeline_coverage = f"complete: {resolved_tasks_count}/{total_tasks} planned tasks resolved"
+                    else:
+                        pipeline_coverage = "no graph tasks detected"
+                else:
+                    pipeline_coverage = "no graph tasks detected"
             except Exception as exc:
-                log.debug("No kg_nodes pipeline task query: %s", exc)
+                log.warning("kg_nodes query for planned project tasks failed: %s", exc)
+                try:
+                    from nce.degradation import record_degradation
+
+                    record_degradation(
+                        namespace_id=str(ns_id),
+                        engine="resources",
+                        code="planned_task_payloads_unresolved",
+                        detail=f"{type(exc).__name__}: {exc}",
+                        onboarding_hint="Demand forecast excludes planned project tasks until payload resolution works.",
+                    )
+                except Exception:
+                    pass
+                pipeline_coverage = f"degraded: query failed ({type(exc).__name__})"
 
         # 4. Compute metrics
         total_demand_hours = committed_hours + pipeline_hours
@@ -254,6 +334,9 @@ async def do_forecast_demand(engine: Any, params: dict[str, Any]) -> dict[str, A
             "available_capacity_hours": round(total_available_hours, 1),
             "committed_allocation_hours": round(committed_hours, 1),
             "pipeline_demand_hours": round(pipeline_hours, 1),
+            "pipeline_coverage": pipeline_coverage,
+            "coverage": pipeline_coverage,
+            "excluded_tasks": excluded_tasks_count,
             "total_demand_hours": round(total_demand_hours, 1),
             "net_capacity_hours": round(net_capacity_hours, 1),
             "capacity_gap_hours": round(capacity_gap_hours, 1),
