@@ -220,6 +220,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | PATCH,POST | `/api/resources/{id}` | `api_resources_update` |
 | GET | `/api/sales/agreements` | `api_admin_sales_agreements` |
 | GET | `/api/sales/agreements/{id}` | `api_admin_sales_agreement_detail` |
+| GET | `/api/sales/commission` | `api_admin_sales_calculate_commission` |
 | GET | `/api/sales/customers` | `api_admin_sales_customers` |
 | POST | `/api/sales/customers` | `api_admin_sales_create_customer` |
 | GET | `/api/sales/customers/{id}` | `api_admin_sales_customer_profile` |
@@ -467,6 +468,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `resources_update` | yes | yes |  |  |
 | `rotate_signing_key` |  | yes |  |  |
 | `sales_add_quote_line` |  | yes |  |  |
+| `sales_calculate_commission` |  |  | yes |  |
 | `sales_create_customer` | yes | yes |  |  |
 | `sales_create_deal` | yes | yes |  |  |
 | `sales_create_lead` | yes | yes |  |  |
@@ -526,4 +528,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 257 REST endpoints, 251 MCP tools._
+_Totals: 258 REST endpoints, 252 MCP tools._
