@@ -170,10 +170,10 @@ async def do_ask_business(engine: Any, params: dict[str, Any]) -> dict[str, Any]
                 try:
                     memory_rows = await conn.fetch(
                         """
-                        SELECT id, memory_type, occurred_at
+                        SELECT id, memory_type, created_at
                         FROM memories
                         WHERE namespace_id = $1
-                        ORDER BY occurred_at DESC
+                        ORDER BY created_at DESC
                         LIMIT 5;
                         """,
                         ns_uuid,

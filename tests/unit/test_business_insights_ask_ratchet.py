@@ -201,11 +201,11 @@ async def test_do_ask_business_cognitive_recall_from_memories():
             "id": mem_id1,
             "namespace_id": ns_id,
             "memory_type": "quarterly_review",
-            "occurred_at": now,
+            "created_at": now,
         }
     )
     db.memories.append(
-        {"id": mem_id2, "namespace_id": ns_id, "memory_type": "board_briefing", "occurred_at": now}
+        {"id": mem_id2, "namespace_id": ns_id, "memory_type": "board_briefing", "created_at": now}
     )
 
     engine = MagicMock()
