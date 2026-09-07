@@ -196,6 +196,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/project/capacity` | `api_admin_project_capacity` |
 | POST | `/api/project/convert-signed-quote` | `api_project_convert_signed_quote` |
 | GET | `/api/project/my-day` | `api_admin_project_my_day` |
+| POST | `/api/project/{id}/case-study` | `api_project_generate_case_study` |
 | GET | `/api/project/{id}/phase` | `api_project_get_phase` |
 | POST | `/api/project/{id}/phase` | `api_project_advance_phase` |
 | GET | `/api/project/{id}/scope-creep` | `api_admin_project_scope_creep` |
@@ -442,6 +443,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `project_advance_phase` | yes | yes |  |  |
 | `project_can_enter_phase` |  |  | yes |  |
 | `project_convert_signed_quote` | yes | yes |  |  |
+| `project_generate_case_study_edge` | yes | yes |  |  |
 | `project_record_outcome` | yes | yes |  |  |
 | `project_suggest_pl` |  |  | yes |  |
 | `purge_dlq` |  | yes |  |  |
@@ -528,4 +530,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 258 REST endpoints, 252 MCP tools._
+_Totals: 259 REST endpoints, 253 MCP tools._

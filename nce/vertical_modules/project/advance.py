@@ -454,4 +454,27 @@ async def do_advance_phase(
         target_phase,
         actor,
     )
+
+    if target_phase == "G6":
+        try:
+            from nce.vertical_modules.project.case_study import (
+                do_generate_case_study_edge,
+            )
+
+            await do_generate_case_study_edge(
+                engine,
+                {
+                    "namespace_id": ns_uuid,
+                    "project_id": project_label,
+                },
+            )
+        except Exception as exc:
+            log.warning(
+                "do_advance_phase: failed to generate case study edge ns=%s project=%s: %s",
+                ns_uuid,
+                project_label,
+                exc,
+                exc_info=True,
+            )
+
     return {"ok": True, "phase": target_phase}

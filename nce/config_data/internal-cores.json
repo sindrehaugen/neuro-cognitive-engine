@@ -74,11 +74,6 @@
     "owner": "MLV15D-PR6",
     "reason": "Supplier reliability recalibration engine; scheduled for background cron wiring in MLV15D Wave PR-6."
   },
-  "nce/vertical_modules/project/case_study.py::do_generate_case_study_edge": {
-    "engine": "project",
-    "owner": "MLV15B-PJ2",
-    "reason": "Generates PROJECT->CASE_STUDY graph edge at G5 gate; scheduled for wiring in v1.5 Phase 1 Wave PJ-2."
-  },
   "nce/vertical_modules/project/recall.py::do_recall_similar_projects": {
     "engine": "project",
     "owner": "MLV15C-PJ3",

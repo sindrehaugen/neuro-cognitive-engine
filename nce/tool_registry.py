@@ -734,6 +734,13 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=True,
         mutation=True,
     ),
+    # Project vertical module tools (Wave C-PJ2) — G6 terminal case-study edge generator
+    "project_generate_case_study_edge": ToolSpec(
+        _h(project_mcp_handlers, "handle_project_generate_case_study_edge"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
     # ------------------------------------------------------------------
     # Diagnostic Log Digestion Engine vertical module tools (Batch 77)
     # ------------------------------------------------------------------

@@ -61,7 +61,7 @@ async def do_generate_case_study_edge(
             """
             SELECT 1 FROM kg_nodes
             WHERE label = $1
-              AND entity_type = $2
+              AND (entity_type = $2 OR entity_type = 'PROJECT')
               AND namespace_id = $3::uuid
             """,
             project_id,

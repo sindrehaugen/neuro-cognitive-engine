@@ -51,30 +51,48 @@ async def do_find_case_study_candidates(
     if pool is not None:
         try:
             async with pool.acquire() as conn:
-                # Query delivered projects and outcome metrics
+                # Query delivered projects with case-study links and outcome metrics
                 rows = await conn.fetch(
                     """
-                    SELECT id, label, entity_type, created_at
-                    FROM   kg_nodes
-                    WHERE  namespace_id = $1::uuid
-                      AND  (entity_type = 'PROJECT' OR entity_type = 'PROJECT_PROJECT')
-                    ORDER  BY created_at DESC
+                    SELECT n.id,
+                           n.label,
+                           n.entity_type,
+                           n.created_at,
+                           e.object_label AS case_study_label,
+                           e.confidence AS edge_confidence
+                    FROM   kg_nodes n
+                    LEFT JOIN kg_edges e ON e.subject_label = n.label
+                                        AND e.predicate = 'generates'
+                                        AND e.object_label LIKE 'CASE_STUDY:%'
+                                        AND e.namespace_id = n.namespace_id
+                    WHERE  n.namespace_id = $1::uuid
+                      AND  (n.entity_type = 'PROJECT' OR n.entity_type = 'PROJECT_PROJECT')
+                    ORDER  BY (e.object_label IS NOT NULL) DESC, n.created_at DESC
                     LIMIT  50
                     """,
                     ns_str,
                 )
                 for r in rows:
-                    candidates.append(
-                        {
-                            "project_id": str(r["id"]),
-                            "title": r["label"] or "Delivered AV System",
-                            "outcome_score": 9.0,
-                            "room_type": "boardroom",
-                            "vertical": "corporate",
-                            "handover_date": str(r["created_at"]),
-                            "evidence_node_ids": [str(r["id"])],
-                        }
-                    )
+                    evidence_nodes = [str(r["id"])]
+                    if r["case_study_label"]:
+                        evidence_nodes.append(r["case_study_label"])
+
+                    outcome_score = 9.0
+                    if r["edge_confidence"] is not None:
+                        outcome_score = round(float(r["edge_confidence"]) * 10.0, 1)
+
+                    cand = {
+                        "project_id": str(r["id"]),
+                        "title": r["label"] or "Delivered AV System",
+                        "outcome_score": outcome_score,
+                        "room_type": "boardroom",
+                        "vertical": "corporate",
+                        "handover_date": str(r["created_at"]),
+                        "evidence_node_ids": evidence_nodes,
+                    }
+                    if r["case_study_label"]:
+                        cand["case_study_label"] = r["case_study_label"]
+                    candidates.append(cand)
         except Exception as exc:
             log.warning("do_find_case_study_candidates DB query error: %s", exc)
 

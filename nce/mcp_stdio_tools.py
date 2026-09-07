@@ -2661,6 +2661,28 @@ TOOLS = [
             "required": ["namespace_id", "project_id", "description", "slip_reason"],
         },
     ),
+    Tool(
+        name="project_generate_case_study_edge",
+        description=(
+            "Generate a CASE_STUDY seed node and PROJECT -[generates]-> CASE_STUDY edge "
+            "when a project reaches terminal G6 handover. admin_only; mutation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "project_id": {
+                    "type": "string",
+                    "description": "Project identifier (e.g. 'PROJECT:Q123').",
+                },
+                "confidence": {
+                    "type": "number",
+                    "description": "Confidence score for edge attribution (default 1.0).",
+                },
+            },
+            "required": ["namespace_id", "project_id"],
+        },
+    ),
     # -----------------------------------------------------------------
     # OQ-3 tranche 3 (2026-09-01) — the two tools whose CORE raises an
     # explicit "'x' is required", so the required/optional split is read
