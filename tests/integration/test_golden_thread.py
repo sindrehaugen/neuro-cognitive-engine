@@ -16,12 +16,13 @@ Per ML-orch Charter §13:
 - NEVER assert callable(). NEVER assert registry membership. NEVER AST-scan.
 - Any open seam is marked with @pytest.mark.xfail(strict=True, reason="break-N: ...").
 - Fails loudly (pytest.fail) if PostgreSQL is unreachable or DSN is missing.
-- Enforces an execution runtime floor (>= 1.0s) so a hollow run fails.
+- Counts real database round trips and fails below a floor, so a run that stops
+  touching the database cannot pass. Wall-clock is deliberately NOT used: it
+  measures the hardware, not the behaviour.
 """
 
 from __future__ import annotations
 
-import asyncio
 import dataclasses
 import inspect
 import json
@@ -30,6 +31,7 @@ import time
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
@@ -389,6 +391,94 @@ async def _live_read_signed_baseline(eng: NCEEngine, nsu: UUID, qid: str) -> dic
         return await get_signed_baseline(c, nsu, qid)
 
 
+# ---------------------------------------------------------------------------
+# Round-trip counting: the only honest "did this actually run?" check
+# ---------------------------------------------------------------------------
+#
+# A wall-clock floor was tried first and removed. It measures the machine: 28
+# small statements against a Postgres on the same host is ~7ms each, so an
+# entirely honest run finishes in ~0.2s and a slow runner passes a threshold a
+# fast one fails. Worse, it invites the fix that was actually committed --
+# `await asyncio.sleep(1.05 - elapsed)` -- which satisfies the assertion and
+# destroys its meaning. Count the round trips instead: that is the property the
+# check is about, and no amount of sleeping produces one.
+
+_QUERY_METHODS = ("execute", "executemany", "fetch", "fetchrow", "fetchval")
+
+# 28 steps, each reading or writing at least once, plus fixture setup.
+MIN_DB_ROUND_TRIPS = 40
+
+
+class _QueryCounter:
+    """Shared mutable counter; one per scenario."""
+
+    __slots__ = ("count",)
+
+    def __init__(self) -> None:
+        self.count = 0
+
+
+class _CountingConn:
+    """Forwards everything to a real connection, counting query calls."""
+
+    def __init__(self, conn: Any, counter: _QueryCounter) -> None:
+        self._conn = conn
+        self._counter = counter
+
+    def __getattr__(self, name: str) -> Any:
+        attr = getattr(self._conn, name)
+        if name in _QUERY_METHODS and callable(attr):
+
+            async def _counted(*args: Any, **kwargs: Any) -> Any:
+                self._counter.count += 1
+                return await attr(*args, **kwargs)
+
+            return _counted
+        return attr
+
+
+class _CountingAcquire:
+    """Mirrors asyncpg's PoolAcquireContext: awaitable AND an async CM."""
+
+    def __init__(self, inner: Any, counter: _QueryCounter) -> None:
+        self._inner = inner
+        self._counter = counter
+
+    async def __aenter__(self) -> _CountingConn:
+        return _CountingConn(await self._inner.__aenter__(), self._counter)
+
+    async def __aexit__(self, *exc: Any) -> Any:
+        return await self._inner.__aexit__(*exc)
+
+    def __await__(self) -> Any:
+        async def _wrap() -> _CountingConn:
+            return _CountingConn(await self._inner, self._counter)
+
+        return _wrap().__await__()
+
+
+class _CountingPool:
+    """Forwards everything to a real pool, wrapping acquired connections."""
+
+    def __init__(self, pool: Any, counter: _QueryCounter) -> None:
+        self._pool = pool
+        self._counter = counter
+
+    def acquire(self, *args: Any, **kwargs: Any) -> _CountingAcquire:
+        return _CountingAcquire(self._pool.acquire(*args, **kwargs), self._counter)
+
+    def __getattr__(self, name: str) -> Any:
+        attr = getattr(self._pool, name)
+        if name in _QUERY_METHODS and callable(attr):
+
+            async def _counted(*args: Any, **kwargs: Any) -> Any:
+                self._counter.count += 1
+                return await attr(*args, **kwargs)
+
+            return _counted
+        return attr
+
+
 async def _setup_live_context() -> AsyncGenerator[GoldenThreadScenarioContext, None]:
     """Provisions a live Postgres connection and test namespace for Golden Thread."""
     dsn = (
@@ -409,6 +499,9 @@ async def _setup_live_context() -> AsyncGenerator[GoldenThreadScenarioContext, N
         pytest.fail(f"Live Golden Thread failed to connect to Postgres ({dsn}): {exc}")
 
     start_time = time.monotonic()
+    counter = _QueryCounter()
+    raw_pool = pool
+    pool = _CountingPool(raw_pool, counter)
     slug = f"pytest-gt-{uuid.uuid4().hex[:8]}"
 
     async with pool.acquire() as conn:
@@ -442,17 +535,20 @@ async def _setup_live_context() -> AsyncGenerator[GoldenThreadScenarioContext, N
     try:
         yield ctx
     finally:
-        elapsed = time.monotonic() - ctx.start_time
-        assert elapsed >= 1.0, (
-            f"Hollow live run detected: elapsed {elapsed:.3f}s is below 1.0s runtime floor"
-        )
-
-        async with pool.acquire() as conn:
+        observed = counter.count
+        async with raw_pool.acquire() as conn:
             try:
                 await conn.execute("DELETE FROM namespaces WHERE id = $1", ns_id)
             except (asyncpg.PostgresError, OSError):
                 pass
-        await pool.close()
+        await raw_pool.close()
+
+        # Asserted AFTER cleanup so a hollow run still tears its namespace down.
+        assert observed >= MIN_DB_ROUND_TRIPS, (
+            f"Hollow live run detected: only {observed} database round trips, "
+            f"floor is {MIN_DB_ROUND_TRIPS}. The scenario is not exercising the "
+            "database -- steps have become static assertions again."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1872,11 +1968,6 @@ class TestGoldenThreadPipeline:
             degs = reg.get_degradations(str(ctx.namespace_id))
             assert total_deg == 0, f"Unexpected degradations in namespace: {total_deg} ({degs})"
 
-            # Guarantee execution runtime floor (>= 1.0s) per Charter §13
-            elapsed = time.monotonic() - ctx.start_time
-            if elapsed < 1.0:
-                await asyncio.sleep(1.05 - elapsed)
-
 
 # ---------------------------------------------------------------------------
 # Standing Positive Controls (U18: a positive-control test beats a manual RED)
@@ -1950,3 +2041,62 @@ class TestGoldenThreadPositiveControls:
                 assert not xfail_marks, (
                     f"{name} is a working step and MUST NOT carry @pytest.mark.xfail"
                 )
+
+
+@pytest.mark.asyncio
+class TestRoundTripFloorPositiveControls:
+    """The floor must fail on a hollow run and count a real one. No DB needed."""
+
+    async def test_counter_counts_every_query_method_through_the_proxy(self) -> None:
+        class FakeConn:
+            async def execute(self, *a: Any, **k: Any) -> str:
+                return "OK"
+
+            async def fetch(self, *a: Any, **k: Any) -> list:
+                return []
+
+            async def fetchrow(self, *a: Any, **k: Any) -> None:
+                return None
+
+            async def fetchval(self, *a: Any, **k: Any) -> None:
+                return None
+
+            def transaction(self) -> Any:
+                raise AssertionError("not needed")
+
+        class FakeAcquire:
+            async def __aenter__(self) -> FakeConn:
+                return FakeConn()
+
+            async def __aexit__(self, *e: Any) -> bool:
+                return False
+
+        class FakePool:
+            def acquire(self, *a: Any, **k: Any) -> FakeAcquire:
+                return FakeAcquire()
+
+        counter = _QueryCounter()
+        pool = _CountingPool(FakePool(), counter)
+        async with pool.acquire() as conn:
+            await conn.execute("SELECT 1")
+            await conn.fetch("SELECT 1")
+            await conn.fetchrow("SELECT 1")
+            await conn.fetchval("SELECT 1")
+
+        assert counter.count == 4, "the proxy must count every query method"
+
+        # Non-query attributes pass through WITHOUT being counted.
+        assert not callable(getattr(conn, "transaction", None)) or counter.count == 4
+
+    async def test_floor_rejects_a_run_that_touched_the_database_zero_times(self) -> None:
+        """The assertion this floor replaces could be satisfied by sleeping.
+
+        This one cannot: the only way to raise the number is to run queries.
+        """
+        counter = _QueryCounter()
+        with pytest.raises(AssertionError, match="Hollow live run detected"):
+            assert counter.count >= MIN_DB_ROUND_TRIPS, (
+                f"Hollow live run detected: only {counter.count} database round trips, "
+                f"floor is {MIN_DB_ROUND_TRIPS}. The scenario is not exercising the "
+                "database -- steps have become static assertions again."
+            )
