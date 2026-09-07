@@ -28,9 +28,22 @@ from nce.events.catalogue import EVENT_CATALOGUE
 from nce.vertical_modules.support import do_check_sla_breaches
 
 
+class _MockTransactionCM:
+    def __init__(self, conn: Any = None) -> None:
+        self.conn = conn
+
+    async def __aenter__(self) -> Any:
+        return self.conn
+
+    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+        return False
+
+
 class _MockContextManager:
     def __init__(self, conn: Any) -> None:
         self.conn = conn
+        if isinstance(getattr(conn, "transaction", None), AsyncMock):
+            conn.transaction = MagicMock(return_value=_MockTransactionCM(conn))
 
     async def __aenter__(self) -> Any:
         return self.conn
@@ -532,3 +545,113 @@ async def test_cron_support_sla_watcher_tick_skips_when_lock_held() -> None:
         await _support_sla_watcher_tick(pool)
         mock_conn.assert_not_called()
         mock_release.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# 10. Transactional Durability & Rollback on Publish Failure (Charter §13)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_do_check_sla_breaches_transaction_rollback_leaves_ticket_unmarked(
+    mock_engine,
+) -> None:
+    """If outbox publish fails, per-ticket transaction rolls back so the breach can be retried."""
+    ns_id = uuid4()
+    ticket_id = uuid4()
+    now = datetime.datetime(2026, 9, 7, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    created_at = now - datetime.timedelta(hours=6)
+    first_resp_due = created_at + datetime.timedelta(hours=4)
+    res_due = created_at + datetime.timedelta(hours=24)
+
+    # In-memory database simulation to verify atomic rollback vs commit
+    sla_clock_committed = {"breached": False, "breach_type": None}
+    sla_clock_staged = {"breached": False, "breach_type": None}
+
+    class MockTransaction:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            if exc_type is None:
+                # Commit staged writes
+                sla_clock_committed["breached"] = sla_clock_staged["breached"]
+                sla_clock_committed["breach_type"] = sla_clock_staged["breach_type"]
+            else:
+                # Rollback staged writes
+                sla_clock_staged["breached"] = sla_clock_committed["breached"]
+                sla_clock_staged["breach_type"] = sla_clock_committed["breach_type"]
+            # Do not suppress exception so caller sees transaction rolled back
+            return False
+
+    mock_conn = AsyncMock()
+    mock_conn.transaction = MagicMock(side_effect=MockTransaction)
+
+    async def mock_execute(query, *args):
+        if "UPDATE sla_clocks" in query:
+            sla_clock_staged["breached"] = True
+            sla_clock_staged["breach_type"] = args[2]  # $3: new_breach_type
+        return None
+
+    mock_conn.execute = AsyncMock(side_effect=mock_execute)
+    mock_conn.fetch.return_value = [
+        {
+            "id": ticket_id,
+            "status": "open",
+            "priority": "medium",
+            "sla_profile": "standard",
+            "first_response_at": None,
+            "resolved_at": None,
+            "created_at": created_at,
+            "first_response_due": first_resp_due,
+            "resolution_due": res_due,
+            "breached": sla_clock_committed["breached"],
+            "breach_type": sla_clock_committed["breach_type"],
+            "paused_intervals": [],
+        }
+    ]
+
+    # Run 1: publish fails (e.g. outbox write failure or connection drop)
+    with (
+        patch(
+            "nce.vertical_modules.support.sla.scoped_pg_session",
+            return_value=_MockContextManager(mock_conn),
+        ),
+        patch(
+            "nce.vertical_modules.support.sla.publish",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("outbox connection drop"),
+        ),
+    ):
+        result_1 = await do_check_sla_breaches(
+            mock_engine,
+            {"namespace_id": str(ns_id), "now": now},
+        )
+
+        assert result_1["checked"] == 1
+        assert result_1["breached"] == 0  # Not marked breached because transaction rolled back
+        assert result_1["published"] == 0
+
+        # CRITICAL CHARTER ASSERTION: sla_clocks.breached MUST still be FALSE
+        assert sla_clock_committed["breached"] is False
+        assert sla_clock_committed["breach_type"] is None
+
+    # Run 2: on the next tick, publish succeeds -> breach is properly committed!
+    with (
+        patch(
+            "nce.vertical_modules.support.sla.scoped_pg_session",
+            return_value=_MockContextManager(mock_conn),
+        ),
+        patch("nce.vertical_modules.support.sla.publish", new_callable=AsyncMock) as mock_pub_2,
+    ):
+        result_2 = await do_check_sla_breaches(
+            mock_engine,
+            {"namespace_id": str(ns_id), "now": now},
+        )
+
+        assert result_2["checked"] == 1
+        assert result_2["breached"] == 1  # Successfully retried and breached!
+        assert result_2["published"] == 1
+        assert sla_clock_committed["breached"] is True
+        assert sla_clock_committed["breach_type"] == "first_response"
+        mock_pub_2.assert_awaited_once()
