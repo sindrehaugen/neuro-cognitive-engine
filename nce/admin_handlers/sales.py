@@ -22,11 +22,13 @@ from __future__ import annotations
 
 import logging
 import uuid
+from typing import Any
 
 from nce.admin_handlers._shared import (
     JSONResponse,
     admin_error_response,
     admin_state,
+    bump_mcp_cache_generation,
 )
 from nce.db_utils import scoped_pg_session
 from nce.source_mode.divergence import flip_blocked
@@ -45,6 +47,12 @@ from nce.vertical_modules.sales.source_mode import (
     do_sales_overview,
     do_sales_stats,
     do_seller_detail,
+)
+from nce.vertical_modules.sales.write_routing import (
+    do_create_customer,
+    do_create_deal,
+    do_create_lead,
+    do_edit_deal,
 )
 
 log = logging.getLogger("nce.admin_handlers.sales")
@@ -718,4 +726,245 @@ async def api_admin_sales_targets_put(request) -> JSONResponse:
             exc,
             status_code=500,
             log_event="api_admin_sales_targets_put",
+        )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/sales/customers
+# ---------------------------------------------------------------------------
+
+
+async def api_admin_sales_create_customer(request) -> JSONResponse:
+    """POST /api/sales/customers
+
+    Create a customer account through C5 write routing.
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id = str(body.get("namespace_id") or "").strip()
+    if not namespace_id:
+        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
+
+    try:
+        uuid.UUID(namespace_id)
+    except ValueError as exc:
+        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+
+    customer_id = body.get("customer_id")
+    if not customer_id or not isinstance(customer_id, str) or not customer_id.strip():
+        return JSONResponse({"error": "Missing required field: customer_id"}, status_code=422)
+
+    params: dict[str, Any] = {
+        "namespace_id": namespace_id,
+        "customer_id": customer_id.strip(),
+    }
+    if "name" in body and body["name"] is not None:
+        params["name"] = str(body["name"]).strip()
+    if "source_id" in body and body["source_id"] is not None:
+        params["source_id"] = str(body["source_id"]).strip()
+
+    try:
+        result = await do_create_customer(admin_state.engine, params)
+        await bump_mcp_cache_generation(admin_state.engine, route="api_admin_sales_create_customer")
+        return JSONResponse(result, status_code=201)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Sales create customer error",
+            exc,
+            status_code=500,
+            log_event="api_admin_sales_create_customer",
+        )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/sales/leads
+# ---------------------------------------------------------------------------
+
+
+async def api_admin_sales_create_lead(request) -> JSONResponse:
+    """POST /api/sales/leads
+
+    Create a sales lead through C5 write routing.
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id = str(body.get("namespace_id") or "").strip()
+    if not namespace_id:
+        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
+
+    try:
+        uuid.UUID(namespace_id)
+    except ValueError as exc:
+        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+
+    lead_id = body.get("lead_id")
+    if not lead_id or not isinstance(lead_id, str) or not lead_id.strip():
+        return JSONResponse({"error": "Missing required field: lead_id"}, status_code=422)
+
+    params: dict[str, Any] = {
+        "namespace_id": namespace_id,
+        "lead_id": lead_id.strip(),
+    }
+    if "customer_id" in body and body["customer_id"] is not None:
+        params["customer_id"] = str(body["customer_id"]).strip()
+    if "name" in body and body["name"] is not None:
+        params["name"] = str(body["name"]).strip()
+    if "confidence" in body and body["confidence"] is not None:
+        params["confidence"] = float(body["confidence"])
+    if "source_id" in body and body["source_id"] is not None:
+        params["source_id"] = str(body["source_id"]).strip()
+
+    try:
+        result = await do_create_lead(admin_state.engine, params)
+        await bump_mcp_cache_generation(admin_state.engine, route="api_admin_sales_create_lead")
+        return JSONResponse(result, status_code=201)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Sales create lead error",
+            exc,
+            status_code=500,
+            log_event="api_admin_sales_create_lead",
+        )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/sales/deals
+# ---------------------------------------------------------------------------
+
+
+async def api_admin_sales_create_deal(request) -> JSONResponse:
+    """POST /api/sales/deals
+
+    Create a pipeline deal through C5 write routing.
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id = str(body.get("namespace_id") or "").strip()
+    if not namespace_id:
+        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
+
+    try:
+        uuid.UUID(namespace_id)
+    except ValueError as exc:
+        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+
+    deal_id = body.get("deal_id")
+    customer_id = body.get("customer_id")
+    quote_id = body.get("quote_id")
+
+    if not (deal_id and isinstance(deal_id, str) and deal_id.strip()):
+        return JSONResponse({"error": "Missing required field: deal_id"}, status_code=422)
+    if not (customer_id and isinstance(customer_id, str) and customer_id.strip()):
+        return JSONResponse({"error": "Missing required field: customer_id"}, status_code=422)
+    if not (quote_id and isinstance(quote_id, str) and quote_id.strip()):
+        return JSONResponse({"error": "Missing required field: quote_id"}, status_code=422)
+
+    params: dict[str, Any] = {
+        "namespace_id": namespace_id,
+        "deal_id": deal_id.strip(),
+        "customer_id": customer_id.strip(),
+        "quote_id": quote_id.strip(),
+    }
+    if "opportunity_id" in body and body["opportunity_id"] is not None:
+        params["opportunity_id"] = str(body["opportunity_id"]).strip()
+    if "lead_id" in body and body["lead_id"] is not None:
+        params["lead_id"] = str(body["lead_id"]).strip()
+    if "name" in body and body["name"] is not None:
+        params["name"] = str(body["name"]).strip()
+    if "confidence" in body and body["confidence"] is not None:
+        params["confidence"] = float(body["confidence"])
+    if "source_id" in body and body["source_id"] is not None:
+        params["source_id"] = str(body["source_id"]).strip()
+
+    try:
+        result = await do_create_deal(admin_state.engine, params)
+        await bump_mcp_cache_generation(admin_state.engine, route="api_admin_sales_create_deal")
+        return JSONResponse(result, status_code=201)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Sales create deal error",
+            exc,
+            status_code=500,
+            log_event="api_admin_sales_create_deal",
+        )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/sales/deals/edit
+# ---------------------------------------------------------------------------
+
+
+async def api_admin_sales_edit_deal(request) -> JSONResponse:
+    """POST /api/sales/deals/edit
+
+    Edit a pipeline deal through C5 write routing.
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id = str(body.get("namespace_id") or "").strip()
+    if not namespace_id:
+        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
+
+    try:
+        uuid.UUID(namespace_id)
+    except ValueError as exc:
+        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+
+    deal_id = body.get("deal_id")
+    if not deal_id or not isinstance(deal_id, str) or not deal_id.strip():
+        return JSONResponse({"error": "Missing required field: deal_id"}, status_code=422)
+
+    params: dict[str, Any] = {
+        "namespace_id": namespace_id,
+        "deal_id": deal_id.strip(),
+    }
+    if "name" in body and body["name"] is not None:
+        params["name"] = str(body["name"]).strip()
+    if "confidence" in body and body["confidence"] is not None:
+        params["confidence"] = float(body["confidence"])
+    if "source_id" in body and body["source_id"] is not None:
+        params["source_id"] = str(body["source_id"]).strip()
+
+    try:
+        result = await do_edit_deal(admin_state.engine, params)
+        await bump_mcp_cache_generation(admin_state.engine, route="api_admin_sales_edit_deal")
+        return JSONResponse(result, status_code=200)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Sales edit deal error",
+            exc,
+            status_code=500,
+            log_event="api_admin_sales_edit_deal",
         )

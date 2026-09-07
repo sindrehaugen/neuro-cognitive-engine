@@ -16,6 +16,7 @@ Responsibilities:
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 from uuid import UUID
@@ -154,6 +155,100 @@ async def _upsert_edge(
 # ---------------------------------------------------------------------------
 
 
+async def do_create_customer(
+    conn: asyncpg.Connection,  # type: ignore[type-arg]
+    namespace_id: str | UUID,
+    *,
+    customer_id: str,
+    name: str | None = None,
+    source_id: str | None = None,
+) -> dict[str, Any]:
+    """Transactional action to natively create a customer in the graph and sales_read_model."""
+    ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
+
+    cust_lbl = _customer_label(customer_id)
+    await _upsert_node(conn, ns_uuid, cust_lbl, _NODE_TYPE_CUSTOMER, source_id)
+
+    customer_name = name or customer_id
+    source_json = {"accountid": customer_id, "name": customer_name}
+    await conn.execute(
+        """
+        INSERT INTO sales_read_model
+            (namespace_id, entity, source_id, name, modifiedon, source_json, manual, source, is_deleted, synced_at, updated_at)
+        VALUES
+            ($1::uuid, 'accounts', $2, $3, NOW(), $4::jsonb, '{}'::jsonb, 'nce', false, NOW(), NOW())
+        ON CONFLICT (namespace_id, entity, source_id)
+        DO UPDATE SET
+            name = COALESCE(EXCLUDED.name, sales_read_model.name),
+            modifiedon = NOW(),
+            source_json = sales_read_model.source_json || EXCLUDED.source_json,
+            is_deleted = false,
+            updated_at = NOW()
+        """,
+        str(ns_uuid),
+        customer_id,
+        customer_name,
+        json.dumps(source_json),
+    )
+
+    return {"ok": True, "customer_id": customer_id, "name": customer_name}
+
+
+async def do_create_lead(
+    conn: asyncpg.Connection,  # type: ignore[type-arg]
+    namespace_id: str | UUID,
+    *,
+    lead_id: str,
+    customer_id: str | None = None,
+    name: str | None = None,
+    confidence: float = 1.0,
+    source_id: str | None = None,
+) -> dict[str, Any]:
+    """Transactional action to natively create a lead in the graph and sales_read_model."""
+    ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
+
+    lead_lbl = _lead_label(lead_id)
+    await _upsert_node(conn, ns_uuid, lead_lbl, _NODE_TYPE_LEAD, source_id)
+
+    cust_lbl = None
+    if customer_id:
+        cust_lbl = _customer_label(customer_id)
+        await _upsert_node(conn, ns_uuid, cust_lbl, _NODE_TYPE_CUSTOMER, source_id)
+        await _upsert_edge(conn, ns_uuid, cust_lbl, _PRED_HAS, lead_lbl, confidence, source_id)
+
+    lead_name = name or lead_id
+    source_json: dict[str, Any] = {"leadid": lead_id, "name": lead_name}
+    if customer_id:
+        source_json["_customerid_value"] = customer_id
+
+    await conn.execute(
+        """
+        INSERT INTO sales_read_model
+            (namespace_id, entity, source_id, name, modifiedon, source_json, manual, source, is_deleted, synced_at, updated_at)
+        VALUES
+            ($1::uuid, 'leads', $2, $3, NOW(), $4::jsonb, '{}'::jsonb, 'nce', false, NOW(), NOW())
+        ON CONFLICT (namespace_id, entity, source_id)
+        DO UPDATE SET
+            name = COALESCE(EXCLUDED.name, sales_read_model.name),
+            modifiedon = NOW(),
+            source_json = sales_read_model.source_json || EXCLUDED.source_json,
+            is_deleted = false,
+            updated_at = NOW()
+        """,
+        str(ns_uuid),
+        lead_id,
+        lead_name,
+        json.dumps(source_json),
+    )
+
+    return {
+        "ok": True,
+        "lead_id": lead_id,
+        "customer_id": customer_id,
+        "name": lead_name,
+    }
+
+
 async def do_create_deal(
     conn: asyncpg.Connection,  # type: ignore[type-arg]
     namespace_id: str | UUID,
@@ -163,13 +258,14 @@ async def do_create_deal(
     quote_id: str,
     opportunity_id: str | None = None,
     lead_id: str | None = None,
+    name: str | None = None,
     confidence: float = 1.0,
     source_id: str | None = None,
 ) -> dict[str, Any]:
-    """Transactional action to natively create a deal in the graph.
+    """Transactional action to natively create a deal in the graph and sales_read_model.
 
     Upserts CUSTOMER, DEAL, and QUOTE nodes, plus any intermediate LEAD/OPPORTUNITY nodes.
-    Writes the linking edges with the specified confidence.
+    Writes the linking edges with the specified confidence and records into sales_read_model.
     """
     ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
 
@@ -206,7 +302,38 @@ async def do_create_deal(
 
     await _upsert_edge(conn, ns_uuid, deal_lbl, _PRED_PRICED_AS, quote_lbl, confidence, source_id)
 
-    return {"ok": True, "deal_id": deal_id, "quote_id": quote_id}
+    # 3. Dual-write to sales_read_model (opportunities entity)
+    deal_name = name or deal_id
+    deal_source_json: dict[str, Any] = {
+        "opportunityid": deal_id,
+        "name": deal_name,
+        "_customerid_value": customer_id,
+        "statecode": "0",
+    }
+    if quote_id:
+        deal_source_json["quoteid"] = quote_id
+
+    await conn.execute(
+        """
+        INSERT INTO sales_read_model
+            (namespace_id, entity, source_id, name, modifiedon, source_json, manual, source, is_deleted, synced_at, updated_at)
+        VALUES
+            ($1::uuid, 'opportunities', $2, $3, NOW(), $4::jsonb, '{}'::jsonb, 'nce', false, NOW(), NOW())
+        ON CONFLICT (namespace_id, entity, source_id)
+        DO UPDATE SET
+            name = COALESCE(EXCLUDED.name, sales_read_model.name),
+            modifiedon = NOW(),
+            source_json = sales_read_model.source_json || EXCLUDED.source_json,
+            is_deleted = false,
+            updated_at = NOW()
+        """,
+        str(ns_uuid),
+        deal_id,
+        deal_name,
+        json.dumps(deal_source_json),
+    )
+
+    return {"ok": True, "deal_id": deal_id, "quote_id": quote_id, "customer_id": customer_id}
 
 
 async def do_edit_deal(
@@ -214,12 +341,13 @@ async def do_edit_deal(
     namespace_id: str | UUID,
     *,
     deal_id: str,
+    name: str | None = None,
     confidence: float | None = None,
     source_id: str | None = None,
 ) -> dict[str, Any]:
-    """Transactional action to natively edit a deal in the graph.
+    """Transactional action to natively edit a deal in the graph and sales_read_model.
 
-    Updates the DEAL node itself and optionally adjusts the confidence of its outgoing edge.
+    Updates the DEAL node itself, optionally adjusts edge confidence, and updates sales_read_model.
     """
     ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
 
@@ -246,5 +374,19 @@ async def do_edit_deal(
                 confidence,
                 source_id,
             )
+
+    if name is not None:
+        await conn.execute(
+            """
+            UPDATE sales_read_model
+            SET name = $1,
+                source_json = jsonb_set(source_json, '{name}', to_jsonb($1::text)),
+                updated_at = NOW()
+            WHERE namespace_id = $2::uuid AND entity = 'opportunities' AND source_id = $3
+            """,
+            name,
+            str(ns_uuid),
+            deal_id,
+        )
 
     return {"ok": True, "deal_id": deal_id}
