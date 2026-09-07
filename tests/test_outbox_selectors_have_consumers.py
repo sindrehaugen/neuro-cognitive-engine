@@ -48,7 +48,7 @@ from nce.outbox_relay import OUTBOX_HANDLERS
 KNOWN_UNCONSUMED_PRODUCED_SELECTORS: frozenset[str] = frozenset(
     {
         "ACCOUNT.upserted",
-            "AGREEMENT.upserted",
+        "AGREEMENT.upserted",
         "AGREEMENT_SIGNATURE.upserted",
         "AGREEMENT_TERM.upserted",
         "ASSET.upserted",
