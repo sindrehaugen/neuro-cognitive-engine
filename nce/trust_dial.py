@@ -360,7 +360,7 @@ async def set_tenant_autonomy_tier(
         await conn.execute(
             """
             UPDATE namespaces
-            SET metadata = $1::jsonb, updated_at = NOW()
+            SET metadata = $1::jsonb
             WHERE id = $2::uuid
             """,
             json.dumps(meta),

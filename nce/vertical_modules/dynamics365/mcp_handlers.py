@@ -287,12 +287,12 @@ async def handle_d365_list_sla_breaches(engine: NCEEngine, arguments: dict[str, 
         async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
             rows = await conn.fetch(
                 """
-                SELECT id, agent_id, event_type, params, created_at
+                SELECT id, agent_id, event_type, params, occurred_at AS created_at
                 FROM event_log
                 WHERE namespace_id = $1::uuid
                   AND event_type = 'd365_sla_breach'
-                  AND created_at >= $2::timestamptz
-                ORDER BY created_at DESC
+                  AND occurred_at >= $2::timestamptz
+                ORDER BY occurred_at DESC
                 LIMIT $3
                 """,
                 namespace_id,
