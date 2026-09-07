@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 253  # 251 baseline + 1 Project case study edge tool (Wave C-PJ2) + 1 Sales commission tool (Wave S-6)
+_EXPECTED_TOTAL = 257  # 253 baseline + 4 Economy PEPPOL/validation tools (Wave E-2)
 
 
 def test_registry_has_expected_entries():
@@ -416,6 +416,10 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "resources_list_resources",
         # Wave S-6 -- Sales commission calculation Advisor tool (cacheable)
         "sales_calculate_commission",
+        # MLV15D-E2 -- Economy PEPPOL and validation cacheable reads (3 tools)
+        "economy_generate_kid",
+        "economy_validate_kid",
+        "economy_validate_contract",
     }
 )
 
@@ -428,7 +432,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 95  # 94 baseline + 1 Sales commission tool (Wave S-6)
+    assert len(CACHEABLE_TOOLS) == 98  # 95 baseline + 3 Economy tools (Wave E-2)
 
 
 # ---------------------------------------------------------------------------
@@ -557,6 +561,8 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "sales_create_lead",
         "sales_create_deal",
         "sales_edit_deal",
+        # MLV15D-E2 -- Economy outbound EHF generation ([ADMIN])
+        "economy_generate_ehf",
     }
 )
 
@@ -569,7 +575,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 76  # 75 baseline + 1 Project tool (Wave C-PJ2)
+    assert len(ADMIN_ONLY_TOOLS) == 77  # 76 baseline + 1 Economy EHF tool (Wave E-2)
 
 
 # ---------------------------------------------------------------------------
