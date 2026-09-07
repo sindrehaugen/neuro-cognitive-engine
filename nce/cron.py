@@ -1203,6 +1203,76 @@ async def _vendors_cert_expiry_watcher_tick(pool: asyncpg.Pool, mongo_client: An
         await release_cron_lock(lock)
 
 
+_SUPPORT_SLA_WATCHER_INTERVAL_MINUTES: int = 5
+
+
+async def _support_sla_watcher_tick(pool: asyncpg.Pool) -> None:
+    """
+    APScheduler job: scan active service tickets in namespaces and emit
+    TICKET.sla_breached for breached tickets (Wave SU-2).
+    """
+    ttl = _SUPPORT_SLA_WATCHER_INTERVAL_MINUTES * 60 + 60
+    lock: CronLock | None = await acquire_cron_lock("support_sla_watcher", ttl)
+    if lock is None:
+        log.debug("Skipping support_sla_watcher — lock held by another instance")
+        return
+    try:
+        from nce.vertical_modules.support.sla import do_check_sla_breaches
+
+        class _PoolEngine:
+            def __init__(self, p: asyncpg.Pool) -> None:
+                self.pg_pool = p
+
+        engine = _PoolEngine(pool)
+
+        async with unmanaged_pg_connection(
+            pool, site="cron.support_sla_watcher.namespace_scan"
+        ) as conn:
+            rows = await conn.fetch("SELECT id FROM namespaces")
+
+        for row in rows:
+            ns_id: UUID = row["id"]
+            try:
+                stats = await do_check_sla_breaches(engine, {"namespace_id": str(ns_id)})
+                log.debug(
+                    "support_sla_watcher tick namespace=%s checked=%d breached=%d published=%d",
+                    ns_id,
+                    stats.get("checked", 0),
+                    stats.get("breached", 0),
+                    stats.get("published", 0),
+                )
+                if stats.get("breached", 0) > 0:
+                    breaches = stats.get("breaches", [])
+                    new_breaches = [b for b in breaches if b.get("newly_breached")]
+                    if new_breaches:
+                        sample_str = "; ".join(
+                            f"Ticket {b['ticket_id']} ({b['breach_type']}, {b['priority']})"
+                            for b in new_breaches[:5]
+                        )
+                        await _dispatch_throttled_alert(
+                            f"cron.support_sla_watcher.{ns_id}",
+                            f"SLA Breaches Detected: Namespace {ns_id}",
+                            f"{len(new_breaches)} new SLA breach(es) detected in namespace {ns_id}: {sample_str}",
+                        )
+            except _CRON_TICK_ERRORS as exc:
+                log.exception("support_sla_watcher tick failed for namespace=%s", ns_id)
+                await _dispatch_throttled_alert(
+                    f"cron.support_sla_watcher.{ns_id}",
+                    f"Support SLA Watcher Failed: Namespace {ns_id}",
+                    f"Support SLA watcher tick failed for namespace {ns_id}: "
+                    f"{type(exc).__name__}: {exc}",
+                )
+    except _CRON_TICK_ERRORS as exc:
+        log.exception("support_sla_watcher tick failed unexpectedly")
+        await _dispatch_throttled_alert(
+            "cron.support_sla_watcher.global",
+            "Cron Job Failed: support_sla_watcher",
+            f"Support SLA watcher tick failed unexpectedly: {type(exc).__name__}: {exc}",
+        )
+    finally:
+        await release_cron_lock(lock)
+
+
 async def _actor_trust_tick(pool: asyncpg.Pool) -> None:
     """
     Hourly tick: recompute Laplace-smoothed trust scores in ``actor_trust``.
@@ -2118,6 +2188,17 @@ async def async_main() -> None:
         replace_existing=True,
     )
 
+    support_sla_minutes = max(1, int(_SUPPORT_SLA_WATCHER_INTERVAL_MINUTES))
+    scheduler.add_job(
+        _support_sla_watcher_tick,
+        IntervalTrigger(minutes=support_sla_minutes),
+        args=[pool],
+        id="support_sla_watcher",
+        coalesce=True,
+        max_instances=1,
+        replace_existing=True,
+    )
+
     scheduler.start()
     log.info(
         "Started bridge renewal scheduler: interval=%s min, lookahead=%s h",
@@ -2159,6 +2240,7 @@ async def async_main() -> None:
         _retention_tick(pool),
         _hr_cert_expiry_watcher_tick(pool),
         _vendors_cert_expiry_watcher_tick(pool, mongo_client),
+        _support_sla_watcher_tick(pool),
     ]
     if cfg.NCE_D365_ENABLED:
         startup_coros.append(_d365_sync_tick(pool))
