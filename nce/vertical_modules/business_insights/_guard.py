@@ -35,6 +35,10 @@ class LowCoverageAssertionError(Exception):
     """Raised when a finding lacks required upstream engine reconciliation or structured attribution (BI-2)."""
 
 
+class BusinessInsightsDataUnavailableError(Exception):
+    """Raised when required KPI snapshots or graph data are unavailable for a query."""
+
+
 def assert_business_insights_enabled(metadata: dict[str, Any] | None) -> None:
     """Validate that the namespace has explicitly enabled Business Insights."""
     if not metadata:
