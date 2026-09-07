@@ -77,7 +77,7 @@ _GL_UNAVAILABLE: str = "gl_unavailable"
 
 
 # ---------------------------------------------------------------------------
-# A2A seam — Economy engine GL accessor (injectable for tests)
+# Seam — Economy engine GL accessor (resolved in-process via registry)
 # ---------------------------------------------------------------------------
 
 
@@ -89,37 +89,72 @@ async def _read_economy_gl_rows(
 ) -> list[dict[str, Any]]:
     """Return GL rows for the namespace from the Economy engine.
 
-    This is the **loose-coupling seam** between Agreements and Economy.
-    At runtime the call is resolved via the generic A2A transport
-    (tool name ``economy_get_gl_records``).  In tests this function is
-    replaced via ``unittest.mock.patch``.
+    Resolved in-process through the tool registry (tool name ``economy_get_gl_records``).
+    In unit tests this function can be replaced via ``unittest.mock.patch``.
 
-    Each returned dict must have at minimum::
+    Each returned dict has at minimum::
 
         {
-            "supplier_name": str,       # raw supplier name from GL
-            "supplier_id":  str | None, # optional supplier identifier
+            "supplier_name": str,       # raw or resolved supplier name from GL
+            "supplier_id":  str | None, # optional supplier identifier (e.g. orgnr)
             "amount_nok":   float,      # spend amount in NOK
             "gl_date":      str,        # ISO-8601 date (YYYY-MM-DD)
         }
 
     Returns ``[]`` when there are no rows for the namespace.
 
-    Economy engine (Module 8) is NOT built yet.  Tests MUST patch this.
-
-    A2A tool name (resolved at runtime): ``economy_get_gl_records``
-
     Raises
     ------
     NotImplementedError
-        Always (until Economy engine Module 8 ships).  Tests must patch this.
+        When the Economy vertical is not available, unconfigured, or disabled for the namespace.
     """
-    raise NotImplementedError(
-        "_read_economy_gl_rows: Economy engine (Module 8) is not built yet. "
-        "Mock this function in integration tests: "
-        "patch('nce.vertical_modules.agreements.coverage._read_economy_gl_rows', "
-        "AsyncMock(return_value=[...]))"
-    )
+    try:
+        from nce.tool_registry import TOOL_REGISTRY
+    except ImportError as exc:
+        raise NotImplementedError("TOOL_REGISTRY not available") from exc
+
+    tool_spec = TOOL_REGISTRY.get("economy_get_gl_records")
+    if tool_spec is None:
+        raise NotImplementedError("economy_get_gl_records tool is not registered")
+
+    if getattr(engine, "pg_pool", None) is None:
+        raise NotImplementedError("Economy engine is not configured (no pg_pool)")
+
+    try:
+        raw_result = await tool_spec.handler(
+            engine,
+            {
+                "namespace_id": str(namespace_id),
+                "since_iso": since_iso,
+            },
+        )
+    except Exception as exc:
+        raise NotImplementedError(
+            f"Economy GL read failed for namespace {namespace_id}: {exc}"
+        ) from exc
+
+    if isinstance(raw_result, str):
+        try:
+            payload = json.loads(raw_result)
+        except (ValueError, TypeError) as exc:
+            raise NotImplementedError(
+                f"economy_get_gl_records returned invalid JSON: {exc}"
+            ) from exc
+    elif isinstance(raw_result, dict):
+        payload = raw_result
+    else:
+        raise NotImplementedError(
+            f"economy_get_gl_records returned unexpected type: {type(raw_result).__name__}"
+        )
+
+    if isinstance(payload, dict) and "error" in payload:
+        raise NotImplementedError(f"economy_get_gl_records returned error: {payload['error']}")
+
+    records = payload.get("records") if isinstance(payload, dict) else payload
+    if not isinstance(records, list):
+        return []
+
+    return records
 
 
 # ---------------------------------------------------------------------------

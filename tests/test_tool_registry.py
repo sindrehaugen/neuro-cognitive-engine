@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 257  # 253 baseline + 4 Economy PEPPOL/validation tools (Wave E-2)
+_EXPECTED_TOTAL = 258  # 257 baseline + 1 Economy GL records tool (Wave B-AG1 / B-E2)
 
 
 def test_registry_has_expected_entries():
@@ -420,6 +420,8 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "economy_generate_kid",
         "economy_validate_kid",
         "economy_validate_contract",
+        # Wave B-AG1 / B-E2 -- Economy GL records retrieval (cacheable read)
+        "economy_get_gl_records",
     }
 )
 
@@ -432,7 +434,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 98  # 95 baseline + 3 Economy tools (Wave E-2)
+    assert len(CACHEABLE_TOOLS) == 99  # 98 baseline + 1 Economy GL records tool (Wave B-AG1 / B-E2)
 
 
 # ---------------------------------------------------------------------------

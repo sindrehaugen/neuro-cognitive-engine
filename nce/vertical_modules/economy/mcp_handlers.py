@@ -41,6 +41,7 @@ from nce.vertical_modules.economy.dunning import do_compute_dunning
 from nce.vertical_modules.economy.events import UnbalancedPostingsError, do_emit_financial_event
 from nce.vertical_modules.economy.finago import do_gl_sync_status
 from nce.vertical_modules.economy.forecast import do_forecast_cashflow
+from nce.vertical_modules.economy.gl import do_get_gl_records
 from nce.vertical_modules.economy.matching import do_match_invoice, load_economy_thresholds
 from nce.vertical_modules.economy.ngaap import (
     do_compute_bucket_targets,
@@ -902,6 +903,49 @@ async def handle_economy_validate_contract(engine: NCEEngine, arguments: dict[st
             {
                 "error": (
                     f"economy_validate_contract: result contains a non-finite value and cannot "
+                    f"be serialized ({exc})"
+                )
+            },
+            default=str,
+        )
+
+
+@mcp_handler
+async def handle_economy_get_gl_records(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: economy_get_gl_records — query GL postings with C8 allow-list projection (READ-ONLY Advisor).
+
+    Required arguments:
+        namespace_id (str, UUID)
+    Optional arguments:
+        since_iso         (str) — lower bound ISO datetime/date string
+        until_iso         (str) — upper bound ISO datetime/date string
+        account           (str) — exact GL account code
+        account_prefix    (str) — account prefix string
+        period_id         (str) — accounting period identifier
+        economy_source_id (str) — source identifier
+        limit             (int) — max records to return (default 5000, max 10000)
+
+    Returns JSON string with {"ok": true, "records": [...], "count": int}.
+    """
+    try:
+        await _check_economy_enabled(engine, arguments)
+        result = await do_get_gl_records(engine, arguments)
+    except McpError:
+        raise
+    except (ValueError, KeyError, TypeError) as exc:
+        return json.dumps({"error": str(exc)}, default=str)
+    except Exception as exc:
+        log.exception("[economy] handle_economy_get_gl_records unexpected error")
+        return json.dumps({"error": str(exc)}, default=str)
+
+    try:
+        return json.dumps(result, default=str, allow_nan=False)
+    except ValueError as exc:
+        log.error("[economy] handle_economy_get_gl_records result not JSON-serializable: %s", exc)
+        return json.dumps(
+            {
+                "error": (
+                    f"economy_get_gl_records: result contains a non-finite value and cannot "
                     f"be serialized ({exc})"
                 )
             },

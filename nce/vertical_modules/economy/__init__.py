@@ -24,6 +24,7 @@ from nce.vertical_modules.economy.dunning import do_compute_dunning
 from nce.vertical_modules.economy.events import do_emit_financial_event
 from nce.vertical_modules.economy.finago import do_gl_sync_status, do_reconcile_gl
 from nce.vertical_modules.economy.forecast import do_forecast_cashflow
+from nce.vertical_modules.economy.gl import do_get_gl_records
 from nce.vertical_modules.economy.ingestion import (
     do_get_invoice_watermark,
     do_ingest_invoice,
@@ -56,6 +57,7 @@ __all__ = [
     "do_generate_close_narrative",
     "do_generate_ehf",
     "do_generate_kid",
+    "do_get_gl_records",
     "do_get_invoice_watermark",
     "do_gl_sync_status",
     "do_ingest_invoice",
