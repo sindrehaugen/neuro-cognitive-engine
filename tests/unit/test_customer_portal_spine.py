@@ -42,9 +42,9 @@ def test_customer_portal_tables_registered_in_expected_tenant_rls_tables():
 
 
 def test_expected_tenant_rls_tables_total_count():
-    """Total count of tenant RLS tables after Customer Portal and Decision Feedback additions must be 88."""
-    assert len(EXPECTED_TENANT_RLS_TABLES) == 88, (
-        f"Expected 88 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
+    """Total count of tenant RLS tables after Customer Portal, Decision Feedback, and Signing Credentials additions must be 89."""
+    assert len(EXPECTED_TENANT_RLS_TABLES) == 89, (
+        f"Expected 89 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
     )
 
 

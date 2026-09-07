@@ -391,6 +391,8 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "business_insights_kpi_snapshots": "namespace_id",
     # C10 Decision-Feedback Service (Cross-Engine, Wave 1): ground-truth human decision signal.
     "decision_feedback": "namespace_id",
+    # Signing Service (Sales / Cross-Engine Wave Q-4): encrypted provider credentials.
+    "signing_credentials": "namespace_id",
 }
 
 
