@@ -181,8 +181,8 @@ def verify_resource_ownership(
         return
 
     # 2. engine.resources registry
-    if hasattr(engine, "resources") and isinstance(engine.resources, dict):
-        res_dict = engine.resources
+    res_dict = getattr(engine, "resources", None)
+    if isinstance(res_dict, dict):
         entry = res_dict.get((resource_type, resource_id))
         if (
             entry is None
