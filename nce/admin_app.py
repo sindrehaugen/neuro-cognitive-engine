@@ -828,6 +828,11 @@ def build_admin_routes() -> list[Route]:
             methods=["POST"],
         ),
         Route(
+            "/api/vendors/seed",
+            endpoint=vendors_handlers.api_vendors_seed,
+            methods=["POST"],
+        ),
+        Route(
             "/api/vendors/{id}",
             endpoint=vendors_handlers.api_vendors_get_vendor,
             methods=["GET"],

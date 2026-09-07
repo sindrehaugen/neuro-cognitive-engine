@@ -38,6 +38,7 @@ def test_package_exports_all_cores() -> None:
 
     expected_cores = [
         "do_upsert_vendor",
+        "do_seed_vendors",
         "do_get_vendor",
         "do_compute_scorecard",
         "do_partner_view",
@@ -223,6 +224,7 @@ def test_vendors_routes_mounted_in_admin_app() -> None:
     assert "/api/vendors/contractors/upsert" in paths
     assert "/api/vendors/contractors/{id}" in paths
     assert "/api/vendors/certs/upsert" in paths
+    assert "/api/vendors/seed" in paths
     assert "/api/vendors/{id}" in paths
 
 
@@ -238,6 +240,7 @@ async def test_rest_routes_no_engine() -> None:
         api_vendors_get_contractor,
         api_vendors_get_vendor,
         api_vendors_scorecard,
+        api_vendors_seed,
         api_vendors_upsert,
         api_vendors_upsert_cert,
         api_vendors_upsert_contractor,
@@ -258,6 +261,10 @@ async def test_rest_routes_no_engine() -> None:
         resp = await api_vendors_upsert(
             _make_request(body={"namespace_id": _NAMESPACE_ID, "orgnr": "123", "name": "ACME"})
         )
+        assert resp.status_code == 503
+
+        # POST /api/vendors/seed
+        resp = await api_vendors_seed(_make_request(body={"namespace_id": _NAMESPACE_ID}))
         assert resp.status_code == 503
 
         # POST /api/vendors/contractors/upsert
