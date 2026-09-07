@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 251  # 247 baseline + 4 Sales native write tools (Wave S-1)
+_EXPECTED_TOTAL = 252  # 251 baseline + 1 Project case study edge tool (Wave C-PJ2)
 
 
 def test_registry_has_expected_entries():
@@ -234,6 +234,8 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "product_ingest_spec",
         # Wave PJ-1 -- Project record outcome mutation
         "project_record_outcome",
+        # Wave C-PJ2 -- Project generate case study edge mutation
+        "project_generate_case_study_edge",
         # Wave RS-3 -- Resources record allocation outcome mutation
         "resources_record_allocation_outcome",
         # Wave T-1 -- Trust dial set tier mutation
@@ -262,7 +264,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 114  # 110 baseline + 4 Sales tools (Wave S-1)
+    assert len(MUTATION_TOOLS) == 115  # 114 baseline + 1 Project tool (Wave C-PJ2)
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -535,6 +537,8 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "decision_feedback_record",
         # Wave PJ-1 -- Project record outcome admin_only tool
         "project_record_outcome",
+        # Wave C-PJ2 -- Project generate case study edge admin_only tool
+        "project_generate_case_study_edge",
         # Wave RS-3 -- Resources record allocation outcome admin_only tool
         "resources_record_allocation_outcome",
         # Wave T-1 -- Trust dial set tier admin_only tool
@@ -563,7 +567,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 75  # 71 baseline + 4 Sales tools (Wave S-1)
+    assert len(ADMIN_ONLY_TOOLS) == 76  # 75 baseline + 1 Project tool (Wave C-PJ2)
 
 
 # ---------------------------------------------------------------------------

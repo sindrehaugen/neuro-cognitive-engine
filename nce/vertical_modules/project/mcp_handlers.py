@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Any
 from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import mcp_handler
 from nce.vertical_modules.project.advance import do_advance_phase
+from nce.vertical_modules.project.case_study import do_generate_case_study_edge
 from nce.vertical_modules.project.convert import do_convert_signed_quote
 from nce.vertical_modules.project.phase_gates import can_enter_phase
 from nce.vertical_modules.project.recall import (
@@ -169,4 +170,28 @@ async def handle_project_record_outcome(engine: NCEEngine, arguments: dict[str, 
         raise ValueError("slip_reason is required")
     params: dict[str, Any] = dict(arguments)
     result = await do_record_project_outcome(engine, params)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_project_generate_case_study_edge(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: project_generate_case_study_edge — generate case study edge (Wave C-PJ2).
+
+    Requires ``namespace_id`` and ``project_id`` in *arguments*.
+    Optionally accepts ``confidence`` (float; default 1.0).
+
+    Calls ``case_study.do_generate_case_study_edge`` which verifies project is in
+    terminal phase G6 and upserts the ``PROJECT_CASE_STUDY`` node and
+    ``PROJECT -[generates]-> CASE_STUDY`` edge.
+
+    Actor / admin-only (``mutation=True, admin_only=True``).
+    """
+    require_namespace_id(arguments)
+    project_id = str(arguments.get("project_id") or "").strip()
+    if not project_id:
+        raise ValueError("project_id is required")
+    params: dict[str, Any] = dict(arguments)
+    result = await do_generate_case_study_edge(engine, params)
     return json.dumps(result, default=str)

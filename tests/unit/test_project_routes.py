@@ -423,3 +423,4 @@ def test_project_routes_mounted_in_admin_app():
     paths = {r.path for r in routes}
     assert "/api/project/convert-signed-quote" in paths
     assert "/api/project/{id}/phase" in paths
+    assert "/api/project/{id}/case-study" in paths
