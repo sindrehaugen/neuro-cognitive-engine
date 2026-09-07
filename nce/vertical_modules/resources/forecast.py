@@ -134,18 +134,84 @@ async def do_forecast_demand(engine: Any, params: dict[str, Any]) -> dict[str, A
             try:
                 task_rows = await conn.fetch(
                     """
-                    SELECT label, raw
+                    SELECT label, payload_ref
                     FROM kg_nodes
-                    WHERE namespace_id = $1
+                    WHERE namespace_id = $1::uuid
                       AND entity_type = 'PROJECT_TASK'
-                      AND (raw->>'status' = 'planned' OR raw->>'status' = 'scheduled')
                     LIMIT 100
                     """,
                     ns_id,
                 )
-                for tr in task_rows:
-                    raw = json.loads(tr["raw"]) if isinstance(tr["raw"], str) else (tr["raw"] or {})
-                    pipeline_hours += float(raw.get("estimated_hours") or 16.0)
+                if task_rows:
+                    refs = [
+                        str(tr["payload_ref"]).strip() for tr in task_rows if tr.get("payload_ref")
+                    ]
+                    raw_payloads: dict[str, dict[str, Any]] = {}
+                    if refs and getattr(engine, "mongo_db", None) is not None:
+                        try:
+                            from nce.mongo_bulk import fetch_episodes_raw_by_ref
+
+                            raw_payloads = await fetch_episodes_raw_by_ref(engine.mongo_db, refs)
+                        except Exception as exc:
+                            log.debug("fetch_episodes_raw_by_ref failed: %s", exc)
+
+                    unresolved_labels: list[str] = []
+                    for tr in task_rows:
+                        pref = str(tr["payload_ref"]).strip() if tr.get("payload_ref") else None
+                        if pref and pref in raw_payloads:
+                            doc = raw_payloads[pref]
+                            st = str(doc.get("status", "")).lower()
+                            if st in ("planned", "scheduled"):
+                                pipeline_hours += float(
+                                    doc.get("estimated_hours") or doc.get("hours") or 16.0
+                                )
+                        else:
+                            unresolved_labels.append(tr["label"])
+
+                    if unresolved_labels:
+                        edge_rows = await conn.fetch(
+                            """
+                            SELECT subject_label, predicate, object_label
+                            FROM kg_edges
+                            WHERE (subject_label = ANY($1::text[]) OR object_label = ANY($1::text[]))
+                              AND namespace_id = $2::uuid
+                            """,
+                            unresolved_labels,
+                            ns_id,
+                        )
+                        tasks_info: dict[str, dict[str, Any]] = {
+                            lbl: {"is_open": False, "status": None, "hours": 16.0}
+                            for lbl in unresolved_labels
+                        }
+                        for er in edge_rows:
+                            subj = er["subject_label"]
+                            pred = er["predicate"].lower()
+                            obj = er["object_label"]
+                            if obj in tasks_info and pred == "generates":
+                                tasks_info[obj]["is_open"] = True
+                            if subj in tasks_info:
+                                if pred in ("status", "has_status"):
+                                    st = obj.split(":")[-1].lower()
+                                    tasks_info[subj]["status"] = st
+                                elif pred in (
+                                    "load",
+                                    "has_load",
+                                    "effort",
+                                    "hours",
+                                    "estimated_hours",
+                                ):
+                                    try:
+                                        tasks_info[subj]["hours"] = float(obj)
+                                    except (ValueError, TypeError):
+                                        pass
+
+                        for lbl, info in tasks_info.items():
+                            st = info["status"]
+                            if (st in ("planned", "scheduled")) or (
+                                info["is_open"]
+                                and st not in ("closed", "completed", "superseded", "cancelled")
+                            ):
+                                pipeline_hours += info["hours"]
             except Exception as exc:
                 log.debug("No kg_nodes pipeline task query: %s", exc)
 

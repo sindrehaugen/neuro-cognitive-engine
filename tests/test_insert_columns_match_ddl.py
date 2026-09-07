@@ -66,18 +66,7 @@ KNOWN_BAD_INSERT_COLUMNS: dict[str, dict[str, str]] = {
 }
 
 # Shrink-only, same contract as the INSERT allowlist above.
-KNOWN_BAD_QUERY_COLUMNS: dict[str, dict[str, str]] = {
-    "kg_nodes": {
-        "raw": (
-            "resources/forecast.py:136 -- selects `label, raw` and filters on "
-            "`raw->>'status'`. kg_nodes stores its payload as `payload_ref`, a "
-            "reference, not inline JSONB -- so this is not a rename: the planned-project "
-            "branch of demand forecasting needs redesigning around payload_ref (or a "
-            "different source). The query sits inside a try/except, so the branch "
-            "silently contributes zero hours today. Owner: MLV15D (resources)."
-        ),
-    },
-}
+KNOWN_BAD_QUERY_COLUMNS: dict[str, dict[str, str]] = {}
 
 _SQL_KEYWORDS = {
     "select",

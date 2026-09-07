@@ -22,6 +22,9 @@ class MockEngine:
     def __init__(self):
         self.resources: dict[str, dict[str, Any]] = {}
         self.allocations: dict[str, dict[str, Any]] = {}
+        self.kg_nodes: list[dict[str, Any]] = []
+        self.kg_edges: list[dict[str, Any]] = []
+        self.mongo_db = None
         self.pg_pool = MagicMock()
 
 
@@ -66,7 +69,18 @@ def mock_engine(monkeypatch):
             return res
 
         if "from kg_nodes" in q and "entity_type = 'project_task'" in q:
-            return []
+            ns_id = str(args[0])
+            return [n for n in engine.kg_nodes if str(n.get("namespace_id")) == ns_id]
+
+        if "from kg_edges" in q:
+            ns_id = str(args[1])
+            labels = set(args[0])
+            return [
+                e
+                for e in engine.kg_edges
+                if str(e.get("namespace_id")) == ns_id
+                and (e.get("subject_label") in labels or e.get("object_label") in labels)
+            ]
 
         return []
 
@@ -201,3 +215,114 @@ async def test_get_morning_brief_capacity_pulse(mock_engine):
     assert pulse["available_today_resources"] == 1
     assert pulse["daily_utilization_pct"] == 50.0
     assert pulse["capacity_health"] == "optimal"
+
+
+@pytest.mark.asyncio
+async def test_do_forecast_demand_pipeline_tasks_via_edges(mock_engine):
+    """Pipeline demand calculates hours from graph PROJECT_TASK nodes and kg_edges."""
+    ns_id = uuid4()
+    tech1 = uuid4()
+
+    mock_engine.resources[str(tech1)] = {
+        "id": str(tech1),
+        "namespace_id": str(ns_id),
+        "name": "Tech Alpha",
+        "kind": "employee",
+        "capacity_pct": 100.0,
+        "active": True,
+        "metadata": {"role": "technician"},
+    }
+
+    # Baseline: without planned tasks in graph, demand is 0 and status is surplus
+    res_empty = await do_forecast_demand(
+        mock_engine,
+        {"namespace_id": ns_id, "horizon_days": 30},
+    )
+    assert res_empty["pipeline_demand_hours"] == 0.0
+    assert res_empty["total_demand_hours"] == 0.0
+    assert res_empty["status"] == "surplus"
+
+    # Add planned PROJECT_TASK node and kg_edges with effort and status
+    task_label = "TASK:PRJ-100:001"
+    mock_engine.kg_nodes.append(
+        {
+            "label": task_label,
+            "entity_type": "PROJECT_TASK",
+            "namespace_id": str(ns_id),
+            "payload_ref": None,
+        }
+    )
+    mock_engine.kg_edges.extend(
+        [
+            {
+                "namespace_id": str(ns_id),
+                "subject_label": "BOM_LINE:001",
+                "predicate": "generates",
+                "object_label": task_label,
+            },
+            {
+                "namespace_id": str(ns_id),
+                "subject_label": task_label,
+                "predicate": "has_status",
+                "object_label": "STATUS:PLANNED",
+            },
+            {
+                "namespace_id": str(ns_id),
+                "subject_label": task_label,
+                "predicate": "effort",
+                "object_label": "200.0",
+            },
+        ]
+    )
+
+    res_with_task = await do_forecast_demand(
+        mock_engine,
+        {"namespace_id": ns_id, "horizon_days": 30},
+    )
+    # Assert demand increased and forecast changed from surplus to deficit
+    assert res_with_task["pipeline_demand_hours"] == 200.0
+    assert res_with_task["total_demand_hours"] == 200.0
+    assert res_with_task["status"] == "deficit"
+    assert res_with_task["capacity_gap_hours"] > 0.0
+    assert res_with_task["total_demand_hours"] > res_empty["total_demand_hours"]
+
+
+@pytest.mark.asyncio
+async def test_do_forecast_demand_pipeline_tasks_via_payload_ref(mock_engine, monkeypatch):
+    """Pipeline demand calculates hours from PROJECT_TASK nodes resolving payload_ref."""
+    ns_id = uuid4()
+    tech1 = uuid4()
+
+    mock_engine.resources[str(tech1)] = {
+        "id": str(tech1),
+        "namespace_id": str(ns_id),
+        "name": "Tech Beta",
+        "kind": "employee",
+        "capacity_pct": 100.0,
+        "active": True,
+        "metadata": {"role": "technician"},
+    }
+
+    mock_engine.mongo_db = MagicMock()
+    fake_ref = "60d5ecb8b5c9c61234567890"
+    mock_engine.kg_nodes.append(
+        {
+            "label": "TASK:PRJ-200:001",
+            "entity_type": "PROJECT_TASK",
+            "namespace_id": str(ns_id),
+            "payload_ref": fake_ref,
+        }
+    )
+
+    async def _fake_fetch_raw(db, refs):
+        return {fake_ref: {"status": "scheduled", "estimated_hours": 250.0}}
+
+    monkeypatch.setattr("nce.mongo_bulk.fetch_episodes_raw_by_ref", _fake_fetch_raw)
+
+    res = await do_forecast_demand(
+        mock_engine,
+        {"namespace_id": ns_id, "horizon_days": 30},
+    )
+    assert res["pipeline_demand_hours"] == 250.0
+    assert res["total_demand_hours"] == 250.0
+    assert res["status"] == "deficit"
