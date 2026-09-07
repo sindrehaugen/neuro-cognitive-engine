@@ -63,8 +63,7 @@ async def do_field_schedule(engine: Any, params: dict[str, Any]) -> dict[str, An
         # 1. Fetch technician resource profile
         res_row = await conn.fetchrow(
             """
-            SELECT id, namespace_id, kind, name, email, phone, capacity_pct,
-                   cost_rate_nok, hourly_rate_nok, active, metadata, created_at, updated_at
+            SELECT id, namespace_id, kind, ref_id, display_name, attrs, created_at, updated_at
             FROM resources
             WHERE id = $1 AND namespace_id = $2
             """,
@@ -75,11 +74,11 @@ async def do_field_schedule(engine: Any, params: dict[str, Any]) -> dict[str, An
             raise ResourceNotFoundError(f"Resource {res_id} not found in namespace {ns_id}.")
 
         is_contractor = res_row["kind"] == "contractor"
-        res_meta = (
-            json.loads(res_row["metadata"])
-            if isinstance(res_row["metadata"], str)
-            else (res_row["metadata"] or {})
+        res_attrs_raw = res_row["attrs"] if "attrs" in res_row else res_row.get("metadata", {})
+        res_attrs = (
+            json.loads(res_attrs_raw) if isinstance(res_attrs_raw, str) else (res_attrs_raw or {})
         )
+        res_meta = res_attrs
 
         # 2. Fetch allocations for this resource within window
         alloc_query = """
@@ -289,7 +288,7 @@ async def do_field_schedule(engine: Any, params: dict[str, Any]) -> dict[str, An
                 veh_uuid = _parse_uuid(veh_id_raw, "assigned_vehicle_id")
                 veh_row = await conn.fetchrow(
                     """
-                    SELECT id, name, kind, metadata
+                    SELECT id, display_name, kind, attrs
                     FROM resources
                     WHERE id = $1 AND namespace_id = $2
                     """,
@@ -297,14 +296,22 @@ async def do_field_schedule(engine: Any, params: dict[str, Any]) -> dict[str, An
                     ns_id,
                 )
                 if veh_row:
+                    v_attrs_raw = (
+                        veh_row["attrs"] if "attrs" in veh_row else veh_row.get("metadata", {})
+                    )
                     v_meta = (
-                        json.loads(veh_row["metadata"])
-                        if isinstance(veh_row["metadata"], str)
-                        else (veh_row["metadata"] or {})
+                        json.loads(v_attrs_raw)
+                        if isinstance(v_attrs_raw, str)
+                        else (v_attrs_raw or {})
+                    )
+                    veh_name = (
+                        veh_row["display_name"]
+                        if "display_name" in veh_row
+                        else veh_row.get("name")
                     )
                     assigned_vehicle = {
                         "id": str(veh_row["id"]),
-                        "name": veh_row["name"],
+                        "name": veh_name,
                         "kind": veh_row["kind"],
                         "registration_number": v_meta.get("registration_no")
                         or v_meta.get("license_plate"),
@@ -380,12 +387,15 @@ async def do_field_schedule(engine: Any, params: dict[str, Any]) -> dict[str, An
             schedule_items.append(item)
 
         # 7. Calendar Sync status (gated OFF by default per cfg.NCE_RESOURCES_CALENDAR_SYNC_ENABLED)
+        res_email = res_attrs.get("email") or (
+            res_row.get("email") if hasattr(res_row, "get") else None
+        )
         if cfg.NCE_RESOURCES_CALENDAR_SYNC_ENABLED:
             calendar_sync = {
                 "enabled": True,
                 "status": "synced",
                 "provider": "microsoft_365_graph",
-                "upn": res_row["email"],
+                "upn": res_email,
                 "synced_allocations_count": len(schedule_items),
                 "last_sync_at": datetime.now(timezone.utc).isoformat(),
             }
@@ -394,30 +404,57 @@ async def do_field_schedule(engine: Any, params: dict[str, Any]) -> dict[str, An
                 "enabled": False,
                 "status": "disabled_by_config",
                 "provider": "internal",
-                "upn": res_row["email"],
+                "upn": res_email,
                 "synced_allocations_count": 0,
                 "last_sync_at": None,
             }
 
         # 8. Technician Profile (redacted if contractor)
+        tech_name = (
+            res_row["display_name"]
+            if "display_name" in res_row
+            else (res_row.get("name") if hasattr(res_row, "get") else res_row["name"])
+        )
+        tech_phone = res_attrs.get("phone") or (
+            res_row.get("phone") if hasattr(res_row, "get") else None
+        )
+        tech_capacity = (
+            res_attrs.get("capacity_pct")
+            if res_attrs.get("capacity_pct") is not None
+            else (res_row.get("capacity_pct") if hasattr(res_row, "get") else 100.0)
+        )
+        tech_active = (
+            res_attrs.get("active")
+            if res_attrs.get("active") is not None
+            else (res_row.get("active") if hasattr(res_row, "get") else True)
+        )
+        cost_rate_val = (
+            res_attrs.get("cost_rate_nok")
+            if res_attrs.get("cost_rate_nok") is not None
+            else (res_row.get("cost_rate_nok") if hasattr(res_row, "get") else None)
+        )
+        hourly_rate_val = (
+            res_attrs.get("hourly_rate_nok")
+            if res_attrs.get("hourly_rate_nok") is not None
+            else (res_row.get("hourly_rate_nok") if hasattr(res_row, "get") else None)
+        )
+
         tech_profile: dict[str, Any] = {
             "id": str(res_row["id"]),
-            "name": res_row["name"],
+            "name": tech_name,
             "kind": res_row["kind"],
-            "email": res_row["email"],
-            "phone": res_row["phone"],
-            "capacity_pct": float(res_row["capacity_pct"]),
-            "active": bool(res_row["active"]),
+            "email": res_email,
+            "phone": tech_phone,
+            "capacity_pct": float(tech_capacity if tech_capacity is not None else 100.0),
+            "active": bool(tech_active if tech_active is not None else True),
             "metadata": res_meta,
         }
         if not is_contractor:
             tech_profile["cost_rate_nok"] = (
-                float(res_row["cost_rate_nok"]) if res_row["cost_rate_nok"] is not None else None
+                float(cost_rate_val) if cost_rate_val is not None else None
             )
             tech_profile["hourly_rate_nok"] = (
-                float(res_row["hourly_rate_nok"])
-                if res_row["hourly_rate_nok"] is not None
-                else None
+                float(hourly_rate_val) if hourly_rate_val is not None else None
             )
 
         return {
