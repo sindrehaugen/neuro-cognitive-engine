@@ -184,8 +184,46 @@ async def handle_hr_cert_change(
         }
 
 
+class IncompletePayloadError(RuntimeError):
+    """A CERTIFICATION event matched this subscriber but carries no namespace."""
+
+
+class EngineNotRegisteredError(RuntimeError):
+    """No engine was registered in this process, so no scoped session can be opened."""
+
+
+_ENGINE_REGISTRY: dict[str, Any] = {}
+
+
+def _get_registered_engine() -> Any | None:
+    """Return the engine registered for this process, or ``None``."""
+    return _ENGINE_REGISTRY.get("engine")
+
+
+def register_engine(engine: Any) -> None:
+    """Register the engine the RS-4 subscriber writes through.
+
+    Must be called at startup in **every** process that runs the outbox relay
+    (``nce/mcp_stdio_main.py`` and ``nce/cron.py``).  A registrar wired in only
+    one of them leaves the subscriber silently dead in the other.
+    """
+    _ENGINE_REGISTRY["engine"] = engine
+
+
 async def on_hr_cert_event(conn: Any, event: dict[str, Any]) -> None:
-    """Outbox relay handler for HR certification events."""
+    """Outbox relay handler for HR certification events.
+
+    The relay invokes handlers as ``handler(conn, event)`` with its **polling
+    connection**, which deliberately carries no session-scoped ``SET`` for
+    ``nce.namespace_id`` (see ``nce/outbox_relay.py``).  So this handler must not
+    write on *conn*: it resolves the registered engine and lets
+    ``handle_hr_cert_change`` open its own RLS-scoped session, the same shape
+    ``project.tasks._handle_bom_line_status_changed`` uses.
+
+    Every failure path raises.  A bare ``return`` is indistinguishable from a
+    successful delivery to the relay — the dedup row commits, the outbox row is
+    marked published, and the event is gone for good.
+    """
     payload = event.get("payload") or {}
     if isinstance(payload, str):
         try:
@@ -194,9 +232,24 @@ async def on_hr_cert_event(conn: Any, event: dict[str, Any]) -> None:
             payload = {}
 
     ns_id = event.get("namespace_id") or payload.get("namespace_id")
-    if ns_id:
-        payload["namespace_id"] = ns_id
-        await handle_hr_cert_change(conn, payload)
+    if not ns_id:
+        raise IncompletePayloadError(
+            "[resources.watcher] CERTIFICATION event carries no namespace_id — cannot "
+            f"invalidate allocations. event_type={event.get('event_type')!r} "
+            f"aggregate_id={event.get('aggregate_id')!r}"
+        )
+
+    engine = _get_registered_engine()
+    if engine is None:
+        raise EngineNotRegisteredError(
+            "[resources.watcher] no engine registered in this process — cannot invalidate "
+            f"allocations for namespace {ns_id!r}. Call "
+            "nce.vertical_modules.resources.watcher.register_engine(engine) at startup "
+            "before this subscriber can receive traffic."
+        )
+
+    payload["namespace_id"] = ns_id
+    await handle_hr_cert_change(engine, payload)
 
 
 def register_resources_event_subscribers() -> None:

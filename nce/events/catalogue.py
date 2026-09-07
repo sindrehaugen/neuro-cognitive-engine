@@ -113,30 +113,29 @@ EVENT_CATALOGUE: Mapping[str, EventContract] = {
         selector="CERTIFICATION.EXPIRED",
         node_type="CERTIFICATION",
         op="EXPIRED",
-        declared_producers=(),
-        declared_consumers=("nce/vertical_modules/resources/watcher.py",),
-        status="UNPRODUCED",
-        reason=(
-            "Subscribed in resources/watcher.py; scheduled to be produced by HR in "
-            "HR-1 and Vendors in V-2 (reconciling legacy cert.expiry spelling)."
+        declared_producers=(
+            "nce/vertical_modules/hr/certs.py",
+            "nce/vertical_modules/vendors/certs.py",
         ),
+        declared_consumers=("nce/vertical_modules/resources/watcher.py",),
+        status="ACTIVE",
         description="Emitted when a certification lapses, triggering allocation invalidation.",
     ),
     # ---------------------------------------------------------------------------
-    # Legacy emitter with mismatched spelling (Vendors emits cert.expiry instead of CERTIFICATION.EXPIRED)
+    # Legacy emitter with mismatched spelling (aligned with CERTIFICATION.EXPIRED in Wave V-2)
     # ---------------------------------------------------------------------------
     "cert.expiry": EventContract(
         selector="cert.expiry",
         node_type="cert",
         op="expiry",
-        declared_producers=("nce/vertical_modules/vendors/certs.py",),
+        declared_producers=(),
         declared_consumers=(),
-        status="UNCONSUMED",
+        status="DEPRECATED",
         reason=(
-            "Legacy lowercase event emitted by Vendors certs watcher; scheduled to be "
-            "aligned with CERTIFICATION.EXPIRED in v1.5 Phase 1 Wave V-2."
+            "Legacy lowercase event aligned with CERTIFICATION.EXPIRED in "
+            "v1.5 Phase 1 Wave HR-1 / V-2."
         ),
-        description="Legacy notification for vendor contractor certification expiry.",
+        description="Deprecated notification for vendor contractor certification expiry.",
     ),
     # ---------------------------------------------------------------------------
     # Active reactive event contracts (both produced and consumed in production)

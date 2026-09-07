@@ -98,6 +98,10 @@ async def run_stdio_server(*, app: Server | None = None, engine: NCEEngine | Non
         )
         from nce.vertical_modules.project import automation as project_automation
         from nce.vertical_modules.project import tasks as project_tasks
+        from nce.vertical_modules.resources import watcher as resources_watcher
+        from nce.vertical_modules.resources.watcher import (
+            register_resources_event_subscribers,
+        )
         from nce.vertical_modules.system_design.subscribers import (
             register_system_design_subscribers,
         )
@@ -109,6 +113,12 @@ async def run_stdio_server(*, app: Server | None = None, engine: NCEEngine | Non
         # idx_outbox_unpublished, which every tenant's relay poll reads.
         register_system_design_subscribers()
         register_field_tech_subscribers()
+        # RS-4's on_hr_cert_event needs an engine for the same reason
+        # tasks._handle_bom_line_status_changed does: the relay hands it the
+        # polling connection, which carries no nce.namespace_id, so the handler
+        # opens its OWN scoped_pg_session and raises without a registry.
+        resources_watcher.register_engine(engine)
+        register_resources_event_subscribers()
 
         # Module 7's three C4 selectors (M0.W20d). Same reason, same ordering:
         # PO_LINE.status_changed, GOODS_RECEIPT.created and
