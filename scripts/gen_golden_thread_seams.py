@@ -30,17 +30,21 @@ STEP_RE = re.compile(r"^test_step_(\d+)_(\w+)$")
 
 
 def git_show(repo: str, baseline: str, path: str) -> str:
+    if baseline.upper() == "WORKTREE":
+        import pathlib
+
+        return (pathlib.Path(repo) / path).read_text(encoding="utf-8")
     cmd = ["git", "-C", repo, "show", f"{baseline}:{path}"]
     result = subprocess.run(cmd, capture_output=True, text=True, check=True, encoding="utf-8")
     return result.stdout
 
 
-def _docstring(node: ast.FunctionDef) -> str:
+def _docstring(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
     doc = ast.get_docstring(node) or ""
     return doc.strip().splitlines()[0] if doc else ""
 
 
-def _xfail_reason(node: ast.FunctionDef) -> str | None:
+def _xfail_reason(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str | None:
     for dec in node.decorator_list:
         call = dec if isinstance(dec, ast.Call) else None
         func = call.func if call else dec
@@ -60,7 +64,7 @@ def extract_steps(repo: str, baseline: str) -> list[dict]:
     tree = ast.parse(code)
     steps = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.FunctionDef):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         m = STEP_RE.match(node.name)
         if not m:
@@ -144,15 +148,24 @@ def main() -> None:
     args = parser.parse_args()
 
     steps = extract_steps(args.repo, args.baseline)
-    sha_result = subprocess.run(
-        ["git", "-C", args.repo, "rev-parse", "--short", args.baseline],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    sha = sha_result.stdout.strip()
+    if args.baseline.upper() == "WORKTREE":
+        sha_result = subprocess.run(
+            ["git", "-C", args.repo, "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        sha = sha_result.stdout.strip()
+    else:
+        sha_result = subprocess.run(
+            ["git", "-C", args.repo, "rev-parse", "--short", args.baseline],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        sha = sha_result.stdout.strip()
     content = render(steps, sha)
-    with open(args.out, "w", encoding="utf-8", newline="\n") as f:
+    with open(args.out, "w", encoding="utf-8", newline="\r\n") as f:
         f.write(content)
 
 
