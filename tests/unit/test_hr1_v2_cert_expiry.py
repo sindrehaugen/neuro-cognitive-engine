@@ -346,7 +346,20 @@ async def test_watcher_never_writes_on_the_relay_conn(monkeypatch) -> None:
     from nce.vertical_modules.resources import watcher as w
 
     ns_id = uuid4()
-    relay_conn = AsyncMock()
+
+    class StrictRelayConn:
+        """Only what asyncpg.Connection offers -- no ``.pg_pool``, no ``.acquire``.
+
+        A MagicMock would auto-synthesize both, and the handler would then find a
+        pool on the relay's connection and look correct while being wrong.
+        """
+
+        def __init__(self):
+            self.fetchrow = AsyncMock()
+            self.fetch = AsyncMock()
+            self.execute = AsyncMock()
+
+    relay_conn = StrictRelayConn()
 
     scoped_conn = AsyncMock()
     scoped_conn.fetchrow.return_value = None
