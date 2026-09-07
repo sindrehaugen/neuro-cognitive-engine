@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 247  # 246 baseline + 1 Marketing retract testimonial tool (Wave MK-2)
+_EXPECTED_TOTAL = 251  # 247 baseline + 4 Sales native write tools (Wave S-1)
 
 
 def test_registry_has_expected_entries():
@@ -245,6 +245,11 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "economy_approve_invoice",
         # MLV15D-MK2 -- Marketing retract testimonial (Wave MK-2)
         "marketing_retract_testimonial",
+        # MLV15D-S1 -- Sales native write path mutations (4 tools)
+        "sales_create_customer",
+        "sales_create_lead",
+        "sales_create_deal",
+        "sales_edit_deal",
     }
 )
 
@@ -257,7 +262,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 110  # 109 baseline + 1 Marketing tool (Wave MK-2)
+    assert len(MUTATION_TOOLS) == 114  # 110 baseline + 4 Sales tools (Wave S-1)
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -541,6 +546,11 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "economy_approve_invoice",
         # MLV15D-MK2 -- Marketing retract testimonial (Wave MK-2)
         "marketing_retract_testimonial",
+        # MLV15D-S1 -- Sales native write path admin tools (4 tools)
+        "sales_create_customer",
+        "sales_create_lead",
+        "sales_create_deal",
+        "sales_edit_deal",
     }
 )
 
@@ -553,7 +563,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 71  # 70 baseline + 1 Marketing tool (Wave MK-2)
+    assert len(ADMIN_ONLY_TOOLS) == 75  # 71 baseline + 4 Sales tools (Wave S-1)
 
 
 # ---------------------------------------------------------------------------

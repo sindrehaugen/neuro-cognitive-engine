@@ -36,6 +36,12 @@ from nce.mcp_errors import mcp_handler
 from nce.vertical_modules.sales.baseline import get_signed_baseline
 from nce.vertical_modules.sales.lines import do_add_quote_line, do_get_quote_lines
 from nce.vertical_modules.sales.signing import do_request_signature
+from nce.vertical_modules.sales.write_routing import (
+    do_create_customer,
+    do_create_deal,
+    do_create_lead,
+    do_edit_deal,
+)
 
 if TYPE_CHECKING:
     from nce.orchestrator import NCEEngine
@@ -232,3 +238,176 @@ async def handle_sales_request_signature(engine: NCEEngine, arguments: dict[str,
 
     session = await do_request_signature(engine, params)
     return json.dumps(session)
+
+
+@mcp_handler
+async def handle_sales_create_customer(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: sales_create_customer — create a customer account through write routing.
+
+    Governed mutation tool. Routes to native NCE graph / read-model or external D365
+    based on active source mode. In 'nce' mode, enforces 'nce:' ID prefixing.
+
+    Arguments
+    ---------
+    namespace_id (str): Required. Caller namespace UUID.
+    customer_id (str): Required. Customer identifier (e.g. 'CUST-001' or 'nce:cust-1').
+    name (str, optional): Customer/account name.
+    source_id (str, optional): External or source identifier.
+
+    Returns
+    -------
+    JSON body: result dict containing status, mode, and write payloads.
+    """
+    ns = require_namespace_id(arguments)
+    customer_id = arguments.get("customer_id")
+    if not isinstance(customer_id, str) or not customer_id.strip():
+        raise ValueError("customer_id is required")
+
+    params: dict[str, Any] = {
+        "namespace_id": ns,
+        "customer_id": customer_id.strip(),
+    }
+    if "name" in arguments and arguments["name"] is not None:
+        params["name"] = str(arguments["name"]).strip()
+    if "source_id" in arguments and arguments["source_id"] is not None:
+        params["source_id"] = str(arguments["source_id"]).strip()
+
+    result = await do_create_customer(engine, params)
+    return json.dumps(result)
+
+
+@mcp_handler
+async def handle_sales_create_lead(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: sales_create_lead — create a sales lead through write routing.
+
+    Governed mutation tool. Routes to native NCE graph / read-model or external D365
+    based on active source mode. In 'nce' mode, enforces 'nce:' ID prefixing.
+
+    Arguments
+    ---------
+    namespace_id (str): Required. Caller namespace UUID.
+    lead_id (str): Required. Lead identifier (e.g. 'LEAD-001' or 'nce:lead-1').
+    customer_id (str, optional): Customer identifier associated with this lead.
+    name (str, optional): Lead name or topic.
+    confidence (float, optional): Edge confidence weight (0.0 to 1.0).
+    source_id (str, optional): External or source identifier.
+
+    Returns
+    -------
+    JSON body: result dict containing status, mode, and write payloads.
+    """
+    ns = require_namespace_id(arguments)
+    lead_id = arguments.get("lead_id")
+    if not isinstance(lead_id, str) or not lead_id.strip():
+        raise ValueError("lead_id is required")
+
+    params: dict[str, Any] = {
+        "namespace_id": ns,
+        "lead_id": lead_id.strip(),
+    }
+    if "customer_id" in arguments and arguments["customer_id"] is not None:
+        params["customer_id"] = str(arguments["customer_id"]).strip()
+    if "name" in arguments and arguments["name"] is not None:
+        params["name"] = str(arguments["name"]).strip()
+    if "confidence" in arguments and arguments["confidence"] is not None:
+        params["confidence"] = float(arguments["confidence"])
+    if "source_id" in arguments and arguments["source_id"] is not None:
+        params["source_id"] = str(arguments["source_id"]).strip()
+
+    result = await do_create_lead(engine, params)
+    return json.dumps(result)
+
+
+@mcp_handler
+async def handle_sales_create_deal(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: sales_create_deal — create a pipeline deal through write routing.
+
+    Governed mutation tool. Routes to native NCE graph / read-model or external D365
+    based on active source mode. In 'nce' mode, enforces 'nce:' ID prefixing.
+
+    Arguments
+    ---------
+    namespace_id (str): Required. Caller namespace UUID.
+    deal_id (str): Required. Deal identifier (e.g. 'DEAL-001' or 'nce:deal-1').
+    customer_id (str): Required. Associated customer identifier.
+    quote_id (str): Required. Associated quote identifier.
+    opportunity_id (str, optional): Intermediate opportunity identifier.
+    lead_id (str, optional): Originating lead identifier.
+    name (str, optional): Deal name.
+    confidence (float, optional): Edge confidence weight.
+    source_id (str, optional): External or source identifier.
+
+    Returns
+    -------
+    JSON body: result dict containing status, mode, and write payloads.
+    """
+    ns = require_namespace_id(arguments)
+    deal_id = arguments.get("deal_id")
+    customer_id = arguments.get("customer_id")
+    quote_id = arguments.get("quote_id")
+
+    if not (deal_id and isinstance(deal_id, str) and deal_id.strip()):
+        raise ValueError("deal_id is required")
+    if not (customer_id and isinstance(customer_id, str) and customer_id.strip()):
+        raise ValueError("customer_id is required")
+    if not (quote_id and isinstance(quote_id, str) and quote_id.strip()):
+        raise ValueError("quote_id is required")
+
+    params: dict[str, Any] = {
+        "namespace_id": ns,
+        "deal_id": deal_id.strip(),
+        "customer_id": customer_id.strip(),
+        "quote_id": quote_id.strip(),
+    }
+    if "opportunity_id" in arguments and arguments["opportunity_id"] is not None:
+        params["opportunity_id"] = str(arguments["opportunity_id"]).strip()
+    if "lead_id" in arguments and arguments["lead_id"] is not None:
+        params["lead_id"] = str(arguments["lead_id"]).strip()
+    if "name" in arguments and arguments["name"] is not None:
+        params["name"] = str(arguments["name"]).strip()
+    if "confidence" in arguments and arguments["confidence"] is not None:
+        params["confidence"] = float(arguments["confidence"])
+    if "source_id" in arguments and arguments["source_id"] is not None:
+        params["source_id"] = str(arguments["source_id"]).strip()
+
+    result = await do_create_deal(engine, params)
+    return json.dumps(result)
+
+
+@mcp_handler
+async def handle_sales_edit_deal(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: sales_edit_deal — edit a pipeline deal through write routing.
+
+    Governed mutation tool. Prevents editing non-native D365 records without an
+    existing NCE mapping. Updates graph and read-model.
+
+    Arguments
+    ---------
+    namespace_id (str): Required. Caller namespace UUID.
+    deal_id (str): Required. Deal identifier to update.
+    name (str, optional): Updated deal name.
+    confidence (float, optional): Updated edge confidence.
+    source_id (str, optional): External or source identifier.
+
+    Returns
+    -------
+    JSON body: result dict containing status, mode, and write payloads.
+    """
+    ns = require_namespace_id(arguments)
+    deal_id = arguments.get("deal_id")
+    if not isinstance(deal_id, str) or not deal_id.strip():
+        raise ValueError("deal_id is required")
+
+    params: dict[str, Any] = {
+        "namespace_id": ns,
+        "deal_id": deal_id.strip(),
+    }
+    if "name" in arguments and arguments["name"] is not None:
+        params["name"] = str(arguments["name"]).strip()
+    if "confidence" in arguments and arguments["confidence"] is not None:
+        params["confidence"] = float(arguments["confidence"])
+    if "source_id" in arguments and arguments["source_id"] is not None:
+        params["source_id"] = str(arguments["source_id"]).strip()
+
+    result = await do_edit_deal(engine, params)
+    return json.dumps(result)

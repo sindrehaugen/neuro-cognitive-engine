@@ -23,6 +23,131 @@ log = logging.getLogger("nce.vertical_modules.sales.write_routing")
 _SALES_ENGINE: str = "sales"
 
 
+async def do_create_customer(engine: NCEEngine, params: dict[str, Any]) -> dict[str, Any]:
+    """Create a customer using write routing.
+
+    Mode:
+      - d365: external write only.
+      - both: external + native write (write-through).
+      - nce: native write only.
+
+    In nce mode, enforces nce: prefixing on customer_id.
+    """
+    namespace_id = params.get("namespace_id")
+    if not namespace_id:
+        raise ValueError("namespace_id is required")
+    ns_uuid = UUID(str(namespace_id))
+
+    mode = await resolve(
+        engine.pg_pool,
+        engine=_SALES_ENGINE,
+        function="create_customer",
+        namespace_id=ns_uuid,
+    )
+
+    customer_id = params.get("customer_id")
+    if not customer_id:
+        raise ValueError("customer_id is required")
+
+    name = params.get("name")
+
+    # Enforce native prefixing in NCE-only mode
+    if mode == "nce" and not customer_id.startswith("nce:"):
+        customer_id = f"nce:{customer_id}"
+
+    async def native_writer() -> dict[str, Any]:
+        async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
+            return await graph.do_create_customer(
+                conn,
+                ns_uuid,
+                customer_id=customer_id,
+                name=name,
+                source_id=params.get("source_id"),
+            )
+
+    async def external_writer() -> dict[str, Any]:
+        d365_id = params.get("source_id") or f"d365-acc-{uuid.uuid4().hex[:8]}"
+        return {"ok": True, "d365_id": d365_id}
+
+    results = await write_route(
+        mode,
+        native_writer=native_writer,
+        external_writer=external_writer,
+    )
+
+    return {
+        "ok": True,
+        "mode": mode,
+        "native": results.get("native"),
+        "external": results.get("external"),
+    }
+
+
+async def do_create_lead(engine: NCEEngine, params: dict[str, Any]) -> dict[str, Any]:
+    """Create a lead using write routing.
+
+    Mode:
+      - d365: external write only.
+      - both: external + native write (write-through).
+      - nce: native write only.
+
+    In nce mode, enforces nce: prefixing on lead_id and customer_id (if provided).
+    """
+    namespace_id = params.get("namespace_id")
+    if not namespace_id:
+        raise ValueError("namespace_id is required")
+    ns_uuid = UUID(str(namespace_id))
+
+    mode = await resolve(
+        engine.pg_pool,
+        engine=_SALES_ENGINE,
+        function="create_lead",
+        namespace_id=ns_uuid,
+    )
+
+    lead_id = params.get("lead_id")
+    if not lead_id:
+        raise ValueError("lead_id is required")
+
+    customer_id = params.get("customer_id")
+    name = params.get("name")
+
+    if mode == "nce":
+        if not lead_id.startswith("nce:"):
+            lead_id = f"nce:{lead_id}"
+        if customer_id and not customer_id.startswith("nce:"):
+            customer_id = f"nce:{customer_id}"
+
+    async def native_writer() -> dict[str, Any]:
+        async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
+            return await graph.do_create_lead(
+                conn,
+                ns_uuid,
+                lead_id=lead_id,
+                customer_id=customer_id,
+                name=name,
+                confidence=params.get("confidence", 1.0),
+                source_id=params.get("source_id"),
+            )
+
+    async def external_writer() -> dict[str, Any]:
+        d365_id = params.get("source_id") or f"d365-lead-{uuid.uuid4().hex[:8]}"
+        return {"ok": True, "d365_id": d365_id}
+
+    results = await write_route(
+        mode,
+        native_writer=native_writer,
+        external_writer=external_writer,
+    )
+
+    return {
+        "ok": True,
+        "mode": mode,
+        "native": results.get("native"),
+        "external": results.get("external"),
+    }
+
+
 async def do_create_deal(engine: NCEEngine, params: dict[str, Any]) -> dict[str, Any]:
     """Create a deal using write routing.
 
@@ -73,6 +198,7 @@ async def do_create_deal(engine: NCEEngine, params: dict[str, Any]) -> dict[str,
                 quote_id=quote_id,
                 opportunity_id=params.get("opportunity_id"),
                 lead_id=params.get("lead_id"),
+                name=params.get("name"),
                 confidence=params.get("confidence", 1.0),
                 source_id=params.get("source_id"),
             )
@@ -153,6 +279,7 @@ async def do_edit_deal(engine: NCEEngine, params: dict[str, Any]) -> dict[str, A
                 conn,
                 ns_uuid,
                 deal_id=deal_id,
+                name=params.get("name"),
                 confidence=params.get("confidence"),
                 source_id=params.get("source_id"),
             )

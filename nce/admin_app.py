@@ -568,6 +568,26 @@ def build_admin_routes() -> list[Route]:
             endpoint=sales_handlers.api_admin_sales_targets_put,
             methods=["PUT"],
         ),
+        Route(
+            "/api/sales/customers",
+            endpoint=sales_handlers.api_admin_sales_create_customer,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/sales/leads",
+            endpoint=sales_handlers.api_admin_sales_create_lead,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/sales/deals",
+            endpoint=sales_handlers.api_admin_sales_create_deal,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/sales/deals/edit",
+            endpoint=sales_handlers.api_admin_sales_edit_deal,
+            methods=["POST"],
+        ),
         # ------------------------------------------------------------------
         # Entity resolution admin endpoints
         # ------------------------------------------------------------------

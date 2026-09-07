@@ -811,6 +811,32 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=True,
         mutation=True,
     ),
+    # Sales native write path tools (Wave S-1)
+    # Actor tools: admin_only=True, mutation=True, cacheable=False.
+    "sales_create_customer": ToolSpec(
+        _h(sales_mcp_handlers, "handle_sales_create_customer"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "sales_create_lead": ToolSpec(
+        _h(sales_mcp_handlers, "handle_sales_create_lead"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "sales_create_deal": ToolSpec(
+        _h(sales_mcp_handlers, "handle_sales_create_deal"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "sales_edit_deal": ToolSpec(
+        _h(sales_mcp_handlers, "handle_sales_edit_deal"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
     # ------------------------------------------------------------------
     # Vendors vertical module tools (Batch 096)
     # ------------------------------------------------------------------

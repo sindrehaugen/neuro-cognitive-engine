@@ -221,8 +221,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/sales/agreements` | `api_admin_sales_agreements` |
 | GET | `/api/sales/agreements/{id}` | `api_admin_sales_agreement_detail` |
 | GET | `/api/sales/customers` | `api_admin_sales_customers` |
+| POST | `/api/sales/customers` | `api_admin_sales_create_customer` |
 | GET | `/api/sales/customers/{id}` | `api_admin_sales_customer_profile` |
 | GET | `/api/sales/dashboard` | `api_admin_sales_dashboard` |
+| POST | `/api/sales/deals` | `api_admin_sales_create_deal` |
+| POST | `/api/sales/deals/edit` | `api_admin_sales_edit_deal` |
+| POST | `/api/sales/leads` | `api_admin_sales_create_lead` |
 | GET | `/api/sales/manager` | `api_admin_sales_manager` |
 | GET | `/api/sales/overview` | `api_admin_sales_overview` |
 | GET | `/api/sales/quotes/{id}` | `api_admin_sales_quote_detail` |
@@ -463,6 +467,10 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `resources_update` | yes | yes |  |  |
 | `rotate_signing_key` |  | yes |  |  |
 | `sales_add_quote_line` |  | yes |  |  |
+| `sales_create_customer` | yes | yes |  |  |
+| `sales_create_deal` | yes | yes |  |  |
+| `sales_create_lead` | yes | yes |  |  |
+| `sales_edit_deal` | yes | yes |  |  |
 | `sales_get_quote_lines` |  |  |  |  |
 | `sales_get_signed_baseline` |  |  |  |  |
 | `sales_ping` |  |  | yes |  |
@@ -518,4 +526,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 253 REST endpoints, 247 MCP tools._
+_Totals: 257 REST endpoints, 251 MCP tools._
