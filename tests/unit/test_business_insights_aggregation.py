@@ -304,3 +304,31 @@ def test_enforce_shape_guarantee_scrubs_nested_person_grain_data():
     assert "person" not in guaranteed_str
     assert guaranteed["breakdown"][0]["team"] == "SecOps"
     assert guaranteed["breakdown"][0]["count"] == 2
+
+
+class TestBarrierCannotBeSkippedByASecondArgument:
+    """A valid group_by must not buy a pass on the person-ranking phrasing check.
+
+    ``enforce_aggregation_barrier`` checked ``query_text`` only when ``group_by``
+    was None, and ``ask.py:86`` passes BOTH -- so ``group_by="team"`` returned
+    early and every person-ranking pattern went uninspected. That is a bypass of
+    an EU AI Act Article 5 guard on the one call site the guard exists for.
+    """
+
+    @pytest.mark.parametrize("dim", sorted(ALLOWED_GROUP_DIMENSIONS))
+    def test_adversarial_query_still_refused_with_every_allowed_dimension(self, dim: str) -> None:
+        with pytest.raises(PersonRankingProhibitedError):
+            enforce_aggregation_barrier(
+                group_by=dim,
+                query_text="rank employees by performance",
+            )
+
+    def test_a_clean_query_with_an_allowed_dimension_still_passes(self) -> None:
+        """The guard must not have become a blanket refusal."""
+        assert (
+            enforce_aggregation_barrier(
+                group_by="team",
+                query_text="what is revenue by team this quarter",
+            )
+            == "team"
+        )

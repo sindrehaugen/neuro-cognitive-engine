@@ -148,9 +148,24 @@ def enforce_aggregation_barrier(
 
     The ALLOWED_GROUP_DIMENSIONS allowlist strictly decides which dimensions are permitted.
     Raises PersonRankingProhibitedError if:
-    1. A group_by dimension is not in ALLOWED_GROUP_DIMENSIONS.
-    2. A query_text phrasing requests individual person-grain comparison or ranking.
+    1. A query_text phrasing requests individual person-grain comparison or ranking.
+       Checked FIRST and regardless of group_by -- callers pass both.
+    2. A group_by dimension is not in ALLOWED_GROUP_DIMENSIONS.
     """
+    # 🔴 query_text is checked FIRST and UNCONDITIONALLY. It used to be checked
+    # only when group_by was None, and ask.py:86 passes BOTH -- so any allowed
+    # group_by ("team") returned early and the person-ranking phrasings were
+    # never inspected. A compliance guard that a caller can skip by supplying a
+    # second, valid argument is not a guard.
+    if query_text is not None:
+        for pat in _PERSON_RANKING_PATTERNS:
+            if pat.search(query_text):
+                raise PersonRankingProhibitedError(
+                    "EU AI Act Article 5 / BI-1: Query requests individual person-grain comparison "
+                    "or ranking. Individual ranking is strictly prohibited; data must be aggregated "
+                    f"by an allowed group dimension ({', '.join(sorted(ALLOWED_GROUP_DIMENSIONS))})."
+                )
+
     if group_by is not None:
         dim = group_by.lower().strip()
         # Friendly message for obvious person-grain dimensions
@@ -168,15 +183,6 @@ def enforce_aggregation_barrier(
                 f"Allowed dimensions: {', '.join(sorted(ALLOWED_GROUP_DIMENSIONS))}."
             )
         return dim
-
-    if query_text is not None:
-        for pat in _PERSON_RANKING_PATTERNS:
-            if pat.search(query_text):
-                raise PersonRankingProhibitedError(
-                    "EU AI Act Article 5 / BI-1: Query requests individual person-grain comparison "
-                    "or ranking. Individual ranking is strictly prohibited; data must be aggregated "
-                    f"by an allowed group dimension ({', '.join(sorted(ALLOWED_GROUP_DIMENSIONS))})."
-                )
 
     return None
 
