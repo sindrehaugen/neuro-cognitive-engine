@@ -1889,7 +1889,19 @@ async def _assets_telemetry_tick(pool: asyncpg.Pool) -> None:
 
     try:
         from nce.orchestrator import NCEEngine
+        from nce.vertical_modules.assets.lifecycle import load_lifecycle_config
         from nce.vertical_modules.assets.telemetry import do_pull_telemetry
+
+        # ``assets`` has no ``status`` column -- the lifecycle column is
+        # ``lifecycle_state`` (migration 054).  ``status``/'decommissioned' was the
+        # system_design NODE vocabulary (migration 061), copied in from a query against a
+        # different table, so this tick raised UndefinedColumnError on every run.
+        #
+        # The terminal state is read from nce/config_data/asset-lifecycle.json rather than
+        # written as a literal: lifecycle.py's contract is that no state name is a Python
+        # literal, so a config-only change to the state sequence must not silently
+        # de-synchronise this scan.
+        terminal_lifecycle_state = load_lifecycle_config()["STATES"][-1]
 
         # Scan active namespaces that contain assets
         async with unmanaged_pg_connection(pool, site="cron.assets_telemetry.scan") as conn:
@@ -1897,9 +1909,10 @@ async def _assets_telemetry_tick(pool: asyncpg.Pool) -> None:
                 """
                 SELECT DISTINCT namespace_id, id AS asset_id
                 FROM assets
-                WHERE status != 'decommissioned'
+                WHERE lifecycle_state <> $1
                 LIMIT 100
-                """
+                """,
+                terminal_lifecycle_state,
             )
 
         if not rows:
