@@ -15,7 +15,7 @@ It is also where NCE's cognitive layer pays off hardest: *"design this room like
 
 ## What the Portal/the reference implementation already gesture at
 
-- **Frontend surfaces** (Lysning): `Motebrief.jsx` (meeting/requirements brief), `Moterom.jsx` (meeting room), `Romtegning.jsx` (room drawing), `Skjermnettverk.jsx` (screen network), `Komponenter.jsx`, `TilbudDetalj.jsx` (the quote it feeds).
+- **Frontend surfaces** (Host Portal): `Motebrief.jsx` (meeting/requirements brief), `Moterom.jsx` (meeting room), `Romtegning.jsx` (room drawing), `Skjermnettverk.jsx` (screen network), `Komponenter.jsx`, `TilbudDetalj.jsx` (the quote it feeds).
 - **the reference implementation IP**: the reference implementation (the **SoW generator** — *"den reneste handoff-perlen"*, 0-DB pure function, per-room versioned deliverables) · the room-centric BOM model · the AI Solution Agent concept (module #03 Product/Design, learns 450+ projects, AVIXA standards, failure-patterns) · phase-gate *inputs* (the design must satisfy G-criteria).
 - **Honest reality check** (from `02-kode-virkelighet`): the SoW generator is real and liftable; the "AI analyzes the offer before handover" is a 🟡 facade pointing at the wrong input (Dynamics handover metadata, not the quote-derived BOM). The AI Solution Agent itself is 🔵 — *structured thinking, not built*. So we are building the engine, not lifting it.
 
@@ -94,7 +94,7 @@ Neither direction is privileged; the engine reconciles to one `DESIGN` ⇄ `QUOT
 ## Inspiration & triage
 - **`sow-generator`** (the reference implementation → `generateSoW(SoWInput,{versionNumber}) -> SoWDoc`, verdict 🟢) — *"den reneste handoff-perlen"*: **0-DB pure function, versioning built-in. Lift near-1:1** into `sow.py` as a pure transform; no config-as-IP needed (pure transform, no weights to swap).
 - **AI Solution Agent** (modulkart 03 Product & Solution Design — *learns 450+ projects, auto-generates 80% of standard BOM, Product validates 20%*) — verdict 🔵 **build-not-lift**: it is *structured thinking, not built code*. The value is **cognitive recall over the graph + ledger**, which NCE provides natively (`memories` + `v3_cognitive_ledger`); we build the recall loop, we do not port a Next.js module.
-- **Lysning surfaces served:** `Motebrief.jsx` (requirements brief = the structured intake), `Moterom.jsx` (room), `Romtegning.jsx` (room drawing), `Komponenter.jsx` (the BOM line view) — all feeding `TilbudDetalj.jsx` (the quote the design becomes).
+- **Host Portal surfaces served:** `Motebrief.jsx` (requirements brief = the structured intake), `Moterom.jsx` (room), `Romtegning.jsx` (room drawing), `Komponenter.jsx` (the BOM line view) — all feeding `TilbudDetalj.jsx` (the quote the design becomes).
 
 ## Classification
 **pull + heavy AI + bridges.** External systems in the loop: **NetBox** (functional-location tree + as-built topology, via the existing `netbox` vertical / a `netbox_bridge.py`), **SharePoint** (document store, existing NCE integration), **Lucid** (diagram import/export, REST API + token in `auth.py`). The engine also consumes the **cognitive graph** (recall) and the **Product** engine (specs/pricing via A2A). The heavy lift remains the recall + proposal loop; the bridges are thin (`netbox_bridge.py`, `sharepoint.py`, `lucid.py`).
@@ -153,7 +153,7 @@ async def do_publish_design_docs(engine, params) -> dict
 
 ## REST routes
 <!-- BLOCKED ON OQ-2 / OQ-4: STALE, corrected 2026-09-06 -- 9 REST routes are mounted at b75c873 (up from 1 at 7304330), adding topology, functional-location, validate, planned-delete, from-quote, to-quote, sow, and enrich-design-lines endpoints (nce/admin_app.py). -->
-No-model path for the BFF/Lysning (admin app, HMAC/mTLS): `api_system_design_propose_design`, `api_system_design_design_from_quote`, `api_system_design_generate_sow` (read-only deterministic → REST per §2.2), `api_system_design_design_to_quote`, `api_system_design_validate_design`, `api_system_design_sync_functional_locations`, `api_system_design_publish_docs`.
+No-model path for the BFF/Host Portal (admin app, HMAC/mTLS): `api_system_design_propose_design`, `api_system_design_design_from_quote`, `api_system_design_generate_sow` (read-only deterministic → REST per §2.2), `api_system_design_design_to_quote`, `api_system_design_validate_design`, `api_system_design_sync_functional_locations`, `api_system_design_publish_docs`.
 
 ## AI features
 - **AI Solution Agent (Advisor) = cognitive RECALL, not a rules engine.** Embedding query over past `DESIGN`/`PROJECT` nodes, **weighted by OUTCOME** from the ledger — prefer designs that *DELIVERED well* (low change-orders, few tickets, held margin), not merely designs that were *quoted*. This structurally closes the reference implementation's "service→design silence" gap — **the closed loop none of the incumbents have** (see `90-competitive-landscape`). **Graceful degradation (Correction #4):** recall by *design similarity* works day one; **outcome-weighting switches on as Project/Support backfill the ledger** (and as the 450-project historical backfill lands). Recall *quality* depends on Project(7)/Support(10) — they are upstream of quality, not just downstream consumers.

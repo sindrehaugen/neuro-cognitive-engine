@@ -131,14 +131,7 @@ def _read(path: str) -> str | None:
 # strict=True: when that wave lands, this XPASSes and CI FAILS until the marker
 # is removed -- so the gate cannot silently soften, which is exactly how the
 # project's other allowlists decayed.
-OUTSTANDING = {
-    "private fork module names": (
-        "lysning / steps_product / steps_d365 / agreement_sidecar / hr_sidecar are "
-        "owned by the trimcp rename wave (they sit alongside build-file renames that "
-        "must be CI-gated together, not text-swept). Remove this marker when that "
-        "wave lands -- strict=True will force it."
-    ),
-}
+OUTSTANDING: dict[str, str] = {}
 
 
 def _case(entry):

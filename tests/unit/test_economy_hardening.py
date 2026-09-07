@@ -53,6 +53,10 @@ _ECONOMY_TOOLS: frozenset[str] = frozenset(
         "economy_compute_recognition_schedule",
         "economy_gl_sync_status",
         "economy_generate_close_narrative",
+        "economy_generate_kid",
+        "economy_validate_kid",
+        "economy_generate_ehf",
+        "economy_validate_contract",
     }
 )
 

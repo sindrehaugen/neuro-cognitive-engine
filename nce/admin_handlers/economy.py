@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from typing import Any
 
 from nce.admin_handlers._shared import (
@@ -32,6 +33,7 @@ from nce.admin_handlers._shared import (
 from nce.db_utils import scoped_pg_session
 from nce.vertical_modules.economy._guard import EconomyDisabledError, require_economy_enabled
 from nce.vertical_modules.economy.close_narrative import do_generate_close_narrative
+from nce.vertical_modules.economy.contracts import do_validate_contract
 from nce.vertical_modules.economy.dunning import do_compute_dunning
 from nce.vertical_modules.economy.events import UnbalancedPostingsError, do_emit_financial_event
 from nce.vertical_modules.economy.finago import do_gl_sync_status
@@ -41,6 +43,11 @@ from nce.vertical_modules.economy.ngaap import (
     do_compute_bucket_targets,
     load_finago_account_mapping,
     load_finago_chart_of_accounts,
+)
+from nce.vertical_modules.economy.peppol import (
+    do_generate_ehf,
+    do_generate_kid,
+    do_validate_kid,
 )
 from nce.vertical_modules.economy.recurring import (
     do_compute_recognition_schedule,
@@ -549,4 +556,174 @@ async def api_economy_close_narrative(request: Any) -> JSONResponse:
             exc,
             status_code=500,
             log_event="api_economy_close_narrative",
+        )
+
+
+async def api_economy_generate_kid(request: Any) -> JSONResponse:
+    """GET/POST /api/economy/kid/generate — generate Norwegian KID under MOD10."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    body, err_resp = await _extract_request_data(request)
+    if err_resp is not None:
+        return err_resp
+
+    raw_ns = body.get("namespace_id") or (
+        request.query_params.get("namespace_id") if hasattr(request, "query_params") else None
+    )
+    namespace_id, err = _require_namespace_id(raw_ns)
+    if err is not None:
+        return err
+    assert namespace_id is not None
+
+    disabled = await _check_economy_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
+
+    base_number = body.get("base_number")
+    if not base_number:
+        return JSONResponse({"error": "base_number is required"}, status_code=422)
+
+    variant = body.get("variant", "MOD10")
+
+    try:
+        result = do_generate_kid(str(base_number), variant=str(variant))
+        return JSONResponse({**_json_safe(result), "status": "ok"})
+    except (ValueError, KeyError, TypeError, NotImplementedError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Economy KID generation error",
+            exc,
+            status_code=500,
+            log_event="api_economy_generate_kid",
+        )
+
+
+async def api_economy_validate_kid(request: Any) -> JSONResponse:
+    """GET/POST /api/economy/kid/validate — validate complete Norwegian KID."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    body, err_resp = await _extract_request_data(request)
+    if err_resp is not None:
+        return err_resp
+
+    raw_ns = body.get("namespace_id") or (
+        request.query_params.get("namespace_id") if hasattr(request, "query_params") else None
+    )
+    namespace_id, err = _require_namespace_id(raw_ns)
+    if err is not None:
+        return err
+    assert namespace_id is not None
+
+    disabled = await _check_economy_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
+
+    kid = body.get("kid")
+    if not kid:
+        return JSONResponse({"error": "kid is required"}, status_code=422)
+
+    variant = body.get("variant", "MOD10")
+
+    try:
+        result = do_validate_kid(str(kid), variant=str(variant))
+        return JSONResponse({**_json_safe(result), "status": "ok"})
+    except (ValueError, KeyError, TypeError, NotImplementedError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Economy KID validation error",
+            exc,
+            status_code=500,
+            log_event="api_economy_validate_kid",
+        )
+
+
+async def api_economy_generate_ehf(request: Any) -> JSONResponse:
+    """POST /api/economy/ehf/generate — generate outbound EHF 3.0 UBL XML."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    body, err_resp = await _extract_request_data(request)
+    if err_resp is not None:
+        return err_resp
+
+    raw_ns = body.get("namespace_id")
+    namespace_id, err = _require_namespace_id(raw_ns)
+    if err is not None:
+        return err
+    assert namespace_id is not None
+
+    disabled = await _check_economy_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
+
+    invoice = body.get("invoice")
+    if not isinstance(invoice, dict) or not invoice:
+        return JSONResponse({"error": "invoice dictionary is required"}, status_code=422)
+
+    idempotency_key = str(body.get("idempotency_key") or uuid.uuid4())
+
+    try:
+        result = await do_generate_ehf(
+            invoice, namespace_id=namespace_id, idempotency_key=idempotency_key
+        )
+        return JSONResponse({**_json_safe(result), "status": "ok"})
+    except (ValueError, KeyError, TypeError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Economy EHF generation error",
+            exc,
+            status_code=500,
+            log_event="api_economy_generate_ehf",
+        )
+
+
+async def api_economy_validate_contract(request: Any) -> JSONResponse:
+    """POST /api/economy/contracts/validate — validate proposed CPI uplift."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    body, err_resp = await _extract_request_data(request)
+    if err_resp is not None:
+        return err_resp
+
+    raw_ns = body.get("namespace_id")
+    namespace_id, err = _require_namespace_id(raw_ns)
+    if err is not None:
+        return err
+    assert namespace_id is not None
+
+    disabled = await _check_economy_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
+
+    contract_id = body.get("contract_id")
+    if not contract_id:
+        return JSONResponse({"error": "contract_id is required"}, status_code=422)
+
+    proposed_cpi_pct = body.get("proposed_cpi_pct")
+    if proposed_cpi_pct is None:
+        return JSONResponse({"error": "proposed_cpi_pct is required"}, status_code=422)
+
+    params = {
+        "namespace_id": namespace_id,
+        "contract_id": str(contract_id),
+        "proposed_cpi_pct": proposed_cpi_pct,
+    }
+
+    try:
+        result = await do_validate_contract(admin_state.engine, params)
+        return JSONResponse({**_json_safe(result), "status": "ok"})
+    except (ValueError, KeyError, TypeError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Economy contract validation error",
+            exc,
+            status_code=500,
+            log_event="api_economy_validate_contract",
         )

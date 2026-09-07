@@ -20,7 +20,11 @@ from nce.vertical_modules.business_insights._guard import (
     ThirdPartyEgressUnauthorizedError,
     require_insights_role,
 )
-from nce.vertical_modules.business_insights.aggregation import enforce_aggregation_barrier
+from nce.vertical_modules.business_insights.aggregation import (
+    FORBIDDEN_PERSON_DIMENSIONS,
+    enforce_aggregation_barrier,
+    enforce_shape_guarantee,
+)
 from nce.vertical_modules.business_insights.provenance import record_ledger_audit
 
 log = logging.getLogger("nce.vertical_modules.business_insights.ask")
@@ -79,7 +83,10 @@ async def do_ask_business(engine: Any, params: dict[str, Any]) -> dict[str, Any]
             )
 
     # 2. BI-1 Structural Person-Grain Barrier Enforcement
-    enforce_aggregation_barrier(query_text=question)
+    enforce_aggregation_barrier(
+        query_text=question,
+        group_by=params.get("group_by"),
+    )
 
     # 3. Cognitive Synthesis & Memory Recall
     # Synthesize answers across graph and snapshot data
@@ -130,7 +137,24 @@ async def do_ask_business(engine: Any, params: dict[str, Any]) -> dict[str, Any]
     except Exception as exc:
         log.warning("Failed to record ask_business audit to v3_cognitive_ledger: %s", exc)
 
-    return {
+    # Extract records if passed via params, raw_records, or data_override
+    data_ov = params.get("data_override")
+    raw_records = (
+        params.get("records")
+        or params.get("raw_records")
+        or (data_ov.get("records") if isinstance(data_ov, dict) else None)
+    )
+    group_by = params.get("group_by") or "team"
+    metric_key = params.get("metric_key") or "value"
+    if raw_records and metric_key == "value" and isinstance(raw_records, list) and raw_records:
+        first_rec = raw_records[0]
+        if isinstance(first_rec, dict) and "value" not in first_rec:
+            for k, v in first_rec.items():
+                if isinstance(v, (int, float)) and k.lower() not in FORBIDDEN_PERSON_DIMENSIONS:
+                    metric_key = k
+                    break
+
+    res_data = {
         "status": "ok",
         "namespace_id": str(namespace_id),
         "question": question,
@@ -140,3 +164,13 @@ async def do_ask_business(engine: Any, params: dict[str, Any]) -> dict[str, Any]
         "egress_authorized": is_third_party and has_signoff if is_third_party else False,
         "external_ai_invoked": is_third_party and has_signoff if is_third_party else False,
     }
+    if isinstance(data_ov, dict) and "breakdown" in data_ov:
+        res_data["breakdown"] = data_ov["breakdown"]
+
+    # 5. Enforce Structural Return-Shape Guarantee (EU AI Act Art. 5 / BI-1)
+    return enforce_shape_guarantee(
+        res_data,
+        raw_records=raw_records,
+        group_by=group_by,
+        metric_key=metric_key,
+    )

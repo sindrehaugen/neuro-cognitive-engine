@@ -11,7 +11,7 @@ Turn every managed endpoint into something the platform can **see, monitor, and 
 ## Inspiration & triage
 - **Drift thesis (planning module 12 Operations/Drift):** proactive monitoring via manufacturer/endpoint APIs, driftsavtaler that follow the ROOM not the customer. RMM is the *generic* endpoint-telemetry source that complements Assets(9)'s per-manufacturer adapters (Cisco xAPI, QSC Reflect, Neat Pulse, …): GoTo Resolve monitors the *compute* (the player/controller/NUC), the manufacturer APIs monitor the *AV device*.
 - **Already-shipped NCE seed to reuse (no rebuild):** the `dynamics365` vertical's **OAuth token manager (`DataverseTokenManager`, Redis-cached), resilient HTTP client, and delta-watermark sync (`d365_sync_runs`)** — GoTo Resolve is the same shape (OAuth 2.0 Bearer + REST + incremental pull + webhook push). And the **Support(10) proactive-ticket path** (`ASSET -[monitored_by]-> TELEMETRY` crossing threshold → `do_open_ticket(origin=proactive_telemetry)`): an RMM alert is a second producer on that identical path.
-- **Lysning page served:** an "Endpoints / Remote Ops" surface — managed-device health board, alert queue, one-click *launch remote session*, remote-deflection scorecard — consuming the no-model REST surface.
+- **Host Portal page served:** an "Endpoints / Remote Ops" surface — managed-device health board, alert queue, one-click *launch remote session*, remote-deflection scorecard — consuming the no-model REST surface.
 - **Vendor:** GoTo Resolve / LogMeIn Resolve (rebranded 2025). API at `developer.goto.com` (OAuth 2.0, OpenAPI + Postman). See `19a` for the concrete surface + confidence caveats.
 
 ## Classification

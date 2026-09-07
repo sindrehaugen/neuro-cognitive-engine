@@ -74,7 +74,8 @@ Records the customer's actual quote. Requires `namespace_id`, `quote` (non-blank
 Optional: `attribution_name`, `attribution_title`, `consent_scope` (a free-form JSON scope object).
 
 > [!IMPORTANT]
-> There is a third function, `do_retract_testimonial`, that flips a testimonial to `status='retracted'` and cascades the retirement to any derived `content_assets` row sharing its `marketing_source_id` (`testimonials.py:296-368`). **It has no MCP tool and no REST route today** — it is callable only by direct Python import. `nce/config_data/internal-cores.json:147-151` confirms this is a known, tracked gap (owner `MLV15D-M2`, "scheduled for admin tool surface"). If a customer asks you to withdraw a testimonial right now, an administrator must run it manually or via a script — there is no self-service or admin-UI path yet.
+> There is a third function, `do_retract_testimonial`, that flips a testimonial to `status='retracted'` and cascades the retirement to any derived `content_assets` row sharing its `marketing_source_id` (`testimonials.py:296-368`). **It has no MCP tool and no REST route today** — it is callable only by direct Python import. `nce/config_data/internal-cores.json` confirms this is a known, tracked gap (owner `MLV15D-M2`, "scheduled for admin tool surface"). If a customer asks you to withdraw a testimonial right now, an administrator must run it manually or via a script — there is no self-service or admin-UI path yet.
+
 
 ---
 

@@ -969,7 +969,7 @@ END $$;
 
 -- --- Phase 3.2: Multi-namespace resource quotas ---
 -- ``used_amount`` is the last flushed value in PostgreSQL. When
--- ``TRIMCP_QUOTA_REDIS_COUNTERS`` is enabled, the hot path increments a Redis
+-- ``NCE_QUOTA_REDIS_COUNTERS`` is enabled, the hot path increments a Redis
 -- mirror (see nce.quotas) and a background task periodically runs
 -- ``flush_quota_counters_to_postgres`` to persist counters without serializing
 -- writers on this table.

@@ -31,14 +31,14 @@ Deferred (in `02a` backlog, graduate on trigger): AI-proposed typed **compatibil
 - `handoff/02-...§1 Produkt/katalog (Netset)` — 🟢 **netset-matcher** fuzzy/learned BOM→SKU (`the reference implementation:297 findBestNetsetMatch`, learns over time); 🟢 **DG-pricing** (the reference implementation, salgspris = kost / (1 − DG%)) — a real engine the solution-builder bypasses with inline `*0.7` (**re-wire opportunity**).
 - `_audit/manifest.json secondary_tier` — confirms netset-matcher + DG-pricing as real, liftable IP; the inline-`*0.7` bypass is called out explicitly.
 
-**Portal sidecar `backend/steps_product/` to lift (the seed):**
+**Portal product sidecar to lift (the seed):**
 - `semantic.py` → embedding via the public `nce.embeddings` contract (same vector space as NCE `semantic_search`) — graduates into `ingestion.py`.
 - `related.py` → `extract_model_tokens` + `classify_accessory` + `find_replacements` (on-read accessory/warranty/replacement derivation from catalog text, no relation table) → becomes graph edges + a `do_related_products` core fn.
 - `bidprices.py` / `sync.py` / `auto_sync.py` → streaming idempotent CSV ingest, column-report self-tuning, soft-delete of vanished rows → the **Nettailer source adapter**.
 - `offer_ai.py` → cost-stripped Anthropic drafting (ADR-0017 invariant: cost/margin never leave to a third-party API) → enrichment-prompt hygiene; **do NOT** lift the per-block text drafting (that belongs to Sales).
 - `backend/integrations/nettailer_client.py` → the field-alias map + quote-safe CSV parse; this is the seed that becomes `sources/nettailer.py` (config becomes vertical-owned `NCE_PRODUCT_*`, no longer Portal env).
 
-**Lysning pages served:** `Produktbibliotek.jsx`, `Bibliotek.jsx`, `Komponenter.jsx`, `NettailerExplorer.jsx` — all read through the no-model REST routes below.
+**Host Portal pages served:** `Produktbibliotek.jsx`, `Bibliotek.jsx`, `Komponenter.jsx`, `NettailerExplorer.jsx` — all read through the no-model REST routes below.
 
 ## Classification
 
@@ -87,7 +87,7 @@ Dual-surface: each `do_<action>(engine, params) -> dict` is exposed once as an M
 
 ## REST routes
 
-No-model paths for the BFF / Lysning pages / cron (admin app, HMAC/mTLS authed):
+No-model paths for the BFF / Host Portal pages / cron (admin app, HMAC/mTLS authed):
 - `GET  /api/product/search` → `api_product_search` (Produktbibliotek.jsx, NettailerExplorer.jsx)
 - `GET  /api/product/{id}` → `api_product_get` (Komponenter.jsx profile)
 - `GET  /api/product/{id}/related` → `api_product_related`
@@ -159,18 +159,18 @@ Mostly **graph-only** (`kg_nodes`/`kg_edges`), plus own tables where the graph i
 4. **Enrichment is fire-and-backfill (async), never synchronous.** When a product enters a workspace with missing fields, `do_enrich_product` **returns what's known instantly + queues enrichment + backfills** (line shows `specs pending`). A salesperson adding a line must **never wait** on an OCR/feed round-trip. (Scoped + idempotent as specified; this fixes the sync/async silence.)
 5. **"Any PDF → trusted product" is R&D-grade — gate it like System Design (roadmap §9.3).** PDF→structured is the wedge *and* the least-reliable part (multi-column, image-heavy AV datasheets). Verbalized-confidence + self-consistency + judge (A4) is the right method, but **initial auto-trust is LOW + human-review heavy** until review-queue override rates prove calibration.
 6. **"Never bulk" (enrichment) ≠ the search-embedding backfill.** The never-bulk rule governs **AI enrichment**. Hybrid search needs the 552k specs embedded — a **legitimate one-time bulk job** (feeds the halfvec storage pressure migration 019 addressed). These are **different operations**; semantic stays off until that backfill, and "never bulk" does not forbid it.
-7. **`steps_product` is a misleadingly-named grab-bag — the leave-behind list is as explicit as the lift list.** **LIFT (Product):** `semantic.py`, `related.py`, `bidprices.py`, `sync.py`/`auto_sync.py`, + `nettailer_client.py`. **LEAVE (not Product):** `offer_ai`/`offer_cert`/`offer_doc`/`offer_followup`/`offer_import`/`oneflow`/`package_import`/`mailer`/`standards` → these are **Sales / Agreements**. Resist absorption-by-proximity. Also: per 02a ("AV vendors ship PDFs, not feeds"), reframe the source-adapter model as **feed adapters** (Netset CSV) **vs document adapters** (manufacturer PDF datasheets) — the 9 "manufacturer-API adapters" are mostly **document-ingestion pipelines, not APIs**; don't imply integrations that don't exist.
+7. **The Portal product sidecar is a misleadingly-named grab-bag — the leave-behind list is as explicit as the lift list.** **LIFT (Product):** `semantic.py`, `related.py`, `bidprices.py`, `sync.py`/`auto_sync.py`, + `nettailer_client.py`. **LEAVE (not Product):** `offer_ai`/`offer_cert`/`offer_doc`/`offer_followup`/`offer_import`/`oneflow`/`package_import`/`mailer`/`standards` → these are **Sales / Agreements**. Resist absorption-by-proximity. Also: per 02a ("AV vendors ship PDFs, not feeds"), reframe the source-adapter model as **feed adapters** (Netset CSV) **vs document adapters** (manufacturer PDF datasheets) — the 9 "manufacturer-API adapters" are mostly **document-ingestion pipelines, not APIs**; don't imply integrations that don't exist.
 8. **Nettailer ingestion: Product OWNS the single ingest (roadmap §9.1)** and exposes supplier-price/BID/orderline **projections** that Procurement consumes — Procurement never re-ingests the 295 MB feed.
 
 ## Build phases
 
 RL-batch-sized increments:
-1. **Skeleton + Netset adapter** — `mcp_handlers.py` + `sources/nettailer.py` (lift `nettailer_client` alias map + streaming idempotent sync from `steps_product/sync.py`); `product_catalog`/`product_prices` tables + RLS + migration; `product_search`/`product_get` tools + REST. Graph: `PRODUCT` nodes, `BOM_LINE -references-> PRODUCT`.
+1. **Skeleton + Netset adapter** — `mcp_handlers.py` + `sources/nettailer.py` (lift `nettailer_client` alias map + streaming idempotent sync from the product sidecar's `sync.py`); `product_catalog`/`product_prices` tables + RLS + migration; `product_search`/`product_get` tools + REST. Graph: `PRODUCT` nodes, `BOM_LINE -references-> PRODUCT`.
 2. **Pricing + related + match** — `do_price_product` (DG engine, kills `*0.7`); `do_related_products` (lift `related.py` → edges); `do_match_bom_line` (netset-matcher port) + `product_match_feedback` learning loop.
 3. **On-demand enrichment** — `do_enrich_product` (idempotent, scoped, confidence-scored, review-flagged) + A2A wiring from Sales/Design + `product_enrichment_log` + review-queue route; semantic ingest of specs/datasheets into `memories`/ledger.
 4. **Multi-source + Watchers** — source-adapter pattern generalized; first manufacturer-API adapter behind a key; EOL/EOS Watcher (cron) writing `replaced_by` edges; failure-pattern edge consumption surfaced in Advisor outputs.
 5. **Hardening** — tool-count test, ruff/format/mypy/pytest green, BID secret-leak guards, namespace opt-in (`metadata.product.enabled`), config-as-IP JSON externalized.
 
 ## Change log
-- 2026-06-17 — Initial spec. Tier-1 Product Engine: multi-source pull + the on-demand (quote/design-triggered, never-bulk) enrichment rule as centerpiece; lifts steps_product (semantic/related/bidprices/sync) + nettailer_client + the reference implementation's netset-matcher and DG-pricing; failure-pattern feedback edges close the service→product silence.
+- 2026-06-17 — Initial spec. Tier-1 Product Engine: multi-source pull + the on-demand (quote/design-triggered, never-bulk) enrichment rule as centerpiece; lifts the Portal product sidecar (semantic/related/bidprices/sync) + nettailer_client + the reference implementation's netset-matcher and DG-pricing; failure-pattern feedback edges close the service→product silence.
 - 2026-06-17 — Added "Research-informed direction" from the Icecat/PIM deep-dive (`02a`): ETIM-coded schema (A1), field-level golden record/survivorship (A2), two-score quality model (A3), Claude verbalized-confidence not logprobs (A4); positioned as AI-native ETIM-coded MCP-exposed PDF→structured engine vs the bulk-catalog incumbents. Idea backlog (compatibility graph, EOL, BOM gap-audit, etc.) in `02a`.
