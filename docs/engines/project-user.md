@@ -66,7 +66,7 @@ Advances a real project. Reads the current phase from the graph (`PROJECT -[in_p
 The old `PROJECT_GATE` node is retained in the graph as history; only the `in_phase` pointer moves.
 
 ### 1.5 REST equivalents
-`GET /api/project/{id}/phase` and `POST /api/project/{id}/phase` mirror the read/advance operations for a non-LLM frontend (Lysning's `ModulDetalj.jsx`). A gate-refused advance returns **HTTP 409** with `{"missing_criteria": [...], "current_phase": ...}`. Missing/invalid params (path `id`, `namespace_id`, malformed JSON body) return **HTTP 422** on both routes. An absent/unconverted project returns **HTTP 400** only on the `POST` advance route (surfaced from the domain-core `{"ok": false, "error": ...}` result); the `GET` phase route has no error path for that case — it returns **200** with `"phase": null`.
+`GET /api/project/{id}/phase` and `POST /api/project/{id}/phase` mirror the read/advance operations for a non-LLM frontend (the Host Portal's `ModulDetalj.jsx`). A gate-refused advance returns **HTTP 409** with `{"missing_criteria": [...], "current_phase": ...}`. Missing/invalid params (path `id`, `namespace_id`, malformed JSON body) return **HTTP 422** on both routes. An absent/unconverted project returns **HTTP 400** only on the `POST` advance route (surfaced from the domain-core `{"ok": false, "error": ...}` result); the `GET` phase route has no error path for that case — it returns **200** with `"phase": null`.
 
 ---
 

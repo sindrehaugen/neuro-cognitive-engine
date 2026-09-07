@@ -6,10 +6,10 @@
 
 
 **Status:** spec (Tier 2 — Revenue axis) · **Owner:** NCE core (Sindre)
-**Pattern companions:** `docs/VERTICAL_MODULE_PATTERN.md`, `docs/vertical_engines/00-ENGINES-ROADMAP.md` (§4 graph catalogue, §7 spec format, Tier-2 "Sales replaces steps_d365" note), `docs/DATA_SOURCE_MODES.md` (Sales is the headline `d365|both|nce` use case)
+**Pattern companions:** `docs/VERTICAL_MODULE_PATTERN.md`, `docs/vertical_engines/00-ENGINES-ROADMAP.md` (§4 graph catalogue, §7 spec format, Tier-2 "Sales replaces the D365 read-model sidecar" note), `docs/DATA_SOURCE_MODES.md` (Sales is the headline `d365|both|nce` use case)
 
 ## Mission
-Own the front of the spine — lead → opportunity → deal → quote → signature → project — as a cognitive capability, and in doing so **become the system of record for the sales read-model that today powers ~12 Lysning pages** (`steps_d365`). The decision (roadmap §8.2): **Sales replaces `steps_d365`**; D365 is demoted to an *optional source adapter* toggled per-function via the admin `d365|both|nce` switch, so NCE can leave D365 with **no data migration at flip** — NCE has retained the source data all along via the D365 watermark/delta incremental-sync pattern. The deep-AI angle: every deal carries cognitive recall ("deals like this that closed / slipped"), the DealRoom personalises itself from won/loss memory, and the **signed-baseline freeze** at signature is the immutable contract-truth that Project margin is later measured against — Sales owns the signed quote, hands the frozen BOM forward, and never lets a cost update rewrite history.
+Own the front of the spine — lead → opportunity → deal → quote → signature → project — as a cognitive capability, and in doing so **become the system of record for the sales read-model that today powers ~12 Host Portal pages** (the Portal D365 sidecar). The decision (roadmap §8.2): **Sales replaces the Portal D365 sidecar**; D365 is demoted to an *optional source adapter* toggled per-function via the admin `d365|both|nce` switch, so NCE can leave D365 with **no data migration at flip** — NCE has retained the source data all along via the D365 watermark/delta incremental-sync pattern. The deep-AI angle: every deal carries cognitive recall ("deals like this that closed / slipped"), the DealRoom personalises itself from won/loss memory, and the **signed-baseline freeze** at signature is the immutable contract-truth that Project margin is later measured against — Sales owns the signed quote, hands the frozen BOM forward, and never lets a cost update rewrite history.
 
 ## Inspiration & triage
 - **the planning sources (lift / wire):**
@@ -17,8 +17,8 @@ Own the front of the spine — lead → opportunity → deal → quote → signa
   - the reference implementation `applySignedBaseline` — idempotent signed-baseline application; `marginSignedPct` is **never** overwritten by the cascade (the margin-trinity discipline). Lift the invariant.
   - the reference implementation — DG-pricing (`salgspris = kostpris / (1 − DG%)`); the quote-builder bug is the inline `*0.7` that bypasses it — close that gap when we build quote pricing.
   - Spor A (quote-driven) is the canonical path; Spor B (Dynamics-Won) is the legacy we are retiring (handoff 02 §2). DealRoom / BankID-signing / AI-lead-scoring are listed *not built* in the reference implementation — greenfield for us.
-- **Portal sidecar to lift (the sales read-model):** `backend/steps_d365/` — `db.py` (the stored-truth aggregations: company_profile, mine, dashboard, manager, stats, targets), `client.py` (OData/Dataverse pull), `source.py` + `sync.py` + `auto_sync.py` (incremental retention), `classify.py`, `api.py` (the 12-page REST contract). These become the `sales/source_adapters/d365` adapter + the native NCE read-model.
-- **Lysning pages served (12 + 2 customer-facing):** `Kunder.jsx`, `KundeDetalj.jsx`, `Oversikt.jsx`, `Salgsoversikt.jsx`, `SelgerDetalj.jsx`, `Avtaler.jsx`, `AvtaleDetalj.jsx`, `TilbudDetalj.jsx`, `SalgsStat`, `SalgsDashboard`, `D365Oversikt.jsx` (+ the cross-cut Oversikt). Customer-facing share surfaces: `Motebrief.jsx` (meeting brief) and `TilbudKunde.jsx` (the customer-facing quote/DealRoom view).
+- **Portal sidecar to lift (the sales read-model):** the Portal D365 sidecar — `db.py` (the stored-truth aggregations: company_profile, mine, dashboard, manager, stats, targets), `client.py` (OData/Dataverse pull), `source.py` + `sync.py` + `auto_sync.py` (incremental retention), `classify.py`, `api.py` (the 12-page REST contract). These become the `sales/source_adapters/d365` adapter + the native NCE read-model.
+- **Host Portal pages served (12 + 2 customer-facing):** `Kunder.jsx`, `KundeDetalj.jsx`, `Oversikt.jsx`, `Salgsoversikt.jsx`, `SelgerDetalj.jsx`, `Avtaler.jsx`, `AvtaleDetalj.jsx`, `TilbudDetalj.jsx`, `SalgsStat`, `SalgsDashboard`, `D365Oversikt.jsx` (+ the cross-cut Oversikt). Customer-facing share surfaces: `Motebrief.jsx` (meeting brief) and `TilbudKunde.jsx` (the customer-facing quote/DealRoom view).
 - **Crown-jewel doc:** planning module **01 — Sales** (`handoff/04-virksomhets-modulkart.md`): Lead→quote→DealRoom→BankID→auto-project; "commission must be tied to DB/contribution-margin — it must pay to sell drift (service)".
 
 ## Classification
@@ -36,12 +36,12 @@ Node `entity_type` prefixes: `SALES_*`, plus shared spine nodes `CUSTOMER`, `QUO
 - **memories/ledger:** meeting briefs, deal notes, win/loss reasons → `memories` (embedding + `content_fts`) for "deals like this" recall. Every stage transition + every signature → `v3_cognitive_ledger` (auditable deal history; commission-affecting events are append-only). Tag every derived row with `sales_source_id` for hard-retirement on delete (D365 retirement pattern) — and so a row's *origin adapter* is always known.
 
 ## Core functions
-<!-- BLOCKED ON OQ-2 / OQ-4: Read-model functions are mounted directly on REST routes for Lysning pages; AI lead scoring and draft quote remain prospective/unwired. -->
+<!-- BLOCKED ON OQ-2 / OQ-4: Read-model functions are mounted directly on REST routes for Host Portal pages; AI lead scoring and draft quote remain prospective/unwired. -->
 Pure-ish `do_<action>(engine, params) -> dict`; every read path goes through the **source-mode resolver** (`d365|both|nce`), never hard-wires D365.
 - `do_list_customers(engine, params)` / `do_customer_profile(engine, params)` — Kunder / KundeDetalj. Resolver-dispatched (`source_mode.sales.customers`).
 - `do_sales_overview(engine, params)` — Salgsoversikt / Oversikt aggregate (pipeline value by stage).
 - `do_seller_detail(engine, params)` — SelgerDetalj: per-seller pipeline + commission-to-date (DB-weighted).
-- `do_sales_dashboard(engine, params)` / `do_sales_stats(engine, params)` — SalgsDashboard / SalgsStat (lifts `steps_d365/db.py` dashboard + stats + targets aggregations).
+- `do_sales_dashboard(engine, params)` / `do_sales_stats(engine, params)` — SalgsDashboard / SalgsStat (lifts the Portal D365 sidecar dashboard + stats + targets aggregations).
 - `do_list_agreements(engine, params)` / `do_agreement_detail(engine, params)` — Avtaler / AvtaleDetalj.
 - `do_quote_detail(engine, params)` — TilbudDetalj; the customer-facing projection feeds `TilbudKunde.jsx`.
 - `do_open_dealroom(engine, params)` — materialise a live web quote with toggle-able option lines (price recomputes via DG-pricing, not inline `*0.7`).
@@ -74,11 +74,11 @@ Registered in `nce/tool_registry.py` via `_h(...)` late-binding. AI-role tag per
 
 ## REST routes
 <!-- BLOCKED ON OQ-2 / OQ-4: Mounted REST routes at baseline 7304330 comprised 15 endpoints (14 under /api/sales, /api/admin/sales, plus 1 public quote endpoint at /public-api/sales/quotes/{id}) -- route count unchanged as of b75c873, only the MCP tool surface grew (see line 5). -->
-No-model path for the BFF (the 12 Lysning pages + the 2 customer-facing shares), cron, scripts. Mounted via `build_app(extra_routes=...)`; HMAC/mTLS-authed in `nce/admin_handlers/sales.py`. Each resolves its source mode internally.
+No-model path for the BFF (the 12 Host Portal pages + the 2 customer-facing shares), cron, scripts. Mounted via `build_app(extra_routes=...)`; HMAC/mTLS-authed in `nce/admin_handlers/sales.py`. Each resolves its source mode internally.
 - `api_sales_customers` / `api_sales_customer_profile` (GET) — Kunder, KundeDetalj.
 - `api_sales_overview` (GET) — Oversikt / Salgsoversikt.
 - `api_sales_seller_detail` (GET) — SelgerDetalj.
-- `api_sales_dashboard` / `api_sales_stats` (GET) — SalgsDashboard, SalgsStat (+ `api_sales_targets` GET/PUT, lifts `steps_d365` targets).
+- `api_sales_dashboard` / `api_sales_stats` (GET) — SalgsDashboard, SalgsStat (+ `api_sales_targets` GET/PUT, lifts the Portal D365 targets).
 - `api_sales_agreements` / `api_sales_agreement_detail` (GET) — Avtaler, AvtaleDetalj.
 - `api_sales_quote_detail` (GET) — TilbudDetalj.
 - `api_sales_quote_public` (GET) — `TilbudKunde.jsx` customer-facing share (token-scoped, no internal margin fields).
@@ -118,7 +118,7 @@ Mirror all DDL into `schema.sql` + numbered migration.
 ## Dependencies
 - **Upstream engines:** Product(2) — quote/BOM lines reference PRODUCT specs/pricing; System Design(6) — produces the BOM (bidirectional, functional-location-anchored); both must exist (Tier 1) before Sales can quote against them — hence Sales is Tier 2.
 - **Downstream:** Project(7) — receives the frozen signed baseline (Sales owns the signed quote, Project receives the frozen BOM); Economy(8) — DB/contribution-margin feeds commission + revenue-recognition (Sales does not own GL).
-- **Replaces:** `steps_d365` read-model (production-critical, ~12 Lysning pages). The cutover is per-function via the admin switch, not big-bang.
+- **Replaces:** the Portal D365 read-model sidecar (production-critical, ~12 Host Portal pages). The cutover is per-function via the admin switch, not big-bang.
 - **External blocker 🔴:** Scrive/Criipto BankID production credentials + DPIA for signing (sandbox works without). The D365 adapter is *optional by design* — its eventual retirement is the goal, not a blocker.
 
 ## Hardening — the load-bearing machinery (review 2026-06-17)
@@ -137,7 +137,7 @@ The vision (read-model-of-record → AI last) is right; the under-weighted parts
 
 ## Build phases
 <!-- BLOCKED ON OQ-2 / OQ-4: Historical build phases B1-B5. Refer to docs/engines/sales-admin.md for shipped milestone status. -->
-- **B1 — Read-model parity + divergence audit (the cutover precondition):** port `steps_d365/db.py` aggregations → native `do_*` read functions + `sales_read_model` table (RLS) + the D365 source adapter (`sales/source_adapters/d365`, reusing `DataverseTokenManager`) + incremental sync/watermark retention. Wire the **source-mode resolver** and `api_sales_source_mode`. **Build `sales_divergence_log` now** (NCE-primary parity check on every `both`-mode read). Serve all 12 Lysning pages in `both`. REST routes for every read.
+- **B1 — Read-model parity + divergence audit (the cutover precondition):** port the Portal D365 sidecar aggregations → native `do_*` read functions + `sales_read_model` table (RLS) + the D365 source adapter (`sales/source_adapters/d365`, reusing `DataverseTokenManager`) + incremental sync/watermark retention. Wire the **source-mode resolver** and `api_sales_source_mode`. **Build `sales_divergence_log` now** (NCE-primary parity check on every `both`-mode read). Serve all 12 Host Portal pages in `both`. REST routes for every read.
 - **B2 — Native pipeline + write routing + freeze:** upsert LEAD/OPPORTUNITY/DEAL/QUOTE/CUSTOMER nodes + edges; **write routing** (write-through to D365 while `d365`/`both`, native once flipped) + **source-prefixed identity/mapping scheme**; native deal creation/edit. **`sales_signed_baselines` (append-only, margin-trinity) — the freeze mechanism, pulled forward here** (no dependency on signing). Customer-facing `api_sales_quote_public` on its **own allowlisted, rate-limited token path**.
 - **B3 — Quote→signature→project:** DealRoom (`do_open_dealroom`, toggle options, **shared DG-pricing service** — no inline `*0.7`, no re-impl); Scrive/Criipto signing + webhook → triggers the (already-built) freeze; **wire the reference implementation's orphan** `convert_signed_quote_to_project`. A2A Sales→Project handoff.
 - **B4 — AI surface:** lead scoring + quote-draft assist (Advisor, cognitive recall, **propose-only per §9.3**); win/loss capture + "deals like this" recall (`Motebrief.jsx`); DealRoom personalisation; **reproducible** DB-weighted commission (ledger events + versioned `sales-commission.json`). A2A Quote→Design→Procure + failure-pattern feedback to Product.

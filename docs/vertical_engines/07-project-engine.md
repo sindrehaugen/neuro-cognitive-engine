@@ -10,13 +10,13 @@
 ## Mission
 Project is the **KERNE module everything orbits** (planning module 04): the workspace where a signed quote becomes a delivered installation. It owns *no BOM of its own* — it adds `PROJECT`/phase/task/change-order structure **onto the shared `BOM_LINE` nodes** already in the graph. Its job is three disciplines, all enforced as code+config, not free text: (1) a **phase-gate state-machine G0–G6** that refuses invalid transitions, (2) the **signed-quote→project bridge** that freezes an immutable contract baseline actuals are measured against, and (3) **auto-tasking from BOM-line status** so procurement/logistics movement becomes project work without manual entry. The deep-AI angle: because every other engine writes to the same graph, Project gets capacity, scope-creep and "projects like this that slipped" **for free** via cognitive recall — and exposes a "My Day" prioritization surface and tiered automation keyed to project *size*.
 
-## Inspiration & triage   (the planning sources · no Portal sidecar — new build · Lysning pages: MinManed.jsx / "My Day", ModulDetalj.jsx, Hendelser.jsx)
+## Inspiration & triage   (the planning sources · no Portal sidecar — new build · Host Portal pages: MinManed.jsx / "My Day", ModulDetalj.jsx, Hendelser.jsx)
 - the reference implementation → `canEnterPhase` (`manifest.json#phase-gates`, angerkost 3, test `tests/project/phase-gates.test.ts`): pure G0–G6 state-machine — **lift near 1:1**, port `VALID_PHASE_TRANSITIONS` + `GATE_CRITERIA` to config-as-IP.
 - the reference implementation → `convertSignedQuoteToProject` (`manifest.json#signed-quote-to-project`, angerkost 3): freezes immutable signed baseline at `:232-237`. **FRESH + CORRECT but ORPHAN — 0 callers** (handoff §2). We are the call-site. **Write the test when we wire it** (the reference implementation never did).
 - the reference implementation `applySignedBaseline` (idempotent) — the freeze primitive Economy also reads; `marginSignedPct` **never overwritten by cascade** (handoff §7, margin-trinity).
 - the reference implementation 04: `BomTab.tsx:481`/`:1251` per-room cost + roomGroups (real); CO/SUB/deviation tagging; scope-creep detection; tiered automation Tier 1 <50K → Tier 4 3M+; "My Day"; capacity engine. PL-assignment is **🔵 not built** (PL derived from D365 owner; no skill/capacity matching) — we build it.
 - **No Portal FE-dev sidecar exists** (roadmap §3 seed = "—, new"). Greenfield NCE vertical.
-- **Lysning pages served** (today empty-state, awaiting backend): `MinManed.jsx` ← "My Day"/portfolio pulse; `ModulDetalj.jsx` ← project/module detail; `Hendelser.jsx` ← phase-transition + CO events. These render from this engine's REST routes, no model in the path.
+- **Host Portal pages served** (today empty-state, awaiting backend): `MinManed.jsx` ← "My Day"/portfolio pulse; `ModulDetalj.jsx` ← project/module detail; `Hendelser.jsx` ← phase-transition + CO events. These render from this engine's REST routes, no model in the path.
 
 ## Classification         (internal + AI; no external system — consumes the graph; pull-only style transport)
 - **internal + AI**, NOT push+semantic and NOT external. There is no third-party system to client/auth against — Project **consumes the shared cognitive graph** (`kg_nodes`/`kg_edges` written by Sales, System Design, Procurement, Economy) and writes back its own typed nodes/edges.
@@ -60,7 +60,7 @@ Each is a pure-ish `do_<action>(engine, params) -> dict` (dual-surface core; the
 | `project_suggest_pl` | true | false | false | Advisor (needs HR via A2A) |
 Register via `_h(project_mcp_handlers, "handle_project_<action>")` in `nce/tool_registry.py`; update the tool-count test.
 
-## REST routes          (admin api_* routes — no-model path for the BFF / Lysning)
+## REST routes          (admin api_* routes — no-model path for the BFF / Host Portal)
 `build_admin_routes()` + `nce/admin_handlers/project.py`, HMAC/mTLS authed, no LLM:
 - `GET  /api/project/{id}` → detail (→ `ModulDetalj.jsx`)
 - `GET  /api/project/{id}/phase` · `POST /api/project/{id}/phase` (advance; 409 + `missing_criteria` on gate fail)

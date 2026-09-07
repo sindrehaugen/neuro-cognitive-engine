@@ -105,7 +105,7 @@ Three registration calls must happen once at worker startup, in this order, or t
 ## 4. Event Wiring & Audit Stream
 
 ### 4.1 `project_phase_advanced`
-Declared as a member of the flat `EventType` literal union in `nce/event_types.py` (under the `# PROJECT_EVENTS` comment header) — not a separately named Python constant. Appended to the WORM `event_log` by `advance.py`'s `_append_phase_transition_event` on every successful (non-noop) phase transition, with `agent_id="project-advance-phase"` and `params={"project_id", "from_phase", "to_phase", "actor"}`. This feeds the Lysning `Hendelser.jsx` events feed.
+Declared as a member of the flat `EventType` literal union in `nce/event_types.py` (under the `# PROJECT_EVENTS` comment header) — not a separately named Python constant. Appended to the WORM `event_log` by `advance.py`'s `_append_phase_transition_event` on every successful (non-noop) phase transition, with `agent_id="project-advance-phase"` and `params={"project_id", "from_phase", "to_phase", "actor"}`. This feeds the Host Portal `Hendelser.jsx` events feed.
 
 ### 4.2 Replay handling
 `nce/replay.py` registers `project_phase_advanced` in its `_additional_fork_provenance_types` tuple, mapping it to `_handle_fork_provenance_only` in the replay handler registry. In a forked/reconstructive replay this event is treated as **provenance-only** — it doesn't drive full state-mutation replay logic, consistent with its role as an audit-trail event rather than a primary domain event.
@@ -114,7 +114,7 @@ Declared as a member of the flat `EventType` literal union in `nce/event_types.p
 `tasks.py` deliberately does **not** call `append_event` when it creates/closes `PROJECT_TASK` nodes — the module docstring states this is intentional: task creation is not a named WORM event type, and audit is left to the C4 outbox row already written by the Procurement/Warehouse publisher that triggered the sync.
 
 ### 4.4 Event Feed & Frontend Consumption
-Contrary to the design doc, there is **no dedicated `/api/project/{id}/events` REST route** mounted in `admin_app.py`. Event feed consumers (such as Lysning's `Hendelser.jsx`) query the immutable WORM `event_log` table directly under RLS tenant isolation, filtering for `event_type = 'project_phase_advanced'` (and relevant C4 outbox event rows) correlated by project label/ID.
+Contrary to the design doc, there is **no dedicated `/api/project/{id}/events` REST route** mounted in `admin_app.py`. Event feed consumers (such as the Host Portal's `Hendelser.jsx`) query the immutable WORM `event_log` table directly under RLS tenant isolation, filtering for `event_type = 'project_phase_advanced'` (and relevant C4 outbox event rows) correlated by project label/ID.
 
 ---
 
