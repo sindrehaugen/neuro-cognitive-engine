@@ -1683,3 +1683,195 @@ class AdminHTTPRateLimitMiddleware(BaseHTTPMiddleware):
             )
 
         return await call_next(request)
+
+
+# ---------------------------------------------------------------------------
+# Wave B-FT5: Partner Scope Resolution & Internal Impersonation Audit
+# ---------------------------------------------------------------------------
+
+_SYSTEM_NAMESPACE: UUID = UUID("00000000-0000-0000-0000-000000000000")
+_NIL_UUID: UUID = UUID("00000000-0000-0000-0000-000000000000")
+
+
+def extract_caller_identity(request: Any) -> str:
+    """Extract caller identity from mTLS certificate, HMAC agent header, or transport."""
+    if request is None:
+        return "internal_admin"
+
+    headers = getattr(request, "headers", {})
+    scope = getattr(request, "scope", {})
+
+    # 1. mTLS certificate headers (proxy / ingress forwarded)
+    san = headers.get("x-client-cert-san")
+    if san and str(san).strip():
+        return f"san:{str(san).strip().lower()}"
+
+    fp = headers.get("x-client-cert-fingerprint")
+    if fp and str(fp).strip():
+        return f"fp:{str(fp).strip().lower()}"
+
+    fwd_cert = headers.get("x-forwarded-client-cert")
+    if fwd_cert and str(fwd_cert).strip():
+        for part in str(fwd_cert).split(";"):
+            k, sep, v = part.partition("=")
+            if sep:
+                k = k.strip().lower()
+                v = v.strip()
+                if k in ("hash", "fingerprint", "sha256") and v:
+                    return f"fp:{v.lower()}"
+                if k == "san" and v:
+                    return f"san:{v.lower()}"
+
+    # 2. Direct ASGI SSL scope
+    ssl_info = scope.get("ssl") or scope.get("client_cert")
+    if ssl_info and isinstance(ssl_info, dict):
+        sans = ssl_info.get("san")
+        if sans and isinstance(sans, (list, tuple)) and sans:
+            return f"san:{str(sans[0]).lower()}"
+        cert_fp = ssl_info.get("fingerprint")
+        if cert_fp:
+            return f"fp:{str(cert_fp).lower()}"
+
+    # 3. HMAC agent / Principal identity
+    agent_id = headers.get("x-nce-agent-id")
+    if not agent_id and hasattr(request, "state"):
+        agent_id = getattr(request.state, "agent_id", None)
+        if not agent_id and hasattr(request.state, "caller_ctx"):
+            agent_id = getattr(request.state.caller_ctx, "agent_id", None)
+    if agent_id:
+        return f"hmac_agent:{validate_agent_id(agent_id)}"
+
+    # 4. Fallback client host
+    client = scope.get("client") or getattr(request, "client", None)
+    if client:
+        host = (
+            client[0] if isinstance(client, (tuple, list)) else getattr(client, "host", str(client))
+        )
+        if host:
+            return f"client:{host}"
+
+    return "internal_admin"
+
+
+async def resolve_partner_scope(
+    request: Any,
+    params_or_scope: Any = None,
+    *,
+    namespace_id: UUID | str | None = None,
+    engine: Any = None,
+    reason: str = "internal_admin_impersonation",
+) -> str | None:
+    """Resolve partner_scope_id from verified principal context or declared internal impersonation.
+
+    Charter B-FT5 Design Contract:
+    1. Returns scope from verified principal context (JWT external_scope_id) when present.
+    2. Otherwise treats parameter-supplied scope as a declared internal impersonation.
+    3. Strictly validates UUID syntax and rejects the nil-UUID deny sentinel.
+    4. Does NOT validate scope existence against DB (anti-enumeration oracle rule).
+    5. Audits every assertion by emitting a WORM `partner_scope_impersonated` event.
+    """
+    # 1. Verified principal context on request
+    if request is not None and hasattr(request, "state"):
+        caller_ctx = getattr(request.state, "caller_ctx", None)
+        if caller_ctx is not None and getattr(caller_ctx, "external_scope_id", None) is not None:
+            return str(caller_ctx.external_scope_id)
+        state_scope = getattr(request.state, "external_scope_id", None)
+        if state_scope is not None:
+            return str(state_scope)
+
+    # 2. Extract raw candidate scope
+    raw_val = None
+    if isinstance(params_or_scope, dict):
+        raw_val = params_or_scope.get("partner_scope_id") or params_or_scope.get(
+            "external_scope_id"
+        )
+        if namespace_id is None:
+            namespace_id = params_or_scope.get("namespace_id")
+    else:
+        raw_val = params_or_scope
+
+    if raw_val is None:
+        return None
+    val_str = str(raw_val).strip()
+    if not val_str:
+        return None
+
+    # Validate UUID syntax
+    try:
+        scope_uuid = UUID(val_str)
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise ValueError(f"Invalid partner_scope_id: {val_str}") from exc
+
+    # Deny nil-UUID sentinel
+    if scope_uuid == _NIL_UUID:
+        raise ValueError("Invalid partner_scope_id: nil UUID sentinel is not an assignable scope")
+
+    # 3. Declared internal impersonation — audit assertion
+    caller_identity = extract_caller_identity(request)
+
+    # Resolve namespace UUID
+    ns_uuid: UUID = _SYSTEM_NAMESPACE
+    if namespace_id is not None:
+        try:
+            ns_uuid = (
+                UUID(str(namespace_id).strip())
+                if not isinstance(namespace_id, UUID)
+                else namespace_id
+            )
+        except Exception:
+            ns_uuid = _SYSTEM_NAMESPACE
+    elif request is not None:
+        query_ns = (
+            getattr(request, "query_params", {}).get("namespace_id")
+            if hasattr(request, "query_params")
+            else None
+        )
+        header_ns = (
+            getattr(request, "headers", {}).get("x-nce-namespace-id")
+            if hasattr(request, "headers")
+            else None
+        )
+        candidate_ns = query_ns or header_ns
+        if candidate_ns:
+            try:
+                ns_uuid = UUID(str(candidate_ns).strip())
+            except Exception:
+                ns_uuid = _SYSTEM_NAMESPACE
+
+    # Resolve pg_pool
+    pool = None
+    if engine is not None:
+        pool = getattr(engine, "pg_pool", None) or getattr(engine, "pool", None)
+        if pool is None and hasattr(engine, "acquire"):
+            pool = engine
+    if pool is None:
+        try:
+            from nce import admin_state
+
+            if admin_state.engine is not None:
+                pool = getattr(admin_state.engine, "pg_pool", None)
+        except ImportError:
+            pass
+
+    if pool is not None:
+        await _write_audit_event(
+            pg_pool=pool,
+            namespace_id=ns_uuid,
+            agent_id=caller_identity,
+            event_type="partner_scope_impersonated",
+            params={
+                "partner_scope_id": str(scope_uuid),
+                "caller_identity": caller_identity,
+                "impersonation_type": "internal_admin",
+                "reason": (reason or "")[:256],
+            },
+            result_summary={"status": "asserted"},
+        )
+    else:
+        log.warning(
+            "resolve_partner_scope: no pg_pool available to record audit event for partner_scope_id=%s agent=%s",
+            scope_uuid,
+            caller_identity,
+        )
+
+    return str(scope_uuid)

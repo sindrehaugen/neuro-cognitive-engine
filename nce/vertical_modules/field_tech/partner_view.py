@@ -68,6 +68,10 @@ async def do_partner_view(engine: Any, params: dict[str, Any]) -> dict[str, Any]
     if work_order_id:
         work_order_id = str(work_order_id).strip()
 
+    # NOTE (Wave B-FT5): scoped_pg_session opens a connection for namespace_id only.
+    # It never calls set_external_scope. The `partner_scope_id = $2` in the WHERE
+    # clause below is the ENTIRE tenant filter and authorization control, with no
+    # database RLS policy behind it.
     query = """
         SELECT
             work_order_id, kind, location_id, status, priority,

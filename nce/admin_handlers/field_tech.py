@@ -31,6 +31,7 @@ from nce.admin_handlers._shared import (
     admin_state,
     bump_mcp_cache_generation,
 )
+from nce.auth import resolve_partner_scope
 from nce.vertical_modules.field_tech._guard import (
     FieldTechDisabledError,
     require_field_tech_enabled,
@@ -178,13 +179,23 @@ async def api_field_tech_query_work_orders(request: Any) -> JSONResponse:
     except FieldTechDisabledError as exc:
         return JSONResponse({"error": str(exc)}, status_code=409)
 
+    try:
+        partner_scope_id = await resolve_partner_scope(
+            request,
+            request.query_params.get("partner_scope_id"),
+            namespace_id=namespace_id,
+            engine=admin_state.engine,
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+
     params: dict[str, Any] = {
         "namespace_id": namespace_id,
         "status": request.query_params.get("status"),
         "kind": request.query_params.get("kind"),
         "assignee_id": request.query_params.get("assignee_id"),
         "location_id": request.query_params.get("location_id"),
-        "partner_scope_id": request.query_params.get("partner_scope_id"),
+        "partner_scope_id": partner_scope_id,
     }
 
     try:
@@ -542,7 +553,16 @@ async def api_field_tech_partner_view(request: Any) -> JSONResponse:
     if err:
         return err
 
-    partner_scope_id = request.query_params.get("partner_scope_id")
+    try:
+        partner_scope_id = await resolve_partner_scope(
+            request,
+            request.query_params.get("partner_scope_id"),
+            namespace_id=namespace_id,
+            engine=admin_state.engine,
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+
     if not partner_scope_id:
         return JSONResponse(
             {"error": "partner_scope_id query parameter is required"}, status_code=422
