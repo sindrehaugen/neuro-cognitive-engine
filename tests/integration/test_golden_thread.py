@@ -296,7 +296,7 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         index=23,
         name="allocation_invalidated",
         canonical_label="allocation invalidated",
-        is_broken=True,
+        is_broken=False,
         review_break="break-5a",
         phase1_wave="HR-1/V-2",
         description="HR/Vendors cert expiry event invalidates scheduled resource allocation",
@@ -1183,10 +1183,6 @@ class TestGoldenThreadSteps:
             )
             assert ev_cnt >= 1, "CERTIFICATION.EXPIRED event not found in outbox"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="break-5a: HR cert expiry invalidates scheduled resource allocation (Wave HR-1/V-2)",
-    )
     async def test_step_23_allocation_invalidated(
         self, scenario: GoldenThreadScenarioContext
     ) -> None:
@@ -1218,7 +1214,6 @@ class TestGoldenThreadSteps:
                 )
                 ctx.allocation_id = alloc_id
 
-        # Real seam break (break-5a): queries non-existent columns 'name', 'metadata' from resources table
         alloc_invalid_res = await handle_hr_cert_change(
             ctx.engine,
             {
@@ -1228,6 +1223,20 @@ class TestGoldenThreadSteps:
             },
         )
         assert alloc_invalid_res["affected_count"] >= 1
+        async with ctx.pool.acquire() as conn:
+            alloc_row = await conn.fetchrow(
+                "SELECT status, attrs FROM allocations WHERE id = $1 AND namespace_id = $2",
+                ctx.allocation_id,
+                ctx.namespace_id,
+            )
+            assert alloc_row is not None, "Allocation row not found"
+            assert alloc_row["status"] == "tentative"
+            attrs = (
+                json.loads(alloc_row["attrs"])
+                if isinstance(alloc_row["attrs"], str)
+                else (alloc_row["attrs"] or {})
+            )
+            assert "cert_conflict" in attrs, "cert_conflict not found in allocation attrs"
 
     async def test_step_24_portal_request(self, scenario: GoldenThreadScenarioContext) -> None:
         """Step 24: customer raises portal request."""
@@ -1321,14 +1330,9 @@ class TestGoldenThreadSteps:
 class TestGoldenThreadPipeline:
     """Full unbroken sequential execution of the 28-step Golden Thread lifecycle.
 
-    Because Step 23 hits open seam break-5a, the pipeline halts at Step 23 with
-    strict xfail.
+    Executes all 28 steps end-to-end against live PostgreSQL.
     """
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="break-5a: pipeline halted at step 23: HR cert expiry invalidates scheduled resource allocation (Wave HR-1/V-2)",
-    )
     async def test_golden_thread_full_e2e_pipeline(self) -> None:
         """Executes the full Golden Thread lifecycle sequentially end-to-end."""
         async for ctx in _setup_live_context():
@@ -1789,8 +1793,7 @@ class TestGoldenThreadPipeline:
                         uuid.uuid4(),
                     )
 
-            # This call raises UndefinedColumnError on Postgres schema
-            await handle_hr_cert_change(
+            alloc_res = await handle_hr_cert_change(
                 ctx.engine,
                 {
                     "namespace_id": str(ctx.namespace_id),
@@ -1798,6 +1801,75 @@ class TestGoldenThreadPipeline:
                     "status": "expired",
                 },
             )
+            assert alloc_res["affected_count"] >= 1
+
+            # Step 24: Customer Portal Request
+            portal_res = await do_raise_service_request(
+                ctx.engine,
+                {
+                    "namespace_id": str(ctx.namespace_id),
+                    "customer_scope_id": ctx.customer_id,
+                    "summary": "Meeting room sound failure",
+                },
+            )
+            assert "ticket_id" in portal_res
+            portal_ticket_id = UUID(portal_res["ticket_id"])
+
+            # Step 25: Portal Ticket in Service Tickets
+            async with ctx.pool.acquire() as conn:
+                pt_row = await conn.fetchrow(
+                    "SELECT id, source, source_id FROM service_tickets WHERE namespace_id = $1 AND id = $2",
+                    ctx.namespace_id,
+                    portal_ticket_id,
+                )
+                assert pt_row is not None, "Portal ticket not found in service_tickets"
+                assert str(pt_row["source_id"]).startswith("customer_portal:")
+
+            # Step 26: Project Outcome at G5 Gate
+            p_out = await do_record_project_outcome(
+                ctx.engine,
+                {
+                    "namespace_id": str(ctx.namespace_id),
+                    "project_id": f"PROJECT:{ctx.quote_id.upper()}",
+                    "description": "Enterprise AV Deployment",
+                    "slip_reason": "Logistics delivery delay",
+                },
+            )
+            assert p_out["ok"] is True
+            async with ctx.pool.acquire() as conn:
+                mem_cnt = await conn.fetchval(
+                    "SELECT count(*) FROM memories WHERE namespace_id = $1 AND node_type = 'PROJECT'",
+                    ctx.namespace_id,
+                )
+                assert mem_cnt >= 1, "Project outcome memory not recorded in memories table"
+
+            # Step 27: Design Recall with Outcome-Weighted Similar Project
+            async with ctx.pool.acquire() as conn:
+                async with conn.transaction():
+                    await set_namespace_context(conn, ctx.namespace_id)
+                    for i in range(5):
+                        await conn.execute(
+                            """
+                            INSERT INTO decision_feedback (namespace_id, engine, context_id, proposal, decision, delta, actor)
+                            VALUES ($1, 'system_design', $2, '{"bom": []}'::jsonb, 'accepted', '{}'::jsonb, 'human')
+                            """,
+                            ctx.namespace_id,
+                            f"pipe-ctx-{i}",
+                        )
+            prop_res = await do_propose_design(
+                ctx.engine,
+                {
+                    "namespace_id": str(ctx.namespace_id),
+                    "room_brief": "Enterprise AV Deployment",
+                },
+            )
+            assert "proposed_lines" in prop_res
+
+            # Step 28: Degradation Register reports zero active degradations
+            reg = get_degradation_register()
+            total_deg = reg.total_count(str(ctx.namespace_id))
+            degs = reg.get_degradations(str(ctx.namespace_id))
+            assert total_deg == 0, f"Unexpected degradations in namespace: {total_deg} ({degs})"
 
 
 # ---------------------------------------------------------------------------
@@ -1835,13 +1907,12 @@ class TestGoldenThreadPositiveControls:
     def test_burndown_manifest_broken_steps_count(self) -> None:
         """Verify broken steps count reflects honest live state.
 
-        Step 23 is broken live against PostgreSQL (break-5a: resources table has no 'name' col).
-        The remaining 27 steps execute and assert real database state.
+        All 28 steps now execute and assert real database state with zero broken steps.
         """
         broken_steps = [s for s in GOLDEN_THREAD_STEPS if s.is_broken]
-        assert len(broken_steps) == 1, f"Expected 1 broken step, found: {broken_steps}"
+        assert len(broken_steps) == 0, f"Expected 0 broken steps, found: {broken_steps}"
         broken_indices = {s.index for s in broken_steps}
-        assert broken_indices == {23}
+        assert broken_indices == set()
 
     def test_positive_control_broken_steps_have_remediation_waves(self) -> None:
         """Verify every broken step specifies a responsible Phase 1 remediation wave."""
