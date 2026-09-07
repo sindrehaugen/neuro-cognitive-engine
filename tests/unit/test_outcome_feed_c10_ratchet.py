@@ -24,6 +24,7 @@ Invariants verified:
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
@@ -230,8 +231,58 @@ async def test_ft4_record_outcome_executes_real_decision_feedback_sql() -> None:
     )
 
 
+def _create_table_columns(sql: str, table: str) -> set[str]:
+    """Column names declared in ``CREATE TABLE <table> (...)``.
+
+    Takes the first identifier of every definition line inside the parenthesised
+    body, skipping table-level constraints (PRIMARY KEY, FOREIGN KEY, UNIQUE,
+    CHECK, CONSTRAINT) which are not columns.
+    """
+    m = re.search(
+        rf"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?{re.escape(table)}\s*\((.*)",
+        sql,
+        re.IGNORECASE | re.DOTALL,
+    )
+    assert m, f"no CREATE TABLE for {table!r}"
+
+    depth = 1
+    body: list[str] = []
+    for ch in m.group(1):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                break
+        body.append(ch)
+
+    constraint_kw = {"primary", "foreign", "unique", "check", "constraint", "exclude"}
+    cols: set[str] = set()
+    for raw in "".join(body).split("\n"):
+        line = raw.split("--", 1)[0].strip().rstrip(",")
+        if not line:
+            continue
+        first = line.split()[0].strip('"')
+        if first.lower() in constraint_kw:
+            continue
+        cols.add(first)
+    return cols
+
+
 def test_decision_feedback_table_schema_contract() -> None:
-    """Verify decision_feedback table columns in migration 075 match query parameters."""
+    """The declared columns of ``decision_feedback`` are exactly the queried ones.
+
+    This test used to be ``for col in expected: assert col in content`` against the
+    raw migration text, and it could not fail: deleting the whole ``actor`` column
+    definition left the test green because the word "actor" occurs elsewhere in the
+    file, and ``"id"`` is a substring of ``namespace_id``. It asserted the file
+    mentioned some words.
+
+    Parsing the CREATE TABLE body and comparing SETS makes a drop fail, a rename
+    fail, and an unexpected ADDITION fail -- the last of which no substring check
+    can ever detect, and which matters here because every added column is a column
+    the INSERT in decision_feedback.py does not populate.
+    """
     from pathlib import Path
 
     repo_root = Path(__file__).resolve().parents[2]
@@ -239,7 +290,7 @@ def test_decision_feedback_table_schema_contract() -> None:
     assert migration_path.exists()
     content = migration_path.read_text(encoding="utf-8")
 
-    expected_columns = [
+    expected_columns = {
         "id",
         "namespace_id",
         "engine",
@@ -249,6 +300,32 @@ def test_decision_feedback_table_schema_contract() -> None:
         "delta",
         "actor",
         "created_at",
-    ]
-    for col in expected_columns:
-        assert col in content, f"Column {col} missing from 075_decision_feedback.sql"
+    }
+    declared = _create_table_columns(content, "decision_feedback")
+    assert declared == expected_columns, (
+        f"decision_feedback columns changed: missing {sorted(expected_columns - declared)}, "
+        f"unexpected {sorted(declared - expected_columns)}"
+    )
+
+
+def test_schema_contract_parser_is_not_vacuous() -> None:
+    """Positive control: the parser must reject a table whose column set differs.
+
+    The check it replaces passed against a migration with a column deleted. This
+    control fails if the parser ever degrades into a substring match again.
+    """
+    ddl = """
+    CREATE TABLE IF NOT EXISTS decision_feedback (
+        id            UUID        NOT NULL DEFAULT gen_random_uuid(),
+        namespace_id  UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+        engine        TEXT        NOT NULL,
+        -- actor deliberately absent, though the word actor appears in this comment
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (id)
+    );
+    """
+    cols = _create_table_columns(ddl, "decision_feedback")
+    assert cols == {"id", "namespace_id", "engine", "created_at"}
+    assert "actor" not in cols, (
+        "the parser matched a word in a comment -- it has degraded to a substring check"
+    )
