@@ -182,3 +182,71 @@ async def test_outbox_relay_exhaustion_alerts(pg_pool, namespace_id, monkeypatch
         titles = [c[0] for c in calls]
         assert "Outbox Delivery Failed: memory.stored" in titles
         assert "Outbox Event Dead-Lettered: outbox:memory.stored" in titles
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_outbox_relay_drains_catalogued_unconsumed_event(pg_pool, namespace_id):
+    """Live integration test: A catalogued UNCONSUMED selector drains without DLQ or alerts.
+
+    Asserts by querying:
+    1. dead_letter_queue count unchanged across relay execution.
+    2. outbox_events.published_at IS NOT NULL after relay pass 1.
+    3. A second relay pass returns 0 (proves the row has truly drained and is not re-polled).
+    """
+    from nce.events.catalogue import EVENT_CATALOGUE
+
+    # Pick an honestly-declared unconsumed selector from EVENT_CATALOGUE
+    unconsumed = [
+        sel
+        for sel, contract in EVENT_CATALOGUE.items()
+        if contract.status == "UNCONSUMED" and not contract.declared_consumers
+    ]
+    assert unconsumed, "EVENT_CATALOGUE must contain at least one UNCONSUMED selector"
+    selector = unconsumed[0]  # e.g. "BOM_LINE.upserted"
+
+    event_id = uuid.uuid4()
+
+    async with pg_pool.acquire(timeout=10.0) as conn:
+        await conn.execute("DELETE FROM outbox_events")
+        initial_dlq_count = await conn.fetchval("SELECT count(*) FROM dead_letter_queue")
+        await conn.execute(
+            "INSERT INTO outbox_events (id, namespace_id, aggregate_type, aggregate_id, "
+            "event_type, payload) VALUES ($1, $2, 'test_agg', $3, $4, $5::jsonb)",
+            event_id,
+            namespace_id,
+            "agg-1",
+            selector,
+            json.dumps({"test_drain": True, "selector": selector}),
+        )
+
+    # Pass 1: Run relay once.
+    res1 = await outbox_relay.run_outbox_relay_once(pg_pool, batch_size=10)
+    assert res1.delivered == 0
+    assert res1.drained_no_consumer == 1
+
+    # Assert by querying the database directly:
+    async with pg_pool.acquire(timeout=10.0) as conn:
+        final_dlq_count = await conn.fetchval("SELECT count(*) FROM dead_letter_queue")
+        row = await conn.fetchrow(
+            "SELECT published_at, attempt_count, error_message FROM outbox_events WHERE id = $1",
+            event_id,
+        )
+        dedup_exists = await conn.fetchval(
+            "SELECT count(*) FROM processed_outbox_events WHERE event_id = $1",
+            event_id,
+        )
+
+    assert final_dlq_count == initial_dlq_count, (
+        f"DLQ count changed from {initial_dlq_count} to {final_dlq_count}; unconsumed events must not DLQ"
+    )
+    assert row is not None
+    assert row["published_at"] is not None, "published_at must be populated after relay run"
+    assert row["error_message"] is None, f"unexpected error_message: {row['error_message']}"
+    assert dedup_exists == 1, "processed_outbox_events must contain dedup row for drained event"
+
+    # Pass 2: Second relay pass returns 0 (verifying the row truly drained and does not re-poll)
+    res2 = await outbox_relay.run_outbox_relay_once(pg_pool, batch_size=10)
+    assert res2 == 0
+    assert res2.delivered == 0
+    assert res2.drained_no_consumer == 0

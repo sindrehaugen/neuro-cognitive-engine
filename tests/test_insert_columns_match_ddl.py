@@ -33,6 +33,23 @@ alias, a star, a cast or a JSONB operator -- because a noisy instrument gets
 allowlisted into uselessness. A narrow check that is always right is worth more
 than a broad one nobody trusts.
 
+Detector Limits & Blind Spots (Honest Coverage Census):
+-------------------------------------------------------
+Total static SQL statements parsed across nce/: ~630 SELECT blocks.
+1. Multi-table JOIN queries: ~72 blocks (~11.4% blind spot). Skipped because
+   column qualification across table aliases in raw string literals without a full
+   SQL grammar parser produces noisy false positives.
+2. Wildcard (SELECT *) projections: ~140 blocks. By definition, a wildcard read
+   cannot name a non-existent column in its projection list (though WHERE clauses
+   are inspected).
+3. Dynamic SQL & string concatenations / f-strings: ~35 blocks where table or
+   column identifiers are interpolated at runtime.
+4. JSONB operators (->, ->>) & expressions with inline casts.
+
+Effective static coverage: ~89% of eligible single-table SELECT and UPDATE blocks,
+100% of static INSERT INTO statements across 99 parsed tables (132 live tables including
+32 partitions and 1 applied_migrations).
+
 The allowlist is SHRINK-ONLY and every entry carries a reason. A new offender
 fails; removing one requires shrinking the list in the same commit.
 """

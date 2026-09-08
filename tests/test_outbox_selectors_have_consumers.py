@@ -214,3 +214,41 @@ def test_allowlisted_selectors_are_real_catalogue_entries(selector: str) -> None
     assert EVENT_CATALOGUE[selector].declared_producers, (
         f"{selector!r} is allowlisted as produced-but-unconsumed yet declares no producer"
     )
+
+
+def test_catalogue_status_and_consumer_declarations_consistent() -> None:
+    """Ratchet: Enforce lifecycle status invariants against empty consumer declarations.
+
+    1. No ACTIVE or UNPRODUCED selector may have empty declared_consumers.
+       (Guards against fail-open predicate defects where active events drain silently).
+    2. Every UNCONSUMED selector must have empty declared_consumers.
+    3. Any DEPRECATED selector with empty declared_consumers is explicitly accounted for.
+    """
+    active_or_unproduced_with_empty_consumers = [
+        selector
+        for selector, contract in EVENT_CATALOGUE.items()
+        if contract.status in ("ACTIVE", "UNPRODUCED") and not contract.declared_consumers
+    ]
+    assert not active_or_unproduced_with_empty_consumers, (
+        "ACTIVE or UNPRODUCED selectors must declare consumers; empty consumers would "
+        f"cause fail-open relay bugs: {active_or_unproduced_with_empty_consumers}"
+    )
+
+    unconsumed_with_nonempty_consumers = [
+        selector
+        for selector, contract in EVENT_CATALOGUE.items()
+        if contract.status == "UNCONSUMED" and contract.declared_consumers
+    ]
+    assert not unconsumed_with_nonempty_consumers, (
+        "UNCONSUMED selectors must have empty declared_consumers; otherwise they are not "
+        f"unconsumed: {unconsumed_with_nonempty_consumers}"
+    )
+
+    deprecated_selectors = [
+        selector
+        for selector, contract in EVENT_CATALOGUE.items()
+        if contract.status == "DEPRECATED"
+    ]
+    assert set(deprecated_selectors) == {"cert.expiry"}, (
+        f"Unexpected set of DEPRECATED selectors: {deprecated_selectors}"
+    )
