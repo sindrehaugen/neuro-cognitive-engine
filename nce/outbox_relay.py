@@ -432,11 +432,16 @@ async def deliver_one(
     handlers = OUTBOX_HANDLERS.get(event_type) or []
     if not handlers:
         # Check if the catalogue declares that this event has NO consumers.
+        # Fail-closed: only genuinely unconsumed or deprecated selectors with empty
+        # declared_consumers are acknowledged without delivery. ACTIVE or UNPRODUCED
+        # selectors must never drain silently if their consumer is missing.
         from nce.events.catalogue import EVENT_CATALOGUE
 
         contract = EVENT_CATALOGUE.get(event_type)
-        if contract is not None and (
-            not contract.declared_consumers or contract.status == "UNCONSUMED"
+        if (
+            contract is not None
+            and not contract.declared_consumers
+            and contract.status in ("UNCONSUMED", "DEPRECATED")
         ):
             # Honestly-declared unconsumed event: acknowledge cleanly without delivery,
             # alert, or dead-letter queue insert. Record dedup entry and return sentinel.
@@ -508,15 +513,42 @@ async def deliver_one(
 # ---------------------------------------------------------------------------
 
 
+class RelayResult(int):
+    """Result of an outbox relay pass.
+
+    Subclasses ``int`` returning the count of successfully delivered events,
+    preserving exact integer semantics for callers checking ``if delivered:``
+    or logging ``delivered=%s`` (e.g. ``cron.py:348``).
+    Separately exposes ``drained_no_consumer`` for unconsumed selectors drained without consumers.
+    """
+
+    delivered: int
+    drained_no_consumer: int
+
+    def __new__(cls, delivered: int, drained_no_consumer: int = 0) -> RelayResult:
+        obj = super().__new__(cls, delivered)
+        obj.delivered = delivered
+        obj.drained_no_consumer = drained_no_consumer
+        return obj
+
+    def __repr__(self) -> str:
+        return (
+            f"RelayResult(delivered={self.delivered}, "
+            f"drained_no_consumer={self.drained_no_consumer})"
+        )
+
+
 async def run_outbox_relay_once(
     pool: asyncpg.Pool,
     *,
     batch_size: int = 50,
-) -> int:
+) -> RelayResult:
     """
     Run one relay pass: poll → deliver → mark_published or mark_failed → DLQ.
 
-    Returns the number of events successfully delivered in this pass.
+    Returns a ``RelayResult`` (subclass of ``int``) representing the number of
+    events successfully delivered to subscribers in this pass, with a separate
+    ``drained_no_consumer`` count for catalogued unconsumed events drained.
 
     The transaction covers only DB operations (poll, mark_published/failed,
     DLQ insert).  Any post-commit actions returned by handlers (e.g. Redis
@@ -524,6 +556,7 @@ async def run_outbox_relay_once(
     transaction commits so external I/O never holds the DB connection open.
     """
     delivered = 0
+    drained_no_consumer = 0
     post_commit_actions: list[PostCommitAction] = []
 
     committed = False
@@ -545,7 +578,15 @@ async def run_outbox_relay_once(
                             # Unconsumed: selector honestly declared with no consumers in catalogue.
                             # Acknowledge cleanly and mark published so it drains without alerting or DLQ.
                             await mark_published(conn, event["id"])
-                            delivered += 1
+                            drained_no_consumer += 1
+                            try:
+                                from nce.observability import OUTBOX_DRAINED_NO_CONSUMER_TOTAL
+
+                                OUTBOX_DRAINED_NO_CONSUMER_TOTAL.labels(
+                                    event_type=str(event["event_type"])
+                                ).inc()
+                            except Exception:
+                                pass
                             continue
                     except Exception as exc:
                         error_message = f"{type(exc).__name__}: {exc}"
@@ -639,5 +680,9 @@ async def run_outbox_relay_once(
                 except Exception as exc:
                     log.warning("[outbox] post-commit action failed: %s", exc)
 
-    log.debug("[outbox] relay pass complete: delivered=%d", delivered)
-    return delivered
+    log.debug(
+        "[outbox] relay pass complete: delivered=%d drained_no_consumer=%d",
+        delivered,
+        drained_no_consumer,
+    )
+    return RelayResult(delivered, drained_no_consumer)

@@ -231,6 +231,11 @@ OUTBOX_DELIVERED_TOTAL = _safe_counter(
     "Outbox events successfully published by the relay",
     ["event_type"],
 )
+OUTBOX_DRAINED_NO_CONSUMER_TOTAL = _safe_counter(
+    "nce_outbox_drained_no_consumer_total",
+    "Outbox events acknowledged and drained with no declared consumers in catalogue",
+    ["event_type"],
+)
 OUTBOX_DELIVERY_FAILURES_TOTAL = _safe_counter(
     "nce_outbox_delivery_failures_total",
     "Outbox delivery attempts that failed (may retry until DLQ)",

@@ -81,11 +81,13 @@ async def test_unconsumed_selector_drains_without_dlq_or_alert(
     }
 
     mock_pool, mock_conn = _make_mock_pool(mock_event)
+    res = await outbox_relay.run_outbox_relay_once(mock_pool)
 
-    delivered = await outbox_relay.run_outbox_relay_once(mock_pool)
-
-    # 1. Progress reported: 1 event successfully acknowledged/delivered
-    assert delivered == 1
+    # 1. Progress reported: delivered count is 0 (no handler invoked),
+    # while drained_no_consumer count is 1.
+    assert res == 0
+    assert res.delivered == 0
+    assert res.drained_no_consumer == 1
 
     # 2. Alert must NEVER be dispatched for an honestly unconsumed event
     mock_alert.assert_not_called()
@@ -219,8 +221,10 @@ async def test_positive_control_catalogue_mutation_flips_path(
     mock_alert_baseline = AsyncMock()
     monkeypatch.setattr(outbox_relay, "_dispatch_throttled_alert", mock_alert_baseline)
     mock_pool, mock_conn = _make_mock_pool(mock_event)
-    delivered_baseline = await outbox_relay.run_outbox_relay_once(mock_pool)
-    assert delivered_baseline == 1
+    res_baseline = await outbox_relay.run_outbox_relay_once(mock_pool)
+    assert res_baseline == 0
+    assert res_baseline.delivered == 0
+    assert res_baseline.drained_no_consumer == 1
     mock_alert_baseline.assert_not_called()
 
     # Mutation: declare a consumer in the catalogue
@@ -240,11 +244,103 @@ async def test_positive_control_catalogue_mutation_flips_path(
     mock_alert_mutated = AsyncMock()
     monkeypatch.setattr(outbox_relay, "_dispatch_throttled_alert", mock_alert_mutated)
     mock_pool_mutated, mock_conn_mutated = _make_mock_pool(mock_event)
-    delivered_mutated = await outbox_relay.run_outbox_relay_once(mock_pool_mutated)
+    res_mutated = await outbox_relay.run_outbox_relay_once(mock_pool_mutated)
 
-    assert delivered_mutated == 0
+    assert res_mutated == 0
+    assert res_mutated.delivered == 0
+    assert res_mutated.drained_no_consumer == 0
     assert mock_alert_mutated.call_count >= 1
     alert_keys = [call[0][0] for call in mock_alert_mutated.call_args_list]
     assert any(selector in k for k in alert_keys)
     queries = [call[0][0] for call in mock_conn_mutated.execute.call_args_list]
     assert any("INSERT INTO dead_letter_queue" in q for q in queries)
+
+
+@pytest.mark.asyncio
+async def test_active_selector_with_empty_consumers_fails_closed_to_dlq_and_alerts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Predicate Hardening: An ACTIVE selector with empty declared_consumers MUST NOT drain.
+
+    Guards against the fail-open defect where an 'or' predicate allowed an ACTIVE
+    event without registered consumers to drain silently if declared_consumers was empty.
+    The relay must require both empty declared_consumers AND status in ('UNCONSUMED', 'DEPRECATED').
+    """
+    selector = "active.without_consumers"
+    malformed_contract = EventContract(
+        selector=selector,
+        node_type="TEST",
+        op="without_consumers",
+        declared_producers=("nce/fake.py",),
+        declared_consumers=(),  # empty!
+        status="ACTIVE",  # but ACTIVE!
+    )
+    catalogue = dict(EVENT_CATALOGUE)
+    catalogue[selector] = malformed_contract
+    monkeypatch.setattr("nce.events.catalogue.EVENT_CATALOGUE", catalogue)
+    monkeypatch.setitem(outbox_relay.OUTBOX_HANDLERS, selector, [])
+
+    mock_alert = AsyncMock()
+    monkeypatch.setattr(outbox_relay, "_dispatch_throttled_alert", mock_alert)
+
+    mock_event = {
+        "id": uuid4(),
+        "namespace_id": uuid4(),
+        "aggregate_type": "test",
+        "aggregate_id": uuid4(),
+        "event_type": selector,
+        "payload": json.dumps({"active": True}),
+        "headers": None,
+        "attempt_count": 0,
+        "created_at": datetime.now(timezone.utc),
+    }
+
+    mock_pool, mock_conn = _make_mock_pool(mock_event)
+    res = await outbox_relay.run_outbox_relay_once(mock_pool)
+
+    # Must fail-closed: NOT drained, routed to DLQ + alert
+    assert res == 0
+    assert res.delivered == 0
+    assert res.drained_no_consumer == 0
+    assert mock_alert.call_count >= 1
+    queries = [call[0][0] for call in mock_conn.execute.call_args_list]
+    assert any("INSERT INTO dead_letter_queue" in q for q in queries)
+
+
+@pytest.mark.asyncio
+async def test_deprecated_selector_with_empty_consumers_drains_without_dlq_or_alert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit Handling: A DEPRECATED selector with empty declared_consumers drains cleanly."""
+    selector = "cert.expiry"
+    contract = EVENT_CATALOGUE.get(selector)
+    assert contract is not None, f"{selector} must exist in EVENT_CATALOGUE"
+    assert contract.status == "DEPRECATED"
+    assert not contract.declared_consumers
+
+    monkeypatch.setitem(outbox_relay.OUTBOX_HANDLERS, selector, [])
+    mock_alert = AsyncMock()
+    monkeypatch.setattr(outbox_relay, "_dispatch_throttled_alert", mock_alert)
+
+    mock_event = {
+        "id": uuid4(),
+        "namespace_id": uuid4(),
+        "aggregate_type": "cert",
+        "aggregate_id": uuid4(),
+        "event_type": selector,
+        "payload": json.dumps({"cert_id": "c-1"}),
+        "headers": None,
+        "attempt_count": 0,
+        "created_at": datetime.now(timezone.utc),
+    }
+
+    mock_pool, mock_conn = _make_mock_pool(mock_event)
+    res = await outbox_relay.run_outbox_relay_once(mock_pool)
+
+    assert res == 0
+    assert res.delivered == 0
+    assert res.drained_no_consumer == 1
+    mock_alert.assert_not_called()
+    queries = [call[0][0] for call in mock_conn.execute.call_args_list]
+    assert not any("dead_letter_queue" in q for q in queries)
+    assert any("UPDATE outbox_events SET published_at = now()" in q for q in queries)
