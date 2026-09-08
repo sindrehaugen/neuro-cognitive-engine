@@ -73,3 +73,49 @@ updates:
       - "frontend"
     commit-message:
       prefix: "deps(node)"
+
+  # Container base images.  Added 2026-09-08: without this, NOTHING proposed base-image
+  # patches -- python:3.12-slim-bookworm, and the compose service images (postgres, redis,
+  # caddy, mongo, minio, jaeger).  OS-level CVEs live in those layers and `pip-audit`
+  # cannot see them: it audits Python distributions only.
+  - package-ecosystem: "docker"
+    directory: "/deploy/multiuser"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Oslo"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "deps(docker)"
+
+  - package-ecosystem: "docker"
+    directory: "/deploy/cognitive-stub"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Oslo"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "deps(docker)"
+
+  # Root: picks up docker-compose.yml's service images where the Dependabot version
+  # supports compose manifests under the docker ecosystem.  Unverified at time of
+  # writing -- confirm on the first scheduled run before relying on it.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Oslo"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "deps(docker)"
