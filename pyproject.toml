@@ -2,7 +2,10 @@
 name = "nce"
 version = "3.0.0"
 readme = "README.md"
-requires-python = ">=3.10"  # TDL-8: declared floor; enforced by unit test matrix across 3.10 & 3.11
+requires-python = ">=3.10"  # TDL-8: declared floor; enforced by the unit test matrix across
+#                             3.10, 3.11 and 3.12. 3.12 is not the floor -- it is the runtime
+#                             image's Python (python:3.12-slim-bookworm), which until
+#                             2026-09-08 was the one interpreter CI never exercised.
 # Runtime deps remain in requirements.txt; this stanza anchors tooling.
 
 [tool.ruff]

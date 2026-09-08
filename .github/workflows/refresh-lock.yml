@@ -1,0 +1,103 @@
+# Weekly lock refresh -- the routine that actually collects patch releases.
+#
+# WHY THIS EXISTS
+# ---------------
+# `scripts/compile_requirements.py` without `--upgrade` keeps every pin that still
+# satisfies requirements.txt, so the lock never picks up a patch release on its own.
+# CI's blocking "Verify requirements.lock is current" gate runs it in that mode, so it
+# checks agreement with the declared floors -- not currency against PyPI.
+#
+# On 2026-09-08 that combination had left the committed lock behind the deployed package
+# set on 50 of 188 packages (cryptography 50.0.0 vs 50.0.1, torch 2.13.0 vs 2.14.0) while
+# the gate reported "current" throughout. Dependabot's pip PRs raise `>=` floors, which
+# moves the lock only for the packages it happens to propose; everything else stays pinned
+# at whatever it was when the lock was first compiled.
+#
+# This job closes that gap: re-resolve with `--upgrade` on a cadence and open a reviewable
+# PR when anything moved.
+#
+# KNOWN LIMITATION, stated rather than discovered later: a PR opened with GITHUB_TOKEN
+# does not trigger other workflows, so the required checks will not start by themselves.
+# Close-and-reopen the PR, push an empty commit, or swap in a PAT if that becomes annoying.
+
+name: Refresh requirements.lock
+
+on:
+  schedule:
+    # Mondays 03:00 UTC (~05:00 Europe/Oslo), ahead of Dependabot's 06:00 pip run so the
+    # two do not race on the same file.
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    name: Re-resolve pins with --upgrade
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          # 3.12 deliberately: it is the RUNTIME's Python (python:3.12-slim-bookworm in
+          # deploy/multiuser/Dockerfile), which is the version the lock has to represent.
+          # ci.yml's verify step pins the same version for the same reason -- resolving on
+          # 3.11 hides every distribution that requires >=3.12 (numpy 2.5.x, scipy 1.18.x).
+          # These three must move together: this file, ci.yml's verify step, and the base image.
+          python-version: "3.12"
+
+      - name: Install pip-tools
+        # Pinned to the same version ci.yml's verify step uses, so this job and the gate
+        # cannot disagree about what "current" means.
+        run: pip install pip-tools==7.6.1
+
+      - name: Re-resolve every pin to the newest the floors allow
+        run: python scripts/compile_requirements.py --upgrade
+
+      - name: Open a PR if anything moved
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- requirements.lock; then
+            echo "requirements.lock unchanged -- nothing to patch this week."
+            exit 0
+          fi
+
+          echo "::group::lock diff"
+          git diff --stat -- requirements.lock
+          git diff -- requirements.lock | head -200
+          echo "::endgroup::"
+
+          BRANCH="chore/refresh-lock-$(date -u +%Y%m%d)"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add requirements.lock
+          git commit -m "chore(deps): refresh requirements.lock (pip-compile --upgrade)"
+          git push -u origin "$BRANCH"
+
+          # Body is generated, so it always reflects the real diff rather than a template.
+          {
+            echo "Automated weekly re-resolve of \`requirements.lock\` with"
+            echo "\`pip-compile --upgrade\`, which is the only mode that picks up patch"
+            echo "releases -- CI's verify gate deliberately runs *without* \`--upgrade\`."
+            echo
+            echo '```'
+            git diff "origin/${GITHUB_REF_NAME}" -- requirements.lock | grep -E '^[-+][A-Za-z0-9_.-]+==' | sort || true
+            echo '```'
+            echo
+            echo "⚠️ Checks will not start on their own (GITHUB_TOKEN-authored PRs do not"
+            echo "trigger workflows). Close and reopen this PR to run them."
+          } > /tmp/body.md
+
+          gh pr create \
+            --base "${GITHUB_REF_NAME}" \
+            --head "$BRANCH" \
+            --title "chore(deps): refresh requirements.lock (pip-compile --upgrade)" \
+            --body-file /tmp/body.md \
+            --label dependencies

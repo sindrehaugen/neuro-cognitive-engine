@@ -13,8 +13,18 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential git \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip wheel --no-cache-dir -r requirements.txt -w /wheels
+# requirements.lock, NOT requirements.txt. requirements.txt is 68 `>=` floors with zero
+# exact pins, so building from it re-resolves every dependency against PyPI at build time:
+# the same commit produces a different image tomorrow, and a bad or compromised upstream
+# release ships with no PR, no diff and no review. The lock is exact pins, held in step by
+# ci.yml's blocking "Verify requirements.lock is current" gate.
+#
+# The lock MUST be compiled under this image's Python (3.12). A 3.11-compiled lock cannot
+# represent this runtime: numpy 2.5.3 and scipy 1.18.1 declare Requires-Python >=3.12, so a
+# 3.11 resolve silently caps them at 2.4.6 / 1.17.1. See ci.yml's verify step and
+# .github/workflows/refresh-lock.yml -- those two and this base image move together.
+COPY requirements.lock .
+RUN pip wheel --no-cache-dir -r requirements.lock -w /wheels
 
 
 FROM python:3.12-slim-bookworm AS runtime
@@ -23,9 +33,9 @@ WORKDIR /app
 
 # Install dependencies from wheels
 COPY --from=builder /wheels /wheels
-COPY requirements.txt .
+COPY requirements.lock .
 
-RUN pip install --no-cache-dir -r requirements.txt --no-index --find-links=/wheels \
+RUN pip install --no-cache-dir -r requirements.lock --no-index --find-links=/wheels \
     && rm -rf /wheels \
     # Download spaCy model required for Graphify (Phase 2) with pinned version
     && python -m spacy download en_core_web_sm \

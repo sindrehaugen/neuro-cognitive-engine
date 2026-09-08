@@ -39,9 +39,23 @@ jobs:
 
       # TDL-6: was DEFERRED (continue-on-error) because pip-tools 7.4.1 crashed on the runner's
       # pip ("'PackageFinder' object has no attribute 'allow_all_prereleases'") and the lock was
-      # Python-3.10-compiled while CI runs 3.11. Both fixed: pip-tools 7.6.1 + lock regenerated
-      # under Linux/Python 3.11 (same platform as this runner, so the diff is reproducible).
+      # Python-3.10-compiled while CI runs 3.11. Both fixed: pip-tools 7.6.1 + lock regenerated.
       # Now BLOCKING — a stale lock is how the aiosmtplib CVE stayed pinned after the fix landed.
+      #
+      # 🔴 2026-09-08: the lock was compiled under 3.11 to match THIS RUNNER, which is the wrong
+      # invariant. The runtime image is python:3.12-slim-bookworm (deploy/multiuser/Dockerfile),
+      # so a 3.11-resolved lock cannot represent what production installs: every distribution
+      # requiring >=3.12 is invisible to it. numpy 2.5.3 and scipy 1.18.1 both declare
+      # Requires-Python >=3.12, and the deployed containers run them, while a 3.11 resolve of the
+      # same requirements.txt caps out at numpy 2.4.6 / scipy 1.17.1. Reproducible-in-CI is not
+      # the goal; representative-of-production is. Pinned to the runtime's Python below.
+      #
+      # Keep this in step with `.github/workflows/refresh-lock.yml` and with the Dockerfile's
+      # base image. If they diverge again, the gate goes permanently red or permanently blind.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
       - name: Verify requirements.lock is current
         run: |
           pip install pip-tools==7.6.1
@@ -54,16 +68,25 @@ jobs:
     timeout-minutes: 25
     strategy:
       # Wave T-3 / TDL-8: Three-tier test execution model:
-      # 1. Fast unit tier (this job): Matrixed across Python 3.10 and 3.11 to enforce
-      #    the declared requires-python = ">=3.10" floor (TDL-8) at import/compile time.
+      # 1. Fast unit tier (this job): Matrixed across Python 3.10, 3.11 and 3.12.
+      #    3.10 is the declared requires-python = ">=3.10" floor (TDL-8), enforced at
+      #    import/compile time. 🔴 3.12 is the CEILING and it is the one that was missing:
+      #    the runtime image is python:3.12-slim-bookworm, so until 2026-09-08 the
+      #    interpreter production actually runs was the ONLY one never tested. The floor
+      #    had a matrix entry; the deployed version had none.
       #    Excludes integration, perf, and live-tier multi-engine scenarios.
       # 2. Integration tier: DB-backed suites against Postgres and Redis running on
       #    Python 3.11 only to avoid multiplying service container runtimes.
       # 3. Live tier: Nightly Golden Thread (I-7) against the live stack in
       #    .github/workflows/nightly-golden-thread.yml rather than in the PR path.
+      #
+      # Keep the top of this range equal to the Dockerfile's base image. TDL-8's original
+      # failure was a declaration nothing asserted (`from datetime import UTC`, 3.11+, in
+      # production code, on a green CI); testing only the floor reproduces that shape at
+      # the other end of the range.
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11"]
+        python-version: ["3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v7
 
