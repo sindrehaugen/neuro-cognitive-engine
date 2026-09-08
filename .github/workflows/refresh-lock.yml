@@ -43,9 +43,12 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          # 3.11 deliberately: ci.yml compiles and verifies the lock on Linux/Python 3.11,
-          # and a lock compiled under a different version produces a spurious diff there.
-          python-version: "3.11"
+          # 3.12 deliberately: it is the RUNTIME's Python (python:3.12-slim-bookworm in
+          # deploy/multiuser/Dockerfile), which is the version the lock has to represent.
+          # ci.yml's verify step pins the same version for the same reason -- resolving on
+          # 3.11 hides every distribution that requires >=3.12 (numpy 2.5.x, scipy 1.18.x).
+          # These three must move together: this file, ci.yml's verify step, and the base image.
+          python-version: "3.12"
 
       - name: Install pip-tools
         # Pinned to the same version ci.yml's verify step uses, so this job and the gate
