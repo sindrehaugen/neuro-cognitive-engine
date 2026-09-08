@@ -10,8 +10,9 @@ Phase 5:
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -101,6 +102,63 @@ async def test_approve_content_rejects_empty_approver() -> None:
                 "decision": "approved",
             },
         )
+
+
+@pytest.mark.asyncio
+async def test_approve_content_records_event_log_audit_in_transaction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Human approval records audit event in event_log inside active transaction (Charter §13 / PR #51)."""
+    captured_calls: list[dict[str, Any]] = []
+
+    async def fake_append_event(
+        conn: Any,
+        namespace_id: Any,
+        agent_id: str,
+        event_type: str,
+        params: dict[str, Any],
+        **kwargs: Any,
+    ) -> MagicMock:
+        assert conn.is_in_transaction(), "append_event called outside transaction!"
+        captured_calls.append(
+            {
+                "conn": conn,
+                "namespace_id": namespace_id,
+                "agent_id": agent_id,
+                "event_type": event_type,
+                "params": params,
+            }
+        )
+        res = MagicMock()
+        res.event_id = uuid4()
+        res.event_seq = 1
+        return res
+
+    monkeypatch.setattr("nce.vertical_modules.marketing.approval.append_event", fake_append_event)
+
+    engine = _make_mock_engine()
+    res = await do_approve_content(
+        engine,
+        {
+            "namespace_id": _NAMESPACE_ID,
+            "artifact_id": _ARTIFACT_ID,
+            "approver": "Jane Doe (Marketing Director)",
+            "decision": "approved",
+            "notes": "Verified facts and branding voice.",
+        },
+    )
+
+    assert res["ok"] is True
+    assert len(captured_calls) == 1
+    call = captured_calls[0]
+    assert call["namespace_id"] == UUID(_NAMESPACE_ID)
+    assert call["agent_id"] == "marketing_engine"
+    assert call["event_type"] == "marketing_content_approved"
+    assert call["params"]["artifact_id"] == _ARTIFACT_ID
+    assert call["params"]["approver"] == "Jane Doe (Marketing Director)"
+    assert call["params"]["decision"] == "approved"
+    assert call["params"]["notes"] == "Verified facts and branding voice."
+    assert "approved_at" in call["params"]
 
 
 # ---------------------------------------------------------------------------

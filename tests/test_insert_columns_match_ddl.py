@@ -6,8 +6,8 @@ Two defects of exactly this shape shipped and sat undetected:
   ``entity_id``/``entity_type``/``change_type`` -- none of which that table has.
   Every insert raised, was caught, logged at warning and discarded, so the
   advertised provenance audit recorded nothing.
-* ``marketing/approval.py`` does the same today with
-  ``category``/``subject_id``/``details`` (see the allowlist below).
+* ``marketing/approval.py`` previously did the same with
+  ``category``/``subject_id``/``details`` (re-homed onto event_log via append_event).
 
 Neither was visible to any test, because both call sites wrap the write in
 ``except Exception`` and a mock connection accepts any SQL. A unit test with a
@@ -50,20 +50,7 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 # ---------------------------------------------------------------------------
 # 🔴 This list may only get SHORTER. Adding an entry means shipping an INSERT
 # that cannot execute.
-KNOWN_BAD_INSERT_COLUMNS: dict[str, dict[str, str]] = {
-    "v3_cognitive_ledger": {
-        "category": (
-            "marketing/approval.py:108 -- human approval audit. The table is the "
-            "Empathic Tensor store (migration 008) and its empathic_tensor column is "
-            "NOT NULL with no default, so this insert cannot be repaired by renaming "
-            "columns. Remedy is the one MLV15A applied to business_insights in #51: "
-            "re-home the audit onto event_log via append_event with a catalogued "
-            "event type."
-        ),
-        "subject_id": "same INSERT as 'category' above.",
-        "details": "same INSERT as 'category' above.",
-    },
-}
+KNOWN_BAD_INSERT_COLUMNS: dict[str, dict[str, str]] = {}
 
 # Shrink-only, same contract as the INSERT allowlist above.
 KNOWN_BAD_QUERY_COLUMNS: dict[str, dict[str, str]] = {
@@ -192,7 +179,6 @@ _SQL_KEYWORDS = {
     "json",
     "timestamptz",
     "timestamp",
-    "date",
     "time",
     "bytea",
     "varchar",
@@ -288,6 +274,7 @@ _CONSTRAINT_KEYWORDS = {
     "constraint",
     "exclude",
     "like",
+    "references",
 }
 
 
@@ -319,6 +306,16 @@ def _strip_subqueries(sql: str) -> str:
         result.append(sql[i])
         i += 1
     return "".join(result)
+
+
+def _strip_ctes(clean_sql: str) -> str:
+    """Strip 'WITH ...' CTE prefixes once subqueries have been reduced to (1)."""
+    return re.sub(
+        r"^\s*WITH\s+(?:RECURSIVE\s+)?(?:[A-Za-z_][A-Za-z0-9_]*\s*(?:\([^)]*\))?\s*AS\s*\(\s*1\s*\)\s*,?\s*)+",
+        "",
+        clean_sql,
+        flags=re.I | re.DOTALL,
+    )
 
 
 def _clean_sql_expression(expr: str) -> str:
@@ -382,28 +379,51 @@ def _table_columns(sql: str, table: str) -> set[str] | None:
     if not match:
         return None
 
+    raw_body = match.group(1)
+
+    # 1. Strip -- comments line-by-line first so parentheses and commas in comments
+    # do not corrupt depth tracking.
+    clean_lines: list[str] = []
+    for line in raw_body.split("\n"):
+        clean_lines.append(line.split("--", 1)[0])
+    body = "\n".join(clean_lines)
+
+    # 2. Split top-level definitions by comma at parenthesis depth 1
+    defs: list[str] = []
     depth = 1
-    collected: list[str] = []
-    for char in match.group(1):
-        if char == "(":
-            depth += 1
-        elif char == ")":
-            depth -= 1
-            if depth == 0:
-                break
-        collected.append(char)
+    curr: list[str] = []
+    in_quote = False
+    prev = ""
+    for char in body:
+        if char == "'" and prev != "\\":
+            in_quote = not in_quote
+        elif not in_quote:
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+        if not in_quote and char == "," and depth == 1:
+            defs.append("".join(curr))
+            curr = []
+        else:
+            curr.append(char)
+        prev = char
+    if curr:
+        defs.append("".join(curr))
 
     columns: set[str] = set()
-    for raw_line in "".join(collected).split("\n"):
-        line = raw_line.split("--", 1)[0].strip().rstrip(",")
-        if not line:
+    for d in defs:
+        chunk = d.strip()
+        if not chunk:
             continue
-        first = line.split()[0].strip('"')
-        if first.lower() in _CONSTRAINT_KEYWORDS:
+        tokens = chunk.split()
+        first = tokens[0].strip('"').lower()
+        if first in _CONSTRAINT_KEYWORDS:
             continue
-        if not re.fullmatch(r"[a-z_][a-z0-9_]*", first.lower()):
-            continue
-        columns.add(first.lower())
+        if re.fullmatch(r"[a-z_][a-z0-9_]*", first):
+            columns.add(first)
     return columns
 
 
@@ -537,6 +557,7 @@ def _extract_select_violations_from_sql(
 ) -> list[tuple[str, list[str]]]:
     """Extract undeclared columns in single-table SELECT projections and WHERE clauses from a SQL string."""
     clean_query = _strip_subqueries(query)
+    clean_query = _strip_ctes(clean_query)
     segments = re.split(r"\b(?:UNION|INTERSECT|EXCEPT)(?:\s+ALL)?\b", clean_query, flags=re.I)
     out: list[tuple[str, list[str]]] = []
     for segment in segments:
@@ -663,8 +684,17 @@ def test_the_schema_parser_finds_the_tables_it_must() -> None:
     assert len(tables) >= 50, f"only parsed {len(tables)} tables; the DDL parser is broken"
     assert "namespaces" in tables
     assert {"id", "slug"} <= tables["namespaces"]
+    # Pin parser accuracy: system_design_node_state has exactly 9 columns (no phantom CASE/WHEN/END keywords)
+    assert len(tables["system_design_node_state"]) == 9, (
+        f"system_design_node_state parsed {len(tables['system_design_node_state'])} columns; expected 9"
+    )
     # The table both known defects target, with the column that makes it unusable.
     assert "empathic_tensor" in tables["v3_cognitive_ledger"]
+    # Assert zero collisions between parsed table columns and _SQL_KEYWORDS
+    collisions = {t: cols & _SQL_KEYWORDS for t, cols in tables.items() if cols & _SQL_KEYWORDS}
+    assert not collisions, (
+        f"Declared column parser leaked SQL keywords into column sets: {collisions}"
+    )
 
 
 def test_the_scan_detects_a_column_that_does_not_exist() -> None:
@@ -699,6 +729,12 @@ def test_the_scan_detects_a_column_that_does_not_exist() -> None:
         tables,
     )
     assert cron_violations == [("assets", ["status"])]
+
+    # 4. Standing Positive Control: CTE outer query phantom column detection
+    cte_violations = _extract_select_violations_from_sql(
+        "WITH x AS (SELECT 1) SELECT totally_fake_col FROM assets", tables
+    )
+    assert cte_violations == [("assets", ["totally_fake_col"])]
 
 
 def test_no_insert_names_a_column_the_ddl_does_not_declare() -> None:
