@@ -371,10 +371,20 @@ class _AlreadyProcessed:
 _ALREADY_PROCESSED = _AlreadyProcessed()
 
 
+class _NoConsumerDeclared:
+    """Singleton sentinel returned by ``deliver_one`` when the event selector has no
+    declared consumers in ``EVENT_CATALOGUE`` (honestly-unconsumed producer), so the
+    relay acknowledges the event and marks it published without raising, alerting,
+    or dead-lettering."""
+
+
+_NO_CONSUMER_DECLARED = _NoConsumerDeclared()
+
+
 async def deliver_one(
     conn: asyncpg.Connection,
     event: dict[str, Any],
-) -> list[PostCommitAction] | _AlreadyProcessed:
+) -> list[PostCommitAction] | _AlreadyProcessed | _NoConsumerDeclared:
     """Dispatch a single outbox event to every subscriber registered for its type.
 
     Idempotency: before invoking any handler, attempt to INSERT the event_id
@@ -421,8 +431,35 @@ async def deliver_one(
     event_type = event["event_type"]
     handlers = OUTBOX_HANDLERS.get(event_type) or []
     if not handlers:
-        # An empty list is semantically identical to a missing key (e.g. every
-        # subscriber was removed), so it takes the same fast-fail-to-DLQ path.
+        # Check if the catalogue declares that this event has NO consumers.
+        from nce.events.catalogue import EVENT_CATALOGUE
+
+        contract = EVENT_CATALOGUE.get(event_type)
+        if contract is not None and (
+            not contract.declared_consumers or contract.status == "UNCONSUMED"
+        ):
+            # Honestly-declared unconsumed event: acknowledge cleanly without delivery,
+            # alert, or dead-letter queue insert. Record dedup entry and return sentinel.
+            log.debug(
+                "[outbox] event_id=%s event_type=%s has no declared consumers in catalogue — acknowledging",
+                event["id"],
+                event_type,
+            )
+            async with conn.transaction():
+                await conn.fetchval(
+                    """
+                    INSERT INTO processed_outbox_events (event_id, namespace_id)
+                    VALUES ($1, $2)
+                    ON CONFLICT (event_id) DO NOTHING
+                    RETURNING event_id
+                    """,
+                    event["id"],
+                    event["namespace_id"],
+                )
+            return _NO_CONSUMER_DECLARED
+
+        # A consumer was declared (or event is uncatalogued) but no handler is registered.
+        # This is a genuine misconfiguration; fast-fail to DLQ.
         raise OutboxDeliveryError(f"No outbox handler registered for event_type={event_type!r}")
 
     # SAVEPOINT around the dedup mark AND every handler, so the two either
@@ -503,6 +540,12 @@ async def run_outbox_relay_once(
                             # Dedup: event was already successfully processed.
                             # Mark published now so the relay won't re-poll it.
                             await mark_published(conn, event["id"])
+                            continue
+                        if isinstance(actions, _NoConsumerDeclared):
+                            # Unconsumed: selector honestly declared with no consumers in catalogue.
+                            # Acknowledge cleanly and mark published so it drains without alerting or DLQ.
+                            await mark_published(conn, event["id"])
+                            delivered += 1
                             continue
                     except Exception as exc:
                         error_message = f"{type(exc).__name__}: {exc}"
