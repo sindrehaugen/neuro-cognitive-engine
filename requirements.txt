@@ -45,7 +45,7 @@ spacy>=3.8.16
 
 # --- AST Parsing (Deterministic Track) --------------------------------------
 tree-sitter>=0.26.0
-tree-sitter-language-pack>=1.12.2
+tree-sitter-language-pack>=1.16.2
 
 # --- Async Job Queue ---------------------------------------------------------
 rq>=2.0.0
