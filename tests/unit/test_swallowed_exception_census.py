@@ -133,10 +133,35 @@ KNOWN_SWALLOWED_DB_WRITE_SITES: Final[dict[str, dict[str, str]]] = {
         "reason": "Marketing event emitter catches connection/emission errors and logs without failing primary marketing workflow operations.",
         "remediation": "Marketing event emission will be refactored with transactional outbox pattern in dedicated marketing wave.",
     },
+    "nce/vertical_modules/business_insights/ask.py::do_ask_business": {
+        "owner": "business_insights",
+        "reason": "Query ledger audit logging via record_ledger_audit catches write error and logs warning while returning query answer.",
+        "remediation": "Audit logging failure is logged as warning; primary AI analysis query returns live response to operator without crashing.",
+    },
+    "nce/vertical_modules/business_insights/board_pack.py::do_generate_board_pack": {
+        "owner": "business_insights",
+        "reason": "Board pack ledger audit logging via record_ledger_audit catches write error and logs warning while returning board pack document.",
+        "remediation": "Board pack generation treats ledger audit persistence as non-fatal secondary telemetry to avoid blocking board reporting.",
+    },
+    "nce/vertical_modules/business_insights/brief.py::do_morning_brief": {
+        "owner": "business_insights",
+        "reason": "Morning brief ledger audit logging via record_ledger_audit catches write error and logs warning while returning brief output.",
+        "remediation": "Scheduled executive brief returns compiled metrics even if audit persistence to event_log encounters transient error.",
+    },
+    "nce/vertical_modules/business_insights/radar.py::do_risk_radar": {
+        "owner": "business_insights",
+        "reason": "Risk radar ledger audit logging via record_ledger_audit catches write error and logs warning while returning radar risk assessment.",
+        "remediation": "Risk analysis computation prioritizes surfacing identified risks to operator over secondary access audit logging.",
+    },
+    "nce/vertical_modules/business_insights/scenario.py::do_run_scenario": {
+        "owner": "business_insights",
+        "reason": "Scenario simulation audit logging via record_ledger_audit catches write error and logs warning while returning simulation model.",
+        "remediation": "Scenario simulation engine prioritizes returning computed predictive scenario results over secondary audit event logging.",
+    },
 }
 
 _DB_WRITE_CALL_NAMES: Final[frozenset[str]] = frozenset(
-    {"append_event", "_append_a2a_event", "emit_graph_write"}
+    {"append_event", "_append_a2a_event", "emit_graph_write", "record_ledger_audit"}
 )
 _SQL_WRITE_PREFIXES: Final[tuple[str, ...]] = (
     "INSERT INTO",
@@ -297,10 +322,10 @@ def test_swallowed_exception_allowlist_is_reasoned() -> None:
 
 
 def test_discovery_floor_for_swallowed_exception_scanner() -> None:
-    """Guard-the-guard: verify scanner discovers at least 15 swallowed DB write sites."""
+    """Guard-the-guard: verify scanner discovers at least 25 swallowed DB write sites."""
     all_sites = _collect_all_swallowed_db_writes()
-    assert len(all_sites) >= 15, (
-        f"Swallowed exception discovery floor breached: expected >= 15, found {len(all_sites)}"
+    assert len(all_sites) >= 25, (
+        f"Swallowed exception discovery floor breached: expected >= 25, found {len(all_sites)}"
     )
 
 
@@ -317,6 +342,21 @@ async def bad_swallower(conn, logger):
     sites = _scan_swallowed_db_writes(tree, "nce/synthetic.py")
     assert len(sites) == 1
     assert sites[0]["site_id"] == "nce/synthetic.py::bad_swallower"
+
+
+def test_positive_control_detects_swallowed_indirect_helper_write() -> None:
+    """Standing positive control (U18 / T-5 Q1): verify scanner flags indirect helper DB writes."""
+    indirect_code = """
+async def bad_indirect_swallower(conn, logger):
+    try:
+        await record_ledger_audit(conn, "ns", "actor", "action", [])
+    except Exception as exc:
+        logger.warning("Swallowed indirect write: %s", exc)
+"""
+    tree = ast.parse(indirect_code)
+    sites = _scan_swallowed_db_writes(tree, "nce/synthetic.py")
+    assert len(sites) == 1
+    assert sites[0]["site_id"] == "nce/synthetic.py::bad_indirect_swallower"
 
 
 def test_positive_control_permits_reraised_or_non_db_write() -> None:

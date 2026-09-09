@@ -537,6 +537,9 @@ class RelayResult(int):
             f"drained_no_consumer={self.drained_no_consumer})"
         )
 
+    def __str__(self) -> str:
+        return str(self.delivered)
+
 
 async def run_outbox_relay_once(
     pool: asyncpg.Pool,

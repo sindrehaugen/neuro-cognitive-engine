@@ -344,9 +344,11 @@ async def _outbox_relay_tick(pool: asyncpg.Pool) -> None:
         log.debug("Skipping outbox_relay — lock held by another instance")
         return
     try:
-        delivered = await run_outbox_relay_once(pool)
-        if delivered:
-            log.info("outbox relay tick delivered=%s", delivered)
+        result = await run_outbox_relay_once(pool)
+        delivered = int(result)
+        drained = getattr(result, "drained_no_consumer", 0)
+        if delivered or drained:
+            log.info("outbox relay tick delivered=%d drained=%d", delivered, drained)
     except _CRON_TICK_ERRORS as exc:
         log.exception("outbox relay tick failed unexpectedly")
         await _dispatch_throttled_alert(
