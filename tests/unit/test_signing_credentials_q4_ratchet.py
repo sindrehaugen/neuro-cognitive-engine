@@ -218,8 +218,14 @@ async def test_signing_credentials_encrypted_at_rest(
 
     # Ciphertext must not match or contain plaintext
     assert raw_secret.encode("utf-8") not in encrypted_blob
-    # Must start with wire format prefix (Argon2id or PBKDF2)
-    assert encrypted_blob.startswith(b"TC3\x01") or encrypted_blob.startswith(b"TC4\x01")
+    # v5 envelope (master-key fingerprint) around a v3/v4 KDF blob. The KDF choice
+    # still shows in the INNER prefix; v5 adds key identity, not a new KDF.
+    from nce.signing import _ENCRYPTED_KEY_BLOB_V5, _MASTER_KEY_FP_LEN
+
+    _head = len(_ENCRYPTED_KEY_BLOB_V5) + _MASTER_KEY_FP_LEN
+    assert encrypted_blob.startswith(_ENCRYPTED_KEY_BLOB_V5)
+    inner = encrypted_blob[_head:]
+    assert inner.startswith(b"TC3\x01") or inner.startswith(b"TC4\x01")
 
     # Correct master key unwraps byte-identically
     decrypted = decrypt_signing_key(encrypted_blob, master_key).decode("utf-8")
