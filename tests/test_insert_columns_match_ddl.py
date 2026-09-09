@@ -283,6 +283,31 @@ _SQL_KEYWORDS = {
     "unknown",
 }
 
+# SQL reserved words that a CREATE TABLE body can leak into the column set.
+#
+# 2026-09-08: `_table_columns` reported 14 columns for `system_design_node_state`
+# while the live database has 9 -- the extras were `case`, `else`, `end`, `or`, `when`,
+# tokens from a multi-line `CHECK (CASE WHEN ... ELSE ... END)` constraint. Eleven other
+# tables carried a phantom `references` from inline `REFERENCES tbl(col)` clauses.
+# 16 of 99 tables were affected, every error in the FAIL-OPEN direction: a query naming
+# a phantom entry was silently accepted as declared.
+#
+# `fullmatch(r"[a-z_][a-z0-9_]*")` cannot catch these, because SQL keywords are lexically
+# valid identifiers. No real column in this schema is named after one of these words --
+# `test_no_reserved_word_is_a_declared_column` pins that, so if a future migration ever
+# does declare one, this filter fails loudly instead of hiding it.
+_RESERVED_NON_COLUMNS = {
+    "and",
+    "case",
+    "else",
+    "end",
+    "on",
+    "or",
+    "references",
+    "then",
+    "when",
+}
+
 _CONSTRAINT_KEYWORDS = {
     "primary",
     "foreign",
@@ -438,6 +463,10 @@ def _table_columns(sql: str, table: str) -> set[str] | None:
         tokens = chunk.split()
         first = tokens[0].strip('"').lower()
         if first in _CONSTRAINT_KEYWORDS:
+            continue
+        if first in _RESERVED_NON_COLUMNS:
+            # A constraint body leaked a keyword into the column position. Accepting it
+            # would make the detector fail-open for that name. See _RESERVED_NON_COLUMNS.
             continue
         if re.fullmatch(r"[a-z_][a-z0-9_]*", first):
             columns.add(first)
@@ -792,3 +821,53 @@ def test_allowlist_is_shrink_only_and_still_needed() -> None:
         "these allowlist entries no longer match any violation -- delete them so the "
         f"list keeps shrinking: {stale}"
     )
+
+
+def test_no_reserved_word_is_a_declared_column() -> None:
+    """No real column is named after a word in ``_RESERVED_NON_COLUMNS``.
+
+    That filter drops keyword tokens a constraint body leaked into the column position.
+    It is only safe while no genuine column shares one of those names -- otherwise the
+    detector goes fail-open for that column instead.
+
+    This control has already earned its place: the first version of the filter included
+    ``date``, which IS a real column on ``per_diems``, and this assertion is what a
+    parser-vs-live-database comparison surfaced. Keep it, and if a future migration
+    declares a column named after a reserved word, delete that word from the filter and
+    fix ``_table_columns`` properly rather than widening the exclusion.
+    """
+
+    tables = _declared_schema()
+    offenders: list[str] = []
+    for table, columns in sorted(tables.items()):
+        for word in sorted(_RESERVED_NON_COLUMNS & {c.lower() for c in columns}):
+            offenders.append(f"{table}.{word}")
+
+    assert offenders == [], (
+        "These declared columns share a name with a _RESERVED_NON_COLUMNS entry, so the "
+        "parser now silently drops them and the detector is fail-open for each:"
+        + "".join(chr(10) + "  " + o for o in offenders)
+    )
+
+
+def test_constraint_bodies_do_not_leak_columns() -> None:
+    """``system_design_node_state`` declares exactly its 9 real columns.
+
+    Pins the fail-open defect measured on 2026-09-08: the parser reported **14** columns
+    for this table while the database has 9, the extras being ``case``, ``else``, ``end``,
+    ``or`` and ``when`` -- tokens from a multi-line ``CHECK (CASE WHEN ... END)`` body.
+    16 of 99 tables were affected. This table is the worst case, so it is the canary.
+    """
+
+    columns = _declared_schema()["system_design_node_state"]
+    assert columns == {
+        "id",
+        "namespace_id",
+        "node_label",
+        "node_type",
+        "status",
+        "revision",
+        "salience",
+        "created_at",
+        "updated_at",
+    }, f"constraint body leaked into the column set: {sorted(columns)}"
