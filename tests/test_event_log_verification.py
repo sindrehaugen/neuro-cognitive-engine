@@ -230,8 +230,13 @@ async def test_signature_version_2_integration(pg_pool, make_namespace, monkeypa
                     """
                     INSERT INTO event_log (
                         id, namespace_id, agent_id, event_type, event_seq,
-                        occurred_at, params, signature, signature_key_id, signature_version
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, 1)
+                        occurred_at, params, signature, signature_key_id, signature_version,
+                        chain_hash
+                    -- chain_hash supplied to satisfy event_log_chain_hash_present
+                    -- (migration 077). Harmless to this test's intent: the v1 signature
+                    -- deliberately does NOT cover chain_hash, as the comment above says,
+                    -- so its presence cannot affect v1 verification either way.
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, 1, $8)
                     """,
                     v1_event_id,
                     ns_id,

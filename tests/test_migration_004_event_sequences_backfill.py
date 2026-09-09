@@ -56,11 +56,13 @@ async def _insert_event_row(
         """
         INSERT INTO event_log (
             id, namespace_id, agent_id, event_type, event_seq,
-            occurred_at, params, signature, signature_key_id
+            occurred_at, params, signature, signature_key_id, chain_hash
         )
         VALUES (
             gen_random_uuid(), $1, 'pytest-agent', 'store_memory', $2,
-            $3, '{}'::jsonb, decode(repeat('ab', 32), 'hex'), 'pytest-key'
+            $3, '{}'::jsonb, decode(repeat('ab', 32), 'hex'), 'pytest-key',
+            -- chain_hash required by event_log_chain_hash_present (migration 077)
+            decode(repeat('cd', 32), 'hex')
         )
         """,
         namespace_id,
