@@ -95,8 +95,13 @@ async def test_drop_namespaces_survives_a_worm_pinned_namespace(
         async with teardown_pool.acquire() as conn:
             await conn.execute(
                 "INSERT INTO event_log "
-                "(namespace_id, agent_id, event_type, event_seq, params, signature, signature_key_id) "
-                "VALUES ($1, 'a', 'teardown-probe', 1, '{}'::jsonb, $2, 'k1')",
+                "(namespace_id, agent_id, event_type, event_seq, params, signature, signature_key_id, "
+                "chain_hash) "
+                # chain_hash supplied deliberately: see migration 077. THIS fixture is the
+                # origin of the live database's one hashless row -- same agent "a", same
+                # "teardown-probe" event_type -- which left a namespace permanently
+                # unverifiable and alarming every tick for two days.
+                "VALUES ($1, 'a', 'teardown-probe', 1, '{}'::jsonb, $2, 'k1', $2)",
                 ns,
                 b"\x00",
             )

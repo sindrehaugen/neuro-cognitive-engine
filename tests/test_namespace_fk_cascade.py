@@ -202,8 +202,12 @@ async def test_namespace_holding_event_log_rows_still_cannot_be_deleted(
             )
             await conn.execute(
                 "INSERT INTO event_log "
-                "(namespace_id, agent_id, event_type, event_seq, params, signature, signature_key_id) "
-                "VALUES ($1, 'a', 'probe', 1, '{}'::jsonb, $2, 'k1')",
+                "(namespace_id, agent_id, event_type, event_seq, params, signature, signature_key_id, "
+                "chain_hash) "
+                # chain_hash supplied deliberately: event_log_chain_hash_present (migration 077)
+                # forbids a hashless row. This fixture writing one directly is how the live
+                # database acquired its single unverifiable event.
+                "VALUES ($1, 'a', 'probe', 1, '{}'::jsonb, $2, 'k1', $2)",
                 ns,
                 b"\x00",
             )
