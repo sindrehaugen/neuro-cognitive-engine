@@ -12,7 +12,9 @@ from nce.signing import (
     _ENCRYPTED_KEY_BLOB_V2,
     _ENCRYPTED_KEY_BLOB_V3,
     _ENCRYPTED_KEY_BLOB_V4,
+    _ENCRYPTED_KEY_BLOB_V5,
     _HAS_ARGON2,
+    _MASTER_KEY_FP_LEN,
     _NONCE_SIZE,
     _PBKDF2_ITERATIONS,
     _PBKDF2_ITERATIONS_V4,
@@ -24,6 +26,7 @@ from nce.signing import (
     _pbkdf2_derive_aes_key_v4,
     decrypt_signing_key,
     encrypt_signing_key,
+    master_key_fingerprint_bytes,
 )
 
 
@@ -60,16 +63,25 @@ def test_pbkdf2_rejects_short_salt():
 
 
 def test_encrypt_emits_magic_and_unique_salts():
-    """New encrypts emit v3 (Argon2id) prefix when argon2-cffi is installed,
-    or v4 (PBKDF2 @ 600K) as OWASP 2026 fallback."""
+    """New encrypts emit a v5 fingerprint envelope wrapping a v3 or v4 inner blob.
+
+    The KDF choice still shows in the INNER prefix -- v3 (Argon2id) when argon2-cffi is
+    installed, v4 (PBKDF2 @ 600K) otherwise. v5 adds master-key identity around it; it is
+    not a new KDF, which is why this test still asserts the inner prefix.
+    """
     mk = MasterKey(b"e" * 32)
     raw = b"payload-bytes"
     c1 = encrypt_signing_key(raw, mk)
     c2 = encrypt_signing_key(raw, mk)
-    # With argon2-cffi installed, prefix should be v3; otherwise v4 (OWASP 2026)
+    head = len(_ENCRYPTED_KEY_BLOB_V5) + _MASTER_KEY_FP_LEN
+    # Outer: v5 envelope, tagged with THIS key's fingerprint.
+    assert c1.startswith(_ENCRYPTED_KEY_BLOB_V5)
+    assert c2.startswith(_ENCRYPTED_KEY_BLOB_V5)
+    assert c1[len(_ENCRYPTED_KEY_BLOB_V5) : head] == master_key_fingerprint_bytes(mk)
+    # Inner: the KDF-specific blob, unchanged by v5.
     expected_prefix = _ENCRYPTED_KEY_BLOB_V3 if _HAS_ARGON2 else _ENCRYPTED_KEY_BLOB_V4
-    assert c1.startswith(expected_prefix)
-    assert c2.startswith(expected_prefix)
+    assert c1[head:].startswith(expected_prefix)
+    assert c2[head:].startswith(expected_prefix)
     # random salt + nonce => ciphertext should differ
     assert c1 != c2
     assert decrypt_signing_key(c1, mk) == raw
@@ -98,8 +110,13 @@ def test_v3_blob_roundtrip():
     mk = MasterKey(b"a" * 32)
     raw = os.urandom(32)
     blob = encrypt_signing_key(raw, mk)
-    assert blob.startswith(_ENCRYPTED_KEY_BLOB_V3)
+    head = len(_ENCRYPTED_KEY_BLOB_V5) + _MASTER_KEY_FP_LEN
+    # The inner blob is still v3; v5 only wraps it with the key's fingerprint.
+    assert blob[head:].startswith(_ENCRYPTED_KEY_BLOB_V3)
     assert decrypt_signing_key(blob, mk) == raw
+    # And the inner blob decrypts on its own -- proving v5 is a pure envelope and that
+    # every pre-v5 blob already in the database keeps working.
+    assert decrypt_signing_key(blob[head:], mk) == raw
     mk.zero()
 
 

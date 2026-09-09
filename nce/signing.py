@@ -123,6 +123,27 @@ _ENCRYPTED_KEY_BLOB_V2: bytes = b"TC2\x01"
 _ENCRYPTED_KEY_BLOB_V3: bytes = b"TC3\x01"
 # Magic prefix for v4 blobs (PBKDF2 @ 600K, OWASP 2026).  v2/v3/legacy still decrypt.
 _ENCRYPTED_KEY_BLOB_V4: bytes = b"TC4\x01"
+# Magic prefix for v5 blobs: a FINGERPRINT ENVELOPE around a v3/v4 blob.
+#
+#   TC5 || fp (8 bytes) || <complete v3 or v4 blob>
+#
+# The 8 bytes are ``sha256(master_key)[:8]`` -- the raw form of the same value
+# ``master_key_fingerprint()`` returns as hex and the boot log prints, so a blob's tag
+# and the operator-facing fingerprint are literally the same number.
+#
+# WHY: before this a blob did not record WHICH master key wrapped it, so a wrong key was
+# indistinguishable from corrupt data. ``decrypt_signing_key`` could only say 'either the
+# master key is wrong or the signing key blob has been corrupted', and an operator could
+# not act on that. It is exactly the ambiguity that turned the 2026-09-07 incident into a
+# multi-hour investigation. With a tag, a mismatch is decidable BEFORE any crypto runs and
+# the error can name both fingerprints.
+#
+# An ENVELOPE rather than a new KDF format, on purpose: the inner blob is produced and
+# consumed by the existing, tested v3/v4 paths, so this adds identity without touching key
+# derivation. Cost is 12 bytes per blob.
+_ENCRYPTED_KEY_BLOB_V5: bytes = b"TC5\x01"
+_MASTER_KEY_FP_LEN: int = 8
+
 # Fixed salt for ``MasterKey.derive_aes_key()`` only (self-tests / diagnostics; not stored).
 _DERIVE_AES_SELFTEST_SALT: bytes = hashlib.sha256(
     b"NCE MasterKey.derive_aes_key selftest v2"
@@ -232,6 +253,23 @@ class NoActiveSigningKeyError(SigningError):
 
 class SigningKeyDecryptionError(SigningError):
     """Raised when AES-GCM decryption fails (wrong master key or corrupted blob)."""
+
+
+class MasterKeyFingerprintMismatch(SigningKeyDecryptionError):
+    """The blob records a different master key than the one supplied.
+
+    Deliberately distinct from ``SigningKeyDecryptionError``. An AEAD failure cannot tell a
+    wrong key from corrupt bytes, so the old message had to hedge -- "either the master key
+    is wrong or the signing key blob has been corrupted" -- which an operator cannot act on.
+    A v5 tag makes the wrong-key case decidable *before* decryption is attempted, so this
+    names both fingerprints and the operator knows which of the two problems they have.
+
+    Subclasses ``SigningKeyDecryptionError`` DELIBERATELY. Every existing caller catches
+    that type -- the boot check, ``tests/conftest.py``'s seeding guard, the relay -- so
+    raising a sibling would have silently escaped all of them: a wrong key on a v5 blob
+    would sail past handlers written to fail closed. Precision must be additive to an error
+    contract, never a replacement for it.
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -698,22 +736,56 @@ def encrypt_signing_key(raw_key: bytes, master_key: MasterKey) -> bytes:
     # encryption completes — the derived key must not outlive this scope.
     with SecureKeyBuffer(derived) as aes_buf:
         ciphertext_and_tag = AESGCM(bytes(aes_buf)).encrypt(nonce, raw_key, None)
-    return prefix + salt + nonce + ciphertext_and_tag
+    inner = prefix + salt + nonce + ciphertext_and_tag
+    # v5 envelope: tag the blob with WHICH master key wrapped it. The inner bytes are an
+    # untouched v3/v4 blob, so every KDF path below stays exactly as tested.
+    return _ENCRYPTED_KEY_BLOB_V5 + master_key_fingerprint_bytes(master_key) + inner
 
 
 def decrypt_signing_key(encrypted_key: bytes, master_key: MasterKey) -> bytes:
     """
     Decrypt a blob produced by ``encrypt_signing_key``.
 
-    Accepts **v4** blobs (PBKDF2 @ 600K, OWASP 2026), **v3** blobs (Argon2id),
-    **v2** blobs (PBKDF2 @ 100K), and **legacy** blobs (SHA-256, no prefix).
-    Format is auto-detected from the prefix.
+    Accepts **v5** blobs (a fingerprint envelope around v3/v4), **v4** blobs
+    (PBKDF2 @ 600K, OWASP 2026), **v3** blobs (Argon2id), **v2** blobs (PBKDF2 @ 100K),
+    and **legacy** blobs (SHA-256, no prefix). Format is auto-detected from the prefix.
+
+    A v5 blob records which master key wrapped it, so a wrong key raises
+    ``MasterKeyFingerprintMismatch`` -- naming both fingerprints -- instead of an
+    indistinguishable AEAD failure. Untagged blobs (v2-v4, legacy) keep the old
+    behaviour: there is nothing to compare, so a wrong key still surfaces as
+    ``SigningKeyDecryptionError``.
 
     Raises ``SigningKeyDecryptionError`` on authentication failure (wrong
     master key, truncated blob, or data corruption).
     """
     if master_key._zeroed:
         raise ValueError("MasterKey has been zeroed and is no longer usable.")
+
+    # v5 is an envelope: verify the recorded fingerprint, then decrypt the inner v3/v4
+    # blob through the existing paths. Checking the tag FIRST is the whole point -- it
+    # turns "wrong key or corrupt data, cannot tell" into a decidable answer.
+    if encrypted_key.startswith(_ENCRYPTED_KEY_BLOB_V5):
+        head = len(_ENCRYPTED_KEY_BLOB_V5) + _MASTER_KEY_FP_LEN
+        if len(encrypted_key) <= head:
+            raise SigningKeyDecryptionError(
+                "encrypted_key v5 blob is too short to contain a fingerprint and an inner "
+                f"blob (got {len(encrypted_key)} bytes, need >{head})."
+            )
+        recorded = encrypted_key[len(_ENCRYPTED_KEY_BLOB_V5) : head]
+        supplied = master_key_fingerprint_bytes(master_key)
+        if recorded != supplied:
+            raise MasterKeyFingerprintMismatch(
+                "this blob was wrapped under master key fingerprint "
+                f"{recorded.hex()} but the key supplied is {supplied.hex()}. "
+                "The data is NOT corrupt -- it is encrypted under a different master key. "
+                "Do NOT rotate the signing key to make this go away: that re-wraps under "
+                "the wrong key and makes the loss permanent. Find the key whose "
+                "fingerprint is "
+                f"{recorded.hex()}."
+            )
+        return decrypt_signing_key(encrypted_key[head:], master_key)
+
     if encrypted_key.startswith(_ENCRYPTED_KEY_BLOB_V4):
         tail = encrypted_key[len(_ENCRYPTED_KEY_BLOB_V4) :]
         need = _PBKDF2_SALT_LEN + _NONCE_SIZE + 16
@@ -776,6 +848,15 @@ def decrypt_signing_key(encrypted_key: bytes, master_key: MasterKey) -> bytes:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
+
+def master_key_fingerprint_bytes(master_key: MasterKey) -> bytes:
+    """The raw 8 bytes that a v5 blob carries: ``sha256(key)[:8]``.
+
+    Same value as :func:`master_key_fingerprint`, unhexed. Kept as one derivation so a
+    blob's tag can never disagree with the fingerprint an operator reads in the boot log.
+    """
+    return hashlib.sha256(bytes(master_key.key_bytes)).digest()[:_MASTER_KEY_FP_LEN]
 
 
 def master_key_fingerprint(master_key: MasterKey) -> str:
