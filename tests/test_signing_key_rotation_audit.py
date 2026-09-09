@@ -300,3 +300,87 @@ async def test_manage_namespace_list_excludes_the_reserved_system_namespace() ->
     excluded = conn.fetch.await_args.args[1]
     assert "slug" in sql, "list query does not filter on slug at all"
     assert SYSTEM_NAMESPACE_SLUG in excluded
+
+
+@pytest.mark.asyncio
+async def test_rotation_refuses_rather_than_recording_an_unidentified_key(
+    admin_key_env: None,
+) -> None:
+    """An unloadable master key must FAIL the rotation, not write a fingerprint-less row.
+
+    The first version of this handler wrapped the master-key fingerprint in
+    ``except Exception`` and continued with ``master_key_fingerprint: None``. That swallow
+    protected nothing: ``master_key_fingerprint`` only hashes the key -- it decrypts
+    nothing -- so it fails solely when the key is absent, and ``rotate_key`` itself calls
+    ``require_master_key()`` and ``encrypt_signing_key``, so an unloadable key fails the
+    rotation regardless.
+
+    The only thing the swallow could produce was an audit row saying "something changed"
+    without naming the key the data was written under -- the exact question that went
+    unanswered for hours during the 2026-09-02 incident, and the reason the fingerprint
+    pair exists at all.
+
+    Note the asymmetry this pins: the OUTGOING key fingerprint is deliberately
+    best-effort, because an undecryptable outgoing blob is precisely what an operator
+    rotates out of and must never be blocked from remediating. The MASTER key fingerprint
+    is not best-effort, because no failure of it leaves the rotation viable.
+
+    HARNESS NOTE, because two earlier versions of this test were vacuous:
+    it must patch ``nce.event_log.get_active_key`` and give ``nce.signing.get_active_key``
+    both of its two calls, exactly as the emit test above does. Without them the handler
+    dies in ``append_event`` with ``NoActiveSigningKeyError`` before it ever reaches the
+    write, so BOTH the fixed and the swallowed version raise and write nothing -- and the
+    test passes either way while proving nothing.
+    """
+
+    from nce.mcp_errors import McpError
+    from nce.signing import MasterKeyMissingError
+
+    engine, conn = _engine_and_conn()
+
+    # Patch the fingerprint call ONLY. Patching require_master_key would also break
+    # append_event's own use of it -- confounding the test the same way.
+    def _fingerprint_unavailable(_mk: object) -> str:
+        raise MasterKeyMissingError("NCE_MASTER_KEY is missing or empty.")
+
+    with (
+        # Patched on nce.signing rather than on the handler module: the handler imports
+        # these names INSIDE the function, so they resolve at call time.
+        patch("nce.signing.master_key_fingerprint", _fingerprint_unavailable),
+        patch("nce.signing.rotate_key", AsyncMock(return_value="sk-newnewnewnewne")),
+        patch(
+            "nce.signing.get_active_key",
+            AsyncMock(
+                side_effect=[
+                    ("sk-oldoldoldoldol", _OLD_FAKE_KEY),
+                    ("sk-newnewnewnewne", _NEW_FAKE_KEY),
+                ]
+            ),
+        ),
+        patch("nce.event_log.get_active_key", AsyncMock(return_value=("sk-active", _NEW_FAKE_KEY))),
+        patch("nce.auth.set_namespace_context", AsyncMock()),
+        pytest.raises((McpError, MasterKeyMissingError)) as excinfo,
+    ):
+        await admin_mcp_handlers.handle_rotate_signing_key(engine, _admin_arguments())
+
+    # The exception TYPE proves nothing on its own: MCP handlers wrap every internal
+    # failure in the same -32603 envelope, so `raises(McpError)` would also be satisfied
+    # by unrelated harness breakage. Walk the cause chain and require that the reason is
+    # the master key.
+    chain: list[type[BaseException]] = []
+    cause: BaseException | None = excinfo.value
+    while cause is not None:
+        chain.append(type(cause))
+        cause = cause.__cause__ or cause.__context__
+    assert MasterKeyMissingError in chain, (
+        "the rotation failed, but not because of the master key -- chain was "
+        f"{[c.__name__ for c in chain]}. An McpError from some other cause makes this "
+        "assertion vacuous."
+    )
+
+    rows = await conn.fetch("SELECT * FROM event_log WHERE event_type = $1", "signing_key_rotated")
+    assert rows == [], (
+        "a rotation that cannot identify its master key must record NOTHING. An audit row "
+        "without the fingerprint pair says only 'something changed', which is precisely "
+        "the outcome this event exists to prevent."
+    )
