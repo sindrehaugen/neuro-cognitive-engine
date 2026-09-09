@@ -161,7 +161,71 @@ def redact_secrets_in_text(text: str) -> str:
     return _RE_URI_PASS_ONLY.sub(r"\g<prefix>:***@", scrubbed)
 
 
-def _fail_unless_nce_master_key_ok(raw: str) -> None:
+_MASTER_KEY_PLACEHOLDER_TOKENS: tuple[str, ...] = (
+    "changeme",
+    "change-me",
+    "password",
+    "placeholder",
+    "example",
+    "dummy",
+    "notasecret",
+    "yoursecret",
+    "insecure",
+    "devkey",
+    "testkey",
+)
+
+# A random hex key has at most 16 distinct characters, so this floor must sit well below
+# that or it would reject legitimate `openssl rand -hex 32` output.
+_MASTER_KEY_MIN_DISTINCT_CHARS: int = 10
+
+
+def _master_key_structural_weakness(key: str) -> str | None:
+    """Describe why *key* is structurally guessable, or None if it looks random.
+
+    Returns a description that NEVER contains the key or any substring of it. A guard that
+    prints the secret it is protecting is worse than no guard, and this value is logged.
+
+    🔴 WHY NOT SHANNON ENTROPY -- this is the whole point of the function.
+    The key this estate actually ran in dev was ``0123456789abcdef`` repeated to 42
+    characters. Its Shannon entropy is **3.97 bits/char**: uniform over 16 hex symbols,
+    indistinguishable from `openssl rand -hex 21` by that measure. An entropy guard built
+    the obvious way would have passed it. The weakness is STRUCTURE, not distribution, so
+    the primary test here is periodicity.
+    """
+
+    n = len(key)
+
+    # Periodicity: the key is a short pattern repeated. This is what catches a
+    # sequential-hex placeholder that Shannon entropy calls healthy.
+    for period in range(1, n // 2 + 1):
+        if (key[:period] * (n // period + 1))[:n] == key:
+            return (
+                f"the key is a {period}-character pattern repeated to fill "
+                f"{n} characters, so its real search space is {period} characters, "
+                "not " + str(n)
+            )
+
+    distinct = len(set(key))
+    if distinct < _MASTER_KEY_MIN_DISTINCT_CHARS:
+        return (
+            f"the key uses only {distinct} distinct characters across {n} positions, "
+            "which is far below what random key material produces"
+        )
+
+    lowered = key.lower()
+    for token in _MASTER_KEY_PLACEHOLDER_TOKENS:
+        if token in lowered:
+            return "the key contains a well-known placeholder word"
+
+    # A monotonic run over any contiguous codepoint range -- "abcdefgh...", "12345678...".
+    if n >= 8 and all(ord(key[i + 1]) - ord(key[i]) == 1 for i in range(n - 1)):
+        return f"the key is a single ascending character sequence of {n} characters"
+
+    return None
+
+
+def _fail_unless_nce_master_key_ok(raw: str, *, is_prod: bool = False) -> None:
     """Raise RuntimeError if the master key is missing, too short, or malformed.
 
     "Malformed" means the key carries invisible Unicode control/format
@@ -208,10 +272,28 @@ def _fail_unless_nce_master_key_ok(raw: str) -> None:
             "decrypt time. Rewrite the secret without the BOM."
         )
 
+    # ---------------------------------------------------------------------------
+    # Env-var parsing helpers — used only by _Config below.
+    # ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# Env-var parsing helpers — used only by _Config below.
-# ---------------------------------------------------------------------------
+    # Structural weakness: advisory in dev, fatal in production. Same posture the
+    # schema-skew and master-key-mismatch checks already use (nce/orchestrator.py:547,
+    # :616), so a developer's throwaway key does not brick their stack while a
+    # production boot on the same key refuses.
+    weakness = _master_key_structural_weakness(v)
+    if weakness:
+        message = (
+            "NCE_MASTER_KEY is structurally weak: " + weakness + ". "
+            "It wraps every signing key, memory DEK and stored credential, so a guessable "
+            "master key means the encryption provides no confidentiality and event "
+            "signatures are forgeable. Generate one with "
+            "`python -c \"import secrets;print(secrets.token_urlsafe(48))\"`."
+        )
+        if is_prod:
+            raise RuntimeError("CRITICAL SECURITY FAILURE: " + message)
+        logging.getLogger("nce.config").warning(
+            "%s (allowed because NCE_ENV is not production)", message
+        )
 
 
 def _bool_env(name: str, default: bool = False) -> bool:
@@ -1487,7 +1569,7 @@ class _Config:
         Strictly halts (raises RuntimeError) if P0 security requirements are missing.
         """
         # P0: Master Key (Required for signing/encryption)
-        _fail_unless_nce_master_key_ok(cls.NCE_MASTER_KEY)
+        _fail_unless_nce_master_key_ok(cls.NCE_MASTER_KEY, is_prod=cls.IS_PROD)
 
         # P0: Datastore connections — reject dev defaults in production
         cls.validate_datastore_config()
@@ -1709,7 +1791,7 @@ if cfg.IS_PROD and os.environ.get("NCE_LOAD_DOTENV", "true").strip().lower() in 
         "Inject secrets via the orchestrator; do not load a .env file at runtime."
     )
 
-_fail_unless_nce_master_key_ok(cfg.NCE_MASTER_KEY)
+_fail_unless_nce_master_key_ok(cfg.NCE_MASTER_KEY, is_prod=cfg.IS_PROD)
 
 
 def assert_admin_override_not_in_production() -> None:
