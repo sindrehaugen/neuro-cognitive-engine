@@ -18,7 +18,7 @@ jcs>=0.2.1                   # RFC 8785 canonical JSON — required for JCS sign
 PyJWT>=2.13.0                # JWT Bearer token validation (RS256/ES256 via cryptography)
 
 # --- Async Database Drivers --------------------------------------------------
-redis>=5.0.1
+redis>=8.1.0
 asyncpg>=0.31.0
 motor>=3.3.2
 pypika>=0.51.1
