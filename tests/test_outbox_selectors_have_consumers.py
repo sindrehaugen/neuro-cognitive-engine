@@ -99,6 +99,7 @@ KNOWN_UNCONSUMED_PRODUCED_SELECTORS: frozenset[str] = frozenset(
         "TASK.upserted",
         "TICKET.sla_breached",
         "VENDOR.upserted",
+        "signing_key_rotated",
     }
 )
 

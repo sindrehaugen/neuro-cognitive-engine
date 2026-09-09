@@ -34,6 +34,7 @@ import json
 import os
 import uuid
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -68,12 +69,58 @@ class _FakeAcquire:
 
 
 def _engine_and_conn() -> tuple[MagicMock, AsyncMock]:
+    event_log_table: list[dict[str, Any]] = []
     conn = AsyncMock()
     tx = MagicMock()
     tx.__aenter__ = AsyncMock(return_value=None)
     tx.__aexit__ = AsyncMock(return_value=None)
     conn.transaction = MagicMock(return_value=tx)
-    conn.fetchval = AsyncMock(return_value=_SYSTEM_NS_ID)
+    conn.is_in_transaction = MagicMock(return_value=True)
+
+    async def fake_fetchval(q: Any, *a: Any) -> Any:
+        s = str(q)
+        if "clock_timestamp()" in s:
+            from datetime import datetime, timezone
+
+            return datetime.now(timezone.utc)
+        if "chain_hash" in s:
+            return b"\x00" * 32
+        return _SYSTEM_NS_ID
+
+    async def fake_fetchrow(q: Any, *a: Any) -> Any:
+        s = str(q)
+        if "event_sequences" in s:
+            return {"seq": len(event_log_table) + 1}
+        if "INSERT INTO event_log" in s:
+            row = {
+                "id": a[0],
+                "namespace_id": a[1],
+                "agent_id": a[2],
+                "event_type": a[3],
+                "event_seq": a[4],
+                "occurred_at": a[5],
+                "params": a[6],
+                "result_summary": a[7],
+            }
+            event_log_table.append(row)
+            return {
+                "id": row["id"],
+                "event_seq": row["event_seq"],
+                "occurred_at": row["occurred_at"],
+            }
+        return None
+
+    async def fake_fetch(q: Any, *a: Any) -> list[dict[str, Any]]:
+        s = str(q)
+        if "event_log" in s:
+            if a and isinstance(a[0], str):
+                return [r for r in event_log_table if r["event_type"] == a[0]]
+            return list(event_log_table)
+        return []
+
+    conn.fetchval = AsyncMock(side_effect=fake_fetchval)
+    conn.fetchrow = AsyncMock(side_effect=fake_fetchrow)
+    conn.fetch = AsyncMock(side_effect=fake_fetch)
     engine = MagicMock()
     engine.pg_pool = MagicMock()
     engine.pg_pool.acquire = MagicMock(side_effect=lambda *_a, **_k: _FakeAcquire(conn))
@@ -110,29 +157,33 @@ async def test_rotate_signing_key_emits_signing_key_rotated_with_fingerprint_pai
                 ]
             ),
         ),
+        patch("nce.event_log.get_active_key", AsyncMock(return_value=("sk-active", _NEW_FAKE_KEY))),
         patch("nce.auth.set_namespace_context", AsyncMock()),
-        patch("nce.event_log.append_event", AsyncMock()) as appended,
     ):
         raw = await admin_mcp_handlers.handle_rotate_signing_key(engine, _admin_arguments())
 
-    assert appended.await_count == 1, (
+    # Assert row lands by querying event_log directly
+    rows = await conn.fetch("SELECT * FROM event_log WHERE event_type = $1", "signing_key_rotated")
+    assert len(rows) == 1, (
         "handle_rotate_signing_key wrote NO event_log row -- a WARNING log line "
         "is not an immutable audit record."
     )
-    kwargs = appended.await_args.kwargs
-    assert kwargs["event_type"] == "signing_key_rotated"
-    assert kwargs["namespace_id"] == _SYSTEM_NS_ID
+    row = rows[0]
+    assert row["event_type"] == "signing_key_rotated"
+    assert row["namespace_id"] == _SYSTEM_NS_ID
 
-    params = kwargs["params"]
+    params = row["params"] if isinstance(row["params"], dict) else json.loads(row["params"])
     assert params["old_key_id"] == "sk-oldoldoldoldol"
     assert params["new_key_id"] == "sk-newnewnewnewne"
     assert params["old_key_fingerprint"] == _fp(_OLD_FAKE_KEY)
     assert params["new_key_fingerprint"] == _fp(_NEW_FAKE_KEY)
+    assert params["master_key_fingerprint"] is not None
     assert params["old_key_fingerprint"] != params["new_key_fingerprint"]
 
     body = json.loads(raw)
     assert body["status"] == "ok"
     assert body["new_key_fingerprint"] == _fp(_NEW_FAKE_KEY)
+    assert body["master_key_fingerprint"] == params["master_key_fingerprint"]
 
     # No key material anywhere in the emitted payload or the handler response.
     blob = json.dumps({"params": params, "body": body})
@@ -159,14 +210,16 @@ async def test_audit_event_lands_in_the_same_transaction_as_the_rotation(
                 ]
             ),
         ),
+        patch("nce.event_log.get_active_key", AsyncMock(return_value=("sk-active", _NEW_FAKE_KEY))),
         patch("nce.auth.set_namespace_context", AsyncMock()),
-        patch("nce.event_log.append_event", AsyncMock()) as appended,
     ):
         await admin_mcp_handlers.handle_rotate_signing_key(engine, _admin_arguments())
 
     assert conn.transaction.call_count == 1, "exactly one handler-owned transaction expected"
     assert rotate.await_args.args[0] is conn
-    assert appended.await_args.kwargs["conn"] is conn
+
+    rows = await conn.fetch("SELECT * FROM event_log WHERE event_type = $1", "signing_key_rotated")
+    assert len(rows) == 1
 
 
 @pytest.mark.asyncio
@@ -181,7 +234,7 @@ async def test_rotation_still_audits_when_the_outgoing_key_cannot_be_decrypted(
     """
     from nce.signing import SigningKeyDecryptionError
 
-    engine, _conn = _engine_and_conn()
+    engine, conn = _engine_and_conn()
 
     with (
         patch("nce.signing.rotate_key", AsyncMock(return_value="sk-newnewnewnewne")),
@@ -194,15 +247,20 @@ async def test_rotation_still_audits_when_the_outgoing_key_cannot_be_decrypted(
                 ]
             ),
         ),
+        patch("nce.event_log.get_active_key", AsyncMock(return_value=("sk-active", _NEW_FAKE_KEY))),
         patch("nce.auth.set_namespace_context", AsyncMock()),
-        patch("nce.event_log.append_event", AsyncMock()) as appended,
     ):
         raw = await admin_mcp_handlers.handle_rotate_signing_key(engine, _admin_arguments())
 
     assert json.loads(raw)["status"] == "ok"
-    params = appended.await_args.kwargs["params"]
+    rows = await conn.fetch("SELECT * FROM event_log WHERE event_type = $1", "signing_key_rotated")
+    assert len(rows) == 1
+    params = (
+        rows[0]["params"] if isinstance(rows[0]["params"], dict) else json.loads(rows[0]["params"])
+    )
     assert params["old_key_fingerprint"] is None
     assert params["new_key_fingerprint"] == _fp(_NEW_FAKE_KEY)
+    assert params["master_key_fingerprint"] is not None
 
 
 def test_reserved_system_namespace_is_not_a_tenant() -> None:

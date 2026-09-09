@@ -36,11 +36,23 @@ def _make_mock_engine(artifact_row: dict | None = None) -> MagicMock:
     conn.fetchrow.return_value = artifact_row
     conn.execute.return_value = "UPDATE 1"
 
+    in_tx = False
+
+    async def _tx_enter(*args: Any, **kwargs: Any) -> Any:
+        nonlocal in_tx
+        in_tx = True
+        return tx
+
+    async def _tx_exit(*args: Any, **kwargs: Any) -> Any:
+        nonlocal in_tx
+        in_tx = False
+        return None
+
     tx = MagicMock()
-    tx.__aenter__ = AsyncMock(return_value=tx)
-    tx.__aexit__ = AsyncMock(return_value=None)
+    tx.__aenter__ = AsyncMock(side_effect=_tx_enter)
+    tx.__aexit__ = AsyncMock(side_effect=_tx_exit)
     conn.transaction = MagicMock(return_value=tx)
-    conn.is_in_transaction = MagicMock(return_value=True)
+    conn.is_in_transaction = MagicMock(side_effect=lambda: in_tx)
 
     ctx = AsyncMock()
     ctx.__aenter__.return_value = conn

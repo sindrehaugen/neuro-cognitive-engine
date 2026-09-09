@@ -350,14 +350,53 @@ def _strip_subqueries(sql: str) -> str:
     return "".join(result)
 
 
-def _strip_ctes(clean_sql: str) -> str:
-    """Strip 'WITH ...' CTE prefixes once subqueries have been reduced to (1)."""
-    return re.sub(
-        r"^\s*WITH\s+(?:RECURSIVE\s+)?(?:[A-Za-z_][A-Za-z0-9_]*\s*(?:\([^)]*\))?\s*AS\s*\(\s*1\s*\)\s*,?\s*)+",
-        "",
-        clean_sql,
-        flags=re.I | re.DOTALL,
-    )
+def _strip_ctes(sql: str) -> str:
+    """Strip 'WITH ...' CTE prefix using balanced parentheses up to the main query."""
+    m = re.match(r"^\s*WITH\s+(?:RECURSIVE\s+)?", sql, re.I)
+    if not m:
+        return sql
+    i = m.end()
+    n = len(sql)
+    while i < n:
+        m_ident = re.match(r"\s*([A-Za-z_][A-Za-z0-9_]*)", sql[i:])
+        if not m_ident:
+            break
+        i += m_ident.end()
+        m_cols = re.match(r"\s*\(", sql[i:])
+        if m_cols:
+            depth = 1
+            j = i + m_cols.end()
+            while j < n and depth > 0:
+                if sql[j] == "(":
+                    depth += 1
+                elif sql[j] == ")":
+                    depth -= 1
+                j += 1
+            i = j
+        m_as = re.match(r"\s*AS\s*\(", sql[i:], re.I)
+        if not m_as:
+            break
+        i += m_as.end()
+        depth = 1
+        j = i
+        in_quote = False
+        while j < n and depth > 0:
+            ch = sql[j]
+            if ch == "'" and (j == 0 or sql[j - 1] != "\\"):
+                in_quote = not in_quote
+            elif not in_quote:
+                if ch == "(":
+                    depth += 1
+                elif ch == ")":
+                    depth -= 1
+            j += 1
+        i = j
+        m_comma = re.match(r"\s*,", sql[i:])
+        if m_comma:
+            i += m_comma.end()
+            continue
+        return sql[i:].lstrip()
+    return sql
 
 
 def _clean_sql_expression(expr: str) -> str:

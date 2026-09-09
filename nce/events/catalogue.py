@@ -695,6 +695,16 @@ EVENT_CATALOGUE: Mapping[str, EventContract] = {
         status="UNCONSUMED",
         description="Emitted when an equipment rack enclosure is permanently deleted.",
     ),
+    "signing_key_rotated": EventContract(
+        selector="signing_key_rotated",
+        node_type="signing_key",
+        op="rotated",
+        declared_producers=("nce/admin_mcp_handlers.py",),
+        declared_consumers=(),
+        status="UNCONSUMED",
+        reason="Security audit event emitted on signing key rotation; replayed by nce/replay.py for provenance.",
+        description="Emitted when a new active signing key is generated and the outgoing key is retired.",
+    ),
 }
 
 

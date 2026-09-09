@@ -107,7 +107,13 @@ async def handle_rotate_signing_key(
     """[ADMIN] Generate a new active signing key and retire the current one."""
     from nce.auth import set_namespace_context
     from nce.event_log import append_event
-    from nce.signing import get_active_key, key_fingerprint, rotate_key
+    from nce.signing import (
+        get_active_key,
+        key_fingerprint,
+        master_key_fingerprint,
+        require_master_key,
+        rotate_key,
+    )
     from nce.system_namespace import get_system_namespace_id
 
     actor = admin_identity or "admin"
@@ -120,6 +126,15 @@ async def handle_rotate_signing_key(
             # log, and a log line is not an immutable record.
             system_ns_id = await get_system_namespace_id(conn)
             await set_namespace_context(conn, system_ns_id)
+
+            # Fingerprint the master key that is active for this rotation.
+            # Record non-secret fingerprint only (never key material).
+            master_key_fp: str | None = None
+            try:
+                with require_master_key() as mk:
+                    master_key_fp = master_key_fingerprint(mk)
+            except Exception as exc:
+                log.warning("Could not fingerprint master key: %s", exc)
 
             # Fingerprint the OUTGOING key BEFORE rotating, best-effort. A key
             # whose stored blob cannot be decrypted is precisely the situation
@@ -157,6 +172,7 @@ async def handle_rotate_signing_key(
                     "old_key_fingerprint": old_key_fp,
                     "new_key_id": new_key_id,
                     "new_key_fingerprint": new_key_fp,
+                    "master_key_fingerprint": master_key_fp,
                     "rotated_by": actor,
                 },
                 result_summary={"status": "ok"},
@@ -165,12 +181,13 @@ async def handle_rotate_signing_key(
     # Log at WARNING level so this always surfaces in operator logs too.
     log.warning(
         "SECURITY: signing key rotated by %s — new_key_id=%s new_key_fp=%s "
-        "old_key_id=%s old_key_fp=%s",
+        "old_key_id=%s old_key_fp=%s master_key_fp=%s",
         actor,
         new_key_id,
         new_key_fp,
         old_key_id,
         old_key_fp,
+        master_key_fp,
     )
     return json.dumps(
         {
@@ -179,6 +196,7 @@ async def handle_rotate_signing_key(
             "new_key_fingerprint": new_key_fp,
             "old_key_id": old_key_id,
             "old_key_fingerprint": old_key_fp,
+            "master_key_fingerprint": master_key_fp,
         }
     )
 
