@@ -42,7 +42,16 @@ updates:
       prefix: "deps"
       include: "scope"
     ignore:
-      # aiosmtplib is pinned <4 intentionally — review manually
+      # mcp is capped at <2 in requirements.txt deliberately. PR #99 (>=2.1.1,<3) failed
+      # `Pytest (unit, py3.10)` AND `py3.11`: crossing that major breaks the code, so it
+      # is a port, not a bump. Revisit on purpose, not weekly.
+      - dependency-name: "mcp"
+        update-types: ["version-update:semver-major"]
+      # aiosmtplib majors reviewed manually. NB the previous comment here claimed a
+      # "<4" pin; requirements.txt says >=5.1.1,<6 and the lock holds 5.1.3, so that claim
+      # was stale. This ignore is major-only and did NOT contribute to the aiosmtplib CVE
+      # staying pinned (ci.yml's lock-gate comment) -- that was pip-compile running
+      # without --upgrade, fixed in #103.
       - dependency-name: "aiosmtplib"
         update-types: ["version-update:semver-major"]
 
@@ -114,6 +123,15 @@ updates:
       - "docker"
     commit-message:
       prefix: "deps(docker)"
+    ignore:
+      # Patch-level base-image updates only. A python major/minor bump must move the
+      # base image, requirements.lock's compile Python and the CI matrix TOGETHER --
+      # scripts/check_python_platform_coupling.py enforces that, and #104/#105 showed
+      # Dependabot proposing 3.12->3.14 with nine green checks and no image ever built.
+      - dependency-name: "python"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
 
   - package-ecosystem: "docker"
     directory: "/deploy/cognitive-stub"
@@ -127,6 +145,15 @@ updates:
       - "docker"
     commit-message:
       prefix: "deps(docker)"
+    ignore:
+      # Patch-level base-image updates only. A python major/minor bump must move the
+      # base image, requirements.lock's compile Python and the CI matrix TOGETHER --
+      # scripts/check_python_platform_coupling.py enforces that, and #104/#105 showed
+      # Dependabot proposing 3.12->3.14 with nine green checks and no image ever built.
+      - dependency-name: "python"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
 
   # Root: picks up docker-compose.yml's service images where the Dependabot version
   # supports compose manifests under the docker ecosystem.  Unverified at time of
@@ -143,3 +170,12 @@ updates:
       - "docker"
     commit-message:
       prefix: "deps(docker)"
+    ignore:
+      # Patch-level base-image updates only. A python major/minor bump must move the
+      # base image, requirements.lock's compile Python and the CI matrix TOGETHER --
+      # scripts/check_python_platform_coupling.py enforces that, and #104/#105 showed
+      # Dependabot proposing 3.12->3.14 with nine green checks and no image ever built.
+      - dependency-name: "python"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
