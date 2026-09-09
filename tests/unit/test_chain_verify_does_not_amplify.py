@@ -140,9 +140,7 @@ async def test_a_new_break_is_still_recorded(monkeypatch: pytest.MonkeyPatch) ->
 
     ns_id = uuid4()
     conn = _StatefulConn()
-    conn.appended.append(
-        {"event_type": "chain_verification_failed", "params": {"first_break": 7}}
-    )
+    conn.appended.append({"event_type": "chain_verification_failed", "params": {"first_break": 7}})
     _install(monkeypatch, ns_id, conn)
 
     await cron._chain_verification_tick(object())
