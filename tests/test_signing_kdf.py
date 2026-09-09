@@ -201,7 +201,11 @@ def test_v4_blob_roundtrip_without_argon2():
     mk = MasterKey(b"V" * 32)
     raw = os.urandom(32)
     blob = encrypt_signing_key(raw, mk)
-    assert blob.startswith(_ENCRYPTED_KEY_BLOB_V4)
+    # INNER prefix: v5 wraps every new blob with the key fingerprint. This assertion was
+    # LATENT -- the test skips when argon2-cffi is installed, which CI has, so it would
+    # have failed first on a contributor's machine rather than in the PR that broke it.
+    _head = len(_ENCRYPTED_KEY_BLOB_V5) + _MASTER_KEY_FP_LEN
+    assert blob[_head:].startswith(_ENCRYPTED_KEY_BLOB_V4)
     assert decrypt_signing_key(blob, mk) == raw
     mk.zero()
 

@@ -35,6 +35,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from nce.config import cfg
 from nce.signing import (
+    _ENCRYPTED_KEY_BLOB_V2,
+    _ENCRYPTED_KEY_BLOB_V3,
+    _ENCRYPTED_KEY_BLOB_V4,
+    _ENCRYPTED_KEY_BLOB_V5,
     SigningKeyDecryptionError,
     decrypt_signing_key,
     encrypt_signing_key,
@@ -47,11 +51,28 @@ logger = logging.getLogger("migrate-bridge-tokens")
 BATCH_SIZE = 100
 
 
+# Every wire-format prefix ``encrypt_signing_key`` has ever produced, sourced from
+# nce.signing so a new format cannot be introduced without this validator learning it.
+_KNOWN_BLOB_PREFIXES: tuple[bytes, ...] = (
+    _ENCRYPTED_KEY_BLOB_V5,
+    _ENCRYPTED_KEY_BLOB_V4,
+    _ENCRYPTED_KEY_BLOB_V3,
+    _ENCRYPTED_KEY_BLOB_V2,
+    b"TC1\x01",  # legacy; nce.signing defines no constant for it
+)
+
+
 def _is_valid_encrypted_blob(blob: bytes) -> bool:
-    """Return True if *blob* looks like a properly encrypted signing key blob."""
-    # All encrypt_signing_key outputs start with a version prefix:
-    # TC2\x01, TC3\x01, TC4\x01, or legacy TC1\x01
-    return blob.startswith((b"TC1\x01", b"TC2\x01", b"TC3\x01", b"TC4\x01"))
+    """Return True if *blob* looks like a properly encrypted signing key blob.
+
+    Prefixes are IMPORTED from ``nce.signing`` rather than restated here. This was a
+    hardcoded tuple of literals and it went stale the moment v5 was added: every new blob
+    would have been classified "not properly encrypted" by a script whose entire job is
+    deciding what to re-encrypt. A format allowlist duplicated in a second file is a
+    denylist by omission -- it fails silently, in the direction of touching data it should
+    have left alone.
+    """
+    return blob.startswith(_KNOWN_BLOB_PREFIXES)
 
 
 def _attempt_decrypt(blob: bytes) -> bytes | None:
