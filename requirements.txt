@@ -110,7 +110,7 @@ striprtf>=0.0.30
 defusedxml>=0.7.1
 nbformat>=5.10.0
 lxml>=6.0.0
-PyYAML>=6.0.2
+PyYAML>=6.0.3
 
 # --- Diagram / CAD / Encrypted Office formats --------------------------------
 vsdx>=0.5.16
