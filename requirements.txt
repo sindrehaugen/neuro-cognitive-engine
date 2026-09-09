@@ -27,7 +27,7 @@ pypika>=0.51.1
 pydantic>=2.13.4
 
 # --- Environment -------------------------------------------------------------
-python-dotenv>=1.2.2
+python-dotenv>=1.2.3
 
 # --- ASGI / API Layer --------------------------------------------------------
 mcp>=1.29.1,<2               # MCP SDK (cap: 2.0 removes Server.list_tools, used by server.py + nce/mcp_stdio_main.py)
