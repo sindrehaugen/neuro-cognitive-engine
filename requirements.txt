@@ -30,7 +30,7 @@ pydantic>=2.13.4
 python-dotenv>=1.2.2
 
 # --- ASGI / API Layer --------------------------------------------------------
-mcp>=1.28.1,<2               # MCP SDK (cap: 2.0 removes Server.list_tools, used by server.py + nce/mcp_stdio_main.py)
+mcp>=1.29.1,<2               # MCP SDK (cap: 2.0 removes Server.list_tools, used by server.py + nce/mcp_stdio_main.py)
 starlette>=1.6.0             # ASGI server core (>=1.0: 0.4x testclient demanded nonexistent httpx2; see #23)
 fastapi>=0.141.1             # REST + WebSocket interface layer
 uvicorn>=0.52.1              # ASGI process runner
