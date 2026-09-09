@@ -1487,7 +1487,6 @@ async def _chain_verification_tick(pool: asyncpg.Pool) -> None:
         return
     try:
         from nce.event_log import append_event, verify_merkle_chain
-        from nce.notifications import dispatcher
         from nce.observability import MERKLE_CHAIN_VALID
 
         async with unmanaged_pg_connection(pool, site="cron.chain_verify.namespace_scan") as conn:
@@ -1528,18 +1527,56 @@ async def _chain_verification_tick(pool: asyncpg.Pool) -> None:
                             f"for namespace {ns_id}. First break at event_seq {first_break}. "
                             f"Reason: {reason}"
                         )
-                        await dispatcher.dispatch_alert(title, message)
-
-                        await append_event(
-                            conn=conn,
-                            namespace_id=ns_id,
-                            agent_id="cron.chain_verify",
-                            event_type="chain_verification_failed",
-                            params={
-                                "first_break": first_break,
-                                "reason": reason,
-                            },
+                        # Throttled, not dispatch_alert: a break does not heal on its
+                        # own, so an unthrottled alert here pages on every tick forever.
+                        # Keyed per namespace so a second broken chain still alerts.
+                        await _dispatch_throttled_alert(
+                            f"cron.chain_verify.{ns_id}", title, message
                         )
+
+                        # Record the failure AT MOST ONCE per (namespace, first_break).
+                        #
+                        # 🔴 This append used to be unconditional, and appending to a chain
+                        # you have just declared corrupt is self-amplifying: the new event's
+                        # predecessor is broken, so it can never verify either, which
+                        # guarantees the next tick fails and appends again. Observed on the
+                        # deployed stack 2026-09-07..09: namespace
+                        # wormpinned-teardown-probe-76199e4f98c8 had ONE bad row
+                        # (event_seq=1, chain_hash IS NULL, written directly by agent "a")
+                        # and had accumulated EIGHT chain_verification_failed events plus a
+                        # CRITICAL alert every tick for two days. The detector was the main
+                        # contributor to the corruption it was reporting.
+                        already_recorded = await conn.fetchval(
+                            """
+                            SELECT EXISTS (
+                                SELECT 1
+                                FROM   event_log
+                                WHERE  namespace_id = $1
+                                  AND  event_type = 'chain_verification_failed'
+                                  AND  params ->> 'first_break' = $2
+                            )
+                            """,
+                            ns_id,
+                            str(first_break),
+                        )
+                        if already_recorded:
+                            log.debug(
+                                "[CHAIN-VERIFICATION] break at event_seq=%s already recorded "
+                                "for namespace=%s; not appending again",
+                                first_break,
+                                ns_id,
+                            )
+                        else:
+                            await append_event(
+                                conn=conn,
+                                namespace_id=ns_id,
+                                agent_id="cron.chain_verify",
+                                event_type="chain_verification_failed",
+                                params={
+                                    "first_break": first_break,
+                                    "reason": reason,
+                                },
+                            )
             except _CRON_TICK_ERRORS as exc:
                 log.exception("Error running Merkle chain verification for namespace %s", ns_id)
                 all_valid = False
