@@ -62,6 +62,20 @@ jobs:
           python scripts/compile_requirements.py
           git diff --exit-code requirements.lock
 
+      # Nothing built an image in CI, so a base-image change or an un-installable pin
+      # passed green by default -- #104/#105 bumped python 3.12->3.14 and collected nine
+      # green checks having never constructed an image. A full build does not fit a
+      # runner (the runtime image is ~6.3 GB before the wheel cache), so these two steps
+      # gate the parts that actually broke instead.
+      - name: Python platform coupling (runtime image = lock = matrix)
+        run: python scripts/check_python_platform_coupling.py
+
+      - name: Every locked pin installs on the runtime's Python
+        # Metadata-only: proves each exact pin has a distribution for this Python and
+        # platform, without downloading torch. Catches "this dependency cannot install
+        # here", which is the failure a base-image bump actually causes.
+        run: pip install --dry-run --no-deps -r requirements.lock
+
   test:
     name: Pytest (unit, py${{ matrix.python-version }})
     runs-on: ubuntu-latest
