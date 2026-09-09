@@ -51,6 +51,14 @@ class WrappedColumn:
     owner_module: str
     note: str
     # Primary-key column(s) used to address a row when re-wrapping it.
+    #
+    # These MUST match the table's real PRIMARY KEY. The default ("id",) was wrong for four
+    # of the eight columns, and the rewrap sweep died on `column "id" does not exist` the
+    # first time it ran against the live database: `settings` is keyed by "key", and
+    # `memories` / `pii_redactions` are RANGE partitioned so their PK is composite
+    # ("id", "created_at") -- Postgres requires the partition key in the PK. A wrong key
+    # column here means an UPDATE that matches nothing, or one that matches more than
+    # intended, so the sweep pre-flights these against information_schema before writing.
     key_columns: tuple[str, ...] = field(default=("id",))
 
 
@@ -76,25 +84,28 @@ WRAPPED_COLUMNS: tuple[WrappedColumn, ...] = (
             "implements the re-wrap for this one -- and had ZERO callers before the sweep, "
             "so the capability existed but was never wired up."
         ),
-        key_columns=("key_id",),
+        key_columns=("id",),
     ),
     WrappedColumn(
         table="memories",
         column="wrapped_dek",
         owner_module="nce.envelope",
         note="Per-memory data encryption key. Envelope encryption; the DEK unwraps memory content.",
+        key_columns=("id", "created_at"),
     ),
     WrappedColumn(
         table="pii_redactions",
         column="encrypted_value",
         owner_module="nce.pii",
         note="Redacted PII retained for lawful re-identification.",
+        key_columns=("id", "created_at"),
     ),
     WrappedColumn(
         table="settings",
         column="secret_enc",
         owner_module="nce.settings_store",
         note="Operator-entered secrets from the admin UI.",
+        key_columns=("key",),
     ),
     WrappedColumn(
         table="signing_credentials",
@@ -174,6 +185,11 @@ UNWRAPPED_BYTEA_COLUMNS: tuple[UnwrappedByteaColumn, ...] = (
 # Listed so the ratchet can tell "accounted for" from "forgotten".
 # ---------------------------------------------------------------------------
 WRAPS_WITHOUT_PERSISTING: dict[str, str] = {
+    "nce.master_key_ring": (
+        "Re-wraps a blob and hands it back; the caller writes it. Persists nothing itself. "
+        "Added by the rewrap sweep -- and this ratchet caught it on the very next PR after "
+        "the registry landed, which is the behaviour it exists for."
+    ),
     "nce.analytics.stress": (
         "Returns the blob to its caller rather than storing it (stress/benchmark helper). "
         "No table to re-wrap."
