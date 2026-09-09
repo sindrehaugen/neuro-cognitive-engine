@@ -128,13 +128,24 @@ async def handle_rotate_signing_key(
             await set_namespace_context(conn, system_ns_id)
 
             # Fingerprint the master key that is active for this rotation.
-            # Record non-secret fingerprint only (never key material).
-            master_key_fp: str | None = None
-            try:
-                with require_master_key() as mk:
-                    master_key_fp = master_key_fingerprint(mk)
-            except Exception as exc:
-                log.warning("Could not fingerprint master key: %s", exc)
+            # Record the non-secret fingerprint only (never key material).
+            #
+            # NOT best-effort, unlike the OUTGOING key fingerprint below, and the asymmetry
+            # is deliberate. That one must never block remediation: an undecryptable blob is
+            # exactly what an operator rotates out of. This one cannot fail for any reason
+            # that leaves the rotation viable -- `master_key_fingerprint` only hashes the key,
+            # it decrypts nothing, so it fails solely when the key is absent. And
+            # `rotate_key` itself calls `require_master_key()` and `encrypt_signing_key`
+            # (nce/signing.py), so an unloadable master key fails the rotation regardless.
+            #
+            # Swallowing it therefore protected nothing and only hid the reason, while
+            # creating the one path that records a rotation WITHOUT saying which master key
+            # it happened under. That is the single question this event exists to answer:
+            # "which key was the data written under after time T" -- unanswerable for 26
+            # hours during the 2026-09-02 incident. An audit row that says only "something
+            # changed" is the outcome the fingerprint pair exists to prevent.
+            with require_master_key() as mk:
+                master_key_fp = master_key_fingerprint(mk)
 
             # Fingerprint the OUTGOING key BEFORE rotating, best-effort. A key
             # whose stored blob cannot be decrypted is precisely the situation
