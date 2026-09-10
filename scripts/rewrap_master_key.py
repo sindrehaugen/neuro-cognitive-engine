@@ -29,7 +29,19 @@ SAFETY, in the order it matters
   hash/signature columns classified there are derived values -- re-wrapping them would
   corrupt them, and a rotation does not invalidate them.
 
-Exit codes: 0 clean, 1 blobs remain off the primary key (dry run, or unopenable rows), 2 error.
+Exit codes
+----------
+* **0** -- nothing actionable remains. Every blob that any ring key can open is on the
+  primary key, so it is safe to drop ``NCE_MASTER_KEY_PREVIOUS``. Permanently unopenable
+  rows may still exist and are reported; they do **not** hold the exit code at 1, because
+  no key on the ring opens them and ``PREVIOUS`` does not either.
+* **1** -- blobs remain off the primary key that a ring key CAN open. Either the dry run
+  found work to do, or an ``--apply`` run did not finish it.
+* **2** -- error (pre-flight failure, or no key opens a blob during a required decrypt).
+
+🔴 This changed on 2026-09-10. Previously ANY unopenable row forced exit 1 and suppressed
+the "safe to drop" line, which made the completion signal unreachable in this deployment --
+see the F3 comment in ``main_async``.
 """
 
 from __future__ import annotations
@@ -86,7 +98,10 @@ async def _sweep_column(
     apply: bool,
 ) -> ColumnResult:
     result = ColumnResult(col)
-    keys = ", ".join(f'"{k}"' for k in col.key_columns)
+    # key_columns address the row in the UPDATE; label_columns only name it in the output.
+    # dict.fromkeys keeps order and drops duplicates when a label is also a key column.
+    select_columns = tuple(dict.fromkeys(col.key_columns + col.label_columns))
+    keys = ", ".join(f'"{k}"' for k in select_columns)
 
     try:
         rows = await conn.fetch(
@@ -102,7 +117,7 @@ async def _sweep_column(
 
     for row in rows:
         blob = bytes(row["blob"])
-        row_id = ", ".join(f"{k}={row[k]!r}" for k in col.key_columns)
+        row_id = ", ".join(f"{k}={row[k]!r}" for k in (col.label_columns or col.key_columns))
 
         if blob_is_on_primary(blob, primary) is True:
             result.on_primary += 1
@@ -209,6 +224,10 @@ async def main_async(apply: bool, dsn: str) -> int:
                 log.error("  %s", p)
             return 2
         results = [await _sweep_column(conn, c, primary, ring, apply) for c in WRAPPED_COLUMNS]
+        # F5: this is the number nce/master_key_ring.py's module docstring tells the operator
+        # to watch before dropping NCE_MASTER_KEY_PREVIOUS -- and until 2026-09-10 it was
+        # never called anywhere, so the metric the runbook pointed at was never computed.
+        off_primary_total = await foreign_key_blob_count(conn)
     finally:
         await conn.close()
 
@@ -231,18 +250,57 @@ async def main_async(apply: bool, dsn: str) -> int:
     log.info("")
     verb = "re-wrapped" if apply else "would re-wrap"
     log.info("%s: %d blob(s)", verb, rewrapped_total)
+
+    # ------------------------------------------------------------------ the drop decision
+    #
+    # F3, 2026-09-10 rebuild. This block used to gate BOTH the "safe to drop" line and the
+    # exit code on `unopenable_total == 0`. Two rows in the live database are permanently
+    # unopenable by design -- wrapped under tests/conftest.py's "x" * 32 by the accidental
+    # rotations of 2026-09-07, and the runbook correctly says never to "fix" them. So the
+    # sweep exited 1 forever and the completion signal could never print: runbook step 5,
+    # "drop PREVIOUS when the sweep reports zero off-primary blobs", would have waited
+    # forever. #125 existed to make retiring the old key evidence-based, and as shipped the
+    # evidence never arrived.
+    #
+    # The logic error, stated plainly: an unopenable blob is not openable by PREVIOUS
+    # EITHER. No key on the ring opens it, PREVIOUS included. So it cannot be a reason to
+    # keep PREVIOUS around, and gating the drop decision on it was exactly backwards.
+    #
+    # What does gate the decision: blobs off the primary key that SOME ring key can open.
+    # Those are the rows PREVIOUS is still needed for.
+    actionable = off_primary_total - unopenable_total
+
+    log.info("blobs off the primary key      : %d", off_primary_total)
     if unopenable_total:
-        log.error(
-            "%d blob(s) no key on the ring opens. LEFT UNTOUCHED. Find the key that wraps "
-            "them, or delete the rows deliberately -- do not rotate to make this go away.",
+        log.warning(
+            "  of which permanently unopenable: %d -- LEFT UNTOUCHED, and they do NOT block "
+            "dropping NCE_MASTER_KEY_PREVIOUS, because no key on the ring opens them and "
+            "PREVIOUS does not either. Find the key that wraps them, or delete the rows "
+            "deliberately -- do NOT rotate to make this go away.",
             unopenable_total,
         )
-    if apply and not unopenable_total and not rewrapped_total:
-        log.info("nothing to do -- every blob is already on the primary key.")
-    if apply and rewrapped_total and not unopenable_total:
-        log.info("safe to drop NCE_MASTER_KEY_PREVIOUS once every process has restarted.")
+    log.info("  actionable (a ring key opens)  : %d", actionable)
 
-    return 1 if (unopenable_total or (rewrapped_total and not apply)) else 0
+    if actionable > 0:
+        if apply:
+            log.error(
+                "%d blob(s) remain off the primary key after an --apply run. Do NOT drop "
+                "NCE_MASTER_KEY_PREVIOUS.",
+                actionable,
+            )
+        else:
+            log.info("run again with --apply to re-wrap them.")
+        return 1
+
+    if rewrapped_total == 0 and not unopenable_total:
+        log.info("nothing to do -- every blob is already on the primary key.")
+    log.info(
+        "SAFE TO DROP NCE_MASTER_KEY_PREVIOUS once every process has restarted%s.",
+        f" ({unopenable_total} acknowledged unopenable row(s) remain and are expected)"
+        if unopenable_total
+        else "",
+    )
+    return 0
 
 
 def main() -> None:
