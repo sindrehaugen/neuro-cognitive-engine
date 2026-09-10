@@ -4,26 +4,28 @@ Ensures that:
 1. Every ``append_event(...)`` call under ``nce/`` is lexically enclosed by an
    ``async with conn.transaction():`` or ``async with scoped_pg_session(...)`` block,
    preventing runtime EventLogError failures in production.
-2. Every ``publish(...)`` call under ``nce/`` is lexically enclosed by an active
-   database transaction context, preserving the outbox transactional atomicity
-   contract documented in ``nce/events/bus.py:47``.
+2. Every ``publish(...)`` call from ``nce.events.bus`` under ``nce/`` is lexically
+   enclosed by an active database transaction context, preserving the outbox
+   transactional atomicity contract documented in ``nce/events/bus.py:47``.
 3. Direct ``INSERT INTO event_log`` writes outside the designated owner
    ``nce/event_log.py::_insert_event`` are strictly prohibited (the chokepoint
    ratchet), preventing sequence allocation and Merkle signature bypasses.
-4. Legitimate exceptions (e.g. helper functions receiving an already-transactional
-   connection from their caller, or post-commit Redis cache invalidation channels)
-   are explicitly documented in shrink-only allowlists with an owner, a reason
-   (>= 60 chars), and a caller transaction guarantee (>= 60 chars).
+4. Legitimate exceptions (helper functions receiving an already-transactional
+   connection from their caller) are explicitly documented in shrink-only
+   allowlists with an owner, a reason (>= 60 chars), and a caller transaction
+   guarantee (>= 60 chars).
 5. Standing positive controls (U18) verify the scanners detect un-transactioned
-   calls and chokepoint violations, and pass validly enclosed calls.
+   calls and chokepoint violations, pass validly enclosed calls, and correctly
+   discriminate event-bus publish calls from unrelated pub/sub interfaces.
 
 Census Metrics & Discovery Floors:
 ----------------------------------
 - ``append_event`` call sites: 68 measured across nce/ (discovery floor >= 45).
-- ``publish`` call sites: 13 measured across 10 files (discovery floor >= 10):
+- ``publish`` call sites: 9 measured across nce/ (discovery floor >= 6 with slack):
   * 6 transaction-enclosed outbox publishers in vertical modules.
   * 3 unenclosed outbox helper functions deferring transaction to caller (allowlisted).
-  * 4 unenclosed post-commit Redis cache invalidation pub/sub calls (allowlisted).
+  * Unrelated non-bus publish calls (e.g. Redis pub/sub cache invalidation) are
+    scoped out by AST callee and import analysis.
 - ``INSERT INTO event_log`` statements: 1 owning statement discovered in
   ``nce/event_log.py::_insert_event`` (line 1108); 0 offenders outside.
   Note: ``nce/event_log.py:1148`` contains an exception message string
@@ -108,9 +110,8 @@ KNOWN_UNENCLOSED_APPEND_EVENT_SITES: Final[dict[str, dict[str, str]]] = {
     },
 }
 
-# Shrink-only allowlist of publish call sites that are not lexically enclosed in
-# transactions. These consist of outbox helpers deferring transaction to callers,
-# and Redis pub/sub cache invalidation calls that occur post-commit.
+# Shrink-only allowlist of outbox publish call sites that are not lexically enclosed in
+# transactions. These consist of outbox helpers deferring transaction to callers.
 KNOWN_UNENCLOSED_PUBLISH_SITES: Final[dict[str, dict[str, str]]] = {
     "nce/events/emit.py::emit_graph_write": {
         "owner": "core-events",
@@ -126,26 +127,6 @@ KNOWN_UNENCLOSED_PUBLISH_SITES: Final[dict[str, dict[str, str]]] = {
         "owner": "procurement",
         "reason": "PO line status transition helper performs relational updates and emits status_changed outbox event using connection supplied by calling workflow.",
         "caller_guarantee": "Invoked by purchase order workflow handlers and goods receipt processors that maintain an active asyncpg transaction across the state change.",
-    },
-    "nce/admin_handlers/settings.py::api_admin_settings_patch": {
-        "owner": "core-settings",
-        "reason": "Admin settings patch handler publishes cache invalidation signal over Redis pub/sub channel 'nce:settings:invalidate' rather than PostgreSQL outbox.",
-        "caller_guarantee": "Redis pub/sub publish occurs post-commit after the primary settings PostgreSQL database transaction has successfully committed at line 850.",
-    },
-    "nce/admin_handlers/settings.py::api_admin_settings_reset": {
-        "owner": "core-settings",
-        "reason": "Admin settings reset handler publishes cache invalidation signal over Redis pub/sub channel 'nce:settings:invalidate' rather than PostgreSQL outbox.",
-        "caller_guarantee": "Redis pub/sub publish occurs post-commit after the primary settings PostgreSQL database transaction has successfully committed at line 1000.",
-    },
-    "nce/settings_store.py::reset": {
-        "owner": "core-settings",
-        "reason": "Settings store reset operation notifies listening application workers via Redis pub/sub channel 'nce:settings:invalidate' for cache invalidation.",
-        "caller_guarantee": "Standalone settings store reset updates Redis and local in-memory caches directly without requiring a PostgreSQL database transaction.",
-    },
-    "nce/settings_store.py::set": {
-        "owner": "core-settings",
-        "reason": "Settings store set operation broadcasts cache invalidation key over Redis pub/sub channel 'nce:settings:invalidate' to synchronize worker state.",
-        "caller_guarantee": "Standalone settings store set updates Redis and local in-memory caches directly without requiring a PostgreSQL database transaction.",
     },
 }
 
@@ -181,6 +162,21 @@ def _is_docstring(node: ast.AST, parent_map: dict[ast.AST, ast.AST]) -> bool:
         ):
             if getattr(grandparent, "body", None) and grandparent.body[0] is parent:
                 return True
+    return False
+
+
+def _has_events_bus_publish_import(tree: ast.AST) -> bool:
+    """Check if an AST module imports publish from nce.events.bus."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            if node.module == "nce.events.bus":
+                for alias in node.names:
+                    if alias.name == "publish":
+                        return True
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "nce.events.bus":
+                    return True
     return False
 
 
@@ -230,20 +226,31 @@ def _scan_append_event_calls(source_tree: ast.AST, rel_file_path: str) -> list[d
 
 
 def _scan_publish_calls(source_tree: ast.AST, rel_file_path: str) -> list[dict[str, Any]]:
-    """Analyze all publish call sites in an AST tree for transaction enclosures."""
+    """Analyze all outbox publish call sites in an AST tree for transaction enclosures.
+
+    Scopes strictly to nce.events.bus.publish by requiring a verified import from
+    nce.events.bus for bare publish() calls, or receiver gating on bus/event_bus
+    for attribute calls. Unrelated interfaces (e.g. active_redis.publish) are ignored.
+    """
+    if rel_file_path == "nce/events/bus.py":
+        return []
+
+    has_bus_import = _has_events_bus_publish_import(source_tree)
     parent_map = _build_parent_map(source_tree)
 
     call_sites: list[dict[str, Any]] = []
     for node in ast.walk(source_tree):
         if isinstance(node, ast.Call):
             fn = node.func
-            name = None
-            if isinstance(fn, ast.Name):
-                name = fn.id
-            elif isinstance(fn, ast.Attribute):
-                name = fn.attr
+            is_bus_publish = False
+            if isinstance(fn, ast.Name) and fn.id == "publish":
+                if has_bus_import:
+                    is_bus_publish = True
+            elif isinstance(fn, ast.Attribute) and fn.attr == "publish":
+                if isinstance(fn.value, ast.Name) and fn.value.id in ("bus", "event_bus"):
+                    is_bus_publish = True
 
-            if name == "publish":
+            if is_bus_publish:
                 curr: ast.AST | None = node
                 enclosing_tx = False
                 enclosing_contexts: list[str] = []
@@ -455,7 +462,7 @@ async def scoped_worker(pool, ns_uuid):
 
 
 def test_every_publish_is_in_transaction_or_allowlisted() -> None:
-    """Every publish call must be enclosed in a transaction or allowlisted."""
+    """Every outbox publish call must be enclosed in a transaction or allowlisted."""
     all_calls = _collect_all_publish_calls()
     unenclosed = [c for c in all_calls if not c["enclosed_in_transaction"]]
 
@@ -494,16 +501,54 @@ def test_publish_allowlist_is_shrink_only_and_reasoned() -> None:
 
 
 def test_discovery_floor_for_publish_scanner() -> None:
-    """Guard-the-guard: verify AST discovery resolves at least 10 publish calls."""
+    """Guard-the-guard: verify AST discovery resolves at least 6 outbox publish calls (9 measured across nce/)."""
     all_calls = _collect_all_publish_calls()
-    assert len(all_calls) >= 10, (
-        f"AST discovery floor breached: expected >= 10 calls, found {len(all_calls)}"
+    assert len(all_calls) >= 6, (
+        f"AST discovery floor breached: expected >= 6 calls, found {len(all_calls)}"
     )
 
 
+def test_positive_control_ignores_non_bus_publish_calls() -> None:
+    """Standing positive control (U18 / T-5 Q1): verify scanner ignores Redis and other non-bus publish calls."""
+    code = """
+async def redis_invalidation(active_redis, key):
+    await active_redis.publish("nce:settings:invalidate", key)
+
+async def other_publisher(emitter, event):
+    await emitter.publish(event)
+"""
+    tree = ast.parse(code)
+    calls = _scan_publish_calls(tree, "nce/synthetic_redis.py")
+    assert len(calls) == 0, f"Expected 0 outbox publish calls, found {calls}"
+
+
+def test_positive_control_detects_bus_publish_when_imported() -> None:
+    """Standing positive control (U18 / T-5 Q1): verify scanner detects bare publish when imported from nce.events.bus."""
+    code = """
+from nce.events.bus import publish
+
+async def bus_emitter(conn, ns_uuid):
+    await publish(
+        conn,
+        namespace_id=ns_uuid,
+        node_type="TICKET",
+        op="created",
+        aggregate_id="t-1",
+        payload={},
+    )
+"""
+    tree = ast.parse(code)
+    calls = _scan_publish_calls(tree, "nce/synthetic_bus.py")
+    assert len(calls) == 1
+    assert calls[0]["site_id"] == "nce/synthetic_bus.py::bus_emitter"
+    assert not calls[0]["enclosed_in_transaction"]
+
+
 def test_positive_control_fails_on_unenclosed_publish() -> None:
-    """Standing positive control (U18 / T-5 Q1): verify scanner flags unenclosed publish."""
+    """Standing positive control (U18 / T-5 Q1): verify scanner flags unenclosed outbox publish."""
     bad_code = """
+from nce.events.bus import publish
+
 async def bad_publisher(conn, ns_uuid):
     await publish(
         conn,
@@ -521,8 +566,10 @@ async def bad_publisher(conn, ns_uuid):
 
 
 def test_positive_control_passes_on_enclosed_publish() -> None:
-    """Standing positive control (U18 / T-5 Q1): verify scanner passes transaction-enclosed publish."""
+    """Standing positive control (U18 / T-5 Q1): verify scanner passes transaction-enclosed outbox publish."""
     good_code = """
+from nce.events.bus import publish
+
 async def good_publisher(pool, ns_uuid):
     async with pool.acquire() as conn:
         async with conn.transaction():
