@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 66c18f2 (main) · **Last-audited:** 2026-09-10
 
 # Product Engine Admin Guide (Doc 66)
 
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 66c18f2 (main) · **Last-audited:** 2026-09-10
 
 The **Product Engine** (`nce/vertical_modules/product/`) is the backbone of the NCE product catalog, containing product schema definitions, multi-source ingestion pipelines, pricing calculation nodes, and on-demand AI enrichment logic. This guide provides administrators with technical instructions to enable, configure, and monitor the Product Engine. It details database schemas, Row-Level Security (RLS) policies, feed adapters (such as Nettailer), lifecycle watchers, pricing boundaries, and enrichment queues.
 
@@ -34,8 +34,11 @@ The global behaviors, boundaries, and timeouts of the Product Engine are control
     *   *Description:* Warning horizon in days for EOL/EOS product alerts.  
     *   *Default:* `60`.
 *   **`NCE_PRODUCT_EOL_LIST`** (JSON String / Secret)  
-    *   *Description:* Config-seeded EOL/EOS replacement list utilized when manufacturer API adapters are unconfigured or unavailable.  
-    *   *Format:* `[{"mfr_part_no": "...", "manufacturer": "...", "successor_mfr_part_no": "...", "successor_manufacturer": "...", "confidence": 0.9}, ...]`
+    *   *Description:* Config-seeded EOL/EOS replacement list. **As shipped, this is the only EOL signal the watcher can actually receive** — the other two tiers described in §4.1 are not implemented.  
+    *   *Not a declared setting:* it is read straight from the process environment by `_load_eol_list()` and does **not** appear in `nce/config.py`. It is therefore not validated at startup and will not appear in a config listing, unlike every other variable in this section.  
+    *   *Format:* `[{"mfr_part_no": "...", "manufacturer": "...", "successor_mfr_part_no": "...", "successor_manufacturer": "...", "confidence": 0.9}, ...]`  
+    *   *Malformed input degrades to silence:* a value that is valid JSON but not an **array**, and a value that is not valid JSON at all, are each ignored with a `WARNING` and treated as an empty list. Neither raises, so a typo here presents as a watcher that does nothing rather than as an error.  
+    *   *Default:* unset — the watcher is a no-op.
 
 ### 1.2 Tenant Namespace Activation
 The Product Engine runs on a strict tenant-isolation model. Tenant namespaces must explicitly opt-in to activate the module. This activation is checked at the MCP handler and REST API boundaries via the `require_product_enabled` check defined in [_guard.py](https://github.com/sindrehaugen/NCE/blob/main/nce/vertical_modules/product/_guard.py).
@@ -276,14 +279,15 @@ To maintain compliance with **ADR-0017**, internal pricing parameters must never
 
 ## 4. EOL/EOS Watcher Scheduler Task
 
-The lifecycle watcher [watchers.py](https://github.com/sindrehaugen/NCE/blob/main/nce/vertical_modules/product/watchers.py) is a scheduled task that identifies products approaching End-of-Life (EOL) or End-of-Sale (EOS), maps successors, and populates relationship graphs.
+The lifecycle watcher [watchers.py](https://github.com/sindrehaugen/NCE/blob/main/nce/vertical_modules/product/watchers.py) is a scheduled task that identifies products approaching End-of-Life (EOL) or End-of-Sale (EOS), maps successors, and populates relationship graphs — **when an EOL signal is supplied**. As shipped, the only signal that can reach it is the `NCE_PRODUCT_EOL_LIST` environment variable; with that unset the task runs on schedule and does nothing. See §4.1 for why the other two signal tiers cannot fire.
 
 ```mermaid
 flowchart TD
     Start[Cron Run: do_check_eol] --> GetSignal{Resolve EOL Signal Source}
-    GetSignal -- Priority 1 --> MfrAdapter[W11 Manufacturer eol_products]
-    GetSignal -- Priority 2 --> EnvList[NCE_PRODUCT_EOL_LIST Env JSON]
-    GetSignal -- Priority 3 --> CatalogScan[Scan catalog for EOL statuses]
+    GetSignal -- "Priority 1 (NOT IMPLEMENTED)" --> MfrAdapter[W11 Manufacturer eol_products]
+    GetSignal -- "Priority 2 (only live tier)" --> EnvList[NCE_PRODUCT_EOL_LIST Env JSON]
+    GetSignal -- "Priority 3 (needs unshipped columns)" --> CatalogScan[Scan catalog for EOL statuses]
+    GetSignal -- "No signal (default)" --> NoOp[No-op: return edges_written 0, log at DEBUG]
     MfrAdapter --> ProcessEntries[Iterate EOL Entries]
     EnvList --> ProcessEntries
     CatalogScan --> ProcessEntries
@@ -295,10 +299,20 @@ flowchart TD
 ```
 
 ### 4.1 Signal Priority Hierarchy
-When resolving EOL/EOS signals, the watcher runs through three priority tiers to support graceful degradation:
-1.  **Priority 1:** Dynamic list returned by the W11 manufacturer API adapter (`eol_products()`), if active.
-2.  **Priority 2:** Static JSON list defined in the `NCE_PRODUCT_EOL_LIST` environment variable.
-3.  **Priority 3:** Local scan of `product_catalog` rows where `lifecycle_status` matches known EOL strings (`'eol'`, `'eos'`, `'end_of_life'`, `'end_of_sale'`, `'discontinued'`) and contains a valid `successor_sku` reference.
+When resolving EOL/EOS signals, the watcher runs through three priority tiers to support graceful degradation. The priority chain itself is real — it is what `_resolve_eol_entries()` does — but **as shipped, only Priority 2 can fire.**
+
+> [!IMPORTANT]
+> Tiers 1 and 3 are **unbuilt, not broken.** Each is guarded, and a tier that cannot produce a signal falls through to the next one silently and by design. Configuring tier 1 or tier 3 is not possible today; an operator who tries and sees nothing happen has not hit a bug in the product engine.
+
+1.  **Priority 1 — 🚧 not implemented.** Dynamic list returned by the W11 manufacturer API adapter (`eol_products()`). `ManufacturerApiAdapter` exposes no such method — `stream()` is its only public method, and the `SourceAdapter` base class declares only `stream()`, so nothing is inherited either. The watcher probes `hasattr(adapter, "eol_products")` and takes the `None` path on every run. There is no configuration that activates this tier.
+2.  **Priority 2 — ✅ live.** Static JSON list defined in the `NCE_PRODUCT_EOL_LIST` environment variable (§1.1). **This is the only working input today.**
+3.  **Priority 3 — 🚧 requires columns that are not in the shipped schema.** Local scan of `product_catalog` rows where `lifecycle_status` matches known EOL strings (`'eol'`, `'eos'`, `'end_of_life'`, `'end_of_sale'`, `'discontinued'`) and which carry a valid `successor_sku` reference. Neither `successor_sku` nor `lifecycle_confidence` exists in `nce/schema.sql` or in any shipped migration. The scan guards itself with an `information_schema` column-existence check and returns an empty list, so the tier is a safe no-op rather than a query error.
+
+> [!NOTE]
+> **The Priority 3 columns are not planned — this is a design decision, not a gap.** Successor is a lifecycle *relationship*, and this estate models relationships as `kg_edges` `replaced_by` edges — which is exactly what the watcher writes when it does have a signal. The knowledge graph, not the catalog table, is the system of record for "what replaced this part". Nothing currently produces successor data in any case: `enrich.py` is the only writer of `product_catalog` and it merges ETIM specs, not successors. Do not expect a migration adding `successor_sku` / `lifecycle_confidence`.
+
+> [!TIP]
+> **Silence is the expected state, not a symptom.** With no signal configured the watcher still runs on every interval tick and returns `{"edges_written": 0, "failure_patterns": [], "skipped": 0}`, logging at `DEBUG`. An operator seeing no `replaced_by` edges appear has not misconfigured anything — confirm whether `NCE_PRODUCT_EOL_LIST` is set before investigating further.
 
 ### 4.2 Graph Modification Constraints
 > [!IMPORTANT]
