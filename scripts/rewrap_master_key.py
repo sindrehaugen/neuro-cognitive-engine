@@ -173,6 +173,22 @@ async def foreign_key_blob_count(conn: asyncpg.Connection) -> int:
     return total
 
 
+def drop_previous_decision(off_primary_total: int, unopenable_total: int) -> tuple[bool, int]:
+    """Return ``(safe_to_drop_previous, exit_code)`` for a finished sweep.
+
+    Pure and separately tested, because getting it wrong is silent: the F3 defect shipped in
+    #125, survived review, and was only caught by running the sweep against real data during
+    the 2026-09-10 rehearsal. See ``tests/test_rewrap_sweep_drop_decision.py``.
+
+    Only **actionable** blobs -- off the primary key and openable by some key on the ring --
+    can require ``NCE_MASTER_KEY_PREVIOUS`` to stay. A blob no ring key opens is not opened by
+    ``PREVIOUS`` either, so it must never hold the decision hostage.
+    """
+
+    actionable = off_primary_total - unopenable_total
+    return (actionable <= 0, 1 if actionable > 0 else 0)
+
+
 async def _preflight(conn: asyncpg.Connection) -> list[str]:
     """Check every registered column and key column exists BEFORE touching anything.
 
@@ -268,6 +284,7 @@ async def main_async(apply: bool, dsn: str) -> int:
     #
     # What does gate the decision: blobs off the primary key that SOME ring key can open.
     # Those are the rows PREVIOUS is still needed for.
+    safe_to_drop, exit_code = drop_previous_decision(off_primary_total, unopenable_total)
     actionable = off_primary_total - unopenable_total
 
     log.info("blobs off the primary key      : %d", off_primary_total)
@@ -281,7 +298,7 @@ async def main_async(apply: bool, dsn: str) -> int:
         )
     log.info("  actionable (a ring key opens)  : %d", actionable)
 
-    if actionable > 0:
+    if not safe_to_drop:
         if apply:
             log.error(
                 "%d blob(s) remain off the primary key after an --apply run. Do NOT drop "
@@ -290,7 +307,7 @@ async def main_async(apply: bool, dsn: str) -> int:
             )
         else:
             log.info("run again with --apply to re-wrap them.")
-        return 1
+        return exit_code
 
     if rewrapped_total == 0 and not unopenable_total:
         log.info("nothing to do -- every blob is already on the primary key.")
@@ -300,7 +317,7 @@ async def main_async(apply: bool, dsn: str) -> int:
         if unopenable_total
         else "",
     )
-    return 0
+    return exit_code
 
 
 def main() -> None:
