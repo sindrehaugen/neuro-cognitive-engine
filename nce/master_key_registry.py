@@ -50,6 +50,16 @@ class WrappedColumn:
     column: str
     owner_module: str
     note: str
+    # Columns used ONLY to identify a row in the sweep's output -- never in its WHERE clause.
+    #
+    # F6, 2026-09-10 rebuild: the sweep reported its two unopenable rows as
+    # `id=UUID('3975871b-...')`, while the runbook and the rebuild handoff both name the
+    # expected pair by `key_id` (`sk-cccdd24038f54c32`, `sk-8f3adec2e7e34abb`). So an
+    # operator mid-rotation had to hand-join UUID to key_id to answer the one question that
+    # matters -- "are these the two failures I was told to expect, or two new ones?" --
+    # which is exactly the check the runbook exists to make cheap. Empty means "identify
+    # rows by key_columns", which is right for every column whose PK is already meaningful.
+    label_columns: tuple[str, ...] = ()
     # Primary-key column(s) used to address a row when re-wrapping it.
     #
     # These MUST match the table's real PRIMARY KEY. The default ("id",) was wrong for four
@@ -78,6 +88,7 @@ WRAPPED_COLUMNS: tuple[WrappedColumn, ...] = (
     WrappedColumn(
         table="signing_keys",
         column="encrypted_key",
+        label_columns=("key_id", "status"),
         owner_module="nce.signing",
         note=(
             "The signing key itself. `rewrap_signing_key` (nce/signing.py:796) already "
