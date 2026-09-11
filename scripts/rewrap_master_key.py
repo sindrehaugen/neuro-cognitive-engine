@@ -25,6 +25,11 @@ SAFETY, in the order it matters
   under ``tests/conftest.py``'s ``"x" * 32``, which no deployment key opens.
 * **Idempotent.** A blob already tagged with the primary fingerprint is skipped, so a
   second run writes nothing.
+* **Refuses to run as a role that cannot bypass RLS.** Five of the eight registered columns
+  are on ``FORCE ROW LEVEL SECURITY`` tables and this sweep sets no namespace context, so such a
+  role sees zero rows there and would be told it is safe to drop ``NCE_MASTER_KEY_PREVIOUS`` while
+  blobs remain wrapped under the old key. That is permanent loss reached through a green exit
+  code, so it is a pre-flight refusal rather than a warning (F10, 2026-09-10).
 * Only columns declared in ``nce.master_key_registry.WRAPPED_COLUMNS`` are touched. The six
   hash/signature columns classified there are derived values -- re-wrapping them would
   corrupt them, and a rotation does not invalidate them.
@@ -57,7 +62,11 @@ import asyncpg
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from nce.config import cfg  # noqa: E402
-from nce.master_key_registry import WRAPPED_COLUMNS, WrappedColumn  # noqa: E402
+from nce.master_key_registry import (  # noqa: E402
+    WRAPPED_COLUMNS,
+    WrappedColumn,
+    rls_visibility_problem,
+)
 from nce.master_key_ring import (  # noqa: E402
     NoKeyOpensBlobError,
     blob_is_on_primary,
@@ -199,6 +208,39 @@ async def _preflight(conn: asyncpg.Connection) -> list[str]:
     """
 
     problems: list[str] = []
+
+    # F10, found by the 2026-09-10 redeploy session. THIS CHECK COMES FIRST because its
+    # absence fails in the reassuring direction, which is the only kind of failure that
+    # actually destroys data here.
+    #
+    # `_sweep_column` issues a bare `SELECT ... WHERE "<col>" IS NOT NULL` and never sets a
+    # namespace context. FIVE of the eight registered columns live on tables with
+    # `relforcerowsecurity` -- memories, pii_redactions, signing_credentials,
+    # bridge_subscriptions, d365_integrations. A role without BYPASSRLS therefore sees ZERO
+    # rows in those five, with no error and no warning, and the sweep prints
+    # "SAFE TO DROP NCE_MASTER_KEY_PREVIOUS" with exit 0 while blobs are still wrapped under
+    # the old key. Drop PREVIOUS at that point and they are permanently unopenable -- the
+    # exact outcome #122-#130 exist to prevent, reached through a green exit code.
+    #
+    # Demonstrated on a throwaway with a NOSUPERUSER NOBYPASSRLS role holding SELECT+UPDATE:
+    # the sweep reported `re-wrapped: 4, off primary: 0, SAFE TO DROP, exit 0` while the truth
+    # from a BYPASSRLS role was `off primary: 9`.
+    #
+    # This is live risk, not a curiosity: runbook step 4 is `--dsn <live>`, a placeholder the
+    # operator fills in, and `nce_app` -- the application role, verified NOSUPERUSER
+    # NOBYPASSRLS -- is the natural DSN to reach for. The documented role (`mcp_user`) happens
+    # to be safe; nothing made that a requirement until now.
+    #
+    # `_preflight`'s existing column checks cannot catch it: `information_schema.columns` is
+    # not RLS-filtered, so they pass cleanly on a role that can see none of the data. The
+    # script already reports a silently skipped column for a missing table, precisely because
+    # "a silently skipped column is how a rotation loses data". F10 is that same failure
+    # arriving through RLS, and this is the one place the script had not applied its own rule
+    # to itself.
+    rls_problem = await rls_visibility_problem(conn)
+    if rls_problem:
+        problems.append(rls_problem)
+
     for col in WRAPPED_COLUMNS:
         rows = await conn.fetch(
             "SELECT column_name FROM information_schema.columns "
