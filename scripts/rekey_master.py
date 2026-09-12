@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """Rotate ``NCE_MASTER_KEY`` in place -- completely, or not at all.
 
+🔴 **SUPERSEDED, AND IT OVERWRITES THE AUTHORITATIVE KEY FILE. Prefer the documented path.**
+The supported rotation is the two-key ring plus sweep -- ``NCE_MASTER_KEY_PREVIOUS``,
+``nce/master_key_ring.py`` and ``scripts/rewrap_master_key.py`` (#122-#130) -- driven by
+``ML_KEY_ROTATION_RUNBOOK.md``. That path has no unsafe window, is idempotent, reports which key
+opens each blob, and never writes key material. This script predates it, holds **no ring**, and
+replaces the key file on disk, so a partial run can leave data wrapped under a key you no longer
+have. It is referenced by neither the runbook nor ``docs/``. Whether it should be removed is an
+open decision; until then it carries the same RLS refusal as the sweep (F11).
+
 ADR-0006 records the gap this closes in its own Consequences: *"Key rotation
 requires restarting the process with a new environment variable; there is no
 live rotation path for the master key itself."*  The 2026-09-02 incident was
@@ -62,6 +71,7 @@ from pathlib import Path
 import asyncpg
 
 from nce.envelope import unwrap_dek, wrap_dek
+from nce.master_key_registry import rls_visibility_problem
 from nce.signing import (
     MasterKey,
     SigningKeyDecryptionError,
@@ -323,6 +333,27 @@ async def _amain(args: argparse.Namespace) -> int:
                 return 2
 
             conn = await asyncpg.connect(dsn)
+
+            # F11: refuse an RLS-blind role BEFORE anything reads a wrapped column.
+            #
+            # `memories` carries FORCE ROW LEVEL SECURITY and this script sets no namespace
+            # context, so a role without BYPASSRLS sees zero rows there -- and zero is a
+            # LEGITIMATE result here, because a NULL `wrapped_dek` means "no envelope-encrypted
+            # payload, skipped, not an error". The blindness is therefore indistinguishable from
+            # success. `rekey_all`'s verify-before-commit then reads back only what it could see
+            # and passes, the transaction commits, and the key file is overwritten -- leaving
+            # every `memories.wrapped_dek` under the OLD key with the NEW key on disk, reported
+            # as complete success. This module's first line promises "completely, or not at all";
+            # RLS voided exactly that guarantee, silently.
+            rls_problem = await rls_visibility_problem(conn)
+            if rls_problem:
+                await conn.close()
+                print(
+                    f"PRE-FLIGHT FAILED -- nothing was changed: {rls_problem}",
+                    file=sys.stderr,
+                )
+                return 2
+
             try:
                 stats = await rekey_all(conn, old_key, new_key, dry_run=args.dry_run)
             finally:

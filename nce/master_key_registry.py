@@ -40,6 +40,7 @@ A rotation is not a re-signing event.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any, Final
 
 
 @dataclass(frozen=True)
@@ -224,3 +225,58 @@ def all_classified_bytea() -> set[tuple[str, str]]:
     return {(c.table, c.column) for c in WRAPPED_COLUMNS} | {
         (c.table, c.column) for c in UNWRAPPED_BYTEA_COLUMNS
     }
+
+
+# ---------------------------------------------------------------------------
+# RLS visibility guard -- F10 / F11, 2026-09-10
+# ---------------------------------------------------------------------------
+
+# Registered tables carrying FORCE ROW LEVEL SECURITY. Verified against
+# pg_class.relforcerowsecurity on the live database 2026-09-10; `signing_keys` and `settings`
+# are the only two registered tables that do NOT force RLS.
+FORCE_RLS_WRAPPED_TABLES: Final[frozenset[str]] = frozenset(
+    {
+        "memories",
+        "pii_redactions",
+        "signing_credentials",
+        "bridge_subscriptions",
+        "d365_integrations",
+    }
+)
+
+
+async def rls_visibility_problem(conn: Any) -> str | None:
+    """Return a refusal message if *conn*'s role cannot see FORCE-RLS rows, else ``None``.
+
+    **Every master-key tool must call this, and call it before reading any wrapped column.**
+
+    These tools read wrapped columns with a bare ``SELECT ... WHERE <col> IS NOT NULL`` and set
+    **no namespace context**. Five of the eight registered columns are on FORCE-RLS tables, so a
+    role without ``BYPASSRLS`` sees zero rows in them -- no error, no warning. Measured on a
+    restore of the live database, same data and same moment, differing only by role: a
+    NOBYPASSRLS role saw **0** of ``pii_redactions``' 4 blobs and reported **3** off-primary
+    where the truth was **7**.
+
+    This is the one failure mode in this area that lies in the **reassuring** direction, so it
+    is a refusal rather than a warning. An ``information_schema`` pre-flight cannot substitute:
+    that catalogue is not RLS-filtered, so a schema check passes cleanly for a role that can
+    see none of the data.
+
+    Fails **closed** -- an unresolvable role (``NULL``) refuses too, because that is exactly
+    when you least want to guess.
+    """
+
+    can_bypass = await conn.fetchval(
+        "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user"
+    )
+    if can_bypass:
+        return None
+    role = await conn.fetchval("SELECT current_user")
+    return (
+        f"role {role!r} cannot bypass row-level security (needs rolsuper or rolbypassrls). "
+        f"REFUSING TO RUN: {len(FORCE_RLS_WRAPPED_TABLES)} of the {len(WRAPPED_COLUMNS)} "
+        "master-key-wrapped columns are on FORCE ROW LEVEL SECURITY tables and this tool sets "
+        "no namespace context, so this role would see ZERO rows in them. Counts would be "
+        "silently under-reported and the run would report success while blobs stayed wrapped "
+        "under the old key. Re-run as a BYPASSRLS role (mcp_user)."
+    )

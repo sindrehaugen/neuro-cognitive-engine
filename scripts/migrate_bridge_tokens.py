@@ -34,6 +34,7 @@ import asyncpg
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from nce.config import cfg
+from nce.master_key_registry import rls_visibility_problem
 from nce.signing import (
     _ENCRYPTED_KEY_BLOB_V2,
     _ENCRYPTED_KEY_BLOB_V3,
@@ -159,6 +160,17 @@ async def _main() -> int:
     dsn = os.getenv("PG_DSN") or cfg.PG_DSN
     logger.info("Connecting to PostgreSQL …")
     conn = await asyncpg.connect(dsn)
+
+    # F11b: same root cause as F10/F11. `bridge_subscriptions` is FORCE RLS and this script
+    # sets no namespace context, so a role without BYPASSRLS sees zero rows and the script
+    # logs "No rows with non-NULL oauth_access_token_enc found." and returns 0 -- a clean
+    # success that migrated nothing. Not data loss, but a false "nothing to do" from the same
+    # blindness, and it would be believed.
+    rls_problem = await rls_visibility_problem(conn)
+    if rls_problem:
+        await conn.close()
+        logger.error("REFUSING TO RUN: %s", rls_problem)
+        return 2
 
     try:
         rows = await conn.fetch(
