@@ -143,10 +143,11 @@ async def test_the_guard_runs_BEFORE_any_column_work() -> None:
 # ---------------------------------------------------------------------------
 #
 # F10 was found in one script. Looking for the same class elsewhere found it twice more --
-# `rekey_master.py`, which overwrites the authoritative key file and whose own
-# verify-before-commit reads back only what RLS let it see, and `migrate_bridge_tokens.py`,
-# which reports a clean "nothing to do". All three are now guarded. This ratchet is what stops
-# a fourth from being written, because the defect is invisible in review: the code looks
+# `rekey_master.py`, which overwrote the authoritative key file and whose own
+# verify-before-commit read back only what RLS let it see, and `migrate_bridge_tokens.py`,
+# which reports a clean "nothing to do". `rekey_master.py` was deleted on 2026-09-12 as a
+# superseded single-key path, so two scripts remain and both are guarded. This ratchet is what
+# stops a third from being written, because the defect is invisible in review: the code looks
 # correct and the run reports success.
 
 
@@ -209,13 +210,21 @@ def test_every_script_reading_a_wrapped_column_calls_the_rls_guard() -> None:
 def test_discovery_floor_for_the_script_scan() -> None:
     """Guard-the-guard: a scanner that finds nothing would pass the ratchet above.
 
-    Measured 2026-09-10: exactly three scripts read a wrapped column --
-    rewrap_master_key.py, rekey_master.py, migrate_bridge_tokens.py.
+    Measured 2026-09-12: exactly **two** scripts read a wrapped column --
+    ``rewrap_master_key.py`` and ``migrate_bridge_tokens.py``.
+
+    🔴 **This floor was lowered from 3 to 2, and the reason matters**, because lowering a
+    guard-the-guard floor to make a test pass is normally the exact wrong move. It is
+    legitimate here for one reason only: the third script, ``rekey_master.py``, was
+    **deleted** on 2026-09-12 (superseded single-key rotation path that overwrote the
+    authoritative key file). The population shrank; the scanner did not. If this number ever
+    needs lowering again, check which script disappeared and why before touching it -- and if
+    none did, the scanner is broken and the floor is telling you so.
     """
 
     found = _scripts_reading_wrapped_columns()
-    assert len(found) >= 3, (
-        f"AST discovery floor breached: expected >= 3 scripts reading a wrapped column, "
+    assert len(found) >= 2, (
+        f"AST discovery floor breached: expected >= 2 scripts reading a wrapped column, "
         f"found {len(found)} ({sorted(found)}). The scan is broken, not the estate."
     )
 

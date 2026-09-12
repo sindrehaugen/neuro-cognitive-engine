@@ -890,7 +890,11 @@ def rewrap_signing_key(
     not the key the blob was written under; callers must treat that as "abort",
     never as "skip this row" -- re-wrapping a blob you cannot open destroys it.
 
-    Exposed for ``scripts/rekey_master.py``.  No new crypto, no format change.
+    No new crypto, no format change. **Currently has no caller**: its only consumer was
+    ``scripts/rekey_master.py``, deleted 2026-09-12 as the superseded single-key rotation
+    path. Kept because the ring path (``nce/master_key_ring.py``) may want exactly this
+    open-then-rewrap primitive, and because deleting a documented crypto helper is a
+    wider decision than removing the script that used it.
     """
     with SecureKeyBuffer(decrypt_signing_key(encrypted_key, old_master_key)) as raw:
         return encrypt_signing_key(bytes(raw), new_master_key)
