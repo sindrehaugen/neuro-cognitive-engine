@@ -696,8 +696,11 @@ class NCEEngine(OrchestratorBase):
                 "blob was re-wrapped under a new key and the containers kept the old one "
                 "for 26h while reporting healthy. This is not a code bug and not database "
                 "corruption: nothing is lost while the correct key still exists. Point "
-                "this deployment at the key whose fingerprint matches escrow, or re-run "
-                "scripts/rekey_master.py from the key this data was written under. Do NOT "
+                "this deployment at the key whose fingerprint matches escrow. If you "
+                "need to move the data to a different key instead, set "
+                "NCE_MASTER_KEY_PREVIOUS to the key it was written under and run "
+                "scripts/rewrap_master_key.py (see ML_KEY_ROTATION_RUNBOOK.md) -- that path "
+                "has no unsafe window and never writes key material. Do NOT "
                 "rotate the signing key to make this go away -- that re-wraps the data "
                 "under the wrong key and makes the loss permanent."
             )
