@@ -88,7 +88,7 @@ jsonschema>=4.26.0
 
 # --- Testing -----------------------------------------------------------------
 pytest>=9.1.1
-pytest-asyncio>=1.0.0
+pytest-asyncio>=1.4.0
 pytest-mock>=3.14.0
 pytest-httpx>=0.30.0
 
