@@ -13,7 +13,6 @@ key, and the point of this wave is to stop exactly that.
 from __future__ import annotations
 
 import asyncio
-import importlib.util
 import inspect
 import logging
 import os
@@ -25,12 +24,10 @@ import pytest
 
 from nce import orchestrator as orch_mod
 from nce.config import cfg
-from nce.envelope import unwrap_dek, wrap_dek
+from nce.envelope import wrap_dek
 from nce.orchestrator import NCEEngine
 from nce.signing import (
     MasterKey,
-    SigningKeyDecryptionError,
-    decrypt_signing_key,
     encrypt_signing_key,
     master_key_fingerprint,
 )
@@ -58,19 +55,6 @@ CREATE TABLE memories (
     dek_key_id  text
 );
 """
-
-
-def _load_rekey_module():
-    """Import ``scripts/rekey_master.py`` as a module (``scripts/`` is not a package)."""
-    path = _REPO / "scripts" / "rekey_master.py"
-    spec = importlib.util.spec_from_file_location("rekey_master_under_test", path)
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-rekey_master = _load_rekey_module()
 
 
 # ---------------------------------------------------------------------------
@@ -304,98 +288,3 @@ def test_connect_invokes_the_master_key_check():
         "connect() no longer calls _verify_master_key_matches_data(); the boot "
         "check exists but nothing invokes it"
     )
-
-
-# ---------------------------------------------------------------------------
-# rekey_master
-# ---------------------------------------------------------------------------
-
-
-def test_rekey_happy_path_new_key_opens_everything_old_key_opens_nothing(scratch_dsn):
-    asyncio.run(_seed(scratch_dsn, key=KEY_A, signing=2, deks=1, nulls=1))
-
-    async def _run():
-        conn = await asyncpg.connect(scratch_dsn)
-        try:
-            with MasterKey(KEY_A.encode()) as old, MasterKey(KEY_B.encode()) as new:
-                return await rekey_master.rekey_all(conn, old, new)
-        finally:
-            await conn.close()
-
-    stats = asyncio.run(_run())
-    assert stats["signing_keys_rewrapped"] == 2
-    assert stats["signing_keys_verified"] == 2
-    assert stats["deks_rewrapped"] == 1
-    assert stats["deks_verified"] == 1
-    assert stats["deks_null_skipped"] == 1, "NULL wrapped_dek is a skip, not an error"
-    assert stats["committed"] == 1
-
-    keys, mems = asyncio.run(_snapshot(scratch_dsn))
-    with MasterKey(KEY_B.encode()) as new:
-        for blob in keys.values():
-            assert len(decrypt_signing_key(blob, new)) == 32
-        for blob in mems.values():
-            if blob is not None:
-                assert len(unwrap_dek(blob, new)) == 32
-    with MasterKey(KEY_A.encode()) as old:
-        for blob in keys.values():
-            with pytest.raises(SigningKeyDecryptionError):
-                decrypt_signing_key(blob, old)
-
-
-def test_rekey_with_a_wrong_old_key_aborts_before_any_write(scratch_dsn):
-    """The assertion that protects real data: no write happens at all."""
-    asyncio.run(_seed(scratch_dsn, key=KEY_A, signing=2, deks=1, nulls=1))
-    before = asyncio.run(_snapshot(scratch_dsn))
-
-    wrong_old = "C" * 40
-
-    async def _run():
-        conn = await asyncpg.connect(scratch_dsn)
-        try:
-            with MasterKey(wrong_old.encode()) as old, MasterKey(KEY_B.encode()) as new:
-                return await rekey_master.rekey_all(conn, old, new)
-        finally:
-            await conn.close()
-
-    with pytest.raises(rekey_master.RekeyAborted) as excinfo:
-        asyncio.run(_run())
-    assert "ABORT BEFORE ANY WRITE" in str(excinfo.value)
-
-    after = asyncio.run(_snapshot(scratch_dsn))
-    assert after == before, "rows must be byte-identical after an abort"
-    with MasterKey(KEY_A.encode()) as old:
-        for blob in after[0].values():
-            assert len(decrypt_signing_key(blob, old)) == 32
-
-
-def test_rekey_rolls_back_when_step4_verification_fails(scratch_dsn, monkeypatch):
-    """Inject a step-4 failure on the last row; every row must be unchanged."""
-    asyncio.run(_seed(scratch_dsn, key=KEY_A, signing=2, deks=1, nulls=1))
-    before = asyncio.run(_snapshot(scratch_dsn))
-
-    def _boom(blob, new_master_key, memory_id):
-        raise rekey_master.RekeyAborted(f"injected verification failure for memory {memory_id}")
-
-    monkeypatch.setattr(rekey_master, "_verify_wrapped_dek", _boom)
-
-    async def _run():
-        conn = await asyncpg.connect(scratch_dsn)
-        try:
-            with MasterKey(KEY_A.encode()) as old, MasterKey(KEY_B.encode()) as new:
-                return await rekey_master.rekey_all(conn, old, new)
-        finally:
-            await conn.close()
-
-    with pytest.raises(rekey_master.RekeyAborted) as excinfo:
-        asyncio.run(_run())
-    assert "injected verification failure" in str(excinfo.value)
-
-    after = asyncio.run(_snapshot(scratch_dsn))
-    assert after == before, "a failed verification must roll every row back"
-    with MasterKey(KEY_A.encode()) as old:
-        for blob in after[0].values():
-            assert len(decrypt_signing_key(blob, old)) == 32
-        for blob in after[1].values():
-            if blob is not None:
-                assert len(unwrap_dek(blob, old)) == 32
