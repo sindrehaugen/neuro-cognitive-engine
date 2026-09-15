@@ -7,6 +7,7 @@ import json
 import logging
 import math
 import os
+import sys
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
@@ -161,13 +162,74 @@ def _require_namespace_id(
     return namespace_id, None
 
 
-async def bump_mcp_cache_generation(engine: Any, *, route: str) -> None:
+_ROUTE_PREFIX_TO_ENGINE: dict[str, str] = {
+    "api_agreements_": "agreements",
+    "api_assets_": "assets",
+    "api_business_insights_": "business_insights",
+    "api_customer_portal_": "customer_portal",
+    "api_diagnostics_": "diagnostics",
+    "api_diag_": "diagnostics",
+    "api_admin_d365_": "dynamics365",
+    "api_d365_": "dynamics365",
+    "api_dynamics365_": "dynamics365",
+    "api_economy_": "economy",
+    "api_entity_resolution_": "entity_resolution",
+    "api_merge_queue_": "entity_resolution",
+    "api_field_tech_": "field_tech",
+    "api_hr_": "hr",
+    "api_inventory_": "inventory",
+    "api_marketing_": "marketing",
+    "api_netbox_": "netbox",
+    "api_pricing_": "pricing",
+    "api_procurement_": "procurement",
+    "api_product_": "product",
+    "api_project_": "project",
+    "api_resources_": "resources",
+    "api_sales_": "sales",
+    "api_support_": "support",
+    "api_system_design_": "system_design",
+    "api_vendors_": "vendors",
+    "api_a2a_": "a2a",
+    "api_admin_memory_": "memory",
+    "api_admin_embedding_migration_": "migration",
+    "api_settings_": "global",
+    "api_admin_settings_": "global",
+}
+
+
+def _resolve_engine_name(route: str = "", explicit: str | None = None) -> str | None:
+    if explicit:
+        return None if explicit == "global" else explicit
+    if route:
+        for prefix, eng in _ROUTE_PREFIX_TO_ENGINE.items():
+            if route.startswith(prefix):
+                return None if eng == "global" else eng
+    try:
+        frame = sys._getframe(2)
+        caller_mod = frame.f_globals.get("__name__", "")
+        if caller_mod.startswith("nce.admin_handlers."):
+            mod_name = caller_mod.split(".")[-1]
+            if mod_name == "d365":
+                return "dynamics365"
+            if mod_name not in ("_shared", "settings", "fleet"):
+                return mod_name
+    except Exception:
+        pass
+    return None
+
+
+async def bump_mcp_cache_generation(
+    engine: Any,
+    *,
+    route: str = "",
+    engine_name: str | None = None,
+) -> None:
     """Invalidate cached MCP tool responses after a REST-surface mutation.
 
-    MCP tool results are cached in Redis under a global generation counter
-    (``mcp_cache_generation``).  ``nce/mcp_stdio_dispatch.py`` bumps it after
-    every successful ``mutation=True`` tool call — that bump is the only thing
-    that makes stale ``cacheable=True`` entries unreachable.
+    MCP tool results are cached in Redis under a per-engine generation counter
+    (``mcp_cache_generation:{engine}``) or the global counter (``mcp_cache_generation``).
+    ``nce/mcp_stdio_dispatch.py`` bumps it after every successful ``mutation=True`` tool
+    call — that bump is what makes stale ``cacheable=True`` entries unreachable.
 
     REST routes in this package call the same ``do_*`` cores directly and never
     reach that dispatch loop, so without this call a mutation performed over
@@ -187,14 +249,17 @@ async def bump_mcp_cache_generation(engine: Any, *, route: str) -> None:
     which is exactly the pre-existing behaviour.
 
     Args:
-        engine:  the connected ``NCEEngine`` (usually ``admin_state.engine``).
-        route:   route name, for the failure log line only.
+        engine:      the connected ``NCEEngine`` (usually ``admin_state.engine``).
+        route:       route name, for failure logging and engine inference.
+        engine_name: optional explicit engine domain (e.g. ``"assets"``). If omitted,
+                     inferred from ``route`` or the caller's module.
     """
     redis_client = getattr(engine, "redis_client", None)
     if redis_client is None:
         return
+    resolved_engine = _resolve_engine_name(route=route, explicit=engine_name)
     try:
-        await bump_cache_generation(redis_client)
+        await bump_cache_generation(redis_client, engine=resolved_engine)
     except Exception as exc:  # noqa: BLE001 - never fail a committed mutation
         logger.warning(
             "MCP cache generation bump failed after %s; cacheable MCP reads may "

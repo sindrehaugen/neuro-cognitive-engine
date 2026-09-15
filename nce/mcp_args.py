@@ -240,7 +240,7 @@ def _canonicalize(obj: Any) -> Any:
 def build_cache_key(
     tool_name: str,
     arguments: dict[str, Any],
-    generation: int = 0,
+    generation: int | str = 0,
     *,
     namespace_id: str | None = None,
 ) -> str:
@@ -383,13 +383,69 @@ async def purge_document_cache(
     return deleted
 
 
-async def bump_cache_generation(redis_client: Any) -> int:
-    """Increment the global MCP cache generation counter in Redis.
+async def bump_cache_generation(redis_client: Any, engine: str | None = None) -> int:
+    """Increment the MCP cache generation counter in Redis.
+
+    If *engine* is specified (and not ``"global"``), increments the per-engine
+    counter (``mcp_cache_generation:{engine}``), invalidating only cached tools
+    reading from that engine.
+
+    If *engine* is None or ``"global"``, increments the global counter
+    (``mcp_cache_generation``), invalidating **all** cache entries across all
+    engines.
 
     Returns the new generation value.
-    This is a coarse invalidation: **all** cache entries with a lower
-    generation become unreachable on the next read.  For fine-grained
-    namespace-scoped purge, use :func:`purge_namespace_cache` instead.
     """
-    gen = await redis_client.incr(_MCP_CACHE_GENERATION_KEY)
+    key = (
+        _MCP_CACHE_GENERATION_KEY
+        if engine is None or engine == "global"
+        else f"{_MCP_CACHE_GENERATION_KEY}:{engine}"
+    )
+    gen = await redis_client.incr(key)
     return gen
+
+
+async def get_cache_generation(
+    redis_client: Any,
+    engines: str | tuple[str, ...] | list[str] | None = None,
+) -> str | int:
+    """Retrieve the effective cache generation for one or more engines.
+
+    First reads the global generation counter (``mcp_cache_generation``).
+    If *engines* is None or empty, returns the integer global generation.
+
+    If *engines* is specified (e.g. ``("assets",)`` or multiple engines for
+    cross-engine composite reads), reads each engine's generation counter
+    (``mcp_cache_generation:{engine}``), defaulting missing values to 0.
+
+    Returns a deterministic composite string token, e.g.
+    ``"{global_gen}.{engine}={engine_gen}"`` or
+    ``"{global_gen}.{eng1}={val1},{eng2}={val2}"``.
+    """
+    global_raw = await redis_client.get(_MCP_CACHE_GENERATION_KEY)
+    global_val = int(global_raw.decode()) if global_raw else 0
+
+    if not engines:
+        return global_val
+
+    if isinstance(engines, str):
+        engine_list = [engines]
+    else:
+        engine_list = list(engines)
+
+    unique_engines = sorted(set(engine_list))
+    if not unique_engines or unique_engines == ["global"]:
+        return global_val
+
+    parts: list[str] = []
+    for eng in unique_engines:
+        if eng == "global":
+            continue
+        eng_raw = await redis_client.get(f"{_MCP_CACHE_GENERATION_KEY}:{eng}")
+        eng_val = int(eng_raw.decode()) if eng_raw else 0
+        parts.append(f"{eng}={eng_val}")
+
+    if not parts:
+        return global_val
+
+    return f"{global_val}." + ",".join(parts)
