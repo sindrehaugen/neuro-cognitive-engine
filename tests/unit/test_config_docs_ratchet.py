@@ -42,49 +42,13 @@ _NOTATION_B_DEFAULT_RE: Final[re.Pattern[str]] = re.compile(r"\*\s+\*Default:\*\
 # Every entry requires an owner, reason (>= 60 chars), source_file, and documented_default.
 # ---------------------------------------------------------------------------
 KNOWN_UNPAIRED_DOCUMENTED_DEFAULTS: Final[dict[str, dict[str, Any]]] = {
-    "BRIDGE_CRON_INTERVAL_MINUTES": {
-        "owner": "core-bridge",
-        "source_file": "docs/architecture-v1.md",
-        "documented_default": 60,
-        "reason": (
-            "Documented as 'def 60' in architecture-v1.md, but declared in nce/config.py "
-            "as raw os.getenv fallback 45 rather than through standard _int_env."
-        ),
-    },
-    "REEMBED_CRON_INTERVAL_MINUTES": {
-        "owner": "core-memory",
-        "source_file": "docs/architecture-v1.md",
-        "documented_default": 60,
-        "reason": (
-            "Documented as 'def 60' in architecture-v1.md, but declared in nce/config.py "
-            "via compound max(1, int(os.getenv(...))) rather than standard _int_env."
-        ),
-    },
-    "CONSOLIDATION_CRON_INTERVAL_MINUTES": {
-        "owner": "core-memory",
-        "source_file": "docs/architecture-v1.md",
-        "documented_default": 360,
-        "reason": (
-            "Documented as 'def 360' in architecture-v1.md, but declared in nce/config.py "
-            "via raw int(os.getenv(...)) rather than standard _int_env."
-        ),
-    },
-    "OUTBOX_RELAY_INTERVAL_SECONDS": {
-        "owner": "core-events",
-        "source_file": "docs/architecture-v1.md",
-        "documented_default": 5,
-        "reason": (
-            "Documented as 'def 5' in architecture-v1.md, but declared in nce/config.py "
-            "via compound max(1, int(os.getenv(...))) rather than standard _int_env."
-        ),
-    },
     "DECAY_PRUNE_INTERVAL_MINUTES": {
         "owner": "core-memory",
         "source_file": "docs/architecture-v1.md",
         "documented_default": 60,
         "reason": (
-            "Documented as a configurable default in architecture-v1.md, but implemented as a "
-            "hardcoded constant in nce/temporal_decay.py:57 with no config.py entry."
+            "Genuinely unpairable: implemented as module-level constant in nce/temporal_decay.py:57 "
+            "rather than configuration, so no environment declaration exists in nce/config.py."
         ),
     },
     "NCE_PRODUCT_SYNC_BATCH_SIZE": {
@@ -192,25 +156,52 @@ def _collect_all_documented_defaults(docs_root: Path) -> list[dict[str, Any]]:
 
 
 def _extract_declared_config_defaults(config_file: Path) -> dict[str, Any]:
-    """Parse nce/config.py AST and extract declared defaults for _int_env, _bool_env, etc."""
+    """Parse nce/config.py AST and extract declared defaults for _int_env, os.getenv, etc."""
     tree = ast.parse(config_file.read_bytes())
     declared: dict[str, Any] = {}
 
+    def _parse_node_val(raw_node: ast.AST) -> Any:
+        if isinstance(raw_node, ast.Constant):
+            if isinstance(raw_node.value, str):
+                return _parse_scalar_value(raw_node.value)
+            return raw_node.value
+        elif isinstance(raw_node, ast.UnaryOp) and isinstance(raw_node.op, ast.USub):
+            if isinstance(raw_node.operand, ast.Constant) and isinstance(
+                raw_node.operand.value, (int, float)
+            ):
+                return -raw_node.operand.value
+        return None
+
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-            if node.func.id in ("_int_env", "_bool_env", "_float_env", "_str_env"):
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in (
+                "_int_env",
+                "_bool_env",
+                "_float_env",
+                "_str_env",
+            ):
                 if len(node.args) >= 2:
                     env_arg = node.args[0]
                     default_arg = node.args[1]
                     if isinstance(env_arg, ast.Constant) and isinstance(env_arg.value, str):
-                        env_name = env_arg.value
-                        if isinstance(default_arg, ast.Constant):
-                            declared[env_name] = default_arg.value
-                        elif isinstance(default_arg, ast.UnaryOp) and isinstance(
-                            default_arg.op, ast.USub
-                        ):
-                            if isinstance(default_arg.operand, ast.Constant):
-                                declared[env_name] = -default_arg.operand.value
+                        val = _parse_node_val(default_arg)
+                        if val is not None:
+                            declared[env_arg.value] = val
+            else:
+                is_getenv = False
+                if isinstance(node.func, ast.Attribute) and node.func.attr == "getenv":
+                    if isinstance(node.func.value, ast.Name) and node.func.value.id == "os":
+                        is_getenv = True
+                elif isinstance(node.func, ast.Name) and node.func.id == "getenv":
+                    is_getenv = True
+
+                if is_getenv and len(node.args) >= 2:
+                    env_arg = node.args[0]
+                    default_arg = node.args[1]
+                    if isinstance(env_arg, ast.Constant) and isinstance(env_arg.value, str):
+                        val = _parse_node_val(default_arg)
+                        if val is not None:
+                            declared[env_arg.value] = val
     return declared
 
 
@@ -305,7 +296,7 @@ def test_discovery_floors_for_doc_notations() -> None:
     - Notation A: 12 documented defaults in docs/architecture-v1.md (floor >= 8)
     - Notation B: 4 documented defaults in docs/engines/product-admin.md (floor >= 3)
     - Total documented defaults: 16 (floor >= 12)
-    - Pairs compared against nce/config.py: 7 (floor >= 5)
+    - Pairs compared against nce/config.py: 11 (floor >= 8)
     """
     doc_defaults = _collect_all_documented_defaults(_DOCS_DIR)
     cfg_defaults = _extract_declared_config_defaults(_CONFIG_PATH)
@@ -323,8 +314,8 @@ def test_discovery_floors_for_doc_notations() -> None:
     assert len(doc_defaults) >= 12, (
         f"Discovery floor breached for total documented defaults: expected >= 12, found {len(doc_defaults)}"
     )
-    assert len(compared) >= 5, (
-        f"Discovery floor breached for compared pairs: expected >= 5, found {len(compared)}"
+    assert len(compared) >= 8, (
+        f"Discovery floor breached for compared pairs: expected >= 8, found {len(compared)}"
     )
 
 
