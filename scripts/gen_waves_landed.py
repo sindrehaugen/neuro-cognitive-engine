@@ -142,6 +142,9 @@ def scan_tree_stamps(repo: str, baseline: str) -> tuple[dict[str, list[str]], se
         "--",
         "nce/",
         "tests/",
+        ":!nce/config_data/waves.json",
+        ":!nce/config_data/merged_prs.json",
+        ":!tests/unit/test_waves_landed_ratchet.py",
     ]
     res = subprocess.run(cmd, capture_output=True, text=True, check=True, encoding="utf-8")
 
