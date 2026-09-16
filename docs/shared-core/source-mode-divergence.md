@@ -20,7 +20,7 @@ This guide builds upon and refines the specification outlined in **Doc 31** ([DA
 
 ## 2. Database Schema and Security Controls
 
-The C5 source-mode framework utilizes two custom relational tables in the PostgreSQL database. Security and multi-tenant isolation are enforced directly at the database layer using Postgres Row-Level Security (RLS).
+The C5 source-mode framework utilizes two custom relational tables in the PostgreSQL database. Multi-tenant isolation is specified via Postgres Row-Level Security (RLS) policies in DDL; in deployment under `mcp_user` (`rolbypassrls = true`), RLS is inert and tenant isolation is actively enforced by application `WHERE namespace_id = $1` predicates (see [`docs/vertical_engines/_security/c3-external-scope-adversarial-review.md`](../vertical_engines/_security/c3-external-scope-adversarial-review.md)).
 
 ### A. Source-Mode Configuration (`source_mode_config`)
 This table stores the active runtime source mode for each `(namespace, engine, function)` tuple.

@@ -6,7 +6,10 @@ Vendor registry operations for Vendors Axis (Batch 094).
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
+import re
 from typing import Any
 from uuid import UUID
 
@@ -292,4 +295,325 @@ async def do_get_vendor(
         "admin_fields": mongo_doc.get("admin_fields") or {},
         "merged_fields": mongo_doc.get("merged_fields") or {},
         "scorecard": scorecard_data,
+    }
+
+
+async def do_seed_vendors(
+    engine: Any,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    """Seed VENDOR identities from sales_read_model and Nettailer sources through C1.
+
+    Queries supplier accounts from tenant-isolated ``sales_read_model`` and
+    manufacturers/suppliers from ``product_catalog`` / ``product_prices``.
+    Resolves candidates through C1 entity resolution primitive to deduplicate
+    and merge into existing VENDOR identities.
+
+    Params:
+        namespace_id (str | UUID): active namespace UUID (required)
+        sources (list[str], optional): sources to seed from, subset of
+            ['sales_read_model', 'nettailer'] (default: all)
+        dry_run (bool, optional): if True, discovers and resolves candidates without writing
+        limit (int, optional): maximum total candidates to process
+    """
+    ns_raw = params.get("namespace_id")
+    if not ns_raw:
+        raise ValueError("namespace_id is required")
+    try:
+        ns_uuid = UUID(str(ns_raw)) if not isinstance(ns_raw, UUID) else ns_raw
+    except (ValueError, AttributeError) as exc:
+        raise ValueError(f"Invalid namespace_id: {exc}") from exc
+
+    sources_in = params.get("sources")
+    if sources_in is None:
+        sources = ["sales_read_model", "nettailer"]
+    elif isinstance(sources_in, list):
+        sources = [str(s).strip() for s in sources_in]
+    else:
+        sources = [str(sources_in).strip()]
+
+    dry_run = bool(params.get("dry_run", False))
+    limit_val = params.get("limit")
+    limit: int | None = None
+    if limit_val is not None:
+        try:
+            limit = int(limit_val)
+            if limit < 0:
+                limit = None
+        except (ValueError, TypeError):
+            limit = None
+
+    srm_candidates: list[dict[str, Any]] = []
+    net_candidates: list[dict[str, Any]] = []
+
+    # 1. Query sales_read_model suppliers if enabled
+    if "sales_read_model" in sources and getattr(engine, "pg_pool", None):
+        try:
+            async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
+                srm_rows = await conn.fetch(
+                    """
+                    SELECT id, entity, source_id, name, source_json
+                    FROM sales_read_model
+                    WHERE namespace_id = $1::uuid
+                      AND is_deleted = false
+                      AND (
+                          entity = 'suppliers'
+                          OR (
+                              entity = 'accounts'
+                              AND (
+                                  source_json->>'customertypecode' IN ('11', 'supplier', 'vendor')
+                                  OR lower(source_json->>'accountclassificationcode') IN ('supplier', 'vendor')
+                                  OR lower(source_json->>'relationship_type') IN ('supplier', 'vendor')
+                                  OR source_json ? 'supplier'
+                                  OR (source_json->>'is_supplier')::boolean = true
+                              )
+                          )
+                      )
+                    ORDER BY id ASC
+                    """,
+                    str(ns_uuid),
+                )
+                for row in srm_rows:
+                    raw_json = row["source_json"]
+                    source_json = (
+                        json.loads(raw_json) if isinstance(raw_json, str) else dict(raw_json or {})
+                    )
+                    name = (
+                        row["name"]
+                        or source_json.get("name")
+                        or source_json.get("accountname")
+                        or ""
+                    ).strip()
+                    if not name:
+                        continue
+
+                    raw_orgnr = (
+                        source_json.get("organizationnumber")
+                        or source_json.get("orgnr")
+                        or source_json.get("accountnumber")
+                        or source_json.get("vatnumber")
+                    )
+                    if raw_orgnr:
+                        clean_orgnr = re.sub(r"[^A-Za-z0-9]", "", str(raw_orgnr)).strip().upper()
+                    else:
+                        clean_source_id = (
+                            re.sub(r"[^A-Za-z0-9_]", "", str(row["source_id"])).strip().upper()
+                        )
+                        clean_orgnr = (
+                            f"SRM_{clean_source_id}" if clean_source_id else f"SRM_{row['id']}"
+                        )
+
+                    source_id = f"sales_read_model:{row['source_id']}"
+                    feed_fields = {
+                        "source": "sales_read_model",
+                        "entity": row["entity"],
+                        "source_id": row["source_id"],
+                    }
+                    for k, v in source_json.items():
+                        if k not in ("name", "organizationnumber", "orgnr"):
+                            feed_fields[k] = v
+
+                    srm_candidates.append(
+                        {
+                            "source": "sales_read_model",
+                            "name": name,
+                            "orgnr": clean_orgnr,
+                            "source_id": source_id,
+                            "feed_fields": feed_fields,
+                        }
+                    )
+        except Exception as e:
+            log.warning("do_seed_vendors: error querying sales_read_model: %s", e)
+
+    # 2. Query Nettailer catalog manufacturers and prices suppliers if enabled
+    if "nettailer" in sources and getattr(engine, "pg_pool", None):
+        net_map: dict[str, dict[str, Any]] = {}
+        try:
+            async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
+                mfr_rows = await conn.fetch(
+                    """
+                    SELECT DISTINCT manufacturer
+                    FROM product_catalog
+                    WHERE is_deleted = false
+                      AND manufacturer IS NOT NULL
+                      AND trim(manufacturer) != ''
+                    ORDER BY manufacturer ASC
+                    """
+                )
+                for r in mfr_rows:
+                    mfr_name = (r["manufacturer"] or "").strip()
+                    if not mfr_name:
+                        continue
+                    if mfr_name not in net_map:
+                        net_map[mfr_name] = {
+                            "name": mfr_name,
+                            "is_manufacturer": True,
+                            "is_supplier": False,
+                        }
+                    else:
+                        net_map[mfr_name]["is_manufacturer"] = True
+        except Exception as e:
+            log.warning("do_seed_vendors: error querying product_catalog: %s", e)
+
+        try:
+            async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
+                supp_rows = await conn.fetch(
+                    """
+                    SELECT DISTINCT supplier
+                    FROM product_prices
+                    WHERE namespace_id = $1::uuid
+                      AND supplier IS NOT NULL
+                      AND trim(supplier) != ''
+                    ORDER BY supplier ASC
+                    """,
+                    str(ns_uuid),
+                )
+                for r in supp_rows:
+                    supp_name = (r["supplier"] or "").strip()
+                    if not supp_name:
+                        continue
+                    if supp_name not in net_map:
+                        net_map[supp_name] = {
+                            "name": supp_name,
+                            "is_manufacturer": False,
+                            "is_supplier": True,
+                        }
+                    else:
+                        net_map[supp_name]["is_supplier"] = True
+        except Exception as e:
+            log.warning("do_seed_vendors: error querying product_prices: %s", e)
+
+        for item in net_map.values():
+            name = item["name"]
+            clean_slug = re.sub(r"[^A-Z0-9]", "", name.upper())[:32]
+            if not clean_slug:
+                clean_slug = hashlib.sha256(name.encode("utf-8")).hexdigest()[:16].upper()
+            fallback_orgnr = f"NET_{clean_slug}"
+            source_id = f"nettailer:{name}"
+            feed_fields = {
+                "source": "nettailer",
+                "is_manufacturer": item["is_manufacturer"],
+                "is_supplier": item["is_supplier"],
+            }
+            net_candidates.append(
+                {
+                    "source": "nettailer",
+                    "name": name,
+                    "orgnr": fallback_orgnr,
+                    "source_id": source_id,
+                    "feed_fields": feed_fields,
+                }
+            )
+
+    all_candidates = srm_candidates + net_candidates
+    if limit is not None:
+        all_candidates = all_candidates[:limit]
+
+    seeded_vendors: list[dict[str, Any]] = []
+    srm_seeded = 0
+    net_seeded = 0
+
+    # 3. Resolve each candidate through C1 and upsert
+    for cand in all_candidates:
+        cand_source = cand["source"]
+        cand_name = cand["name"]
+        cand_orgnr = cand["orgnr"]
+        cand_source_id = cand["source_id"]
+        cand_feed = cand["feed_fields"]
+
+        # Run C1 resolve to see if an existing VENDOR node matches
+        action = "create"
+        final_orgnr = cand_orgnr
+
+        if getattr(engine, "pg_pool", None):
+            try:
+                async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
+                    matches = await resolve(
+                        conn,
+                        namespace_id=ns_uuid,
+                        candidate={"orgnr": cand_orgnr, "name": cand_name},
+                        keys=["orgnr", "name"],
+                        node_type=_NODE_TYPE_VENDOR,
+                    )
+                    if matches:
+                        top_match = matches[0]
+                        if top_match.score >= 0.8:
+                            row = await conn.fetchrow(
+                                "SELECT label FROM kg_nodes WHERE id = $1 AND namespace_id = $2::uuid",
+                                top_match.node_id,
+                                str(ns_uuid),
+                            )
+                            if row and row["label"]:
+                                lbl = row["label"]
+                                matched_orgnr = lbl.split(":", 1)[-1]
+                                final_orgnr = matched_orgnr
+                                action = "update"
+
+                    if action == "create":
+                        # Also check if exact label exists in kg_nodes
+                        label_check = f"VENDOR:{final_orgnr.upper()}"
+                        existing_node = await conn.fetchrow(
+                            "SELECT id FROM kg_nodes WHERE label = $1 AND namespace_id = $2::uuid",
+                            label_check,
+                            str(ns_uuid),
+                        )
+                        if existing_node:
+                            action = "update"
+            except Exception as e:
+                log.warning("do_seed_vendors: C1 resolution lookup warning: %s", e)
+
+        if dry_run:
+            seeded_vendors.append(
+                {
+                    "source": cand_source,
+                    "name": cand_name,
+                    "orgnr": final_orgnr,
+                    "label": f"VENDOR:{final_orgnr.upper()}",
+                    "source_id": cand_source_id,
+                    "action": action,
+                    "dry_run": True,
+                }
+            )
+        else:
+            try:
+                upsert_res = await do_upsert_vendor(
+                    engine,
+                    {
+                        "namespace_id": ns_uuid,
+                        "orgnr": final_orgnr,
+                        "name": cand_name,
+                        "source_id": cand_source_id,
+                        "feed_fields": cand_feed,
+                        "source_type": "feed",
+                    },
+                )
+                seeded_vendors.append(
+                    {
+                        "source": cand_source,
+                        "name": cand_name,
+                        "orgnr": final_orgnr,
+                        "label": upsert_res["label"],
+                        "payload_ref": upsert_res.get("payload_ref"),
+                        "source_id": cand_source_id,
+                        "action": action,
+                    }
+                )
+                if cand_source == "sales_read_model":
+                    srm_seeded += 1
+                elif cand_source == "nettailer":
+                    net_seeded += 1
+            except Exception as e:
+                log.error("do_seed_vendors: failed to upsert candidate %s: %s", cand_name, e)
+
+    return {
+        "ok": True,
+        "namespace_id": str(ns_uuid),
+        "dry_run": dry_run,
+        "sales_read_model_candidates": len(srm_candidates),
+        "sales_read_model_seeded": srm_seeded,
+        "nettailer_candidates": len(net_candidates),
+        "nettailer_seeded": net_seeded,
+        "total_candidates": len(all_candidates),
+        "total_seeded": len(seeded_vendors) if not dry_run else 0,
+        "vendors": seeded_vendors,
     }

@@ -109,6 +109,8 @@ class ToolSpec:
     cacheable: bool = False
     mutation: bool = False
     migration: bool = False
+    engine: str | None = None
+    engine_dependencies: tuple[str, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -852,6 +854,14 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # Sales divergence log parity window reader (Wave S-7)
+    # Advisor tool: admin_only=False, mutation=False, cacheable=True.
+    "sales_divergence_log": ToolSpec(
+        _h(sales_mcp_handlers, "handle_sales_divergence_log"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # ------------------------------------------------------------------
     # Vendors vertical module tools (Batch 096)
     # ------------------------------------------------------------------
@@ -953,6 +963,8 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         cacheable=True,
         admin_only=False,
         mutation=False,
+        engine="agreements",
+        engine_dependencies=("agreements", "economy"),
     ),
     "agreements_reconcile_kickback": ToolSpec(
         _h(agreements_mcp_handlers, "handle_agreements_reconcile_kickback"),
@@ -1582,40 +1594,63 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
     "customer_portal_room_tracker": ToolSpec(
         _h(customer_portal_mcp_handlers, "handle_customer_portal_room_tracker"),
         cacheable=True,
+        engine="customer_portal",
+        engine_dependencies=("customer_portal", "system_design", "inventory", "assets"),
+        admin_only=True,
     ),
     "customer_portal_room_overview": ToolSpec(
         _h(customer_portal_mcp_handlers, "handle_customer_portal_room_overview"),
         cacheable=True,
+        engine="customer_portal",
+        engine_dependencies=("customer_portal", "system_design", "inventory", "assets"),
+        admin_only=True,
     ),
     "customer_portal_asset_register": ToolSpec(
         _h(customer_portal_mcp_handlers, "handle_customer_portal_asset_register"),
         cacheable=True,
+        engine="customer_portal",
+        engine_dependencies=("customer_portal", "assets"),
+        admin_only=True,
     ),
     "customer_portal_list_documents": ToolSpec(
         _h(customer_portal_mcp_handlers, "handle_customer_portal_list_documents"),
         cacheable=True,
+        engine="customer_portal",
+        admin_only=True,
     ),
     "customer_portal_sla_status": ToolSpec(
         _h(customer_portal_mcp_handlers, "handle_customer_portal_sla_status"),
         cacheable=True,
+        engine="customer_portal",
+        engine_dependencies=("customer_portal", "support", "agreements"),
+        admin_only=True,
     ),
     "customer_portal_list_invoices": ToolSpec(
         _h(customer_portal_mcp_handlers, "handle_customer_portal_list_invoices"),
         cacheable=True,
+        engine="customer_portal",
+        engine_dependencies=("customer_portal", "economy"),
+        admin_only=True,
     ),
     "customer_portal_advisor_answer": ToolSpec(
         _h(customer_portal_mcp_handlers, "handle_customer_portal_advisor_answer"),
         cacheable=False,
+        engine="customer_portal",
+        admin_only=True,
     ),
     "customer_portal_raise_service_request": ToolSpec(
         _h(customer_portal_mcp_handlers, "handle_customer_portal_raise_service_request"),
         cacheable=False,
         mutation=True,
+        engine="customer_portal",
+        admin_only=True,
     ),
     "customer_portal_register_expansion_interest": ToolSpec(
         _h(customer_portal_mcp_handlers, "handle_customer_portal_register_expansion_interest"),
         cacheable=False,
         mutation=True,
+        engine="customer_portal",
+        admin_only=True,
     ),
     # ML16 (Business Insights Engine) — Module 16 executive decision support
     "business_insights_morning_brief": ToolSpec(
@@ -1623,36 +1658,72 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         cacheable=True,
         admin_only=True,
         mutation=False,
+        engine="business_insights",
+        engine_dependencies=(
+            "business_insights",
+            "economy",
+            "project",
+            "support",
+            "sales",
+            "resources",
+            "inventory",
+        ),
     ),
     "business_insights_risk_radar": ToolSpec(
         _h(business_insights_mcp_handlers, "handle_business_insights_risk_radar"),
         cacheable=True,
         admin_only=True,
         mutation=False,
+        engine="business_insights",
+        engine_dependencies=(
+            "business_insights",
+            "economy",
+            "project",
+            "support",
+            "sales",
+            "resources",
+            "inventory",
+            "assets",
+            "agreements",
+        ),
     ),
     "business_insights_run_scenario": ToolSpec(
         _h(business_insights_mcp_handlers, "handle_business_insights_run_scenario"),
         cacheable=False,
         admin_only=True,
         mutation=False,
+        engine="business_insights",
     ),
     "business_insights_generate_board_pack": ToolSpec(
         _h(business_insights_mcp_handlers, "handle_business_insights_generate_board_pack"),
         cacheable=False,
         admin_only=True,
         mutation=False,
+        engine="business_insights",
     ),
     "business_insights_kpi_dashboard": ToolSpec(
         _h(business_insights_mcp_handlers, "handle_business_insights_kpi_dashboard"),
         cacheable=True,
         admin_only=True,
         mutation=False,
+        engine="business_insights",
+        engine_dependencies=(
+            "business_insights",
+            "economy",
+            "project",
+            "support",
+            "sales",
+            "resources",
+            "inventory",
+            "assets",
+        ),
     ),
     "business_insights_ask_business": ToolSpec(
         _h(business_insights_mcp_handlers, "handle_business_insights_ask_business"),
         cacheable=False,
         admin_only=True,
         mutation=False,
+        engine="business_insights",
     ),
 }
 
@@ -1730,3 +1801,43 @@ def register_tool(name: str, spec: ToolSpec, *, replace: bool = False) -> None:
         raise ValueError(f"tool {name!r} is already registered; pass replace=True to override")
     TOOL_REGISTRY[name] = spec
     _refresh_derived_sets()
+
+
+def infer_tool_engine(spec: ToolSpec) -> str | None:
+    """Infer the primary engine domain for a ToolSpec from its handler module."""
+    if spec.engine:
+        return spec.engine
+    qualname = getattr(spec.handler, "__qualname__", "")
+    module_name = qualname.rsplit(".", 1)[0] if "." in qualname else ""
+    if not module_name:
+        module_name = getattr(spec.handler, "__module__", "") or ""
+
+    if module_name.startswith("nce.vertical_modules."):
+        parts = module_name.split(".")
+        return parts[2]
+    if module_name.startswith("nce.entity_resolution"):
+        return "entity_resolution"
+    if module_name.startswith("nce.pricing"):
+        return "pricing"
+    return None
+
+
+def get_tool_engine(tool_name: str) -> str | None:
+    """Return the engine domain for a registered tool, or None if global/unscoped."""
+    spec = TOOL_REGISTRY.get(tool_name)
+    if spec is None:
+        return None
+    return infer_tool_engine(spec)
+
+
+def get_tool_dependencies(tool_name: str) -> tuple[str, ...]:
+    """Return the set of engine dependencies that invalidate this tool's cache."""
+    spec = TOOL_REGISTRY.get(tool_name)
+    if spec is None:
+        return ()
+    if spec.engine_dependencies:
+        return spec.engine_dependencies
+    primary = infer_tool_engine(spec)
+    if primary:
+        return (primary,)
+    return ()

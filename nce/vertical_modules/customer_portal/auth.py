@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -27,16 +28,16 @@ NIL_UUID = UUID("00000000-0000-0000-0000-000000000000")
 
 def evaluate_customer_scope_access(
     session_scope_id: UUID | str | None,
-    record_scope_id: UUID | str,
+    record_scope_id: UUID | str | None,
 ) -> bool:
     """Evaluate whether session_scope_id is authorized to access record_scope_id.
 
     Replicates the database external_isolation_policy logic:
       - Deny-when-unset: Unset, empty, or nil-UUID session returns False.
-      - Record with nil-UUID scope is never accessible.
+      - Record with nil-UUID or unset scope is never accessible.
       - Exact match required; cross-customer IDOR attempts are refused.
     """
-    if not session_scope_id:
+    if not session_scope_id or not record_scope_id:
         return False
 
     try:
@@ -60,6 +61,27 @@ def evaluate_customer_scope_access(
         return False
 
     return session_uuid == record_uuid
+
+
+def enforce_customer_scope(params: dict[str, Any]) -> str:
+    """Enforce authoritative customer scope and fail closed on IDOR or missing scope.
+
+    Guarantees:
+      - Deny-when-unset: Unset, empty, or nil-UUID customer_scope_id raises PermissionError.
+      - Cross-customer access: If target_scope_id is specified and differs from customer_scope_id,
+        raises PermissionError.
+      - Eradicates caller-controlled self-comparison tautologies.
+    """
+    cust_scope = params.get("customer_scope_id")
+    target_scope = params.get("target_scope_id")
+    if target_scope is not None:
+        if not evaluate_customer_scope_access(cust_scope, target_scope):
+            raise PermissionError(
+                f"IDOR attempt: scope {cust_scope} denied access to scope {target_scope}"
+            )
+    elif not cust_scope or not evaluate_customer_scope_access(cust_scope, cust_scope):
+        raise PermissionError(f"IDOR attempt: scope {cust_scope} denied access")
+    return str(cust_scope)
 
 
 @asynccontextmanager

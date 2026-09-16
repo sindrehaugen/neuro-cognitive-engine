@@ -25,6 +25,7 @@ from nce.vertical_modules.sales.dealroom import do_open_dealroom
 from nce.vertical_modules.sales.flip import (
     do_flip_function,
     do_morning_brief_slice,
+    do_read_sales_divergence,
     do_stalled_deal_watcher,
 )
 from nce.vertical_modules.sales.graph import (
@@ -76,6 +77,7 @@ __all__ = [
     "do_on_signed_callback",
     "do_open_dealroom",
     "do_quote_detail",
+    "do_read_sales_divergence",
     "do_record_ai_decision",
     "do_record_deal_loss_feedback",
     "do_request_signature",

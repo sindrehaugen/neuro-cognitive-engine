@@ -14,12 +14,17 @@ from nce.vertical_modules.vendors.frontier import do_calibrate_weights, do_relia
 from nce.vertical_modules.vendors.matching import do_match_contractor
 from nce.vertical_modules.vendors.partner_view import do_partner_view
 from nce.vertical_modules.vendors.performance import do_compute_performance, do_recall_similar_jobs
-from nce.vertical_modules.vendors.registry import do_get_vendor, do_upsert_vendor
+from nce.vertical_modules.vendors.registry import (
+    do_get_vendor,
+    do_seed_vendors,
+    do_upsert_vendor,
+)
 from nce.vertical_modules.vendors.scorecard import do_compute_scorecard
 from nce.vertical_modules.vendors.tiers import do_get_tier_status, do_record_outcome
 
 __all__ = [
     "do_upsert_vendor",
+    "do_seed_vendors",
     "do_get_vendor",
     "do_compute_scorecard",
     "do_partner_view",

@@ -238,6 +238,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/sales/dashboard` | `api_admin_sales_dashboard` |
 | POST | `/api/sales/deals` | `api_admin_sales_create_deal` |
 | POST | `/api/sales/deals/edit` | `api_admin_sales_edit_deal` |
+| GET | `/api/sales/divergences` | `api_admin_sales_divergences` |
 | POST | `/api/sales/leads` | `api_admin_sales_create_lead` |
 | GET | `/api/sales/manager` | `api_admin_sales_manager` |
 | GET | `/api/sales/overview` | `api_admin_sales_overview` |
@@ -274,6 +275,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/vendors/contractors/upsert` | `api_vendors_upsert_contractor` |
 | GET | `/api/vendors/contractors/{id}` | `api_vendors_get_contractor` |
 | GET | `/api/vendors/scorecard` | `api_vendors_scorecard` |
+| POST | `/api/vendors/seed` | `api_vendors_seed` |
 | POST | `/api/vendors/upsert` | `api_vendors_upsert` |
 | GET | `/api/vendors/{id}` | `api_vendors_get_vendor` |
 | GET | `/healthz` | `get_healthz` |
@@ -327,15 +329,15 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `connect_bridge` |  | yes |  |  |
 | `consolidation_status` |  |  |  |  |
 | `create_snapshot` |  | yes |  |  |
-| `customer_portal_advisor_answer` |  |  |  |  |
-| `customer_portal_asset_register` |  |  | yes |  |
-| `customer_portal_list_documents` |  |  | yes |  |
-| `customer_portal_list_invoices` |  |  | yes |  |
-| `customer_portal_raise_service_request` |  | yes |  |  |
-| `customer_portal_register_expansion_interest` |  | yes |  |  |
-| `customer_portal_room_overview` |  |  | yes |  |
-| `customer_portal_room_tracker` |  |  | yes |  |
-| `customer_portal_sla_status` |  |  | yes |  |
+| `customer_portal_advisor_answer` | yes |  |  |  |
+| `customer_portal_asset_register` | yes |  | yes |  |
+| `customer_portal_list_documents` | yes |  | yes |  |
+| `customer_portal_list_invoices` | yes |  | yes |  |
+| `customer_portal_raise_service_request` | yes | yes |  |  |
+| `customer_portal_register_expansion_interest` | yes | yes |  |  |
+| `customer_portal_room_overview` | yes |  | yes |  |
+| `customer_portal_room_tracker` | yes |  | yes |  |
+| `customer_portal_sla_status` | yes |  | yes |  |
 | `d365_case_stress_report` |  |  | yes |  |
 | `d365_list_sla_breaches` | yes |  |  |  |
 | `d365_netbox_mappings` |  |  | yes |  |
@@ -489,6 +491,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_create_customer` | yes | yes |  |  |
 | `sales_create_deal` | yes | yes |  |  |
 | `sales_create_lead` | yes | yes |  |  |
+| `sales_divergence_log` |  |  | yes |  |
 | `sales_edit_deal` | yes | yes |  |  |
 | `sales_get_quote_lines` |  |  |  |  |
 | `sales_get_signed_baseline` |  |  |  |  |
@@ -545,4 +548,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 269 REST endpoints, 258 MCP tools._
+_Totals: 271 REST endpoints, 259 MCP tools._

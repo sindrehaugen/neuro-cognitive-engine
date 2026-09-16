@@ -746,12 +746,16 @@ async def _clear_test_cache_keys(client: Any) -> None:
     keys = await client.keys("mcp_cache:v*")
     if keys:
         await client.delete(*keys)
-    await client.delete("mcp_cache_generation")
+    gen_keys = await client.keys("mcp_cache_generation*")
+    if gen_keys:
+        await client.delete(*gen_keys)
 
 
-async def _cache_generation(client: Any) -> int:
-    raw = await client.get("mcp_cache_generation")
-    return int(raw.decode()) if raw else 0
+async def _cache_generation(client: Any) -> str | int:
+    from nce.mcp_args import get_cache_generation
+    from nce.tool_registry import get_tool_dependencies
+
+    return await get_cache_generation(client, engines=get_tool_dependencies(_READ_TOOL))
 
 
 async def _topology_cache_key(client: Any, ns_id: uuid.UUID) -> str:
@@ -2110,7 +2114,7 @@ class TestCacheInvalidation:
         generation_before = await _cache_generation(redis_client)
         await _dispatch_ok(engine, _TOPOLOGY_TOOL, _topology_args(ns_id))
         generation_after = await _cache_generation(redis_client)
-        assert generation_after > generation_before, (
+        assert generation_after != generation_before, (
             "the mutation did not bump the cache generation"
         )
 

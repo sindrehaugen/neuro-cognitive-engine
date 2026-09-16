@@ -623,6 +623,11 @@ def build_admin_routes() -> list[Route]:
             endpoint=sales_handlers.api_admin_sales_calculate_commission,
             methods=["GET"],
         ),
+        Route(
+            "/api/sales/divergences",
+            endpoint=sales_handlers.api_admin_sales_divergences,
+            methods=["GET"],
+        ),
         # ------------------------------------------------------------------
         # Entity resolution admin endpoints
         # ------------------------------------------------------------------
@@ -825,6 +830,11 @@ def build_admin_routes() -> list[Route]:
         Route(
             "/api/vendors/certs/upsert",
             endpoint=vendors_handlers.api_vendors_upsert_cert,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/vendors/seed",
+            endpoint=vendors_handlers.api_vendors_seed,
             methods=["POST"],
         ),
         Route(

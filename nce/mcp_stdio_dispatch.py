@@ -150,7 +150,13 @@ async def execute_call_tool(
                     # the guard existed three lines under the call that needed it most.
                     if spec.mutation:
                         try:
-                            await bump_cache_generation(engine.redis_client)
+                            from nce.tool_registry import get_tool_engine
+
+                            tool_engine = get_tool_engine(name)
+                            if tool_engine is not None:
+                                await bump_cache_generation(engine.redis_client, engine=tool_engine)
+                            else:
+                                await bump_cache_generation(engine.redis_client)
                         except Exception as bump_exc:  # noqa: BLE001 - see above
                             log.warning(
                                 "%s: MCP cache generation bump failed after a committed "

@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING, Any
 from mcp.types import TextContent
 
 from nce import quotas as _quotas
-from nce.mcp_args import build_cache_key
+from nce.mcp_args import build_cache_key, get_cache_generation
 from nce.mcp_errors import MCP_AUTH_FAILED, McpError, merge_client_error_data
-from nce.tool_registry import CACHEABLE_TOOLS
+from nce.tool_registry import CACHEABLE_TOOLS, get_tool_dependencies
 
 log = logging.getLogger("nce-mcp")
 
@@ -34,8 +34,8 @@ async def _try_cached_mcp_tool_response(
         return None, None
 
     try:
-        gen_raw = await eng.redis_client.get("mcp_cache_generation")
-        gen_val = int(gen_raw.decode()) if gen_raw else 0
+        deps = get_tool_dependencies(tool_name)
+        gen_val = await get_cache_generation(eng.redis_client, deps)
         ns_id = arguments.get("namespace_id")
         cache_key = build_cache_key(
             tool_name=tool_name,

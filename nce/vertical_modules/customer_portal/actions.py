@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from nce.engine_registry import EngineDisabledError, EngineNotFoundError
-from nce.vertical_modules.customer_portal.auth import evaluate_customer_scope_access
+from nce.vertical_modules.customer_portal.auth import enforce_customer_scope
 from nce.vertical_modules.customer_portal.redaction import project_customer_safe
 
 log = logging.getLogger("nce.vertical_modules.customer_portal.actions")
@@ -29,12 +29,7 @@ _IDEMPOTENCY_CACHE: dict[tuple[str, str], dict[str, Any]] = {}
 
 async def do_raise_service_request(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
     """Raise inbound service request with contract-B gating and Support hand-off."""
-    cust_scope = params.get("customer_scope_id")
-    target_scope = params.get("target_scope_id", cust_scope)
-    if not evaluate_customer_scope_access(cust_scope, target_scope):
-        raise PermissionError(
-            f"IDOR attempt: scope {cust_scope} denied access to scope {target_scope}"
-        )
+    cust_scope = enforce_customer_scope(params)
 
     # Contract-B entitlement or spend authorization gating
     contract_b_covered = params.get("contract_b_covered", True)
@@ -112,12 +107,7 @@ async def do_raise_service_request(engine: Any, params: dict[str, Any]) -> dict[
 
 async def do_register_expansion_interest(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
     """Register customer expansion interest and route to human-gated Sales lead queue."""
-    cust_scope = params.get("customer_scope_id")
-    target_scope = params.get("target_scope_id", cust_scope)
-    if not evaluate_customer_scope_access(cust_scope, target_scope):
-        raise PermissionError(
-            f"IDOR attempt: scope {cust_scope} denied access to scope {target_scope}"
-        )
+    cust_scope = enforce_customer_scope(params)
 
     interest_id = str(params.get("interest_id") or f"exp-{uuid.uuid4().hex[:8]}")
     now_iso = datetime.now(timezone.utc).isoformat()

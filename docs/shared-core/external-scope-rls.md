@@ -1,10 +1,14 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** audited · **Verified-against:** `628b231` (main) · **Last-audited:** 2026-09-16
 
 # Doc 61 — Shared Core External Scope RLS Guide
 
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** audited · **Verified-against:** `628b231` (main) · **Last-audited:** 2026-09-16
 
 The NCE Shared Core Row-Level Security (RLS) model includes a specialized security primitive (**Component C3**) designed to enforce database isolation *below* the tenant namespace level. While tenant isolation separates namespaces (tenants) from one another, external scope isolation restricts access for external-facing actors (such as contractors, vendors, and customers) to their designated partition of data within a namespace.
+
+> [!WARNING]
+> **Deployment Reality (2026-09-16, Wave A-T6 / PR #148):**
+> On the running estate, the connecting database role is `mcp_user` (`rolsuper = true, rolbypassrls = true`), not `nce_app`. Zero RLS policies target `mcp_user`, and `scoped_pg_session` never issues `SET ROLE`. Consequently, **PostgreSQL Row-Level Security (RLS) is completely INERT as deployed**. SQL queries must explicitly filter by `partner_scope_id` in their `WHERE` clause (e.g. `WHERE contractor_id = $1 AND namespace_id = $2 AND partner_scope_id = $3`). Omitting the predicate under the assumption that RLS will filter rows exposes data across partners. See full proof in [`docs/vertical_engines/_security/c3-external-scope-adversarial-review.md`](../vertical_engines/_security/c3-external-scope-adversarial-review.md).
 
 This guide outlines the system design, the session Grand Unified Configuration (GUC) variables, the deny-when-unset policy, the three-tier threat model, Python execution integration, and threat mitigation logic.
 
@@ -138,7 +142,10 @@ async def do_get_contractor(
             partner_scope_uuid = UUID(str(partner_scope_raw))
             await set_external_scope(conn, partner_scope_uuid)
 
-        # Execute query. RLS automatically enforces namespace and external scope predicates.
+        # 🔴 RUNTIME NOTE: Under mcp_user, RLS is inert. The query below relies on application-level
+        # WHERE clauses. Omitting partner_scope_id from WHERE (as shown in the legacy query below)
+        # fails to filter across scopes in deployment (see c3-external-scope-adversarial-review.md).
+        # Secure query pattern requires: AND partner_scope_id = $3
         row = await conn.fetchrow(
             """
             SELECT contractor_id, namespace_id, partner_scope_id, profile, rates, skills

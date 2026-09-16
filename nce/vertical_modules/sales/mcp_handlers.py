@@ -35,6 +35,7 @@ from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import mcp_handler
 from nce.vertical_modules.sales.baseline import get_signed_baseline
 from nce.vertical_modules.sales.commission import do_calculate_commission
+from nce.vertical_modules.sales.flip import do_read_sales_divergence
 from nce.vertical_modules.sales.lines import do_add_quote_line, do_get_quote_lines
 from nce.vertical_modules.sales.signing import do_request_signature
 from nce.vertical_modules.sales.write_routing import (
@@ -436,4 +437,42 @@ async def handle_sales_calculate_commission(engine: NCEEngine, arguments: dict[s
         params["deal_data"] = arguments["deal_data"]
 
     result = await do_calculate_commission(engine, params)
+    return json.dumps(result)
+
+
+@mcp_handler
+async def handle_sales_divergence_log(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: sales_divergence_log — read Sales divergence log and evaluate parity window.
+
+    Evaluates discrepancies logged during C5 'both' mode synchronization between
+    D365 and NCE. Returns parity metrics, whether a cutover flip to 'nce' mode
+    is blocked, and paginated divergence log items.
+
+    Arguments
+    ---------
+    namespace_id   : str (required)
+    window_days    : float (optional, default 7.0)
+    window_seconds : float (optional)
+    entity         : str (optional, e.g. "accounts", "opportunities")
+    limit          : int (optional, default 100, max 500)
+    offset         : int (optional, default 0)
+
+    Returns
+    -------
+    JSON body with parity status and divergence entries.
+    """
+    ns = require_namespace_id(arguments)
+    params: dict[str, Any] = {"namespace_id": ns}
+    if "window_days" in arguments and arguments["window_days"] is not None:
+        params["window_days"] = float(arguments["window_days"])
+    if "window_seconds" in arguments and arguments["window_seconds"] is not None:
+        params["window_seconds"] = float(arguments["window_seconds"])
+    if "entity" in arguments and arguments["entity"] is not None:
+        params["entity"] = str(arguments["entity"]).strip()
+    if "limit" in arguments and arguments["limit"] is not None:
+        params["limit"] = int(arguments["limit"])
+    if "offset" in arguments and arguments["offset"] is not None:
+        params["offset"] = int(arguments["offset"])
+
+    result = await do_read_sales_divergence(engine, params)
     return json.dumps(result)

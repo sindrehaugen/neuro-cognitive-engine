@@ -17,6 +17,7 @@ Exports:
   ``api_admin_sales_targets_get`` — GET  /api/sales/targets
   ``api_admin_sales_targets_put`` — PUT  /api/sales/targets
   ``api_admin_sales_calculate_commission`` — GET  /api/sales/commission
+  ``api_admin_sales_divergences`` — GET  /api/sales/divergences
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ from nce.admin_handlers._shared import (
 from nce.db_utils import scoped_pg_session
 from nce.source_mode.divergence import flip_blocked
 from nce.vertical_modules.sales.commission import do_calculate_commission
+from nce.vertical_modules.sales.flip import do_read_sales_divergence
 from nce.vertical_modules.sales.read_model import (
     do_get_targets,
     do_set_target,
@@ -1018,4 +1020,81 @@ async def api_admin_sales_calculate_commission(request) -> JSONResponse:
             exc,
             status_code=500,
             log_event="api_admin_sales_calculate_commission",
+        )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/sales/divergences
+# ---------------------------------------------------------------------------
+
+
+async def api_admin_sales_divergences(request) -> JSONResponse:
+    """GET /api/sales/divergences
+
+    Read Sales divergence log entries and evaluate the parity window.
+
+    Query parameters:
+        namespace_id   (str, required): Active namespace UUID.
+        window_days    (float, optional): Window size in days (default 7.0).
+        window_seconds (float, optional): Window size in seconds (overrides window_days).
+        entity         (str, optional): Entity filter (e.g. "accounts", "opportunities").
+        limit          (int, optional): Max items (default 100, max 500).
+        offset         (int, optional): Pagination offset (default 0).
+
+    Response (JSON):
+        {
+          "ok": True,
+          "namespace_id": str,
+          "engine": "sales",
+          "window_seconds": float,
+          "clean": bool,
+          "flip_blocked": bool,
+          "divergences_count": int,
+          "material_divergences_count": int,
+          "alert_threshold": float,
+          "items": list[dict],
+        }
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id = str(request.query_params.get("namespace_id") or "").strip()
+    if err_resp := _validate_namespace_query_param(namespace_id):
+        return err_resp
+
+    params: dict[str, Any] = {"namespace_id": namespace_id}
+    if "window_days" in request.query_params:
+        try:
+            params["window_days"] = float(request.query_params["window_days"])
+        except (ValueError, TypeError):
+            return JSONResponse({"error": "window_days must be a number"}, status_code=422)
+    if "window_seconds" in request.query_params:
+        try:
+            params["window_seconds"] = float(request.query_params["window_seconds"])
+        except (ValueError, TypeError):
+            return JSONResponse({"error": "window_seconds must be a number"}, status_code=422)
+    if "entity" in request.query_params and request.query_params["entity"].strip():
+        params["entity"] = request.query_params["entity"].strip()
+    if "limit" in request.query_params:
+        try:
+            params["limit"] = int(request.query_params["limit"])
+        except (ValueError, TypeError):
+            return JSONResponse({"error": "limit must be an integer"}, status_code=422)
+    if "offset" in request.query_params:
+        try:
+            params["offset"] = int(request.query_params["offset"])
+        except (ValueError, TypeError):
+            return JSONResponse({"error": "offset must be an integer"}, status_code=422)
+
+    try:
+        result = await do_read_sales_divergence(admin_state.engine, params)
+        return JSONResponse(result, status_code=200)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Sales divergence log error",
+            exc,
+            status_code=500,
+            log_event="api_admin_sales_divergences",
         )

@@ -13,18 +13,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from nce.vertical_modules.customer_portal.auth import evaluate_customer_scope_access
+from nce.vertical_modules.customer_portal.auth import enforce_customer_scope
 from nce.vertical_modules.customer_portal.redaction import project_customer_safe
 
 
 async def do_list_invoices(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
     """List customer invoices with commercial margin and cost stripped."""
-    cust_scope = params.get("customer_scope_id")
-    target_scope = params.get("target_scope_id", cust_scope)
-    if not evaluate_customer_scope_access(cust_scope, target_scope):
-        raise PermissionError(
-            f"IDOR attempt: scope {cust_scope} denied access to scope {target_scope}"
-        )
+    cust_scope = enforce_customer_scope(params)
 
     raw_invoices = params.get("invoices", [])
 

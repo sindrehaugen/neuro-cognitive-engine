@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 258  # 257 baseline + 1 Economy GL records tool (Wave B-AG1 / B-E2)
+_EXPECTED_TOTAL = 259  # 258 baseline + 1 Sales divergence log tool (Wave S-7)
 
 
 def test_registry_has_expected_entries():
@@ -422,6 +422,8 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "economy_validate_contract",
         # Wave B-AG1 / B-E2 -- Economy GL records retrieval (cacheable read)
         "economy_get_gl_records",
+        # Wave S-7 -- Sales divergence log parity window reader (cacheable read)
+        "sales_divergence_log",
     }
 )
 
@@ -434,7 +436,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 99  # 98 baseline + 1 Economy GL records tool (Wave B-AG1 / B-E2)
+    assert len(CACHEABLE_TOOLS) == 100  # 99 baseline + 1 Sales divergence log tool (Wave S-7)
 
 
 # ---------------------------------------------------------------------------
@@ -565,6 +567,16 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "sales_edit_deal",
         # MLV15D-E2 -- Economy outbound EHF generation ([ADMIN])
         "economy_generate_ehf",
+        # Wave T-6 / Estate Review -- Customer Portal Engine internal MCP admin tools (9 tools)
+        "customer_portal_room_tracker",
+        "customer_portal_room_overview",
+        "customer_portal_asset_register",
+        "customer_portal_list_documents",
+        "customer_portal_sla_status",
+        "customer_portal_list_invoices",
+        "customer_portal_advisor_answer",
+        "customer_portal_raise_service_request",
+        "customer_portal_register_expansion_interest",
     }
 )
 
@@ -577,7 +589,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 77  # 76 baseline + 1 Economy EHF tool (Wave E-2)
+    assert len(ADMIN_ONLY_TOOLS) == 86  # 77 baseline + 9 Customer Portal tools (Wave T-6)
 
 
 # ---------------------------------------------------------------------------

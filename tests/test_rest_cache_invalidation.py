@@ -47,10 +47,14 @@ import redis.asyncio as aioredis
 from nce import admin_state
 from nce.admin_handlers import assets as assets_routes
 from nce.admin_handlers import entity_resolution as er_routes
+from nce.admin_handlers._shared import bump_mcp_cache_generation
 from nce.auth import _mcp_bound_namespace_id
+from nce.config import live_admin_api_key
 from nce.entity_resolution import mcp_handlers as er_cores
 from nce.mcp_stdio_dispatch import execute_call_tool
 from nce.vertical_modules.assets import mcp_handlers as assets_cores
+from nce.vertical_modules.customer_portal import mcp_handlers as cp_cores
+from nce.vertical_modules.support import mcp_handlers as support_cores
 
 pytestmark = pytest.mark.integration
 
@@ -96,7 +100,9 @@ async def _clear_test_keys(client: Any) -> None:
     keys = await client.keys("mcp_cache:v*")
     if keys:
         await client.delete(*keys)
-    await client.delete("mcp_cache_generation")
+    gen_keys = await client.keys("mcp_cache_generation*")
+    if gen_keys:
+        await client.delete(*gen_keys)
 
 
 class _StubRequest:
@@ -320,6 +326,213 @@ async def test_rest_merge_queue_confirm_invalidates_mcp_queue_listing(monkeypatc
             f"tool `merge_queue_list` still lists it as pending: {second['pending']!r}. "
             "A reviewer keeps seeing a decided row for the full MCP_CACHE_TTL_S."
         )
+    finally:
+        await _clear_test_keys(redis_client)
+        await redis_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_rest_mutation_in_engine_x_does_not_invalidate_engine_y(monkeypatch):
+    """Wave A-T2: Prove per-engine cache generation scoping.
+
+    A mutation in Engine X (assets) must invalidate Engine X's cached reads,
+    but must NOT invalidate Engine Y's cached reads (support_query_ticket).
+    A subsequent global mutation must invalidate both engines.
+    """
+    monkeypatch.setattr("nce.quotas.cfg.NCE_QUOTAS_ENABLED", False)
+
+    redis_client = await _open_redis()
+    namespace_id = _mcp_bound_namespace_id() or str(uuid.uuid4())
+    asset_id = str(uuid.uuid4())
+    ticket_id = str(uuid.uuid4())
+
+    # --- Engine X (assets) state and fakes ---
+    asset_db = {"lifecycle_state": "RECEIVED"}
+
+    async def fake_do_get_asset(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "asset": {"id": asset_id, "lifecycle_state": asset_db["lifecycle_state"]},
+        }
+
+    async def fake_do_advance_lifecycle(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
+        asset_db["lifecycle_state"] = params["target_state"]
+        return {
+            "ok": True,
+            "changed": True,
+            "asset_id": params["asset_id"],
+            "new_state": params["target_state"],
+        }
+
+    monkeypatch.setattr(assets_cores, "do_get_asset", fake_do_get_asset)
+    monkeypatch.setattr(assets_routes, "do_advance_lifecycle", fake_do_advance_lifecycle)
+
+    # --- Engine Y (support) state and fakes ---
+    support_call_count = 0
+
+    async def fake_check_support_enabled(engine: Any, arguments: dict[str, Any]) -> str:
+        return namespace_id
+
+    async def fake_do_query_ticket(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
+        nonlocal support_call_count
+        support_call_count += 1
+        return {
+            "ticket": {"id": ticket_id, "status": "OPEN", "priority": "HIGH"},
+        }
+
+    monkeypatch.setattr(support_cores, "_check_support_enabled", fake_check_support_enabled)
+    monkeypatch.setattr(support_cores, "do_query_ticket", fake_do_query_ticket)
+
+    engine = _StubEngine(redis_client)
+    monkeypatch.setattr(admin_state, "engine", engine, raising=False)
+
+    assets_read_args = {
+        "namespace_id": namespace_id,
+        "agent_id": "u1",
+        "asset_id": asset_id,
+    }
+    support_read_args = {
+        "namespace_id": namespace_id,
+        "agent_id": "u1",
+        "ticket_id": ticket_id,
+    }
+
+    try:
+        # 1. Warm cache for Engine X (assets_get)
+        first_asset = await execute_call_tool(engine, "assets_get", dict(assets_read_args))
+        first_asset_payload = json.loads(first_asset[0].text)
+        assert first_asset_payload["asset"]["lifecycle_state"] == "RECEIVED"
+
+        # 2. Warm cache for Engine Y (support_query_ticket)
+        first_support = await execute_call_tool(
+            engine, "support_query_ticket", dict(support_read_args)
+        )
+        first_support_payload = json.loads(first_support[0].text)
+        assert first_support_payload["ticket"]["status"] == "OPEN"
+        assert support_call_count == 1, (
+            "Engine Y handler should have been called once on cache miss"
+        )
+
+        # Verify Redis cache has entries for both
+        cached_keys = await redis_client.keys("mcp_cache:v*")
+        assert len(cached_keys) >= 2, f"Expected at least 2 cached keys, got {cached_keys}"
+
+        # 3. Mutate Engine X via REST (assets_advance_lifecycle)
+        request = _StubRequest(
+            path_params={"id": asset_id},
+            body={"namespace_id": namespace_id, "target_state": "VERIFIED"},
+        )
+        response = await assets_routes.api_assets_advance_lifecycle(request)
+        assert response.status_code == 200, getattr(response, "body", response)
+        assert asset_db["lifecycle_state"] == "VERIFIED"
+
+        # 4. Read Engine X (assets_get) — must be INVALIDATED (cache miss -> fresh data)
+        second_asset = await execute_call_tool(engine, "assets_get", dict(assets_read_args))
+        second_asset_payload = json.loads(second_asset[0].text)
+        assert second_asset_payload["asset"]["lifecycle_state"] == "VERIFIED", (
+            "Engine X (assets) cache was not invalidated by its own REST mutation"
+        )
+
+        # 5. Read Engine Y (support_query_ticket) — must NOT be invalidated (CACHE HIT!)
+        second_support = await execute_call_tool(
+            engine, "support_query_ticket", dict(support_read_args)
+        )
+        second_support_payload = json.loads(second_support[0].text)
+        assert second_support_payload["ticket"]["status"] == "OPEN"
+        assert support_call_count == 1, (
+            "ISOLATION FAILURE (Wave A-T2): mutating Engine X (assets) invalidated "
+            f"Engine Y (support)! support_call_count is {support_call_count}, expected 1 (cache hit)."
+        )
+
+        # 6. Global mutation (e.g. settings write) must invalidate BOTH engines
+        await bump_mcp_cache_generation(engine, route="api_settings_update")
+
+        # Reading Engine Y now must be a cache miss (calling the core again)
+        third_support = await execute_call_tool(
+            engine, "support_query_ticket", dict(support_read_args)
+        )
+        assert json.loads(third_support[0].text)["ticket"]["status"] == "OPEN"
+        assert support_call_count == 2, (
+            "GLOBAL BUMP FAILURE: global cache generation bump did not invalidate Engine Y"
+        )
+    finally:
+        await _clear_test_keys(redis_client)
+        await redis_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_cross_engine_read_invalidation_dependencies(monkeypatch):
+    """Prove that cross-engine composite reads are invalidated when any component engine mutates.
+
+    `customer_portal_room_tracker` depends on ("customer_portal", "system_design", "inventory", "assets").
+    - Mutating unrelated engine (support) must NOT invalidate it (cache hit).
+    - Mutating component engine (assets) MUST invalidate it (cache miss).
+    - Mutating another component engine (inventory) MUST invalidate it (cache miss).
+    """
+    monkeypatch.setattr("nce.quotas.cfg.NCE_QUOTAS_ENABLED", False)
+
+    redis_client = await _open_redis()
+    namespace_id = _mcp_bound_namespace_id() or str(uuid.uuid4())
+
+    cp_call_count = 0
+
+    async def fake_do_room_tracker(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
+        nonlocal cp_call_count
+        cp_call_count += 1
+        return {
+            "room_stage": "in_progress",
+            "percent_ready": 50,
+            "call_count": cp_call_count,
+        }
+
+    monkeypatch.setattr(cp_cores, "do_room_tracker", fake_do_room_tracker)
+
+    engine = _StubEngine(redis_client)
+    monkeypatch.setattr(admin_state, "engine", engine, raising=False)
+
+    read_args = {
+        "namespace_id": namespace_id,
+        "agent_id": "u1",
+        "room_id": str(uuid.uuid4()),
+        "customer_scope_id": str(uuid.uuid4()),
+        "admin_api_key": live_admin_api_key(),
+    }
+
+    try:
+        # 1. Warm cache for customer_portal_room_tracker
+        res1 = await execute_call_tool(engine, "customer_portal_room_tracker", dict(read_args))
+        assert cp_call_count == 1
+        assert json.loads(res1[0].text)["call_count"] == 1
+
+        # 2. Mutate UNRELATED engine (support)
+        await bump_mcp_cache_generation(engine, route="api_support_open_ticket")
+
+        # 3. Read again — must be a CACHE HIT (unrelated mutation does not invalidate)
+        res2 = await execute_call_tool(engine, "customer_portal_room_tracker", dict(read_args))
+        assert cp_call_count == 1, (
+            f"Unrelated engine mutation (support) evicted cross-engine read! cp_call_count={cp_call_count}"
+        )
+        assert json.loads(res2[0].text)["call_count"] == 1
+
+        # 4. Mutate COMPONENT engine (assets)
+        await bump_mcp_cache_generation(engine, route="api_assets_advance_lifecycle")
+
+        # 5. Read again — must be a CACHE MISS (component engine invalidated)
+        res3 = await execute_call_tool(engine, "customer_portal_room_tracker", dict(read_args))
+        assert cp_call_count == 2, (
+            "Component engine mutation (assets) failed to invalidate composite read!"
+        )
+        assert json.loads(res3[0].text)["call_count"] == 2
+
+        # 6. Mutate another COMPONENT engine (inventory)
+        await bump_mcp_cache_generation(engine, route="api_inventory_transfer_stock")
+
+        # 7. Read again — must be a CACHE MISS (component engine invalidated)
+        res4 = await execute_call_tool(engine, "customer_portal_room_tracker", dict(read_args))
+        assert cp_call_count == 3, (
+            "Component engine mutation (inventory) failed to invalidate composite read!"
+        )
+        assert json.loads(res4[0].text)["call_count"] == 3
     finally:
         await _clear_test_keys(redis_client)
         await redis_client.aclose()
