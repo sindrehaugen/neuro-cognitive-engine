@@ -8,6 +8,7 @@ Exports:
   ``api_vendors_upsert_contractor``   — POST /api/vendors/contractors/upsert
   ``api_vendors_get_contractor``      — GET  /api/vendors/contractors/{id}
   ``api_vendors_upsert_cert``         — POST /api/vendors/certs/upsert
+  ``api_vendors_seed``                — POST /api/vendors/seed
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from nce.db_utils import scoped_pg_session
 from nce.vertical_modules.vendors import (
     do_get_contractor,
     do_get_vendor,
+    do_seed_vendors,
     do_upsert_cert,
     do_upsert_contractor,
     do_upsert_vendor,
@@ -399,4 +401,48 @@ async def api_vendors_upsert_cert(request: Any) -> JSONResponse:
             exc,
             status_code=500,
             log_event="api_vendors_upsert_cert",
+        )
+
+
+async def api_vendors_seed(request: Any) -> JSONResponse:
+    """POST /api/vendors/seed — Seed VENDOR identities from sales_read_model & Nettailer.
+
+    Body parameters:
+        namespace_id (str, required): Active namespace UUID.
+        sources (list[str], optional): Data sources to seed from (default: ['sales_read_model', 'nettailer']).
+        dry_run (bool, optional): If true, evaluate and return candidates without writing.
+        limit (int, optional): Maximum number of candidates to process.
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    data = await _extract_request_data(request)
+    namespace_id = data.get("namespace_id", "")
+    if isinstance(namespace_id, str):
+        namespace_id = namespace_id.strip()
+    if not namespace_id:
+        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
+
+    namespace_id = validate_agent_id(str(namespace_id))
+    try:
+        UUID(namespace_id)
+    except ValueError as exc:
+        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+
+    params = dict(data)
+    params["namespace_id"] = namespace_id
+
+    try:
+        result = await do_seed_vendors(admin_state.engine, params)
+        if not params.get("dry_run"):
+            await bump_mcp_cache_generation(admin_state.engine, route="api_vendors_seed")
+        return JSONResponse({"status": "ok", "result": result})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Vendors seed error",
+            exc,
+            status_code=500,
+            log_event="api_vendors_seed",
         )

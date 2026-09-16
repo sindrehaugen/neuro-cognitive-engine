@@ -274,6 +274,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/vendors/contractors/upsert` | `api_vendors_upsert_contractor` |
 | GET | `/api/vendors/contractors/{id}` | `api_vendors_get_contractor` |
 | GET | `/api/vendors/scorecard` | `api_vendors_scorecard` |
+| POST | `/api/vendors/seed` | `api_vendors_seed` |
 | POST | `/api/vendors/upsert` | `api_vendors_upsert` |
 | GET | `/api/vendors/{id}` | `api_vendors_get_vendor` |
 | GET | `/healthz` | `get_healthz` |
@@ -545,4 +546,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 269 REST endpoints, 258 MCP tools._
+_Totals: 270 REST endpoints, 258 MCP tools._
