@@ -49,6 +49,7 @@ from nce.admin_handlers import assets as assets_routes
 from nce.admin_handlers import entity_resolution as er_routes
 from nce.admin_handlers._shared import bump_mcp_cache_generation
 from nce.auth import _mcp_bound_namespace_id
+from nce.config import live_admin_api_key
 from nce.entity_resolution import mcp_handlers as er_cores
 from nce.mcp_stdio_dispatch import execute_call_tool
 from nce.vertical_modules.assets import mcp_handlers as assets_cores
@@ -493,6 +494,8 @@ async def test_cross_engine_read_invalidation_dependencies(monkeypatch):
         "namespace_id": namespace_id,
         "agent_id": "u1",
         "room_id": str(uuid.uuid4()),
+        "customer_scope_id": str(uuid.uuid4()),
+        "admin_api_key": live_admin_api_key(),
     }
 
     try:

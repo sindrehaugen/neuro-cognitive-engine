@@ -20,6 +20,7 @@ import json
 import logging
 from typing import Any
 
+from nce.auth import resolve_customer_scope
 from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import mcp_handler
 from nce.vertical_modules.customer_portal.actions import (
@@ -39,13 +40,33 @@ from nce.vertical_modules.customer_portal.sla import do_sla_status
 log = logging.getLogger("nce.vertical_modules.customer_portal.mcp_handlers")
 
 
+async def _resolve_portal_mcp_scope(engine: Any, params: dict[str, Any]) -> str:
+    """Resolve, validate, and audit customer_scope_id for internal MCP operator surface.
+
+    Raises ValueError if customer_scope_id is missing, nil-UUID, or invalid.
+    Emits WORM `customer_scope_impersonated` audit event.
+    """
+    require_namespace_id(params)
+    scope = await resolve_customer_scope(
+        None,
+        params,
+        namespace_id=params.get("namespace_id"),
+        engine=engine,
+        reason="mcp_customer_portal_operator",
+    )
+    if not scope:
+        raise ValueError("customer_scope_id is required for customer_portal MCP operations")
+    params["customer_scope_id"] = scope
+    return scope
+
+
 @mcp_handler
 async def handle_customer_portal_room_tracker(
     engine: Any,
     params: dict[str, Any],
 ) -> str:
     """Project Domino's tracker progression and room status safely."""
-    require_namespace_id(params)
+    await _resolve_portal_mcp_scope(engine, params)
     result = await do_room_tracker(engine, params)
     return json.dumps(result, default=str)
 
@@ -56,7 +77,7 @@ async def handle_customer_portal_room_overview(
     params: dict[str, Any],
 ) -> str:
     """Project overall customer rooms readiness rollup."""
-    require_namespace_id(params)
+    await _resolve_portal_mcp_scope(engine, params)
     result = await do_room_overview(engine, params)
     return json.dumps(result, default=str)
 
@@ -67,7 +88,7 @@ async def handle_customer_portal_asset_register(
     params: dict[str, Any],
 ) -> str:
     """Project room-centric asset register with commercial values redacted."""
-    require_namespace_id(params)
+    await _resolve_portal_mcp_scope(engine, params)
     result = await do_asset_register(engine, params)
     return json.dumps(result, default=str)
 
@@ -78,7 +99,7 @@ async def handle_customer_portal_list_documents(
     params: dict[str, Any],
 ) -> str:
     """List granted, unexpired, and unrevoked documents for customer scope."""
-    require_namespace_id(params)
+    await _resolve_portal_mcp_scope(engine, params)
     result = await do_list_documents(engine, params)
     return json.dumps(result, default=str)
 
@@ -89,7 +110,7 @@ async def handle_customer_portal_sla_status(
     params: dict[str, Any],
 ) -> str:
     """Project SLA self-service clock and tier status without internal MRR/costs."""
-    require_namespace_id(params)
+    await _resolve_portal_mcp_scope(engine, params)
     result = await do_sla_status(engine, params)
     return json.dumps(result, default=str)
 
@@ -100,7 +121,7 @@ async def handle_customer_portal_list_invoices(
     params: dict[str, Any],
 ) -> str:
     """List customer invoices with margin, internal cost, and rebate stripped."""
-    require_namespace_id(params)
+    await _resolve_portal_mcp_scope(engine, params)
     result = await do_list_invoices(engine, params)
     return json.dumps(result, default=str)
 
@@ -111,7 +132,7 @@ async def handle_customer_portal_advisor_answer(
     params: dict[str, Any],
 ) -> str:
     """Sandboxed AI customer advisor answering room progress and intake inquiries."""
-    require_namespace_id(params)
+    await _resolve_portal_mcp_scope(engine, params)
     result = await do_advisor_answer(engine, params)
     return json.dumps(result, default=str)
 
@@ -122,7 +143,7 @@ async def handle_customer_portal_raise_service_request(
     params: dict[str, Any],
 ) -> str:
     """Inbound customer service request intake with Contract-B gating and Support hand-off."""
-    require_namespace_id(params)
+    await _resolve_portal_mcp_scope(engine, params)
     result = await do_raise_service_request(engine, params)
     return json.dumps(result, default=str)
 
@@ -133,6 +154,6 @@ async def handle_customer_portal_register_expansion_interest(
     params: dict[str, Any],
 ) -> str:
     """Inbound customer re-buy or expansion interest hand-off to Sales lead queue."""
-    require_namespace_id(params)
+    await _resolve_portal_mcp_scope(engine, params)
     result = await do_register_expansion_interest(engine, params)
     return json.dumps(result, default=str)
