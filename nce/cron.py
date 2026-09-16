@@ -1344,6 +1344,72 @@ async def _hr_compliance_watcher_tick(pool: asyncpg.Pool) -> None:
         await release_cron_lock(lock)
 
 
+_SALES_STALLED_DEAL_WATCHER_INTERVAL_MINUTES: int = 60
+
+
+async def _sales_stalled_deal_watcher_tick(pool: asyncpg.Pool) -> None:
+    """
+    APScheduler job: scan opportunities/deals in namespaces and dispatch alerts
+    for stalled deals with no updates (Wave S-4).
+    """
+    ttl = _SALES_STALLED_DEAL_WATCHER_INTERVAL_MINUTES * 60 + 60
+    lock: CronLock | None = await acquire_cron_lock("sales_stalled_deal_watcher", ttl)
+    if lock is None:
+        log.debug("Skipping sales_stalled_deal_watcher — lock held by another instance")
+        return
+    try:
+        from nce.vertical_modules.sales.flip import do_stalled_deal_watcher
+
+        class _PoolEngine:
+            def __init__(self, p: asyncpg.Pool) -> None:
+                self.pg_pool = p
+
+        engine = _PoolEngine(pool)
+
+        async with unmanaged_pg_connection(
+            pool, site="cron.sales_stalled_deal_watcher.namespace_scan"
+        ) as conn:
+            rows = await conn.fetch("SELECT id FROM namespaces")
+
+        for row in rows:
+            ns_id: UUID = row["id"]
+            try:
+                stats = await do_stalled_deal_watcher(engine, {"namespace_id": str(ns_id)})
+                count = stats.get("stalled_deals_count", 0)
+                log.debug(
+                    "sales_stalled_deal_watcher tick namespace=%s stalled_deals=%d",
+                    ns_id,
+                    count,
+                )
+                if count > 0:
+                    deals = stats.get("stalled_deals", [])
+                    sample_str = "; ".join(
+                        f"Deal {d.get('deal_id')} ({d.get('name')})" for d in deals[:5]
+                    )
+                    await _dispatch_throttled_alert(
+                        f"cron.sales_stalled_deal_watcher.{ns_id}",
+                        f"Stalled Deals Detected: Namespace {ns_id}",
+                        f"{count} stalled deal(s) detected in namespace {ns_id}: {sample_str}",
+                    )
+            except _CRON_TICK_ERRORS as exc:
+                log.exception("sales_stalled_deal_watcher tick failed for namespace=%s", ns_id)
+                await _dispatch_throttled_alert(
+                    f"cron.sales_stalled_deal_watcher.{ns_id}",
+                    f"Sales Stalled Deal Watcher Failed: Namespace {ns_id}",
+                    f"Sales stalled deal watcher tick failed for namespace {ns_id}: "
+                    f"{type(exc).__name__}: {exc}",
+                )
+    except _CRON_TICK_ERRORS as exc:
+        log.exception("sales_stalled_deal_watcher tick failed unexpectedly")
+        await _dispatch_throttled_alert(
+            "cron.sales_stalled_deal_watcher.global",
+            "Cron Job Failed: sales_stalled_deal_watcher",
+            f"Sales stalled deal watcher tick failed unexpectedly: {type(exc).__name__}: {exc}",
+        )
+    finally:
+        await release_cron_lock(lock)
+
+
 async def _actor_trust_tick(pool: asyncpg.Pool) -> None:
     """
     Hourly tick: recompute Laplace-smoothed trust scores in ``actor_trust``.
@@ -2335,6 +2401,17 @@ async def async_main() -> None:
         replace_existing=True,
     )
 
+    sales_stalled_minutes = max(1, int(_SALES_STALLED_DEAL_WATCHER_INTERVAL_MINUTES))
+    scheduler.add_job(
+        _sales_stalled_deal_watcher_tick,
+        IntervalTrigger(minutes=sales_stalled_minutes),
+        args=[pool],
+        id="sales_stalled_deal_watcher",
+        coalesce=True,
+        max_instances=1,
+        replace_existing=True,
+    )
+
     scheduler.start()
     log.info(
         "Started bridge renewal scheduler: interval=%s min, lookahead=%s h",
@@ -2378,6 +2455,7 @@ async def async_main() -> None:
         _vendors_cert_expiry_watcher_tick(pool, mongo_client),
         _support_sla_watcher_tick(pool),
         _hr_compliance_watcher_tick(pool),
+        _sales_stalled_deal_watcher_tick(pool),
     ]
     if cfg.NCE_D365_ENABLED:
         startup_coros.append(_d365_sync_tick(pool))

@@ -638,6 +638,11 @@ def build_admin_routes() -> list[Route]:
             endpoint=sales_handlers.api_admin_sales_divergences,
             methods=["GET"],
         ),
+        Route(
+            "/api/sales/morning-brief",
+            endpoint=sales_handlers.api_admin_sales_morning_brief_slice,
+            methods=["GET"],
+        ),
         # ------------------------------------------------------------------
         # Entity resolution admin endpoints
         # ------------------------------------------------------------------

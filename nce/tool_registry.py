@@ -862,6 +862,14 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # Sales morning brief slice reader (Wave S-4)
+    # Advisor tool: admin_only=False, mutation=False, cacheable=True.
+    "sales_morning_brief_slice": ToolSpec(
+        _h(sales_mcp_handlers, "handle_sales_morning_brief_slice"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # ------------------------------------------------------------------
     # Vendors vertical module tools (Batch 096)
     # ------------------------------------------------------------------

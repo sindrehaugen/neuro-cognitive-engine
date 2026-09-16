@@ -4212,6 +4212,24 @@ TOOLS = [
         },
     ),
     Tool(
+        name="sales_morning_brief_slice",
+        description=(
+            "Read executive morning brief metrics for the Sales vertical: "
+            "open pipeline value, at-risk deals count, and deals won during the period."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "period_days": {
+                    "type": "integer",
+                    "description": "Lookback period in days for won deals (default 7).",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
         name="sales_ping",
         description=(
             'Liveness probe for the Sales vertical. Returns {"ok": true, "engine": "sales"}.'
