@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 260  # 259 baseline + 1 Sales morning brief slice tool (Wave S-4)
+_EXPECTED_TOTAL = 262  # 260 baseline + 2 Sales lead score & quote draft tools (Wave S-5)
 
 
 def test_registry_has_expected_entries():
@@ -426,6 +426,9 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "sales_divergence_log",
         # Wave S-4 -- Sales morning brief slice reader (cacheable read)
         "sales_morning_brief_slice",
+        # Wave S-5 -- Sales lead score & quote draft advisors (cacheable read)
+        "sales_score_lead",
+        "sales_draft_quote",
     }
 )
 
@@ -438,7 +441,9 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 101  # 100 baseline + 1 Sales morning brief slice tool (Wave S-4)
+    assert (
+        len(CACHEABLE_TOOLS) == 103
+    )  # 101 baseline + 2 Sales lead score & quote draft tools (Wave S-5)
 
 
 # ---------------------------------------------------------------------------
