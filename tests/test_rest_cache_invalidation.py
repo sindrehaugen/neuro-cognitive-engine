@@ -493,6 +493,7 @@ async def test_cross_engine_read_invalidation_dependencies(monkeypatch):
         "namespace_id": namespace_id,
         "agent_id": "u1",
         "room_id": str(uuid.uuid4()),
+        "customer_scope_id": str(uuid.uuid4()),
     }
 
     try:

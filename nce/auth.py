@@ -1768,26 +1768,12 @@ async def _resolve_scoped_impersonation(
     # 1. Verified principal context on request
     if request is not None and hasattr(request, "state"):
         caller_ctx = getattr(request.state, "caller_ctx", None)
-        if (
-            caller_ctx is not None
-            and not hasattr(caller_ctx, "_mock_return_value")
-            and getattr(caller_ctx, "external_scope_id", None) is not None
-            and not hasattr(getattr(caller_ctx, "external_scope_id"), "_mock_return_value")
-        ):
+        if caller_ctx is not None and getattr(caller_ctx, "external_scope_id", None) is not None:
             return str(caller_ctx.external_scope_id)
-
-        state_dict = getattr(request.state, "__dict__", {})
-        state_scope = None
-        if scope_field in state_dict:
-            state_scope = state_dict[scope_field]
-        elif "external_scope_id" in state_dict:
-            state_scope = state_dict["external_scope_id"]
-        elif not hasattr(request.state, "_mock_return_value"):
-            state_scope = getattr(request.state, scope_field, None) or getattr(
-                request.state, "external_scope_id", None
-            )
-
-        if state_scope is not None and not hasattr(state_scope, "_mock_return_value"):
+        state_scope = getattr(request.state, scope_field, None) or getattr(
+            request.state, "external_scope_id", None
+        )
+        if state_scope is not None:
             return str(state_scope)
 
     # 2. Extract raw candidate scope
