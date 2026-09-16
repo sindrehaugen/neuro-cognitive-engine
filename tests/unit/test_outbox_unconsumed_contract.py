@@ -55,7 +55,7 @@ async def test_unconsumed_selector_drains_without_dlq_or_alert(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Gate: Emitting a catalogued UNCONSUMED selector drains without DLQ or alerts."""
-    selector = "BOM_LINE.upserted"
+    selector = "AGREEMENT.upserted"
     contract = EVENT_CATALOGUE.get(selector)
     assert contract is not None, f"Expected {selector} to be in EVENT_CATALOGUE"
     assert contract.status == "UNCONSUMED" or not contract.declared_consumers
@@ -71,10 +71,10 @@ async def test_unconsumed_selector_drains_without_dlq_or_alert(
     mock_event = {
         "id": event_id,
         "namespace_id": namespace_id,
-        "aggregate_type": "bom_line",
+        "aggregate_type": "agreement",
         "aggregate_id": uuid4(),
         "event_type": selector,
-        "payload": json.dumps({"line_id": "line-123"}),
+        "payload": json.dumps({"agr_id": "agr-123"}),
         "headers": None,
         "attempt_count": 0,
         "created_at": datetime.now(timezone.utc),

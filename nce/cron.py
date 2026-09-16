@@ -2089,6 +2089,7 @@ async def async_main() -> None:
     # second process that runs the relay (the first is nce/mcp_stdio_main.py), and
     # OUTBOX_HANDLERS is per-process state -- registering in only one of them
     # leaves the other dead-lettering every System Design authoring event it polls.
+    from nce.read_model_subscribers import register_read_model_subscribers
     from nce.vertical_modules.field_tech.work_orders import (
         register_field_tech_subscribers,
     )
@@ -2106,6 +2107,7 @@ async def async_main() -> None:
     )
 
     register_system_design_subscribers()
+    register_read_model_subscribers()
     register_field_tech_subscribers()
     register_resources_event_subscribers()
     register_hr_compliance_subscribers()
