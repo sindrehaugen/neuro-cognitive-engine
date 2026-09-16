@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `1e402e1` (public `main`) · **Last-audited:** 2026-09-06
+> **Status:** shipped · **Verified-against:** `0565772` (public `main`) · **Last-audited:** 2026-09-16
 
 # NCE Vertical Engines — Build & Production Status
 
@@ -26,13 +26,13 @@
 | Instrument | Value |
 |---|---|
 | Module packages under `nce/vertical_modules/` | **20** (17 engines + `diagnostics`, `dynamics365`, `netbox`) |
-| `TOOL_REGISTRY` entries | **222** MCP tools (66 shared + 156 engine) |
+| `TOOL_REGISTRY` entries | **258** MCP tools (69 shared + 189 engine) |
 | REST routes on the admin app | measured per-engine in [`docs/_generated/surface.md`](../_generated/surface.md) (+12 on the Customer Portal's own app shell) — regenerate for a total, do not hand-add the column |
 | `do_*` domain cores | **228** distinct names across the 17 engines |
-| SQL migrations | 70 files (+1 optional), `001` → `074` — gaps at `002`, `009`, `059` (never allocated); `010` exists only under `nce/migrations/optional/`. **Corrected 2026-09-06: this row previously said "67 files, 059/066/072 unused" — 066 and 072 are real, in-use migrations (`system_namespace`, `business_insights_engine`); only 002/009/059 were ever actually skipped.** |
+| SQL migrations | 74 files (+1 optional), `001` → `078` — gaps at `002`, `009`, `059` (never allocated); `010` exists only under `nce/migrations/optional/`. **Corrected 2026-09-06: this row previously said "67 files, 059/066/072 unused" — 066 and 072 are real, in-use migrations (`system_namespace`, `business_insights_engine`); only 002/009/059 were ever actually skipped.** |
 | `EXPECTED_TENANT_RLS_TABLES` | **87** |
 | Tests | **6,423** `def test_` across 528 files |
-| Golden Thread seam burndown | **8 of 28** lifecycle steps still broken (5 distinct seams — `break-degradations` closed by Wave I-5, 2026-09-06) — generated, cannot go stale: [`docs/_generated/golden_thread_seams.md`](../_generated/golden_thread_seams.md) |
+| Golden Thread seam burndown | **0 of 28** lifecycle steps broken (0 distinct seams) — mirrored from [`docs/_generated/golden_thread_seams.md`](../_generated/golden_thread_seams.md) (generated directly from `tests/integration/test_golden_thread.py` strict xfails; this summary count is only as fresh as its last manual copy, refer to the generated page for live truth) |
 
 **Status legend**
 
