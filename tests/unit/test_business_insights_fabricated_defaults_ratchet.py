@@ -28,6 +28,7 @@ import pytest
 from nce.degradation import get_degradation_register
 from nce.vertical_modules.business_insights.board_pack import do_generate_board_pack
 from nce.vertical_modules.business_insights.radar import do_risk_radar
+from nce.vertical_modules.business_insights.scenario import do_run_scenario
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _BI_DIR = _REPO_ROOT / "nce" / "vertical_modules" / "business_insights"
@@ -69,27 +70,6 @@ KNOWN_PRESENTATION_DEFAULTS: dict[tuple[str, str, Any], str] = {
     ("scenario.py", "name", "Forward Commercial & Capital Scenario"): (
         "scenario.py:76 -- default human-readable label for simulation graph nodes."
     ),
-    ("scenario.py", "months", 6): (
-        "scenario.py:98 -- simulation forward horizon in months if unspecified in assumptions."
-    ),
-    ("scenario.py", "baseline_cash", 2000000.0): (
-        "scenario.py:99 -- default starting cash assumption for forward Monte Carlo cashflow model."
-    ),
-    ("scenario.py", "monthly_burn", 150000.0): (
-        "scenario.py:100 -- default monthly operational burn assumption if unspecified."
-    ),
-    ("scenario.py", "available_capacity_fte", 10.0): (
-        "scenario.py:131 -- baseline staffing capacity assumption for forward pipeline feasibility."
-    ),
-    ("scenario.py", "value", 0.0): (
-        "scenario.py:105, 107, 157 -- default deal value 0.0 when evaluating pipeline assumptions."
-    ),
-    ("scenario.py", "staff_needed_fte", 0.0): (
-        "scenario.py:109 -- default staffing requirement 0.0 when deal assumptions omit FTE requirements."
-    ),
-    ("scenario.py", "win_probability", 0.5): (
-        "scenario.py:107, 156 -- default expected booking win probability 0.5 when unspecified."
-    ),
 }
 
 
@@ -107,20 +87,26 @@ def _scan_file_for_literal_defaults(file_path: Path) -> list[tuple[int, str, Any
         ):
             if len(node.args) >= 2:
                 default_arg = node.args[1]
+                key_arg = node.args[0]
+                if isinstance(key_arg, ast.Constant) and isinstance(key_arg.value, str):
+                    key_name = key_arg.value
+                elif isinstance(key_arg, ast.Name):
+                    key_name = key_arg.id
+                else:
+                    key_name = ast.dump(key_arg)
+
                 # Check if literal string, int, or float (excluding pure bool)
                 if (
                     isinstance(default_arg, ast.Constant)
                     and isinstance(default_arg.value, (str, int, float))
                     and not isinstance(default_arg.value, bool)
                 ):
-                    key_arg = node.args[0]
-                    if isinstance(key_arg, ast.Constant) and isinstance(key_arg.value, str):
-                        key_name = key_arg.value
-                    elif isinstance(key_arg, ast.Name):
-                        key_name = key_arg.id
-                    else:
-                        key_name = ast.dump(key_arg)
                     results.append((node.lineno, key_name, default_arg.value))
+                # Check if non-empty collection literal (lists or dicts with synthesized items)
+                elif isinstance(default_arg, ast.List) and len(default_arg.elts) > 0:
+                    results.append((node.lineno, key_name, "<non_empty_list_literal>"))
+                elif isinstance(default_arg, ast.Dict) and len(default_arg.keys) > 0:
+                    results.append((node.lineno, key_name, "<non_empty_dict_literal>"))
     return results
 
 
@@ -133,6 +119,22 @@ def test_board_pack_and_radar_have_strictly_zero_literal_defaults() -> None:
         assert len(violations) == 0, (
             f"{filename} contains {len(violations)} forbidden literal defaults: {violations}"
         )
+
+
+def test_scenario_has_zero_literal_balance_sheet_and_deal_defaults() -> None:
+    """Wave C-BI4 requirement: scenario.py must have ZERO balance sheet or pipeline defaults."""
+    path = _BI_DIR / "scenario.py"
+    assert path.exists()
+    violations = _scan_file_for_literal_defaults(path)
+    # Filter out allowed presentation defaults
+    disallowed = [
+        (line, key, val)
+        for line, key, val in violations
+        if ("scenario.py", key, val) not in KNOWN_PRESENTATION_DEFAULTS
+    ]
+    assert len(disallowed) == 0, (
+        f"scenario.py contains {len(disallowed)} forbidden literal defaults: {disallowed}"
+    )
 
 
 def test_business_insights_has_zero_unlisted_literal_defaults() -> None:
@@ -174,22 +176,26 @@ def test_allowlist_is_shrink_only_and_has_no_stale_entries() -> None:
 
 
 def test_positive_control_catches_forbidden_literal_default(tmp_path: Path) -> None:
-    """Positive Control: Proves the scanner detects synthetic code with forbidden defaults and goes RED."""
+    """Positive Control (U18): Proves the scanner detects synthetic code with forbidden defaults and goes RED."""
     bad_code = (
         "def fake_func(data):\n"
         '    rev = data.get("revenue", "$4,850,000")\n'
         '    growth = data.get("pipeline_growth_pct", 30.0)\n'
         '    rate = data.get("breach_rate", 18)\n'
-        "    return rev, growth, rate\n"
+        '    cash = data.get("baseline_cash", 2000000.0)\n'
+        '    deals = data.get("deals", [{"id": "deal-alpha"}])\n'
+        "    return rev, growth, rate, cash, deals\n"
     )
     test_file = tmp_path / "synthetic_defect.py"
     test_file.write_text(bad_code, encoding="utf-8")
 
     violations = _scan_file_for_literal_defaults(test_file)
-    assert len(violations) == 3
+    assert len(violations) == 5
     assert (2, "revenue", "$4,850,000") in violations
     assert (3, "pipeline_growth_pct", 30.0) in violations
     assert (4, "breach_rate", 18) in violations
+    assert (5, "baseline_cash", 2000000.0) in violations
+    assert (6, "deals", "<non_empty_list_literal>") in violations
 
 
 # ---------------------------------------------------------------------------
@@ -358,3 +364,194 @@ async def test_risk_radar_evaluates_clean_when_below_thresholds() -> None:
     assert len(clear_rules) == 3
     for r in clear_rules:
         assert r["status"] == "evaluated_clear"
+
+
+@pytest.mark.asyncio
+async def test_scenario_requires_deals_parameter() -> None:
+    """Wave C-BI4 requirement: do_run_scenario must refuse when deals is absent or empty."""
+    engine = DummyEngine()
+    ns_id = str(uuid4())
+
+    register = get_degradation_register()
+    register.clear(ns_id)
+
+    # 1. Missing deals entirely
+    with pytest.raises(ValueError) as exc:
+        await do_run_scenario(engine, {"namespace_id": ns_id, "assumptions": {}})
+    assert "deals is required for do_run_scenario" in str(exc.value)
+
+    # 2. Empty deals list
+    with pytest.raises(ValueError) as exc:
+        await do_run_scenario(
+            engine,
+            {"namespace_id": ns_id, "assumptions": {"deals": []}},
+        )
+    assert "deals is required for do_run_scenario" in str(exc.value)
+
+    # Verify degradation record
+    degradations = register.get_degradations(ns_id)
+    codes = {d["code"] for d in degradations}
+    assert "scenario_deals_missing" in codes
+
+
+@pytest.mark.asyncio
+async def test_scenario_grace_degrades_when_balance_sheet_or_capacity_unavailable() -> None:
+    """Wave C-BI4 requirement: Missing balance sheet and capacity figures must grace-degrade."""
+    engine = DummyEngine()
+    ns_id = str(uuid4())
+
+    register = get_degradation_register()
+    register.clear(ns_id)
+
+    deals = [
+        {
+            "id": "deal-live-1",
+            "name": "Live Expansion",
+            "value": 500000.0,
+            "staff_needed_fte": 2.5,
+            "win_probability": 0.7,
+        }
+    ]
+
+    res = await do_run_scenario(
+        engine,
+        {
+            "namespace_id": ns_id,
+            "assumptions": {
+                "deals": deals,
+                # baseline_cash, monthly_burn, and available_capacity_fte omitted
+            },
+        },
+    )
+
+    assert res["status"] == "ok"
+    proj = res["projections"]
+
+    # Pipeline calculated from real deal
+    pipe = proj["pipeline"]
+    assert pipe["deals_count"] == 1
+    assert pipe["total_pipeline_value"] == 500000.0
+    assert pipe["expected_bookings"] == 350000.0
+    assert pipe["total_fte_demanded"] == 2.5
+
+    # Capacity projection is grace-degraded
+    cap = proj["capacity"]
+    assert cap["degraded"] is True
+    assert cap["status"] == "not available yet"
+    assert cap["available_capacity_fte"] is None
+
+    # Cashflow projection is grace-degraded
+    cash = proj["cashflow"]
+    assert cash["degraded"] is True
+    assert cash["status"] == "not available yet"
+    assert cash["baseline_cash"] is None
+    assert cash["monthly_burn"] is None
+    assert cash["deterministic_ending_cash"] is None
+    assert cash["monte_carlo"] is None
+
+    # Provenance tracks real deal
+    assert "deal:deal-live-1" in res["provenance"]
+
+    # Degradation register records both unavailable engines
+    degradations = register.get_degradations(ns_id)
+    codes = {d["code"] for d in degradations}
+    assert "scenario_resources_capacity_unavailable" in codes
+    assert "scenario_economy_cashflow_unavailable" in codes
+
+
+@pytest.mark.asyncio
+async def test_scenario_applies_modelling_conventions_and_runs_monte_carlo_when_inputs_provided() -> (
+    None
+):
+    """Wave C-BI4 requirement: Modelling conventions applied and simulation runs when inputs provided."""
+    engine = DummyEngine()
+    ns_id = str(uuid4())
+
+    # Deal omitting value, win_probability, and staff_needed_fte
+    deals = [{"id": "deal-unpriced", "name": "Early Stage Lead"}]
+
+    res = await do_run_scenario(
+        engine,
+        {
+            "namespace_id": ns_id,
+            "assumptions": {
+                "deals": deals,
+                "baseline_cash": 1000000.0,
+                "monthly_burn": 50000.0,
+                "available_capacity_fte": 8.0,
+                "months": 6,
+                "monte_carlo": True,
+                "monte_carlo_iterations": 100,
+            },
+        },
+    )
+
+    assert res["status"] == "ok"
+    proj = res["projections"]
+
+    # Pipeline: value defaults to 0.0, win_probability defaults to 0.5, staff_fte defaults to 0.0
+    pipe = proj["pipeline"]
+    assert pipe["total_pipeline_value"] == 0.0
+    assert pipe["expected_bookings"] == 0.0
+    assert pipe["total_fte_demanded"] == 0.0
+
+    # Capacity: Grace degraded because Resources engine is unlanded on day one (BI-4)
+    cap = proj["capacity"]
+    assert cap["degraded"] is True
+    assert cap["status"] == "not available yet"
+    assert cap["available_capacity_fte"] is None
+
+    # Cashflow: operational with Monte Carlo (Economy is landed and baseline_cash/monthly_burn are provided)
+    cash = proj["cashflow"]
+    assert cash["degraded"] is False
+    assert cash["status"] == "operational"
+    assert cash["baseline_cash"] == 1000000.0
+    assert cash["monthly_burn"] == 50000.0
+    assert cash["deterministic_ending_cash"] == 700000.0  # 1M - 300k + 0
+
+    mc = cash["monte_carlo"]
+    assert mc is not None
+    assert mc["iterations"] == 100
+    assert mc["ending_cash_p10"] <= mc["ending_cash_p50"] <= mc["ending_cash_p90"]
+
+    # Provenance includes real deal and explicit assumptions
+    prov = res["provenance"]
+    assert "deal:deal-unpriced" in prov
+    assert "assumption:baseline_cash" in prov
+    assert "assumption:monthly_burn" in prov
+
+
+@pytest.mark.asyncio
+async def test_scenario_capacity_operational_when_resources_landed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When Resources engine is landed and available_capacity_fte is supplied, capacity is operational."""
+    monkeypatch.setattr(
+        "nce.vertical_modules.business_insights.scenario.is_engine_landed",
+        lambda engine: True,
+    )
+    engine = DummyEngine()
+    ns_id = str(uuid4())
+
+    deals = [{"id": "deal-1", "value": 200000.0, "staff_needed_fte": 3.0, "win_probability": 0.9}]
+    res = await do_run_scenario(
+        engine,
+        {
+            "namespace_id": ns_id,
+            "assumptions": {
+                "deals": deals,
+                "available_capacity_fte": 5.0,
+                "baseline_cash": 500000.0,
+                "monthly_burn": 20000.0,
+            },
+        },
+    )
+
+    cap = res["projections"]["capacity"]
+    assert cap["degraded"] is False
+    assert cap["status"] == "feasible"
+    assert cap["available_capacity_fte"] == 5.0
+    assert cap["staff_needed_fte"] == 3.0
+    assert cap["headroom_fte"] == 2.0
+    assert cap["can_staff"] is True
+    assert "assumption:available_capacity_fte" in res["provenance"]
