@@ -3063,6 +3063,26 @@ TOOLS = [
         },
     ),
     Tool(
+        name="procurement_resolve_bids",
+        description=(
+            "Resolve best BID price per article from the procurement_bid_prices consumer cache. "
+            "Returns lowest BID price, supplier, bid_id, and freshness signal per article. "
+            "Capped at 500 articles."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "artnrs": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of article numbers (artnr) to resolve (max 500).",
+                },
+            },
+            "required": ["namespace_id", "artnrs"],
+        },
+    ),
+    Tool(
         name="procurement_calculate_tco",
         description=(
             "Total cost of ownership for one supplier against one BOM line. Read-only, advisory."

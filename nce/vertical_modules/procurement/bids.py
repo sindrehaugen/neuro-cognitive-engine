@@ -37,7 +37,9 @@ from typing import TYPE_CHECKING, Any
 
 import asyncpg  # type: ignore[import-untyped]
 
+from nce.config import cfg
 from nce.db_utils import scoped_pg_session
+from nce.pricing.resolver import _is_stale
 
 if TYPE_CHECKING:
     from nce.orchestrator import NCEEngine
@@ -152,10 +154,11 @@ async def _fetch_best_bids(
 
     Uses a window function to pick the single best (MIN pris) row per artnr.
     Rows without a pris value are ranked last.
+    Annotates each resolved BID with source="bid", as_of, and stale flag.
     """
     rows = await conn.fetch(
         """
-        SELECT DISTINCT ON (artnr) artnr, leverandor, bid_id, pris, prodid
+        SELECT DISTINCT ON (artnr) artnr, leverandor, bid_id, pris, prodid, valid_to, synced_at
         FROM   procurement_bid_prices
         WHERE  namespace_id = $1
           AND  artnr        = ANY($2::text[])
@@ -164,7 +167,20 @@ async def _fetch_best_bids(
         namespace_id,
         artnrs,
     )
-    return [dict(r) for r in rows]
+    now = datetime.now(tz=timezone.utc)
+    results: list[dict[str, Any]] = []
+    for r in rows:
+        d = dict(r)
+        synced_at = d.get("synced_at")
+        valid_to = d.get("valid_to")
+        is_stale_by_age = _is_stale(synced_at, cfg.NCE_PRICING_MAX_AGE) if synced_at else False
+        is_expired = (valid_to < now) if valid_to else False
+        stale = is_stale_by_age or is_expired
+        d["source"] = "bid"
+        d["as_of"] = synced_at
+        d["stale"] = stale
+        results.append(d)
+    return results
 
 
 async def do_resolve_bids(engine: NCEEngine, params: dict[str, Any]) -> dict[str, Any]:

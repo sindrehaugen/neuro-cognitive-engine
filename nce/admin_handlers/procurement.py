@@ -6,6 +6,7 @@ Exports:
   ``api_procurement_rank_suppliers``        — POST /api/procurement/rank
   ``api_procurement_evaluate_match``        — POST /api/procurement/match
   ``api_procurement_aggregate_savings``     — GET/POST /api/procurement/savings
+  ``api_procurement_resolve_bids``          — GET/POST /api/procurement/bids/resolve
   ``api_procurement_sync_now``              — POST /api/procurement/sync  (admin-only, W7)
   ``api_procurement_sync_status``           — GET  /api/procurement/sync/status (admin-only, W7)
   ``api_procurement_forecast_rebate``       — POST /api/procurement/frontier/forecast-rebate (W12)
@@ -34,6 +35,7 @@ from nce.admin_handlers._shared import (
 )
 from nce.db_utils import scoped_pg_session
 from nce.vertical_modules.procurement import frontier as procurement_frontier
+from nce.vertical_modules.procurement.bids import do_resolve_bids
 from nce.vertical_modules.procurement.ranking import do_rank_suppliers
 from nce.vertical_modules.procurement.savings import do_aggregate_savings
 from nce.vertical_modules.procurement.tco import (
@@ -542,4 +544,72 @@ async def api_procurement_aggregate_savings(request: Any) -> JSONResponse:
             exc,
             status_code=500,
             log_event="api_procurement_aggregate_savings",
+        )
+
+
+async def api_procurement_resolve_bids(request: Any) -> JSONResponse:
+    """GET/POST /api/procurement/bids/resolve — resolve best BID prices for an article list.
+
+    Query parameters (GET) or JSON body (POST):
+        namespace_id (str, required): Active namespace UUID.
+        artnrs (list[str] or comma-separated str, required): Article numbers (max 500).
+
+    Response (JSON):
+        {"status": "ok", "results": [{"artnr": ..., "leverandor": ..., "bid_id": ...,
+                                      "pris": ..., "prodid": ..., "source": "bid",
+                                      "as_of": ..., "stale": ...}, ...]}
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    params: dict[str, Any] = {}
+    if hasattr(request, "query_params"):
+        try:
+            params.update(dict(request.query_params))
+        except Exception:
+            pass
+
+    if getattr(request, "method", None) == "POST":
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+        params.update(body)
+
+    namespace_id, ns_err = _require_namespace_id(params.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
+
+    artnrs_raw = params.get("artnrs")
+    if artnrs_raw is None:
+        return JSONResponse({"error": "artnrs is required"}, status_code=422)
+
+    if isinstance(artnrs_raw, str):
+        artnrs = [a.strip() for a in artnrs_raw.split(",") if a.strip()]
+    elif isinstance(artnrs_raw, list):
+        artnrs = [str(a) for a in artnrs_raw]
+    else:
+        return JSONResponse(
+            {"error": "artnrs must be a list or comma-separated string"}, status_code=422
+        )
+
+    try:
+        result = await do_resolve_bids(
+            admin_state.engine,
+            {
+                "namespace_id": str(namespace_id),
+                "artnrs": artnrs,
+            },
+        )
+        return JSONResponse({**result, "status": "ok"})
+    except (ValueError, KeyError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Procurement resolve bids error",
+            exc,
+            status_code=500,
+            log_event="api_procurement_resolve_bids",
         )
