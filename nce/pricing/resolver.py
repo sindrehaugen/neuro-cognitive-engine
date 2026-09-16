@@ -148,6 +148,8 @@ async def resolve_price(
         ValueError: When no price tier is available in product or customer.
     """
     bid = _build_bid_tier(customer)
+    if bid is None:
+        bid = await _fetch_bid_tier_from_db(conn, namespace_id, product)
     supplier_list = _build_supplier_list_tier(product)
     base = _build_base_tier(product)
 
@@ -175,6 +177,35 @@ def _build_bid_tier(customer: dict[str, Any]) -> PriceTier | None:
     if bid_price is None or bid_as_of is None:
         return None
     return PriceTier(cost=float(bid_price), source="bid", as_of=bid_as_of)
+
+
+async def _fetch_bid_tier_from_db(
+    conn: Any,
+    namespace_id: str,
+    product: dict[str, Any],
+) -> PriceTier | None:
+    """Extract BID tier from procurement_bid_prices table if artnr is in product."""
+    artnr = product.get("artnr") or product.get("sku")
+    if not artnr or not hasattr(conn, "fetchrow"):
+        return None
+    try:
+        row = await conn.fetchrow(
+            """
+            SELECT pris, synced_at
+            FROM   procurement_bid_prices
+            WHERE  namespace_id = $1::uuid
+              AND  artnr        = $2
+            ORDER  BY pris ASC NULLS LAST
+            LIMIT 1
+            """,
+            namespace_id,
+            str(artnr),
+        )
+        if row and row["pris"] is not None and row["synced_at"] is not None:
+            return PriceTier(cost=float(row["pris"]), source="bid", as_of=row["synced_at"])
+    except Exception:
+        return None
+    return None
 
 
 def _build_supplier_list_tier(product: dict[str, Any]) -> PriceTier | None:

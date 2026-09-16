@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 265  # 262 baseline + 3 Support ecosystem tools (Wave SU-3)
+_EXPECTED_TOTAL = 266  # 265 baseline + 1 Procurement resolve bids tool (Wave PR-4)
 
 
 def test_registry_has_expected_entries():
@@ -434,6 +434,8 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         # Wave S-5 -- Sales lead score & quote draft advisors (cacheable read)
         "sales_score_lead",
         "sales_draft_quote",
+        # Wave PR-4 -- Procurement resolve bids (cacheable read)
+        "procurement_resolve_bids",
     }
 )
 
@@ -446,7 +448,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 104  # 103 baseline + 1 Support ecosystem tool (Wave SU-3)
+    assert len(CACHEABLE_TOOLS) == 105  # 104 baseline + 1 Procurement resolve bids tool (Wave PR-4)
 
 
 # ---------------------------------------------------------------------------

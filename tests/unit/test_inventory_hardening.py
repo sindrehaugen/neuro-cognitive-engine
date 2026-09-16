@@ -53,9 +53,9 @@ _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
 # --- MEASURED on branch mlv15b/close-the-loop --------------------------------
 # python -c "import nce.tool_registry as tr; print(len(tr.TOOL_REGISTRY))"
-_TOTAL_TOOLS = 265  # 262 baseline + 3 Support ecosystem tools (Wave SU-3)
+_TOTAL_TOOLS = 266  # 265 baseline + 1 Procurement resolve bids tool (Wave PR-4)
 _MUTATION_TOOLS = 117  # 115 baseline + 2 Support ecosystem tools (Wave SU-3)
-_CACHEABLE_TOOLS = 104  # 103 baseline + 1 Support ecosystem tool (Wave SU-3)
+_CACHEABLE_TOOLS = 105  # 104 baseline + 1 Procurement resolve bids tool (Wave PR-4)
 _ADMIN_ONLY_TOOLS = 88  # 86 baseline + 2 Support ecosystem tools (Wave SU-3)
 _MIGRATION_TOOLS = 5
 

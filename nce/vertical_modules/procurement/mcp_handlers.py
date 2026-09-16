@@ -30,6 +30,7 @@ from nce.db_utils import scoped_pg_session
 from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import mcp_handler
 from nce.vertical_modules.procurement import frontier
+from nce.vertical_modules.procurement.bids import do_resolve_bids
 from nce.vertical_modules.procurement.po import (
     _derive_po_idempotency_key,
     _derive_submit_idempotency_key,
@@ -235,6 +236,22 @@ async def handle_procurement_aggregate_savings(engine: NCEEngine, arguments: dic
     """
     require_namespace_id(arguments)
     result = await do_aggregate_savings(engine, arguments)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_procurement_resolve_bids(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: procurement_resolve_bids — resolve best BID prices for articles from cache.
+
+    Required arguments:
+        namespace_id (str, UUID)
+        artnrs (list[str]) — list of article numbers (max 500).
+    """
+    require_namespace_id(arguments)
+    artnrs = arguments.get("artnrs")
+    if artnrs is None or not isinstance(artnrs, list):
+        raise ValueError("procurement_resolve_bids: 'artnrs' must be a list")
+    result = await do_resolve_bids(engine, arguments)
     return json.dumps(result, default=str)
 
 
