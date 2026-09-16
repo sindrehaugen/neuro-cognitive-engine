@@ -12,9 +12,9 @@
 
 | Metric | Count |
 |---|---|
-| **Total Waves Evaluated** | **84** |
+| **Total Waves Evaluated** | **85** |
 | **LANDED on `main` (3-way consensus)** | **48** |
-| **Disagreements / Open / Planned** | **36** |
+| **Disagreements / Open / Planned** | **37** |
 | **Skipped Legacy / Pre-v1.5 Tokens** | **54** |
 | **Unmatched Wave Tokens** | **0** |
 
@@ -95,6 +95,7 @@ These waves have partial signal (e.g. stamped in tree without PR or test, or pla
 | **B-ID1** | Phase 1 | `PR_AND_TEST_NO_STAMP` | #73 | - | `tests/test_no_identifying_literals.py` (COLLECTED) | Scrub 5 Private Module Names & Fix Legacy TRIMCP Quota Token |
 | **BI-1** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Business Insights person-grain barrier allowlist |
 | **C-BI3** | Unspecified | `STAMPED_UNLANDED` | - | `tests/unit/test_business_insights_fabricated_defaults_ratchet.py` | None |  |
+| **C-BI4** | Unspecified | `STAMPED_UNLANDED` | - | `tests/unit/test_business_insights_fabricated_defaults_ratchet.py` | None |  |
 | **CP-2** | Unspecified | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Customer portal external security review / adversarial gates |
 | **FT-2** | Phase 1 | `PR_AND_TEST_NO_STAMP` | #45 | - | `tests/unit/test_ownership_ratchet.py` (COLLECTED) | The owner writes the node (Contract A) |
 | **FT-3** | Phase 1 | `PR_AND_TEST_NO_STAMP` | #46 | - | `tests/unit/test_support_field_tech_dispatch_event.py` (COLLECTED) | feat(support,field_tech): dispatch ticket to work order via reactive TICKET.dispatched C4 event (Wave SU-1/FT-3) |
