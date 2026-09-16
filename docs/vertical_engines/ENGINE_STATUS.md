@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `3d11e91` (public `main`) · **Last-audited:** 2026-09-16
+> **Status:** shipped · **Verified-against:** `66ab2cc` (public `main`) · **Last-audited:** 2026-09-17
 
 # NCE Vertical Engines — Build & Production Status
 
@@ -21,18 +21,18 @@
 > python scripts/gen_surface_table.py --repo . --baseline HEAD --out docs/_generated/surface.md
 > ```
 
-## Measured inventory at `3d11e91`
+## Measured inventory at `66ab2cc`
 
 | Instrument | Value |
 |---|---|
 | Module packages under `nce/vertical_modules/` | **20** (17 engines + `diagnostics`, `dynamics365`, `netbox`) |
-| `TOOL_REGISTRY` entries | **259** MCP tools (69 shared + 190 engine) |
+| `TOOL_REGISTRY` entries | **271** MCP tools (69 shared + 202 engine) — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 | REST routes on the admin app | measured per-engine in [`docs/_generated/surface.md`](../_generated/surface.md) (+12 on the Customer Portal's own app shell) — regenerate for a total, do not hand-add the column |
 | `do_*` domain cores | **228** distinct names across the 17 engines |
-| SQL migrations | 74 files (+1 optional), `001` → `078` — gaps at `002`, `009`, `059` (never allocated); `010` exists only under `nce/migrations/optional/`. **Corrected 2026-09-06: this row previously said "67 files, 059/066/072 unused" — 066 and 072 are real, in-use migrations (`system_namespace`, `business_insights_engine`); only 002/009/059 were ever actually skipped.** |
+| SQL migrations | 74 files (+1 optional), `001` → `078` — gaps at `002`, `009`, `059` (never allocated); `010` exists only under `nce/migrations/optional/`. — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 | `EXPECTED_TENANT_RLS_TABLES` | **87** |
 | Tests | **6,423** `def test_` across 528 files |
-| Golden Thread seam burndown | **0 of 28** lifecycle steps broken (0 distinct seams) — mirrored from [`docs/_generated/golden_thread_seams.md`](../_generated/golden_thread_seams.md) (generated directly from `tests/integration/test_golden_thread.py` strict xfails; this summary count is only as fresh as its last manual copy, refer to the generated page for live truth) |
+| Golden Thread seam burndown | **0 of 28** lifecycle steps broken (0 distinct seams) — mirrored from [`docs/_generated/golden_thread_seams.md`](../_generated/golden_thread_seams.md); see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 
 **Status legend**
 

@@ -282,7 +282,7 @@ Tools are dispatched through `nce/mcp_stdio_dispatch.py`, which enforces auth, q
 | `connect_bridge` / `complete_bridge_auth` / `list_bridges` / `force_resync_bridge` | Document-bridge lifecycle |
 | `manage_namespace` · `manage_quotas` · `trigger_consolidation` · `rotate_signing_key` · `get_health` · `list_dlq` | `[ADMIN]` operations |
 
-Migration tools (`start_migration`, `validate_migration`, `commit_migration`, …) are included unless disabled, and vertical-engine tool families (`product_*`, `procurement_*`, `vendors_*`, `sales_*`, `system_design_*`, `project_*`, `d365_*`, `diag_*`, …) register when their engine is enabled. The authoritative registry is [`nce/tool_registry.py`](nce/tool_registry.py) — **260 tools** as of the current `main`, pinned by `_EXPECTED_TOTAL` in [`tests/test_tool_registry.py`](tests/test_tool_registry.py).
+Migration tools (`start_migration`, `validate_migration`, `commit_migration`, …) are included unless disabled, and vertical-engine tool families (`product_*`, `procurement_*`, `vendors_*`, `sales_*`, `system_design_*`, `project_*`, `d365_*`, `diag_*`, …) register when their engine is enabled. The authoritative registry is [`nce/tool_registry.py`](nce/tool_registry.py), pinned by `_EXPECTED_TOTAL` in [`tests/test_tool_registry.py`](tests/test_tool_registry.py); current per-engine and shared counts are generated in [`docs/_generated/surface.md`](docs/_generated/surface.md) and [`docs/vertical_engines/ENGINE_STATUS.md`](docs/vertical_engines/ENGINE_STATUS.md).
 
 ---
 
