@@ -42,15 +42,6 @@ _NOTATION_B_DEFAULT_RE: Final[re.Pattern[str]] = re.compile(r"\*\s+\*Default:\*\
 # Every entry requires an owner, reason (>= 60 chars), source_file, and documented_default.
 # ---------------------------------------------------------------------------
 KNOWN_UNPAIRED_DOCUMENTED_DEFAULTS: Final[dict[str, dict[str, Any]]] = {
-    "DECAY_PRUNE_INTERVAL_MINUTES": {
-        "owner": "core-memory",
-        "source_file": "docs/architecture-v1.md",
-        "documented_default": 60,
-        "reason": (
-            "Genuinely unpairable: implemented as module-level constant in nce/temporal_decay.py:57 "
-            "rather than configuration, so no environment declaration exists in nce/config.py."
-        ),
-    },
     "NCE_PRODUCT_SYNC_BATCH_SIZE": {
         "owner": "product",
         "source_file": "docs/engines/product-admin.md",
