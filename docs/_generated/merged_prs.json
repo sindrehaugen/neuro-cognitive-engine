@@ -1,6 +1,13 @@
 [
   {
     "baseRefName": "main",
+    "headRefName": "dl/rls-deployment-truth-in-docs",
+    "mergedAt": "2026-09-16T08:49:47Z",
+    "number": 154,
+    "title": "docs: document deployment truth of database isolation under mcp_user (DL D-RLS)"
+  },
+  {
+    "baseRefName": "main",
     "headRefName": "dl/engine-status-fig-update",
     "mergedAt": "2026-09-16T08:35:25Z",
     "number": 152,
@@ -19,6 +26,13 @@
     "mergedAt": "2026-09-16T08:28:11Z",
     "number": 150,
     "title": "feat(vendors): seed VENDOR identities from sales_read_model and Nettailer (Wave V-3)"
+  },
+  {
+    "baseRefName": "main",
+    "headRefName": "mlv15c/t6-mcp-auth-boundary",
+    "mergedAt": "2026-09-16T08:43:34Z",
+    "number": 149,
+    "title": "feat(customer_portal): internal MCP admin-only & scope assertion auditing (Wave T-6)"
   },
   {
     "baseRefName": "main",
