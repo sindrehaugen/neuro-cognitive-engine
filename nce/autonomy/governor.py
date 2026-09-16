@@ -245,13 +245,6 @@ def _sanitize_for_json(val: Any) -> Any:
         return val
     if isinstance(val, uuid.UUID):
         return str(val)
-    if hasattr(val, "_mock_return_value") or type(val).__name__ in (
-        "MagicMock",
-        "AsyncMock",
-        "Mock",
-        "NonCallableMock",
-    ):
-        return f"<mock {type(val).__name__}>"
     if hasattr(val, "isoformat") and callable(val.isoformat):
         try:
             return val.isoformat()
@@ -368,23 +361,19 @@ async def _mark_approval_queue_executed(
     idempotency_key: str,
 ) -> None:
     """Transition matching pending or approved items in action_approval_queue to executed."""
-    try:
-        await conn.execute(
-            """
-            UPDATE action_approval_queue
-            SET status = 'executed', resolved_at = now()
-            WHERE namespace_id = $1
-              AND action_type = $2
-              AND proposed_payload->>'idempotency_key' = $3
-              AND status IN ('pending', 'approved')
-            """,
-            namespace_id,
-            action_type,
-            idempotency_key,
-        )
-    except Exception:
-        # Non-fatal if table not present in synthetic test environment
-        pass
+    await conn.execute(
+        """
+        UPDATE action_approval_queue
+        SET status = 'executed', resolved_at = now()
+        WHERE namespace_id = $1
+          AND action_type = $2
+          AND proposed_payload->>'idempotency_key' = $3
+          AND status IN ('pending', 'approved')
+        """,
+        namespace_id,
+        action_type,
+        idempotency_key,
+    )
 
 
 # ---------------------------------------------------------------------------
