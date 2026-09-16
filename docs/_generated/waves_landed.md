@@ -12,9 +12,9 @@
 
 | Metric | Count |
 |---|---|
-| **Total Waves Evaluated** | **80** |
+| **Total Waves Evaluated** | **84** |
 | **LANDED on `main` (3-way consensus)** | **48** |
-| **Disagreements / Open / Planned** | **32** |
+| **Disagreements / Open / Planned** | **36** |
 | **Skipped Legacy / Pre-v1.5 Tokens** | **54** |
 | **Unmatched Wave Tokens** | **0** |
 
@@ -26,7 +26,7 @@
 |---|---|---|---|---|---|---|---|
 | **AG-2** | Phase 3 | `3-source` | #38 | 2026-09-06 | `nce/tool_registry.py`<br>`tests/unit/test_agreements_surface.py` | `tests/unit/test_agreements_surface.py` | Agreements Surface Completion |
 | **AG-3** | Phase 3 | `3-source` | #79 | 2026-09-07 | `nce/vertical_modules/procurement/po.py`<br>`tests/unit/test_agreements_procurement_cross_engine.py` | `tests/unit/test_agreements_procurement_cross_engine.py` | feat(procurement,agreements): wire agreements compliance audit for rebate override via engine.modules (Wave AG-3 / PR-5) |
-| **B-AG1** | Phase 3 | `3-source` | #80 | 2026-09-07 | `nce/tool_registry.py`<br>`tests/test_tool_registry.py`<br>*(+2 more)* | `tests/unit/test_economy_gl_records.py` | feat(economy,agreements): query GL records with C8 projection and rewire coverage seam (Wave B-AG1 / B-E2) |
+| **B-AG1** | Phase 3 | `3-source` | #80 | 2026-09-07 | `nce/tool_registry.py`<br>`tests/test_tool_registry.py`<br>*(+1 more)* | `tests/unit/test_economy_gl_records.py` | feat(economy,agreements): query GL records with C8 projection and rewire coverage seam (Wave B-AG1 / B-E2) |
 | **B-FT5** | Phase 1 | `3-source` | #77 | 2026-09-07 | `nce/auth.py`<br>`nce/vertical_modules/field_tech/partner_view.py`<br>*(+1 more)* | `tests/unit/test_partner_scope_ratchet.py` | Partner Scope Resolution & Internal Impersonation Audit |
 | **C-BI2** | Phase 2 | `3-source` | #78 | 2026-09-07 | `nce/vertical_modules/business_insights/ask.py`<br>`tests/unit/test_business_insights_ask_ratchet.py` | `tests/unit/test_business_insights_ask_ratchet.py` | feat(business_insights): ground do_ask_business in real KPI snapshots and cognitive memories (Wave C-BI2) |
 | **C-FT4** | Phase 2 | `2-source` | #66 | 2026-09-07 | `tests/unit/test_outcome_feed_c10_ratchet.py` | `tests/unit/test_outcome_feed_c10_ratchet.py` | feat(c10,system_design): assert unpatched decision_feedback SQL execution and refine neutral outcome weighting (Wave C-RS3 / C-FT4 / C-SD2) |
@@ -89,16 +89,19 @@ These waves have partial signal (e.g. stamped in tree without PR or test, or pla
 | **A-T2** | Unspecified | `MISSING_MARKER_TEST` | #147 | `tests/test_rest_cache_invalidation.py` | None |  |
 | **A-T6** | Unspecified | `MISSING_MARKER_TEST` | #148 | `tests/unit/test_c3_external_scope_review_ratchet.py` | None |  |
 | **AG-1** | Phase 1 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave AG-1 |
+| **B-B128** | Unspecified | `STAMPED_UNLANDED` | - | `tests/test_producer_coverage.py`<br>`tests/unit/test_action_approval_queue.py` | None |  |
 | **B-BI1** | Phase 1 | `PR_AND_TEST_NO_STAMP` | #71 | - | `tests/unit/test_business_insights_aggregation.py` (COLLECTED) | Invert the person-grain barrier (EU AI Act Article 5 floor) |
 | **B-E2** | Phase 3 | `PR_AND_TEST_NO_STAMP` | #80 | - | `tests/unit/test_economy_gl_records.py` (COLLECTED) | feat(economy,agreements): query GL records with C8 projection and rewire coverage seam (Wave B-AG1 / B-E2) |
 | **B-ID1** | Phase 1 | `PR_AND_TEST_NO_STAMP` | #73 | - | `tests/test_no_identifying_literals.py` (COLLECTED) | Scrub 5 Private Module Names & Fix Legacy TRIMCP Quota Token |
 | **BI-1** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Business Insights person-grain barrier allowlist |
+| **C-BI3** | Unspecified | `STAMPED_UNLANDED` | - | `tests/unit/test_business_insights_fabricated_defaults_ratchet.py` | None |  |
 | **CP-2** | Unspecified | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Customer portal external security review / adversarial gates |
 | **FT-2** | Phase 1 | `PR_AND_TEST_NO_STAMP` | #45 | - | `tests/unit/test_ownership_ratchet.py` (COLLECTED) | The owner writes the node (Contract A) |
 | **FT-3** | Phase 1 | `PR_AND_TEST_NO_STAMP` | #46 | - | `tests/unit/test_support_field_tech_dispatch_event.py` (COLLECTED) | feat(support,field_tech): dispatch ticket to work order via reactive TICKET.dispatched C4 event (Wave SU-1/FT-3) |
 | **FT-4** | Phase 2 | `STAMPED_UNLANDED` | - | `nce/vertical_modules/field_tech/outcome.py` | None | Wave FT-4 |
 | **HR-2** | Phase 3 | `PR_AND_TEST_NO_STAMP` | #44 | - | `tests/unit/test_economy_surface.py` (COLLECTED) | HR Surface Completion |
 | **I-1** | Phase 0 | `PR_AND_TEST_NO_STAMP` | #23 | - | `tests/test_surface_parity.py` (COLLECTED) | Surface-Parity Ratchet |
+| **I-10** | Unspecified | `STAMPED_UNLANDED` | - | `tests/unit/test_config_docs_ratchet.py` | None |  |
 | **I-6** | Phase 0 | `UNMERGED_PR` | - | `tests/test_docs_engine_guides_ratchet.py` | `tests/test_docs_engine_guides_ratchet.py` (COLLECTED) | Docs-Status Ratchet |
 | **I-7** | Phase 0 | `PR_AND_TEST_NO_STAMP` | #29 | - | `tests/integration/test_golden_thread.py` (COLLECTED) | Golden Thread Scaffold |
 | **I-8** | Phase 0 | `PR_ONLY` | #128 | - | `tests/unit/test_event_log_chokepoint_ratchet.py` (ABSENT_FILE) | feat(instruments): implement event_log chokepoint and publish transactional ratchets (Wave I-8) |
@@ -112,6 +115,7 @@ These waves have partial signal (e.g. stamped in tree without PR or test, or pla
 | **S-3** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave S-3 |
 | **S-4** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave S-4 |
 | **S-5** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave S-5 |
+| **S-7** | Unspecified | `STAMPED_UNLANDED` | - | `nce/tool_registry.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_inventory_hardening.py`<br>`tests/unit/test_sales_divergence_surface.py` | None |  |
 | **SD-2** | Phase 2 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json`<br>`nce/vertical_modules/system_design/propose.py` | None | Wave SD-2 |
 | **SD-4** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave SD-4 |
 
