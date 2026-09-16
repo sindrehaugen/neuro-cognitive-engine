@@ -162,7 +162,7 @@ Global operational settings are stored in the `settings` database table:
 Tenant-specific configurations (such as retention limits, PII policies, and vertical opt-ins) are stored inside the `namespaces.metadata` column.
 
 ### 4. Transaction-Local Tenant Context (RLS GUC)
-NCE enforces tenant isolation at the database layer using PostgreSQL Row-Level Security (RLS). 
+While NCE defines PostgreSQL Row-Level Security (RLS) policies in DDL, in deployment the application connects as `mcp_user` (`rolsuper = true`, `rolbypassrls = true`), making RLS inert at runtime. Active tenant isolation is enforced by application-layer `WHERE`-clause predicates; the transaction-local `nce.namespace_id` GUC is set via `scoped_pg_session` for defense-in-depth and future role transition (see [`docs/vertical_engines/_security/c3-external-scope-adversarial-review.md`](../vertical_engines/_security/c3-external-scope-adversarial-review.md)). 
 *   **Setting Context:** When a connection is retrieved from the pool, `scoped_pg_session(pool, namespace_id)` automatically opens a transaction and sets the context:
     ```python
     await conn.execute("SELECT set_config('nce.namespace_id', $1, true)", str(namespace_id))

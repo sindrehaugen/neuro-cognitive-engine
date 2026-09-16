@@ -1,10 +1,10 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** audited · **Verified-against:** `628b231` (main) · **Last-audited:** 2026-09-16
 
 # ADR-0003: Forced RLS + scoped_pg_session for Tenant Isolation
 
 ## Status
 
-Shipped
+Shipped (DDL & Scoped Sessions) · 🔴 **Deployment Reality Audited (2026-09-16)**: While DDL migrations configure RLS policies for role `nce_app`, the deployed runtime connects as `mcp_user` (`rolsuper = true, rolbypassrls = true`), making RLS **inert at runtime**. Tenant isolation in production is enforced entirely by application-level `WHERE`-clause predicates (see [`docs/vertical_engines/_security/c3-external-scope-adversarial-review.md`](../vertical_engines/_security/c3-external-scope-adversarial-review.md)).
 
 ## Context
 
@@ -49,11 +49,11 @@ A companion `unmanaged_pg_connection` path exists for global/admin operations (s
 
 ## Consequences
 
-### Positive
+### Positive (Design Intent vs. Deployment Reality)
 
-- A missing `WHERE namespace_id` clause in application code is silently corrected by the RLS policy; no data leaks.
-- `FORCE ROW LEVEL SECURITY` means even the application role (`nce_app`) cannot bypass RLS; only a `BYPASSRLS`-privileged role (which the app never receives) could.
-- The startup assertion (`_verify_rls_enforcement`) fails fast on a misconfigured database before any tenant request is served.
+- *Design Intent:* A missing `WHERE namespace_id` clause in application code was intended to be silently corrected by the RLS policy on role `nce_app`.
+- 🔴 *Deployment Reality:* As measured in Wave A-T6 (PR #148), the application connects as `mcp_user` (`rolsuper = true, rolbypassrls = true`) and `scoped_pg_session` never executes `SET ROLE`. Therefore, RLS policies targeting `nce_app` do not evaluate; PostgreSQL does NOT silently correct a missing `WHERE` clause. Application queries must explicitly include `WHERE namespace_id = $1`.
+- The startup assertion (`_verify_rls_enforcement`) validates catalog structure (`relrowsecurity` and policy existence), but does not assert that the connecting role is subject to RLS.
 - `unmanaged_pg_connection` audit-site registration creates a paper trail for every intentional RLS bypass.
 
 ### Negative / Trade-offs
