@@ -1,0 +1,548 @@
+{
+  "A-1": {
+    "id": "A-1",
+    "description": "Wave A-1",
+    "phase": "Phase 2",
+    "shape": "plain",
+    "marker_test": null
+  },
+  "A-BI1": {
+    "id": "A-BI1",
+    "description": "feat(business_insights): transactional append_event, audit remediation, and static AST ratchets (Waves A-BI1, A-BI2, A-BI3)",
+    "phase": "Phase 0",
+    "shape": "charter_prefixed",
+    "marker_test": "tests/unit/test_business_insights_aggregation.py"
+  },
+  "A-BI2": {
+    "id": "A-BI2",
+    "description": "feat(business_insights): transactional append_event, audit remediation, and static AST ratchets (Waves A-BI1, A-BI2, A-BI3)",
+    "phase": "Phase 0",
+    "shape": "charter_prefixed",
+    "marker_test": "tests/unit/test_business_insights_ask_ratchet.py"
+  },
+  "A-BI3": {
+    "id": "A-BI3",
+    "description": "feat(business_insights): transactional append_event, audit remediation, and static AST ratchets (Waves A-BI1, A-BI2, A-BI3)",
+    "phase": "Phase 0",
+    "shape": "charter_prefixed",
+    "marker_test": "tests/unit/test_business_insights_ask_ratchet.py"
+  },
+  "AG-1": {
+    "id": "AG-1",
+    "description": "Wave AG-1",
+    "phase": "Phase 1",
+    "shape": "plain",
+    "marker_test": null
+  },
+  "AG-2": {
+    "id": "AG-2",
+    "description": "Agreements Surface Completion",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_agreements_surface.py"
+  },
+  "AG-3": {
+    "id": "AG-3",
+    "description": "feat(procurement,agreements): wire agreements compliance audit for rebate override via engine.modules (Wave AG-3 / PR-5)",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_agreements_procurement_cross_engine.py"
+  },
+  "B-AG1": {
+    "id": "B-AG1",
+    "description": "feat(economy,agreements): query GL records with C8 projection and rewire coverage seam (Wave B-AG1 / B-E2)",
+    "phase": "Phase 3",
+    "shape": "charter_prefixed",
+    "marker_test": "tests/unit/test_economy_gl_records.py"
+  },
+  "B-BI1": {
+    "id": "B-BI1",
+    "description": "Invert the person-grain barrier (EU AI Act Article 5 floor)",
+    "phase": "Phase 1",
+    "shape": "charter_prefixed",
+    "marker_test": "tests/unit/test_business_insights_aggregation.py"
+  },
+  "B-E2": {
+    "id": "B-E2",
+    "description": "feat(economy,agreements): query GL records with C8 projection and rewire coverage seam (Wave B-AG1 / B-E2)",
+    "phase": "Phase 3",
+    "shape": "charter_prefixed",
+    "marker_test": "tests/unit/test_economy_gl_records.py"
+  },
+  "B-FT5": {
+    "id": "B-FT5",
+    "description": "Partner Scope Resolution & Internal Impersonation Audit",
+    "phase": "Phase 1",
+    "shape": "charter_prefixed",
+    "marker_test": "tests/unit/test_partner_scope_ratchet.py"
+  },
+  "B-ID1": {
+    "id": "B-ID1",
+    "description": "Scrub 5 Private Module Names & Fix Legacy TRIMCP Quota Token",
+    "phase": "Phase 1",
+    "shape": "charter_prefixed",
+    "marker_test": "tests/test_no_identifying_literals.py"
+  },
+  "BI-1": {
+    "id": "BI-1",
+    "description": "Business Insights person-grain barrier allowlist",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": null
+  },
+  "C-BI2": {
+    "id": "C-BI2",
+    "description": "feat(business_insights): ground do_ask_business in real KPI snapshots and cognitive memories (Wave C-BI2)",
+    "phase": "Phase 2",
+    "shape": "charter_prefixed",
+    "marker_test": "tests/unit/test_business_insights_ask_ratchet.py"
+  },
+  "C-FT4": {
+    "id": "C-FT4",
+    "description": "feat(c10,system_design): assert unpatched decision_feedback SQL execution and refine neutral outcome weighting (Wave C-RS3 / C-FT4 / C-SD2)",
+    "phase": "Phase 2",
+    "shape": "charter_prefixed",
+    "marker_test": "tests/unit/test_outcome_feed_c10_ratchet.py"
+  },
+  "C-PJ2": {
+    "id": "C-PJ2",
+    "description": "feat(project,marketing): wire case-study graph edge on G6 advance and discover candidates (Wave C-PJ2)",
+    "phase": "Phase 2",
+    "shape": "charter_prefixed",
+    "marker_test": "tests/unit/test_economy_surface.py"
+  },
+  "C-RS3": {
+    "id": "C-RS3",
+    "description": "feat(c10,system_design): assert unpatched decision_feedback SQL execution and refine neutral outcome weighting (Wave C-RS3 / C-FT4 / C-SD2)",
+    "phase": "Phase 2",
+    "shape": "charter_prefixed",
+    "marker_test": "tests/unit/test_outcome_feed_c10_ratchet.py"
+  },
+  "C-SD2": {
+    "id": "C-SD2",
+    "description": "feat(c10,system_design): assert unpatched decision_feedback SQL execution and refine neutral outcome weighting (Wave C-RS3 / C-FT4 / C-SD2)",
+    "phase": "Phase 2",
+    "shape": "charter_prefixed",
+    "marker_test": "tests/unit/test_system_design_sd2_ratchet.py"
+  },
+  "CP-1": {
+    "id": "CP-1",
+    "description": "Customer request becomes ticket (via W-1 registry `engine.modules[\"support\"]`)",
+    "phase": "Phase 1",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_customer_portal_cp1_loop.py"
+  },
+  "CP-2": {
+    "id": "CP-2",
+    "description": "Customer portal external security review / adversarial gates",
+    "phase": "Unspecified",
+    "shape": "plain",
+    "marker_test": null
+  },
+  "E-1": {
+    "id": "E-1",
+    "description": "feat(economy): surface 6 read tools and REST endpoints, shrink allowlist to 76 (Wave E-1)",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_economy_surface.py"
+  },
+  "E-2": {
+    "id": "E-2",
+    "description": "Economy PEPPOL & Contract Validation Cores Surface Completion",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_economy_peppol_surface.py"
+  },
+  "E-3": {
+    "id": "E-3",
+    "description": "Close the loop (`economy_approve_invoice`)",
+    "phase": "Phase 1",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_economy_approve_invoice.py"
+  },
+  "FT-1": {
+    "id": "FT-1",
+    "description": "Field Tech install & test write the ladder",
+    "phase": "Phase 1",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_field_tech_ladder.py"
+  },
+  "FT-2": {
+    "id": "FT-2",
+    "description": "The owner writes the node (Contract A)",
+    "phase": "Phase 1",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_ownership_ratchet.py"
+  },
+  "FT-3": {
+    "id": "FT-3",
+    "description": "feat(support,field_tech): dispatch ticket to work order via reactive TICKET.dispatched C4 event (Wave SU-1/FT-3)",
+    "phase": "Phase 1",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_support_field_tech_dispatch_event.py"
+  },
+  "FT-4": {
+    "id": "FT-4",
+    "description": "Wave FT-4",
+    "phase": "Phase 2",
+    "shape": "plain",
+    "marker_test": null
+  },
+  "HR-1": {
+    "id": "HR-1",
+    "description": "feat(hr,vendors): close break-5a with CERTIFICATION.EXPIRED and burn down Golden Thread Step 23 (Wave HR-1/V-2)",
+    "phase": "Phase 1",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_hr1_v2_cert_expiry.py"
+  },
+  "HR-2": {
+    "id": "HR-2",
+    "description": "HR Surface Completion",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_economy_surface.py"
+  },
+  "HR-3": {
+    "id": "HR-3",
+    "description": "EU AI Act Art. 5 C9b Structural Guard in HR",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_hr_c9b_guard.py"
+  },
+  "HR-5": {
+    "id": "HR-5",
+    "description": "HR Statutory Compliance-Deadline Watcher on Cron",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_hr_compliance_watcher.py"
+  },
+  "I-0": {
+    "id": "I-0",
+    "description": "W-1 Engine Registry (`engine.modules`)",
+    "phase": "Phase 0",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_engine_registry.py"
+  },
+  "I-1": {
+    "id": "I-1",
+    "description": "Surface-Parity Ratchet",
+    "phase": "Phase 0",
+    "shape": "plain",
+    "marker_test": "tests/test_surface_parity.py"
+  },
+  "I-2": {
+    "id": "I-2",
+    "description": "Event-Contract Catalogue",
+    "phase": "Phase 0",
+    "shape": "plain",
+    "marker_test": "tests/test_event_catalogue.py"
+  },
+  "I-3": {
+    "id": "I-3",
+    "description": "Seam Ratchet",
+    "phase": "Phase 0",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_seam_ratchet.py"
+  },
+  "I-4": {
+    "id": "I-4",
+    "description": "Ownership Ratchet",
+    "phase": "Phase 0",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_ownership_ratchet.py"
+  },
+  "I-5": {
+    "id": "I-5",
+    "description": "Degradation Register",
+    "phase": "Phase 0",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_degradation_register.py"
+  },
+  "I-6": {
+    "id": "I-6",
+    "description": "Docs-Status Ratchet",
+    "phase": "Phase 0",
+    "shape": "plain",
+    "marker_test": "tests/test_docs_engine_guides_ratchet.py"
+  },
+  "I-7": {
+    "id": "I-7",
+    "description": "Golden Thread Scaffold",
+    "phase": "Phase 0",
+    "shape": "plain",
+    "marker_test": "tests/integration/test_golden_thread.py"
+  },
+  "I-8": {
+    "id": "I-8",
+    "description": "feat(instruments): implement event_log chokepoint and publish transactional ratchets (Wave I-8)",
+    "phase": "Phase 0",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_event_log_chokepoint_ratchet.py"
+  },
+  "IN-1": {
+    "id": "IN-1",
+    "description": "`GOODS_RECEIPT.created` producer",
+    "phase": "Phase 1",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_inventory_goods_receipt_created.py"
+  },
+  "MK-2": {
+    "id": "MK-2",
+    "description": "Marketing Retract Testimonial Surface Completion",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_economy_surface.py"
+  },
+  "P-1": {
+    "id": "P-1",
+    "description": "feat(core): Phase 2 Real Data Behind the AI - Waves C10, P-1..P-3, PJ-1/SD-3, Wave 5, T-1",
+    "phase": "Phase 2",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_product_enrich_ratchet.py"
+  },
+  "P-2": {
+    "id": "P-2",
+    "description": "Wave P-2",
+    "phase": "Phase 2",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_product_p2_p3_ratchet.py"
+  },
+  "P-3": {
+    "id": "P-3",
+    "description": "feat(core): Phase 2 Real Data Behind the AI - Waves C10, P-1..P-3, PJ-1/SD-3, Wave 5, T-1",
+    "phase": "Phase 2",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_product_p2_p3_ratchet.py"
+  },
+  "PJ-1": {
+    "id": "PJ-1",
+    "description": "feat(core): Phase 2 Real Data Behind the AI - Waves C10, P-1..P-3, PJ-1/SD-3, Wave 5, T-1",
+    "phase": "Phase 2",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_project_pj1_sd3_ratchet.py"
+  },
+  "PJ-3": {
+    "id": "PJ-3",
+    "description": "Similarity recall query over completed projects; scheduled for cacheable tool in MLV15C Wave PJ-3",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_project_similar.py"
+  },
+  "PJ-5": {
+    "id": "PJ-5",
+    "description": "Wave PJ-5",
+    "phase": "Unspecified",
+    "shape": "plain",
+    "marker_test": null
+  },
+  "PR-1": {
+    "id": "PR-1",
+    "description": "Generate and submit PO (`PO_LINE.status_changed`)",
+    "phase": "Phase 1",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_economy_surface.py"
+  },
+  "PR-2": {
+    "id": "PR-2",
+    "description": "`PO_LINE` status model",
+    "phase": "Phase 1",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_procurement_po_line_model.py"
+  },
+  "PR-3": {
+    "id": "PR-3",
+    "description": "Procurement Savings Surface Completion",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_economy_surface.py"
+  },
+  "PR-5": {
+    "id": "PR-5",
+    "description": "feat(procurement,agreements): wire agreements compliance audit for rebate override via engine.modules (Wave AG-3 / PR-5)",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_agreements_procurement_cross_engine.py"
+  },
+  "PR-6": {
+    "id": "PR-6",
+    "description": "Wave PR-6",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": null
+  },
+  "Q-1": {
+    "id": "Q-1",
+    "description": "feat(sales): render quote document from frozen baseline (Wave Q-1)",
+    "phase": "Phase 1",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_sales_quote_render_ratchet.py"
+  },
+  "Q-2": {
+    "id": "Q-2",
+    "description": "feat(sales): native email-code e-signature transport and provider selection (Wave Q-2)",
+    "phase": "Phase 1",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_sales_signing_email_code_ratchet.py"
+  },
+  "Q-3": {
+    "id": "Q-3",
+    "description": "feat(sales): deliver signed quote PDF by email to signer, case responsible, and account responsible (Wave Q-3)",
+    "phase": "Phase 1",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_sales_signing_delivery_ratchet.py"
+  },
+  "Q-4": {
+    "id": "Q-4",
+    "description": "feat(signing): Wave Q-4 operator-entered signing credentials",
+    "phase": "Phase 1",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_signing_credentials_q4_ratchet.py"
+  },
+  "RS-1": {
+    "id": "RS-1",
+    "description": "Resources Master-Data Surface Completion",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_economy_surface.py"
+  },
+  "RS-3": {
+    "id": "RS-3",
+    "description": "Wave RS-3",
+    "phase": "Phase 2",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_product_p2_p3_ratchet.py"
+  },
+  "S-1": {
+    "id": "S-1",
+    "description": "Sales Native Write Path",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_economy_surface.py"
+  },
+  "S-2a": {
+    "id": "S-2a",
+    "description": "feat(sales): wire signed quote freeze, webhook receiver and admin attestation (Wave S-2a)",
+    "phase": "Phase 1",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_economy_surface.py"
+  },
+  "S-3": {
+    "id": "S-3",
+    "description": "Wave S-3",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": null
+  },
+  "S-4": {
+    "id": "S-4",
+    "description": "Wave S-4",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": null
+  },
+  "S-5": {
+    "id": "S-5",
+    "description": "Wave S-5",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": null
+  },
+  "S-6": {
+    "id": "S-6",
+    "description": "Sales Commission Calculation Surface Completion",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_economy_surface.py"
+  },
+  "SD-2": {
+    "id": "SD-2",
+    "description": "Wave SD-2",
+    "phase": "Phase 2",
+    "shape": "plain",
+    "marker_test": null
+  },
+  "SD-3": {
+    "id": "SD-3",
+    "description": "feat(core): Phase 2 Real Data Behind the AI - Waves C10, P-1..P-3, PJ-1/SD-3, Wave 5, T-1",
+    "phase": "Phase 2",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_project_pj1_sd3_ratchet.py"
+  },
+  "SD-4": {
+    "id": "SD-4",
+    "description": "Wave SD-4",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": null
+  },
+  "SU-1": {
+    "id": "SU-1",
+    "description": "feat(support,field_tech): dispatch ticket to work order via reactive TICKET.dispatched C4 event (Wave SU-1/FT-3)",
+    "phase": "Phase 1",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_support_field_tech_dispatch_event.py"
+  },
+  "SU-2": {
+    "id": "SU-2",
+    "description": "Support SLA Breach Watcher on Cron (TICKET.sla_breached)",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_support_sla_watcher.py"
+  },
+  "T-1": {
+    "id": "T-1",
+    "description": "feat(core): Phase 2 Real Data Behind the AI - Waves C10, P-1..P-3, PJ-1/SD-3, Wave 5, T-1",
+    "phase": "Phase 4",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_trust_dial_t1_ratchet.py"
+  },
+  "T-3": {
+    "id": "T-3",
+    "description": "Test Tiering",
+    "phase": "Phase 0",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_test_tiering.py"
+  },
+  "T-5": {
+    "id": "T-5",
+    "description": "Ratchets with Holes",
+    "phase": "Phase 0",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_check_empty_with.py"
+  },
+  "T-6": {
+    "id": "T-6",
+    "description": "feat(customer_portal): C3 adversarial review & server-verified auth boundary (Wave T-6)",
+    "phase": "Phase 4",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_customer_portal_c3_adversarial.py"
+  },
+  "V-1": {
+    "id": "V-1",
+    "description": "Vendors Master-Data Writes & Surface Completion",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_economy_surface.py"
+  },
+  "V-2": {
+    "id": "V-2",
+    "description": "feat(hr,vendors): close break-5a with CERTIFICATION.EXPIRED and burn down Golden Thread Step 23 (Wave HR-1/V-2)",
+    "phase": "Phase 1",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_hr1_v2_cert_expiry.py"
+  },
+  "V-3": {
+    "id": "V-3",
+    "description": "Seed VENDOR Identities from sales_read_model and Nettailer",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_vendors_surface.py"
+  },
+  "V-4": {
+    "id": "V-4",
+    "description": "Vendors Tests Hardening (to \u2265 80 tests)",
+    "phase": "Phase 3",
+    "shape": "plain",
+    "marker_test": "tests/unit/test_vendors_hardening.py"
+  }
+}

@@ -1,6 +1,22 @@
 [
   {
     "mergeCommit": {
+      "oid": "a399aac09dfd38e521822267b293297fabaa5d8d"
+    },
+    "mergedAt": "2026-09-16T08:05:44Z",
+    "number": 148,
+    "title": "feat(security): adversarial review of C3 external scope and standing ratchets (Wave A-T6)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "293da0e42a0b28da43370d95157f356e73a3413f"
+    },
+    "mergedAt": "2026-09-16T08:05:40Z",
+    "number": 147,
+    "title": "feat(cache): scope MCP cache generation per engine (Wave A-T2)"
+  },
+  {
+    "mergeCommit": {
       "oid": "02fde8b3ae8766b8b5d355ad159707f7a4fa3d0f"
     },
     "mergedAt": "2026-09-14T18:48:05Z",

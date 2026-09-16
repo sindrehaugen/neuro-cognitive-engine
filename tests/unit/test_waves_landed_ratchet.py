@@ -155,15 +155,91 @@ def test_unwired_tests_rejected_as_markers():
     )
 
 
+def test_positive_control_hr2_has_no_tree_stamp():
+    """Standing Positive Control (Line-wide vs Anchored scan): Assert HR-2 has no tree stamp.
+
+    Wave HR-2 is mentioned in test_economy_surface.py:276 as part of an assertion
+    count message ("+5 HR from HR-2"). That is prose in a line qualifying on Wave E-1,
+    not a stamp for Wave HR-2.
+    A line-wide token scanner fabricates a stamp for HR-2.
+    The anchored regex (Wave\s+<ID>) must reject this and confirm HR-2 has NO tree stamp,
+    meaning HR-2 is scored as PR_AND_TEST_NO_STAMP rather than LANDED.
+    """
+    gen = _load_generator()
+    results, _, _, _ = gen.run_instrument(repo=str(_ROOT), baseline="HEAD", live_prs=False)
+
+    hr2 = next((r for r in results if r["id"] == "HR-2"), None)
+    assert hr2 is not None, "Wave HR-2 must be evaluated"
+
+    # Assert HR-2 has NO tree stamp in nce/ or tests/
+    assert hr2["has_stamp"] is False, (
+        f"Wave HR-2 was incorrectly scored as having a tree stamp: {hr2['stamped_files']}. "
+        "HR-2 is mentioned only in prose in test_economy_surface.py:276, which is not a stamp!"
+    )
+    assert len(hr2["stamped_files"]) == 0
+
+    # Because it lacks a tree stamp, HR-2 cannot be LANDED (3-way consensus invariant)
+    assert hr2["is_landed"] is False, "Wave HR-2 cannot be LANDED without a tree stamp!"
+    assert hr2["verdict"] == "PR_AND_TEST_NO_STAMP"
+
+
+def test_merged_prs_snapshot_not_stale():
+    """PR leg staleness guard: The cached merged_prs.json snapshot must not be stale.
+
+    Compares the newest mergedAt timestamp in docs/_generated/merged_prs.json against
+    recent git commit activity on HEAD to prevent the cached snapshot from quietly
+    rotting unnoticed over time.
+    """
+    import datetime
+    import json
+    import subprocess
+
+    json_path = _ROOT / "docs" / "_generated" / "merged_prs.json"
+    assert json_path.exists(), "docs/_generated/merged_prs.json must exist"
+
+    prs = json.loads(json_path.read_text(encoding="utf-8"))
+    assert len(prs) > 0, "merged_prs.json cannot be empty"
+
+    dates = [p["mergedAt"] for p in prs if p.get("mergedAt")]
+    assert len(dates) > 0, "merged_prs.json must contain entries with mergedAt timestamps"
+
+    newest_merged_str = max(dates)
+    newest_dt = datetime.datetime.fromisoformat(newest_merged_str.replace("Z", "+00:00"))
+
+    # Get HEAD commit date
+    res = subprocess.run(
+        ["git", "-C", str(_ROOT), "show", "-s", "--format=%cI", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+        encoding="utf-8",
+    )
+    head_dt = datetime.datetime.fromisoformat(res.stdout.strip())
+
+    # Snapshot must be within 14 days of HEAD commit activity
+    delta = head_dt - newest_dt
+    max_staleness_days = 14
+    assert delta.total_seconds() < max_staleness_days * 86400, (
+        f"merged_prs.json snapshot is stale! Newest merged PR is from {newest_merged_str}, "
+        f"which is {delta.days} days behind HEAD ({head_dt.isoformat()}). "
+        "Refresh the snapshot with: python scripts/gen_waves_landed.py --live-prs"
+    )
+
+
 def test_waves_landed_shrink_only():
-    """Shrink-only invariant: landed waves count cannot regress below floor (50)."""
+    """Shrink-only invariant: landed waves count cannot regress below floor (45).
+
+    The floor was reset from 50 (measured as 52 originally) to 45 (measured as 47)
+    after removing 5 waves with fabricated stamps (B-E2, FT-3, HR-2, PR-3, PR-5)
+    that arose from line-wide token harvesting over test_economy_surface.py:276.
+    """
     gen = _load_generator()
     results, _, _, _ = gen.run_instrument(repo=str(_ROOT), baseline="HEAD", live_prs=False)
     landed = [r for r in results if r["is_landed"]]
 
     # Assert floor
-    assert len(landed) >= 50, (
-        f"Landed waves count ({len(landed)}) is below the floor of 50. "
+    assert len(landed) >= 45, (
+        f"Landed waves count ({len(landed)}) is below the floor of 45. "
         "Waves may not move from LANDED to unlanded without explanation."
     )
 

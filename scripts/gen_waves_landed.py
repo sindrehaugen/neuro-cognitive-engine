@@ -78,7 +78,7 @@ def load_known_unwired(repo: str, baseline: str) -> frozenset[str]:
 
 
 def load_merged_prs(repo: str, live: bool = False) -> list[dict[str, Any]]:
-    """Load merged PRs from GitHub CLI (if live) or cached nce/config_data/merged_prs.json."""
+    """Load merged PRs from GitHub CLI (if live) or cached docs/_generated/merged_prs.json."""
     if live:
         try:
             res = subprocess.run(
@@ -98,11 +98,18 @@ def load_merged_prs(repo: str, live: bool = False) -> list[dict[str, Any]]:
                 check=True,
                 encoding="utf-8",
             )
-            return json.loads(res.stdout)
+            data = json.loads(res.stdout)
+            cache_path = pathlib.Path(repo) / "docs" / "_generated" / "merged_prs.json"
+            if cache_path.parent.exists():
+                crlf_content = (
+                    (json.dumps(data, indent=2) + "\n").replace("\r\n", "\n").replace("\n", "\r\n")
+                )
+                cache_path.write_bytes(crlf_content.encode("utf-8"))
+            return data
         except Exception:
             pass  # fallback to cached file
 
-    json_path = pathlib.Path(repo) / "nce" / "config_data" / "merged_prs.json"
+    json_path = pathlib.Path(repo) / "docs" / "_generated" / "merged_prs.json"
     if json_path.exists():
         return json.loads(json_path.read_text(encoding="utf-8"))
     return []
@@ -181,7 +188,7 @@ def scan_tree_stamps(repo: str, baseline: str) -> tuple[dict[str, list[str]], se
 
 
 def load_wave_manifest(repo: str) -> dict[str, Any]:
-    path = pathlib.Path(repo) / "nce" / "config_data" / "waves.json"
+    path = pathlib.Path(repo) / "docs" / "_generated" / "waves.json"
     if path.exists():
         return json.loads(path.read_text(encoding="utf-8"))
     return {}
@@ -214,7 +221,7 @@ def evaluate_wave(
             marker_status = "ABSENT_FILE"
             test_collected = False
 
-    is_landed = (has_stamp or manifest_entry.get("stamped_files")) and has_pr and test_collected
+    is_landed = has_stamp and has_pr and test_collected
 
     if is_landed:
         verdict = "LANDED"
@@ -231,12 +238,18 @@ def evaluate_wave(
     else:
         verdict = "PLANNED"
 
-    pr_numbers = [p["number"] for p in prs] if prs else manifest_entry.get("pr_numbers", [])
-    pr_dates = (
-        [p.get("mergedAt", "") for p in prs if p.get("mergedAt")]
-        if prs
-        else manifest_entry.get("pr_dates", [])
-    )
+    pr_numbers = [p["number"] for p in prs] if prs else []
+    pr_dates = [p.get("mergedAt", "") for p in prs if p.get("mergedAt")]
+
+    # Evidence classification:
+    # 2-source: marker_test equals the sole stamping file
+    # 3-source: marker_test is separate from the stamping file(s)
+    evidence = "N/A"
+    if is_landed:
+        if len(stamped_files) == 1 and marker_test == stamped_files[0]:
+            evidence = "2-source"
+        else:
+            evidence = "3-source"
 
     return {
         "id": wid,
@@ -246,8 +259,9 @@ def evaluate_wave(
         "verdict": verdict,
         "is_landed": is_landed,
         "has_stamp": has_stamp,
-        "has_pr": has_pr or bool(pr_numbers),
-        "stamped_files": stamped_files or manifest_entry.get("stamped_files", []),
+        "has_pr": has_pr,
+        "evidence": evidence,
+        "stamped_files": stamped_files,
         "marker_test": marker_test,
         "marker_status": marker_status,
         "pr_numbers": pr_numbers,
@@ -273,6 +287,7 @@ def generate_markdown(
         "> **Core Invariant:** *A stamp is not a landing.* A wave is scored `LANDED` if and only if",
         "> all three independent sources agree: (1) tree stamp in `nce/` or `tests/`, (2) merged PR title,",
         "> and (3) marker test exists on `main` and is collected by pytest (not in `KNOWN_UNWIRED`).",
+        r"> **Tokenizer Pattern:** `Wave\s+([A-Z]{1,3}-(?:[A-Z]{1,3})?[0-9]+[a-z]?)\b` (anchored `Wave <ID>`, covers plain `LL-N` and charter-prefixed `L-LLN`).",
         "",
         "## Summary",
         "",
@@ -288,8 +303,8 @@ def generate_markdown(
         "",
         "## Landed Waves (`LANDED`)",
         "",
-        "| Wave ID | Phase | Merged PR | Merge Date | Stamping Files | Marker Test | Description |",
-        "|---|---|---|---|---|---|---|",
+        "| Wave ID | Phase | Evidence | Merged PR | Merge Date | Stamping Files | Marker Test | Description |",
+        "|---|---|---|---|---|---|---|---|",
     ]
 
     for r in sorted(landed, key=lambda x: x["id"]):
@@ -300,8 +315,9 @@ def generate_markdown(
             stamps_str += f"<br>*(+{len(r['stamped_files']) - 2} more)*"
         test_str = f"`{r['marker_test']}`" if r["marker_test"] else "-"
         desc = r["description"].replace("|", "\\|")
+        evidence_str = f"`{r.get('evidence', '3-source')}`"
         lines.append(
-            f"| **{r['id']}** | {r['phase']} | {prs_str} | {dates_str} | {stamps_str or '-'} | {test_str} | {desc} |"
+            f"| **{r['id']}** | {r['phase']} | {evidence_str} | {prs_str} | {dates_str} | {stamps_str or '-'} | {test_str} | {desc} |"
         )
 
     lines.extend(
