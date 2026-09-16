@@ -18,6 +18,7 @@ Exports:
   ``api_admin_sales_targets_put`` — PUT  /api/sales/targets
   ``api_admin_sales_calculate_commission`` — GET  /api/sales/commission
   ``api_admin_sales_divergences`` — GET  /api/sales/divergences
+  ``api_admin_sales_morning_brief_slice`` — GET  /api/sales/morning-brief
 """
 
 from __future__ import annotations
@@ -35,7 +36,10 @@ from nce.admin_handlers._shared import (
 from nce.db_utils import scoped_pg_session
 from nce.source_mode.divergence import flip_blocked
 from nce.vertical_modules.sales.commission import do_calculate_commission
-from nce.vertical_modules.sales.flip import do_read_sales_divergence
+from nce.vertical_modules.sales.flip import (
+    do_morning_brief_slice,
+    do_read_sales_divergence,
+)
 from nce.vertical_modules.sales.read_model import (
     do_get_targets,
     do_set_target,
@@ -1097,4 +1101,55 @@ async def api_admin_sales_divergences(request) -> JSONResponse:
             exc,
             status_code=500,
             log_event="api_admin_sales_divergences",
+        )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/sales/morning-brief
+# ---------------------------------------------------------------------------
+
+
+async def api_admin_sales_morning_brief_slice(request) -> JSONResponse:
+    """GET /api/sales/morning-brief
+
+    Expose executive morning brief slice for the Sales vertical.
+
+    Query parameters:
+        namespace_id (str, required): Active namespace UUID.
+        period_days  (int, optional): Lookback period in days for won deals (default 7).
+
+    Response (JSON):
+        {
+          "ok": True,
+          "pipeline_value": float,
+          "at_risk_deals_count": int,
+          "won_value_this_period": float,
+          "won_count_this_period": int,
+        }
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id = str(request.query_params.get("namespace_id") or "").strip()
+    if err_resp := _validate_namespace_query_param(namespace_id):
+        return err_resp
+
+    params: dict[str, Any] = {"namespace_id": namespace_id}
+    if "period_days" in request.query_params:
+        try:
+            params["period_days"] = int(request.query_params["period_days"])
+        except (ValueError, TypeError):
+            return JSONResponse({"error": "period_days must be an integer"}, status_code=422)
+
+    try:
+        result = await do_morning_brief_slice(admin_state.engine, params)
+        return JSONResponse(result, status_code=200)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Sales morning brief slice error",
+            exc,
+            status_code=500,
+            log_event="api_admin_sales_morning_brief_slice",
         )

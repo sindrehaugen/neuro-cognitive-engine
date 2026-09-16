@@ -35,7 +35,10 @@ from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import mcp_handler
 from nce.vertical_modules.sales.baseline import get_signed_baseline
 from nce.vertical_modules.sales.commission import do_calculate_commission
-from nce.vertical_modules.sales.flip import do_read_sales_divergence
+from nce.vertical_modules.sales.flip import (
+    do_morning_brief_slice,
+    do_read_sales_divergence,
+)
 from nce.vertical_modules.sales.lines import do_add_quote_line, do_get_quote_lines
 from nce.vertical_modules.sales.signing import do_request_signature
 from nce.vertical_modules.sales.write_routing import (
@@ -475,4 +478,28 @@ async def handle_sales_divergence_log(engine: NCEEngine, arguments: dict[str, An
         params["offset"] = int(arguments["offset"])
 
     result = await do_read_sales_divergence(engine, params)
+    return json.dumps(result)
+
+
+@mcp_handler
+async def handle_sales_morning_brief_slice(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: sales_morning_brief_slice — read morning brief metrics for Sales vertical.
+
+    Exposes open pipeline value, at-risk deals count, and won deals value/count for a given lookback period.
+
+    Arguments
+    ---------
+    namespace_id : str (required)
+    period_days  : int (optional, default 7)
+
+    Returns
+    -------
+    JSON body with morning brief sales slice metrics.
+    """
+    ns = require_namespace_id(arguments)
+    params: dict[str, Any] = {"namespace_id": ns}
+    if "period_days" in arguments and arguments["period_days"] is not None:
+        params["period_days"] = int(arguments["period_days"])
+
+    result = await do_morning_brief_slice(engine, params)
     return json.dumps(result)

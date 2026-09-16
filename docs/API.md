@@ -243,6 +243,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/sales/divergences` | `api_admin_sales_divergences` |
 | POST | `/api/sales/leads` | `api_admin_sales_create_lead` |
 | GET | `/api/sales/manager` | `api_admin_sales_manager` |
+| GET | `/api/sales/morning-brief` | `api_admin_sales_morning_brief_slice` |
 | GET | `/api/sales/overview` | `api_admin_sales_overview` |
 | GET | `/api/sales/quotes/{id}` | `api_admin_sales_quote_detail` |
 | GET | `/api/sales/seller-detail/{user}` | `api_admin_sales_seller_detail` |
@@ -497,6 +498,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_edit_deal` | yes | yes |  |  |
 | `sales_get_quote_lines` |  |  |  |  |
 | `sales_get_signed_baseline` |  |  |  |  |
+| `sales_morning_brief_slice` |  |  | yes |  |
 | `sales_ping` |  |  | yes |  |
 | `sales_request_signature` | yes | yes |  |  |
 | `search_codebase` |  |  | yes |  |
@@ -550,4 +552,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 273 REST endpoints, 259 MCP tools._
+_Totals: 274 REST endpoints, 260 MCP tools._

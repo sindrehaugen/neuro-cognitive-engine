@@ -104,16 +104,6 @@
     "owner": "MLV15B-S4",
     "reason": "Source-mode transition flip utility; internal helper function pending administration surface wiring."
   },
-  "nce/vertical_modules/sales/flip.py::do_morning_brief_slice": {
-    "engine": "sales",
-    "owner": "MLV15B-S4",
-    "reason": "Sales slice provider for daily brief; unscheduled until cross-engine morning brief is unified in Wave S-4."
-  },
-  "nce/vertical_modules/sales/flip.py::do_stalled_deal_watcher": {
-    "engine": "sales",
-    "owner": "MLV15B-S4",
-    "reason": "Stalled deal detection routine; scheduled for registration on cron runner in v1.5 Phase 1 Wave S-4."
-  },
   "nce/vertical_modules/sales/signing.py::do_on_declined_callback": {
     "engine": "sales",
     "owner": "MLV15B-S2a",
