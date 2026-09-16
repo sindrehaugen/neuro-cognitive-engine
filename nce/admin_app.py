@@ -904,6 +904,17 @@ def build_admin_routes() -> list[Route]:
             endpoint=project_handlers.api_project_convert_signed_quote,
             methods=["POST"],
         ),
+        # Wave PJ-3: Recall similar past slipped projects
+        Route(
+            "/api/project/similar",
+            endpoint=project_handlers.api_project_recall_similar,
+            methods=["GET", "POST"],
+        ),
+        Route(
+            "/api/project/{id}/similar",
+            endpoint=project_handlers.api_project_recall_similar,
+            methods=["GET"],
+        ),
         # NOTE: literal path must be declared before /{id}/phase to avoid
         # Starlette routing conflicts — no conflict here (no other /api/project/
         # literals clash with {id}), but the convert route is above as belt-and-

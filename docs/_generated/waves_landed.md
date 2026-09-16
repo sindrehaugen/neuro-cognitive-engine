@@ -78,7 +78,7 @@
 ## Disagreements & Unlanded Waves
 
 These waves have partial signal (e.g. stamped in tree without PR or test, or planned in briefs).
-**`Wave PJ-3` is the standing positive control**: stamped in `internal-cores.json:60`, but missing PR and marker test.
+**`Wave PJ-5` is the standing positive control**: stamped in `internal-cores.json`, but missing PR and marker test.
 
 | Wave ID | Phase | Verdict | PR(s) | Stamp File(s) | Marker Test Status | Notes |
 |---|---|---|---|---|---|---|
@@ -111,10 +111,10 @@ These waves have partial signal (e.g. stamped in tree without PR or test, or pla
 | **I-7** | Phase 0 | `PR_AND_TEST_NO_STAMP` | #29 | - | `tests/integration/test_golden_thread.py` (COLLECTED) | Golden Thread Scaffold |
 | **I-8** | Phase 0 | `PR_ONLY` | #128 | - | `tests/unit/test_event_log_chokepoint_ratchet.py` (ABSENT_FILE) | feat(instruments): implement event_log chokepoint and publish transactional ratchets (Wave I-8) |
 | **P-2** | Phase 2 | `UNMERGED_PR` | - | `tests/test_project_advance.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_product_p2_p3_ratchet.py` | `tests/unit/test_product_p2_p3_ratchet.py` (COLLECTED) | Wave P-2 |
-| **PJ-3** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | `tests/unit/test_project_similar.py` (ABSENT_FILE) | Similarity recall query over completed projects; scheduled for cacheable tool in MLV15C Wave PJ-3 |
+| **PJ-3** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/admin_app.py`<br>`nce/admin_handlers/project.py`<br>`nce/tool_registry.py`<br>`nce/vertical_modules/project/mcp_handlers.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_inventory_hardening.py`<br>`tests/unit/test_project_similar_surface.py` | `tests/unit/test_project_similar.py` (ABSENT_FILE) | Similarity recall query over completed projects; scheduled for cacheable tool in MLV15C Wave PJ-3 |
 | **PJ-5** | Unspecified | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave PJ-5 |
 | **PR-3** | Phase 3 | `PR_AND_TEST_NO_STAMP` | #52 | - | `tests/unit/test_economy_surface.py` (COLLECTED) | Procurement Savings Surface Completion |
-| **PR-4** | Unspecified | `STAMPED_UNLANDED` | - | `tests/test_tool_registry.py`<br>`tests/unit/test_inventory_hardening.py`<br>`tests/unit/test_procurement_bid_resolution_surface.py` | None |  |
+| **PR-4** | Unspecified | `STAMPED_UNLANDED` | - | `tests/test_tool_registry.py`<br>`tests/unit/test_procurement_bid_resolution_surface.py` | None |  |
 | **PR-5** | Phase 3 | `PR_AND_TEST_NO_STAMP` | #79 | - | `tests/unit/test_agreements_procurement_cross_engine.py` (COLLECTED) | feat(procurement,agreements): wire agreements compliance audit for rebate override via engine.modules (Wave AG-3 / PR-5) |
 | **PR-6** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave PR-6 |
 | **RS-3** | Phase 2 | `UNMERGED_PR` | - | `nce/tool_registry.py`<br>`tests/test_project_advance.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_product_p2_p3_ratchet.py`<br>`tests/unit/test_project_pj1_sd3_ratchet.py` | `tests/unit/test_product_p2_p3_ratchet.py` (COLLECTED) | Wave RS-3 |

@@ -66,33 +66,36 @@ def test_generated_waves_landed_matches_the_generator():
         )
 
 
-def test_positive_control_pj3_is_not_landed():
-    """Standing Positive Control (U18 pattern): Prove it RED on PJ-3 specifically.
+def test_positive_control_pj5_is_not_landed():
+    """Standing Positive Control (U18 pattern): Prove it RED on unlanded stamped wave (PJ-5).
 
-    Wave PJ-3 is stamped in nce/config_data/internal-cores.json:60, but
-    project_recall_similar is not in tool_registry.py, has no merged PR,
-    and has no marker test.
-    A naive stamp-only instrument would score PJ-3 as landed. The 3-source
-    instrument must reject PJ-3 and mark it STAMPED_UNLANDED.
+    Wave PJ-5 is stamped in nce/config_data/internal-cores.json, but has no
+    tool in tool_registry.py, has no merged PR, and has no marker test.
+    A naive stamp-only instrument would score PJ-5 as landed. The 3-source
+    instrument must reject PJ-5 and mark it STAMPED_UNLANDED.
     """
     gen = _load_generator()
     results, _, _, _ = gen.run_instrument(repo=str(_ROOT), baseline="HEAD", live_prs=False)
 
-    pj3 = next((r for r in results if r["id"] == "PJ-3"), None)
-    assert pj3 is not None, "Wave PJ-3 must be evaluated in wave results"
+    pj5 = next((r for r in results if r["id"] == "PJ-5"), None)
+    assert pj5 is not None, "Wave PJ-5 must be evaluated in wave results"
 
-    # Verify that PJ-3 IS stamped in the tree (the trap)
-    assert pj3["has_stamp"] is True, "PJ-3 must have a tree stamp (internal-cores.json:60)"
-    assert any("internal-cores.json" in f for f in pj3["stamped_files"])
+    # Verify that PJ-5 IS stamped in the tree (the trap)
+    assert pj5["has_stamp"] is True, "PJ-5 must have a tree stamp (internal-cores.json)"
+    assert any("internal-cores.json" in f for f in pj5["stamped_files"])
 
-    # Verify that PJ-3 is NOT scored as landed
-    assert pj3["is_landed"] is False, (
-        "Wave PJ-3 was scored as LANDED! A stamp is NOT a landing. "
-        "PJ-3 has no merged PR and no marker test."
+    # Verify that PJ-5 is NOT scored as landed
+    assert pj5["is_landed"] is False, (
+        "Wave PJ-5 was scored as LANDED! A stamp is NOT a landing. "
+        "PJ-5 has no merged PR and no marker test."
     )
-    assert pj3["verdict"] == "STAMPED_UNLANDED"
-    assert len(pj3["pr_numbers"]) == 0
-    assert pj3["marker_status"] in ("ABSENT_FILE", "MISSING")
+    assert pj5["verdict"] == "STAMPED_UNLANDED"
+    assert len(pj5["pr_numbers"]) == 0
+    assert pj5["marker_status"] in ("ABSENT_FILE", "MISSING")
+
+
+# Backwards-compatible alias for any external runner
+test_positive_control_pj3_is_not_landed = test_positive_control_pj5_is_not_landed
 
 
 def test_charter_prefixed_id_csd2_is_landed():

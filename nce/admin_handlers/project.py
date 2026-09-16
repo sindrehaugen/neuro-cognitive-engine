@@ -31,6 +31,7 @@ from nce.admin_handlers._shared import (
 from nce.vertical_modules.project.advance import do_advance_phase, read_current_phase
 from nce.vertical_modules.project.case_study import do_generate_case_study_edge
 from nce.vertical_modules.project.convert import do_convert_signed_quote
+from nce.vertical_modules.project.recall import do_recall_similar_projects
 
 log = logging.getLogger("nce.admin_handlers.project")
 
@@ -515,3 +516,101 @@ async def api_project_generate_case_study(request) -> JSONResponse:
         return JSONResponse(result, status_code=409)
 
     return JSONResponse(result, status_code=400)
+
+
+# ---------------------------------------------------------------------------
+# GET/POST /api/project/similar, GET /api/project/{id}/similar
+# ---------------------------------------------------------------------------
+
+
+async def api_project_recall_similar(request) -> JSONResponse:
+    """GET/POST /api/project/similar or GET /api/project/{id}/similar (Wave PJ-3).
+
+    Recall similar past slipped projects from cognitive memory joined with the
+    cognitive ledger, ranked by embedding similarity.
+
+    Path parameters (optional):
+        id (str): Project identifier, e.g. ``PROJECT:Q123``.
+
+    Query parameters (for GET) or Request body (for POST):
+        namespace_id (str, required): Active namespace UUID.
+        project_id   (str, required if not in path): Project identifier.
+        description  (str, optional): Custom query description override.
+        query        (str, optional): Full-text search keyword filter.
+        top_k        (int, optional): Max results (default 5).
+
+    Response (JSON):
+        {"status": "ok", "results": [...]}
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    path_id = (
+        request.path_params.get("id", "").strip()
+        if hasattr(request, "path_params") and request.path_params
+        else ""
+    )
+
+    body: dict[str, Any] = {}
+    if request.method == "POST":
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    raw_ns = (
+        body.get("namespace_id")
+        if request.method == "POST"
+        else request.query_params.get("namespace_id")
+    )
+    namespace_id, ns_err = _require_namespace_id(
+        raw_ns,
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM if request.method != "POST" else None,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    project_id = path_id
+    if not project_id:
+        if request.method == "POST":
+            project_id = str(body.get("project_id") or "").strip()
+        else:
+            project_id = str(request.query_params.get("project_id") or "").strip()
+
+    if not project_id:
+        return JSONResponse({"error": "Missing project_id parameter"}, status_code=422)
+
+    description = (
+        body.get("description")
+        if request.method == "POST"
+        else request.query_params.get("description")
+    )
+    query = body.get("query") if request.method == "POST" else request.query_params.get("query")
+    raw_top_k = body.get("top_k") if request.method == "POST" else request.query_params.get("top_k")
+
+    params: dict[str, Any] = {
+        "namespace_id": namespace_id,
+        "project_id": project_id,
+    }
+    if description:
+        params["description"] = str(description)
+    if query:
+        params["query"] = str(query)
+    if raw_top_k is not None:
+        try:
+            params["top_k"] = int(raw_top_k)
+        except (ValueError, TypeError):
+            return JSONResponse({"error": "Invalid top_k parameter"}, status_code=422)
+
+    try:
+        results = await do_recall_similar_projects(admin_state.engine, params)
+        return JSONResponse({"status": "ok", "results": results})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Project recall-similar error",
+            exc,
+            status_code=500,
+            log_event="api_project_recall_similar",
+        )
