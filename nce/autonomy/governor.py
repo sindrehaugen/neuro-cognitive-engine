@@ -65,7 +65,9 @@ from __future__ import annotations
 
 import functools
 import inspect
+import json
 import logging
+import uuid
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any, ParamSpec, TypeVar
 
@@ -237,6 +239,143 @@ async def _audit_execution(
     )
 
 
+def _sanitize_for_json(val: Any) -> Any:
+    """Recursively coerce objects into JSON-serializable types for proposed_payload."""
+    if val is None or isinstance(val, (str, int, float, bool)):
+        return val
+    if isinstance(val, uuid.UUID):
+        return str(val)
+    if hasattr(val, "isoformat") and callable(val.isoformat):
+        try:
+            return val.isoformat()
+        except Exception:
+            pass
+    if isinstance(val, dict):
+        return {
+            str(k): _sanitize_for_json(v)
+            for k, v in val.items()
+            if str(k) not in {"conn", "redis_client", "engine"}
+        }
+    if isinstance(val, (list, tuple, set)):
+        return [_sanitize_for_json(x) for x in val]
+    if hasattr(val, "model_dump") and callable(val.model_dump):
+        try:
+            return _sanitize_for_json(val.model_dump(mode="json"))
+        except Exception:
+            pass
+    return str(val)
+
+
+async def _record_pending_approval(
+    conn: asyncpg.Connection,
+    *,
+    namespace_id: Any,
+    agent_id: str,
+    action_type: str,
+    target_system: str,
+    target_entity_id: str | None,
+    idempotency_key: str,
+    reason: str,
+    parameters: dict[str, Any],
+    dry_run_result: dict[str, Any] | None = None,
+) -> uuid.UUID:
+    """Check for existing pending approval item or INSERT into action_approval_queue.
+
+    Must be called inside an active transaction on conn. Fails closed (propagates
+    any DB exceptions) so that callers never report pending_approval if persistence fails.
+    """
+    try:
+        existing = await conn.fetchrow(
+            """
+            SELECT id FROM action_approval_queue
+            WHERE namespace_id = $1
+              AND action_type = $2
+              AND proposed_payload->>'idempotency_key' = $3
+              AND status = 'pending'
+            LIMIT 1
+            """,
+            namespace_id,
+            action_type,
+            idempotency_key,
+        )
+    except Exception as e:
+        raise GovernanceError(
+            f"Failed to query action_approval_queue for action '{action_type}': {e}"
+        ) from e
+
+    if existing is not None:
+        try:
+            if "id" in existing and existing["id"] is not None:
+                return existing["id"]
+        except Exception:
+            pass
+
+    proposed_payload = {
+        "idempotency_key": idempotency_key,
+        "action_type": action_type,
+        "reason": reason,
+        "caller_identity": agent_id,
+        "parameters": parameters,
+    }
+
+    dry_run_json = json.dumps(dry_run_result) if dry_run_result is not None else None
+    try:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO action_approval_queue (
+                namespace_id,
+                agent_id,
+                action_type,
+                target_system,
+                target_entity_id,
+                proposed_payload,
+                status,
+                dry_run_result
+            ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, 'pending', $7::jsonb)
+            RETURNING id
+            """,
+            namespace_id,
+            agent_id,
+            action_type,
+            target_system,
+            target_entity_id,
+            json.dumps(proposed_payload, default=str),
+            dry_run_json,
+        )
+    except Exception as e:
+        raise GovernanceError(
+            f"Failed to record pending approval in action_approval_queue for action '{action_type}': {e}"
+        ) from e
+
+    if row is None or row["id"] is None:
+        raise GovernanceError(
+            f"Failed to record pending approval in action_approval_queue for action '{action_type}'"
+        )
+    return row["id"]
+
+
+async def _mark_approval_queue_executed(
+    conn: asyncpg.Connection,
+    namespace_id: Any,
+    action_type: str,
+    idempotency_key: str,
+) -> None:
+    """Transition matching pending or approved items in action_approval_queue to executed."""
+    await conn.execute(
+        """
+        UPDATE action_approval_queue
+        SET status = 'executed', resolved_at = now()
+        WHERE namespace_id = $1
+          AND action_type = $2
+          AND proposed_payload->>'idempotency_key' = $3
+          AND status IN ('pending', 'approved')
+        """,
+        namespace_id,
+        action_type,
+        idempotency_key,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Core gate logic (single function — SRP)
 # ---------------------------------------------------------------------------
@@ -300,6 +439,9 @@ async def _execute_governed(
         return {"status": "already_executed", "idempotency_key": idempotency_key}
 
     result = await fn(*fn_args, **fn_kwargs)
+
+    # Transition any matching pending/approved item in action_approval_queue to executed
+    await _mark_approval_queue_executed(conn, namespace_id, action_type, idempotency_key)
 
     await _audit_execution(conn, namespace_id, idempotency_key, action_type)
 
@@ -410,25 +552,91 @@ def governed(
                 )
             idempotency_key = str(idempotency_key).strip()
 
-            # --- 2. Confirm-only default: no side effect without explicit confirm ---
-            confirm: bool = bool(_get_arg(confirm_arg))
-            if not confirm:
+            # --- 2. Kill switch (fail-closed when Redis is wired up) ---
+            # Checked first so an emergency stop stops the action dead and prevents
+            # it from entering the approval pipeline on either return path.
+            redis_client: Any = _get_arg(redis_client_arg)
+            await _check_kill_switch(redis_client, action_type)
+
+            # --- 3. Resolve conn + namespace_id for all branches ---
+            # These may be positional args (e.g. handler(conn, ns_id, ...)) or
+            # keyword args — _get_arg handles both via the bound-arguments map.
+            conn: asyncpg.Connection | None = _get_arg(conn_arg)
+            namespace_id: Any = _get_arg(namespace_id_arg)
+            if conn is None or namespace_id is None:
+                raise GovernanceError(
+                    f"@governed handler '{fn.__name__}' requires '{conn_arg}' "
+                    f"and '{namespace_id_arg}' — cannot enforce idempotency or "
+                    "record actions in action_approval_queue."
+                )
+
+            # --- Transaction guard ---
+            if hasattr(conn, "is_in_transaction") and not conn.is_in_transaction():
+                raise GovernanceError(
+                    f"@governed handler '{fn.__name__}': conn is not inside an active "
+                    "transaction — call inside scoped_pg_session to ensure atomic "
+                    "governance operations."
+                )
+
+            # --- Check if already executed in action_idempotency ---
+            already_done = await _idempotency_key_exists(conn, namespace_id, idempotency_key)
+            if already_done:
                 log.info(
-                    "[governor] PENDING: idempotency_key=%r action_type=%s (no confirm)",
+                    "[governor] NO-OP: idempotency_key=%r action_type=%s already_executed",
                     idempotency_key,
                     action_type,
+                )
+                return {"status": "already_executed", "idempotency_key": idempotency_key}
+
+            # Prepare parameters and caller context for action_approval_queue
+            agent_id = str(
+                _get_arg("agent_id")
+                or _get_arg("caller_identity")
+                or _get_arg("actor")
+                or _AGENT_ID
+            )
+            target_system = str(_get_arg("target_system") or "nce")
+            target_entity_id_val = _get_arg("target_entity_id") or _get_arg("entity_id")
+            target_entity_id = (
+                str(target_entity_id_val) if target_entity_id_val is not None else None
+            )
+
+            raw_args = dict(bound.arguments) if bound is not None else dict(kwargs)
+            params = {
+                k: _sanitize_for_json(v)
+                for k, v in raw_args.items()
+                if k not in {conn_arg, redis_client_arg, "conn", "redis_client"}
+            }
+
+            # --- 4. Confirm-only default: no side effect without explicit confirm ---
+            confirm: bool = bool(_get_arg(confirm_arg))
+            if not confirm:
+                queue_id = await _record_pending_approval(
+                    conn,
+                    namespace_id=namespace_id,
+                    agent_id=agent_id,
+                    action_type=action_type,
+                    target_system=target_system,
+                    target_entity_id=target_entity_id,
+                    idempotency_key=idempotency_key,
+                    reason="confirm_required",
+                    parameters=params,
+                    dry_run_result=None,
+                )
+                log.info(
+                    "[governor] PENDING: idempotency_key=%r action_type=%s approval_id=%s (no confirm)",
+                    idempotency_key,
+                    action_type,
+                    queue_id,
                 )
                 return {
                     "status": "pending_approval",
                     "idempotency_key": idempotency_key,
                     "action_type": action_type,
+                    "approval_id": str(queue_id),
                 }
 
-            # --- 3. Kill switch (fail-closed when Redis is wired up) ---
-            redis_client: Any = _get_arg(redis_client_arg)
-            await _check_kill_switch(redis_client, action_type)
-
-            # --- 4. Contract-B policy gates ---
+            # --- 5. Contract-B policy gates ---
             policy: PolicyDecision = evaluate_policy(
                 value=_get_arg(value_arg),
                 value_ceiling=value_ceiling,
@@ -439,30 +647,32 @@ def governed(
                 risk_flags=_get_arg(risk_flags_arg),
             )
             if policy.requires_confirm:
+                queue_id = await _record_pending_approval(
+                    conn,
+                    namespace_id=namespace_id,
+                    agent_id=agent_id,
+                    action_type=action_type,
+                    target_system=target_system,
+                    target_entity_id=target_entity_id,
+                    idempotency_key=idempotency_key,
+                    reason=policy.reason,
+                    parameters=params,
+                    dry_run_result={"policy_reason": policy.reason},
+                )
                 log.info(
-                    "[governor] POLICY_GATE: idempotency_key=%r action_type=%s reason=%r",
+                    "[governor] POLICY_GATE: idempotency_key=%r action_type=%s approval_id=%s reason=%r",
                     idempotency_key,
                     action_type,
+                    queue_id,
                     policy.reason,
                 )
                 return {
                     "status": "pending_approval",
                     "idempotency_key": idempotency_key,
                     "action_type": action_type,
+                    "approval_id": str(queue_id),
                     "reason": policy.reason,
                 }
-
-            # --- 5. Resolve conn + namespace_id for dedup/audit ---
-            # These may be positional args (e.g. handler(conn, ns_id, ...)) or
-            # keyword args — _get_arg handles both via the bound-arguments map.
-            conn: asyncpg.Connection | None = _get_arg(conn_arg)
-            namespace_id: Any = _get_arg(namespace_id_arg)
-            if conn is None or namespace_id is None:
-                raise GovernanceError(
-                    f"@governed handler '{fn.__name__}' called with confirm=True "
-                    f"but '{conn_arg}' or '{namespace_id_arg}' is missing — "
-                    "cannot enforce idempotency or write audit log."
-                )
 
             # --- 6. Dedup + execute + audit (inside the caller's transaction) ---
             return await _execute_governed(

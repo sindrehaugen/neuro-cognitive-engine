@@ -121,3 +121,77 @@ async def test_approval_queue_get_endpoint():
             r = client.get(path, headers=headers)
             assert r.status_code == 404
             assert "not found" in r.json()["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_approval_queue_approve_endpoint():
+    mock_engine = MagicMock()
+    mock_conn = AsyncMock()
+    mock_conn.transaction = MagicMock()
+    mock_conn.transaction.return_value.__aenter__ = AsyncMock()
+    mock_conn.transaction.return_value.__aexit__ = AsyncMock()
+    mock_engine.pg_pool.acquire.return_value.__aenter__.return_value = mock_conn
+
+    # None returned (not found)
+    mock_conn.fetchrow.return_value = None
+
+    item_id = uuid.uuid4()
+    path = f"/api/admin/approval-queue/{item_id}/approve"
+    key = cfg.NCE_API_KEY or "test-key"
+    with (
+        patch("nce.admin_state.engine", mock_engine),
+        patch("nce.config.cfg.NCE_ADMIN_MTLS_ENABLED", False),
+    ):
+        with TestClient(app, raise_server_exceptions=False) as client:
+            # 1. Unauthenticated request -> should return 401
+            r = client.post(path)
+            assert r.status_code == 401
+
+            # 2. Authenticated request -> should return 404
+            headers = _valid_headers(key, "POST", path)
+            r = client.post(path, headers=headers)
+            assert r.status_code == 404
+            assert "not found" in r.json()["error"].lower()
+
+            # 3. Invalid UUID -> should return 422
+            inv_path = "/api/admin/approval-queue/not-a-uuid/approve"
+            headers = _valid_headers(key, "POST", inv_path)
+            r = client.post(inv_path, headers=headers)
+            assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_approval_queue_reject_endpoint():
+    mock_engine = MagicMock()
+    mock_conn = AsyncMock()
+    mock_conn.transaction = MagicMock()
+    mock_conn.transaction.return_value.__aenter__ = AsyncMock()
+    mock_conn.transaction.return_value.__aexit__ = AsyncMock()
+    mock_engine.pg_pool.acquire.return_value.__aenter__.return_value = mock_conn
+
+    # None returned (not found)
+    mock_conn.fetchrow.return_value = None
+
+    item_id = uuid.uuid4()
+    path = f"/api/admin/approval-queue/{item_id}/reject"
+    key = cfg.NCE_API_KEY or "test-key"
+    with (
+        patch("nce.admin_state.engine", mock_engine),
+        patch("nce.config.cfg.NCE_ADMIN_MTLS_ENABLED", False),
+    ):
+        with TestClient(app, raise_server_exceptions=False) as client:
+            # 1. Unauthenticated request -> should return 401
+            r = client.post(path)
+            assert r.status_code == 401
+
+            # 2. Authenticated request -> should return 404
+            headers = _valid_headers(key, "POST", path)
+            r = client.post(path, headers=headers)
+            assert r.status_code == 404
+            assert "not found" in r.json()["error"].lower()
+
+            # 3. Invalid UUID -> should return 422
+            inv_path = "/api/admin/approval-queue/not-a-uuid/reject"
+            headers = _valid_headers(key, "POST", inv_path)
+            r = client.post(inv_path, headers=headers)
+            assert r.status_code == 422

@@ -17,6 +17,8 @@ Covers:
 from __future__ import annotations
 
 import json
+import uuid
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
@@ -45,7 +47,13 @@ def _make_mock_conn() -> AsyncMock:
     tx.__aenter__ = AsyncMock(return_value=None)
     tx.__aexit__ = AsyncMock(return_value=None)
     conn.transaction = MagicMock(return_value=tx)
-    conn.fetchrow = AsyncMock(return_value=None)
+
+    async def _fetchrow(query: str, *args: Any) -> Any:
+        if "INSERT INTO action_approval_queue" in query:
+            return {"id": uuid.uuid4()}
+        return None
+
+    conn.fetchrow = AsyncMock(side_effect=_fetchrow)
     return conn
 
 
@@ -85,6 +93,7 @@ def test_procurement_po_tools_registered():
 async def test_generate_po_requires_confirm():
     """Calling generate_po without confirm=True returns pending_approval (Governor gating)."""
     engine = MagicMock()
+    engine.redis_pool = None
     conn = _make_mock_conn()
     engine.pg_pool = _make_mock_pool(conn)
 
@@ -103,6 +112,7 @@ async def test_generate_po_requires_confirm():
 async def test_submit_po_requires_confirm():
     """Calling submit_po without confirm=True returns pending_approval (Governor gating)."""
     engine = MagicMock()
+    engine.redis_pool = None
     conn = _make_mock_conn()
     engine.pg_pool = _make_mock_pool(conn)
 

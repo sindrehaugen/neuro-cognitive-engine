@@ -263,7 +263,13 @@ def _mock_conn_in_tx() -> MagicMock:
     """Return a mock asyncpg connection that reports being inside a transaction."""
     mock_conn: MagicMock = MagicMock()
     mock_conn.is_in_transaction.return_value = True
-    mock_conn.fetchrow = AsyncMock(return_value=None)  # key does not exist yet
+
+    async def _fetchrow(query: str, *args: Any) -> Any:
+        if "INSERT INTO action_approval_queue" in query:
+            return {"id": uuid.uuid4()}
+        return None
+
+    mock_conn.fetchrow = AsyncMock(side_effect=_fetchrow)
     mock_conn.execute = AsyncMock()
     return mock_conn
 
@@ -402,22 +408,21 @@ async def test_governed_kill_switch_redis_unreachable_blocks_fail_closed() -> No
 
 
 @pytest.mark.asyncio
-async def test_governed_no_confirm_skips_kill_switch() -> None:
-    """confirm=False → pending_approval returned before kill switch is checked."""
+async def test_governed_kill_switch_blocks_even_on_confirm_false() -> None:
+    """Kill switch is upstream of confirm-only gate — stops action dead before queueing."""
     handler, call_log = _make_governed_handler()
 
-    # Even with a Redis client that would block, no-confirm path must not touch it.
     mock_redis = AsyncMock()
-    mock_redis.hexists = AsyncMock(return_value=True)  # would block if reached
+    mock_redis.hexists = AsyncMock(return_value=True)  # kill switch engaged
 
-    result = await handler(
-        None,  # conn not needed on confirm=False path
-        uuid.uuid4(),
-        idempotency_key="k-no-confirm-1",
-        confirm=False,
-        redis_client=mock_redis,
-    )
+    with pytest.raises(KillSwitchError):
+        await handler(
+            _mock_conn_in_tx(),
+            uuid.uuid4(),
+            idempotency_key="k-no-confirm-1",
+            confirm=False,
+            redis_client=mock_redis,
+        )
 
-    assert result["status"] == "pending_approval"
-    mock_redis.hexists.assert_not_awaited()  # kill switch must not be reached
+    mock_redis.hexists.assert_awaited()
     assert call_log == []
