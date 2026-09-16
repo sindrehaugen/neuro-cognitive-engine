@@ -561,7 +561,7 @@ tree-sitter==0.26.0
     # via
     #   -r requirements.txt
     #   tree-sitter-language-pack
-tree-sitter-language-pack==1.16.2
+tree-sitter-language-pack==1.20.0
     # via -r requirements.txt
 triton==3.8.0
     # via torch
