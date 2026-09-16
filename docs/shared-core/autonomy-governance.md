@@ -18,6 +18,9 @@ As defined in the Shared-Core Foundation, **Contract B** mandates that every **A
 3. **Unified Audit Trail**: Every action must be recorded to the `v3_cognitive_ledger` (via the NCE core `event_log`).
 4. **Idempotency Enforcement**: Prevent duplicate side effects across engine boundaries and during network-replay conditions.
 
+> [!NOTE]
+> **CI Execution Reality (ML-CI1):** While pure-logic policy rules (`nce.autonomy.policy`) are covered in unit tests, the database-dependent integration test suite for the execution gate (`tests/test_governed_decorator.py`, covering live idempotency keys, unconfirmed pending-approval returns, and transactional `event_log` rollback) is parked in `KNOWN_UNWIRED` (`tests/test_ci_integration_coverage.py:106`) and does not run in CI (ML-CI1). Continuous CI wiring is queued under estate decision **Q-12** in `C:\Claude\QUESTIONS_CHARTER.md`.
+
 ### Architectural Separation of Concerns
 The C2 autonomy gate is split into two modules within the core `nce/autonomy` directory:
 - **`nce.autonomy.policy` (Pure Logic)**: I/O-free policy engine. It processes raw inputs (scalars, flags, allowlists) and returns policy decisions. It has no dependencies on databases, Redis, HTTP, or async runtimes.

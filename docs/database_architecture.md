@@ -240,12 +240,13 @@ The event log table (`event_log`) is configured as a Write-Once, Read-Many (WORM
   END;
   $$ LANGUAGE plpgsql;
   ```
-* **Role-Level Revocation**: PostgreSQL roles enforce append-only security directly:
+* **Role-Level Revocation & Deployment Reality**: In DDL, PostgreSQL roles restrict append-only security:
   ```sql
   REVOKE UPDATE, DELETE ON TABLE public.event_log FROM nce_app;
   REVOKE UPDATE, DELETE ON TABLE public.event_parents FROM nce_app;
   ```
-* **Merkle Chain Integrity**: Each event log entry includes a `chain_hash` byte array representing the SHA-256 digest of the current record data concatenated with the previous record's `chain_hash`. A periodic cron job (`_chain_verification_tick`, default interval 120 min via `NCE_CHAIN_VERIFY_INTERVAL_MINUTES`) validates the cryptographic chain across all namespaces to ensure no logs have been modified at the database layer; verification depth per namespace per run is controlled by `NCE_CHAIN_VERIFY_STARTUP_DEPTH` (default 500 events).
+  *Deployment and CI reality:* Runtime connections execute as superuser `mcp_user` (`rolsuper = true`), which bypasses PostgreSQL role-level table grants; the execution trigger `prevent_mutation()` above provides the active database-level barrier against mutation. Furthermore, the integration test verifying role-level rejection (`tests/test_worm_db_enforcement.py`) is parked in `KNOWN_UNWIRED` (ML-CI1) and does not currently run in CI.
+* **Merkle Chain Integrity**: Each event log entry includes a `chain_hash` byte array representing the SHA-256 digest of the current record data concatenated with the previous record's `chain_hash`. A periodic cron job (`_chain_verification_tick`, default interval 120 min via `NCE_CHAIN_VERIFY_INTERVAL_MINUTES`) validates the cryptographic chain across all namespaces to ensure no logs have been modified at the database layer; verification depth per namespace per run is controlled by `NCE_CHAIN_VERIFY_STARTUP_DEPTH` (default 500 events). *(Note: while active at runtime in `nce/cron.py`, its integration test suite `tests/test_cron_chain_verify.py` is parked in `KNOWN_UNWIRED` (ML-CI1) and does not run in CI.)*
 
 ---
 
@@ -410,5 +411,8 @@ To guarantee that newly added tables cannot be deployed without tenant isolation
 * Asserts that `relrowsecurity` is enabled on all 89 tenant tables.
 * Asserts that `tenant_isolation_policy` (or `a2a_grants` dual-ownership policy) is attached.
 * Raises `RuntimeError` and halts server startup if any unisolated tenant table is detected.
+
+> [!NOTE]
+> **Deployment Reality vs. DDL Invariants:** While `verify_rls_catalog_consistency()` asserts that RLS policies are enabled and attached in PostgreSQL catalog metadata, runtime application connections connect as `mcp_user` (`rolsuper = true`, `rolbypassrls = true`). Zero policies target `mcp_user`, rendering RLS inert during live execution; active tenant isolation is enforced by application `WHERE`-clause predicates (see [`docs/vertical_engines/_security/enforcement-census.md`](vertical_engines/_security/enforcement-census.md)).
 
 
