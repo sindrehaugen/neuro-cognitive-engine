@@ -156,7 +156,7 @@ def test_unwired_tests_rejected_as_markers():
 
 
 def test_positive_control_hr2_has_no_tree_stamp():
-    """Standing Positive Control (Line-wide vs Anchored scan): Assert HR-2 has no tree stamp.
+    r"""Standing Positive Control (Line-wide vs Anchored scan): Assert HR-2 has no tree stamp.
 
     Wave HR-2 is mentioned in test_economy_surface.py:276 as part of an assertion
     count message ("+5 HR from HR-2"). That is prose in a line qualifying on Wave E-1,
