@@ -57,9 +57,35 @@ return 1
 
 
 @app.get("/health")
-async def health():
-    """Baseline healthcheck for container orchestration."""
-    return {"status": "ok"}
+async def health(response: Response):
+    """Healthcheck that probes what this process actually needs.
+
+    Wave HEALTH. This returned a literal ``{"status": "ok"}``, so the compose healthcheck
+    behind it could not fail however broken the receiver was -- the same defect as the
+    admin ``/healthz`` and the same reason a real ``degraded`` verdict sat behind
+    ``13/13 healthy`` for five days.
+
+    This receiver has no engine; what it needs is Redis, for the sliding-window rate limit
+    and for enqueueing work. If Redis is unreachable the receiver accepts webhooks it
+    cannot rate-limit and cannot enqueue, so that is a blocking degradation and this
+    answers 503.
+    """
+    reasons: list[dict[str, object]] = []
+    try:
+        _redis_client().ping()
+        redis_state = "up"
+    except Exception:
+        redis_state = "down"
+        reasons.append({"reason": "redis_unreachable", "blocking": True})
+
+    blocking = any(r.get("blocking") for r in reasons)
+    if blocking:
+        response.status_code = 503
+    return {
+        "status": "degraded" if reasons else "ok",
+        "databases": {"redis": redis_state},
+        "degraded_reasons": reasons,
+    }
 
 
 def _require_cfg_secret(attr: str) -> str:

@@ -127,8 +127,32 @@ async def admin_lifespan(app):
 
 
 async def get_healthz(request):
-    """Unauthenticated liveness probe for load balancers / orchestrators."""
-    return JSONResponse({"status": "ok"})
+    """Unauthenticated liveness probe that actually probes.
+
+    Wave HEALTH. This returned a literal ``{"status": "ok"}`` regardless of the engine's
+    real state, so the compose healthcheck it backs could not fail. It now reports the
+    engine's verdict and its security block, and answers 503 when a degradation is
+    blocking. Still unauthenticated, so it exposes only status strings -- never a key,
+    a fingerprint, or a row.
+    """
+    engine = getattr(admin_state, "engine", None)
+    if engine is None:
+        return JSONResponse({"status": "down", "reason": "engine_not_initialised"}, status_code=503)
+    try:
+        res = await engine.check_health()
+    except Exception:
+        logger.exception("/healthz: check_health raised")
+        return JSONResponse({"status": "down", "reason": "health_probe_raised"}, status_code=503)
+
+    from nce.orchestrator import health_is_blocking
+
+    body = {
+        "status": res.get("status", "unknown"),
+        "security": res.get("security", {}),
+        "databases": res.get("databases", {}),
+        "degraded_reasons": res.get("degraded_reasons", []),
+    }
+    return JSONResponse(body, status_code=503 if health_is_blocking(res) else 200)
 
 
 def build_admin_middleware() -> list[Middleware]:
