@@ -291,7 +291,7 @@ All MCP tool invocations and JSON-RPC APIs return structured errors adhering to 
 
 ## 8. PostgreSQL Row-Level Security (RLS) Policies
 
-NCE implements tenant isolation directly at the database layer. This ensures that even if application logic fails to filter a query by tenant, PostgreSQL blocks access to unauthorized data.
+NCE specifies tenant isolation policies at the database layer via PostgreSQL Row-Level Security (RLS). **However, in deployment, the application connects as `mcp_user` (`rolsuper = true`, `rolbypassrls = true`), not `nce_app`.** Because `scoped_pg_session` does not issue `SET ROLE`, PostgreSQL RLS policies are **completely inert at runtime** — tenant isolation is actively enforced solely by `WHERE`-clause predicates in application queries (see live diagnostic evidence in [`docs/vertical_engines/_security/c3-external-scope-adversarial-review.md`](vertical_engines/_security/c3-external-scope-adversarial-review.md), PR #148).
 
 ### 8a. The Fail-Safe Namespace Resolver
 Postgres resolves tenant identity using the session settings variable `nce.namespace_id`. This is wrapped by the stable PL/pgSQL function `get_nce_namespace()`:
@@ -328,8 +328,9 @@ CREATE POLICY tenant_isolation_policy ON memories
     WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
 ```
 
-* **RLS Enforcement Rule**: All SELECT, INSERT, UPDATE, and DELETE operations executed under the standard application role `nce_app` are restricted to the UUID returned by `get_nce_namespace()`.
-* **Privileged Role Exception (`nce_gc`)**: The `nce_gc` role is defined in `schema.sql` with the database-level `BYPASSRLS` attribute as a least-privilege boundary for background maintenance workers. Workers select their DSN via `db_utils.resolve_worker_dsn()`: when `NCE_GC_DSN` is set they connect as `nce_gc` (its own credentials, distinct from `nce_app`); when it is unset they fall back to `PG_DSN` (the app role) for backward compatibility. The application role `nce_app` never holds `BYPASSRLS` in either case — that attribute belongs only to `nce_gc`. To enforce hard segregation in production, provision `nce_gc` with `LOGIN` and a dedicated password and set `NCE_GC_DSN` accordingly (`NCE_GC_DSN` is environment-only and never returned by any endpoint). The garbage collector additionally runs RLS-scoped per namespace (via `set_namespace_context`), so it does not depend on `BYPASSRLS` for correctness.
+* **RLS DDL Policy Specification**: DDL migrations define policies restricting operations under role `nce_app` to the UUID returned by `get_nce_namespace()`.
+* **Deployment Reality & Connecting Role (`mcp_user`)**: As deployed, runtime connections execute under `mcp_user`, which holds `rolsuper = true` and `rolbypassrls = true`. Zero policies target `mcp_user`, and `scoped_pg_session` never issues `SET ROLE`. Therefore, RLS does not evaluate at runtime, and PostgreSQL does NOT block access if an application query omits `WHERE namespace_id = $1`. Tenant isolation depends entirely on WHERE-clause predicates in application code.
+* **Privileged Role Exception (`nce_gc`)**: The `nce_gc` role is defined in `schema.sql` with the database-level `BYPASSRLS` attribute as a least-privilege boundary for background maintenance workers. Workers select their DSN via `db_utils.resolve_worker_dsn()`: when `NCE_GC_DSN` is set they connect as `nce_gc` (its own credentials, distinct from `nce_app`); when it is unset they fall back to `PG_DSN` (the app role) for backward compatibility. The garbage collector additionally runs RLS-scoped per namespace (via `set_namespace_context`), so it does not depend on `BYPASSRLS` for correctness.
 
 ---
 
