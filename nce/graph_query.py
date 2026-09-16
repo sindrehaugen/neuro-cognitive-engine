@@ -872,12 +872,25 @@ class GraphRAGTraverser:
         # encrypted raw_data excerpt can be decrypted; legacy rows → NULL →
         # plaintext.  code_files.raw_code is not envelope-encrypted by this batch.
         wrapped_by_ref: dict[str, bytes | None] = {}
-        if ep_docs:
+        if ep_docs and namespace_id:
+            # RL-H3: the namespace predicate is the ENTIRE tenant control here.
+            # RLS is inert as deployed -- the connecting role (`mcp_user`) is
+            # rolsuper/rolbypassrls and 86 tenant tables carry no policy targeting
+            # it -- so without this WHERE clause the lookup reads wrapped DEKs
+            # belonging to other tenants whenever a payload_ref collides.  The
+            # Mongo half of this same method already scopes via
+            # ``scoped_mongo_session``; this was the asymmetric half.
+            #
+            # No namespace => no lookup.  Every raw_data excerpt then falls back
+            # to the plaintext path below, which is the same behaviour as a
+            # legacy NULL dek -- degraded, never cross-tenant.
             try:
                 async with self.pg_pool.acquire(timeout=10.0) as c:
                     dek_rows = await c.fetch(
-                        "SELECT payload_ref, wrapped_dek FROM memories WHERE payload_ref = ANY($1::text[])",
+                        "SELECT payload_ref, wrapped_dek FROM memories "
+                        "WHERE payload_ref = ANY($1::text[]) AND namespace_id = $2::uuid",
                         list(ep_docs.keys()),
+                        namespace_id,
                     )
                 for dek_row in dek_rows:
                     wd = dek_row["wrapped_dek"]
