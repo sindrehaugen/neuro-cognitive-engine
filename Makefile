@@ -32,12 +32,17 @@ help:
 up:
 	python scripts/bootstrap-compose-secrets.py
 	docker compose up -d --build
+	@echo "[health] gating the deploy on the container verdict (Wave I-13)"
+	python -m nce.deploy_health --timeout 300
 
 down:
 	docker compose down
 
 restart:
 	docker compose restart worker admin a2a webhook-receiver cron
+
+health:
+	python -m nce.deploy_health --once
 
 status:
 	docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Health}}\t{{.Ports}}"

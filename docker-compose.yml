@@ -406,7 +406,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8003/healthz')",
+          "import json,urllib.request;d=json.load(urllib.request.urlopen('http://127.0.0.1:8003/healthz'));s=d.get('security',{});assert s.get('signing_key_decryption') in ('valid',), s.get('signing_key_decryption');assert not [r for r in d.get('degraded_reasons',[]) if r.get('blocking')], d.get('degraded_reasons')",
         ]
       interval: 30s
       timeout: 10s
@@ -501,7 +501,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8004/health')",
+          "import json,urllib.request;d=json.load(urllib.request.urlopen('http://127.0.0.1:8004/health'));s=d.get('security',{});assert s.get('signing_key_decryption') in ('valid',), s.get('signing_key_decryption');assert not [r for r in d.get('degraded_reasons',[]) if r.get('blocking')], d.get('degraded_reasons')",
         ]
       interval: 10s
       timeout: 5s
@@ -572,7 +572,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')",
+          "import json,urllib.request;d=json.load(urllib.request.urlopen('http://127.0.0.1:8080/health'));assert not [r for r in d.get('degraded_reasons',[]) if r.get('blocking')], d.get('degraded_reasons')",
         ]
       interval: 10s
       timeout: 5s

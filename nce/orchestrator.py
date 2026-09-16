@@ -116,6 +116,30 @@ SCHEMA_ADVISORY_LOCK_ID = 123456
 _ADVISORY_LOCK_SQL = "SELECT pg_advisory_xact_lock($1)"
 
 
+def _degrade(health: dict, reason: str, *, blocking: bool) -> None:
+    """Mark the payload degraded AND record why.
+
+    Wave I-13. Before this, ``check_health`` set ``status = "degraded"`` at 18 separate
+    sites and recorded nothing about which one fired, so an operator saw ``degraded`` with
+    every visible sub-key reading healthy and no way to tell what had tripped. That is the
+    same deafness as a 200 whose body says ``degraded``, moved one layer out.
+
+    ``blocking`` separates "this process cannot do its job" from "worth knowing about".
+    Only a blocking reason makes ``/health`` answer 503; a non-blocking one is reported and
+    does not take the container out of rotation. ``rls_role_posture`` is deliberately
+    non-blocking -- it is a standing posture finding on this estate (the connecting role can
+    bypass RLS), it is tracked as an estate row, and making it blocking would mark every
+    container unhealthy the moment this lands without telling anyone anything new.
+    """
+    health["status"] = "degraded"
+    health.setdefault("degraded_reasons", []).append({"reason": reason, "blocking": blocking})
+
+
+def health_is_blocking(health: dict) -> bool:
+    """True when any recorded degradation means this process should leave rotation."""
+    return any(r.get("blocking") for r in health.get("degraded_reasons", []))
+
+
 class NCEEngine(OrchestratorBase):
     def __init__(self):
         super().__init__(None, None, None)
@@ -1015,6 +1039,7 @@ class NCEEngine(OrchestratorBase):
         """Comprehensive health check — databases, security, cognitive, queues."""
         health: dict[str, Any] = {
             "status": "ok",
+            "degraded_reasons": [],
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "security": {
                 "master_key": (
@@ -1042,7 +1067,7 @@ class NCEEngine(OrchestratorBase):
                 await self.mongo_client.admin.command("ping")
                 health["databases"]["mongo"] = "up"
         except _HEALTH_PROBE_ERRORS:
-            health["status"] = "degraded"
+            _degrade(health, "mongo_unreachable", blocking=True)
 
         # 2. Postgres (actual probe, not hard-coded)
         try:
@@ -1051,7 +1076,7 @@ class NCEEngine(OrchestratorBase):
                     await conn.execute("SELECT 1")
                 health["databases"]["postgres"] = "up"
         except _HEALTH_PROBE_ERRORS:
-            health["status"] = "degraded"
+            _degrade(health, "postgres_unreachable", blocking=True)
 
         # 2.5 Security, Chain & RLS Deep Probes (III.4)
         health["security"]["signing_key_decryption"] = "failed"
@@ -1074,17 +1099,17 @@ class NCEEngine(OrchestratorBase):
                     """)
                     if row is None:
                         health["security"]["signing_key_decryption"] = "no_active_key"
-                        health["status"] = "degraded"
+                        _degrade(health, "signing_key_absent", blocking=True)
                     else:
                         with require_master_key() as master_key:
                             decrypt_signing_key(bytes(row["encrypted_key"]), master_key)
                         health["security"]["signing_key_decryption"] = "valid"
             else:
-                health["status"] = "degraded"
+                _degrade(health, "no_postgres_pool", blocking=True)
         except Exception:
             log.exception("Health probe (a) decrypt active signing key failed")
             health["security"]["signing_key_decryption"] = "failed"
-            health["status"] = "degraded"
+            _degrade(health, "signing_key_decrypt_failed", blocking=True)
 
         # (b) Verify bounded chain sample for active namespaces + set MERKLE_CHAIN_VALID
         try:
@@ -1117,15 +1142,15 @@ class NCEEngine(OrchestratorBase):
                     MERKLE_CHAIN_VALID.set(1)
                 else:
                     health["security"]["bounded_chain_sample"] = "corrupted"
-                    health["status"] = "degraded"
+                    _degrade(health, "event_chain_corrupted", blocking=True)
                     MERKLE_CHAIN_VALID.set(0)
             else:
-                health["status"] = "degraded"
+                _degrade(health, "no_postgres_pool", blocking=True)
                 MERKLE_CHAIN_VALID.set(0)
         except Exception:
             log.exception("Health probe (b) verify bounded chain sample failed")
             health["security"]["bounded_chain_sample"] = "failed"
-            health["status"] = "degraded"
+            _degrade(health, "chain_verify_failed", blocking=True)
             from nce.observability import MERKLE_CHAIN_VALID
 
             MERKLE_CHAIN_VALID.set(0)
@@ -1186,15 +1211,15 @@ class NCEEngine(OrchestratorBase):
                     EVENT_SIGNATURE_VALID.set(1)
                 else:
                     health["security"]["bounded_signature_sample"] = "tampered"
-                    health["status"] = "degraded"
+                    _degrade(health, "event_signature_tampered", blocking=True)
                     EVENT_SIGNATURE_VALID.set(0)
             else:
-                health["status"] = "degraded"
+                _degrade(health, "no_postgres_pool", blocking=True)
                 EVENT_SIGNATURE_VALID.set(0)
         except Exception:
             log.exception("Health probe (b2) verify bounded signature sample failed")
             health["security"]["bounded_signature_sample"] = "failed"
-            health["status"] = "degraded"
+            _degrade(health, "signature_verify_failed", blocking=True)
             from nce.observability import EVENT_SIGNATURE_VALID as _ESV
 
             _ESV.set(0)
@@ -1210,11 +1235,11 @@ class NCEEngine(OrchestratorBase):
                     await conn.execute("SELECT id FROM memories LIMIT 1")
                 health["databases"]["rls_read"] = "valid"
             else:
-                health["status"] = "degraded"
+                _degrade(health, "no_postgres_pool", blocking=True)
         except Exception:
             log.exception("Health probe (c) sample RLS read failed")
             health["databases"]["rls_read"] = "failed"
-            health["status"] = "degraded"
+            _degrade(health, "rls_read_failed", blocking=True)
 
         # (d) RLS role-capability posture — WARN + degraded only, never raises (Sindre's ruling)
         try:
@@ -1225,15 +1250,15 @@ class NCEEngine(OrchestratorBase):
                     role_findings = await verify_rls_role_capability(conn)
                 if role_findings:
                     health["security"]["rls_role_posture"] = role_findings
-                    health["status"] = "degraded"
+                    _degrade(health, "rls_role_posture", blocking=False)
                 else:
                     health["security"]["rls_role_posture"] = "ok"
             else:
-                health["status"] = "degraded"
+                _degrade(health, "no_postgres_pool", blocking=True)
         except Exception:
             log.exception("Health probe (d) verify RLS role capability failed")
             health["security"]["rls_role_posture"] = "failed"
-            health["status"] = "degraded"
+            _degrade(health, "rls_role_posture_probe_failed", blocking=False)
 
         # 3. Redis
         try:
@@ -1241,7 +1266,7 @@ class NCEEngine(OrchestratorBase):
                 await self.redis_client.ping()
                 health["databases"]["redis"] = "up"
         except _HEALTH_PROBE_ERRORS:
-            health["status"] = "degraded"
+            _degrade(health, "redis_unreachable", blocking=True)
 
         # 4. RQ queues — all three lanes (sync Redis I/O → thread pool)
         try:
@@ -1284,7 +1309,7 @@ class NCEEngine(OrchestratorBase):
         ) as e:
             health["cognitive"]["engine"] = f"unreachable ({type(e).__name__})"
             if not cfg.NCE_BACKEND:
-                health["status"] = "degraded"
+                _degrade(health, "embeddings_backend_unreachable", blocking=False)
 
         return health
 

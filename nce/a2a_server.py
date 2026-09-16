@@ -877,7 +877,13 @@ async def get_health(request: Request) -> JSONResponse:
         return JSONResponse({"status": "down"}, status_code=503)
     async with _track_active_request():
         res = await _engine.check_health()
-        return JSONResponse(res)
+        # Wave I-13: a 200 whose body says "degraded" is how a real degraded verdict hid
+        # behind `13/13 healthy` for five days. Answer 503 when a degradation is blocking;
+        # a non-blocking one (e.g. rls_role_posture) is reported without leaving rotation.
+        from nce.orchestrator import health_is_blocking
+
+        status_code = 503 if health_is_blocking(res) else 200
+        return JSONResponse(res, status_code=status_code)
 
 
 # ---------------------------------------------------------------------------
