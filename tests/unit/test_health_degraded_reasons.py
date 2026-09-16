@@ -1,4 +1,4 @@
-"""Wave HEALTH — a degraded verdict must say why, and a blocking one must leave rotation.
+"""Wave I-13 — a degraded verdict must say why, and a blocking one must leave rotation.
 
 The defect this pins, measured on the running stack 2026-09-16:
 

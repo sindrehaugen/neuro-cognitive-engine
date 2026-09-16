@@ -32,7 +32,7 @@ help:
 up:
 	python scripts/bootstrap-compose-secrets.py
 	docker compose up -d --build
-	@echo "[health] gating the deploy on the container verdict (Wave HEALTH)"
+	@echo "[health] gating the deploy on the container verdict (Wave I-13)"
 	python -m nce.deploy_health --timeout 300
 
 down:

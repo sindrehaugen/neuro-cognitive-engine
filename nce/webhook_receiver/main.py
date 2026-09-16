@@ -60,7 +60,7 @@ return 1
 async def health(response: Response):
     """Healthcheck that probes what this process actually needs.
 
-    Wave HEALTH. This returned a literal ``{"status": "ok"}``, so the compose healthcheck
+    Wave I-13. This returned a literal ``{"status": "ok"}``, so the compose healthcheck
     behind it could not fail however broken the receiver was -- the same defect as the
     admin ``/healthz`` and the same reason a real ``degraded`` verdict sat behind
     ``13/13 healthy`` for five days.

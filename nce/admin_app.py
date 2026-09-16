@@ -129,7 +129,7 @@ async def admin_lifespan(app):
 async def get_healthz(request):
     """Unauthenticated liveness probe that actually probes.
 
-    Wave HEALTH. This returned a literal ``{"status": "ok"}`` regardless of the engine's
+    Wave I-13. This returned a literal ``{"status": "ok"}`` regardless of the engine's
     real state, so the compose healthcheck it backs could not fail. It now reports the
     engine's verdict and its security block, and answers 503 when a degradation is
     blocking. Still unauthenticated, so it exposes only status strings -- never a key,

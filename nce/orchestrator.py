@@ -119,7 +119,7 @@ _ADVISORY_LOCK_SQL = "SELECT pg_advisory_xact_lock($1)"
 def _degrade(health: dict, reason: str, *, blocking: bool) -> None:
     """Mark the payload degraded AND record why.
 
-    Wave HEALTH. Before this, ``check_health`` set ``status = "degraded"`` at 18 separate
+    Wave I-13. Before this, ``check_health`` set ``status = "degraded"`` at 18 separate
     sites and recorded nothing about which one fired, so an operator saw ``degraded`` with
     every visible sub-key reading healthy and no way to tell what had tripped. That is the
     same deafness as a 200 whose body says ``degraded``, moved one layer out.
