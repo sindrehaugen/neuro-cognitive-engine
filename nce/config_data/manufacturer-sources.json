@@ -1,0 +1,59 @@
+{
+  "_comment": "Config-as-IP: Source trust weights and manufacturer adapter mapping for Product Engine field-level survivorship (A2). Order of precedence: manual_override (1.0) gt manufacturer_verified (0.95) gt distributor (0.80) gt ai_derived (0.60) gt scraped (0.40).",
+  "source_trust_weights": {
+    "manual_override": 1.0,
+    "human_accepted": 1.0,
+    "manufacturer_verified": 0.95,
+    "manufacturer_api": 0.95,
+    "manufacturer": 0.95,
+    "distributor": 0.80,
+    "distributor_nettailer": 0.80,
+    "nettailer": 0.80,
+    "supplier": 0.80,
+    "supplier_catalog": 0.80,
+    "ai_derived": 0.60,
+    "ai_enrichment": 0.60,
+    "datasheet_ocr": 0.50,
+    "product_spec": 0.50,
+    "scraped": 0.40,
+    "default": 0.50
+  },
+  "manufacturer_adapters": {
+    "cisco": {
+      "adapter": "manufacturer_api",
+      "trust_weight": 0.95
+    },
+    "crestron": {
+      "adapter": "manufacturer_api",
+      "trust_weight": 0.95
+    },
+    "shure": {
+      "adapter": "manufacturer_api",
+      "trust_weight": 0.95
+    },
+    "biamp": {
+      "adapter": "manufacturer_api",
+      "trust_weight": 0.95
+    },
+    "qsc": {
+      "adapter": "manufacturer_api",
+      "trust_weight": 0.95
+    },
+    "microsoft": {
+      "adapter": "manufacturer_api",
+      "trust_weight": 0.95
+    },
+    "neat": {
+      "adapter": "manufacturer_api",
+      "trust_weight": 0.95
+    },
+    "poly": {
+      "adapter": "manufacturer_api",
+      "trust_weight": 0.95
+    },
+    "huddly": {
+      "adapter": "manufacturer_api",
+      "trust_weight": 0.95
+    }
+  }
+}

@@ -14,7 +14,11 @@ from nce.vertical_modules.product._guard import (
     require_product_enabled,
 )
 from nce.vertical_modules.product.enrich import do_enrich_product
-from nce.vertical_modules.product.golden_record import do_golden_record
+from nce.vertical_modules.product.golden_record import (
+    do_golden_record,
+    load_manufacturer_sources,
+    resolve_source_trust,
+)
 from nce.vertical_modules.product.ingestion import do_ingest_spec
 from nce.vertical_modules.product.matching import (
     do_match_bom_line,
@@ -34,5 +38,7 @@ __all__ = [
     "do_price_product",
     "do_record_match_decision",
     "do_related_products",
+    "load_manufacturer_sources",
     "require_product_enabled",
+    "resolve_source_trust",
 ]
