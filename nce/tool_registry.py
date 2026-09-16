@@ -854,6 +854,14 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # Sales divergence log parity window reader (Wave S-7)
+    # Advisor tool: admin_only=False, mutation=False, cacheable=True.
+    "sales_divergence_log": ToolSpec(
+        _h(sales_mcp_handlers, "handle_sales_divergence_log"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # ------------------------------------------------------------------
     # Vendors vertical module tools (Batch 096)
     # ------------------------------------------------------------------

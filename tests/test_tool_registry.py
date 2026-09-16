@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 258  # 257 baseline + 1 Economy GL records tool (Wave B-AG1 / B-E2)
+_EXPECTED_TOTAL = 259  # 258 baseline + 1 Sales divergence log tool (Wave S-7)
 
 
 def test_registry_has_expected_entries():
@@ -422,6 +422,8 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "economy_validate_contract",
         # Wave B-AG1 / B-E2 -- Economy GL records retrieval (cacheable read)
         "economy_get_gl_records",
+        # Wave S-7 -- Sales divergence log parity window reader (cacheable read)
+        "sales_divergence_log",
     }
 )
 
@@ -434,7 +436,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 99  # 98 baseline + 1 Economy GL records tool (Wave B-AG1 / B-E2)
+    assert len(CACHEABLE_TOOLS) == 100  # 99 baseline + 1 Sales divergence log tool (Wave S-7)
 
 
 # ---------------------------------------------------------------------------
