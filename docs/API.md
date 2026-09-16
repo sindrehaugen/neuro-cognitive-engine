@@ -204,6 +204,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/procurement/sync/status` | `api_procurement_sync_status` |
 | POST | `/api/procurement/tco` | `api_procurement_calculate_tco` |
 | GET | `/api/product/enrichment/review` | `api_product_enrichment_review` |
+| GET | `/api/product/quality` | `api_product_quality` |
 | GET | `/api/product/search` | `api_product_search` |
 | GET | `/api/product/{id}` | `api_product_get` |
 | GET | `/api/project/capacity` | `api_admin_project_capacity` |
@@ -571,4 +572,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 282 REST endpoints, 271 MCP tools._
+_Totals: 283 REST endpoints, 271 MCP tools._

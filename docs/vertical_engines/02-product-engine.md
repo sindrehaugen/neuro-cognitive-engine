@@ -96,6 +96,7 @@ No-model paths for the BFF / Host Portal pages / cron (admin app, HMAC/mTLS auth
 - `POST /api/product/{id}/enrich` → `api_product_enrich` (also callable directly by Sales/Design BFF, not just via A2A)
 - `GET  /api/product/sources` / `POST /api/product/sources/{name}/sync` → adapter status + manual sync (Bibliotek.jsx integrations card; status payload never leaks the secret GUID)
 - `GET  /api/product/enrichment/review` → low-confidence enrichment queue (the OCR/confidence-review surface)
+- `GET  /api/product/quality` → `api_product_quality` (completeness scoring + data-health rollup)
 
 ## AI features
 

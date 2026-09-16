@@ -709,7 +709,7 @@ def build_admin_routes() -> list[Route]:
             methods=["POST"],
         ),
         # ------------------------------------------------------------------
-        # Product vertical module endpoints (M2.W3 / M2.W8)
+        # Product vertical module endpoints (M2.W3 / M2.W8 / Wave P-6)
         # ------------------------------------------------------------------
         Route(
             "/api/product/search",
@@ -721,6 +721,13 @@ def build_admin_routes() -> list[Route]:
         Route(
             "/api/product/enrichment/review",
             endpoint=product_handlers.api_product_enrichment_review,
+            methods=["GET"],
+        ),
+        # P-6: quality assessment & catalog rollup — must be declared before /{id}
+        # so the literal path segment "quality" is not captured as an {id} param.
+        Route(
+            "/api/product/quality",
+            endpoint=product_handlers.api_product_quality,
             methods=["GET"],
         ),
         Route(
