@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 262  # 260 baseline + 2 Sales lead score & quote draft tools (Wave S-5)
+_EXPECTED_TOTAL = 265  # 262 baseline + 3 Support ecosystem tools (Wave SU-3)
 
 
 def test_registry_has_expected_entries():
@@ -201,6 +201,9 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # ML10b-P2/P3 -- Support Engine dispatch and sync mutations
         "support_dispatch_work_order",
         "support_sync_now",
+        # Wave SU-3 -- Support ecosystem mutations (2 tools)
+        "support_failure_pattern",
+        "support_upsell_signal",
         # ML15-B7 (M15.W7) -- Resources Engine mutations (4 tools)
         "resources_reserve",
         "resources_release",
@@ -264,7 +267,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 115  # 114 baseline + 1 Project tool (Wave C-PJ2)
+    assert len(MUTATION_TOOLS) == 117  # 115 baseline + 2 Support ecosystem tools (Wave SU-3)
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -381,6 +384,8 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "marketing_audit_seo",
         # ML10b-P1 -- Support Engine triage advisor (cacheable)
         "support_triage_ticket",
+        # Wave SU-3 -- Support ecosystem read-only aggregate (1 tool)
+        "support_at_risk_aggregate",
         # ML15-B7 (M15.W7) -- Resources Engine cacheable reads (4 tools)
         "resources_resolve_capacity",
         "resources_detect_conflicts",
@@ -441,9 +446,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert (
-        len(CACHEABLE_TOOLS) == 103
-    )  # 101 baseline + 2 Sales lead score & quote draft tools (Wave S-5)
+    assert len(CACHEABLE_TOOLS) == 104  # 103 baseline + 1 Support ecosystem tool (Wave SU-3)
 
 
 # ---------------------------------------------------------------------------
@@ -520,6 +523,9 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         # ML10b-P2/P3 -- Support Engine dispatch and sync mutations
         "support_dispatch_work_order",
         "support_sync_now",
+        # Wave SU-3 -- Support ecosystem admin-only tools (2 tools)
+        "support_failure_pattern",
+        "support_upsell_signal",
         # ML15-B7 (M15.W7) -- Resources Engine admin_only tools (1 tool)
         "resources_plan_material_flow",
         # ML16 (Business Insights Engine) -- executive/board admin-only tools (6 tools)
@@ -596,7 +602,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 86  # 77 baseline + 9 Customer Portal tools (Wave T-6)
+    assert len(ADMIN_ONLY_TOOLS) == 88  # 86 baseline + 2 Support ecosystem tools (Wave SU-3)
 
 
 # ---------------------------------------------------------------------------

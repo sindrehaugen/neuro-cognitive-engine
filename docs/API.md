@@ -254,6 +254,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | PUT | `/api/sales/targets` | `api_admin_sales_targets_put` |
 | POST | `/api/search` | `api_search` |
 | POST | `/api/snapshot/export` | `api_snapshot_export` |
+| GET | `/api/support/at-risk-aggregate` | `api_support_at_risk_aggregate` |
 | GET | `/api/support/customers/{id}/health` | `api_support_customer_health` |
 | POST | `/api/support/sync/now` | `api_support_sync_now` |
 | GET | `/api/support/sync/status` | `api_support_sync_status` |
@@ -261,9 +262,11 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/support/tickets` | `api_support_tickets_open` |
 | GET | `/api/support/tickets/{id}` | `api_support_tickets_get` |
 | POST | `/api/support/tickets/{id}/dispatch` | `api_support_tickets_dispatch` |
+| POST | `/api/support/tickets/{id}/failure-pattern` | `api_support_tickets_failure_pattern` |
 | POST | `/api/support/tickets/{id}/resolve` | `api_support_tickets_resolve` |
 | GET | `/api/support/tickets/{id}/sla-clock` | `api_support_ticket_sla_clock` |
 | POST | `/api/support/tickets/{id}/triage` | `api_support_tickets_triage` |
+| POST | `/api/support/tickets/{id}/upsell-signal` | `api_support_tickets_upsell_signal` |
 | POST | `/api/support/touchpoints` | `api_support_touchpoints_record` |
 | POST | `/api/support/troubleshoot` | `api_support_troubleshoot` |
 | POST | `/api/system-design/enrich-design-lines` | `api_system_design_enrich_design_lines` |
@@ -513,7 +516,9 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `store_media` |  | yes |  |  |
 | `store_memory` |  | yes |  |  |
 | `suggest_queries` |  |  |  |  |
+| `support_at_risk_aggregate` |  |  | yes |  |
 | `support_dispatch_work_order` | yes | yes |  |  |
+| `support_failure_pattern` | yes | yes |  |  |
 | `support_health_score` |  |  | yes |  |
 | `support_open_ticket` | yes | yes |  |  |
 | `support_query_ticket` |  |  | yes |  |
@@ -523,6 +528,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `support_sync_now` | yes | yes |  |  |
 | `support_triage_ticket` |  |  | yes |  |
 | `support_troubleshoot` |  |  | yes |  |
+| `support_upsell_signal` | yes | yes |  |  |
 | `system_design_author_functional_location` |  | yes |  |  |
 | `system_design_author_topology` |  | yes |  |  |
 | `system_design_delete_planned` | yes | yes |  |  |
@@ -556,4 +562,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 276 REST endpoints, 262 MCP tools._
+_Totals: 279 REST endpoints, 265 MCP tools._

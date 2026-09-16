@@ -1344,6 +1344,25 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=True,
         mutation=True,
     ),
+    # Support vertical module ecosystem feeds (Wave SU-3)
+    "support_failure_pattern": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_failure_pattern"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "support_upsell_signal": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_upsell_signal"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "support_at_risk_aggregate": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_at_risk_aggregate"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # Field Tech vertical module tools (ML12-B5, M12.W5)
     "field_tech_dispatch": ToolSpec(
         _h(field_tech_mcp_handlers, "handle_field_tech_dispatch"),

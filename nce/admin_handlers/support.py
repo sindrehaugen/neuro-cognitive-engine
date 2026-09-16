@@ -57,6 +57,11 @@ from nce.vertical_modules.support.dispatch import (
     DispatchCeilingExceededError,
     do_dispatch_work_order,
 )
+from nce.vertical_modules.support.ecosystem import (
+    do_record_failure_pattern,
+    do_record_upsell_signal,
+    do_support_at_risk_aggregate,
+)
 from nce.vertical_modules.support.health import do_health_score, do_record_touchpoint
 from nce.vertical_modules.support.sla import do_sla_clock
 from nce.vertical_modules.support.sync import do_sync_now, do_sync_status
@@ -853,6 +858,210 @@ async def api_support_sync_status(request: Any) -> JSONResponse:
             exc,
             status_code=500,
             log_event="api_support_sync_status",
+        )
+
+    return JSONResponse({"ok": True, **result})
+
+
+# ---------------------------------------------------------------------------
+# POST /api/support/tickets/{id}/failure-pattern
+# ---------------------------------------------------------------------------
+
+
+async def api_support_tickets_failure_pattern(request: Any) -> JSONResponse:
+    """POST /api/support/tickets/{id}/failure-pattern — record failure pattern edge.
+
+    Path parameter:
+        id (str, optional): Ticket UUID.
+
+    Request body (JSON):
+        namespace_id (str, required): Active namespace UUID.
+        ticket_id (str, optional if in path): Ticket UUID.
+        product_sku (str, required): Product SKU string.
+        confidence (float, optional): Confidence score (default 1.0).
+        pattern_notes (str, optional): Observed failure pattern notes.
+
+    Response (JSON):
+        {"ok": True, "ticket_id": str, "product_sku": str, "edge": str}
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_support_enabled(pool, namespace_id)
+    except SupportDisabledError as exc:
+        return JSONResponse({"error": str(exc), "reason": "support_disabled"}, status_code=409)
+
+    ticket_id = (
+        request.path_params.get("id", "").strip() or str(body.get("ticket_id") or "").strip()
+    )
+    if not ticket_id:
+        return JSONResponse({"error": "Missing ticket_id parameter"}, status_code=422)
+
+    product_sku = str(body.get("product_sku") or "").strip()
+    if not product_sku:
+        return JSONResponse(
+            {"error": "product_sku is required and cannot be blank"}, status_code=422
+        )
+
+    params = dict(body)
+    params["namespace_id"] = namespace_id
+    params["ticket_id"] = ticket_id
+    params["product_sku"] = product_sku
+
+    try:
+        result = await do_record_failure_pattern(admin_state.engine, params)
+    except TicketNotFoundError as exc:
+        return JSONResponse(
+            {"error": str(exc), "not_found": True, "ticket_id": exc.ticket_id},
+            status_code=404,
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Support failure pattern error",
+            exc,
+            status_code=500,
+            log_event="api_support_tickets_failure_pattern",
+        )
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_support_tickets_failure_pattern")
+    return JSONResponse({"ok": True, **result})
+
+
+# ---------------------------------------------------------------------------
+# POST /api/support/tickets/{id}/upsell-signal
+# ---------------------------------------------------------------------------
+
+
+async def api_support_tickets_upsell_signal(request: Any) -> JSONResponse:
+    """POST /api/support/tickets/{id}/upsell-signal — record upsell opportunity edge.
+
+    Path parameter:
+        id (str, optional): Ticket UUID.
+
+    Request body (JSON):
+        namespace_id (str, required): Active namespace UUID.
+        ticket_id (str, optional if in path): Ticket UUID.
+        target_type (str, optional): 'QUOTE' or 'OPPORTUNITY' (default 'OPPORTUNITY').
+        target_id (str, required): Quote or opportunity ID string.
+        signal_reason (str, optional): Rationale for upsell recommendation.
+        confidence (float, optional): Confidence score (default 1.0).
+
+    Response (JSON):
+        {"ok": True, "ticket_id": str, "target": str, "edge": str}
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_support_enabled(pool, namespace_id)
+    except SupportDisabledError as exc:
+        return JSONResponse({"error": str(exc), "reason": "support_disabled"}, status_code=409)
+
+    ticket_id = (
+        request.path_params.get("id", "").strip() or str(body.get("ticket_id") or "").strip()
+    )
+    if not ticket_id:
+        return JSONResponse({"error": "Missing ticket_id parameter"}, status_code=422)
+
+    target_id = str(body.get("target_id") or "").strip()
+    if not target_id:
+        return JSONResponse({"error": "target_id is required and cannot be blank"}, status_code=422)
+
+    params = dict(body)
+    params["namespace_id"] = namespace_id
+    params["ticket_id"] = ticket_id
+    params["target_id"] = target_id
+
+    try:
+        result = await do_record_upsell_signal(admin_state.engine, params)
+    except TicketNotFoundError as exc:
+        return JSONResponse(
+            {"error": str(exc), "not_found": True, "ticket_id": exc.ticket_id},
+            status_code=404,
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Support upsell signal error",
+            exc,
+            status_code=500,
+            log_event="api_support_tickets_upsell_signal",
+        )
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_support_tickets_upsell_signal")
+    return JSONResponse({"ok": True, **result})
+
+
+# ---------------------------------------------------------------------------
+# GET /api/support/at-risk-aggregate
+# ---------------------------------------------------------------------------
+
+
+async def api_support_at_risk_aggregate(request: Any) -> JSONResponse:
+    """GET /api/support/at-risk-aggregate — expose 'drift gråter' operations slice.
+
+    Query parameters:
+        namespace_id (str, required): Active namespace UUID.
+        lookback_days (int, optional): Lookback window in days.
+
+    Response (JSON):
+        {"ok": True, "namespace_id": str, "computed_at": str, "operations_slice": {...}}
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
+    if err is not None:
+        return err
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_support_enabled(pool, namespace_id)
+    except SupportDisabledError as exc:
+        return JSONResponse({"error": str(exc), "reason": "support_disabled"}, status_code=409)
+
+    params: dict[str, Any] = {"namespace_id": namespace_id}
+    lookback = request.query_params.get("lookback_days")
+    if lookback:
+        try:
+            params["lookback_days"] = int(lookback)
+        except ValueError:
+            return JSONResponse({"error": "lookback_days must be an integer"}, status_code=422)
+
+    try:
+        result = await do_support_at_risk_aggregate(admin_state.engine, params)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Support at-risk aggregate error",
+            exc,
+            status_code=500,
+            log_event="api_support_at_risk_aggregate",
         )
 
     return JSONResponse({"ok": True, **result})
