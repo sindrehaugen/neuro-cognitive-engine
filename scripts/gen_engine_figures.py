@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Engine Inventory Figures Generator (Wave D-GEN).
 
 Eliminates hand-maintenance of the three core engine counters:
@@ -212,7 +212,11 @@ def extract_migration_stats(repo: str, baseline: str) -> dict[str, Any]:
         filename = f.split("/")[-1]
         if f.startswith("nce/migrations/optional/") and filename.endswith(".sql"):
             optional_migrations.append(filename)
-        elif f.startswith("nce/migrations/") and "/" not in f[len("nce/migrations/"):] and filename.endswith(".sql"):
+        elif (
+            f.startswith("nce/migrations/")
+            and "/" not in f[len("nce/migrations/") :]
+            and filename.endswith(".sql")
+        ):
             if re.match(r"^\d{3}_", filename):
                 base_migrations.append(filename)
 
@@ -393,6 +397,17 @@ def write_crlf(path: pathlib.Path, content: str) -> None:
     path.write_bytes(crlf_content.encode("utf-8"))
 
 
+def normalize_volatile(text: str) -> str:
+    """Strip volatile headers (commit sha and timestamp) for content drift checks."""
+    text = re.sub(
+        r">\s*\*\*Status:\*\*.*?·\s*\*\*Verified-against:\*\*.*?·\s*\*\*Last-audited:\*\*.*",
+        "",
+        text,
+    )
+    text = re.sub(r"##\s*Measured inventory at `[a-f0-9]+`", "", text)
+    return text.strip()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Generate docs/_generated/engine_figures.md and update ENGINE_STATUS.md"
@@ -426,7 +441,10 @@ def main() -> int:
     mig_stats = extract_migration_stats(repo, baseline)
     gt_stats = extract_golden_thread_stats(repo, baseline)
 
-    if tool_stats["expected_total"] is not None and tool_stats["total_tools"] != tool_stats["expected_total"]:
+    if (
+        tool_stats["expected_total"] is not None
+        and tool_stats["total_tools"] != tool_stats["expected_total"]
+    ):
         print(
             f"ERROR: TOOL_REGISTRY size ({tool_stats['total_tools']}) does not match "
             f"_EXPECTED_TOTAL ({tool_stats['expected_total']}) in tests/test_tool_registry.py!",
@@ -452,8 +470,10 @@ def main() -> int:
         else:
             current_md = out_path.read_text(encoding="utf-8").replace("\r\n", "\n")
             expected_md = generated_md.replace("\r\n", "\n")
-            if current_md != expected_md:
-                print(f"CHECK FAILED: {out_path} has drifted from generated state.", file=sys.stderr)
+            if normalize_volatile(current_md) != normalize_volatile(expected_md):
+                print(
+                    f"CHECK FAILED: {out_path} has drifted from generated state.", file=sys.stderr
+                )
                 drift = True
 
         if status_path and status_path.exists():
@@ -465,8 +485,11 @@ def main() -> int:
                 mig_stats=mig_stats,
                 gt_stats=gt_stats,
             ).replace("\r\n", "\n")
-            if current_status != expected_status:
-                print(f"CHECK FAILED: {status_path} has drifted from generated state.", file=sys.stderr)
+            if normalize_volatile(current_status) != normalize_volatile(expected_status):
+                print(
+                    f"CHECK FAILED: {status_path} has drifted from generated state.",
+                    file=sys.stderr,
+                )
                 drift = True
 
         if drift:
@@ -475,7 +498,9 @@ def main() -> int:
         return 0
 
     write_crlf(out_path, generated_md)
-    print(f"Generated {out_path} (tools: {tool_stats['total_tools']}, migrations: {mig_stats['base_count']}, gt: {gt_stats['broken']}/{gt_stats['total_steps']})")
+    print(
+        f"Generated {out_path} (tools: {tool_stats['total_tools']}, migrations: {mig_stats['base_count']}, gt: {gt_stats['broken']}/{gt_stats['total_steps']})"
+    )
 
     if status_path:
         current_status = status_path.read_text(encoding="utf-8")
