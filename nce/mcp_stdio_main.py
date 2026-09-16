@@ -93,6 +93,7 @@ async def run_stdio_server(*, app: Server | None = None, engine: NCEEngine | Non
         log.info("Re-embedder background task started.")
 
         from nce.outbox_relay import run_outbox_relay_once
+        from nce.read_model_subscribers import register_read_model_subscribers
         from nce.vertical_modules.field_tech.work_orders import (
             register_field_tech_subscribers,
         )
@@ -115,6 +116,7 @@ async def run_stdio_server(*, app: Server | None = None, engine: NCEEngine | Non
         # never marked published either, so it also stays in
         # idx_outbox_unpublished, which every tenant's relay poll reads.
         register_system_design_subscribers()
+        register_read_model_subscribers()
         register_field_tech_subscribers()
         # RS-4's on_hr_cert_event needs an engine for the same reason
         # tasks._handle_bom_line_status_changed does: the relay hands it the

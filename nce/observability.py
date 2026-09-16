@@ -246,6 +246,11 @@ OUTBOX_DLQ_TOTAL = _safe_counter(
     "Outbox events routed to DLQ after exhausting relay attempts",
     ["event_type"],
 )
+OUTBOX_UNCONSUMED_TOTAL = _safe_counter(
+    "nce_outbox_unconsumed_total",
+    "Total count of published outbox events dropped due to zero registered consumers",
+    ["selector"],
+)
 
 # Signing key cache (Item 31)
 SIGNING_KEY_CACHE_HIT_TOTAL = _safe_counter(

@@ -16,16 +16,21 @@ Design invariants (uncle-bob-craft / C4 §9.6)
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 import asyncpg  # type: ignore[import-untyped]
 
+from nce.observability import OUTBOX_UNCONSUMED_TOTAL
 from nce.outbox_relay import (
+    OUTBOX_HANDLERS,
     OutboxDeliveryError,
     OutboxHandler,
     PostCommitAction,
     register_handler,
 )
+
+log = logging.getLogger("nce.events.bus")
 
 # ``OutboxDeliveryError`` and ``PostCommitAction`` are re-exported deliberately:
 # they are the two halves of the subscriber-side contract — raise the first to
@@ -59,6 +64,10 @@ async def publish(
     it to any handler registered via ``subscribe``.  Callers must call this inside
     an open transaction so post-commit semantics are preserved.
 
+    If no consumer is registered for this event selector in ``OUTBOX_HANDLERS``,
+    the event is dropped with a debug log and counted in ``nce_outbox_unconsumed_total``
+    rather than being inserted into ``outbox_events`` (Wave B-R2).
+
     Parameters
     ----------
     conn:         Open asyncpg connection (must be inside an active transaction).
@@ -69,6 +78,18 @@ async def publish(
     payload:      Arbitrary JSON-serialisable event body.
     """
     event_type = _selector_key(node_type, op)
+    handlers = OUTBOX_HANDLERS.get(event_type)
+    if not handlers:
+        log.debug(
+            "[bus] Dropping unconsumed event: selector=%s aggregate_type=%s aggregate_id=%s ns=%s",
+            event_type,
+            node_type,
+            aggregate_id,
+            namespace_id,
+        )
+        OUTBOX_UNCONSUMED_TOTAL.labels(selector=event_type).inc()
+        return
+
     await conn.execute(
         """
         INSERT INTO outbox_events

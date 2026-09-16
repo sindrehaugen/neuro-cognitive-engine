@@ -613,39 +613,52 @@ async def test_kg_node_and_outbox_event_are_written_when_ownership_seeded(
     happy path upserts correctly; ``test_unseeded_namespace_...`` below is
     the guard-discriminating proof. Goes RED if ``emit_graph_write`` is
     removed from ``_upsert_inventory_rma_kg_node``."""
+    from nce.events.bus import subscribe
+    from nce.outbox_relay import restore_handlers, snapshot_handlers
+
     await _seed_ownership(pg_pool, namespace_id)
     loc = await _seed_location(pg_pool, namespace_id, "Warehouse")
     engine = _EngineStub(pg_pool)
 
-    await do_record_rma(
-        engine,
-        {
-            "namespace_id": namespace_id,
-            "rma_ref": "RMA-MIRROR-1",
-            "sku": "SKU-MIRROR",
-            "location": loc,
-            "qty": 1,
-            "reason": "return",
-        },
-    )
+    original = snapshot_handlers()
+    try:
 
-    label = "InventoryRma:RMA-MIRROR-1"
-    async with pg_pool.acquire() as conn:
-        node = await conn.fetchrow(
-            "SELECT label, entity_type FROM kg_nodes WHERE namespace_id = $1 AND label = $2",
-            namespace_id,
-            label,
-        )
-        outbox_count = await conn.fetchval(
-            "SELECT COUNT(*) FROM outbox_events "
-            "WHERE namespace_id = $1 AND aggregate_type = 'INVENTORY_RMA' AND aggregate_id = $2",
-            namespace_id,
-            label,
+        async def _dummy_handler(conn: asyncpg.Connection, event: dict[str, Any]) -> None:
+            return None
+
+        subscribe({"node_type": "INVENTORY_RMA", "op": "upserted"}, _dummy_handler)
+
+        await do_record_rma(
+            engine,
+            {
+                "namespace_id": namespace_id,
+                "rma_ref": "RMA-MIRROR-1",
+                "sku": "SKU-MIRROR",
+                "location": loc,
+                "qty": 1,
+                "reason": "return",
+            },
         )
 
-    assert node is not None
-    assert node["entity_type"] == "INVENTORY_RMA"
-    assert outbox_count == 1, "exactly one outbox_events row must be emitted for this node"
+        label = "InventoryRma:RMA-MIRROR-1"
+        async with pg_pool.acquire() as conn:
+            node = await conn.fetchrow(
+                "SELECT label, entity_type FROM kg_nodes WHERE namespace_id = $1 AND label = $2",
+                namespace_id,
+                label,
+            )
+            outbox_count = await conn.fetchval(
+                "SELECT COUNT(*) FROM outbox_events "
+                "WHERE namespace_id = $1 AND aggregate_type = 'INVENTORY_RMA' AND aggregate_id = $2",
+                namespace_id,
+                label,
+            )
+
+        assert node is not None
+        assert node["entity_type"] == "INVENTORY_RMA"
+        assert outbox_count == 1, "exactly one outbox_events row must be emitted for this node"
+    finally:
+        restore_handlers(original)
 
 
 @pytest.mark.integration
