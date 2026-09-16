@@ -13,8 +13,8 @@
 | Metric | Count |
 |---|---|
 | **Total Waves Evaluated** | **80** |
-| **LANDED on `main` (3-way consensus)** | **47** |
-| **Disagreements / Open / Planned** | **33** |
+| **LANDED on `main` (3-way consensus)** | **48** |
+| **Disagreements / Open / Planned** | **32** |
 | **Skipped Legacy / Pre-v1.5 Tokens** | **54** |
 | **Unmatched Wave Tokens** | **0** |
 
@@ -70,6 +70,7 @@
 | **T-6** | Phase 4 | `3-source` | #84 | 2026-09-07 | `nce/vertical_modules/customer_portal/sessions.py`<br>`tests/unit/test_customer_portal_c3_adversarial.py`<br>*(+1 more)* | `tests/unit/test_customer_portal_c3_adversarial.py` | feat(customer_portal): C3 adversarial review & server-verified auth boundary (Wave T-6) |
 | **V-1** | Phase 3 | `3-source` | #43 | 2026-09-06 | `nce/admin_handlers/vendors.py`<br>`tests/unit/test_vendors_surface.py` | `tests/unit/test_economy_surface.py` | Vendors Master-Data Writes & Surface Completion |
 | **V-2** | Phase 1 | `3-source` | #53 | 2026-09-07 | `nce/cron.py`<br>`nce/db_utils.py`<br>*(+2 more)* | `tests/unit/test_hr1_v2_cert_expiry.py` | feat(hr,vendors): close break-5a with CERTIFICATION.EXPIRED and burn down Golden Thread Step 23 (Wave HR-1/V-2) |
+| **V-3** | Phase 3 | `3-source` | #150 | 2026-09-16 | `tests/unit/test_vendors_seed.py` | `tests/unit/test_vendors_surface.py` | Seed VENDOR Identities from sales_read_model and Nettailer |
 | **V-4** | Phase 3 | `2-source` | #22 | 2026-09-06 | `tests/unit/test_vendors_hardening.py` | `tests/unit/test_vendors_hardening.py` | Vendors Tests Hardening (to ≥ 80 tests) |
 
 ---
@@ -113,7 +114,6 @@ These waves have partial signal (e.g. stamped in tree without PR or test, or pla
 | **S-5** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave S-5 |
 | **SD-2** | Phase 2 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json`<br>`nce/vertical_modules/system_design/propose.py` | None | Wave SD-2 |
 | **SD-4** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave SD-4 |
-| **V-3** | Phase 3 | `PLANNED` | - | - | `tests/unit/test_vendors_surface.py` (COLLECTED) | Seed VENDOR Identities from sales_read_model and Nettailer |
 
 ---
 

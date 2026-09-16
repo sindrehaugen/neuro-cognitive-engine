@@ -214,7 +214,7 @@ def test_merged_prs_snapshot_not_stale():
         check=True,
         encoding="utf-8",
     )
-    head_dt = datetime.datetime.fromisoformat(res.stdout.strip())
+    head_dt = datetime.datetime.fromisoformat(res.stdout.strip().replace("Z", "+00:00"))
 
     # Snapshot must be within 14 days of HEAD commit activity
     delta = head_dt - newest_dt
