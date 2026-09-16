@@ -333,7 +333,23 @@ async def test_mcp_handlers_execution():
 
     # Scenario
     scen_raw = await handle_business_insights_run_scenario(
-        engine, {"namespace_id": _NAMESPACE_A, "name": "Growth Test"}
+        engine,
+        {
+            "namespace_id": _NAMESPACE_A,
+            "name": "Growth Test",
+            "assumptions": {
+                "deals": [
+                    {
+                        "id": "deal-test-1",
+                        "name": "Growth Deal",
+                        "value": 300000.0,
+                        "win_probability": 0.6,
+                    }
+                ],
+                "baseline_cash": 1000000.0,
+                "monthly_burn": 50000.0,
+            },
+        },
     )
     scen = json.loads(scen_raw)
     assert "monte_carlo" in scen["projections"]["cashflow"]
@@ -395,7 +411,24 @@ async def test_rest_routes_response_and_errors():
 
     # Test POST run-scenario
     req_post = MagicMock(spec=Request)
-    req_post.json = AsyncMock(return_value={"namespace_id": _NAMESPACE_A, "name": "Rest Scenario"})
+    req_post.json = AsyncMock(
+        return_value={
+            "namespace_id": _NAMESPACE_A,
+            "name": "Rest Scenario",
+            "assumptions": {
+                "deals": [
+                    {
+                        "id": "deal-test-1",
+                        "name": "Growth Deal",
+                        "value": 300000.0,
+                        "win_probability": 0.6,
+                    }
+                ],
+                "baseline_cash": 1000000.0,
+                "monthly_burn": 50000.0,
+            },
+        }
+    )
     resp = await api_business_insights_run_scenario(req_post)
     assert resp.status_code == 200
 
