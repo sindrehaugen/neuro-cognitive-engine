@@ -4178,6 +4178,40 @@ TOOLS = [
         },
     ),
     Tool(
+        name="sales_divergence_log",
+        description=(
+            "Read Sales divergence log entries and evaluate the parity window between D365 and NCE. "
+            "Returns parity metrics, whether a cutover flip is blocked, and paginated divergence items."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "window_days": {
+                    "type": "number",
+                    "description": "Observation window size in days (default 7.0).",
+                },
+                "window_seconds": {
+                    "type": "number",
+                    "description": "Observation window size in seconds (overrides window_days).",
+                },
+                "entity": {
+                    "type": "string",
+                    "description": "Optional entity filter (e.g. accounts, opportunities).",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max entries to return (default 100, max 500).",
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Pagination offset (default 0).",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
         name="sales_ping",
         description=(
             'Liveness probe for the Sales vertical. Returns {"ok": true, "engine": "sales"}.'
