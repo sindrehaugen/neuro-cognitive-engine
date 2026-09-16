@@ -471,10 +471,14 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `product_search` |  |  | yes |  |
 | `project_advance_phase` | yes | yes |  |  |
 | `project_can_enter_phase` |  |  | yes |  |
+| `project_capacity` |  |  | yes |  |
 | `project_convert_signed_quote` | yes | yes |  |  |
+| `project_detect_scope_creep` |  |  | yes |  |
 | `project_generate_case_study_edge` | yes | yes |  |  |
+| `project_my_day` |  |  | yes |  |
 | `project_recall_similar` |  |  | yes |  |
 | `project_record_outcome` | yes | yes |  |  |
+| `project_status_report` |  |  | yes |  |
 | `project_suggest_pl` |  |  | yes |  |
 | `purge_dlq` |  | yes |  |  |
 | `replay_dlq` |  | yes |  |  |
@@ -567,4 +571,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 282 REST endpoints, 267 MCP tools._
+_Totals: 282 REST endpoints, 271 MCP tools._

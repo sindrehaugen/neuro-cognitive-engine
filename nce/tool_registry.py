@@ -756,6 +756,31 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # Project vertical module tools (Wave PJ-4) — Promoted REST reads to cacheable tools
+    "project_my_day": ToolSpec(
+        _h(project_mcp_handlers, "handle_project_my_day"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "project_capacity": ToolSpec(
+        _h(project_mcp_handlers, "handle_project_capacity"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "project_detect_scope_creep": ToolSpec(
+        _h(project_mcp_handlers, "handle_project_detect_scope_creep"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "project_status_report": ToolSpec(
+        _h(project_mcp_handlers, "handle_project_status_report"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # ------------------------------------------------------------------
     # Diagnostic Log Digestion Engine vertical module tools (Batch 77)
     # ------------------------------------------------------------------
