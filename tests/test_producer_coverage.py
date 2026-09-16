@@ -48,8 +48,6 @@ from functools import lru_cache
 from pathlib import Path
 from typing import get_args
 
-import pytest
-
 from nce.event_types import EventType
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -379,23 +377,10 @@ def test_no_unreviewed_dynamic_event_type_emission() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Dimension C — RED on arrival, and that is correct
+# Dimension C — pending_approval persisted in action_approval_queue (Wave B-B128)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "RL-B128 / BRIEF_PRODUCER_COVERAGE_2026-09-04: nce/autonomy/governor.py "
-        "lines 422 and 449 return {'status': 'pending_approval'} and NOTHING "
-        "persists it. The queue table exists (nce/schema.sql:2151 and "
-        "nce/migrations/022_muscles_schema_contract.sql:76 both create "
-        "action_approval_queue) but no module inserts a row, so no surface can "
-        "list, action or expire an approval. Deliberately NOT fixed in this wave: "
-        "nce/autonomy/ needs a design decision from Sindre first. strict=True so "
-        "this cannot start passing silently."
-    ),
-)
 def test_pending_approval_status_is_persisted() -> None:
     """If ``@governed`` returns ``pending_approval``, something must record it."""
     governor = _REPO_ROOT / "nce" / "autonomy" / "governor.py"

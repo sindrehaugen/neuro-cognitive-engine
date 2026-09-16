@@ -109,6 +109,8 @@ class _FakeConn:
             return {"seq": 1}
         if "INSERT INTO event_log" in query:
             return {"id": uuid.uuid4(), "event_seq": 1, "occurred_at": datetime.now(timezone.utc)}
+        if "INSERT INTO action_approval_queue" in query:
+            return {"id": uuid.uuid4()}
         if "action_idempotency" in query:
             return None
         return None

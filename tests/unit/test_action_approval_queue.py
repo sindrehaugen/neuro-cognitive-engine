@@ -384,7 +384,7 @@ async def test_governed_write_failure_fails_closed():
     conn = db.make_connection()
     ns_id = uuid.uuid4()
 
-    with pytest.raises(RuntimeError, match="Simulated DB connection failure"):
+    with pytest.raises(GovernanceError, match="Simulated DB connection failure"):
         await handler(conn, ns_id, idempotency_key="k-fail-closed", confirm=False)
 
     assert call_log == []
