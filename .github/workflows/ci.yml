@@ -291,6 +291,33 @@ jobs:
             tests/test_worm_registry.py::test_worm_tables_contains_expected_entries \
             -m integration -q --tb=short
 
+      # ML-CI1 (2026-09-16): security-shaped suites that ran in NO workflow.
+      # KNOWN_UNWIRED held 110 files; 13 of them assert security controls -- IDOR,
+      # session fixation, prompt injection, external-scope RLS, WORM enforcement,
+      # PII sanitisation. "The control exists" was an unbacked claim for all of
+      # them: the code was there and nothing ever executed it.
+      #
+      # These eight are wired here because they pass against the CI service
+      # Postgres with no further dependencies. Measured 2026-09-16: 30 passed.
+      # The remaining five are NOT wired yet, each for a stated reason:
+      #   test_governed_decorator.py        -- contract conflict with Wave B-B128
+      #                                        (@governed now requires conn +
+      #                                        namespace_id; the test passes None).
+      #                                        Routed to MLV15B, not silenced here.
+      #   test_cron_chain_verify.py         -- needs Redis (this job's Redis is on
+      #   test_chain_and_decay_integration.py  6380 and deliberately not ambient)
+      #   test_sales_sign_to_project.py     -- needs MinIO credentials
+      #   test_batch49_pii_derivation.py    -- needs MinIO credentials
+      # Removing a file from KNOWN_UNWIRED without wiring it would be worse than
+      # leaving it: the list is the only record of what is unguarded.
+      - name: Integration — security controls (ML-CI1)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: |
+          pytest tests/test_c3_adversarial.py             tests/test_external_scope_rls.py             tests/test_worm_db_enforcement.py             tests/test_vendors_contractor_rls.py             tests/test_diag_schema_rls.py             tests/test_batch44_worm_pii_sidesinks.py             tests/test_active_learning_signals.py             tests/test_sales_signed_baseline.py             -m integration -q --tb=short
+
       # M3 Agreements (W7-W10). These 2 757 lines of tests previously ran in NO
       # CI job: they are all @pytest.mark.integration, and the unit job selects
       # `-m "not integration and not perf"`, so the "90 M3 tests green" claim
