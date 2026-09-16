@@ -1770,9 +1770,17 @@ async def _resolve_scoped_impersonation(
         caller_ctx = getattr(request.state, "caller_ctx", None)
         if caller_ctx is not None and getattr(caller_ctx, "external_scope_id", None) is not None:
             return str(caller_ctx.external_scope_id)
-        state_scope = getattr(request.state, scope_field, None) or getattr(
-            request.state, "external_scope_id", None
+        raw_state = getattr(request.state, "_state", None)
+        state_dict = (
+            raw_state if isinstance(raw_state, dict) else getattr(request.state, "__dict__", None)
         )
+        if (
+            isinstance(state_dict, dict)
+            and scope_field in state_dict
+            and state_dict[scope_field] is not None
+        ):
+            return str(state_dict[scope_field])
+        state_scope = getattr(request.state, "external_scope_id", None)
         if state_scope is not None:
             return str(state_scope)
 
