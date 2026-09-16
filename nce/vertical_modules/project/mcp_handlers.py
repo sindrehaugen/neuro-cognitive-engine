@@ -43,7 +43,12 @@ from nce.mcp_errors import mcp_handler
 from nce.vertical_modules.project.advance import do_advance_phase
 from nce.vertical_modules.project.case_study import do_generate_case_study_edge
 from nce.vertical_modules.project.convert import do_convert_signed_quote
+from nce.vertical_modules.project.insights import (
+    do_detect_scope_creep,
+    do_status_report,
+)
 from nce.vertical_modules.project.phase_gates import can_enter_phase
+from nce.vertical_modules.project.pl import do_capacity, do_my_day
 from nce.vertical_modules.project.recall import (
     do_recall_similar_projects,
     do_record_project_outcome,
@@ -212,3 +217,70 @@ async def handle_project_recall_similar(engine: NCEEngine, arguments: dict[str, 
     params: dict[str, Any] = dict(arguments)
     result = await do_recall_similar_projects(engine, params)
     return json.dumps({"results": result}, default=str)
+
+
+@mcp_handler
+async def handle_project_my_day(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: project_my_day — Retrieve and rank open tasks by priority (Wave PJ-4).
+
+    Requires ``namespace_id`` in *arguments*.
+    Optionally accepts ``employee_id`` (str) and ``reference_date`` (str).
+    """
+    require_namespace_id(arguments)
+    params: dict[str, Any] = dict(arguments)
+    result = await do_my_day(engine, params)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_project_capacity(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: project_capacity — Aggregate open task load per PL/team (Wave PJ-4).
+
+    Requires ``namespace_id`` in *arguments*.
+    Optionally accepts ``start_date`` (str), ``end_date`` (str), and ``window`` (str).
+    """
+    require_namespace_id(arguments)
+    params: dict[str, Any] = dict(arguments)
+    result = await do_capacity(engine, params)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_project_detect_scope_creep(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: project_detect_scope_creep — Scope creep detection vs signed baseline (Wave PJ-4).
+
+    Requires ``namespace_id`` and ``project_id`` in *arguments*.
+    """
+    require_namespace_id(arguments)
+    project_id = str(arguments.get("project_id") or "").strip()
+    if not project_id:
+        raise ValueError("project_id is required")
+    params: dict[str, Any] = dict(arguments)
+    result = await do_detect_scope_creep(engine, params)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_project_status_report(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: project_status_report — Status report narrative and margin-trinity (Wave PJ-4).
+
+    Requires ``namespace_id`` and ``project_id`` in *arguments*.
+    Optionally accepts ``estimated_cost_nok`` (float) and ``estimated_revenue_nok`` (float).
+    """
+    require_namespace_id(arguments)
+    project_id = str(arguments.get("project_id") or "").strip()
+    if not project_id:
+        raise ValueError("project_id is required")
+    params: dict[str, Any] = dict(arguments)
+    if "estimated_cost_nok" in params and params["estimated_cost_nok"] is not None:
+        try:
+            params["estimated_cost_nok"] = float(params["estimated_cost_nok"])
+        except (ValueError, TypeError):
+            raise ValueError("estimated_cost_nok must be a valid float")
+    if "estimated_revenue_nok" in params and params["estimated_revenue_nok"] is not None:
+        try:
+            params["estimated_revenue_nok"] = float(params["estimated_revenue_nok"])
+        except (ValueError, TypeError):
+            raise ValueError("estimated_revenue_nok must be a valid float")
+    result = await do_status_report(engine, params)
+    return json.dumps(result, default=str)

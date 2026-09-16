@@ -3690,6 +3690,97 @@ TOOLS = [
         },
     ),
     Tool(
+        name="project_my_day",
+        description=(
+            "Retrieve and rank open tasks by priority (gate-blocking * deadline * value). "
+            "Read-only, advisory."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "employee_id": {
+                    "type": "string",
+                    "description": "Optional employee identifier to filter tasks.",
+                },
+                "reference_date": {
+                    "type": "string",
+                    "description": "Optional reference date for priority calculation (ISO 8601 YYYY-MM-DD).",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="project_capacity",
+        description=(
+            "Aggregate open task load per PL or team over a given window. Read-only, advisory."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "start_date": {
+                    "type": "string",
+                    "description": "Optional start date for window (ISO 8601 YYYY-MM-DD).",
+                },
+                "end_date": {
+                    "type": "string",
+                    "description": "Optional end date for window (ISO 8601 YYYY-MM-DD).",
+                },
+                "window": {
+                    "type": "string",
+                    "description": "Optional window specification.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="project_detect_scope_creep",
+        description=(
+            "Diff current BOM against Sales-frozen baseline via CHANGE_ORDER vs baseline. "
+            "Read-only, watcher."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "project_id": {
+                    "type": "string",
+                    "description": "Project identifier (e.g. PROJECT:XYZ).",
+                },
+            },
+            "required": ["namespace_id", "project_id"],
+        },
+    ),
+    Tool(
+        name="project_status_report",
+        description=(
+            "Generate retrieval-grounded status report narrative and margin-trinity snapshot. "
+            "Read-only, advisory."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "project_id": {
+                    "type": "string",
+                    "description": "Project identifier (e.g. PROJECT:XYZ).",
+                },
+                "estimated_cost_nok": {
+                    "type": "number",
+                    "description": "Optional custom estimated cost in NOK.",
+                },
+                "estimated_revenue_nok": {
+                    "type": "number",
+                    "description": "Optional custom estimated revenue in NOK.",
+                },
+            },
+            "required": ["namespace_id", "project_id"],
+        },
+    ),
+    Tool(
         name="agreements_lookup_terms",
         description=(
             "READ-ONLY agreement term lookup. Without a filter returns the 50 most "

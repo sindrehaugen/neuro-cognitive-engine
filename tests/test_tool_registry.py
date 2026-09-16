@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 267  # 266 baseline + 1 Project recall similar tool (Wave PJ-3)
+_EXPECTED_TOTAL = 271  # 267 baseline + 4 Project REST reads promoted to cacheable tools (Wave PJ-4)
 
 
 def test_registry_has_expected_entries():
@@ -438,6 +438,10 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "procurement_resolve_bids",
         # Wave PJ-3 -- Project recall similar (cacheable read)
         "project_recall_similar",
+        "project_my_day",
+        "project_capacity",
+        "project_detect_scope_creep",
+        "project_status_report",
     }
 )
 
@@ -450,7 +454,9 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 106  # 105 baseline + 1 Project recall similar tool (Wave PJ-3)
+    assert (
+        len(CACHEABLE_TOOLS) == 110
+    )  # 106 baseline + 4 Project REST reads promoted to cacheable tools (Wave PJ-4)
 
 
 # ---------------------------------------------------------------------------
