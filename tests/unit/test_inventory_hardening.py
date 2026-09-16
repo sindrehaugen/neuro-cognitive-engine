@@ -56,7 +56,7 @@ _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 _TOTAL_TOOLS = 258  # 257 baseline + 1 Economy GL records tool (Wave B-AG1 / B-E2)
 _MUTATION_TOOLS = 115  # 114 baseline + 1 Project mutation (Wave C-PJ2)
 _CACHEABLE_TOOLS = 99  # 98 baseline + 1 Economy GL records tool (Wave B-AG1 / B-E2)
-_ADMIN_ONLY_TOOLS = 77  # 76 baseline + 1 Economy EHF tool (Wave E-2)
+_ADMIN_ONLY_TOOLS = 86  # 77 baseline + 9 Customer Portal tools (Wave T-6)
 _MIGRATION_TOOLS = 5
 
 

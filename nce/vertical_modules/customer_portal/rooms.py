@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from nce.vertical_modules.customer_portal.auth import evaluate_customer_scope_access
+from nce.vertical_modules.customer_portal.auth import enforce_customer_scope
 from nce.vertical_modules.customer_portal.redaction import project_customer_safe
 
 _CONFIG_PATH = Path(__file__).parent / "room-tracker-stages.json"
@@ -91,12 +91,7 @@ async def do_room_tracker(engine: Any, params: dict[str, Any]) -> dict[str, Any]
 
     Enforces customer principal scope and filters through room_tracker allow-list.
     """
-    cust_scope = params.get("customer_scope_id")
-    target_scope = params.get("target_scope_id", cust_scope)
-    if not evaluate_customer_scope_access(cust_scope, target_scope):
-        raise PermissionError(
-            f"IDOR attempt: scope {cust_scope} denied access to scope {target_scope}"
-        )
+    enforce_customer_scope(params)
 
     room_id = params.get("room_id", "")
     room_name = params.get("room_name", f"Room {room_id}")
@@ -132,12 +127,7 @@ async def do_room_tracker(engine: Any, params: dict[str, Any]) -> dict[str, Any]
 
 
 async def do_room_overview(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
-    cust_scope = params.get("customer_scope_id")
-    target_scope = params.get("target_scope_id", cust_scope)
-    if not evaluate_customer_scope_access(cust_scope, target_scope):
-        raise PermissionError(
-            f"IDOR attempt: scope {cust_scope} denied access to scope {target_scope}"
-        )
+    cust_scope = enforce_customer_scope(params)
 
     site_id = params.get("site_id", "")
     site_name = params.get("site_name", "")
@@ -174,12 +164,7 @@ async def do_room_overview(engine: Any, params: dict[str, Any]) -> dict[str, Any
 
 
 async def do_asset_register(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
-    cust_scope = params.get("customer_scope_id")
-    target_scope = params.get("target_scope_id", cust_scope)
-    if not evaluate_customer_scope_access(cust_scope, target_scope):
-        raise PermissionError(
-            f"IDOR attempt: scope {cust_scope} denied access to scope {target_scope}"
-        )
+    cust_scope = enforce_customer_scope(params)
 
     room_id = params.get("room_id", "")
     raw_assets = params.get("assets", [])

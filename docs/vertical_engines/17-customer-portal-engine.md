@@ -61,21 +61,21 @@ Pure-ish `do_<action>(engine, params) -> dict`; **every** read resolves the **cu
 - `do_advisor_answer(engine, params) -> dict` — customer-facing assistant (room-status narrative + "when ready / how to raise a request"), **strictly scoped to the customer's own data**, redacted toolset, prompt-injection-sandboxed. — Advisor.
 
 ## MCP tools
-Registered in `nce/tool_registry.py` via `_h(...)` late-binding. **All customer-facing tools run under the customer-principal scope** and are the only tools bound into a customer agent profile (Vendors layer-2 pattern). AI-role tag per roadmap §2 taxonomy.
+Registered in `nce/tool_registry.py` via `_h(...)` late-binding. **All nine internal MCP tools are an operator-only admin surface (`admin_only=True`)**. Because internal MCP tools read customer data, holders of operator credentials must explicitly assert a target customer scope via `customer_scope_id`; every operator assertion is strictly audited by emitting a WORM `customer_scope_impersonated` event via `resolve_customer_scope` (Estate Charter §13). **The customer-principal path is exclusively the dedicated portal app** (`build_customer_portal_app`), which authenticates customers via BankID/magic-link sessions and establishes transaction-local GUC isolation. AI-role tag per roadmap §2 taxonomy.
 
 | Tool | cacheable | admin_only | mutation | AI-role |
 |---|---|---|---|---|
-| `customer_portal_room_tracker` | ✔ | ✘ | ✘ | Advisor (customer-scoped) |
-| `customer_portal_room_overview` | ✔ | ✘ | ✘ | — (read-projection) |
-| `customer_portal_asset_register` | ✔ | ✘ | ✘ | — (read-projection) |
-| `customer_portal_list_documents` | ✔ | ✘ | ✘ | — (read-projection) |
-| `customer_portal_sla_status` | ✔ | ✘ | ✘ | Watcher (customer-scoped) |
-| `customer_portal_list_invoices` | ✔ | ✘ | ✘ | — (read-projection) |
-| `customer_portal_advisor_answer` | ✘ | ✘ | ✘ | Advisor (sandboxed, customer-scoped) |
-| `customer_portal_raise_service_request` | ✘ | ✘ | ✔ | Actor (hand-off → Support) |
-| `customer_portal_register_expansion_interest` | ✘ | ✘ | ✔ | Actor (hand-off → Sales) |
+| `customer_portal_room_tracker` | ✔ | ✔ | ✘ | Advisor (customer-scoped) |
+| `customer_portal_room_overview` | ✔ | ✔ | ✘ | — (read-projection) |
+| `customer_portal_asset_register` | ✔ | ✔ | ✘ | — (read-projection) |
+| `customer_portal_list_documents` | ✔ | ✔ | ✘ | — (read-projection) |
+| `customer_portal_sla_status` | ✔ | ✔ | ✘ | Watcher (customer-scoped) |
+| `customer_portal_list_invoices` | ✔ | ✔ | ✘ | — (read-projection) |
+| `customer_portal_advisor_answer` | ✘ | ✔ | ✘ | Advisor (sandboxed, customer-scoped) |
+| `customer_portal_raise_service_request` | ✘ | ✔ | ✔ | Actor (hand-off → Support) |
+| `customer_portal_register_expansion_interest` | ✘ | ✔ | ✔ | Actor (hand-off → Sales) |
 
-> Only these customer-safe tools are bound into a customer agent profile. **No** Sales/Project/Economy/Procurement margin/cost/internal tools are ever registered into the customer surface — there is no MCP path to privileged data regardless of prompt (Partner Access Model layer 2, generalised to external customers).
+> Internal MCP tools are restricted to authorized administrators/operators (`admin_only=True`). Customer principals access functionality exclusively through the customer portal app. **No** Sales/Project/Economy/Procurement margin/cost/internal tools are ever registered into the customer surface — there is no MCP path to privileged data regardless of prompt (Partner Access Model layer 2, generalised to external customers).
 
 ## REST routes
 The customer-facing **separate app** (NOT the internal HMAC/mTLS admin app) — its own rate-limited, **customer-principal-authed** path (PR #241 split). Handlers in `nce/admin_handlers/customer_portal.py`; each resolves the customer scope internally and applies the allow-list projection before serialization.
