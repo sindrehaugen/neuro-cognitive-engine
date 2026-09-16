@@ -316,7 +316,7 @@ $$ LANGUAGE plpgsql STABLE;
 ```
 
 ### 8b. Default Table Policy Pattern
-For all 64 tenant-scoped tables (`EXPECTED_TENANT_RLS_TABLES` in `nce/event_log.py`), RLS is enabled and enforced:
+For all 87 tenant-scoped tables (`EXPECTED_TENANT_RLS_TABLES` in `nce/event_log.py`), RLS policies are defined in DDL:
 
 ```sql
 ALTER TABLE memories ENABLE ROW LEVEL SECURITY;
@@ -331,6 +331,17 @@ CREATE POLICY tenant_isolation_policy ON memories
 * **RLS DDL Policy Specification**: DDL migrations define policies restricting operations under role `nce_app` to the UUID returned by `get_nce_namespace()`.
 * **Deployment Reality & Connecting Role (`mcp_user`)**: As deployed, runtime connections execute under `mcp_user`, which holds `rolsuper = true` and `rolbypassrls = true`. Zero policies target `mcp_user`, and `scoped_pg_session` never issues `SET ROLE`. Therefore, RLS does not evaluate at runtime, and PostgreSQL does NOT block access if an application query omits `WHERE namespace_id = $1`. Tenant isolation depends entirely on WHERE-clause predicates in application code.
 * **Privileged Role Exception (`nce_gc`)**: The `nce_gc` role is defined in `schema.sql` with the database-level `BYPASSRLS` attribute as a least-privilege boundary for background maintenance workers. Workers select their DSN via `db_utils.resolve_worker_dsn()`: when `NCE_GC_DSN` is set they connect as `nce_gc` (its own credentials, distinct from `nce_app`); when it is unset they fall back to `PG_DSN` (the app role) for backward compatibility. The garbage collector additionally runs RLS-scoped per namespace (via `set_namespace_context`), so it does not depend on `BYPASSRLS` for correctness.
+
+> [!NOTE]
+> **CI Execution Status (ML-CI1):** While NCE codebase defines these controls, multiple underlying security integration test suites currently reside in `KNOWN_UNWIRED` (`tests/test_ci_integration_coverage.py`) and do not execute in CI:
+> - `tests/test_external_scope_rls.py` (External principal scope RLS)
+> - `tests/test_worm_db_enforcement.py` (WORM table role privilege revocation)
+> - `tests/test_envelope_encryption_integration.py` & `tests/test_envelope_read_consumers.py` (Envelope encryption)
+> - `tests/test_shred_memory_integration.py` (GDPR cryptographic memory shredding)
+> - `tests/test_cron_chain_verify.py` (Merkle provenance hash chain verification)
+> - `tests/test_tamper_anchor.py` (MinIO Object Lock anchoring)
+> - `tests/test_batch44_worm_pii_sidesinks.py` & `tests/test_batch49_pii_derivation.py` (PII side-sink leak prevention)
+> Wiring these test suites into CI is queued under estate decision **Q-12** in `C:\Claude\QUESTIONS_CHARTER.md`. See [`docs/vertical_engines/_security/enforcement-census.md`](vertical_engines/_security/enforcement-census.md) for the complete estate census.
 
 ---
 
@@ -365,7 +376,7 @@ Incoming Text: "Contact Alice at alice@example.com"
 ### 9b. Reversible Unredaction
 Authorized administrative users can retrieve original values using the `unredact_memory` tool:
 1. The requester must supply the `admin_api_key`.
-2. The query is executed inside a `scoped_pg_session`, ensuring RLS limits lookup to the requester's namespace.
+2. The query is executed inside a `scoped_pg_session`, filtering lookup explicitly by the requester's namespace (`WHERE namespace_id = $1`).
 3. The cipher text is retrieved and decrypted using `NCE_MASTER_KEY` before returning the plain text to the authenticated supervisor.
 
 ---

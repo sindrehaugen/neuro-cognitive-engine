@@ -10,6 +10,10 @@ The NCE Shared Core Row-Level Security (RLS) model includes a specialized securi
 > **Deployment Reality (2026-09-16, Wave A-T6 / PR #148):**
 > On the running estate, the connecting database role is `mcp_user` (`rolsuper = true, rolbypassrls = true`), not `nce_app`. Zero RLS policies target `mcp_user`, and `scoped_pg_session` never issues `SET ROLE`. Consequently, **PostgreSQL Row-Level Security (RLS) is completely INERT as deployed**. SQL queries must explicitly filter by `partner_scope_id` in their `WHERE` clause (e.g. `WHERE contractor_id = $1 AND namespace_id = $2 AND partner_scope_id = $3`). Omitting the predicate under the assumption that RLS will filter rows exposes data across partners. See full proof in [`docs/vertical_engines/_security/c3-external-scope-adversarial-review.md`](../vertical_engines/_security/c3-external-scope-adversarial-review.md).
 
+> [!NOTE]
+> **CI Execution Reality (ML-CI1):**
+> The integration test suites validating the external scope primitive and adversarial protections (`tests/test_external_scope_rls.py` and `tests/test_c3_adversarial.py`) are parked in `KNOWN_UNWIRED` (`tests/test_ci_integration_coverage.py:78,104`) and **run in zero CI workflows**. Continuous gating in CI is queued under estate decision **Q-12** in `C:\Claude\QUESTIONS_CHARTER.md`.
+
 This guide outlines the system design, the session Grand Unified Configuration (GUC) variables, the deny-when-unset policy, the three-tier threat model, Python execution integration, and threat mitigation logic.
 
 ---
