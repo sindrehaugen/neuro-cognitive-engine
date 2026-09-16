@@ -282,7 +282,7 @@ Tools are dispatched through `nce/mcp_stdio_dispatch.py`, which enforces auth, q
 | `connect_bridge` / `complete_bridge_auth` / `list_bridges` / `force_resync_bridge` | Document-bridge lifecycle |
 | `manage_namespace` · `manage_quotas` · `trigger_consolidation` · `rotate_signing_key` · `get_health` · `list_dlq` | `[ADMIN]` operations |
 
-Migration tools (`start_migration`, `validate_migration`, `commit_migration`, …) are included unless disabled, and vertical-engine tool families (`product_*`, `procurement_*`, `vendors_*`, `sales_*`, `system_design_*`, `project_*`, `d365_*`, `diag_*`, …) register when their engine is enabled. The authoritative registry is [`nce/tool_registry.py`](nce/tool_registry.py) — **109 tools** as of the current `main`.
+Migration tools (`start_migration`, `validate_migration`, `commit_migration`, …) are included unless disabled, and vertical-engine tool families (`product_*`, `procurement_*`, `vendors_*`, `sales_*`, `system_design_*`, `project_*`, `d365_*`, `diag_*`, …) register when their engine is enabled. The authoritative registry is [`nce/tool_registry.py`](nce/tool_registry.py) — **260 tools** as of the current `main`, pinned by `_EXPECTED_TOTAL` in [`tests/test_tool_registry.py`](tests/test_tool_registry.py).
 
 ---
 
@@ -310,6 +310,8 @@ All business engines sit on a common cross-engine foundation (C1–C9): **entity
 
 Per-namespace opt-in; documented under [docs/engines/](docs/engines/) (see the [docs index](docs/README.md#vertical-engine-guides)):
 
+**20 module packages** live under `nce/vertical_modules/` — 17 business engines plus the `diagnostics`, `dynamics365` and `netbox` integrations. Per-engine tool/route/core counts are measured in [`docs/vertical_engines/ENGINE_STATUS.md`](docs/vertical_engines/ENGINE_STATUS.md) and the generated [`docs/_generated/surface.md`](docs/_generated/surface.md).
+
 - **Product** — catalog search & on-demand enrichment, related-product/BOM matching, golden-record survivorship, EOL watchers.
 - **Procurement** — TCO calculation, supplier ranking, three-way match, and PO generation/submission behind confirm-first autonomy ceilings (real money never moves without a human).
 - **Agreements** — OCR → structured agreement extraction with a human review queue (money/legal terms never auto-promote), kickback reconciliation, coverage analysis.
@@ -317,6 +319,16 @@ Per-namespace opt-in; documented under [docs/engines/](docs/engines/) (see the [
 - **Sales** — D365-mirrored lead → opportunity → quote read model, dealroom pricing via the shared pricing resolver, a **single immutable signed-baseline freeze per quote** (append-only at the database grant level), public customer quote links (HMAC-tokenised, redacted), and source-mode divergence tracking.
 - **System Design** — propose-only design generation with a human validation gate, device/topology capability checks, SoW generation with freeze-on-issue *(design ↔ quote round-trip planned)*.
 - **Project** — G0–G6 phase gates with config-as-IP criteria, signed-quote conversion (reads the Sales baseline), event-driven BOM→task sync, My-Day/capacity/scope-creep insights *(partial — some surfaces REST-only or not yet wired)*.
+- **Economy** — owns `INVOICE`/`POSTING`/`MARGIN`: 130-point invoice matching, NGAAP periodisation, a WORM balance trigger, the 7-effect cascade and MRR/ARR roll-ups.
+- **Warehouse & Inventory** — owns `STOCK_LOCATION`/`GOODS_RECEIPT`: append-only transactions, reservation algebra, row-locked decrements, kitting and restock advice.
+- **Assets** — owns `ASSET`/`TELEMETRY`: a 14-state lifecycle, seeding from BOM lines, SLA attachment and health scoring.
+- **Support** — owns `TICKET` and the SLA clock: query/open/resolve/triage, SLA clocks with a breach sweep on cron, customer-health scoring.
+- **Staff & Resources** — owns `RESOURCE`/`ALLOCATION`: double-booking made impossible at the database (`EXCLUDE USING gist`), capacity, travel and material-flow planning.
+- **Field Tech** — owns `WORK_ORDER`: work orders under dual RLS (namespace + partner scope), ISO 9001 checklists, time entries and outcome feedback.
+- **HR** — owns `EMPLOYEE`/`SKILL`/`CERTIFICATION`: profiles, skills matching, capacity, certification status with an expiry watcher on cron, absences and onboarding.
+- **Marketing** — case-study candidates and grounded drafting, anonymise-by-default, testimonials with consent tiers, AEO/GEO content.
+- **Business Insights** — KPI cockpit, executive morning brief with a provenance graph, cross-engine risk radar, Monte-Carlo scenarios and board pack.
+- **Customer Portal** — the external customer surface, owning `PORTAL_USER`/`SERVICE_REQUEST` on its own app shell, with a four-layer security spine over the C3 external-scope model.
 - **NetBox** — GraphQL topology activation (sites/racks/devices/cables → adjacency graph), unregistered-asset discovery against live telemetry, a do-calculus circuit-provider escalator, longitudinal **operator stress tracking** with on-call weight redistribution, and an **active-learning queue** (low-confidence memories quarantined for gamified operator review). There is also a NetBox **Cognitive Dashboard** Django plugin under `src/nce-netbox-plugin/`.
 - **Dynamics 365** — case enrichment with graph context, entity sync to `kg_edges`, empathic-tensor frustration/burnout reports, SLA-breach records from the WORM log, and a D365 ↔ NetBox cross-reference mapper.
 - **Diagnostics** — log-bundle digestion pipeline (streaming ingest, digest writer, enrichment, source profiles) surfaced through `diag_*` tools.
