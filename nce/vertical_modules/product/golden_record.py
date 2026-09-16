@@ -61,6 +61,75 @@ log = logging.getLogger("nce.vertical_modules.product.golden_record")
 
 
 # ---------------------------------------------------------------------------
+# Config-as-IP: load source trust weights from manufacturer-sources.json
+# ---------------------------------------------------------------------------
+
+
+def load_manufacturer_sources() -> dict[str, Any]:
+    """Load source trust weights and manufacturer adapter mapping (config-as-IP)."""
+    config_path = (
+        Path(__file__).resolve().parent.parent.parent / "config_data" / "manufacturer-sources.json"
+    )
+    with config_path.open("r", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def resolve_source_trust(source: str | None, manufacturer: str | None = None) -> float:
+    """Resolve the numeric source trust weight [0.0, 1.0] for a source and optional manufacturer.
+
+    Precedence order per A2 (§3.1):
+      manual_override (1.0) > manufacturer_verified (0.95) > distributor (0.80) > ai_derived (0.60) > scraped (0.40)
+    """
+    cfg = load_manufacturer_sources()
+    weights: dict[str, Any] = cfg.get("source_trust_weights", {})
+    adapters: dict[str, Any] = cfg.get("manufacturer_adapters", {})
+
+    # Check manufacturer-specific adapter override
+    if manufacturer:
+        mfr_norm = str(manufacturer).strip().casefold()
+        if mfr_norm in adapters:
+            mfr_cfg = adapters[mfr_norm]
+            if isinstance(mfr_cfg, dict):
+                src_clean = (source or "").strip().lower().replace("-", "_")
+                adapter_name = str(mfr_cfg.get("adapter", "")).lower().replace("-", "_")
+                if (
+                    not source
+                    or "manufacturer" in src_clean
+                    or src_clean == adapter_name
+                    or src_clean in adapter_name
+                ):
+                    return float(mfr_cfg.get("trust_weight", 0.95))
+
+    if not source:
+        return float(weights.get("default", 0.50))
+
+    src_raw = str(source).strip().casefold()
+    src_norm = src_raw.replace("-", "_")
+
+    # 1. Direct match in source_trust_weights
+    if src_norm in weights:
+        return float(weights[src_norm])
+    if src_raw in weights:
+        return float(weights[src_raw])
+
+    # 2. Semantic prefix / substring category matching
+    if any(k in src_norm for k in ("manual", "human_accepted")):
+        return float(weights.get("manual_override", 1.0))
+    if any(k in src_norm for k in ("manufacturer", "mfr")):
+        return float(weights.get("manufacturer_verified", 0.95))
+    if any(k in src_norm for k in ("distributor", "nettailer", "supplier", "netset")):
+        return float(weights.get("distributor", 0.80))
+    if any(k in src_norm for k in ("ai", "enrich", "llm", "claude", "gpt")):
+        return float(weights.get("ai_derived", 0.60))
+    if any(k in src_norm for k in ("ocr", "spec", "datasheet", "pdf")):
+        return float(weights.get("datasheet_ocr", 0.50))
+    if any(k in src_norm for k in ("scrape", "crawler", "web")):
+        return float(weights.get("scraped", 0.40))
+
+    return float(weights.get("default", 0.50))
+
+
+# ---------------------------------------------------------------------------
 # Config-as-IP: load publish-gate threshold from product-quality.json
 # ---------------------------------------------------------------------------
 
@@ -100,14 +169,14 @@ def _grade_passes(grade: str, min_grade: str = TRUSTED_MIN_GRADE) -> bool:
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_product_etim_specs(
+async def _fetch_product_info(
     conn: asyncpg.Connection,
     product_id: UUID,
-) -> dict[str, Any]:
-    """Return ``etim_specs`` JSONB for one product row, or {} if not found."""
+) -> tuple[dict[str, Any], str | None]:
+    """Return (etim_specs, manufacturer) for one product row, or ({}, None) if not found."""
     row = await conn.fetchrow(
         """
-        SELECT etim_specs
+        SELECT etim_specs, manufacturer
         FROM   product_catalog
         WHERE  id = $1
           AND  is_deleted = false
@@ -115,13 +184,60 @@ async def _fetch_product_etim_specs(
         product_id,
     )
     if row is None:
-        return {}
-    raw = row["etim_specs"]
+        return {}, None
+    mfr = row.get("manufacturer") if hasattr(row, "get") else None
+    if not mfr and hasattr(row, "get"):
+        mfr = row.get("brand")
+    raw = (
+        row.get("etim_specs")
+        if hasattr(row, "get")
+        else (row["etim_specs"] if "etim_specs" in row else None)
+    )
     if raw is None:
-        return {}
+        return {}, mfr
     if isinstance(raw, str):
-        return json.loads(raw)
-    return dict(raw)
+        return json.loads(raw), mfr
+    return dict(raw), mfr
+
+
+async def _fetch_product_etim_specs(
+    conn: asyncpg.Connection,
+    product_id: UUID,
+) -> dict[str, Any]:
+    """Return ``etim_specs`` JSONB for one product row, or {} if not found."""
+    specs, _ = await _fetch_product_info(conn, product_id)
+    return specs
+
+
+async def _fetch_enrichment_candidates(
+    conn: asyncpg.Connection,
+    product_id: UUID,
+) -> list[dict[str, Any]]:
+    """Return accepted enrichment log rows (needs_review=false) as candidate values."""
+    rows = await conn.fetch(
+        """
+        SELECT field_name, field_value, confidence, product_source_id, created_at
+        FROM   product_enrichment_log
+        WHERE  product_id = $1
+          AND  needs_review = false
+        ORDER BY created_at DESC
+        """,
+        product_id,
+    )
+    candidates = []
+    for r in rows:
+        candidates.append(
+            {
+                "field_name": r["field_name"],
+                "value": r["field_value"],
+                "confidence": float(r["confidence"]),
+                "source": r["product_source_id"] or "ai_enrichment",
+                "as_of": r["created_at"].isoformat()
+                if r["created_at"]
+                else "1970-01-01T00:00:00+00:00",
+            }
+        )
+    return candidates
 
 
 async def _fetch_unreviewed_money_fields(
@@ -150,19 +266,10 @@ async def _fetch_unreviewed_money_fields(
 
 def _build_field_candidates(
     etim_specs: dict[str, Any],
+    manufacturer: str | None = None,
+    extra_candidates: list[dict[str, Any]] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
-    """Extract per-field candidate lists from the W7 provenance JSONB.
-
-    W7 writes entries of the form::
-
-        {
-            "field_name": {
-                "value":      <val>,
-                "confidence": <float>,
-                "verbalized": <str>,
-                "source":     <str>,
-            }
-        }
+    """Extract per-field candidate lists from etim_specs and optional extra candidates.
 
     The golden-record pass expects the C1 ``survive()`` contract::
 
@@ -174,39 +281,69 @@ def _build_field_candidates(
             "confidence":   <float>,
         }
 
-    When there is only a single entry per field (the W7 auto-merge case) the
-    source_trust defaults to 0.5 and as_of defaults to the epoch so that
-    ``survive()`` can still run without special-casing.
+    When source_trust is not explicitly provided, it is resolved dynamically
+    from ``manufacturer-sources.json`` (config-as-IP).
 
     Fields whose entry is a bare (non-dict) value are skipped — they have no
     provenance and cannot participate in survivorship.
     """
     candidates: dict[str, list[dict[str, Any]]] = {}
 
-    for field_name, raw in etim_specs.items():
-        if not isinstance(raw, dict):
-            continue
-
+    def _normalize_candidate(
+        raw: dict[str, Any], default_source: str = "unknown"
+    ) -> dict[str, Any]:
         prov = raw.get("provenance") if isinstance(raw.get("provenance"), dict) else {}
+        source = prov.get("source") or raw.get("source") or default_source
 
-        source = (
-            prov.get("source") or raw.get("source") or "unknown"
-            if prov
-            else raw.get("source") or "unknown"
-        )
-        source_trust: float = float(raw.get("source_trust", 0.5))
-        as_of: str = str(raw.get("as_of") or "1970-01-01T00:00:00+00:00")
-        confidence: float = float(raw.get("confidence", 0.5))
+        # Explicit source_trust takes precedence if present; otherwise resolve from config
+        if "source_trust" in raw and raw["source_trust"] is not None:
+            source_trust = float(raw["source_trust"])
+        elif prov and "source_trust" in prov and prov["source_trust"] is not None:
+            source_trust = float(prov["source_trust"])
+        else:
+            source_trust = resolve_source_trust(source, manufacturer)
 
-        candidates[field_name] = [
-            {
-                "value": raw.get("value"),
-                "source": source,
-                "source_trust": source_trust,
-                "as_of": as_of,
-                "confidence": confidence,
-            }
-        ]
+        as_of = str(raw.get("as_of") or prov.get("as_of") or "1970-01-01T00:00:00+00:00")
+        confidence = float(raw.get("confidence", prov.get("confidence", 0.5)))
+
+        return {
+            "value": raw.get("value"),
+            "source": source,
+            "source_trust": source_trust,
+            "as_of": as_of,
+            "confidence": confidence,
+        }
+
+    for field_name, raw in etim_specs.items():
+        if isinstance(raw, list):
+            cand_list = []
+            for item in raw:
+                if isinstance(item, dict):
+                    cand_list.append(_normalize_candidate(item))
+            if cand_list:
+                candidates[field_name] = cand_list
+        elif isinstance(raw, dict):
+            if "candidates" in raw and isinstance(raw["candidates"], list):
+                cand_list = []
+                for item in raw["candidates"]:
+                    if isinstance(item, dict):
+                        cand_list.append(_normalize_candidate(item))
+                if cand_list:
+                    candidates[field_name] = cand_list
+            else:
+                candidates[field_name] = [_normalize_candidate(raw)]
+
+    if extra_candidates:
+        for ec in extra_candidates:
+            fname = ec.get("field_name")
+            if not fname:
+                continue
+            cand_cand = {k: v for k, v in ec.items() if k != "field_name"}
+            cand = _normalize_candidate(cand_cand, default_source="ai_enrichment")
+            if fname in candidates:
+                candidates[fname].append(cand)
+            else:
+                candidates[fname] = [cand]
 
     return candidates
 
@@ -318,14 +455,19 @@ async def do_golden_record(
     )
 
     async with scoped_pg_session(pool, namespace_id) as conn:
-        etim_specs = await _fetch_product_etim_specs(conn, product_id)
+        etim_specs, manufacturer = await _fetch_product_info(conn, product_id)
         if not etim_specs and not await _product_exists(conn, product_id):
             raise ValueError(f"product_id={product_id_raw!r} not found in namespace")
 
         unreviewed_money = await _fetch_unreviewed_money_fields(conn, product_id)
+        enrichment_candidates = await _fetch_enrichment_candidates(conn, product_id)
 
     # --- Per-field survivorship via C1 pure function (no re-implementation) ---
-    candidates_by_field = _build_field_candidates(etim_specs)
+    candidates_by_field = _build_field_candidates(
+        etim_specs,
+        manufacturer=manufacturer,
+        extra_candidates=enrichment_candidates,
+    )
 
     field_winners: dict[str, dict[str, Any]] = {}
     for field_name, candidates in candidates_by_field.items():
