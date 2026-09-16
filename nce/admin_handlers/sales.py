@@ -19,6 +19,8 @@ Exports:
   ``api_admin_sales_calculate_commission`` — GET  /api/sales/commission
   ``api_admin_sales_divergences`` — GET  /api/sales/divergences
   ``api_admin_sales_morning_brief_slice`` — GET  /api/sales/morning-brief
+  ``api_admin_sales_lead_score`` — POST /api/sales/lead-score
+  ``api_admin_sales_quote_draft`` — POST /api/sales/quote-draft
 """
 
 from __future__ import annotations
@@ -35,6 +37,7 @@ from nce.admin_handlers._shared import (
 )
 from nce.db_utils import scoped_pg_session
 from nce.source_mode.divergence import flip_blocked
+from nce.vertical_modules.sales.ai import do_draft_quote, do_score_lead
 from nce.vertical_modules.sales.commission import do_calculate_commission
 from nce.vertical_modules.sales.flip import (
     do_morning_brief_slice,
@@ -1152,4 +1155,146 @@ async def api_admin_sales_morning_brief_slice(request) -> JSONResponse:
             exc,
             status_code=500,
             log_event="api_admin_sales_morning_brief_slice",
+        )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/sales/lead-score
+# ---------------------------------------------------------------------------
+
+
+async def api_admin_sales_lead_score(request) -> JSONResponse:
+    """POST /api/sales/lead-score
+
+    Calculate lead score and confidence from similar historical deals (Advisor).
+
+    Body parameters:
+        namespace_id (str, required): Active namespace UUID.
+        lead_name    (str, optional): Lead name.
+        query_text   (str, optional): Freeform query text describing the lead.
+        subject      (str, optional): Lead subject.
+
+    Response (JSON):
+        {
+          "ok": True,
+          "score": float,
+          "confidence": float,
+          "propose_only": True,
+          "reasons": list[str],
+        }
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    namespace_id = str(
+        body.get("namespace_id") or request.query_params.get("namespace_id") or ""
+    ).strip()
+    if not namespace_id:
+        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
+
+    try:
+        uuid.UUID(namespace_id)
+    except ValueError as exc:
+        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+
+    params: dict[str, Any] = {"namespace_id": namespace_id}
+    if "lead_name" in body and body["lead_name"] is not None:
+        params["lead_name"] = str(body["lead_name"]).strip()
+    elif "lead_name" in request.query_params:
+        params["lead_name"] = str(request.query_params["lead_name"]).strip()
+
+    if "query_text" in body and body["query_text"] is not None:
+        params["query_text"] = str(body["query_text"]).strip()
+    elif "query_text" in request.query_params:
+        params["query_text"] = str(request.query_params["query_text"]).strip()
+
+    if "subject" in body and body["subject"] is not None:
+        params["subject"] = str(body["subject"]).strip()
+    elif "subject" in request.query_params:
+        params["subject"] = str(request.query_params["subject"]).strip()
+
+    try:
+        result = await do_score_lead(admin_state.engine, params)
+        return JSONResponse(result, status_code=200)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Sales lead score error",
+            exc,
+            status_code=500,
+            log_event="api_admin_sales_lead_score",
+        )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/sales/quote-draft
+# ---------------------------------------------------------------------------
+
+
+async def api_admin_sales_quote_draft(request) -> JSONResponse:
+    """POST /api/sales/quote-draft
+
+    AI Quote-Draft Assist (Advisor).
+
+    Body parameters:
+        namespace_id   (str, required): Active namespace UUID.
+        opportunity_id (str, optional): Opportunity identifier.
+        description    (str, optional): Quote description / requirements.
+
+    Response (JSON):
+        {
+          "ok": True,
+          "proposed_lines": list[dict],
+          "suggested_margin_pct": float,
+          "propose_only": True,
+          "validated": False,
+        }
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    namespace_id = str(
+        body.get("namespace_id") or request.query_params.get("namespace_id") or ""
+    ).strip()
+    if not namespace_id:
+        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
+
+    try:
+        uuid.UUID(namespace_id)
+    except ValueError as exc:
+        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+
+    params: dict[str, Any] = {"namespace_id": namespace_id}
+    if "opportunity_id" in body and body["opportunity_id"] is not None:
+        params["opportunity_id"] = str(body["opportunity_id"]).strip()
+    elif "opportunity_id" in request.query_params:
+        params["opportunity_id"] = str(request.query_params["opportunity_id"]).strip()
+
+    if "description" in body and body["description"] is not None:
+        params["description"] = str(body["description"]).strip()
+    elif "description" in request.query_params:
+        params["description"] = str(request.query_params["description"]).strip()
+
+    try:
+        result = await do_draft_quote(admin_state.engine, params)
+        return JSONResponse(result, status_code=200)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Sales quote draft error",
+            exc,
+            status_code=500,
+            log_event="api_admin_sales_quote_draft",
         )

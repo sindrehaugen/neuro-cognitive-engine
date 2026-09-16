@@ -12,9 +12,9 @@
 
 | Metric | Count |
 |---|---|
-| **Total Waves Evaluated** | **84** |
+| **Total Waves Evaluated** | **88** |
 | **LANDED on `main` (3-way consensus)** | **48** |
-| **Disagreements / Open / Planned** | **36** |
+| **Disagreements / Open / Planned** | **40** |
 | **Skipped Legacy / Pre-v1.5 Tokens** | **54** |
 | **Unmatched Wave Tokens** | **0** |
 
@@ -86,22 +86,26 @@ These waves have partial signal (e.g. stamped in tree without PR or test, or pla
 | **A-BI1** | Phase 0 | `PR_AND_TEST_NO_STAMP` | #51 | - | `tests/unit/test_business_insights_aggregation.py` (COLLECTED) | feat(business_insights): transactional append_event, audit remediation, and static AST ratchets (Waves A-BI1, A-BI2, A-BI3) |
 | **A-BI2** | Phase 0 | `PR_AND_TEST_NO_STAMP` | #51 | - | `tests/unit/test_business_insights_ask_ratchet.py` (COLLECTED) | feat(business_insights): transactional append_event, audit remediation, and static AST ratchets (Waves A-BI1, A-BI2, A-BI3) |
 | **A-BI3** | Phase 0 | `PR_AND_TEST_NO_STAMP` | #51 | - | `tests/unit/test_business_insights_ask_ratchet.py` (COLLECTED) | feat(business_insights): transactional append_event, audit remediation, and static AST ratchets (Waves A-BI1, A-BI2, A-BI3) |
+| **A-Q17** | Unspecified | `PR_ONLY` | #161 | - | None |  |
 | **A-T2** | Unspecified | `MISSING_MARKER_TEST` | #147 | `tests/test_rest_cache_invalidation.py` | None |  |
 | **A-T6** | Unspecified | `MISSING_MARKER_TEST` | #148 | `tests/unit/test_c3_external_scope_review_ratchet.py` | None |  |
+| **A-W1** | Unspecified | `PR_ONLY` | #146 | - | None |  |
 | **AG-1** | Phase 1 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave AG-1 |
-| **B-B128** | Unspecified | `STAMPED_UNLANDED` | - | `tests/test_producer_coverage.py`<br>`tests/unit/test_action_approval_queue.py` | None |  |
+| **B-B128** | Unspecified | `MISSING_MARKER_TEST` | #153 | `tests/test_producer_coverage.py`<br>`tests/unit/test_action_approval_queue.py` | None |  |
 | **B-BI1** | Phase 1 | `PR_AND_TEST_NO_STAMP` | #71 | - | `tests/unit/test_business_insights_aggregation.py` (COLLECTED) | Invert the person-grain barrier (EU AI Act Article 5 floor) |
 | **B-E2** | Phase 3 | `PR_AND_TEST_NO_STAMP` | #80 | - | `tests/unit/test_economy_gl_records.py` (COLLECTED) | feat(economy,agreements): query GL records with C8 projection and rewire coverage seam (Wave B-AG1 / B-E2) |
 | **B-ID1** | Phase 1 | `PR_AND_TEST_NO_STAMP` | #73 | - | `tests/test_no_identifying_literals.py` (COLLECTED) | Scrub 5 Private Module Names & Fix Legacy TRIMCP Quota Token |
 | **BI-1** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Business Insights person-grain barrier allowlist |
-| **C-BI3** | Unspecified | `STAMPED_UNLANDED` | - | `tests/unit/test_business_insights_fabricated_defaults_ratchet.py` | None |  |
+| **C-BI3** | Unspecified | `MISSING_MARKER_TEST` | #157 | `tests/unit/test_business_insights_fabricated_defaults_ratchet.py` | None |  |
+| **C-BI4** | Unspecified | `PR_ONLY` | #162 | - | None |  |
 | **CP-2** | Unspecified | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Customer portal external security review / adversarial gates |
 | **FT-2** | Phase 1 | `PR_AND_TEST_NO_STAMP` | #45 | - | `tests/unit/test_ownership_ratchet.py` (COLLECTED) | The owner writes the node (Contract A) |
 | **FT-3** | Phase 1 | `PR_AND_TEST_NO_STAMP` | #46 | - | `tests/unit/test_support_field_tech_dispatch_event.py` (COLLECTED) | feat(support,field_tech): dispatch ticket to work order via reactive TICKET.dispatched C4 event (Wave SU-1/FT-3) |
 | **FT-4** | Phase 2 | `STAMPED_UNLANDED` | - | `nce/vertical_modules/field_tech/outcome.py` | None | Wave FT-4 |
 | **HR-2** | Phase 3 | `PR_AND_TEST_NO_STAMP` | #44 | - | `tests/unit/test_economy_surface.py` (COLLECTED) | HR Surface Completion |
 | **I-1** | Phase 0 | `PR_AND_TEST_NO_STAMP` | #23 | - | `tests/test_surface_parity.py` (COLLECTED) | Surface-Parity Ratchet |
-| **I-10** | Unspecified | `STAMPED_UNLANDED` | - | `tests/unit/test_config_docs_ratchet.py` | None |  |
+| **I-10** | Unspecified | `MISSING_MARKER_TEST` | #134 | `tests/unit/test_config_docs_ratchet.py` | None |  |
+| **I-13** | Unspecified | `STAMPED_UNLANDED` | - | `nce/a2a_server.py`<br>`nce/admin_app.py`<br>`nce/orchestrator.py`<br>`nce/webhook_receiver/main.py`<br>`tests/unit/test_health_degraded_reasons.py` | None |  |
 | **I-6** | Phase 0 | `UNMERGED_PR` | - | `tests/test_docs_engine_guides_ratchet.py` | `tests/test_docs_engine_guides_ratchet.py` (COLLECTED) | Docs-Status Ratchet |
 | **I-7** | Phase 0 | `PR_AND_TEST_NO_STAMP` | #29 | - | `tests/integration/test_golden_thread.py` (COLLECTED) | Golden Thread Scaffold |
 | **I-8** | Phase 0 | `PR_ONLY` | #128 | - | `tests/unit/test_event_log_chokepoint_ratchet.py` (ABSENT_FILE) | feat(instruments): implement event_log chokepoint and publish transactional ratchets (Wave I-8) |
@@ -113,9 +117,9 @@ These waves have partial signal (e.g. stamped in tree without PR or test, or pla
 | **PR-6** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave PR-6 |
 | **RS-3** | Phase 2 | `UNMERGED_PR` | - | `nce/tool_registry.py`<br>`tests/test_project_advance.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_product_p2_p3_ratchet.py`<br>`tests/unit/test_project_pj1_sd3_ratchet.py` | `tests/unit/test_product_p2_p3_ratchet.py` (COLLECTED) | Wave RS-3 |
 | **S-3** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave S-3 |
-| **S-4** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/cron.py`<br>`nce/db_utils.py`<br>`nce/tool_registry.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_inventory_hardening.py`<br>`tests/unit/test_sales_stalled_and_brief.py` | None | Wave S-4 |
-| **S-5** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave S-5 |
-| **S-7** | Unspecified | `STAMPED_UNLANDED` | - | `nce/tool_registry.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_sales_divergence_surface.py` | None |  |
+| **S-4** | Phase 3 | `MISSING_MARKER_TEST` | #158 | `nce/cron.py`<br>`nce/db_utils.py`<br>`nce/tool_registry.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_sales_stalled_and_brief.py` | None | Wave S-4 |
+| **S-5** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/tool_registry.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_inventory_hardening.py`<br>`tests/unit/test_sales_ai_surface.py` | None | Wave S-5 |
+| **S-7** | Unspecified | `MISSING_MARKER_TEST` | #155 | `nce/tool_registry.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_sales_divergence_surface.py` | None |  |
 | **SD-2** | Phase 2 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json`<br>`nce/vertical_modules/system_design/propose.py` | None | Wave SD-2 |
 | **SD-4** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave SD-4 |
 

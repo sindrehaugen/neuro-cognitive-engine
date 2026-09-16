@@ -33,6 +33,7 @@ from uuid import UUID
 from nce.db_utils import scoped_pg_session
 from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import mcp_handler
+from nce.vertical_modules.sales.ai import do_draft_quote, do_score_lead
 from nce.vertical_modules.sales.baseline import get_signed_baseline
 from nce.vertical_modules.sales.commission import do_calculate_commission
 from nce.vertical_modules.sales.flip import (
@@ -502,4 +503,61 @@ async def handle_sales_morning_brief_slice(engine: NCEEngine, arguments: dict[st
         params["period_days"] = int(arguments["period_days"])
 
     result = await do_morning_brief_slice(engine, params)
+    return json.dumps(result)
+
+
+@mcp_handler
+async def handle_sales_score_lead(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: sales_score_lead — calculate lead score and confidence from similar historical deals (Advisor).
+
+    Propose-only, never auto-accept.
+
+    Arguments
+    ---------
+    namespace_id : str (required)
+    lead_name    : str (optional)
+    query_text   : str (optional)
+    subject      : str (optional)
+
+    Returns
+    -------
+    JSON body with score, confidence, propose_only, and reasons.
+    """
+    ns = require_namespace_id(arguments)
+    params: dict[str, Any] = {"namespace_id": ns}
+    if "lead_name" in arguments and arguments["lead_name"] is not None:
+        params["lead_name"] = str(arguments["lead_name"]).strip()
+    if "query_text" in arguments and arguments["query_text"] is not None:
+        params["query_text"] = str(arguments["query_text"]).strip()
+    if "subject" in arguments and arguments["subject"] is not None:
+        params["subject"] = str(arguments["subject"]).strip()
+
+    result = await do_score_lead(engine, params)
+    return json.dumps(result)
+
+
+@mcp_handler
+async def handle_sales_draft_quote(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: sales_draft_quote — AI Quote-Draft Assist (Advisor).
+
+    Propose-only, never auto-accept.
+
+    Arguments
+    ---------
+    namespace_id   : str (required)
+    opportunity_id : str (optional)
+    description    : str (optional)
+
+    Returns
+    -------
+    JSON body with proposed_lines, suggested_margin_pct, propose_only, and validated.
+    """
+    ns = require_namespace_id(arguments)
+    params: dict[str, Any] = {"namespace_id": ns}
+    if "opportunity_id" in arguments and arguments["opportunity_id"] is not None:
+        params["opportunity_id"] = str(arguments["opportunity_id"]).strip()
+    if "description" in arguments and arguments["description"] is not None:
+        params["description"] = str(arguments["description"]).strip()
+
+    result = await do_draft_quote(engine, params)
     return json.dumps(result)

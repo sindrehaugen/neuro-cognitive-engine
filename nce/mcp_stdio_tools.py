@@ -4230,6 +4230,48 @@ TOOLS = [
         },
     ),
     Tool(
+        name="sales_score_lead",
+        description=(
+            "ADVISOR: Calculate lead score and confidence from similar historical won/lost deals in memory. "
+            "Propose-only, never auto-accepts."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "lead_name": {"type": "string", "description": "Optional lead name."},
+                "query_text": {
+                    "type": "string",
+                    "description": "Optional freeform query text describing the lead.",
+                },
+                "subject": {"type": "string", "description": "Optional lead subject."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="sales_draft_quote",
+        description=(
+            "ADVISOR: AI Quote-Draft Assist. Proposes quote lines and suggested margin percentage based on "
+            "similar historical deals in cognitive memory. Propose-only, never auto-accepts."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "opportunity_id": {
+                    "type": "string",
+                    "description": "Optional opportunity ID to draft quote for.",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Optional description of quote requirements.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
         name="sales_ping",
         description=(
             'Liveness probe for the Sales vertical. Returns {"ok": true, "engine": "sales"}.'

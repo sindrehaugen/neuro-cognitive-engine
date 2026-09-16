@@ -870,6 +870,20 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # Sales lead score & quote draft advisors (Wave S-5)
+    # Advisor tools: admin_only=False, mutation=False, cacheable=True.
+    "sales_score_lead": ToolSpec(
+        _h(sales_mcp_handlers, "handle_sales_score_lead"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "sales_draft_quote": ToolSpec(
+        _h(sales_mcp_handlers, "handle_sales_draft_quote"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # ------------------------------------------------------------------
     # Vendors vertical module tools (Batch 096)
     # ------------------------------------------------------------------
