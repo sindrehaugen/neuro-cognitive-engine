@@ -25,20 +25,30 @@ from nce.vertical_modules.product.matching import (
     do_record_match_decision,
 )
 from nce.vertical_modules.product.pricing import do_price_product
+from nce.vertical_modules.product.quality import (
+    completeness_score,
+    do_product_quality,
+    manufacturer_rollup,
+    quality_grade,
+)
 from nce.vertical_modules.product.related import do_related_products
 from nce.vertical_modules.product.watchers import do_check_eol
 
 __all__ = [
     "ProductDisabledError",
+    "completeness_score",
     "do_check_eol",
     "do_enrich_product",
     "do_golden_record",
     "do_ingest_spec",
     "do_match_bom_line",
     "do_price_product",
+    "do_product_quality",
     "do_record_match_decision",
     "do_related_products",
     "load_manufacturer_sources",
+    "manufacturer_rollup",
+    "quality_grade",
     "require_product_enabled",
     "resolve_source_trust",
 ]

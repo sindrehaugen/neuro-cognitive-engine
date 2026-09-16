@@ -39,7 +39,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+from uuid import UUID
+
+from nce.auth import validate_agent_id
+from nce.db_utils import scoped_pg_session
+from nce.mcp_args import require_namespace_id
+
+if TYPE_CHECKING:
+    from nce.orchestrator import NCEEngine
 
 # ---------------------------------------------------------------------------
 # Config-as-IP: load quality thresholds from product-quality.json
@@ -422,3 +430,237 @@ def _dominant_grade(grade_counts: dict[str, int]) -> str:
             best_count = count
             best_grade = grade
     return best_grade
+
+
+# ---------------------------------------------------------------------------
+# Core entry-point (Wave P-6)
+# ---------------------------------------------------------------------------
+
+
+def _format_single_product_quality(row: Any, channel: str) -> dict[str, Any]:
+    """Format single product completeness and provenance quality results."""
+    raw = (
+        row.get("etim_specs")
+        if hasattr(row, "get")
+        else (row["etim_specs"] if "etim_specs" in row else None)
+    )
+    if raw is None:
+        specs: dict[str, Any] = {}
+    elif isinstance(raw, str):
+        try:
+            specs = json.loads(raw)
+        except Exception:
+            specs = {}
+    elif isinstance(raw, dict):
+        specs = dict(raw)
+    else:
+        specs = {}
+
+    comp = completeness_score(specs, channel=channel)
+    grd = quality_grade(specs)
+
+    return {
+        "status": "ok",
+        "product_id": str(row["id"]) if "id" in row else None,
+        "manufacturer": row.get("manufacturer") if hasattr(row, "get") else row["manufacturer"],
+        "mfr_part_no": row.get("mfr_part_no") if hasattr(row, "get") else row["mfr_part_no"],
+        "gtin": row.get("gtin")
+        if hasattr(row, "get")
+        else (row["gtin"] if "gtin" in row else None),
+        "lifecycle_status": (
+            row.get("lifecycle_status")
+            if hasattr(row, "get")
+            else (row["lifecycle_status"] if "lifecycle_status" in row else "active")
+        ),
+        "channel": channel,
+        "completeness": comp,
+        "grade_result": grd,
+    }
+
+
+async def do_product_quality(
+    engine: NCEEngine | Any,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    """Evaluate product catalog completeness and quality grades (Wave P-6).
+
+    Parameters
+    ----------
+    engine:
+        Live NCEEngine instance or asyncpg connection pool.
+    params:
+        ``namespace_id``  (str, required) — Active tenant namespace UUID.
+        ``product_id``    (str UUID, optional) — Target product UUID.
+        ``id``            (str, optional) — Target product UUID or part number alias.
+        ``mfr_part_no``   (str, optional) — Target product manufacturer part number.
+        ``manufacturer``  (str, optional) — Filter or disambiguate manufacturer.
+        ``channel``       (str, optional, default 'b2b_portal') — Target channel.
+        ``limit``         (int, optional, default 100, max 500) — Max rows for rollup.
+
+    Returns
+    -------
+    dict:
+        Single product mode:
+          ``status``, ``product_id``, ``manufacturer``, ``mfr_part_no``,
+          ``gtin``, ``lifecycle_status``, ``channel``, ``completeness``,
+          ``grade_result``.
+        Rollup mode:
+          ``status``, ``channel``, ``total_products``, ``manufacturer_filter``,
+          ``manufacturers``, ``summary``.
+    """
+    namespace_id_str = require_namespace_id(params)
+    namespace_id_str = validate_agent_id(namespace_id_str)
+    namespace_id = UUID(namespace_id_str)
+
+    channel_raw = str(params.get("channel") or "b2b_portal").strip()
+    if channel_raw not in CHANNEL_REQUIRED_FIELDS:
+        raise ValueError(
+            f"Invalid channel {channel_raw!r}. Supported channels: {sorted(CHANNEL_REQUIRED_FIELDS.keys())}"
+        )
+    channel = channel_raw
+
+    pool = (
+        engine.pg_pool
+        if ("pg_pool" in getattr(engine, "__dict__", {}) or hasattr(type(engine), "pg_pool"))
+        else engine
+    )
+
+    product_id_raw = params.get("product_id")
+    raw_id = params.get("id")
+    mfr_part_no = str(params.get("mfr_part_no") or "").strip() or None
+    manufacturer = str(params.get("manufacturer") or "").strip() or None
+
+    product_id_val: UUID | None = None
+    if product_id_raw:
+        try:
+            product_id_val = UUID(str(product_id_raw).strip())
+        except ValueError as exc:
+            raise ValueError(f"Invalid product_id: {exc}") from exc
+    elif raw_id:
+        try:
+            product_id_val = UUID(str(raw_id).strip())
+        except ValueError:
+            if not mfr_part_no:
+                mfr_part_no = str(raw_id).strip()
+
+    # --- Mode 1: Single product by UUID ---
+    if product_id_val is not None:
+        async with scoped_pg_session(pool, namespace_id) as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT id, manufacturer, mfr_part_no, gtin, lifecycle_status, etim_specs
+                FROM   product_catalog
+                WHERE  id = $1
+                  AND  is_deleted = false
+                """,
+                product_id_val,
+            )
+        if row is None:
+            return {
+                "status": "not_found",
+                "product_id": str(product_id_val),
+                "error": f"Product '{product_id_val}' not found",
+            }
+        return _format_single_product_quality(row, channel)
+
+    # --- Mode 2: Single product by part number ---
+    if mfr_part_no is not None:
+        async with scoped_pg_session(pool, namespace_id) as conn:
+            if manufacturer:
+                row = await conn.fetchrow(
+                    """
+                    SELECT id, manufacturer, mfr_part_no, gtin, lifecycle_status, etim_specs
+                    FROM   product_catalog
+                    WHERE  mfr_part_no = $1
+                      AND  manufacturer ILIKE $2
+                      AND  is_deleted = false
+                    LIMIT  1
+                    """,
+                    mfr_part_no,
+                    manufacturer,
+                )
+            else:
+                row = await conn.fetchrow(
+                    """
+                    SELECT id, manufacturer, mfr_part_no, gtin, lifecycle_status, etim_specs
+                    FROM   product_catalog
+                    WHERE  mfr_part_no = $1
+                      AND  is_deleted = false
+                    LIMIT  1
+                    """,
+                    mfr_part_no,
+                )
+        if row is None:
+            return {
+                "status": "not_found",
+                "mfr_part_no": mfr_part_no,
+                "error": f"Product with mfr_part_no '{mfr_part_no}' not found",
+            }
+        return _format_single_product_quality(row, channel)
+
+    # --- Mode 3: Catalog / Manufacturer rollup ---
+    raw_limit = params.get("limit", 100)
+    try:
+        limit = max(1, min(500, int(raw_limit)))
+    except (TypeError, ValueError):
+        limit = 100
+
+    async with scoped_pg_session(pool, namespace_id) as conn:
+        if manufacturer:
+            rows = await conn.fetch(
+                """
+                SELECT id, manufacturer, mfr_part_no, gtin, lifecycle_status, etim_specs
+                FROM   product_catalog
+                WHERE  is_deleted = false
+                  AND  manufacturer ILIKE $1
+                ORDER  BY created_at DESC
+                LIMIT  $2
+                """,
+                manufacturer,
+                limit,
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT id, manufacturer, mfr_part_no, gtin, lifecycle_status, etim_specs
+                FROM   product_catalog
+                WHERE  is_deleted = false
+                ORDER  BY created_at DESC
+                LIMIT  $1
+                """,
+                limit,
+            )
+
+    product_results: list[dict[str, Any]] = []
+    for r in rows:
+        formatted = _format_single_product_quality(r, channel)
+        product_results.append(formatted)
+
+    rollup = manufacturer_rollup(product_results)
+
+    total_products = len(product_results)
+    avg_comp = (
+        round(sum(r["completeness"]["score"] for r in product_results) / total_products, 4)
+        if total_products > 0
+        else 0.0
+    )
+    grade_counts: dict[str, int] = {"A": 0, "B": 0, "C": 0, "D": 0, "E": 0}
+    for r in product_results:
+        g = r["grade_result"].get("grade", "E")
+        if g in grade_counts:
+            grade_counts[g] += 1
+
+    return {
+        "status": "ok",
+        "channel": channel,
+        "total_products": total_products,
+        "manufacturer_filter": manufacturer,
+        "manufacturers": rollup,
+        "summary": {
+            "total_products": total_products,
+            "total_manufacturers": len(rollup),
+            "overall_avg_completeness": avg_comp,
+            "overall_grade_distribution": grade_counts,
+            "dominant_grade": _dominant_grade(grade_counts),
+        },
+    }

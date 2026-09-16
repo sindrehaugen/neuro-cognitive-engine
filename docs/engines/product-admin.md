@@ -432,7 +432,7 @@ The Product Engine registers **6 MCP tools** in `nce/tool_registry.py` via `_h(p
 
 ---
 
-## 8. REST API Reference (3 Routes)
+## 8. REST API Reference (4 Routes)
 
 Mounted via `nce/admin_app.py` and implemented in `nce/admin_handlers/product.py`:
 
@@ -441,6 +441,7 @@ Mounted via `nce/admin_app.py` and implemented in `nce/admin_handlers/product.py
 | `GET` | `/api/product/search` | `api_product_search` | Keyword and FTS product search over `product_catalog` with safe column projections. |
 | `GET` | `/api/product/{id}` | `api_product_get` | Profile lookup by product UUID or part number with live prices and knowledge graph edges. |
 | `GET` | `/api/product/enrichment/review` | `api_product_enrichment_review` | Review queue query endpoint returning proposals where `needs_review = true`. |
+| `GET` | `/api/product/quality` | `api_product_quality` | Completeness scoring and provenance quality grade assessment for single products or catalog rollup. |
 
 ### Endpoint Details:
 
@@ -456,3 +457,8 @@ Mounted via `nce/admin_app.py` and implemented in `nce/admin_handlers/product.py
 #### `GET /api/product/enrichment/review`
 * **Query Parameters:** `namespace_id` (UUID, required), `product_id` (UUID, optional), `limit` (integer, optional)
 * **Status Codes:** `200 OK`, `400 Bad Request`, `409 Conflict`.
+
+#### `GET /api/product/quality`
+* **Query Parameters:** `namespace_id` (UUID, required), `product_id` (UUID, optional), `id` (string UUID or part number, optional), `mfr_part_no` (string, optional), `manufacturer` (string, optional), `channel` (string, optional, default `'b2b_portal'`), `limit` (integer, optional, default 100)
+* **Status Codes:** `200 OK`, `404 Not Found` (specified product not found), `409 Conflict` (product module disabled for namespace), `422 Unprocessable Entity` (missing/invalid namespace_id, channel, or product_id).
+
