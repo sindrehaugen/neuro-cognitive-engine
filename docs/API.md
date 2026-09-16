@@ -20,6 +20,8 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/admin/actor-trust` | `api_admin_actor_trust` |
 | GET | `/api/admin/approval-queue` | `api_admin_approval_queue_list` |
 | GET | `/api/admin/approval-queue/{id}` | `api_admin_approval_queue_get` |
+| POST | `/api/admin/approval-queue/{id}/approve` | `api_admin_approval_queue_approve` |
+| POST | `/api/admin/approval-queue/{id}/reject` | `api_admin_approval_queue_reject` |
 | POST | `/api/admin/bridges/{bridge_id}/renew` | `api_admin_bridge_renew` |
 | POST | `/api/admin/connectors/save` | `api_admin_connectors_save` |
 | GET | `/api/admin/connectors/status` | `api_admin_connectors_status` |
@@ -548,4 +550,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 271 REST endpoints, 259 MCP tools._
+_Totals: 273 REST endpoints, 259 MCP tools._

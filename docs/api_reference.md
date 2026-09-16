@@ -457,6 +457,8 @@ All 134 Routes are mounted in `nce/admin_app.py::build_admin_routes()` and serve
 | `GET` | `/api/admin/actor-trust` | `h.api_admin_actor_trust` | Actor trust scores and behavioral anomalies |
 | `GET` | `/api/admin/approval-queue` | `h.api_admin_approval_queue_list` | List pending human approval governance items |
 | `GET` | `/api/admin/approval-queue/{id}` | `h.api_admin_approval_queue_get` | Inspect approval queue item detail |
+| `POST` | `/api/admin/approval-queue/{id}/approve` | `h.api_admin_approval_queue_approve` | Approve a pending governance approval item |
+| `POST` | `/api/admin/approval-queue/{id}/reject` | `h.api_admin_approval_queue_reject` | Reject a pending governance approval item |
 | `GET` | `/api/admin/contradictions/recent` | `h.api_admin_contradictions_recent` | List recently flagged semantic contradictions |
 | `GET` | `/api/admin/namespaces/{namespace_id}/bridges` | `h.api_admin_namespace_bridges` | List bridge subscriptions for namespace |
 | `POST` | `/api/admin/bridges/{bridge_id}/renew` | `h.api_admin_bridge_renew` | Renew OAuth token for document bridge |

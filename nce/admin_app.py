@@ -465,6 +465,16 @@ def build_admin_routes() -> list[Route]:
             methods=["GET"],
         ),
         Route(
+            "/api/admin/approval-queue/{id}/approve",
+            endpoint=h.api_admin_approval_queue_approve,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/admin/approval-queue/{id}/reject",
+            endpoint=h.api_admin_approval_queue_reject,
+            methods=["POST"],
+        ),
+        Route(
             "/api/admin/contradictions/recent",
             endpoint=h.api_admin_contradictions_recent,
             methods=["GET"],

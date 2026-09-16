@@ -53,6 +53,21 @@ def _make_handler() -> tuple[Any, list[int]]:
     return mutating_handler, call_log
 
 
+def _make_mock_conn(queue_id: uuid.UUID | None = None) -> MagicMock:
+    conn = MagicMock()
+    conn.is_in_transaction.return_value = True
+    qid = queue_id or uuid.uuid4()
+
+    async def _mock_fetchrow(query: str, *args: Any) -> Any:
+        if "INSERT INTO action_approval_queue" in query:
+            return {"id": qid}
+        return None
+
+    conn.fetchrow = AsyncMock(side_effect=_mock_fetchrow)
+    conn.execute = AsyncMock()
+    return conn
+
+
 # ---------------------------------------------------------------------------
 # Unit-level tests (no DB required)
 # ---------------------------------------------------------------------------
@@ -62,9 +77,11 @@ def _make_handler() -> tuple[Any, list[int]]:
 async def test_governed_no_confirm_returns_pending() -> None:
     """Without confirm=True the handler must NOT be called and must return pending."""
     handler, call_log = _make_handler()
+    expected_id = uuid.uuid4()
+    mock_conn = _make_mock_conn(queue_id=expected_id)
 
     result = await handler(
-        None,  # conn — not accessed because confirm is False
+        mock_conn,
         uuid.uuid4(),
         idempotency_key="k-unit-1",
         confirm=False,
@@ -73,6 +90,7 @@ async def test_governed_no_confirm_returns_pending() -> None:
     assert result["status"] == "pending_approval"
     assert result["idempotency_key"] == "k-unit-1"
     assert result["action_type"] == "test_action"
+    assert result["approval_id"] == str(expected_id)
     assert call_log == [], "side effect must not run without confirm=True"
 
 
@@ -100,10 +118,13 @@ async def test_governed_whitespace_idempotency_key_raises() -> None:
 async def test_governed_default_confirm_is_false() -> None:
     """confirm defaults to False so omitting it must produce pending_approval."""
     handler, call_log = _make_handler()
+    expected_id = uuid.uuid4()
+    mock_conn = _make_mock_conn(queue_id=expected_id)
 
-    result = await handler(None, uuid.uuid4(), idempotency_key="k-unit-default")
+    result = await handler(mock_conn, uuid.uuid4(), idempotency_key="k-unit-default")
 
     assert result["status"] == "pending_approval"
+    assert result["approval_id"] == str(expected_id)
     assert call_log == []
 
 
