@@ -45,6 +45,7 @@ from nce.vertical_modules.project.case_study import do_generate_case_study_edge
 from nce.vertical_modules.project.convert import do_convert_signed_quote
 from nce.vertical_modules.project.phase_gates import can_enter_phase
 from nce.vertical_modules.project.recall import (
+    do_recall_similar_projects,
     do_record_project_outcome,
     do_suggest_pl,
 )
@@ -195,3 +196,19 @@ async def handle_project_generate_case_study_edge(
     params: dict[str, Any] = dict(arguments)
     result = await do_generate_case_study_edge(engine, params)
     return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_project_recall_similar(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: project_recall_similar — Recall similar past slipped projects (Wave PJ-3).
+
+    Requires ``namespace_id`` and ``project_id`` in *arguments*.
+    Optionally accepts ``description`` (str), ``query`` (str), and ``top_k`` (int).
+    """
+    require_namespace_id(arguments)
+    project_id = str(arguments.get("project_id") or "").strip()
+    if not project_id:
+        raise ValueError("project_id is required")
+    params: dict[str, Any] = dict(arguments)
+    result = await do_recall_similar_projects(engine, params)
+    return json.dumps({"results": result}, default=str)

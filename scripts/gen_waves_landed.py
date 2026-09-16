@@ -328,7 +328,7 @@ def generate_markdown(
             "## Disagreements & Unlanded Waves",
             "",
             "These waves have partial signal (e.g. stamped in tree without PR or test, or planned in briefs).",
-            "**`Wave PJ-3` is the standing positive control**: stamped in `internal-cores.json:60`, but missing PR and marker test.",
+            "**`Wave PJ-5` is the standing positive control**: stamped in `internal-cores.json`, but missing PR and marker test.",
             "",
             "| Wave ID | Phase | Verdict | PR(s) | Stamp File(s) | Marker Test Status | Notes |",
             "|---|---|---|---|---|---|---|",

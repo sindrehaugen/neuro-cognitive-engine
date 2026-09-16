@@ -749,6 +749,13 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=True,
         mutation=True,
     ),
+    # Project vertical module tools (Wave PJ-3) — Recall similar past slipped projects
+    "project_recall_similar": ToolSpec(
+        _h(project_mcp_handlers, "handle_project_recall_similar"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # ------------------------------------------------------------------
     # Diagnostic Log Digestion Engine vertical module tools (Batch 77)
     # ------------------------------------------------------------------

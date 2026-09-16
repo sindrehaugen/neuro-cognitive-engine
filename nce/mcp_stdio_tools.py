@@ -3657,6 +3657,39 @@ TOOLS = [
         },
     ),
     Tool(
+        name="project_recall_similar",
+        description=(
+            "Recall similar past slipped projects from cognitive memory joined with the "
+            "cognitive ledger, ranked by embedding similarity. Read-only, advisory."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "project_id": {
+                    "type": "string",
+                    "description": "Project identifier (e.g. PROJECT:XYZ).",
+                },
+                "description": {
+                    "type": "string",
+                    "description": (
+                        "Optional query description override. If omitted, constructed "
+                        "from BOM lines or project ID."
+                    ),
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Optional full-text search keyword filter.",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Optional maximum number of similar projects to return (default 5).",
+                },
+            },
+            "required": ["namespace_id", "project_id"],
+        },
+    ),
+    Tool(
         name="agreements_lookup_terms",
         description=(
             "READ-ONLY agreement term lookup. Without a filter returns the 50 most "

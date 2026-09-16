@@ -54,11 +54,6 @@
     "owner": "MLV15D-PR6",
     "reason": "Supplier reliability recalibration engine; scheduled for background cron wiring in MLV15D Wave PR-6."
   },
-  "nce/vertical_modules/project/recall.py::do_recall_similar_projects": {
-    "engine": "project",
-    "owner": "MLV15C-PJ3",
-    "reason": "Similarity recall query over completed projects; scheduled for cacheable tool in MLV15C Wave PJ-3."
-  },
   "nce/vertical_modules/project/tasks.py::do_sync_bom_tasks": {
     "engine": "project",
     "owner": "MLV15B-PJ5",
