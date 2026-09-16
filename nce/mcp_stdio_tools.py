@@ -5254,6 +5254,83 @@ TOOLS = [
             "required": ["namespace_id"],
         },
     ),
+    # Support vertical module ecosystem feeds (Wave SU-3)
+    Tool(
+        name="support_failure_pattern",
+        description=(
+            "Record a failure pattern edge from TICKET to PRODUCT_SKU in the Knowledge Graph. "
+            "Closes the silence: repeated SKU failures flow back to Product for BOM optimization. "
+            "Actor; mutation, admin-only."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active namespace UUID."},
+                "ticket_id": {"type": "string", "description": "Ticket UUID."},
+                "product_sku": {"type": "string", "description": "Product SKU string."},
+                "confidence": {
+                    "type": "number",
+                    "default": 1.0,
+                    "description": "Confidence score for edge (default 1.0).",
+                },
+                "pattern_notes": {
+                    "type": "string",
+                    "description": "Optional notes describing the observed failure pattern.",
+                },
+            },
+            "required": ["namespace_id", "ticket_id", "product_sku"],
+        },
+    ),
+    Tool(
+        name="support_upsell_signal",
+        description=(
+            "Record an upsell signal edge from TICKET to Sales quote or opportunity in the Knowledge Graph. "
+            "Actor; mutation, admin-only."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active namespace UUID."},
+                "ticket_id": {"type": "string", "description": "Ticket UUID."},
+                "target_type": {
+                    "type": "string",
+                    "enum": ["QUOTE", "OPPORTUNITY"],
+                    "default": "OPPORTUNITY",
+                    "description": "Target entity type ('QUOTE' or 'OPPORTUNITY').",
+                },
+                "target_id": {"type": "string", "description": "Quote or opportunity ID string."},
+                "signal_reason": {
+                    "type": "string",
+                    "description": "Optional rationale for upsell recommendation.",
+                },
+                "confidence": {
+                    "type": "number",
+                    "default": 1.0,
+                    "description": "Confidence score for edge (default 1.0).",
+                },
+            },
+            "required": ["namespace_id", "ticket_id", "target_id"],
+        },
+    ),
+    Tool(
+        name="support_at_risk_aggregate",
+        description=(
+            "Expose the 'drift gråter' operations slice for Executive Morning Brief "
+            "(at-risk SLA clocks, churn-risk customers, open proactive tickets). "
+            "Watcher; read-only, cacheable."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active namespace UUID."},
+                "lookback_days": {
+                    "type": "integer",
+                    "description": "Optional lookback window in days.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
     # Field Tech vertical module tools (ML12-B5, M12.W5)
     Tool(
         name="field_tech_dispatch",

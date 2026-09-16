@@ -1270,6 +1270,22 @@ def build_admin_routes() -> list[Route]:
             endpoint=support_handlers.api_support_sync_status,
             methods=["GET"],
         ),
+        # Support vertical module ecosystem feeds (Wave SU-3)
+        Route(
+            "/api/support/tickets/{id}/failure-pattern",
+            endpoint=support_handlers.api_support_tickets_failure_pattern,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/support/tickets/{id}/upsell-signal",
+            endpoint=support_handlers.api_support_tickets_upsell_signal,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/support/at-risk-aggregate",
+            endpoint=support_handlers.api_support_at_risk_aggregate,
+            methods=["GET"],
+        ),
         # Field Tech vertical module routes (ML12-B6, M12.W6)
         Route(
             "/api/field-tech/dispatch",

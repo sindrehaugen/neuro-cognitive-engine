@@ -99,21 +99,6 @@
     "owner": "MLV15B-S2a",
     "reason": "Callback handler for declined signature requests; activated by signing webhook endpoint in Wave S-2a."
   },
-  "nce/vertical_modules/support/ecosystem.py::do_record_failure_pattern": {
-    "engine": "support",
-    "owner": "MLV15C-PJ1",
-    "reason": "Equipment failure pattern recorder; scheduled for wiring to project outcomes in MLV15C Wave PJ-1."
-  },
-  "nce/vertical_modules/support/ecosystem.py::do_record_upsell_signal": {
-    "engine": "support",
-    "owner": "MLV15C-SD2",
-    "reason": "Support ticket upsell signal emitter to Sales; scheduled for integration in MLV15C Wave SD-2."
-  },
-  "nce/vertical_modules/support/ecosystem.py::do_support_at_risk_aggregate": {
-    "engine": "support",
-    "owner": "MLV15B-BI1",
-    "reason": "Customer SLA at-risk aggregator; scheduled for Business Insights dashboard in Wave BI-1."
-  },
   "nce/vertical_modules/support/proactive.py::do_open_proactive_telemetry_ticket": {
     "engine": "support",
     "owner": "MLV15B-SU1",

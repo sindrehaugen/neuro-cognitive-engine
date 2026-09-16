@@ -8,6 +8,9 @@ MCP tool handlers for Module 10 (Support Engine):
   - handle_support_health_score: Watcher; read-only, cacheable.
   - handle_support_troubleshoot: Watcher; read-only, cacheable.
   - handle_support_resolve_ticket: Actor; mutation, admin_only.
+  - handle_support_failure_pattern: Actor; mutation, admin_only.
+  - handle_support_upsell_signal: Actor; mutation, admin_only.
+  - handle_support_at_risk_aggregate: Watcher; read-only, cacheable.
 
 Flags mirror the Support Engine contract:
 | Tool                     | cacheable | admin_only | mutation |
@@ -18,6 +21,9 @@ Flags mirror the Support Engine contract:
 | support_health_score     | Y         | N          | N        |
 | support_troubleshoot     | Y         | N          | N        |
 | support_resolve_ticket   | N         | Y          | Y        |
+| support_failure_pattern  | N         | Y          | Y        |
+| support_upsell_signal    | N         | Y          | Y        |
+| support_at_risk_aggregate| Y         | N          | N        |
 
 Opt-In Guard (Charter §5.5 & Pattern)
 --------------------------------------
@@ -45,6 +51,11 @@ from nce.vertical_modules.support._guard import (
 from nce.vertical_modules.support.dispatch import (
     DispatchCeilingExceededError,
     do_dispatch_work_order,
+)
+from nce.vertical_modules.support.ecosystem import (
+    do_record_failure_pattern,
+    do_record_upsell_signal,
+    do_support_at_risk_aggregate,
 )
 from nce.vertical_modules.support.health import do_health_score, do_record_touchpoint
 from nce.vertical_modules.support.sla import do_sla_clock
@@ -303,4 +314,58 @@ async def handle_support_sync_now(engine: Any, arguments: dict[str, Any]) -> str
     """
     await _check_support_enabled(engine, arguments)
     result = await do_sync_now(engine, dict(arguments))
+    return json.dumps({"ok": True, **result}, default=str)
+
+
+@mcp_handler
+async def handle_support_failure_pattern(engine: Any, arguments: dict[str, Any]) -> str:
+    """MCP tool: support_failure_pattern — record failure pattern edge from TICKET to PRODUCT_SKU.
+
+    Actor; mutation, admin_only. Requires ``namespace_id``, ``ticket_id``, and ``product_sku``.
+    """
+    await _check_support_enabled(engine, arguments)
+    try:
+        result = await do_record_failure_pattern(engine, dict(arguments))
+    except TicketNotFoundError as exc:
+        raise McpError(
+            _MCP_BUSINESS_REFUSED_CODE,
+            str(exc),
+            data={"reason": "ticket_not_found", "ticket_id": exc.ticket_id},
+        ) from exc
+    except ValueError as exc:
+        raise McpError(-32602, str(exc)) from exc
+    return json.dumps({"ok": True, **result}, default=str)
+
+
+@mcp_handler
+async def handle_support_upsell_signal(engine: Any, arguments: dict[str, Any]) -> str:
+    """MCP tool: support_upsell_signal — record upsell opportunity edge from TICKET to quote/opportunity.
+
+    Actor; mutation, admin_only. Requires ``namespace_id``, ``ticket_id``, and ``target_id``.
+    """
+    await _check_support_enabled(engine, arguments)
+    try:
+        result = await do_record_upsell_signal(engine, dict(arguments))
+    except TicketNotFoundError as exc:
+        raise McpError(
+            _MCP_BUSINESS_REFUSED_CODE,
+            str(exc),
+            data={"reason": "ticket_not_found", "ticket_id": exc.ticket_id},
+        ) from exc
+    except ValueError as exc:
+        raise McpError(-32602, str(exc)) from exc
+    return json.dumps({"ok": True, **result}, default=str)
+
+
+@mcp_handler
+async def handle_support_at_risk_aggregate(engine: Any, arguments: dict[str, Any]) -> str:
+    """MCP tool: support_at_risk_aggregate — expose 'drift gråter' operations slice for Morning Brief.
+
+    Watcher; read-only, cacheable. Requires ``namespace_id``.
+    """
+    await _check_support_enabled(engine, arguments)
+    try:
+        result = await do_support_at_risk_aggregate(engine, dict(arguments))
+    except ValueError as exc:
+        raise McpError(-32602, str(exc)) from exc
     return json.dumps({"ok": True, **result}, default=str)
