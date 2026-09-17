@@ -163,6 +163,9 @@ async def test_accept_decision_appended_to_feedback(
     assert "feedback_id" in result
     assert result["decision"] == "accept"
     feedback_id = uuid.UUID(result["feedback_id"])
+    assert "decision_feedback_id" in result
+    assert result["decision_feedback_id"] is not None
+    df_id = uuid.UUID(result["decision_feedback_id"])
 
     # pg_app_conn uses nce_app role + FORCE RLS; must set namespace context to see the row.
     async with pg_app_conn.transaction():
@@ -171,12 +174,21 @@ async def test_accept_decision_appended_to_feedback(
             "SELECT bom_line, chosen_sku, decision, matched_score FROM product_match_feedback WHERE id = $1",
             feedback_id,
         )
+        df_row = await pg_app_conn.fetchrow(
+            "SELECT engine, context_id, decision FROM decision_feedback WHERE id = $1",
+            df_id,
+        )
 
     assert row is not None, f"Feedback row {feedback_id} not found"
     assert row["bom_line"] == "Cisco SFP 10G SR"
     assert row["chosen_sku"] == "SFP-10G-SR"
     assert row["decision"] == "accept"
     assert float(row["matched_score"]) == pytest.approx(0.87)
+
+    assert df_row is not None, f"Decision feedback row {df_id} not found"
+    assert df_row["engine"] == "product"
+    assert df_row["context_id"] == "Cisco SFP 10G SR"
+    assert df_row["decision"] == "accept"
 
 
 @pytest.mark.integration
@@ -186,7 +198,7 @@ async def test_override_decision_appended(
     pg_app_conn: asyncpg.Connection,
     ns_a: uuid.UUID,
 ) -> None:
-    """An 'override' decision is written correctly."""
+    """An 'override' decision is written correctly to both feedback tables."""
     from nce.vertical_modules.product.matching import do_match_bom_line
 
     engine = _make_engine(pg_pool)
@@ -205,6 +217,9 @@ async def test_override_decision_appended(
 
     assert result["decision"] == "override"
     feedback_id = uuid.UUID(result["feedback_id"])
+    assert "decision_feedback_id" in result
+    assert result["decision_feedback_id"] is not None
+    df_id = uuid.UUID(result["decision_feedback_id"])
 
     async with pg_app_conn.transaction():
         await set_namespace_context(pg_app_conn, ns_a)
@@ -212,11 +227,20 @@ async def test_override_decision_appended(
             "SELECT decision, chosen_sku, rejected_sku FROM product_match_feedback WHERE id = $1",
             feedback_id,
         )
+        df_row = await pg_app_conn.fetchrow(
+            "SELECT engine, context_id, decision FROM decision_feedback WHERE id = $1",
+            df_id,
+        )
 
     assert row is not None
     assert row["decision"] == "override"
     assert row["chosen_sku"] == "SFP-10G-LR"
     assert row["rejected_sku"] == "SFP-10G-SR"
+
+    assert df_row is not None, f"Decision feedback row {df_id} not found"
+    assert df_row["engine"] == "product"
+    assert df_row["context_id"] == "SFP module 10G"
+    assert df_row["decision"] == "override"
 
 
 @pytest.mark.integration

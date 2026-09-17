@@ -1,7 +1,7 @@
 """
 tests/unit/test_outcome_feed_c10_ratchet.py
 ===========================================
-Ratchet test suite for Wave C-RS3 / C-FT4:
+Ratchet test suite for Wave C-RS3 / C-FT4 / P-4:
 Real Data Behind the AI — Outcome Feeds into C10 Decision-Feedback Service.
 
 Charter §13 Gate:
@@ -15,10 +15,12 @@ Invariants verified:
      UNPATCHED and executes real SQL INSERT INTO decision_feedback with valid parameters.
   2. field_tech.do_record_outcome calls record_decision_feedback
      UNPATCHED and executes real SQL INSERT INTO decision_feedback with valid parameters.
-  3. Parameters bound to decision_feedback match the canonical schema in
+  3. product.do_record_match_decision (Wave P-4) calls record_decision_feedback
+     UNPATCHED and executes real SQL INSERT INTO decision_feedback with valid parameters.
+  4. Parameters bound to decision_feedback match the canonical schema in
      nce/migrations/075_decision_feedback.sql (namespace_id, engine, context_id, proposal, decision, delta, actor).
-  4. Both writers simultaneously write their v3_cognitive_ledger evidence.
-  5. Both writers return the generated decision_feedback_id for traceability.
+  5. Both writers simultaneously write their v3_cognitive_ledger evidence.
+  6. All writers return the generated decision_feedback_id for traceability.
 """
 
 from __future__ import annotations
@@ -32,6 +34,9 @@ from uuid import UUID, uuid4
 import pytest
 
 from nce.vertical_modules.field_tech.outcome import do_record_outcome
+from nce.vertical_modules.product.matching import (
+    do_record_match_decision as product_do_record_match_decision,
+)
 from nce.vertical_modules.resources.planner import do_record_allocation_outcome
 
 _NS_ID = "33333333-4444-5555-6666-777777777777"
@@ -229,6 +234,87 @@ async def test_ft4_record_outcome_executes_real_decision_feedback_sql() -> None:
     assert ledger_call is not None, (
         "field_tech.do_record_outcome failed to execute INSERT INTO v3_cognitive_ledger"
     )
+
+
+@pytest.mark.asyncio
+async def test_p4_product_match_decision_executes_real_decision_feedback_sql() -> None:
+    """Wave P-4: product.do_record_match_decision writes to decision_feedback without mocks."""
+    conn = AsyncMock()
+    feedback_row_id = uuid4()
+    df_row_id = uuid4()
+
+    conn.fetchval = AsyncMock(return_value=feedback_row_id)
+    conn.fetchrow = AsyncMock(return_value={"id": df_row_id, "created_at": "2026-09-07T06:00:00Z"})
+
+    pool = _make_mock_pool(conn)
+    engine = MagicMock()
+    engine.pg_pool = pool
+
+    bom_line = "Cisco Catalyst 9300 48-port PoE+"
+    chosen_sku = "C9300-48P-A"
+    rejected_sku = "C9300-24P-A"
+
+    res = await product_do_record_match_decision(
+        engine,
+        {
+            "namespace_id": _NS_ID,
+            "bom_line": bom_line,
+            "chosen_sku": chosen_sku,
+            "rejected_sku": rejected_sku,
+            "matched_score": 0.92,
+            "decision": "override",
+            "actor": "lead_engineer",
+        },
+    )
+
+    # 1. Output carries feedback_id, decision, and decision_feedback_id
+    assert res["feedback_id"] == str(feedback_row_id)
+    assert res["decision"] == "override"
+    assert res["decision_feedback_id"] == str(df_row_id)
+
+    # 2. Assert SQL INSERT INTO product_match_feedback was genuinely executed
+    pmf_call = next(
+        (
+            c
+            for c in conn.fetchval.call_args_list
+            if "INSERT INTO product_match_feedback" in str(c[0][0])
+        ),
+        None,
+    )
+    assert pmf_call is not None, (
+        "product.do_record_match_decision failed to execute INSERT INTO product_match_feedback"
+    )
+
+    # 3. Assert SQL INSERT INTO decision_feedback was genuinely executed UNPATCHED
+    df_call = next(
+        (
+            c
+            for c in conn.fetchrow.call_args_list
+            if "INSERT INTO decision_feedback" in str(c[0][0])
+        ),
+        None,
+    )
+    assert df_call is not None, (
+        "product.do_record_match_decision failed to execute INSERT INTO decision_feedback"
+    )
+
+    sql_args = df_call[0]
+    # Parameter order: $1::uuid, $2, $3, $4::jsonb, $5, $6::jsonb, $7
+    # namespace_id, engine, context_id, proposal, decision, delta, actor
+    assert sql_args[1] == _NS_UUID
+    assert sql_args[2] == "product"
+    assert sql_args[3] == bom_line
+    proposal_data = json.loads(sql_args[4])
+    assert proposal_data["bom_line"] == bom_line
+    assert proposal_data["chosen_sku"] == chosen_sku
+    assert proposal_data["rejected_sku"] == rejected_sku
+    assert proposal_data["matched_score"] == 0.92
+    assert sql_args[5] == "override"
+    delta_data = json.loads(sql_args[6])
+    assert delta_data["chosen_sku"] == chosen_sku
+    assert delta_data["rejected_sku"] == rejected_sku
+    assert delta_data["matched_score"] == 0.92
+    assert sql_args[7] == "lead_engineer"
 
 
 def _create_table_columns(sql: str, table: str) -> set[str]:
