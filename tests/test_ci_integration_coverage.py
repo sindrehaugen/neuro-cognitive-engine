@@ -183,6 +183,9 @@ GLOBBED_UNMARKED_BY_DESIGN: frozenset[str] = frozenset(
         # Pure-unit / hermetic mock test for Wave A-3 (warranty/EOL + NetBox sync);
         # mocks DB and external HTTP NetBox boundaries. Matched by tests/test_assets_*.py.
         "tests/test_assets_warranty_netbox.py",
+        # Pure-unit test for Wave A-4 (QR generator & room register);
+        # mocks DB boundary. Matched by tests/test_assets_*.py.
+        "tests/test_assets_qr_register.py",
     }
 )
 

@@ -15,6 +15,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from nce.db_utils import scoped_pg_session
 from nce.vertical_modules.customer_portal.auth import enforce_customer_scope
 from nce.vertical_modules.customer_portal.redaction import project_customer_safe
 
@@ -168,6 +169,30 @@ async def do_asset_register(engine: Any, params: dict[str, Any]) -> dict[str, An
 
     room_id = params.get("room_id", "")
     raw_assets = params.get("assets", [])
+
+    if not raw_assets and engine and getattr(engine, "pg_pool", None):
+        namespace_id = params.get("namespace_id")
+        if namespace_id and room_id:
+            async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+                rows = await conn.fetch(
+                    """
+                    SELECT id, bom_line_id, serial, functional_location_id, lifecycle_state
+                    FROM assets
+                    WHERE namespace_id = $1::uuid AND functional_location_id = $2
+                    ORDER BY created_at ASC
+                    """,
+                    namespace_id,
+                    room_id,
+                )
+                raw_assets = [
+                    {
+                        "asset_id": str(r["id"]),
+                        "room_id": r["functional_location_id"] or room_id,
+                        "serial_number": r["serial"],
+                        "status": r["lifecycle_state"],
+                    }
+                    for r in rows
+                ]
 
     projected_assets = [project_customer_safe(asset, "asset_register") for asset in raw_assets]
 

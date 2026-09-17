@@ -109,10 +109,10 @@ def test_sales_ping_registered_with_correct_flags() -> None:
 def test_tool_count_grew_by_one() -> None:
     from nce.tool_registry import TOOL_REGISTRY
 
-    assert len(TOOL_REGISTRY) == 275, (
-        f"Expected 275 tools (repo-wide registry ratchet), "
+    assert len(TOOL_REGISTRY) == 276, (
+        f"Expected 276 tools (repo-wide registry ratchet), "
         f"Batch 138a, M11.W10a -- this Sales test carries a repo-wide registry ratchet, "
         f"so it moves whenever ANY module registers a tool + 8 hr tools from Module 13 (HR engine) "
-        f"+ 2 assets tools from Wave A-3), "
+        f"+ 2 assets tools from Wave A-3 + 1 assets QR from Wave A-4), "
         f"got {len(TOOL_REGISTRY)}: {sorted(TOOL_REGISTRY)}"
     )

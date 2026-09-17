@@ -2715,6 +2715,28 @@ TOOLS = [
         },
     ),
     Tool(
+        name="assets_generate_qr",
+        description=(
+            "Generate QR code metadata and vector SVG for an asset in the register. "
+            "Watcher; read-only, cacheable."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "asset_id": {
+                    "type": "string",
+                    "description": "Asset UUID to generate QR code for.",
+                },
+                "base_url": {
+                    "type": "string",
+                    "description": "Optional portal base URL for deep-links.",
+                },
+            },
+            "required": ["namespace_id", "asset_id"],
+        },
+    ),
+    Tool(
         name="vendors_get_vendor",
         description="Fetch a single vendor. Watcher; read-only, cacheable.",
         inputSchema={

@@ -160,6 +160,10 @@ def test_package_imports() -> None:
             "assets_attach_sla",
             {"cacheable": False, "admin_only": False, "mutation": True, "migration": False},
         ),
+        (
+            "assets_generate_qr",
+            {"cacheable": True, "admin_only": False, "mutation": False, "migration": False},
+        ),
     ],
 )
 def test_assets_tools_registered_with_correct_flags(
@@ -186,15 +190,16 @@ def test_tool_count_updated_for_assets_surface() -> None:
     assert "assets_compute_health" in TOOL_REGISTRY
     assert "assets_check_warranty_eol" in TOOL_REGISTRY
     assert "assets_sync_netbox" in TOOL_REGISTRY
-    assert len(TOOL_REGISTRY) == 275, (
-        f"Expected 275 tools (repo-wide ratchet), "
+    assert "assets_generate_qr" in TOOL_REGISTRY
+    assert len(TOOL_REGISTRY) == 276, (
+        f"Expected 276 tools (repo-wide ratchet), "
         f"from Batch 067b, M6.W13a + 2 system_design authoring tools from "
         f"Batch 067c, M6.W13b + 1 system_design validator from Batch 067d, M6.W13c "
         f"+ 1 system_design retire tool from Batch 067h, M6.W17 "
         f"+ 11 inventory tools from Batch 138a, M11.W10a -- the Inventory "
         f"surface-completion wave; this Assets test carries a repo-wide registry "
         f"ratchet, so it moves whenever ANY module registers a tool + 8 hr tools from Module 13 (HR engine) "
-        f"+ 2 assets tools from Wave A-3), "
+        f"+ 2 assets tools from Wave A-3 + 1 assets tool from Wave A-4), "
         f"got {len(TOOL_REGISTRY)}: {sorted(TOOL_REGISTRY)}"
     )
 
