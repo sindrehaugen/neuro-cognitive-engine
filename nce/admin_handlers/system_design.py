@@ -83,7 +83,10 @@ from nce.vertical_modules.system_design.read import do_get_topology
 from nce.vertical_modules.system_design.retire import RetireDeniedError
 from nce.vertical_modules.system_design.sow import do_generate_sow
 from nce.vertical_modules.system_design.to_quote import do_design_to_quote
-from nce.vertical_modules.system_design.validation_queries import validate_design_graph
+from nce.vertical_modules.system_design.validate import do_validate_design
+from nce.vertical_modules.system_design.validation_queries import (
+    validate_design_graph as validate_design_graph,
+)
 
 log = logging.getLogger("nce.admin_handlers.system_design")
 
@@ -460,10 +463,16 @@ async def api_system_design_validate_design_graph(request) -> JSONResponse:
     if not design_id:
         return JSONResponse({"error": "Missing required field: design_id"}, status_code=422)
 
+    payload: dict[str, Any] = {"namespace_id": namespace_id, "design_id": design_id}
+    if "decisions" in body and body["decisions"] is not None:
+        payload["decisions"] = body["decisions"]
+    if "source_id" in body and body["source_id"] is not None:
+        payload["source_id"] = body["source_id"]
+
     try:
-        result = await validate_design_graph(
+        result = await do_validate_design(
             admin_state.engine,
-            {"namespace_id": namespace_id, "design_id": design_id},
+            payload,
         )
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=422)
@@ -473,6 +482,12 @@ async def api_system_design_validate_design_graph(request) -> JSONResponse:
             exc,
             status_code=500,
             log_event="api_system_design_validate_design_graph: unexpected error",
+        )
+
+    if payload.get("decisions"):
+        await bump_mcp_cache_generation(
+            admin_state.engine,
+            route="api_system_design_validate_design_graph",
         )
 
     return JSONResponse({"status": "ok", "validation": result})

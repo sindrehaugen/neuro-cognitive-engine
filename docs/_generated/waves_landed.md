@@ -12,9 +12,9 @@
 
 | Metric | Count |
 |---|---|
-| **Total Waves Evaluated** | **92** |
+| **Total Waves Evaluated** | **94** |
 | **LANDED on `main` (3-way consensus)** | **48** |
-| **Disagreements / Open / Planned** | **44** |
+| **Disagreements / Open / Planned** | **46** |
 | **Skipped Legacy / Pre-v1.5 Tokens** | **54** |
 | **Unmatched Wave Tokens** | **0** |
 
@@ -111,6 +111,8 @@ These waves have partial signal (e.g. stamped in tree without PR or test, or pla
 | **I-7** | Phase 0 | `PR_AND_TEST_NO_STAMP` | #29 | - | `tests/integration/test_golden_thread.py` (COLLECTED) | Golden Thread Scaffold |
 | **I-8** | Phase 0 | `PR_ONLY` | #128 | - | `tests/unit/test_event_log_chokepoint_ratchet.py` (ABSENT_FILE) | feat(instruments): implement event_log chokepoint and publish transactional ratchets (Wave I-8) |
 | **P-2** | Phase 2 | `UNMERGED_PR` | - | `tests/test_project_advance.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_product_p2_p3_ratchet.py` | `tests/unit/test_product_p2_p3_ratchet.py` (COLLECTED) | Wave P-2 |
+| **P-5** | Unspecified | `STAMPED_UNLANDED` | - | `tests/unit/test_product_manufacturer_sources.py` | None |  |
+| **P-6** | Unspecified | `STAMPED_UNLANDED` | - | `nce/admin_app.py`<br>`nce/admin_handlers/product.py`<br>`nce/vertical_modules/product/quality.py`<br>`tests/unit/test_product_quality_rest.py` | None |  |
 | **PJ-3** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/admin_app.py`<br>`nce/admin_handlers/project.py`<br>`nce/tool_registry.py`<br>`nce/vertical_modules/project/mcp_handlers.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_project_similar_surface.py` | `tests/unit/test_project_similar.py` (ABSENT_FILE) | Similarity recall query over completed projects; scheduled for cacheable tool in MLV15C Wave PJ-3 |
 | **PJ-4** | Unspecified | `STAMPED_UNLANDED` | - | `nce/tool_registry.py`<br>`nce/vertical_modules/project/mcp_handlers.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_inventory_hardening.py`<br>`tests/unit/test_project_rest_reads_surface.py` | None |  |
 | **PJ-5** | Unspecified | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave PJ-5 |

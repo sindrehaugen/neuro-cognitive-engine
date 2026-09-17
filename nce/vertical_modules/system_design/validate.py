@@ -43,6 +43,7 @@ from nce.vertical_modules.system_design.graph import (
     _design_label,
     _upsert_design_node,
 )
+from nce.vertical_modules.system_design.validation_queries import validate_design_graph
 
 log = logging.getLogger("nce.vertical_modules.system_design.validate")
 
@@ -251,9 +252,15 @@ async def do_validate_design(
     if not design_id_raw:
         raise ValueError("do_validate_design: 'design_id' is required in params")
 
-    decisions: list[dict[str, Any]] = params.get("decisions", [])
-    if not decisions:
+    # Mode 1: Graph validation mode when decisions is omitted or None
+    if "decisions" not in params or params.get("decisions") is None:
+        return await validate_design_graph(engine, params)
+
+    # Mode 2: Propose-only decision recording mode (§9.3)
+    decisions_val = params.get("decisions")
+    if not isinstance(decisions_val, list) or len(decisions_val) == 0:
         raise ValueError("do_validate_design: 'decisions' must be a non-empty list")
+    decisions: list[dict[str, Any]] = decisions_val
 
     source_id: str | None = params.get("source_id")
     design_lbl = _design_label(design_id_raw)
@@ -285,9 +292,19 @@ async def do_validate_design(
         len(decisions),
     )
 
-    return {
+    result: dict[str, Any] = {
         "passed": passed,
         "reasons": reasons,
         "decisions_recorded": len(decisions),
         "design_version_bumped": True,
     }
+
+    if params.get("validate_graph"):
+        graph_res = await validate_design_graph(
+            engine, {"namespace_id": ns_uuid, "design_id": design_id_raw}
+        )
+        result["graph_validation"] = graph_res
+        result["passed"] = result["passed"] and graph_res.get("passed", False)
+        result["reasons"] = result["reasons"] + graph_res.get("reasons", [])
+
+    return result

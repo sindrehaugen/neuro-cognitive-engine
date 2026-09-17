@@ -76,7 +76,10 @@ from nce.vertical_modules.system_design.retire import (
 )
 from nce.vertical_modules.system_design.sow import do_generate_sow
 from nce.vertical_modules.system_design.to_quote import do_design_to_quote
-from nce.vertical_modules.system_design.validation_queries import validate_design_graph
+from nce.vertical_modules.system_design.validate import do_validate_design
+from nce.vertical_modules.system_design.validation_queries import (
+    validate_design_graph as validate_design_graph,
+)
 
 if TYPE_CHECKING:
     from nce.orchestrator import NCEEngine
@@ -262,7 +265,7 @@ async def handle_system_design_validate_design_graph(
     require_namespace_id(arguments)
     if not arguments.get("design_id"):
         raise ValueError("design_id is required")
-    result = await validate_design_graph(engine, arguments)
+    result = await do_validate_design(engine, arguments)
     # No ``default=`` fallback: the core returns a bool and a list of str, so a
     # future non-encodable value must fail loudly rather than be stringified
     # into a shape the REST route would not produce.

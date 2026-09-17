@@ -215,10 +215,26 @@ Returns `{"design_id", "quote_label", "design_label", "authored", "quote_lines_r
 
 ---
 
-## 5. Human validation gate: `do_validate_design(engine, params)`
+## 5. Human validation gate & consolidated validator: `do_validate_design(engine, params)`
 
-Source: `nce/vertical_modules/system_design/validate.py:195-293`.
+Source: `nce/vertical_modules/system_design/validate.py:195-310`.
 
+Under Wave SD-4 ("One Validator"), `do_validate_design` serves as the single canonical validation entrypoint for the System Design module, surfaced directly over both MCP (`system_design_validate_design_graph`) and REST (`POST /api/system-design/validate`).
+
+It operates in two modes:
+
+### 5.1 Graph validation mode (default)
+When `decisions` is omitted or `None`, it runs the five structural checks described in §6.2 (`validate_design_graph`):
+```python
+result = await do_validate_design(engine, {
+    "namespace_id": "…",
+    "design_id": "DESIGN-…",
+})
+# {"passed": bool, "reasons": [str, ...]}
+```
+
+### 5.2 Decision recording mode (§9.3 propose-only)
+When `decisions` is provided, it records human validation decisions:
 ```python
 result = await do_validate_design(engine, {
     "namespace_id": "…",
@@ -227,6 +243,7 @@ result = await do_validate_design(engine, {
         {"line_id": "DESIGN_LINE:DESIGN-…:DL-001", "verdict": "accept"},
         {"line_id": "DESIGN_LINE:DESIGN-…:DL-002", "verdict": "override", "reason": "wrong DSP model for room size"},
     ],
+    "validate_graph": True,  # optional: also evaluate graph structural checks
 })
 ```
 
@@ -236,9 +253,11 @@ What happens:
 1. Decisions are validated for shape.
 2. `passed = (zero override decisions)`; each override's `reason` (or an auto-generated default) is collected into `reasons`.
 3. The `DESIGN` node is re-upserted (bumping `updated_at`, which is exactly the signal `do_generate_sow`'s freeze-on-issue logic watches for a new version).
-4. The full decision batch is appended as one row to `v3_cognitive_ledger` (`tlx_scores` JSONB payload, zero-vector `empathic_tensor` since validation carries no affective signal) tagged `model_version = "system_design/validate/v1"` — this is the feedback loop that will eventually calibrate the (currently dormant) outcome-weighting in `do_propose_design`.
+4. The full decision batch is appended as one row to `v3_cognitive_ledger` (`tlx_scores` JSONB payload, zero-vector `empathic_tensor` since validation carries no affective signal) tagged `model_version = "system_design/validate/v1"` — this is the feedback loop that will eventually calibrate outcome-weighting in `do_propose_design`.
+5. If `validate_graph=True`, graph structural validation is also evaluated, with reasons aggregated and `passed` AND-ed.
 
-Returns `{"passed": bool, "reasons": [str], "decisions_recorded": int, "design_version_bumped": true}`.
+Returns `{"passed": bool, "reasons": [str], "decisions_recorded": int, "design_version_bumped": true}` (with optional `"graph_validation"` when `validate_graph=True`).
+
 
 ---
 
