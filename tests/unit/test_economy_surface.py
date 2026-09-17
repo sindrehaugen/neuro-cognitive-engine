@@ -272,8 +272,8 @@ def test_tool_count_includes_economy_tools() -> None:
     assert "economy_generate_close_narrative" in TOOL_REGISTRY
     assert "economy_approve_invoice" in TOOL_REGISTRY
     assert "economy_get_gl_records" in TOOL_REGISTRY
-    assert len(TOOL_REGISTRY) == 272, (
-        f"Expected 272 tools (+6 economy from MLV15D Wave E-1, +1 sales from Wave S-2a, +2 procurement from PR-1, +9 agreements from AG-2, +4 vendors from V-1, +5 HR from HR-2, +7 MLV15C, +4 resources from RS-1, +1 economy from E-3, +1 procurement savings from PR-3, +1 marketing from MK-2, +4 sales write from S-1, +1 project from Wave C-PJ2, +1 sales commission from S-6, +4 economy from Wave E-2, +1 economy from B-AG1/B-E2, +1 sales divergence log from S-7, +1 sales morning brief slice from S-4, +2 sales lead score & quote draft from S-5, +3 support ecosystem from SU-3, +1 procurement resolve bids from PR-4, +1 project recall similar from PJ-3, +4 project rest reads from PJ-4, +1 system design inspect signal flow from SD-5), "
+    assert len(TOOL_REGISTRY) == 273, (
+        f"Expected 273 tools (+6 economy from MLV15D Wave E-1, +1 sales from Wave S-2a, +2 procurement from PR-1, +9 agreements from AG-2, +4 vendors from V-1, +5 HR from HR-2, +7 MLV15C, +4 resources from RS-1, +1 economy from E-3, +1 procurement savings from PR-3, +1 marketing from MK-2, +4 sales write from S-1, +1 project from Wave C-PJ2, +1 sales commission from S-6, +4 economy from Wave E-2, +1 economy from B-AG1/B-E2, +1 sales divergence log from S-7, +1 sales morning brief slice from S-4, +2 sales lead score & quote draft from S-5, +3 support ecosystem from SU-3, +1 procurement resolve bids from PR-4, +1 project recall similar from PJ-3, +4 project rest reads from PJ-4, +1 system design inspect signal flow from SD-5, +1 system design procurement view from SD-6), "
         f"got {len(TOOL_REGISTRY)}: {sorted(TOOL_REGISTRY)}"
     )
 

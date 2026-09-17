@@ -1727,6 +1727,50 @@ TOOLS = [
         },
     ),
     Tool(
+        name="system_design_procurement_view",
+        description=(
+            "[Wave SD-6] Read-only / Advisor: inspect a frozen system design, "
+            "resolve and rank supplier candidates per item using Procurement's "
+            "5-step ranking engine, and group line items by winning ranked supplier. "
+            "Emits pre-formatted payloads ready for Procurement PR-1 purchase order "
+            "generation with strict ADR-0017 confidentiality."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Caller namespace UUID.",
+                },
+                "design_id": {
+                    "type": "string",
+                    "description": "Design identifier (the DESIGN node's id).",
+                },
+                "weights": {
+                    "type": "object",
+                    "description": "Optional procurement scoring weights override.",
+                },
+                "candidates": {
+                    "type": ["array", "object"],
+                    "description": "Optional supplier candidates list or dict keyed by item.",
+                },
+                "require_frozen": {
+                    "type": "boolean",
+                    "description": "When True, raises error if design has no becomes edge or version token.",
+                },
+                "design_version": {
+                    "type": "integer",
+                    "description": "Optional frozen design version number.",
+                },
+                "required_by_day": {
+                    "type": "integer",
+                    "description": "Optional delivery deadline in days.",
+                },
+            },
+            "required": ["namespace_id", "design_id"],
+        },
+    ),
+    Tool(
         name="system_design_author_topology",
         description=(
             "[M6.W13b] Author a System Design DESIGN's device topology: DEVICE / "

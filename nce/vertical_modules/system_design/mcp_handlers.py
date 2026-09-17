@@ -68,6 +68,7 @@ from nce.vertical_modules.system_design.geometry import (
 )
 from nce.vertical_modules.system_design.graph import do_author_functional_location
 from nce.vertical_modules.system_design.lucid import do_publish_design_docs
+from nce.vertical_modules.system_design.procurement_view import do_get_procurement_view
 from nce.vertical_modules.system_design.propose import do_propose_design
 from nce.vertical_modules.system_design.read import do_get_topology
 from nce.vertical_modules.system_design.retire import (
@@ -294,6 +295,30 @@ async def handle_system_design_inspect_signal_flow(
     if not arguments.get("design_id"):
         raise ValueError("design_id is required")
     result = await do_inspect_signal_flow(engine, arguments)
+    return json.dumps(result)
+
+
+@mcp_handler
+async def handle_system_design_procurement_view(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_procurement_view — frozen design grouped by ranked supplier for PR-1.
+
+    Read-only (``cacheable=True, admin_only=False, mutation=False``).
+
+    Requires ``namespace_id`` and ``design_id`` in *arguments*.
+    Optional ``weights`` overrides procurement scoring weights.
+    Optional ``candidates`` overrides supplier candidates.
+    Optional ``require_frozen`` (bool) enforces that the design must be frozen.
+    Optional ``design_version`` (int) overrides/asserts frozen version.
+    Optional ``required_by_day`` (int) delivery deadline in days.
+
+    Returns the JSON-encoded result of ``do_get_procurement_view``.
+    """
+    require_namespace_id(arguments)
+    if not arguments.get("design_id"):
+        raise ValueError("design_id is required")
+    result = await do_get_procurement_view(engine, arguments)
     return json.dumps(result)
 
 

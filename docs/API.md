@@ -277,6 +277,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/system-design/from-quote` | `api_system_design_from_quote` |
 | POST | `/api/system-design/functional-location` | `api_system_design_author_functional_location` |
 | DELETE | `/api/system-design/planned` | `api_system_design_delete_planned` |
+| GET | `/api/system-design/procurement-view` | `api_system_design_procurement_view` |
 | POST | `/api/system-design/publish-design-docs` | `api_system_design_publish_design_docs` |
 | GET | `/api/system-design/signal-flow` | `api_system_design_inspect_signal_flow` |
 | POST | `/api/system-design/sow` | `api_system_design_generate_sow` |
@@ -549,6 +550,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `system_design_get_topology` |  |  | yes |  |
 | `system_design_inspect_signal_flow` |  |  |  |  |
 | `system_design_ping` |  |  | yes |  |
+| `system_design_procurement_view` |  |  | yes |  |
 | `system_design_propose_design` |  |  |  |  |
 | `system_design_publish_design_docs` |  | yes |  |  |
 | `system_design_to_quote` |  | yes |  |  |
@@ -574,4 +576,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 284 REST endpoints, 272 MCP tools._
+_Totals: 285 REST endpoints, 273 MCP tools._
