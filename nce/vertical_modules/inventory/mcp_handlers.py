@@ -106,6 +106,7 @@ from nce.vertical_modules.inventory.reconcile import do_reconcile_dead_stock
 from nce.vertical_modules.inventory.refusals import BUSINESS_REFUSALS, mcp_refusal
 from nce.vertical_modules.inventory.replenishment import do_recommend_restock
 from nce.vertical_modules.inventory.reservation import do_release_stock, do_reserve_stock
+from nce.vertical_modules.inventory.restock_po import do_create_restock_po
 from nce.vertical_modules.inventory.rma import (
     do_dispose_rma_weee,
     do_record_rma,
@@ -477,6 +478,24 @@ async def handle_inventory_dispose_rma_weee(engine: NCEEngine, arguments: dict[s
         result = await do_dispose_rma_weee(engine, dict(arguments))
     except InsufficientStockError as exc:
         return _insufficient_stock_error(exc)
+    except BUSINESS_REFUSALS as exc:
+        raise mcp_refusal(exc) from exc
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_inventory_create_restock_po(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: inventory_create_restock_po — create restock PO via C2 and submit (Actor).
+
+    Requires ``namespace_id``, ``sku``, ``po_number``, ``supplier_id``, ``line_items``;
+    optional: ``po_value``, ``location``, ``confirm``, ``idempotency_key``, ``transport``.
+    Actor / admin-only (``mutation=True, admin_only=True``).
+
+    Thin adapter — all logic lives in ``restock_po.do_create_restock_po``.
+    """
+    await _check_inventory_enabled(engine, arguments)
+    try:
+        result = await do_create_restock_po(engine, dict(arguments))
     except BUSINESS_REFUSALS as exc:
         raise mcp_refusal(exc) from exc
     return json.dumps(result, default=str)

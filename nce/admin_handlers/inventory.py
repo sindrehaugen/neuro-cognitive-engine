@@ -89,6 +89,7 @@ from nce.vertical_modules.inventory.refusals import (
 )
 from nce.vertical_modules.inventory.replenishment import do_recommend_restock
 from nce.vertical_modules.inventory.reservation import do_release_stock, do_reserve_stock
+from nce.vertical_modules.inventory.restock_po import do_create_restock_po
 from nce.vertical_modules.inventory.rma import (
     do_dispose_rma_weee,
     do_record_rma,
@@ -1142,4 +1143,62 @@ async def api_inventory_dispose_rma_weee(request) -> JSONResponse:
             exc,
             status_code=500,
             log_event="api_inventory_dispose_rma_weee",
+        )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/inventory/create-restock-po
+# ---------------------------------------------------------------------------
+
+
+async def api_inventory_create_restock_po(request) -> JSONResponse:
+    """POST /api/inventory/create-restock-po
+
+    Create a restock PO through the C2 autonomy gate and submit it via Procurement
+    (Module 11, Wave IN-3). Spans Inventory and Procurement engines.
+
+    Request body (JSON): ``namespace_id``, ``sku``, ``po_number``, ``supplier_id``,
+    ``line_items``; optional: ``po_value``, ``location``, ``confirm``, ``idempotency_key``.
+
+    Thin adapter over ``do_create_restock_po`` — no business logic here.
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+    assert namespace_id is not None
+
+    disabled = await _check_inventory_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
+
+    params = dict(body)
+    params["namespace_id"] = namespace_id
+
+    try:
+        result = await do_create_restock_po(admin_state.engine, params)
+        # Mirror the MCP dispatch loop: invalidate cached reads now the
+        # mutation has committed.
+        await bump_mcp_cache_generation(admin_state.engine, route="api_inventory_create_restock_po")
+        return JSONResponse(_json_safe(result))
+    except BUSINESS_REFUSALS as exc:
+        return JSONResponse(
+            _json_safe(refusal_payload(exc)),
+            status_code=REST_BUSINESS_REFUSED_STATUS,
+        )
+    except (ValueError, KeyError, TypeError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Inventory create-restock-po error",
+            exc,
+            status_code=500,
+            log_event="api_inventory_create_restock_po",
         )

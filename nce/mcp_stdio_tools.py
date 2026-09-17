@@ -2565,6 +2565,50 @@ TOOLS = [
             "required": ["namespace_id", "rma_ref", "disposal_ref"],
         },
     ),
+    Tool(
+        name="inventory_create_restock_po",
+        description=(
+            "Create a restock PO through the C2 autonomy gate and submit it via Procurement. "
+            "Actor; mutation, admin_only. Spans Inventory and Procurement engines."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "sku": {"type": "string", "description": "Article number being restocked."},
+                "po_number": {
+                    "type": "string",
+                    "description": "PO number forwarded to Procurement.",
+                },
+                "supplier_id": {
+                    "type": "string",
+                    "description": "Supplier ID forwarded to Procurement.",
+                },
+                "line_items": {
+                    "type": "array",
+                    "description": "Line items for the PO.",
+                    "items": {"type": "object"},
+                },
+                "po_value": {
+                    "type": "number",
+                    "description": "PO money value for autonomy ceiling evaluation.",
+                },
+                "location": {
+                    "type": "string",
+                    "description": "Optional stock location UUID or label.",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Confirm execution flag (default False -> pending_approval).",
+                },
+                "idempotency_key": {
+                    "type": "string",
+                    "description": "Optional idempotency key (derived if omitted).",
+                },
+            },
+            "required": ["namespace_id", "sku", "po_number", "supplier_id", "line_items"],
+        },
+    ),
     # -----------------------------------------------------------------
     # OQ-3 tranche 2 (2026-09-01) — the six registered tools whose argument
     # contract is stated EXPLICITLY in their handler docstring, so nothing

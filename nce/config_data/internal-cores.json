@@ -34,11 +34,6 @@
     "owner": "MLV15B-HR1",
     "reason": "Professional certification recorder; emits CERTIFICATION.CREATED when wired in MLV15B Wave HR-1."
   },
-  "nce/vertical_modules/inventory/restock_po.py::do_create_restock_po": {
-    "engine": "inventory",
-    "owner": "MLV15D-IN3",
-    "reason": "Restock purchase order creation from inventory thresholds; scheduled for PR-1 link in MLV15D."
-  },
   "nce/vertical_modules/inventory/triggers.py::do_advance_bom_line_to_delivered": {
     "engine": "inventory",
     "owner": "MLV15D-IN1",

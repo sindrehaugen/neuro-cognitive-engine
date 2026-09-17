@@ -1207,6 +1207,11 @@ def build_admin_routes() -> list[Route]:
             endpoint=inventory_handlers.api_inventory_dispose_rma_weee,
             methods=["POST"],
         ),
+        Route(
+            "/api/inventory/create-restock-po",
+            endpoint=inventory_handlers.api_inventory_create_restock_po,
+            methods=["POST"],
+        ),
         # ------------------------------------------------------------------
         # Assets vertical module endpoints (Batch 143, M9.W3) — assets-surface
         # ------------------------------------------------------------------

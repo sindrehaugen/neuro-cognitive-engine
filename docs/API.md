@@ -176,6 +176,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/hr/skills` | `api_hr_record_skill` |
 | POST | `/api/hr/sync/now` | `api_hr_sync_now` |
 | GET | `/api/hr/sync/status` | `api_hr_sync_status` |
+| POST | `/api/inventory/create-restock-po` | `api_inventory_create_restock_po` |
 | POST | `/api/inventory/dispose-rma-weee` | `api_inventory_dispose_rma_weee` |
 | POST | `/api/inventory/forecast-demand` | `api_inventory_forecast_demand` |
 | POST | `/api/inventory/recommend-restock` | `api_inventory_recommend_restock` |
@@ -432,6 +433,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `hr_update_absence_compliance` | yes | yes |  |  |
 | `import_snapshot` |  | yes |  |  |
 | `index_code_file` |  | yes |  |  |
+| `inventory_create_restock_po` | yes | yes |  |  |
 | `inventory_dispose_rma_weee` | yes | yes |  |  |
 | `inventory_forecast_demand` |  |  | yes |  |
 | `inventory_recommend_restock` |  |  | yes |  |
@@ -591,4 +593,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 294 REST endpoints, 279 MCP tools._
+_Totals: 295 REST endpoints, 280 MCP tools._

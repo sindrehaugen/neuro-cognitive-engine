@@ -47,12 +47,14 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import uuid
 from typing import Any
 
 import asyncpg  # type: ignore[import-untyped]
 
 from nce.autonomy.governor import governed
 from nce.config import cfg
+from nce.db_utils import scoped_pg_session
 from nce.event_log import append_event
 from nce.vertical_modules.procurement.po import (
     _derive_submit_idempotency_key,
@@ -154,7 +156,7 @@ async def _audit_restock_span(
     value_arg="po_value",
     value_ceiling=AUTONOMY_RESTOCK_CEILING,
 )
-async def do_create_restock_po(
+async def _governed_create_restock_po(
     conn: asyncpg.Connection,  # type: ignore[type-arg]
     namespace_id: Any,
     *,
@@ -264,3 +266,84 @@ async def do_create_restock_po(
         "idempotency_key": idempotency_key,
         "submit_idempotency_key": submit_key,
     }
+
+
+async def do_create_restock_po(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    """Create a restock PO through the C2 gate, then submit it via Procurement.
+
+    Dual-invocation interface:
+      1. Engine / adapter style (MCP and REST surfaces):
+         ``await do_create_restock_po(engine, params: dict[str, Any])``
+      2. Direct connection style (tests & direct callers):
+         ``await do_create_restock_po(conn, namespace_id, *, ...)``
+    """
+    # Adapter / engine style: do_create_restock_po(engine, params)
+    if "params" in kwargs and isinstance(kwargs["params"], dict):
+        engine = kwargs.get("engine", args[0] if args else None)
+        params = kwargs["params"]
+        return await _dispatch_restock_po(engine, params)
+    if len(args) >= 2 and isinstance(args[1], dict) and not isinstance(args[0], asyncpg.Connection):
+        engine = args[0]
+        params = args[1]
+        return await _dispatch_restock_po(engine, params)
+
+    return await _governed_create_restock_po(*args, **kwargs)
+
+
+async def _dispatch_restock_po(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
+    ns_raw = params.get("namespace_id")
+    if ns_raw is None:
+        raise ValueError("do_create_restock_po: 'namespace_id' is required")
+    ns_uuid = uuid.UUID(str(ns_raw))
+
+    sku = str(params.get("sku", "")).strip()
+    if not sku:
+        raise ValueError("do_create_restock_po: 'sku' is required")
+
+    po_number = str(params.get("po_number", "")).strip()
+    if not po_number:
+        raise ValueError("do_create_restock_po: 'po_number' is required")
+
+    supplier_id = str(params.get("supplier_id", "")).strip()
+    if not supplier_id:
+        raise ValueError("do_create_restock_po: 'supplier_id' is required")
+
+    line_items = params.get("line_items")
+    if not isinstance(line_items, list) or not line_items:
+        raise ValueError("do_create_restock_po: 'line_items' must be a non-empty list")
+
+    po_value = float(params.get("po_value", 0.0))
+    location = params.get("location")
+    if location is not None:
+        location = str(location).strip() or None
+
+    confirm = bool(params.get("confirm", False))
+    idempotency_key = params.get("idempotency_key")
+    if not idempotency_key:
+        idempotency_key = _derive_restock_idempotency_key(str(ns_uuid), sku, po_number, location)
+    else:
+        idempotency_key = str(idempotency_key).strip()
+
+    transport = params.get("transport")
+    redis_client = getattr(engine, "redis_client", None)
+
+    async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
+        return await _governed_create_restock_po(
+            conn,
+            ns_uuid,
+            idempotency_key=idempotency_key,
+            confirm=confirm,
+            sku=sku,
+            po_number=po_number,
+            supplier_id=supplier_id,
+            line_items=line_items,
+            po_value=po_value,
+            location=location,
+            transport=transport,
+            redis_client=redis_client,
+        )
+
+
+do_create_restock_po.__wrapped__ = getattr(  # type: ignore[attr-defined]
+    _governed_create_restock_po, "__wrapped__", _governed_create_restock_po
+)

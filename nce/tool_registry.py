@@ -1288,6 +1288,12 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=True,
         mutation=True,
     ),
+    "inventory_create_restock_po": ToolSpec(
+        _h(inventory_mcp_handlers, "handle_inventory_create_restock_po"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
     # ------------------------------------------------------------------
     # Assets vertical module tools (Batch 141, M9.W1) — skeleton ping
     # ------------------------------------------------------------------
