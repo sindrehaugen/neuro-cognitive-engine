@@ -1347,6 +1347,12 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=True,
         mutation=True,
     ),
+    "assets_generate_qr": ToolSpec(
+        _h(assets_mcp_handlers, "handle_assets_generate_qr"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # ------------------------------------------------------------------
     # Support vertical module tools (Module 10, Wave 5, ML10-B5)
     # ------------------------------------------------------------------

@@ -54,6 +54,10 @@ from nce.vertical_modules.assets.mcp_handlers import (
     do_seed_asset_from_bom,
     do_sync_netbox,
 )
+from nce.vertical_modules.assets.qr import (
+    do_generate_asset_qr,
+    do_get_room_register,
+)
 
 log = logging.getLogger("nce.admin_handlers.assets")
 
@@ -536,4 +540,110 @@ async def api_assets_sync_netbox(request: Any) -> JSONResponse:
             exc,
             status_code=500,
             log_event="api_assets_sync_netbox",
+        )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/assets/{id}/qr or GET /api/assets/qr
+# ---------------------------------------------------------------------------
+
+
+async def api_assets_generate_qr(request: Any) -> JSONResponse:
+    """GET /api/assets/{id}/qr or GET /api/assets/qr
+
+    Path parameter:
+        id (str, optional): Asset UUID.
+
+    Query parameters:
+        namespace_id (str, required): Active namespace UUID.
+        asset_id     (str, optional): Asset UUID (if id not in path).
+        base_url     (str, optional): Custom portal base URL.
+
+    Response (JSON):
+        QR metadata, deep link URL, and vector SVG.
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    asset_id = (request.path_params.get("id") or request.query_params.get("asset_id") or "").strip()
+    if not asset_id:
+        return JSONResponse({"error": "Missing parameter: id or asset_id"}, status_code=422)
+
+    namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
+    if err is not None:
+        return err
+
+    base_url = request.query_params.get("base_url")
+    params: dict[str, Any] = {
+        "namespace_id": namespace_id,
+        "asset_id": asset_id,
+    }
+    if base_url:
+        params["base_url"] = base_url
+
+    try:
+        result = await do_generate_asset_qr(admin_state.engine, params)
+        if not result.get("ok") and "not found" in str(result.get("error", "")).lower():
+            return JSONResponse(result, status_code=404)
+        return JSONResponse(result)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Assets QR generation error",
+            exc,
+            status_code=500,
+            log_event="api_assets_generate_qr",
+        )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/assets/register
+# ---------------------------------------------------------------------------
+
+
+async def api_assets_register(request: Any) -> JSONResponse:
+    """GET /api/assets/register
+
+    Query parameters:
+        namespace_id           (str, required): Active namespace UUID.
+        functional_location_id (str, optional): Room identifier.
+        room_id                (str, optional): Alias for functional_location_id.
+
+    Response (JSON):
+        Room register listing all devices with deep links.
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
+    if err is not None:
+        return err
+
+    room_id = (
+        request.query_params.get("functional_location_id")
+        or request.query_params.get("room_id")
+        or ""
+    ).strip()
+    if not room_id:
+        return JSONResponse(
+            {"error": "Missing parameter: functional_location_id or room_id"}, status_code=422
+        )
+
+    params: dict[str, Any] = {
+        "namespace_id": namespace_id,
+        "functional_location_id": room_id,
+    }
+
+    try:
+        result = await do_get_room_register(admin_state.engine, params)
+        return JSONResponse(result)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Assets room register error",
+            exc,
+            status_code=500,
+            log_event="api_assets_register",
         )

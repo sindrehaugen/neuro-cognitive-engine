@@ -1228,6 +1228,16 @@ def build_admin_routes() -> list[Route]:
             methods=["POST"],
         ),
         Route(
+            "/api/assets/register",
+            endpoint=assets_handlers.api_assets_register,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/assets/qr",
+            endpoint=assets_handlers.api_assets_generate_qr,
+            methods=["GET"],
+        ),
+        Route(
             "/api/assets",
             endpoint=assets_handlers.api_assets_list,
             methods=["GET"],
@@ -1235,6 +1245,11 @@ def build_admin_routes() -> list[Route]:
         Route(
             "/api/assets/{id}",
             endpoint=assets_handlers.api_assets_get,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/assets/{id}/qr",
+            endpoint=assets_handlers.api_assets_generate_qr,
             methods=["GET"],
         ),
         Route(

@@ -71,6 +71,7 @@ from nce.mcp_errors import mcp_handler
 from nce.vertical_modules.assets.health import do_compute_health
 from nce.vertical_modules.assets.lifecycle import advance
 from nce.vertical_modules.assets.netbox_bridge import do_sync_netbox
+from nce.vertical_modules.assets.qr import do_generate_asset_qr
 from nce.vertical_modules.assets.seed import do_seed_asset_from_bom
 from nce.vertical_modules.assets.sla import do_attach_sla
 from nce.vertical_modules.assets.telemetry import do_pull_telemetry
@@ -424,4 +425,16 @@ async def handle_assets_sync_netbox(engine: NCEEngine, arguments: dict[str, Any]
     """
     require_namespace_id(arguments)
     result = await do_sync_netbox(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_assets_generate_qr(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: assets_generate_qr — generate QR code metadata and vector SVG (Watcher, read-only).
+
+    Requires ``namespace_id`` and ``asset_id``; optionally accepts ``base_url``.
+    Thin adapter — all logic lives in :func:`do_generate_asset_qr`.
+    """
+    require_namespace_id(arguments)
+    result = await do_generate_asset_qr(engine, dict(arguments))
     return json.dumps(result, default=str)

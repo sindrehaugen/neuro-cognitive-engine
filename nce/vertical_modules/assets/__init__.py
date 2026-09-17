@@ -46,9 +46,12 @@ nodes.
 from __future__ import annotations
 
 from nce.vertical_modules.assets.netbox_bridge import do_sync_netbox
+from nce.vertical_modules.assets.qr import do_generate_asset_qr, do_get_room_register
 from nce.vertical_modules.assets.warranty import do_check_warranty_eol
 
 __all__ = [
     "do_check_warranty_eol",
+    "do_generate_asset_qr",
+    "do_get_room_register",
     "do_sync_netbox",
 ]

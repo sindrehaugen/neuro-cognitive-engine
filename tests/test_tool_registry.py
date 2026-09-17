@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 275  # 273 baseline + 2 Assets tools: warranty_eol & netbox_sync (Wave A-3)
+_EXPECTED_TOTAL = 276  # 275 baseline + 1 Assets QR generator (Wave A-4)
 
 
 def test_registry_has_expected_entries():
@@ -448,6 +448,8 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "system_design_procurement_view",
         # Wave A-3 -- Assets warranty/EOL watcher (cacheable read)
         "assets_check_warranty_eol",
+        # Wave A-4 -- Assets QR generator (cacheable read)
+        "assets_generate_qr",
     }
 )
 
@@ -460,7 +462,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 112  # 111 baseline + 1 Assets warranty/EOL watcher (Wave A-3)
+    assert len(CACHEABLE_TOOLS) == 113  # 112 baseline + 1 Assets QR generator (Wave A-4)
 
 
 # ---------------------------------------------------------------------------
