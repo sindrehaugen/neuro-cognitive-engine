@@ -23,7 +23,7 @@ Invariants
 - ADR-0017 Confidentiality: Cost, margin, and raw BID keys are forbidden from
   all public and advisor dictionary representations.
 - Contract-A Ownership (§9.1): System Design never mutates QUOTE or PO nodes.
-- Multi-Tenant Isolation (Wave Rule 7): Every database query carries an explicit
+- Multi-Tenant Isolation (Tenant isolation rule 7): Every database query carries an explicit
   ``namespace_id = $n::uuid`` parameter predicate.
 """
 
@@ -441,7 +441,12 @@ async def do_get_procurement_view(
             ranking_res = do_rank_suppliers(weights, bom_line_input, candidates)
             winner = ranking_res["ranked"][0]
             winner_sup = str(winner.get("supplier_id") or "DEFAULT")
-            winner_unit_price = float(winner.get("unit_price", 0.0))
+            raw_unit_price = winner.get("unit_price")
+            if raw_unit_price is None:
+                raise ValueError(
+                    f"do_get_procurement_view: winner {winner_sup} missing unit_price for {it['item_ref']}"
+                )
+            winner_unit_price = float(raw_unit_price)
             line_total = round(winner_unit_price * it["quantity"], 2)
 
             # Scrub score_breakdown of forbidden ADR-0017 tokens

@@ -487,18 +487,16 @@ async def test_rest_api_system_design_procurement_view():
 
 
 @pytest.mark.integration
+@pytest.mark.asyncio
 class TestSystemDesignProcurementViewIntegration:
     """Live database integration test with real pg_pool, schema, and tables."""
-
-    @pytest.fixture
-    async def test_ns(self, make_namespace: Any) -> uuid.UUID:
-        return await make_namespace()
 
     async def test_live_procurement_view_end_to_end(
         self,
         pg_pool: Any,
-        test_ns: uuid.UUID,
+        make_namespace: Any,
     ) -> None:
+        test_ns = await make_namespace()
         from nce.db_utils import scoped_pg_session
         from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
         from nce.vertical_modules.system_design.devices import do_author_device_topology
