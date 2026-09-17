@@ -44,8 +44,8 @@ nodes.
 """
 
 from nce.vertical_modules.assets.failure_pattern import (
-    do_get_failure_patterns,
     do_record_failure_pattern,
+    get_failure_patterns,
 )
 from nce.vertical_modules.assets.netbox_bridge import do_sync_netbox
 from nce.vertical_modules.assets.qr import do_generate_asset_qr, do_get_room_register
@@ -54,8 +54,8 @@ from nce.vertical_modules.assets.warranty import do_check_warranty_eol
 __all__ = [
     "do_check_warranty_eol",
     "do_generate_asset_qr",
-    "do_get_failure_patterns",
     "do_get_room_register",
     "do_record_failure_pattern",
     "do_sync_netbox",
+    "get_failure_patterns",
 ]

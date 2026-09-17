@@ -188,7 +188,7 @@ async def do_record_failure_pattern(
     }
 
 
-async def do_get_failure_patterns(
+async def get_failure_patterns(
     engine_or_pool: Any,
     params: dict[str, Any],
 ) -> dict[str, Any]:

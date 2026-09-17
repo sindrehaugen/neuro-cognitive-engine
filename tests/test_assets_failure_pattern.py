@@ -32,8 +32,8 @@ from nce.admin_handlers import assets as assets_admin_handlers
 from nce.entity_resolution.ownership import OwnershipError
 from nce.vertical_modules.assets.failure_pattern import (
     AssetNotFoundError,
-    do_get_failure_patterns,
     do_record_failure_pattern,
+    get_failure_patterns,
 )
 from nce.vertical_modules.assets.mcp_handlers import (
     handle_assets_record_failure_pattern,
@@ -244,7 +244,7 @@ async def test_get_failure_patterns(sample_ns_id, sample_asset_id):
         mock_scoped.return_value.__aenter__.return_value = mock_conn
 
         mock_pool = MagicMock()
-        res = await do_get_failure_patterns(
+        res = await get_failure_patterns(
             mock_pool,
             {
                 "namespace_id": sample_ns_id,
