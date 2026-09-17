@@ -588,8 +588,9 @@ class TestProjectAdvancePhaseToolRegistry:
         +1 MLV15D-MK2 marketing tool;
         +4 MLV15D-S1 sales write tools;
         +1 Wave C-PJ2 project_generate_case_study_edge tool;
-        +2 Wave SU-3 support tools: support_failure_pattern, support_upsell_signal."""
-        assert len(MUTATION_TOOLS) == 117
+        +2 Wave SU-3 support tools: support_failure_pattern, support_upsell_signal;
+        +1 Wave A-3 assets_sync_netbox tool."""
+        assert len(MUTATION_TOOLS) == 118
 
     def test_admin_only_count(self) -> None:
         """Admin-only tools must total 32 (unified realignment registry;
@@ -629,5 +630,6 @@ class TestProjectAdvancePhaseToolRegistry:
         +1 Wave C-PJ2 project_generate_case_study_edge tool;
         +1 Wave E-2 economy_generate_ehf tool;
         +9 Wave T-6 customer_portal tools;
-        +2 Wave SU-3 support tools: support_failure_pattern, support_upsell_signal)."""
-        assert len(ADMIN_ONLY_TOOLS) == 88
+        +2 Wave SU-3 support tools: support_failure_pattern, support_upsell_signal;
+        +1 Wave A-3 assets_sync_netbox tool)."""
+        assert len(ADMIN_ONLY_TOOLS) == 89
