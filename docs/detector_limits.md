@@ -1,3 +1,5 @@
+> **Status:** shipped · **Verified-against:** 989bdd4 (main) · **Last-audited:** 2026-09-17
+
 # Static Detector Limits and Blind Spot Census
 
 ## 1. Executive Summary

@@ -1,3 +1,5 @@
+> **Status:** research companion · **Verified-against:** 989bdd4 (main) · **Last-audited:** 2026-09-17
+
 # 14a — Marketing Engine: AI-Marketing-Systems Research & Idea Backlog
 
 **Status:** research companion to `14-marketing-engine.md` (spec, Tier 4 — builds LAST) · **Date:** 2026-06-17

@@ -1,11 +1,11 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 989bdd4 (main) · **Last-audited:** 2026-09-17
 
 # NCE API Reference & Surface Specification
 
-This document provides the definitive, synchronized API specification for the Neuro-Cognitive Engine (NCE) platform at baseline commit `7304330`. It reconciles the dual API surface of NCE:
+This document provides the API reference and specification for the Neuro-Cognitive Engine (NCE) platform, reconciling the dual API surface of NCE:
 
 1. **Admin REST HTTP Surface**: Generated routes served by the Starlette application (`nce/admin_app.py::build_admin_routes()`), authenticated via HMAC-SHA256 signature verification and mutual TLS (mTLS). (See [API.md](API.md) for generated routes).
-2. **Model Context Protocol (MCP) Tool Surface**: 135 tools registered in `nce/tool_registry.py::TOOL_REGISTRY` backed by declarative `ToolSpec` dispatch metadata.
+2. **Model Context Protocol (MCP) Tool Surface**: Tools registered in `nce/tool_registry.py::TOOL_REGISTRY` backed by declarative `ToolSpec` dispatch metadata. (See [docs/API.md](API.md), [`docs/_generated/surface.md`](_generated/surface.md), and [`docs/vertical_engines/ENGINE_STATUS.md`](vertical_engines/ENGINE_STATUS.md) for generated tool listings).
 3. **Stdio Discovery Gap**: An architectural audit of the tool gap between registered MCP tools and stdio-exposed tools (`nce/mcp_stdio_tools.py::TOOLS`), referencing [`FINDINGS_OQ3_tool_surface.md`](https://github.com/sindrehaugen/NCE/blob/main/FINDINGS_OQ3_tool_surface.md).
 
 ---
@@ -40,7 +40,7 @@ NCE exposes capabilities across two primary access interfaces tailored for disti
 | Surface Interface | Transport & Format | Target Consumers | Authentication & Guards | Single Source of Truth |
 |---|---|---|---|---|
 | **Admin REST API** | HTTP/1.1 JSON over TCP | Web BFF, Admin Dashboards, Cron Jobs, Automation Scripts | HMAC-SHA256, NonceStore (Redis SETNX), mTLS (`ADMIN_PRINCIPAL_KIND=employee`), Rate Limiter | `nce.admin_app.build_admin_routes()` (see [docs/API.md](API.md) for generated routes) |
-| **MCP Agent Surface** | JSON-RPC 2.0 (stdio / WebSocket / SSE) | Autonomous AI Agents, Claude Desktop, Antigravity Swarms | API Keys, Tenant Namespace RLS, Dispatch Gating (`admin_only`, `mutation`, `cacheable`, `migration`) | `nce.tool_registry.TOOL_REGISTRY` (135 tools) |
+| **MCP Agent Surface** | JSON-RPC 2.0 (stdio / WebSocket / SSE) | Autonomous AI Agents, Claude Desktop, Antigravity Swarms | API Keys, Tenant Namespace RLS, Dispatch Gating (`admin_only`, `mutation`, `cacheable`, `migration`) | `nce.tool_registry.TOOL_REGISTRY` (see [docs/API.md](API.md) and [docs/_generated/surface.md](_generated/surface.md)) |
 
 ### 1.2 Authentication & Authorization Protocols
 

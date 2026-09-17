@@ -1,3 +1,5 @@
+> **Status:** shipped · **Verified-against:** 989bdd4 (main) · **Last-audited:** 2026-09-17
+
 # Business Insights Engine Admin Guide
 
 The **Business Insights Engine** (`nce/vertical_modules/business_insights/`) delivers management and executive decision support. It correlates cross-engine signals, models forward what-if cashflow scenarios, stages draft board packs, and provides a role-scoped natural language query interface.

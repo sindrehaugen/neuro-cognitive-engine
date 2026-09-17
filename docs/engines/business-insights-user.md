@@ -1,3 +1,5 @@
+> **Status:** shipped · **Verified-against:** 989bdd4 (main) · **Last-audited:** 2026-09-17
+
 # Business Insights Engine User Guide
 
 The **Business Insights Engine** (`nce/vertical_modules/business_insights/`) delivers high-level management and executive decision support. It synthesizes signals across all operational engines (Economy, Project, Support, Sales, Resources), highlights systemic cross-engine collisions, models forward what-if cashflow scenarios, prepares draft board packs for review, and enables role-scoped natural language queries over corporate health.
