@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `66ab2cc` (public `main`) · **Last-audited:** generated
+> **Status:** shipped · **Verified-against:** `3c019bd` (public `main`) · **Last-audited:** generated
 
 # NCE Engine Figures — Inventory & Counters
 
@@ -14,15 +14,15 @@
 
 | Counter | Value | Source of Truth |
 |---|---|---|
-| `TOOL_REGISTRY` entries | **271** MCP tools (69 shared + 202 across 20 engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = 271` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |
-| SQL migrations | 74 files (+1 optional), `001` → `078` — gaps at `002`, `009`, `010`, `059` | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |
+| `TOOL_REGISTRY` entries | **273** MCP tools (69 shared + 204 across 20 engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = 273` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |
+| SQL migrations | 76 files (+1 optional), `001` → `080` — gaps at `002`, `009`, `010`, `059` | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |
 | Golden Thread seam burndown | **0 of 28** lifecycle steps broken (0 distinct seams) | Generated in [`docs/_generated/golden_thread_seams.md`](golden_thread_seams.md) from [`tests/integration/test_golden_thread.py`](../../tests/integration/test_golden_thread.py) |
 
 ## Tool Registry Breakdown
 
-- **Total Registered Tools:** 271
+- **Total Registered Tools:** 273
 - **Shared Core Tools:** 69
-- **Vertical Engine Tools:** 202 across 20 engine packages
+- **Vertical Engine Tools:** 204 across 20 engine packages
 
 | Engine Package | Tool Count |
 |---|---:|
@@ -44,15 +44,15 @@
 | `resources` | 14 |
 | `sales` | 14 |
 | `support` | 13 |
-| `system_design` | 12 |
+| `system_design` | 14 |
 | `vendors` | 14 |
 
 ## SQL Migration Census
 
-- **Base Migrations:** 74 files (`001` → `078`)
+- **Base Migrations:** 76 files (`001` → `080`)
 - **Optional Migrations:** 1 files (`010_citus_sharding.sql`)
 - **Unallocated / Skipped Prefixes in Base:** `002`, `009`, `010`, `059`
-- **Total SQL Migration Files:** 75
+- **Total SQL Migration Files:** 77
 
 ## Golden Thread Seam Status
 
