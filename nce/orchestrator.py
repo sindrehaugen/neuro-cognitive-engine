@@ -416,23 +416,81 @@ class NCEEngine(OrchestratorBase):
                 raise
 
     async def _init_pg_schema(self):
-        """
-        Load DDL from the package-bundled schema.sql and execute it as a single
-        batch. Idempotent — safe to run on every startup. Keeping the schema in
-        a sibling .sql file means it can be reviewed as a schema, diffed across
-        versions, and fed to migration tools without touching Python.
+        """Apply the runtime half of the schema always; the bootstrap half only once (Q-4).
+
+        ``schema.sql`` used to run in full on every connect. It is not a passive file: its
+        ``DO`` blocks probe ``information_schema`` and add what is missing, and the
+        tenant-isolation loop drops and recreates every policy. It was an **unledgered,
+        self-healing migration runner**, and nothing could say what schema version a live
+        database was at.
+
+        The two halves are generated from ``schema.sql`` by ``scripts/split_schema.py`` and
+        want opposite treatment:
+
+        * ``schema_runtime.sql`` — functions, policies, triggers, RLS, grants, extensions.
+          Runs **every connect**, exactly as before. Re-asserting these is how function and
+          policy updates reach an existing database and how policy drift self-heals. Losing
+          that would be a silent regression, so it is kept.
+        * ``schema_bootstrap.sql`` — ``CREATE TABLE``, ``ADD COLUMN``, ``CREATE INDEX``,
+          ``ADD CONSTRAINT`` and the backfills. Runs **only when the migration ledger is
+          empty**. On an existing database the numbered chain owns these.
+
+        What this stops doing on every connect: 128 ``CREATE TABLE``, 26 ``ADD COLUMN``,
+        185 ``CREATE INDEX``, 25 ``ADD CONSTRAINT`` — and, most consequentially,
+        ``UPDATE kg_nodes SET namespace_id = global_ns_id WHERE namespace_id IS NULL``,
+        which until now filed any NULL-namespace row into ``_global_legacy`` on every single
+        startup, forever, with no record that it happened. On a multi-tenant database that
+        is a data-placement decision taken by a startup path.
+
+        Equivalence is proven, not assumed: applying bootstrap-then-runtime to one database
+        and ``schema.sql`` to another yields **4146 identical catalogue objects** (columns
+        with types and nullability, indexes, constraints, triggers, functions, policies with
+        their predicates, RLS flags, grants). ``scripts/split_schema.py --check`` keeps the
+        halves in step with ``schema.sql``.
+
+        ``schema.sql`` itself is retained as the reviewable source of truth and the input to
+        the generator; it is no longer executed.
         """
         from pathlib import Path
 
         from nce.config import cfg
 
-        schema_path = Path(__file__).resolve().parent / "schema.sql"
-        ddl = schema_path.read_text(encoding="utf-8")
+        here = Path(__file__).resolve().parent
+        bootstrap_path = here / "schema_bootstrap.sql"
+        runtime_path = here / "schema_runtime.sql"
+
         async with self.pg_pool.acquire(timeout=10.0) as conn:
             async with conn.transaction():
                 await conn.execute(_ADVISORY_LOCK_SQL, SCHEMA_ADVISORY_LOCK_ID)
-                await conn.execute(ddl)
-        log.debug("[PG] schema.sql applied from %s", schema_path)
+
+                # A database is "fresh" when the ledger table is absent or empty. Checking
+                # the ledger rather than a sentinel table keeps one source of truth for
+                # "has this database been built yet", and it is the same table
+                # _apply_pg_migrations writes to moments later.
+                #
+                # to_regclass returns NULL rather than raising for an absent relation, so
+                # this is two plain queries and no exception handling.
+                ledger_exists = await conn.fetchval(
+                    "SELECT to_regclass('public.applied_migrations') IS NOT NULL"
+                )
+                is_fresh = True
+                if ledger_exists:
+                    is_fresh = not await conn.fetchval("SELECT count(*) FROM applied_migrations")
+
+                if is_fresh:
+                    await conn.execute(bootstrap_path.read_text(encoding="utf-8"))
+                    log.info(
+                        "[PG] bootstrap schema applied (empty migration ledger) from %s",
+                        bootstrap_path,
+                    )
+
+                await conn.execute(runtime_path.read_text(encoding="utf-8"))
+
+        log.debug(
+            "[PG] runtime schema applied from %s (bootstrap %s)",
+            runtime_path,
+            "applied" if is_fresh else "skipped — existing database",
+        )
 
         if cfg.NCE_APP_PASSWORD:
             async with self.pg_pool.acquire(timeout=10.0) as conn:

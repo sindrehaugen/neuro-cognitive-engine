@@ -57,6 +57,17 @@ jobs:
         run: |
           python scripts/gen_engine_figures.py --repo . --baseline HEAD             --out docs/_generated/engine_figures.md --check
 
+      # Q-4 step 2. `schema.sql` is now the reviewable source; `schema_bootstrap.sql` and
+      # `schema_runtime.sql` are GENERATED from it and are what connect() actually executes.
+      # If someone edits schema.sql and forgets to regenerate, the running system quietly
+      # stops matching the file everyone reviews -- the same failure mode as the stale
+      # engine figures above, with a much worse blast radius.
+      #
+      # Unlike the figures generator this reads the WORKING TREE, so no `git add` ordering
+      # trap.
+      - name: Schema halves match schema.sql (Q-4 gate)
+        run: python scripts/split_schema.py --check
+
       # TDL-6: was DEFERRED (continue-on-error) because pip-tools 7.4.1 crashed on the runner's
       # pip ("'PackageFinder' object has no attribute 'allow_all_prereleases'") and the lock was
       # Python-3.10-compiled while CI runs 3.11. Both fixed: pip-tools 7.6.1 + lock regenerated.
