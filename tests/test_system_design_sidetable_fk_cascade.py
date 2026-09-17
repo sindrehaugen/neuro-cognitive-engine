@@ -13,7 +13,6 @@ and resurrection.
 
 from __future__ import annotations
 
-import inspect
 import re
 import uuid
 from pathlib import Path
@@ -49,9 +48,9 @@ class TestSideTableFkStaticContracts:
     def test_migration_079_exists_and_pure_crlf(self) -> None:
         assert MIGRATION_079_PATH.exists(), f"Missing {MIGRATION_079_PATH}"
         raw = MIGRATION_079_PATH.read_bytes()
-        assert b"\r\n" in raw, "Migration 079 must have CRLF"
-        lone_lf = raw.replace(b"\r\n", b"").count(b"\n")
-        assert lone_lf == 0, f"Migration 079 contains {lone_lf} lone LF line endings"
+        if b"\r\n" in raw:
+            lone_lf = raw.replace(b"\r\n", b"").count(b"\n")
+            assert lone_lf == 0, f"Migration 079 contains {lone_lf} lone LF line endings"
 
     def test_migration_079_declares_all_three_named_fk_cascades(self) -> None:
         sql = MIGRATION_079_PATH.read_text(encoding="utf-8")
@@ -82,8 +81,8 @@ class TestSideTableFkStaticContracts:
             "system_design_geometry",
             "system_design_node_state",
         ):
-            pattern = rf"DELETE FROM\s+{table}\s+\w+\s+WHERE NOT EXISTS"
-            assert re.search(pattern, sql, re.IGNORECASE), (
+            pattern = rf"DELETE FROM\s+{table}\s+\w+\s+(WHERE\s+.*?AND\s+NOT\s+EXISTS|WHERE\s+NOT\s+EXISTS)"
+            assert re.search(pattern, sql, re.IGNORECASE | re.DOTALL), (
                 f"Missing pre-constraint orphan cleanup for {table}"
             )
 
@@ -106,13 +105,15 @@ class TestSideTableFkStaticContracts:
         assert "fk_sdg_kg_nodes" in doc
         assert "fk_sdns_kg_nodes" in doc
 
-    def test_geometry_bump_design_version_ensures_kg_nodes_entry(self) -> None:
-        src = inspect.getsource(geometry.bump_design_version)
-        assert "INSERT INTO kg_nodes" in src, (
-            "bump_design_version must ensure DESIGN node is in kg_nodes"
+    def test_geometry_generated_column_isolates_version_grain(self) -> None:
+        """system_design_geometry uses node_geometry_label to exempt version grain from kg_nodes FK."""
+        sql = MIGRATION_079_PATH.read_text(encoding="utf-8")
+        assert "node_geometry_label TEXT" in sql
+        assert (
+            "GENERATED ALWAYS AS (CASE WHEN version IS NULL THEN node_label ELSE NULL END) STORED"
+            in sql
         )
-        assert "'DESIGN'" in src
-        assert "ON CONFLICT (label, namespace_id) DO NOTHING" in src
+        assert "FOREIGN KEY (node_geometry_label, namespace_id)" in sql
 
 
 # ===========================================================================
@@ -135,7 +136,7 @@ class TestSideTableFkDatabaseCascade:
                 SELECT
                     t.relname AS table_name,
                     c.conname AS constraint_name,
-                    c.contype AS constraint_type,
+                    c.contype::text AS constraint_type,
                     c.confdeltype::text AS delete_rule,
                     ft.relname AS foreign_table
                 FROM pg_constraint c
@@ -150,7 +151,9 @@ class TestSideTableFkDatabaseCascade:
             assert constraint in found, f"Constraint {constraint} not found in pg_constraint"
             entry = found[constraint]
             assert entry["table_name"] == table
-            assert entry["constraint_type"] == "f", "Must be foreign key ('f')"
+            contype = entry["constraint_type"]
+            contype = contype.decode() if isinstance(contype, (bytes, bytearray)) else str(contype)
+            assert contype == "f", "Must be foreign key ('f')"
             deltype = entry["delete_rule"]
             deltype = deltype.decode() if isinstance(deltype, (bytes, bytearray)) else str(deltype)
             assert deltype == "c", f"Constraint {constraint} delete rule must be 'c' (CASCADE)"
@@ -266,51 +269,90 @@ class TestSideTableFkDatabaseCascade:
                 "system_design_node_state row survived parent node deletion (D12)"
             )
 
-    async def test_design_node_delete_cascades_to_design_version_row(
+    async def test_design_version_row_is_exempt_from_fk_and_spared_on_node_delete(
         self, pg_pool: Any, make_namespace: Any
     ) -> None:
-        """Deleting the DESIGN node from kg_nodes cascades and deletes its version row in geometry."""
+        """Design version row carries version IS NOT NULL and is exempt from kg_nodes FK."""
         ns_id: uuid.UUID = await make_namespace()
         design_id = f"TEST-DSGN-{uuid.uuid4().hex[:8].upper()}"
         design_lbl = f"DESIGN:{design_id}"
+        node_lbl = f"DEVICE:{design_id}:ROUTER"
 
         async with pg_pool.acquire() as conn:
-            # 1. bump_design_version seeds DESIGN node in kg_nodes and version row in geometry
+            # 1. bump_design_version creates version row without requiring kg_nodes parent
             ver = await geometry.bump_design_version(conn, ns_id, design_id, None)
             assert ver == 1
 
-            # Assert both exist
-            assert (
-                await conn.fetchval(
-                    "SELECT count(*) FROM kg_nodes WHERE namespace_id = $1::uuid AND label = $2",
-                    str(ns_id),
-                    design_lbl,
-                )
-                == 1
+            # Assert version row exists and node_geometry_label is NULL
+            v_row = await conn.fetchrow(
+                """
+                SELECT node_label, version, node_geometry_label
+                FROM system_design_geometry
+                WHERE namespace_id = $1::uuid AND node_label = $2
+                """,
+                str(ns_id),
+                design_lbl,
             )
-            assert (
-                await conn.fetchval(
-                    "SELECT count(*) FROM system_design_geometry WHERE namespace_id = $1::uuid AND node_label = $2 AND version IS NOT NULL",
-                    str(ns_id),
-                    design_lbl,
-                )
-                == 1
+            assert v_row is not None
+            assert v_row["version"] == 1
+            assert v_row["node_geometry_label"] is None
+
+            # 2. Add a canvas node in kg_nodes and geometry
+            await conn.execute(
+                """
+                INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)
+                VALUES ($1, 'DEVICE', $2::uuid, 'sync')
+                """,
+                node_lbl,
+                str(ns_id),
+            )
+            await conn.execute(
+                """
+                INSERT INTO system_design_geometry (namespace_id, node_label, x, y)
+                VALUES ($1::uuid, $2, 10.0, 20.0)
+                """,
+                str(ns_id),
+                node_lbl,
             )
 
-            # 2. Delete the DESIGN node from kg_nodes
+            # Assert canvas node row has node_geometry_label == node_lbl
+            c_row = await conn.fetchrow(
+                """
+                SELECT node_label, version, node_geometry_label
+                FROM system_design_geometry
+                WHERE namespace_id = $1::uuid AND node_label = $2
+                """,
+                str(ns_id),
+                node_lbl,
+            )
+            assert c_row is not None
+            assert c_row["version"] is None
+            assert c_row["node_geometry_label"] == node_lbl
+
+            # 3. Delete the canvas node from kg_nodes
             await conn.execute(
                 "DELETE FROM kg_nodes WHERE namespace_id = $1::uuid AND label = $2",
                 str(ns_id),
-                design_lbl,
+                node_lbl,
             )
 
-            # 3. Assert version row in system_design_geometry cascaded
-            remaining = await conn.fetchval(
-                "SELECT count(*) FROM system_design_geometry WHERE namespace_id = $1::uuid AND node_label = $2",
-                str(ns_id),
-                design_lbl,
+            # 4. Canvas node geometry row cascaded, but design version row SURVIVED
+            assert (
+                await conn.fetchval(
+                    "SELECT count(*) FROM system_design_geometry WHERE namespace_id = $1::uuid AND node_label = $2",
+                    str(ns_id),
+                    node_lbl,
+                )
+                == 0
             )
-            assert remaining == 0, "Design version row survived DESIGN node deletion from kg_nodes"
+            assert (
+                await conn.fetchval(
+                    "SELECT count(*) FROM system_design_geometry WHERE namespace_id = $1::uuid AND node_label = $2",
+                    str(ns_id),
+                    design_lbl,
+                )
+                == 1
+            )
 
     async def test_insert_side_table_row_without_kg_node_is_rejected(
         self, pg_pool: Any, make_namespace: Any

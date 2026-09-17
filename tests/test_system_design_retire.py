@@ -761,11 +761,15 @@ class TestDenyOnAbsenceAndOnNull:
         await _author(engine, namespace_id)
 
         async with scoped_pg_session(pg_pool, namespace_id) as conn:
-            await conn.execute(
-                "DELETE FROM kg_nodes WHERE namespace_id = $1::uuid AND label = $2",
-                str(namespace_id),
-                _DEVICE_LABEL,
-            )
+            await conn.execute("SET session_replication_role = 'replica'")
+            try:
+                await conn.execute(
+                    "DELETE FROM kg_nodes WHERE namespace_id = $1::uuid AND label = $2",
+                    str(namespace_id),
+                    _DEVICE_LABEL,
+                )
+            finally:
+                await conn.execute("SET session_replication_role = 'origin'")
         assert (await _state_rows(pg_pool, namespace_id))[_DEVICE_LABEL]["status"] == "planned"
 
         payload = await _dispatch(engine, _RETIRE_TOOL, _retire_args(namespace_id, [_DEVICE_LABEL]))

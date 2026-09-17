@@ -45,10 +45,11 @@ DELETE FROM system_design_device_capabilities c
  );
 
 DELETE FROM system_design_geometry g
- WHERE NOT EXISTS (
-     SELECT 1 FROM kg_nodes n
-      WHERE n.label = g.node_label AND n.namespace_id = g.namespace_id
- );
+ WHERE g.version IS NULL
+   AND NOT EXISTS (
+       SELECT 1 FROM kg_nodes n
+        WHERE n.label = g.node_label AND n.namespace_id = g.namespace_id
+   );
 
 DELETE FROM system_design_node_state s
  WHERE NOT EXISTS (
@@ -56,7 +57,12 @@ DELETE FROM system_design_node_state s
       WHERE n.label = s.node_label AND n.namespace_id = s.namespace_id
  );
 
--- 2. Add foreign key constraints with ON DELETE CASCADE.
+-- 2. Add generated column on system_design_geometry for selective FK cascade.
+ALTER TABLE system_design_geometry
+    ADD COLUMN IF NOT EXISTS node_geometry_label TEXT
+    GENERATED ALWAYS AS (CASE WHEN version IS NULL THEN node_label ELSE NULL END) STORED;
+
+-- 3. Add foreign key constraints with ON DELETE CASCADE.
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -74,7 +80,7 @@ BEGIN
     ) THEN
         ALTER TABLE system_design_geometry
             ADD CONSTRAINT fk_sdg_kg_nodes
-            FOREIGN KEY (node_label, namespace_id)
+            FOREIGN KEY (node_geometry_label, namespace_id)
             REFERENCES kg_nodes (label, namespace_id)
             ON DELETE CASCADE;
     END IF;
