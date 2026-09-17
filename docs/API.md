@@ -111,6 +111,8 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/agreements/{id}` | `api_agreements_detail` |
 | GET | `/api/assets` | `api_assets_list` |
 | GET | `/api/assets/health` | `api_assets_health` |
+| GET | `/api/assets/qr` | `api_assets_generate_qr` |
+| GET | `/api/assets/register` | `api_assets_register` |
 | POST | `/api/assets/seed-from-bom` | `api_assets_seed_from_bom` |
 | POST | `/api/assets/sla/attach` | `api_assets_attach_sla` |
 | POST | `/api/assets/sync-netbox` | `api_assets_sync_netbox` |
@@ -118,6 +120,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/assets/{id}` | `api_assets_get` |
 | GET | `/api/assets/{id}/health` | `api_assets_health` |
 | POST | `/api/assets/{id}/lifecycle` | `api_assets_advance_lifecycle` |
+| GET | `/api/assets/{id}/qr` | `api_assets_generate_qr` |
 | POST | `/api/assets/{id}/telemetry` | `api_assets_pull_telemetry` |
 | POST | `/api/business-insights/ask` | `api_business_insights_ask` |
 | GET,POST | `/api/business-insights/board-pack` | `api_business_insights_board_pack` |
@@ -326,6 +329,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `assets_attach_sla` |  | yes |  |  |
 | `assets_check_warranty_eol` |  |  | yes |  |
 | `assets_compute_health` |  | yes |  |  |
+| `assets_generate_qr` |  |  | yes |  |
 | `assets_get` |  |  | yes |  |
 | `assets_list` |  |  | yes |  |
 | `assets_ping` |  |  | yes |  |
@@ -580,4 +584,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 287 REST endpoints, 275 MCP tools._
+_Totals: 290 REST endpoints, 276 MCP tools._
