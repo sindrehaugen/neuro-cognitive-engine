@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `4503d44` (public `main`) · **Last-audited:** generated
+> **Status:** shipped · **Verified-against:** `f1b599b` (public `main`) · **Last-audited:** generated
 
 # NCE Engine Figures — Inventory & Counters
 
@@ -49,10 +49,10 @@
 
 ## SQL Migration Census
 
-- **Base Migrations:** 76 files (`001` → `080`)
+- **Base Migrations:** 77 files (`001` → `081`)
 - **Optional Migrations:** 1 files (`010_citus_sharding.sql`)
 - **Unallocated / Skipped Prefixes in Base:** `002`, `009`, `010`, `059`
-- **Total SQL Migration Files:** 77
+- **Total SQL Migration Files:** 78
 
 ## Golden Thread Seam Status
 
