@@ -466,8 +466,8 @@ class TestSignalFlowIntegration:
         async with scoped_pg_session(pg_pool, test_ns) as conn:
             await conn.execute(
                 """
-                INSERT INTO kg_nodes (label, entity_type, namespace_id, properties, created_at, updated_at)
-                VALUES ($1, 'DESIGN', $2, '{}'::jsonb, now(), now())
+                INSERT INTO kg_nodes (label, entity_type, namespace_id)
+                VALUES ($1, 'DESIGN', $2)
                 ON CONFLICT (label, namespace_id) DO NOTHING
                 """,
                 design_lbl,
@@ -633,8 +633,8 @@ class TestSignalFlowIntegration:
         async with scoped_pg_session(pg_pool, test_ns) as conn:
             await conn.execute(
                 """
-                INSERT INTO kg_nodes (label, entity_type, namespace_id, properties, created_at, updated_at)
-                VALUES ($1, 'DESIGN', $2, '{}'::jsonb, now(), now())
+                INSERT INTO kg_nodes (label, entity_type, namespace_id)
+                VALUES ($1, 'DESIGN', $2)
                 ON CONFLICT (label, namespace_id) DO NOTHING
                 """,
                 design_lbl,
@@ -669,8 +669,8 @@ class TestSignalFlowIntegration:
         async with scoped_pg_session(pg_pool, test_ns) as conn:
             await conn.execute(
                 """
-                INSERT INTO kg_nodes (label, entity_type, namespace_id, properties, created_at, updated_at)
-                VALUES ($1, 'DESIGN', $2, '{}'::jsonb, now(), now())
+                INSERT INTO kg_nodes (label, entity_type, namespace_id)
+                VALUES ($1, 'DESIGN', $2)
                 ON CONFLICT (label, namespace_id) DO NOTHING
                 """,
                 design_lbl,
@@ -715,8 +715,8 @@ class TestSignalFlowIntegration:
         async with scoped_pg_session(pg_pool, ns_a) as conn:
             await conn.execute(
                 """
-                INSERT INTO kg_nodes (label, entity_type, namespace_id, properties, created_at, updated_at)
-                VALUES ($1, 'DESIGN', $2, '{}'::jsonb, now(), now())
+                INSERT INTO kg_nodes (label, entity_type, namespace_id)
+                VALUES ($1, 'DESIGN', $2)
                 ON CONFLICT (label, namespace_id) DO NOTHING
                 """,
                 design_lbl,
@@ -740,8 +740,8 @@ class TestSignalFlowIntegration:
         async with scoped_pg_session(pg_pool, ns_b) as conn:
             await conn.execute(
                 """
-                INSERT INTO kg_nodes (label, entity_type, namespace_id, properties, created_at, updated_at)
-                VALUES ($1, 'DESIGN', $2, '{}'::jsonb, now(), now())
+                INSERT INTO kg_nodes (label, entity_type, namespace_id)
+                VALUES ($1, 'DESIGN', $2)
                 ON CONFLICT (label, namespace_id) DO NOTHING
                 """,
                 design_lbl,
