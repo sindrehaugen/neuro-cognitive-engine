@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 6643ce6 (main) · **Last-audited:** 2026-09-17
 
 # 00b — Vertical-Engine Spec Review: Cross-Engine Gaps & Per-Engine Notes
 
-<!-- BLOCKED ON OQ-2 / OQ-4: SPEC REVIEW CONTEXT. This document is a historical architectural review pass (2026-06-17) analyzing prospective engine specs and cross-engine seams. Features, tables, and tool names described herein reflect proposed design contracts. For shipped software reality at baseline 7304330, refer to docs/engines/ and docs/_generated/surface.md. Verified-against: 7304330 -->
+<!-- SPEC REVIEW CONTEXT. This document is a historical architectural review pass (2026-06-17) analyzing prospective engine specs and cross-engine seams. Features, tables, and tool names described herein reflect design contracts. For shipped software reality at baseline 6643ce6, refer to docs/engines/, docs/_generated/surface.md, and docs/_generated/engine_figures.md. Verified-against: 6643ce6 -->
 
 
 **Status:** spec review · **Date:** 2026-06-17 · **Reviewer:** NCE core (Claude/Sindre review pass)
@@ -25,7 +25,7 @@ These two pieces de-risk every remaining engine more than any single spec edit.
 ---
 
 ## Cross-engine findings (the headline)
-<!-- BLOCKED ON OQ-2 / OQ-4: Cross-engine contracts (Contract 1 node-ownership, Contract 2 autonomy governance) are architectural designs implemented across vertical modules and shared core; refer to docs/shared-core/ for current status. -->
+<!-- Cross-engine contracts (Contract 1 node-ownership, Contract 2 autonomy governance) are architectural designs implemented across vertical modules and shared core; refer to docs/shared-core/ for current status. -->
 
 ### Concrete contradictions / unowned shared state
 
@@ -71,7 +71,7 @@ Three engines maintain a **mirror of an external source-of-truth and must reconc
 ---
 
 ## Per-engine notes
-<!-- BLOCKED ON OQ-2 / OQ-4: Per-engine notes reflect historical review findings against early drafts. Shipped vertical engine implementations differ in tool and route exposure per Surface of Truth. -->
+<!-- Per-engine notes reflect historical review findings against early drafts. Shipped vertical engine implementations differ in tool and route exposure per Surface of Truth (docs/_generated/surface.md). -->
 
 ### 05 — Sales (Tier 2, Revenue)
 - **Core truth:** it's a *read-model-of-record* for the 12 Host Portal D365 pages first, an AI engine last. B1 (read-model parity + source-mode resolver) is the whole game.

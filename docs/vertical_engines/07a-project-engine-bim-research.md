@@ -1,6 +1,6 @@
 # 07a — Project/System-Design Engine: BIM Integration Research & Idea Backlog
 
-<!-- BLOCKED ON OQ-2 / OQ-4: RESEARCH COMPANION. Architectural research backlog. Verified-against: 7304330 -->
+<!-- RESEARCH COMPANION. Architectural research backlog for Project and System Design Engines. Verified-against: 6643ce6 -->
 
 **Status:** research companion to `07-project-engine.md` + `06-system-design-engine.md` · **Date:** 2026-06-17
 **Question asked:** *"how do we integrate with BIM for the Project (and System Design / Assets) engines — without getting locked into Autodesk?"*

@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 6643ce6 (main) · **Last-audited:** 2026-09-17
 
 # 06 — System Design Engine  (nce/vertical_modules/system_design)
 
-<!-- BLOCKED ON OQ-2 / OQ-4: SPEC PROPOSAL VOICE. This document is an architectural design specification. System Design's exposed surface has grown twice since this banner was last accurate (7304330: 2 tools/1 route; 2026-08-30 Module 6: 7 tools/5 routes; b75c873: 12 tools/9 routes) -- see docs/_generated/surface.md for the current count, not a number here. Refer to docs/engines/system-design-user.md and docs/engines/system-design-admin.md for shipped reality -- note both now carry their own staleness warnings too (found 2026-09-06, DL.md K-1: the "shipped reality" docs were themselves stale, twice over). Verified-against: b75c873 -->
+<!-- SHIPPED SPECIFICATION. At baseline 6643ce6, System Design ships 12 MCP tools and 10 REST routes (see docs/_generated/surface.md and docs/_generated/engine_figures.md). Refer to docs/engines/system-design-user.md and docs/engines/system-design-admin.md for shipped reality. Verified-against: 6643ce6 -->
 
 
 > **Status: DISCUSSION doc** — Sindre flagged this one "lets discuss here". This lays out what it is, the scope options, a recommendation, and the open questions. The other engines have settled shapes; this one needs a decision before it's specced like the rest.
@@ -106,7 +106,7 @@ Neither direction is privileged; the engine reconciles to one `DESIGN` ⇄ `QUOT
 - Every derived edge carries `confidence` (0–1) and a `system_design_source_id` for retirement (roadmap §2.3).
 
 ## Core functions
-<!-- BLOCKED ON OQ-2 / OQ-4: STALE, corrected 2026-09-06 -- do_propose_design, do_generate_sow, do_design_from_quote (as system_design_from_quote), do_design_to_quote (as system_design_to_quote), and do_validate_design (as system_design_validate_design_graph) are ALL now exposed as MCP tools + REST routes at b75c873 (nce/tool_registry.py:585-625). Only do_sync_functional_locations remains genuinely unexposed. -->
+<!-- Core functions do_propose_design, do_generate_sow, do_design_from_quote, do_design_to_quote, and do_validate_design are exposed as MCP tools and REST routes (see docs/_generated/surface.md). -->
 ```python
 async def do_propose_design(engine, params) -> dict
 #   params: {namespace_id, brief:{rooms:[{name,use_case,constraints}], ...}, top_k?}
@@ -140,7 +140,7 @@ async def do_publish_design_docs(engine, params) -> dict
 ```
 
 ## MCP tools
-<!-- BLOCKED ON OQ-2 / OQ-4: Historical proposal listed 7 tools. STALE, corrected 2026-09-06 -- 12 MCP tools are registered at b75c873 (up from 2 at 7304330 and 7 as of the 2026-08-30 Module 6 note): system_design_ping, system_design_publish_design_docs, system_design_get_topology, system_design_author_topology, system_design_author_functional_location, system_design_validate_design_graph, system_design_delete_planned, system_design_from_quote, system_design_to_quote, system_design_generate_sow, system_design_enrich_design_lines, system_design_propose_design. See docs/_generated/surface.md for the current count. -->
+<!-- Shipped MCP tools. System Design registers 12 MCP tools in TOOL_REGISTRY (see docs/_generated/surface.md and docs/_generated/engine_figures.md). AI-role tag per roadmap §2 taxonomy. -->
 | Tool | cacheable | admin_only | mutation | AI-role |
 |---|---|---|---|---|
 | `system_design_propose_design` | False | False | True | **Advisor** (proposes, human owns) |
@@ -152,7 +152,7 @@ async def do_publish_design_docs(engine, params) -> dict
 | `system_design_publish_docs` | False | True | True | **Actor** (SharePoint + Lucid push) |
 
 ## REST routes
-<!-- BLOCKED ON OQ-2 / OQ-4: STALE, corrected 2026-09-06 -- 9 REST routes are mounted at b75c873 (up from 1 at 7304330), adding topology, functional-location, validate, planned-delete, from-quote, to-quote, sow, and enrich-design-lines endpoints (nce/admin_app.py). -->
+<!-- Shipped REST routes. 10 REST endpoints mounted under /api/system-design in nce/admin_handlers/system_design.py (see docs/_generated/surface.md). -->
 No-model path for the BFF/Host Portal (admin app, HMAC/mTLS): `api_system_design_propose_design`, `api_system_design_design_from_quote`, `api_system_design_generate_sow` (read-only deterministic → REST per §2.2), `api_system_design_design_to_quote`, `api_system_design_validate_design`, `api_system_design_sync_functional_locations`, `api_system_design_publish_docs`.
 
 ## AI features
@@ -179,7 +179,7 @@ System Design is the **hub of the Quote→Design→Procure** flow (roadmap §5),
 - **External integrations:** NetBox (in-loop), SharePoint (docs), Lucid (diagrams). **Blockers:** Lucid/SharePoint API credentials (config, not code); Phase 2's device-capability model is a separate sourcing project, deliberately not a Phase-1 blocker.
 
 ## Build phases
-<!-- BLOCKED ON OQ-2 / OQ-4: Historical build phases B1-B5. Refer to docs/engines/system-design-admin.md for shipped milestone status. -->
+<!-- Historical build phases B1-B5. Refer to docs/engines/system-design-admin.md for shipped milestone status. -->
 - **Phase 1a — the value core (integration-free, Correction #6):** (1) `system_design` package + `mcp_handlers.py` + `TOOL_REGISTRY`; (2) **author** `FUNCTIONAL_LOCATION` design-intent nodes (no NetBox needed); (3) `do_propose_design` recall loop — **similarity-first**, outcome-weighting wired but dormant until the ledger backfills (Correction #4); (4) `do_design_from_quote` (quote-first gap-fill) — the bidirectional pair, under the §9 ownership/lock rule; (5) lift `generateSoW` → `sow.py` — **the work is the `SoWInput` adapter** from the graph, not the transform; **freeze the SoW on issue**, version tied to design version (Correction #7); (6) scoped Product/Procurement A2A enrichment; (7) `do_design_to_quote` freeze + `do_validate_design` (**propose-only**) + ledger feedback; (8) tests + tool-count. **This ships and delivers value with zero external systems.**
 - **Phase 1b — adapters (independently sequenced, not gates):** `system_design/netbox_bridge.py` = **build functional-location sync + `promoted_to_asbuilt` reconciliation** (design-intent → as-built; *not* a thin bridge — Correction #1/#2); `sharepoint.py` (SoW/doc store); `lucid.py` **export only** (`do_publish_design_docs`). Each lands when its value justifies it.
 - **Phase 2 (additive, deferred) — generate *and prove* (the moat, see `90-competitive-landscape`):** layer `DEVICE`/`PORT`/`SIGNAL_CHAIN`/`RACK`/`CABLE` nodes + a **device-capability model** (adopting the **AVIXA Revit parameter schema** — see `07a-bim-research`) onto the **same `DESIGN` node**, and add **design-validation graph queries** none of the incumbents have: signal-flow continuity, port/format compatibility (HDMI 2.1 vs 2.0, Dante channel counts), PoE/power/heat budget, SPOF/redundancy, AVIXA-checkpoint conformance — each returning pass/fail + reasons. Deepen the NetBox bridge to the as-built twin; on BIM, `IfcSpace ↔ FUNCTIONAL_LOCATION` and COBie handoff to Assets (`07a`). **Enriches, does not rewrite** — the Phase-1 contract (`DESIGN`/`FUNCTIONAL_LOCATION`/`DESIGN_LINE`, the `do_*` functions) is unchanged.

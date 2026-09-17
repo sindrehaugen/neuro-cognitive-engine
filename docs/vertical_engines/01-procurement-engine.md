@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 6643ce6 (main) · **Last-audited:** 2026-09-17
 
 # 01 — Procurement Engine  (nce/vertical_modules/procurement)
 
-<!-- BLOCKED ON OQ-2 / OQ-4: SPEC PROPOSAL VOICE. This document is an architectural design specification. At baseline 7304330, Procurement ships 6 MCP tools and 8 REST routes (see docs/_generated/surface.md). do_submit_po and NetsetPoTransport remain unwired stubs under Contract B C2 autonomy ceiling. Refer to docs/engines/procurement-user.md and docs/engines/procurement-admin.md for shipped reality. Verified-against: 7304330 -->
+<!-- SHIPPED SPECIFICATION. At baseline 6643ce6, Procurement ships 10 MCP tools and 10 REST routes (see docs/_generated/surface.md and docs/_generated/engine_figures.md). Refer to docs/engines/procurement-user.md and docs/engines/procurement-admin.md for shipped operator reality. Verified-against: 6643ce6 -->
 
 
 **Status:** spec (Tier 1 — Operations axis) · **Owner:** NCE core (Sindre)
@@ -37,7 +37,7 @@ Node `entity_type` prefixes: `PROCUREMENT_*`, plus shared spine nodes `PO`, `VEN
 - **memories/ledger:** supplier-contract text → `memories` (embedding + `content_fts`) for compliance recall. Every match decision + every scoring decision → `v3_cognitive_ledger` (this is where per-supplier learning lives in NCE — the event-sourced recalibration generalises onto the ledger instead of a bespoke table). Tag every derived row with `procurement_source_id` for hard-retirement on delete (D365 retirement pattern).
 
 ## Core functions
-<!-- BLOCKED ON OQ-2 / OQ-4: do_calculate_tco, do_rank_suppliers, and do_evaluate_three_way_match are pure domain calculation cores wired to MCP/REST; do_generate_po, do_submit_po, do_aggregate_savings, and do_record_match_decision remain internal/unwired or background workflows. -->
+<!-- Core domain functions do_calculate_tco, do_rank_suppliers, do_evaluate_three_way_match, do_resolve_bids, do_aggregate_savings, do_generate_po, and do_submit_po are wired to MCP tools and REST endpoints. do_record_match_decision feeds the cognitive ledger. -->
 Pure-ish `do_<action>(engine, params) -> dict`; the TCO/scoring/match cores are **pure** (0 DB) and lift near-1:1 from the reference implementation.
 - `do_calculate_tco(engine, params) -> dict` — `{supplier, bom_line}` → TCO breakdown (price+freight+warranty+stock+delivery_risk). Pure. Weights from `procurement-weights.json`.
 - `do_rank_suppliers(engine, params) -> dict` — `{bom_line, candidates[]}` → ranked list w/ score breakdown, applying the **5-step DELIBERATE order**: (1) own stock → (2) delivery-deadline filter → (3) true TCO → (4) BID price → (5) tier × kickback-proximity × bundling. Pure over config.
@@ -49,7 +49,7 @@ Pure-ish `do_<action>(engine, params) -> dict`; the TCO/scoring/match cores are 
 - `do_record_match_decision(engine, params) -> dict` — appends a match outcome to the ledger; feeds recalibration after N=100.
 
 ## MCP tools
-<!-- BLOCKED ON OQ-2 / OQ-4: Historical proposal listed 8 tools. Baseline 7304330 registers 6 tools (procurement_calculate_tco, procurement_rank_suppliers, procurement_evaluate_match, procurement_forecast_rebate, procurement_recommend_move_spend, procurement_whatif_spend). Tools procurement_resolve_bids, procurement_aggregate_savings, procurement_generate_po, procurement_submit_po, procurement_sync_now are not registered in TOOL_REGISTRY. -->
+<!-- Shipped MCP tools. Procurement registers 10 MCP tools in TOOL_REGISTRY (see docs/_generated/surface.md and docs/_generated/engine_figures.md). AI-role tag per roadmap §2 taxonomy. -->
 Registered in `nce/tool_registry.py` via `_h(...)` late-binding. AI-role tag per roadmap §2 taxonomy.
 
 | Tool | cacheable | admin_only | mutation | AI-role |
@@ -64,7 +64,7 @@ Registered in `nce/tool_registry.py` via `_h(...)` late-binding. AI-role tag per
 | `procurement_sync_now` | ✘ | ✔ | ✔ | — (operator) |
 
 ## REST routes
-<!-- BLOCKED ON OQ-2 / OQ-4: Mounted REST routes at baseline 7304330 are /api/procurement/tco, /api/procurement/rank, /api/procurement/match, /api/procurement/sync, /api/procurement/sync/status, and 3 frontier routes (/api/procurement/frontier/*). Routes for savings, bid resolution, and draft PO creation are not mounted. -->
+<!-- Shipped REST routes. 10 REST endpoints mounted under /api/procurement/ in nce/admin_handlers/procurement.py (see docs/_generated/surface.md). -->
 No-model path for the BFF (`Bestillinger.jsx`), cron, scripts. Mounted via `build_app(extra_routes=...)`; HMAC/mTLS-authed in `nce/admin_handlers/procurement.py`:
 - `api_procurement_rank_suppliers` (POST) — sourcing decision for a BOM line.
 - `api_procurement_calculate_tco` (POST) — TCO breakdown.
@@ -113,7 +113,7 @@ No-model path for the BFF (`Bestillinger.jsx`), cron, scripts. Mounted via `buil
 6. **`submit_po` is governed by roadmap §9.5 (sharpest blast radius — spends real money).** Ship **human-confirm-only first**; `AUTONOMY_PO_CEILING` is necessary but nowhere near sufficient — it also needs **idempotency** (no double-order on retry), **volume/rate cap**, **supplier allowlist**, **kill switch**, all **ledger-audited**. Earn autonomy later; the Netset Order API is a stub anyway, so there's no reason to auto-submit at launch.
 
 ## Build phases
-<!-- BLOCKED ON OQ-2 / OQ-4: Build phases B1-B5 represent historical sequencing. See docs/engines/procurement-admin.md for shipped phase status. -->
+<!-- Historical build phases B1-B5. Refer to docs/engines/procurement-admin.md for shipped milestone status. -->
 - **B1 — Pure cores + tests:** `do_calculate_tco`, `do_rank_suppliers` (5-step), `do_evaluate_three_way_match` (+substitution). Lift the reference tests verbatim. Wire `procurement-weights.json` / `procurement-tolerances.json`. MCP tools + REST routes for the three. Close the `warrantyCost=0` gap.
 - **B2 — Feeds + graph:** port `client.py` (Nettailer streaming) + `sync.py` + `procurement_bid_prices` table (RLS) + `do_resolve_bids`. Graph upserts (VENDOR/PO/SKU/match edges, `procurement_source_id`). `sync_now`/`sync_status` + column-report.
 - **B3 — Learning + savings:** ledger-backed per-supplier recalibration (`do_record_match_decision`, N=100, auditor-queryable); `do_aggregate_savings` + leakage detection.

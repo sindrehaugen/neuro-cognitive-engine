@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 6643ce6 (main) · **Last-audited:** 2026-09-17
 
 # 04 — Vendors & Contractors Engine  (nce/vertical_modules/vendors)
 
-<!-- BLOCKED ON OQ-2 / OQ-4: SPEC PROPOSAL VOICE. This document is an architectural design specification. At baseline 7304330, Vendors ships 10 registered MCP tools and 2 mounted REST routes (/api/vendors/scorecard, /api/vendors/{id}). Partner Access Model and contractor principal scoping are enforced. Refer to docs/engines/vendors-user.md and docs/engines/vendors-admin.md for shipped reality. Verified-against: 7304330 -->
+<!-- SHIPPED SPECIFICATION. At baseline 6643ce6, Vendors ships 14 MCP tools and 7 REST routes (see docs/_generated/surface.md and docs/_generated/engine_figures.md). Refer to docs/engines/vendors-user.md and docs/engines/vendors-admin.md for shipped reality. Verified-against: 6643ce6 -->
 
 
 **Status:** spec (Tier 2 — Operations axis) · **Owner:** NCE core (Sindre)
@@ -34,7 +34,7 @@ Node `entity_type` prefixes: `VENDORS_*` for engine-owned reliability nodes; sha
 - **memories/ledger:** every scorecard/performance recompute appends its inputs + result to `v3_cognitive_ledger` (this is where reliability *history* lives — so "how did this vendor perform on similar jobs / why did its on-time score drop" is auditable, not a snapshot). Free-text contractor reviews / vendor incident notes → `memories` (embedding + `content_fts`) for cognitive recall. Tag every derived row with `vendors_source_id` for hard-retirement on counterparty delete (D365 retirement pattern).
 
 ## Core functions
-<!-- BLOCKED ON OQ-2 / OQ-4: Core calculation reducers and registry functions are wrapped by the 10 registered MCP tools and 2 REST routes. -->
+<!-- Core calculation reducers and registry functions are wrapped by the 14 registered MCP tools and 7 REST routes (see docs/_generated/surface.md). -->
 Pure-ish `do_<action>(engine, params) -> dict`; scorecard math is a **pure** reducer over outcome events (0 DB), the registry CRUD is thin DB.
 - `do_get_vendor(engine, params) -> dict` — `{vendor_id}` → canonical identity + current scorecard + tier/ytd-progress. The record Procurement reads.
 - `do_upsert_vendor(engine, params) -> dict` — reconcile a VENDOR identity (orgnr-keyed); idempotent merge of feed-ingested + admin-entered fields. Actor.
@@ -55,7 +55,7 @@ External contractors must see **ONLY their own work orders + the relevant BOM li
 This is the canonical "Partner Access Model" referenced by Field Tech(12) and the field-service skill — restricted access is **partly enforced here** (the data model + the redacted projection) and partly by Field Tech (the mobile WO surface) and the A2A server (tool binding).
 
 ## MCP tools
-<!-- BLOCKED ON OQ-2 / OQ-4: Historical proposal listed 6 tools. Baseline 7304330 registers 10 MCP tools: vendors_get_vendor, vendors_compute_scorecard, vendors_get_tier_status, vendors_detect_reliability_degradation, vendors_check_tier_at_risk, vendors_match_contractor, vendors_compute_performance, vendors_recall_similar_jobs, vendors_reliability_radar, vendors_calibrate_weights. -->
+<!-- Shipped MCP tools. Vendors registers 14 MCP tools in TOOL_REGISTRY (see docs/_generated/surface.md and docs/_generated/engine_figures.md). AI-role tag per roadmap §2 taxonomy. -->
 Registered in `nce/tool_registry.py` via `_h(...)` late-binding. AI-role tag per roadmap §2 taxonomy.
 
 | Tool | cacheable | admin_only | mutation | AI-role |
@@ -73,7 +73,7 @@ Registered in `nce/tool_registry.py` via `_h(...)` late-binding. AI-role tag per
 > `vendors_partner_view` is the **only** tool bound into a contractor-facing agent profile. All others are operator/internal — never registered into a partner agent's surface (Partner Access Model layer 2).
 
 ## REST routes
-<!-- BLOCKED ON OQ-2 / OQ-4: Mounted REST routes at baseline 7304330 are /api/vendors/scorecard and /api/vendors/{id}. Contractor upsert and partner view routes are not mounted as standalone REST endpoints (contractor partner view is accessed via A2A skill vendors_partner_view). -->
+<!-- Shipped REST routes. 7 REST endpoints mounted under /api/vendors in nce/admin_handlers/vendors.py (see docs/_generated/surface.md). -->
 No-model path for the BFF, cron, scripts. Mounted via `build_app(extra_routes=...)`; HMAC/mTLS-authed in `nce/admin_handlers/vendors.py`:
 - `api_vendors_get_vendor` (GET) — identity + scorecard + tier (Procurement sourcing rationale).
 - `api_vendors_scorecard` (GET) — reliability dashboard for a vendor (or all, paged).
@@ -122,7 +122,7 @@ No-model path for the BFF, cron, scripts. Mounted via `build_app(extra_routes=..
 4. **"Subscribes to feed-produced upserts" assumes a reactive mechanism NCE doesn't have (roadmap §9.6).** How Vendors learns a new `VENDOR` node appeared ("subscribes") is the unspecified **reactive graph-event** problem (recurs in Project's auto-task, Economy's fires-on-ingest). Resolve via the shared trigger mechanism / polling convention — not a per-engine assumption.
 
 ## Build phases
-<!-- BLOCKED ON OQ-2 / OQ-4: Historical build phases B1-B5. Refer to docs/engines/vendors-admin.md for shipped milestone status. -->
+<!-- Historical build phases B1-B5. Refer to docs/engines/vendors-admin.md for shipped milestone status. -->
 - **B1 — Vendor registry + scorecard core:** `VENDOR` identity upsert (orgnr-keyed, idempotent merge of feed + admin), `vendor_scorecards` table (RLS), pure `do_compute_scorecard` reducer over ledger outcomes (+ `vendor-scorecard-weights.json`). `vendors_get_vendor`/`compute_scorecard` MCP + REST. `vendors_source_id` retirement.
 - **B2 — Tiers + Procurement feed:** `do_get_tier_status` (membership + ytd-progress, Agreements reference), `do_record_outcome` consuming Procurement match results. Wire scorecards/tiers into Procurement's step-5 scoring via A2A. Reliability-degradation + tier-at-risk Watchers.
 - **B3 — Contractors + Partner Access Model:** `contractor_profiles` (RLS + `partner_scope_id` partner-isolation policy), `do_upsert_contractor`, `do_partner_view` allow-list redaction (`partner-redaction.json`), partner-scoped A2A toolset binding. Cert nodes + expiry Watcher.

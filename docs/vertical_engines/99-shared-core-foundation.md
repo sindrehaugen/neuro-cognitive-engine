@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 6643ce6 (main) · **Last-audited:** 2026-09-17
 
 # 99 — Shared-Core Foundation (build BEFORE the engines)
 
-<!-- BLOCKED ON OQ-2 / OQ-4: SPEC PROPOSAL VOICE. This document is a foundational architectural design specification. Refer to docs/shared-core/ and docs/vertical_engines/ENGINE_STATUS.md for shipped reality at baseline 7304330. Verified-against: 7304330 -->
+<!-- FOUNDATIONAL SPECIFICATION. This document is a foundational architectural specification. Refer to docs/shared-core/, docs/vertical_engines/ENGINE_STATUS.md, and docs/_generated/engine_figures.md for shipped reality. Verified-against: 6643ce6 -->
 
 **Status:** foundation build plan · **Owner:** NCE core (Sindre) · **Date:** 2026-06-17
 **Companion:** `00-ENGINES-ROADMAP.md` §9 (the two contracts + the standing tally), §2.10/§2.11 conventions, §9.3 structural-enforcement.
