@@ -473,8 +473,11 @@ class TestSignalFlowIntegration:
         port_tv = port_label(design_id, "TV", "HDMI")
         cbl = cable_label(design_id, "RUN")
 
-        # Seed DESIGN node in kg_nodes
+        # Seed DESIGN node in kg_nodes and register ownership
         async with scoped_pg_session(pg_pool, test_ns) as conn:
+            from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
+
+            await seed_node_ownership_registry(conn, test_ns)
             await conn.execute(
                 """
                 INSERT INTO kg_nodes (label, entity_type, namespace_id)
@@ -721,7 +724,10 @@ class TestSignalFlowIntegration:
         design_id = "COLLIDING_DESIGN"
         design_lbl = _design_label(design_id)
 
+        from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
+
         async with scoped_pg_session(pg_pool, ns_a) as conn:
+            await seed_node_ownership_registry(conn, ns_a)
             await conn.execute(
                 """
                 INSERT INTO kg_nodes (label, entity_type, namespace_id)
@@ -746,6 +752,7 @@ class TestSignalFlowIntegration:
             )
 
         async with scoped_pg_session(pg_pool, ns_b) as conn:
+            await seed_node_ownership_registry(conn, ns_b)
             await conn.execute(
                 """
                 INSERT INTO kg_nodes (label, entity_type, namespace_id)
