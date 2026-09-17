@@ -47,6 +47,12 @@ _EXPECTED_TOOLS: dict[str, dict[str, bool]] = {
         "admin_only": False,
         "mutation": False,
     },
+    # Wave SD-5 / Copper Contract-I — thin signal-flow inspection.
+    "system_design_inspect_signal_flow": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": False,
+    },
     # M6.W13b — the authoring surface, rows two and three of Copper's contract
     # table.  ``mutation=True`` is not decoration: it is what makes the dispatch
     # loop bump the MCP cache generation, and that bump is the only thing that

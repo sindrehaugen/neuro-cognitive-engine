@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 271  # 267 baseline + 4 Project REST reads promoted to cacheable tools (Wave PJ-4)
+_EXPECTED_TOTAL = 272  # 271 baseline + 1 System Design inspect signal flow tool (Wave SD-5)
 
 
 def test_registry_has_expected_entries():

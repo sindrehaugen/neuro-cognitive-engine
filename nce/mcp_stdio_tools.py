@@ -1687,6 +1687,46 @@ TOOLS = [
         },
     ),
     Tool(
+        name="system_design_inspect_signal_flow",
+        description=(
+            "[Wave SD-5 / Copper Contract-I] Read-only: thin signal-flow inspection "
+            "and chain traversal over DEVICE, PORT, and CABLE nodes with "
+            "system_design_device_capabilities and system_design_geometry. "
+            "Inspects port signal attributes (formats, versions, PoE, Dante), parent "
+            "devices, interconnecting cables, upstream/downstream signal chains, "
+            "hop-by-hop format compatibility, and design-wide flow continuity."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Caller namespace UUID.",
+                },
+                "design_id": {
+                    "type": "string",
+                    "description": "Design identifier (the DESIGN node's id).",
+                },
+                "node_label": {
+                    "type": "string",
+                    "description": "Optional target DEVICE, PORT, or CABLE node label to narrow inspection.",
+                },
+                "direction": {
+                    "type": "string",
+                    "enum": ["upstream", "downstream", "both"],
+                    "description": "Optional chain traversal direction (default 'both').",
+                },
+                "max_depth": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "description": "Optional maximum hop traversal depth (default 32).",
+                },
+            },
+            "required": ["namespace_id", "design_id"],
+        },
+    ),
+    Tool(
         name="system_design_author_topology",
         description=(
             "[M6.W13b] Author a System Design DESIGN's device topology: DEVICE / "

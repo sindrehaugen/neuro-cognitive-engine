@@ -74,6 +74,7 @@ from nce.vertical_modules.system_design.retire import (
     RetireDeniedError,
     do_retire_planned,
 )
+from nce.vertical_modules.system_design.signal_flow import do_inspect_signal_flow
 from nce.vertical_modules.system_design.sow import do_generate_sow
 from nce.vertical_modules.system_design.to_quote import do_design_to_quote
 from nce.vertical_modules.system_design.validate import do_validate_design
@@ -269,6 +270,30 @@ async def handle_system_design_validate_design_graph(
     # No ``default=`` fallback: the core returns a bool and a list of str, so a
     # future non-encodable value must fail loudly rather than be stringified
     # into a shape the REST route would not produce.
+    return json.dumps(result)
+
+
+@mcp_handler
+async def handle_system_design_inspect_signal_flow(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_inspect_signal_flow — inspect signal flow and chains.
+
+    Read-only (``cacheable=False, admin_only=False, mutation=False``).
+    ``cacheable=False`` matches validate_design_graph: active canvas editing
+    must not serve stale inspector or path-tracing data.
+
+    Requires ``namespace_id`` and ``design_id`` in *arguments*.
+    Optional ``node_label`` narrows inspection to a specific DEVICE, PORT, or CABLE.
+    Optional ``direction`` controls chain walk ("upstream", "downstream", "both").
+    Optional ``max_depth`` limits hop depth (default 32).
+
+    Returns the JSON-encoded result of ``do_inspect_signal_flow``.
+    """
+    require_namespace_id(arguments)
+    if not arguments.get("design_id"):
+        raise ValueError("design_id is required")
+    result = await do_inspect_signal_flow(engine, arguments)
     return json.dumps(result)
 
 
