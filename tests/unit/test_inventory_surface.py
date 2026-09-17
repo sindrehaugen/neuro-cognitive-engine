@@ -175,8 +175,8 @@ def test_tool_count_updated_for_inventory() -> None:
     assert "inventory_stock_levels" in TOOL_REGISTRY
     assert "inventory_transfer_stock" in TOOL_REGISTRY
     assert "inventory_record_consumption" in TOOL_REGISTRY
-    assert len(TOOL_REGISTRY) == 279, (
-        f"Expected 279 tools (repo-wide ratchet), "
+    assert len(TOOL_REGISTRY) == 280, (
+        f"Expected 280 tools (repo-wide ratchet), "
         f"from Batch 141 + 3 assets tools from Batch 143 + 1 system_design tool "
         f"from Batch 067b + 2 system_design authoring tools from Batch 067c "
         f"+ 1 system_design validator from Batch 067d "
@@ -184,7 +184,7 @@ def test_tool_count_updated_for_inventory() -> None:
         f"+ 11 inventory tools from Batch 138a, M11.W10a -- surface completion, "
         f"registering the Inventory cores Batch 131's single surface wave predated + 8 hr tools from Module 13 (HR engine) "
         f"+ 2 assets tools from Wave A-3 + 1 assets QR from Wave A-4 + 1 assets failure pattern from Wave A-5 "
-        f"+ 2 inventory tools from Wave IN-2), "
+        f"+ 2 inventory tools from Wave IN-2 + 1 inventory restock PO from Wave IN-3), "
         f"got {len(TOOL_REGISTRY)}: "
         f"{sorted(TOOL_REGISTRY)}"
     )
@@ -868,27 +868,24 @@ def test_b138a_rest_route_mounted_with_method_and_endpoint(row: tuple) -> None:
 
 
 def test_b138a_deliberately_unregistered_cores_stay_off_the_surface() -> None:
-    """Three Inventory cores are NOT on the surface, each for a stated reason.
+    """Two Inventory cores remain deliberately NOT on the surface, each for a stated reason.
 
     ``do_advance_bom_line_to_delivered``: exposing it would let an admin caller
     mark a BOM line delivered with no goods receipt behind it.
     ``do_flag_stock_alerts``: already wired to the cron tick, which holds
     ``acquire_cron_lock``; a manual twin would sweep outside that lock.
-    ``do_create_restock_po``: it does not take the ``(engine, params)`` core
-    shape at all (open asyncpg connection, keyword-only ``idempotency_key``,
-    a ``confirm`` flag and an optional ``redis_client`` whose absence turns its
-    kill-switch from fail-closed to open), so no thin adapter can call it.
+    (Note: ``do_create_restock_po`` was adapted and surfaced in Wave IN-3).
 
-    This test is what makes those three rulings survive a later refactor.
+    This test is what makes those rulings survive a later refactor.
     """
     from nce.tool_registry import TOOL_REGISTRY
 
     for absent in (
         "inventory_advance_bom_line_to_delivered",
         "inventory_flag_stock_alerts",
-        "inventory_create_restock_po",
     ):
         assert absent not in TOOL_REGISTRY, (
             f"{absent} was registered; see this test's docstring "
             f"-- it is an authorization/shape ruling, not an oversight"
         )
+    assert "inventory_create_restock_po" in TOOL_REGISTRY

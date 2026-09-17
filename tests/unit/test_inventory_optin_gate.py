@@ -75,6 +75,7 @@ _MCP_HANDLER_CORES: dict[str, str] = {
     "handle_inventory_reconcile_dead_stock": "do_reconcile_dead_stock",
     "handle_inventory_restock_from_rma": "do_restock_from_rma",
     "handle_inventory_dispose_rma_weee": "do_dispose_rma_weee",
+    "handle_inventory_create_restock_po": "do_create_restock_po",
 }
 
 # route name -> (core symbol, reads namespace_id from the query string?)
@@ -98,6 +99,7 @@ _REST_ROUTE_CORES: dict[str, tuple[str, bool]] = {
     "api_inventory_reconcile_dead_stock": ("do_reconcile_dead_stock", False),
     "api_inventory_restock_from_rma": ("do_restock_from_rma", False),
     "api_inventory_dispose_rma_weee": ("do_dispose_rma_weee", False),
+    "api_inventory_create_restock_po": ("do_create_restock_po", False),
 }
 
 # metadata JSONB value -> whether the guard must let the call through.

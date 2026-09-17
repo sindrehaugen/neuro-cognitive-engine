@@ -322,7 +322,7 @@ def test_every_registered_inventory_tool_is_advertised() -> None:
     registered = {n for n in _registered() if n.startswith("inventory_")}
     missing = sorted(registered - _advertised())
     assert not missing, "registered inventory tools still hidden: " + ", ".join(missing)
-    assert len(registered) == 16, sorted(registered)
+    assert len(registered) == 17, sorted(registered)
 
 
 def test_inventory_quantities_never_force_a_float() -> None:
@@ -351,8 +351,8 @@ def test_the_recorded_gap_matches_what_is_measured() -> None:
     the gate above having been bypassed.
     """
     assert len(TOOLS_WITH_NO_DEFINITION) == 2
-    assert len(_registered()) == 279
-    assert len(_defined_in_file()) == 277
+    assert len(_registered()) == 280
+    assert len(_defined_in_file()) == 278
     assert len(_registered()) == len(_defined_in_file()) + len(TOOLS_WITH_NO_DEFINITION)
 
 

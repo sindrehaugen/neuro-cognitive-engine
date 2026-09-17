@@ -591,8 +591,9 @@ class TestProjectAdvancePhaseToolRegistry:
         +2 Wave SU-3 support tools: support_failure_pattern, support_upsell_signal;
         +1 Wave A-3 assets_sync_netbox tool;
         +1 Wave A-5 assets_record_failure_pattern tool;
-        +2 Wave IN-2 inventory kitting tools: inventory_reserve_kit, inventory_release_kit."""
-        assert len(MUTATION_TOOLS) == 121
+        +2 Wave IN-2 inventory kitting tools: inventory_reserve_kit, inventory_release_kit;
+        +1 Wave IN-3 inventory restock PO: inventory_create_restock_po."""
+        assert len(MUTATION_TOOLS) == 122
 
     def test_admin_only_count(self) -> None:
         """Admin-only tools must total 32 (unified realignment registry;
@@ -635,5 +636,6 @@ class TestProjectAdvancePhaseToolRegistry:
         +2 Wave SU-3 support tools: support_failure_pattern, support_upsell_signal;
         +1 Wave A-3 assets_sync_netbox tool;
         +1 Wave A-5 assets_record_failure_pattern tool;
-        +2 Wave IN-2 inventory kitting tools: inventory_reserve_kit, inventory_release_kit)."""
-        assert len(ADMIN_ONLY_TOOLS) == 92
+        +2 Wave IN-2 inventory kitting tools: inventory_reserve_kit, inventory_release_kit;
+        +1 Wave IN-3 inventory restock PO: inventory_create_restock_po)."""
+        assert len(ADMIN_ONLY_TOOLS) == 93

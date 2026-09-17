@@ -53,18 +53,25 @@ _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
 # --- MEASURED on branch mlv15b/close-the-loop --------------------------------
 # python -c "import nce.tool_registry as tr; print(len(tr.TOOL_REGISTRY))"
-_TOTAL_TOOLS = 279  # 277 baseline + 2 Inventory kitting & package reservation (Wave IN-2)
-_MUTATION_TOOLS = 121  # 119 baseline + 2 Inventory kitting & package reservation (Wave IN-2)
+_TOTAL_TOOLS = (
+    280  # 277 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3)
+)
+_MUTATION_TOOLS = (
+    122  # 119 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3)
+)
 _CACHEABLE_TOOLS = 113  # 112 baseline + 1 Assets QR generator (Wave A-4)
-_ADMIN_ONLY_TOOLS = 92  # 90 baseline + 2 Inventory kitting & package reservation (Wave IN-2)
+_ADMIN_ONLY_TOOLS = (
+    93  # 90 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3)
+)
 _MIGRATION_TOOLS = 5
 
 
-# The Inventory vertical's tools, read from ``TOOL_REGISTRY`` itself.  16, not
+# The Inventory vertical's tools, read from ``TOOL_REGISTRY`` itself.  17, not
 # the 12 the plan expected and not the 11 B138a added: three predate B138a,
-# plus two from Wave IN-2 (kitting & package reservation).
+# plus two from Wave IN-2 (kitting & package reservation), plus one from Wave IN-3 (restock PO).
 _INVENTORY_TOOLS = frozenset(
     {
+        "inventory_create_restock_po",
         "inventory_dispose_rma_weee",
         "inventory_forecast_demand",
         "inventory_recommend_restock",
@@ -86,6 +93,7 @@ _INVENTORY_TOOLS = frozenset(
 
 _INVENTORY_MUTATION = frozenset(
     {
+        "inventory_create_restock_po",
         "inventory_dispose_rma_weee",
         "inventory_record_consumption",
         "inventory_record_goods_receipt",
@@ -130,8 +138,8 @@ def test_inventory_tool_names_are_exactly_the_measured_set() -> None:
     assert found == _INVENTORY_TOOLS, found ^ _INVENTORY_TOOLS
 
 
-def test_inventory_tool_count_is_sixteen() -> None:
-    assert len(_registered_inventory_tools()) == 16
+def test_inventory_tool_count_is_seventeen() -> None:
+    assert len(_registered_inventory_tools()) == 17
 
 
 def test_derived_counters_match_the_registry_they_summarise() -> None:
