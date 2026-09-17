@@ -366,6 +366,11 @@ services:
       NCE_APP_PASSWORD: nce_app_secret
       # File-based secrets (out of /proc/<pid>/environ); see secret_env.
       NCE_MASTER_KEY_FILE: /run/secrets/nce_master_key
+      # RL-H19: suppress the env_file value so the key is not readable in
+      # /proc/<pid>/environ. admin and a2a are the two externally-facing
+      # processes and were the two that lacked this; worker and cron had it.
+      # The key is read from NCE_MASTER_KEY_FILE above.
+      NCE_MASTER_KEY: ""
       NCE_API_KEY_FILE: /run/secrets/nce_api_key
       # --- Zero-trust transport (mTLS) — see deploy/ and the caddy service below.
       # In production (NCE_ENV=prod) the admin server REFUSES to boot when its mTLS
@@ -465,6 +470,11 @@ services:
       NCE_APP_PASSWORD: nce_app_secret
       # File-based master key (out of /proc/<pid>/environ); see secret_env.
       NCE_MASTER_KEY_FILE: /run/secrets/nce_master_key
+      # RL-H19: suppress the env_file value so the key is not readable in
+      # /proc/<pid>/environ. admin and a2a are the two externally-facing
+      # processes and were the two that lacked this; worker and cron had it.
+      # The key is read from NCE_MASTER_KEY_FILE above.
+      NCE_MASTER_KEY: ""
       # --- Zero-trust transport (mTLS) — see deploy/ and the caddy service below.
       # In production (NCE_ENV=prod) the a2a server REFUSES to boot when its mTLS
       # middleware is disabled, unless NCE_MTLS_ACKNOWLEDGE_DISABLED=true (which is

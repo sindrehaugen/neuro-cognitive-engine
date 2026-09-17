@@ -250,9 +250,31 @@ def model_dir_path_has_openvino_xml(model_dir: str) -> list[str]:
 from functools import lru_cache  # noqa: E402
 
 
-@lru_cache(maxsize=8)
 def _load_sentence_transformer(device: str):
-    """Load SentenceTransformer once per logical device string."""
+    """Load SentenceTransformer once per logical device string.
+
+    RL-H12: a failed load must NOT be memoised. ``@lru_cache`` caches whatever the
+    function returns, including the ``None`` returned when the import is missing or
+    the model fails to load -- so a single transient failure (a slow mount, a
+    half-written cache dir, a momentary OOM) pinned ``None`` for the entire process
+    lifetime. Every memory stored afterwards carried a zero vector, silently, until
+    someone restarted the container.
+
+    Successes stay cached, which is the point of the cache. Failures are evicted so
+    the next call retries.
+    """
+    model = _load_sentence_transformer_cached(device)
+    if model is None:
+        # Evict, so a transient failure is retried rather than pinned for the
+        # life of the process. maxsize is 8 and this only runs on the failure
+        # path, so the cost of reloading other devices is bounded and rare.
+        _load_sentence_transformer_cached.cache_clear()
+    return model
+
+
+@lru_cache(maxsize=8)
+def _load_sentence_transformer_cached(device: str):
+    """Actual loader. Do not call directly -- go through the wrapper above."""
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError:
