@@ -900,6 +900,15 @@ BEGIN
             BEFORE UPDATE OR DELETE ON event_log
             FOR EACH ROW EXECUTE FUNCTION prevent_mutation();
     END IF;
+    -- RL-H18 / migration 080: a row trigger cannot fire on TRUNCATE, which
+    -- deallocates storage without visiting rows. Only a statement-level
+    -- trigger can refuse it. prevent_mutation() reports TG_OP, so this
+    -- raises 'TRUNCATE operation is forbidden' with no function change.
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_event_log_worm_truncate') THEN
+        CREATE TRIGGER trg_event_log_worm_truncate
+            BEFORE TRUNCATE ON event_log
+            FOR EACH STATEMENT EXECUTE FUNCTION prevent_mutation();
+    END IF;
 END $$;
 
 -- --- Phase 3.1: A2A (Agent-to-Agent) Sharing Grants ---
@@ -2146,6 +2155,15 @@ BEGIN
         CREATE TRIGGER trg_event_parents_worm
             BEFORE UPDATE OR DELETE ON event_parents
             FOR EACH ROW EXECUTE FUNCTION prevent_mutation();
+    END IF;
+    -- RL-H18 / migration 080: a row trigger cannot fire on TRUNCATE, which
+    -- deallocates storage without visiting rows. Only a statement-level
+    -- trigger can refuse it. prevent_mutation() reports TG_OP, so this
+    -- raises 'TRUNCATE operation is forbidden' with no function change.
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_event_parents_worm_truncate') THEN
+        CREATE TRIGGER trg_event_parents_worm_truncate
+            BEFORE TRUNCATE ON event_parents
+            FOR EACH STATEMENT EXECUTE FUNCTION prevent_mutation();
     END IF;
 END $$;
 

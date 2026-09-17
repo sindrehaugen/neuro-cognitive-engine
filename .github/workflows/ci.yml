@@ -310,6 +310,16 @@ jobs:
       #   test_batch49_pii_derivation.py    -- needs MinIO credentials
       # Removing a file from KNOWN_UNWIRED without wiring it would be worse than
       # leaving it: the list is the only record of what is unguarded.
+      # RL-H18 / migration 080. A row trigger cannot fire on TRUNCATE, so the WORM
+      # guard could be bypassed in one statement. Wired here on the same principle
+      # as ML-CI1: a security test that runs in no workflow is not a control.
+      - name: Integration — WORM TRUNCATE guard (RL-H18)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/test_worm_truncate_guard.py -m integration -q --tb=short
+
       - name: Integration — security controls (ML-CI1)
         env:
           PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
