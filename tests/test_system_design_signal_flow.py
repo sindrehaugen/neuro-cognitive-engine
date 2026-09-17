@@ -454,13 +454,24 @@ class TestSignalFlowIntegration:
     async def test_signal_flow_db_roundtrip(self, pg_pool: Any, make_namespace: Any) -> None:
         """Author topology + geometry -> inspect signal flow over DB."""
         from nce.db_utils import scoped_pg_session
-        from nce.vertical_modules.system_design.devices import do_author_device_topology
-        from nce.vertical_modules.system_design.geometry import do_author_geometry
+        from nce.vertical_modules.system_design.devices import (
+            cable_label,
+            device_label,
+            do_author_device_topology,
+            port_label,
+        )
+        from nce.vertical_modules.system_design.geometry import upsert_node_geometry
         from nce.vertical_modules.system_design.graph import _design_label
 
         test_ns = await make_namespace()
         design_id = f"des_{test_ns.hex[:8]}"
         design_lbl = _design_label(design_id)
+
+        dev_mp = device_label(design_id, "MP")
+        dev_tv = device_label(design_id, "TV")
+        port_mp = port_label(design_id, "MP", "HDMI")
+        port_tv = port_label(design_id, "TV", "HDMI")
+        cbl = cable_label(design_id, "RUN")
 
         # Seed DESIGN node in kg_nodes
         async with scoped_pg_session(pg_pool, test_ns) as conn:
@@ -477,10 +488,8 @@ class TestSignalFlowIntegration:
             # Author device topology: Media Player -> Display with cable
             devices_payload = [
                 {
-                    "device_label": f"DEVICE:MP_{test_ns.hex[:6]}",
-                    "device_type": "DEVICE",
-                    "properties": {"name": "Media Player"},
-                    "capabilities": {
+                    "device_ref": "MP",
+                    "capability": {
                         "device_category": "Media Player",
                         "manufacturer": "Apple",
                         "model_number": "AppleTV 4K",
@@ -489,9 +498,8 @@ class TestSignalFlowIntegration:
                     },
                     "ports": [
                         {
-                            "port_label": f"PORT:MP_HDMI_{test_ns.hex[:6]}",
-                            "port_type": "PORT",
-                            "capabilities": {
+                            "port_ref": "HDMI",
+                            "capability": {
                                 "signal_format": "HDMI",
                                 "signal_version": "2.1",
                                 "port_direction": "output",
@@ -500,10 +508,8 @@ class TestSignalFlowIntegration:
                     ],
                 },
                 {
-                    "device_label": f"DEVICE:TV_{test_ns.hex[:6]}",
-                    "device_type": "DEVICE",
-                    "properties": {"name": "Display"},
-                    "capabilities": {
+                    "device_ref": "TV",
+                    "capability": {
                         "device_category": "Flat Panel",
                         "manufacturer": "Samsung",
                         "model_number": "QM85R",
@@ -512,9 +518,8 @@ class TestSignalFlowIntegration:
                     },
                     "ports": [
                         {
-                            "port_label": f"PORT:TV_HDMI_{test_ns.hex[:6]}",
-                            "port_type": "PORT",
-                            "capabilities": {
+                            "port_ref": "HDMI",
+                            "capability": {
                                 "signal_format": "HDMI",
                                 "signal_version": "2.0",
                                 "port_direction": "input",
@@ -525,31 +530,31 @@ class TestSignalFlowIntegration:
             ]
             connections_payload = [
                 {
-                    "from_port": f"PORT:MP_HDMI_{test_ns.hex[:6]}",
-                    "to_port": f"PORT:TV_HDMI_{test_ns.hex[:6]}",
-                    "cable_label": f"CABLE:RUN_{test_ns.hex[:6]}",
+                    "from_device_ref": "MP",
+                    "from_port_ref": "HDMI",
+                    "to_device_ref": "TV",
+                    "to_port_ref": "HDMI",
+                    "cable_ref": "RUN",
                 }
             ]
 
             await do_author_device_topology(
                 conn,
                 test_ns,
-                design_lbl,
+                design_id=design_id,
                 devices=devices_payload,
                 connections=connections_payload,
             )
 
             # Author geometry for cable
-            await do_author_geometry(
+            await upsert_node_geometry(
                 conn,
                 test_ns,
-                items=[
-                    {
-                        "node_label": f"CABLE:RUN_{test_ns.hex[:6]}",
-                        "cable_length_m": 12.5,
-                        "cable_type": "HDMI-ACTIVE",
-                    }
-                ],
+                cbl,
+                {
+                    "cable_length_m": 12.5,
+                    "cable_type": "HDMI-ACTIVE",
+                },
             )
 
         class FakeEngine:
@@ -577,13 +582,14 @@ class TestSignalFlowIntegration:
             {
                 "namespace_id": str(test_ns),
                 "design_id": design_id,
-                "node_label": f"PORT:TV_HDMI_{test_ns.hex[:6]}",
+                "node_label": port_tv,
             },
         )
         assert res_port["target_type"] == "PORT"
-        assert res_port["port_label"] == f"PORT:TV_HDMI_{test_ns.hex[:6]}"
-        assert res_port["parent_device"]["device_label"] == f"DEVICE:TV_{test_ns.hex[:6]}"
+        assert res_port["port_label"] == port_tv
+        assert res_port["parent_device"]["device_label"] == dev_tv
         assert len(res_port["inbound_connections"]) == 1
+        assert res_port["inbound_connections"][0]["from_port"] == port_mp
         assert (
             res_port["inbound_connections"][0]["is_compatible"] is True
         )  # HDMI 2.1 source drives HDMI 2.0 sink
@@ -595,13 +601,13 @@ class TestSignalFlowIntegration:
             {
                 "namespace_id": str(test_ns),
                 "design_id": design_id,
-                "node_label": f"DEVICE:MP_{test_ns.hex[:6]}",
+                "node_label": dev_mp,
             },
         )
         assert res_dev["target_type"] == "DEVICE"
         assert res_dev["summary"]["total_ports"] == 1
         assert res_dev["summary"]["output_ports"] == 1
-        assert res_dev["summary"]["downstream_devices"] == [f"DEVICE:TV_{test_ns.hex[:6]}"]
+        assert res_dev["summary"]["downstream_devices"] == [dev_tv]
 
         # 4. Cable inspection
         res_cable = await do_inspect_signal_flow(
@@ -609,7 +615,7 @@ class TestSignalFlowIntegration:
             {
                 "namespace_id": str(test_ns),
                 "design_id": design_id,
-                "node_label": f"CABLE:RUN_{test_ns.hex[:6]}",
+                "node_label": cbl,
             },
         )
         assert res_cable["target_type"] == "CABLE"
@@ -703,7 +709,10 @@ class TestSignalFlowIntegration:
     async def test_owner_pool_tenant_isolation(self, pg_pool: Any, make_namespace: Any) -> None:
         """Colliding labels across two namespaces stay isolated by SQL predicate."""
         from nce.db_utils import scoped_pg_session
-        from nce.vertical_modules.system_design.devices import do_author_device_topology
+        from nce.vertical_modules.system_design.devices import (
+            device_label,
+            do_author_device_topology,
+        )
         from nce.vertical_modules.system_design.graph import _design_label
 
         ns_a = await make_namespace()
@@ -726,13 +735,12 @@ class TestSignalFlowIntegration:
             await do_author_device_topology(
                 conn,
                 ns_a,
-                design_lbl,
+                design_id=design_id,
                 devices=[
                     {
-                        "device_label": "DEVICE:SHARED",
-                        "device_type": "DEVICE",
-                        "capabilities": {"manufacturer": "TenantA_Mfg"},
-                        "ports": [{"port_label": "PORT:SHARED", "port_type": "PORT"}],
+                        "device_ref": "SHARED",
+                        "capability": {"manufacturer": "TenantA_Mfg"},
+                        "ports": [{"port_ref": "P1"}],
                     }
                 ],
             )
@@ -751,19 +759,17 @@ class TestSignalFlowIntegration:
             await do_author_device_topology(
                 conn,
                 ns_b,
-                design_lbl,
+                design_id=design_id,
                 devices=[
                     {
-                        "device_label": "DEVICE:SHARED",
-                        "device_type": "DEVICE",
-                        "capabilities": {"manufacturer": "TenantB_Mfg"},
-                        "ports": [{"port_label": "PORT:SHARED", "port_type": "PORT"}],
+                        "device_ref": "SHARED",
+                        "capability": {"manufacturer": "TenantB_Mfg"},
+                        "ports": [{"port_ref": "P1"}],
                     },
                     {
-                        "device_label": "DEVICE:EXTRA_B",
-                        "device_type": "DEVICE",
-                        "capabilities": {"manufacturer": "TenantB_Mfg2"},
-                        "ports": [{"port_label": "PORT:EXTRA_B", "port_type": "PORT"}],
+                        "device_ref": "EXTRA_B",
+                        "capability": {"manufacturer": "TenantB_Mfg2"},
+                        "ports": [{"port_ref": "P2"}],
                     },
                 ],
             )
@@ -773,6 +779,7 @@ class TestSignalFlowIntegration:
                 self.pg_pool = p
 
         engine = FakeEngine(pg_pool)
+        dev_shared = device_label(design_id, "SHARED")
 
         # Inspect Tenant A
         res_a = await do_inspect_signal_flow(
@@ -784,7 +791,7 @@ class TestSignalFlowIntegration:
 
         dev_a = await do_inspect_signal_flow(
             engine,
-            {"namespace_id": str(ns_a), "design_id": design_id, "node_label": "DEVICE:SHARED"},
+            {"namespace_id": str(ns_a), "design_id": design_id, "node_label": dev_shared},
         )
         assert dev_a["capabilities"]["manufacturer"] == "TenantA_Mfg"
 
@@ -798,6 +805,6 @@ class TestSignalFlowIntegration:
 
         dev_b = await do_inspect_signal_flow(
             engine,
-            {"namespace_id": str(ns_b), "design_id": design_id, "node_label": "DEVICE:SHARED"},
+            {"namespace_id": str(ns_b), "design_id": design_id, "node_label": dev_shared},
         )
         assert dev_b["capabilities"]["manufacturer"] == "TenantB_Mfg"
