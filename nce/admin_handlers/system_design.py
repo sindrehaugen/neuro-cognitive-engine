@@ -6,6 +6,8 @@ Exports:
       POST /api/system-design/publish-design-docs
   ``api_system_design_get_topology`` (W13a)
       GET /api/system-design/topology
+  ``api_system_design_inspect_signal_flow`` (Wave SD-5)
+      GET /api/system-design/signal-flow
   ``api_system_design_author_topology`` (W13b)
       POST /api/system-design/topology
   ``api_system_design_author_functional_location`` (W13b)
@@ -81,6 +83,7 @@ from nce.vertical_modules.system_design.mcp_handlers import (
 )
 from nce.vertical_modules.system_design.read import do_get_topology
 from nce.vertical_modules.system_design.retire import RetireDeniedError
+from nce.vertical_modules.system_design.signal_flow import do_inspect_signal_flow
 from nce.vertical_modules.system_design.sow import do_generate_sow
 from nce.vertical_modules.system_design.to_quote import do_design_to_quote
 from nce.vertical_modules.system_design.validate import do_validate_design
@@ -197,6 +200,66 @@ async def api_system_design_get_topology(request) -> JSONResponse:
         )
 
     return JSONResponse({"status": "ok", "topology": result})
+
+
+async def api_system_design_inspect_signal_flow(request) -> JSONResponse:
+    """GET /api/system-design/signal-flow
+
+    Query parameters:
+        namespace_id (str, required): Active namespace UUID.
+        design_id    (str, required): Design identifier to inspect.
+        node_label   (str, optional): Target DEVICE, PORT, or CABLE node label.
+        direction    (str, optional): Traversal direction ("upstream"|"downstream"|"both").
+        max_depth    (int, optional): Max traversal hop depth (default 32).
+
+    Response (JSON):
+        {"status": "ok", "signal_flow": { ... }}
+
+    Read-only — no cache-generation bump (``mutation=False``); the matching MCP
+    tool is ``system_design_inspect_signal_flow``.
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    design_id = str(request.query_params.get("design_id") or "").strip()
+    if not design_id:
+        return JSONResponse({"error": "Missing required query param: design_id"}, status_code=422)
+
+    node_label = request.query_params.get("node_label")
+    direction = request.query_params.get("direction")
+    max_depth = request.query_params.get("max_depth")
+
+    params: dict[str, Any] = {
+        "namespace_id": namespace_id,
+        "design_id": design_id,
+    }
+    if node_label:
+        params["node_label"] = node_label.strip()
+    if direction:
+        params["direction"] = direction.strip()
+    if max_depth:
+        params["max_depth"] = max_depth.strip()
+
+    try:
+        result = await do_inspect_signal_flow(admin_state.engine, params)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Failed to inspect system design signal flow",
+            exc,
+            status_code=500,
+            log_event="api_system_design_inspect_signal_flow: unexpected error",
+        )
+
+    return JSONResponse({"status": "ok", "signal_flow": result})
 
 
 # ---------------------------------------------------------------------------

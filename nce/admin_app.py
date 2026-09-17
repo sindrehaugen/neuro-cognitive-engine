@@ -804,6 +804,12 @@ def build_admin_routes() -> list[Route]:
             endpoint=system_design_handlers.api_system_design_get_topology,
             methods=["GET"],
         ),
+        # System Design vertical module endpoints (Wave SD-5) — signal-flow inspection
+        Route(
+            "/api/system-design/signal-flow",
+            endpoint=system_design_handlers.api_system_design_inspect_signal_flow,
+            methods=["GET"],
+        ),
         # System Design vertical module endpoints (M6.W13b) — authoring (writes).
         # The POST shares its path with the W13a GET above: Starlette records a
         # path-but-not-method hit as a PARTIAL match and keeps scanning, so the

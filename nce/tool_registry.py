@@ -603,6 +603,15 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # System Design vertical module tools (Wave SD-5) — thin signal-flow inspection.
+    # cacheable=False matching validate_design_graph: active canvas editing
+    # must not serve stale inspector or path-tracing data.
+    "system_design_inspect_signal_flow": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_inspect_signal_flow"),
+        cacheable=False,
+        admin_only=False,
+        mutation=False,
+    ),
     # System Design vertical module tools (M6.W13b) — the authoring surface: the
     # first external WRITE path into the design graph.  These names and flags are
     # Copper's published contract — do not adjust them.  ``mutation=True`` is what
