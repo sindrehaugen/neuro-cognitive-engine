@@ -2659,6 +2659,62 @@ TOOLS = [
         },
     ),
     Tool(
+        name="assets_check_warranty_eol",
+        description=(
+            "Check for assets with expiring warranty, firmware EOL, or exceeded lifespan. "
+            "Watcher feed; read-only, cacheable."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "warranty_window_days": {
+                    "type": "integer",
+                    "description": "Optional warranty expiry window in days (default 30).",
+                },
+                "eol_window_days": {
+                    "type": "integer",
+                    "description": "Optional EOL/lifespan warning window in days (default 90).",
+                },
+                "default_lifespan_days": {
+                    "type": "integer",
+                    "description": "Optional expected lifespan in days (default 1825 / 5 years).",
+                },
+                "asset_id": {
+                    "type": "string",
+                    "description": "Optional asset UUID to filter to a single asset.",
+                },
+                "functional_location_id": {
+                    "type": "string",
+                    "description": "Optional functional location / room filter.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="assets_sync_netbox",
+        description=(
+            "Reconcile assets with NetBox DCIM devices via match cascade (serial, custom field, location, fuzzy name) "
+            "and write maps_to graph edges. Operator/bridge; mutation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "fuzzy_threshold": {
+                    "type": "number",
+                    "description": "Optional minimum SequenceMatcher ratio for fuzzy name match (0.0 - 1.0).",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Optional limit of NetBox devices to reconcile.",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
         name="vendors_get_vendor",
         description="Fetch a single vendor. Watcher; read-only, cacheable.",
         inputSchema={

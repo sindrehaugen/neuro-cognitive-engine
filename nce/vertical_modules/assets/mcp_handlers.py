@@ -70,9 +70,11 @@ from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import mcp_handler
 from nce.vertical_modules.assets.health import do_compute_health
 from nce.vertical_modules.assets.lifecycle import advance
+from nce.vertical_modules.assets.netbox_bridge import do_sync_netbox
 from nce.vertical_modules.assets.seed import do_seed_asset_from_bom
 from nce.vertical_modules.assets.sla import do_attach_sla
 from nce.vertical_modules.assets.telemetry import do_pull_telemetry
+from nce.vertical_modules.assets.warranty import do_check_warranty_eol
 
 if TYPE_CHECKING:
     from nce.orchestrator import NCEEngine
@@ -398,4 +400,28 @@ async def handle_assets_compute_health(engine: NCEEngine, arguments: dict[str, A
     """
     require_namespace_id(arguments)
     result = await do_compute_health(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_assets_check_warranty_eol(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: assets_check_warranty_eol — check assets for expiring warranty and EOL (Watcher, read-only).
+
+    Requires ``namespace_id``. Thin adapter — all logic lives in
+    :func:`do_check_warranty_eol`.
+    """
+    require_namespace_id(arguments)
+    result = await do_check_warranty_eol(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_assets_sync_netbox(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: assets_sync_netbox — reconcile assets with NetBox DCIM devices (Operator/bridge, mutation).
+
+    Requires ``namespace_id``. Thin adapter — all logic lives in
+    :func:`do_sync_netbox`.
+    """
+    require_namespace_id(arguments)
+    result = await do_sync_netbox(engine, dict(arguments))
     return json.dumps(result, default=str)

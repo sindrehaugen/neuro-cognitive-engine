@@ -1218,6 +1218,16 @@ def build_admin_routes() -> list[Route]:
             methods=["GET"],
         ),
         Route(
+            "/api/assets/warranty-eol",
+            endpoint=assets_handlers.api_assets_check_warranty_eol,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/assets/sync-netbox",
+            endpoint=assets_handlers.api_assets_sync_netbox,
+            methods=["POST"],
+        ),
+        Route(
             "/api/assets",
             endpoint=assets_handlers.api_assets_list,
             methods=["GET"],

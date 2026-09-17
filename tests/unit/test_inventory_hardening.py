@@ -53,10 +53,10 @@ _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
 # --- MEASURED on branch mlv15b/close-the-loop --------------------------------
 # python -c "import nce.tool_registry as tr; print(len(tr.TOOL_REGISTRY))"
-_TOTAL_TOOLS = 273  # 272 baseline + 1 System Design procurement view tool (Wave SD-6)
-_MUTATION_TOOLS = 117  # 115 baseline + 2 Support ecosystem tools (Wave SU-3)
-_CACHEABLE_TOOLS = 111  # 110 baseline + 1 System Design procurement view (Wave SD-6)
-_ADMIN_ONLY_TOOLS = 88  # 86 baseline + 2 Support ecosystem tools (Wave SU-3)
+_TOTAL_TOOLS = 275  # 273 baseline + 2 Assets tools (Wave A-3)
+_MUTATION_TOOLS = 118  # 117 baseline + 1 Assets netbox sync (Wave A-3)
+_CACHEABLE_TOOLS = 112  # 111 baseline + 1 Assets warranty/EOL watcher (Wave A-3)
+_ADMIN_ONLY_TOOLS = 89  # 88 baseline + 1 Assets netbox sync (Wave A-3)
 _MIGRATION_TOOLS = 5
 
 
