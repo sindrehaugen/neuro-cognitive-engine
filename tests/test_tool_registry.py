@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 272  # 271 baseline + 1 System Design inspect signal flow tool (Wave SD-5)
+_EXPECTED_TOTAL = 273  # 272 baseline + 1 System Design procurement view tool (Wave SD-6)
 
 
 def test_registry_has_expected_entries():
@@ -442,6 +442,8 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "project_capacity",
         "project_detect_scope_creep",
         "project_status_report",
+        # Wave SD-6 -- System Design procurement view (cacheable read)
+        "system_design_procurement_view",
     }
 )
 
@@ -455,7 +457,7 @@ def test_cacheable_tools_exact_match():
 
 def test_cacheable_tools_count():
     assert (
-        len(CACHEABLE_TOOLS) == 110
+        len(CACHEABLE_TOOLS) == 111
     )  # 106 baseline + 4 Project REST reads promoted to cacheable tools (Wave PJ-4)
 
 

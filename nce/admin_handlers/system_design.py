@@ -7,6 +7,7 @@ Exports:
   ``api_system_design_get_topology`` (W13a)
       GET /api/system-design/topology
   ``api_system_design_inspect_signal_flow`` (Wave SD-5)
+  ``api_system_design_procurement_view`` (Wave SD-6)
       GET /api/system-design/signal-flow
   ``api_system_design_author_topology`` (W13b)
       POST /api/system-design/topology
@@ -81,6 +82,7 @@ from nce.vertical_modules.system_design.mcp_handlers import (
     author_functional_location_from_arguments,
     retire_planned_from_arguments,
 )
+from nce.vertical_modules.system_design.procurement_view import do_get_procurement_view
 from nce.vertical_modules.system_design.read import do_get_topology
 from nce.vertical_modules.system_design.retire import RetireDeniedError
 from nce.vertical_modules.system_design.signal_flow import do_inspect_signal_flow
@@ -260,6 +262,77 @@ async def api_system_design_inspect_signal_flow(request) -> JSONResponse:
         )
 
     return JSONResponse({"status": "ok", "signal_flow": result})
+
+
+async def api_system_design_procurement_view(request) -> JSONResponse:
+    """GET /api/system-design/procurement-view
+
+    Query parameters:
+        namespace_id    (str, required): Active namespace UUID.
+        design_id       (str, required): Design identifier.
+        require_frozen  (bool, optional): "true"|"1" to enforce frozen design.
+        design_version  (int, optional): Frozen design version number.
+        required_by_day (int, optional): Delivery deadline in days.
+
+    Response (JSON):
+        {"status": "ok", "procurement_view": { ... }}
+
+    Read-only — no cache-generation bump (``mutation=False``); matching MCP
+    tool is ``system_design_procurement_view``.
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    design_id = str(request.query_params.get("design_id") or "").strip()
+    if not design_id:
+        return JSONResponse({"error": "Missing required query param: design_id"}, status_code=422)
+
+    params: dict[str, Any] = {
+        "namespace_id": namespace_id,
+        "design_id": design_id,
+    }
+    rf_raw = request.query_params.get("require_frozen")
+    if rf_raw:
+        params["require_frozen"] = rf_raw.lower() in ("true", "1", "yes")
+
+    dv_raw = request.query_params.get("design_version")
+    if dv_raw:
+        try:
+            params["design_version"] = int(dv_raw)
+        except ValueError:
+            return JSONResponse(
+                {"error": "Query param 'design_version' must be an integer"}, status_code=422
+            )
+
+    rbd_raw = request.query_params.get("required_by_day")
+    if rbd_raw:
+        try:
+            params["required_by_day"] = int(rbd_raw)
+        except ValueError:
+            return JSONResponse(
+                {"error": "Query param 'required_by_day' must be an integer"}, status_code=422
+            )
+
+    try:
+        result = await do_get_procurement_view(admin_state.engine, params)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Failed to get system design procurement view",
+            exc,
+            status_code=500,
+            log_event="api_system_design_procurement_view: unexpected error",
+        )
+
+    return JSONResponse({"status": "ok", "procurement_view": result})
 
 
 # ---------------------------------------------------------------------------

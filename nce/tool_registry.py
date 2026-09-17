@@ -612,6 +612,13 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # System Design vertical module tools (Wave SD-6) — frozen design grouped by ranked supplier for PR-1.
+    "system_design_procurement_view": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_procurement_view"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # System Design vertical module tools (M6.W13b) — the authoring surface: the
     # first external WRITE path into the design graph.  These names and flags are
     # Copper's published contract — do not adjust them.  ``mutation=True`` is what

@@ -28,6 +28,9 @@ from nce.vertical_modules.system_design.graph import (
 from nce.vertical_modules.system_design.lucid import (
     do_publish_design_docs,
 )
+from nce.vertical_modules.system_design.procurement_view import (
+    do_get_procurement_view,
+)
 from nce.vertical_modules.system_design.propose import (
     do_propose_design,
 )
@@ -56,7 +59,9 @@ __all__ = [
     "do_design_to_quote",
     "do_enrich_design_lines",
     "do_generate_sow",
+    "do_get_procurement_view",
     "do_get_topology",
+    "do_inspect_signal_flow",
     "do_propose_design",
     "do_publish_design_docs",
     "do_retire_planned",
