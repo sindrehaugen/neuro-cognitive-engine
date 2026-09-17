@@ -126,7 +126,7 @@ These waves have partial signal (e.g. stamped in tree without PR or test, or pla
 | **S-5** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/tool_registry.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_sales_ai_surface.py` | None | Wave S-5 |
 | **S-7** | Unspecified | `MISSING_MARKER_TEST` | #155 | `nce/tool_registry.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_sales_divergence_surface.py` | None |  |
 | **SD-2** | Phase 2 | `STAMPED_UNLANDED` | - | `nce/vertical_modules/system_design/propose.py` | None | Wave SD-2 |
-| **SD-4** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave SD-4 |
+| **SD-4** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/mcp_stdio_tools.py`<br>`tests/unit/test_system_design_one_validator.py` | None | Wave SD-4 |
 | **SU-3** | Unspecified | `STAMPED_UNLANDED` | - | `nce/admin_app.py`<br>`nce/mcp_stdio_tools.py`<br>`nce/tool_registry.py`<br>`tests/test_project_advance.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_inventory_hardening.py`<br>`tests/unit/test_support_ecosystem_surface.py` | None |  |
 
 ---

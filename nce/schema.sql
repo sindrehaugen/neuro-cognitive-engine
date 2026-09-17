@@ -5032,3 +5032,40 @@ BEGIN
     END IF;
 END $$;
 
+-- ============================================================================
+-- System Design: side-table -> kg_nodes FK and cascade (Wave SD-1 / D12)
+-- Migration 079_system_design_sidetable_fk_cascade.sql
+-- ============================================================================
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_sddc_kg_nodes'
+    ) THEN
+        ALTER TABLE system_design_device_capabilities
+            ADD CONSTRAINT fk_sddc_kg_nodes
+            FOREIGN KEY (node_label, namespace_id)
+            REFERENCES kg_nodes (label, namespace_id)
+            ON DELETE CASCADE;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_sdg_kg_nodes'
+    ) THEN
+        ALTER TABLE system_design_geometry
+            ADD CONSTRAINT fk_sdg_kg_nodes
+            FOREIGN KEY (node_label, namespace_id)
+            REFERENCES kg_nodes (label, namespace_id)
+            ON DELETE CASCADE;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_sdns_kg_nodes'
+    ) THEN
+        ALTER TABLE system_design_node_state
+            ADD CONSTRAINT fk_sdns_kg_nodes
+            FOREIGN KEY (node_label, namespace_id)
+            REFERENCES kg_nodes (label, namespace_id)
+            ON DELETE CASCADE;
+    END IF;
+END $$;
+

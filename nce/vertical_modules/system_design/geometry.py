@@ -738,7 +738,19 @@ async def bump_design_version(
     """
     design_label = design_version_label(design_id)
 
-    # 1. Seed the version row at INITIAL_VERSION if this design has never been
+    # 1. Ensure the root DESIGN node exists in kg_nodes so the foreign key
+    #    fk_sdg_kg_nodes on system_design_geometry is satisfied (Wave SD-1 / D12).
+    await conn.execute(
+        """
+        INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)
+        VALUES ($1, 'DESIGN', $2::uuid, 'sync')
+        ON CONFLICT (label, namespace_id) DO NOTHING
+        """,
+        design_label,
+        str(ns_uuid),
+    )
+
+    # 2. Seed the version row at INITIAL_VERSION if this design has never been
     #    written.  DO NOTHING: never disturbs an existing row, never resets a
     #    version.  The namespace_id is in the conflict target, so a colliding
     #    design label in another tenant is a different row.
