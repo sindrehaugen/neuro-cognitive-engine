@@ -1090,6 +1090,16 @@ class TestCompositeStatusCheck:
         ns_id: uuid.UUID = await make_namespace()
         async with scoped_pg_session(pg_pool, ns_id) as conn:
             for good in ("0", "0.5", "1", "999999.999"):
+                label = f"DEVICE:SALOK:{good}"
+                await conn.execute(
+                    """
+                    INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)
+                    VALUES ($1, 'DEVICE', $2::uuid, 'sync')
+                    ON CONFLICT (label, namespace_id) DO NOTHING
+                    """,
+                    label,
+                    str(ns_id),
+                )
                 await conn.execute(
                     """
                     INSERT INTO system_design_node_state
@@ -1097,7 +1107,7 @@ class TestCompositeStatusCheck:
                     VALUES ($1::uuid, $2, 'DEVICE', $3::numeric)
                     """,
                     str(ns_id),
-                    f"DEVICE:SALOK:{good}",
+                    label,
                     good,
                 )
         assert len(await _state_rows(pg_pool, ns_id)) == 4
