@@ -1,3 +1,5 @@
+> **Status:** research companion · **Verified-against:** 989bdd4 (main) · **Last-audited:** 2026-09-17
+
 # 19a — GoTo Resolve / LogMeIn Resolve API reference (as investigated)
 
 **Status:** research → adapter map · **Owner:** NCE core (Sindre) · **Companion of:** `19-remote-access-rmm-engine.md`

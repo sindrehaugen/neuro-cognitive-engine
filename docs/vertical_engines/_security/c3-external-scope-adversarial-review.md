@@ -2,7 +2,7 @@
 > **Target:** Neuro-Cognitive Engine (NCE) External Scope Isolation Primitive & Boundary Routing  
 > **Author:** Antigravity / Orchestrator Session (`MLv1.5-A-Orch`)  
 > **Charter Reference:** `MLV15A_ORCH_CHARTER_2026-09-06.md` §13 / Phase 4, T-6  
-> **Status:** COMPLETE · **Date:** 2026-09-16  
+> **Status:** COMPLETE · **Verified-against:** 989bdd4 (main) · **Last-audited:** 2026-09-17  
 
 ---
 

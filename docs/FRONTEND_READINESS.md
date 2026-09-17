@@ -1,11 +1,11 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 989bdd4 (main) · **Last-audited:** 2026-09-17
 
 # NCE-FE — Front-End Readiness & Extension Seams
 > **Status:** FE-1/FE-2/FE-6 SHIPPED · FE-5 PLANNED · **FE-3/FE-4 WITHDRAWN** (their only consumer,
 > Copper, withdrew both asks 2026-09-02; Sindre confirmed RL-B155/RL-B156 `[DROPPED]` 2026-09-04 —
 > see `C:\Claude\DL_INTAKE_2026-09-04.md` item 1)
 > **Target:** Host application / consuming front-end integration  
-> **Baseline:** `main` @ `b75c873` · Verified-against: `b75c873`
+> **Baseline:** `main` @ `989bdd4` · **Verified-against:** `989bdd4`
 
 ---
 
@@ -161,12 +161,12 @@ When a host vendors or consumes NCE as a backend engine, NCE is treated as an im
 
 ## Vertical Modules as First-Class NCE Capabilities
 
-NCE ships **12 vertical engines** under `nce/vertical_modules/*` that expose capabilities through the unified NCE API surface (135 MCP tools in `TOOL_REGISTRY` + 134 admin routes):
+NCE ships vertical engines under `nce/vertical_modules/*` that expose capabilities through the unified NCE API surface. See [`docs/vertical_engines/ENGINE_STATUS.md`](vertical_engines/ENGINE_STATUS.md), [`docs/_generated/surface.md`](_generated/surface.md), and generated [`docs/API.md`](API.md) for current engine, tool, and route inventories:
 * **NetBox & Dynamics 365** (core network & CRM integration)
 * **Sales & Agreements** (deal rooms, contract OCR, signed-baseline freeze)
 * **Procurement & Product** (BOM line matching, ETIM lookup, supplier ranking)
 * **Economy & Inventory** (balanced postings, 130-pt match, warehouse stock)
-* **Vendors, Diagnostics, System Design, HR, Field Tech**
+* **Vendors, Diagnostics, System Design, HR, Field Tech, Support, Assets, Resources, Marketing, Customer Portal, Business Insights**
 
 **Two Extension Paths:**
 1. **NCE-Owned Vertical Engines:** Built directly into `nce/vertical_modules/` and registered in `TOOL_REGISTRY`. Automatically available to all consuming front ends.
