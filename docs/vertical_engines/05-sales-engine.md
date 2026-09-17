@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 6643ce6 (main) · **Last-audited:** 2026-09-17
 
 # 05 — Sales Engine  (nce/vertical_modules/sales)
 
-<!-- BLOCKED ON OQ-2 / OQ-4: SPEC PROPOSAL VOICE. This document is an architectural design specification. Sales's tool count has grown since this banner was last accurate (7304330: 2 tools; b75c873: 5 -- sales_get_quote_lines, sales_add_quote_line, sales_request_signature added) -- see docs/_generated/surface.md for the current count, not a number here. Refer to docs/engines/sales-user.md and docs/engines/sales-admin.md for shipped reality -- note the user guide now carries its own staleness warning too (found 2026-09-06, DL.md K-1). Verified-against: b75c873 -->
+<!-- SHIPPED SPECIFICATION. At baseline 6643ce6, Sales ships 14 MCP tools and 24 REST routes (see docs/_generated/surface.md and docs/_generated/engine_figures.md). Refer to docs/engines/sales-user.md and docs/engines/sales-admin.md for shipped reality. Verified-against: 6643ce6 -->
 
 
 **Status:** spec (Tier 2 — Revenue axis) · **Owner:** NCE core (Sindre)
@@ -36,7 +36,7 @@ Node `entity_type` prefixes: `SALES_*`, plus shared spine nodes `CUSTOMER`, `QUO
 - **memories/ledger:** meeting briefs, deal notes, win/loss reasons → `memories` (embedding + `content_fts`) for "deals like this" recall. Every stage transition + every signature → `v3_cognitive_ledger` (auditable deal history; commission-affecting events are append-only). Tag every derived row with `sales_source_id` for hard-retirement on delete (D365 retirement pattern) — and so a row's *origin adapter* is always known.
 
 ## Core functions
-<!-- BLOCKED ON OQ-2 / OQ-4: Read-model functions are mounted directly on REST routes for Host Portal pages; AI lead scoring and draft quote remain prospective/unwired. -->
+<!-- Read-model functions and AI tools (lead scoring, draft quote) are wired to MCP tools and REST endpoints (see docs/_generated/surface.md). -->
 Pure-ish `do_<action>(engine, params) -> dict`; every read path goes through the **source-mode resolver** (`d365|both|nce`), never hard-wires D365.
 - `do_list_customers(engine, params)` / `do_customer_profile(engine, params)` — Kunder / KundeDetalj. Resolver-dispatched (`source_mode.sales.customers`).
 - `do_sales_overview(engine, params)` — Salgsoversikt / Oversikt aggregate (pipeline value by stage).
@@ -52,7 +52,7 @@ Pure-ish `do_<action>(engine, params) -> dict`; every read path goes through the
 - `do_draft_quote(engine, params)` — Advisor: AI quote-draft assist (asks System Design for a BOM; never bulk-runs).
 
 ## MCP tools
-<!-- BLOCKED ON OQ-2 / OQ-4: Historical proposal listed 14 tools. STALE, corrected 2026-09-06 -- 5 MCP tools are registered at b75c873: sales_ping, sales_get_signed_baseline, sales_get_quote_lines, sales_add_quote_line, sales_request_signature. See docs/_generated/surface.md for the current count. -->
+<!-- Shipped MCP tools. Sales registers 14 MCP tools in TOOL_REGISTRY (see docs/_generated/surface.md and docs/_generated/engine_figures.md). AI-role tag per roadmap §2 taxonomy. -->
 Registered in `nce/tool_registry.py` via `_h(...)` late-binding. AI-role tag per roadmap §2 taxonomy.
 
 | Tool | cacheable | admin_only | mutation | AI-role |
@@ -73,7 +73,7 @@ Registered in `nce/tool_registry.py` via `_h(...)` late-binding. AI-role tag per
 | `sales_sync_now` | ✘ | ✔ | ✔ | — (operator) |
 
 ## REST routes
-<!-- BLOCKED ON OQ-2 / OQ-4: Mounted REST routes at baseline 7304330 comprised 15 endpoints (14 under /api/sales, /api/admin/sales, plus 1 public quote endpoint at /public-api/sales/quotes/{id}) -- route count unchanged as of b75c873, only the MCP tool surface grew (see line 5). -->
+<!-- Shipped REST routes. 24 REST endpoints mounted under /api/sales, /api/admin/sales, and /public-api/sales in nce/admin_handlers/sales.py (see docs/_generated/surface.md). -->
 No-model path for the BFF (the 12 Host Portal pages + the 2 customer-facing shares), cron, scripts. Mounted via `build_app(extra_routes=...)`; HMAC/mTLS-authed in `nce/admin_handlers/sales.py`. Each resolves its source mode internally.
 - `api_sales_customers` / `api_sales_customer_profile` (GET) — Kunder, KundeDetalj.
 - `api_sales_overview` (GET) — Oversikt / Salgsoversikt.
@@ -136,7 +136,7 @@ The vision (read-model-of-record → AI last) is right; the under-weighted parts
 **Scope discipline (Sales references, never owns):** GL / revenue recognition → **Economy** (Finago system-of-record); BOM authorship → **System Design** (Sales receives a BOM, freezes it, hands it forward); product enrichment → **Product**, on-demand only; e-signing → the **shared signing service** (§9.6), never a private Scrive/Oneflow integration.
 
 ## Build phases
-<!-- BLOCKED ON OQ-2 / OQ-4: Historical build phases B1-B5. Refer to docs/engines/sales-admin.md for shipped milestone status. -->
+<!-- Historical build phases B1-B5. Refer to docs/engines/sales-admin.md for shipped milestone status. -->
 - **B1 — Read-model parity + divergence audit (the cutover precondition):** port the Portal D365 sidecar aggregations → native `do_*` read functions + `sales_read_model` table (RLS) + the D365 source adapter (`sales/source_adapters/d365`, reusing `DataverseTokenManager`) + incremental sync/watermark retention. Wire the **source-mode resolver** and `api_sales_source_mode`. **Build `sales_divergence_log` now** (NCE-primary parity check on every `both`-mode read). Serve all 12 Host Portal pages in `both`. REST routes for every read.
 - **B2 — Native pipeline + write routing + freeze:** upsert LEAD/OPPORTUNITY/DEAL/QUOTE/CUSTOMER nodes + edges; **write routing** (write-through to D365 while `d365`/`both`, native once flipped) + **source-prefixed identity/mapping scheme**; native deal creation/edit. **`sales_signed_baselines` (append-only, margin-trinity) — the freeze mechanism, pulled forward here** (no dependency on signing). Customer-facing `api_sales_quote_public` on its **own allowlisted, rate-limited token path**.
 - **B3 — Quote→signature→project:** DealRoom (`do_open_dealroom`, toggle options, **shared DG-pricing service** — no inline `*0.7`, no re-impl); Scrive/Criipto signing + webhook → triggers the (already-built) freeze; **wire the reference implementation's orphan** `convert_signed_quote_to_project`. A2A Sales→Project handoff.

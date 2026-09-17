@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 6643ce6 (main) · **Last-audited:** 2026-09-17
 
 # 07 — Project Engine  (nce/vertical_modules/project)
 
-<!-- BLOCKED ON OQ-2 / OQ-4: SPEC PROPOSAL VOICE. This document is an architectural design specification. At baseline 7304330, Project ships 4 MCP tools and 7 REST routes (see docs/_generated/surface.md). Refer to docs/engines/project-user.md and docs/engines/project-admin.md for shipped reality. Verified-against: 7304330 -->
+<!-- SHIPPED SPECIFICATION. At baseline 6643ce6, Project ships 11 MCP tools and 10 REST routes (see docs/_generated/surface.md and docs/_generated/engine_figures.md). Refer to docs/engines/project-user.md and docs/engines/project-admin.md for shipped reality. Verified-against: 6643ce6 -->
 
 **Status:** spec · **Owner:** NCE core (Sindre) · **Tier 1 · Delivery axis · engine #7**
 **Companions:** `VERTICAL_MODULE_PATTERN.md` (skeleton), `00-ENGINES-ROADMAP.md` (§4 graph, §5 deep-AI, §6 sequencing, §7 format)

@@ -1,6 +1,6 @@
 # 02a — Product Engine: PIM / Icecat Research & Idea Backlog
 
-<!-- BLOCKED ON OQ-2 / OQ-4: RESEARCH COMPANION. Architectural research backlog. Verified-against: 7304330 -->
+<!-- RESEARCH COMPANION. Architectural research backlog for Product Engine. Verified-against: 6643ce6 -->
 
 **Status:** research companion to `02-product-engine.md` · **Date:** 2026-06-17
 **Question asked:** *"deeply analyse solutions like Icecat and get ideas for what we can do here."*

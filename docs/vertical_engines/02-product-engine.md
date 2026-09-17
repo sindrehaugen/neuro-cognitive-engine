@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 6643ce6 (main) · **Last-audited:** 2026-09-17
 
 # 02 — Product Engine  (nce/vertical_modules/product)
 
-<!-- BLOCKED ON OQ-2 / OQ-4: SPEC PROPOSAL VOICE. This document is an architectural design specification. At baseline 7304330, Product ships 6 MCP tools and 3 REST routes (see docs/_generated/surface.md). Refer to docs/engines/product-user.md and docs/engines/product-admin.md for shipped reality. Verified-against: 7304330 -->
+<!-- SHIPPED SPECIFICATION. At baseline 6643ce6, Product ships 8 MCP tools and 4 REST routes (see docs/_generated/surface.md and docs/_generated/engine_figures.md). Refer to docs/engines/product-user.md and docs/engines/product-admin.md for shipped reality. Verified-against: 6643ce6 -->
 
 **Status:** spec · **Owner:** NCE core (Sindre)
 **Tier:** 1 (spine) · **Axis:** Revenue/Delivery-bridge · **Upstream of:** Procurement(1), consumed by System Design(6) & Sales(5)

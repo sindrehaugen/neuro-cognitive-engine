@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 6643ce6 (main) · **Last-audited:** 2026-09-17
 
 # NCE Vertical Engines — Master Roadmap
 
-<!-- BLOCKED ON OQ-2 / OQ-4: SPEC PROPOSAL VOICE. This document is an overarching architectural roadmap and proposal blueprint. Refer to docs/vertical_engines/ENGINE_STATUS.md and docs/engines/ for shipped reality at baseline 7304330. Verified-against: 7304330 -->
+<!-- ARCHITECTURAL BLUEPRINT. This document is the master architectural roadmap for NCE vertical engines. All 17 numbered engines and shared infrastructure are live. Refer to docs/vertical_engines/ENGINE_STATUS.md, docs/_generated/engine_figures.md, and docs/engines/ for shipped reality. Verified-against: 6643ce6 -->
 
 **Status:** living plan · **Owner:** NCE core (Sindre)
 **Companions:** `docs/VERTICAL_MODULE_PATTERN.md` (the authoring skeleton), `docs/FRONTEND_READINESS.md` (verticals are first-class in the NCE API), `docs/DATA_SOURCE_MODES.md` (per-function `d365|both|nce` switch)

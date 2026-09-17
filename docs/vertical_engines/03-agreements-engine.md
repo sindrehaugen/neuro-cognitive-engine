@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 6643ce6 (main) · **Last-audited:** 2026-09-17
 
 # 03 — Agreements Engine  (nce/vertical_modules/agreements)
 
-<!-- BLOCKED ON OQ-2 / OQ-4: SPEC PROPOSAL VOICE. This document is an architectural design specification. At baseline 7304330, Agreements ships 1 registered MCP tool (agreements_lookup_terms) and 5 REST routes (see docs/_generated/surface.md). Unwired extraction/compliance cores and automated approval are blocked/deferred. Refer to docs/engines/agreements-user.md and docs/engines/agreements-admin.md for shipped reality. Verified-against: 7304330 -->
+<!-- SHIPPED SPECIFICATION. At baseline 6643ce6, Agreements ships 10 MCP tools and 15 REST routes (see docs/_generated/surface.md and docs/_generated/engine_figures.md). Refer to docs/engines/agreements-user.md and docs/engines/agreements-admin.md for shipped reality. Verified-against: 6643ce6 -->
 
 
 **Status:** spec (Tier 2 — Platform axis) · **Owner:** NCE core (Sindre)
@@ -34,7 +34,7 @@ Node `entity_type` prefixes: `AGREEMENT_*`, plus shared spine nodes `AGREEMENT`,
 - **memories/ledger:** full agreement text → `memories` (embedding + `content_fts`) so the engine answers term/SLA questions semantically. Every extraction, revision, compliance audit, and signature → `v3_cognitive_ledger` (this is where the lifecycle event-stream lives — generalising the Portal `agreement_sidecar_system` episodic-memory pattern onto the ledger). Raw OCR JSON → MongoDB before indexing.
 
 ## Core functions
-<!-- BLOCKED ON OQ-2 / OQ-4: do_extract_agreement, do_coverage_matrix, do_reconcile_kickback, do_create_agreement, do_suggest_revision, do_run_compliance_audit, do_request_signature, do_record_signature, do_review_extraction are internal domain functions; only term lookup is exposed via MCP. -->
+<!-- Domain cores are wired to MCP tools and REST endpoints (see docs/_generated/surface.md). -->
 Pure-ish `do_<action>(engine, params) -> dict`; extraction and reconciliation cores isolate the AI call from the math.
 - `do_extract_agreement(engine, params) -> dict` — `{source_doc_ref}` → run Claude Vision OCR → structured `AGREEMENT` fields + per-field `extractionConfidence` + a `reviewStatus` from the confidence gate. Writes the `AGREEMENT`/`AGREEMENT_TERM` nodes, the source text to `memories`, the event to the ledger. The headline pattern.
 - `do_coverage_matrix(engine, params) -> dict` — namespace → per-counterparty matrix: has-agreement? tiers? volume? payment? discount? valid? Cross-joins Economy GL spend to flag **spend WITHOUT agreement** (money leaking), expiring/expired agreements, and low-confidence extractions in the review queue. Pure over graph + the GL slice it asks Economy for.
@@ -46,7 +46,7 @@ Pure-ish `do_<action>(engine, params) -> dict`; extraction and reconciliation co
 - `do_review_extraction(engine, params) -> dict` — human accept/correct a `needs_review_yellow`/`manual_red` extraction; promotes to `auto_green` and re-upserts the corrected terms.
 
 ## MCP tools
-<!-- BLOCKED ON OQ-2 / OQ-4: Historical proposal listed 10 tools. Baseline 7304330 registers exactly 1 MCP tool: agreements_lookup_terms. The other 9 tools remain unbuilt/unwired in TOOL_REGISTRY. -->
+<!-- Shipped MCP tools. Agreements registers all 10 MCP tools in TOOL_REGISTRY (see docs/_generated/surface.md and docs/_generated/engine_figures.md). AI-role tag per roadmap §2 taxonomy. -->
 Registered in `nce/tool_registry.py` via `_h(...)` late-binding. AI-role tag per roadmap §2 taxonomy.
 
 | Tool | cacheable | admin_only | mutation | AI-role |
@@ -63,7 +63,7 @@ Registered in `nce/tool_registry.py` via `_h(...)` late-binding. AI-role tag per
 | `agreements_review_extraction` | ✘ | ✔ | ✔ | — (operator) |
 
 ## REST routes
-<!-- BLOCKED ON OQ-2 / OQ-4: Mounted REST routes at baseline 7304330 are /api/agreements, /api/agreements/coverage, /api/agreements/{id}, /api/agreements/extract, /api/agreements/review. Routes for reconcile, create, request_signature, record_signature are not mounted. -->
+<!-- Shipped REST routes. 15 REST endpoints mounted under /api/agreements in nce/admin_handlers/agreements.py (see docs/_generated/surface.md). -->
 No-model path for the BFF (`Avtaler.jsx`, `AvtaleDetalj.jsx`, `Dokumenter.jsx`), cron, scripts. Mounted via `build_app(extra_routes=...)`; HMAC/mTLS-authed in `nce/admin_handlers/agreements.py`:
 - `api_agreements_list` (GET) — the library (one row per agreement, two-layer signing×lifecycle status + the four KPI cards Avtaler.jsx renders).
 - `api_agreements_detail` (GET) — agreement + extracted terms + revision/comment/signature timeline (AvtaleDetalj).
@@ -113,7 +113,7 @@ No-model path for the BFF (`Avtaler.jsx`, `AvtaleDetalj.jsx`, `Dokumenter.jsx`),
 > **Scope exemplar (hold it):** the **four-way kickback boundary** — Agreements owns *terms + coverage*, Economy owns *GL spend* (its reader), Procurement owns *scoring*, Vendors owns *counterparty identity*; all four touch kickback, only Agreements holds the signed terms — is the cleanest boundary articulation in the suite.
 
 ## Build phases
-<!-- BLOCKED ON OQ-2 / OQ-4: Historical build phases B1-B5. Refer to docs/engines/agreements-admin.md for shipped milestone status. -->
+<!-- Historical build phases B1-B5. Refer to docs/engines/agreements-admin.md for shipped milestone status. -->
 - **B1 — Extraction core + library:** `do_extract_agreement` (Claude Vision OCR → structured + confidence gate), `agreement_review_queue` + `agreement_extraction_runs` tables (RLS), `do_review_extraction`. `AGREEMENT`/`AGREEMENT_TERM` graph upserts + `agreements_source_id` + text→`memories`. `api_agreements_list`/`detail`/`extract`/`review`.
 - **B2 — Coverage/gap matrix:** `do_coverage_matrix` cross-joining Economy GL (A2A) — leakage, expiry, review-queue flags. `agreements_lookup_terms` + the coverage REST/dashboard. Watcher alerts (expiry, leakage).
 - **B3 — Reconciliation:** `do_reconcile_kickback` against live GL (earned-to-date, X-to-next-tier, drift). Ledger-backed term-change history. Feeds Procurement scoring + Morning-brief.
