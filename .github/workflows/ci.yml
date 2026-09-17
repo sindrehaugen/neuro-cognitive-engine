@@ -413,6 +413,28 @@ jobs:
           tests/test_event_log_verification.py
           -m integration -q --tb=short
 
+      # RL-H21 — `test_health_probes.py` was in KNOWN_UNWIRED because its verdict depended
+      # on run count. `test_check_health_integration_healthy` called check_health()
+      # UNSCOPED, so it asserted a property of the WHOLE DATABASE: that no namespace
+      # anywhere has a broken Merkle chain. Any other test leaving a corrupt chain -- in a
+      # namespace it never touched -- failed it. Measured: passes 3/3 alone, fails after 68
+      # other files have run, reporting event_seq=42 from a namespace it never created.
+      #
+      # Its sibling `test_check_health_integration_corrupted_chain` had always scoped the
+      # namespace scan. The two were simply asymmetric; the healthy one now does the same.
+      #
+      # Safe to run here despite this job sharing one database, which is the whole point.
+      # Mutation-proven with a deliberately corrupted chain in an unrelated namespace:
+      #   fixed test   + pollution -> passes
+      #   unfixed test + pollution -> fails ("corrupted" != "valid")
+      #   tamper sibling           -> still detects corruption
+      - name: Integration — health probes (RL-H21)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/test_health_probes.py -m integration -q --tb=short
+
       # Q-12 (ML-CI1) — the bulk wiring. 68 test files that ran in ZERO workflows now run here.
       #
       # These were not new tests and not broken ones: they were simply never invoked. Census

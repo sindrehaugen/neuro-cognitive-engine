@@ -93,6 +93,31 @@ async def test_check_health_integration_healthy(pg_pool, make_namespace, monkeyp
     engine = NCEEngine()
     engine.pg_pool = pg_pool
 
+    # RL-H21: scope the chain scan to this test's own namespace.
+    #
+    # Without this the test asserted a property of the WHOLE DATABASE: `check_health`
+    # scans every namespace, so `bounded_chain_sample == "valid"` was a claim that no
+    # namespace anywhere has a broken chain. Any other test file that leaves a corrupt
+    # chain — in a namespace this file never touched — failed this test.
+    #
+    # Measured 2026-09-17: passes 3/3 alone on a fresh database, fails after 68 other
+    # test files have run, reporting `event_seq=42` from a namespace this file never
+    # created. That is the whole of RL-H21 ("test verdict depends on run count").
+    #
+    # Its sibling `test_check_health_integration_corrupted_chain` has always done this
+    # (see the identical mock below it) — the two were simply asymmetric. This is not a
+    # weakening: the tamper test still proves a corrupt chain IS detected, and this one
+    # now proves a clean chain reads valid, each over data it owns.
+    ns_id = await make_namespace()
+    original_fetch = asyncpg.Connection.fetch
+
+    async def mock_fetch(self, query, *args, **kwargs):
+        if "SELECT id FROM namespaces" in query:
+            return [{"id": ns_id}]
+        return await original_fetch(self, query, *args, **kwargs)
+
+    monkeypatch.setattr(asyncpg.Connection, "fetch", mock_fetch)
+
     # Call check_health
     health = await engine.check_health()
     assert health["security"]["signing_key_decryption"] == "valid"
