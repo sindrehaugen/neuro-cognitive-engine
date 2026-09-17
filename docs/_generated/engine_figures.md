@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `3c019bd` (public `main`) · **Last-audited:** generated
+> **Status:** shipped · **Verified-against:** `110d4d0` (public `main`) · **Last-audited:** generated
 
 # NCE Engine Figures — Inventory & Counters
 
@@ -15,7 +15,7 @@
 | Counter | Value | Source of Truth |
 |---|---|---|
 | `TOOL_REGISTRY` entries | **273** MCP tools (69 shared + 204 across 20 engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = 273` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |
-| SQL migrations | 76 files (+1 optional), `001` → `080` — gaps at `002`, `009`, `010`, `059` | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |
+| SQL migrations | 77 files (+1 optional), `001` → `081` — gaps at `002`, `009`, `010`, `059` | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |
 | Golden Thread seam burndown | **0 of 28** lifecycle steps broken (0 distinct seams) | Generated in [`docs/_generated/golden_thread_seams.md`](golden_thread_seams.md) from [`tests/integration/test_golden_thread.py`](../../tests/integration/test_golden_thread.py) |
 
 ## Tool Registry Breakdown
@@ -49,10 +49,10 @@
 
 ## SQL Migration Census
 
-- **Base Migrations:** 76 files (`001` → `080`)
+- **Base Migrations:** 77 files (`001` → `081`)
 - **Optional Migrations:** 1 files (`010_citus_sharding.sql`)
 - **Unallocated / Skipped Prefixes in Base:** `002`, `009`, `010`, `059`
-- **Total SQL Migration Files:** 77
+- **Total SQL Migration Files:** 78
 
 ## Golden Thread Seam Status
 
