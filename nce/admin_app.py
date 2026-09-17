@@ -1168,6 +1168,16 @@ def build_admin_routes() -> list[Route]:
             methods=["POST"],
         ),
         Route(
+            "/api/inventory/reserve-kit",
+            endpoint=inventory_handlers.api_inventory_reserve_kit,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/inventory/release-kit",
+            endpoint=inventory_handlers.api_inventory_release_kit,
+            methods=["POST"],
+        ),
+        Route(
             "/api/inventory/record-rma",
             endpoint=inventory_handlers.api_inventory_record_rma,
             methods=["POST"],

@@ -1240,6 +1240,18 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=True,
         mutation=True,
     ),
+    "inventory_reserve_kit": ToolSpec(
+        _h(inventory_mcp_handlers, "handle_inventory_reserve_kit"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "inventory_release_kit": ToolSpec(
+        _h(inventory_mcp_handlers, "handle_inventory_release_kit"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
     "inventory_record_rma": ToolSpec(
         _h(inventory_mcp_handlers, "handle_inventory_record_rma"),
         cacheable=False,

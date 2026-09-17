@@ -53,15 +53,16 @@ _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
 # --- MEASURED on branch mlv15b/close-the-loop --------------------------------
 # python -c "import nce.tool_registry as tr; print(len(tr.TOOL_REGISTRY))"
-_TOTAL_TOOLS = 277  # 276 baseline + 1 Assets failure pattern recorder (Wave A-5)
-_MUTATION_TOOLS = 119  # 118 baseline + 1 Assets failure pattern recorder (Wave A-5)
+_TOTAL_TOOLS = 279  # 277 baseline + 2 Inventory kitting & package reservation (Wave IN-2)
+_MUTATION_TOOLS = 121  # 119 baseline + 2 Inventory kitting & package reservation (Wave IN-2)
 _CACHEABLE_TOOLS = 113  # 112 baseline + 1 Assets QR generator (Wave A-4)
-_ADMIN_ONLY_TOOLS = 90  # 89 baseline + 1 Assets failure pattern recorder (Wave A-5)
+_ADMIN_ONLY_TOOLS = 92  # 90 baseline + 2 Inventory kitting & package reservation (Wave IN-2)
 _MIGRATION_TOOLS = 5
 
 
-# The Inventory vertical's tools, read from ``TOOL_REGISTRY`` itself.  14, not
-# the 12 the plan expected and not the 11 B138a added: three predate B138a.
+# The Inventory vertical's tools, read from ``TOOL_REGISTRY`` itself.  16, not
+# the 12 the plan expected and not the 11 B138a added: three predate B138a,
+# plus two from Wave IN-2 (kitting & package reservation).
 _INVENTORY_TOOLS = frozenset(
     {
         "inventory_dispose_rma_weee",
@@ -72,7 +73,9 @@ _INVENTORY_TOOLS = frozenset(
         "inventory_record_goods_receipt",
         "inventory_record_goods_receipt_and_match",
         "inventory_record_rma",
+        "inventory_release_kit",
         "inventory_release_stock",
+        "inventory_reserve_kit",
         "inventory_reserve_stock",
         "inventory_restock_from_rma",
         "inventory_stock_levels",
@@ -88,7 +91,9 @@ _INVENTORY_MUTATION = frozenset(
         "inventory_record_goods_receipt",
         "inventory_record_goods_receipt_and_match",
         "inventory_record_rma",
+        "inventory_release_kit",
         "inventory_release_stock",
+        "inventory_reserve_kit",
         "inventory_reserve_stock",
         "inventory_restock_from_rma",
         "inventory_transfer_stock",
@@ -125,8 +130,8 @@ def test_inventory_tool_names_are_exactly_the_measured_set() -> None:
     assert found == _INVENTORY_TOOLS, found ^ _INVENTORY_TOOLS
 
 
-def test_inventory_tool_count_is_fourteen() -> None:
-    assert len(_registered_inventory_tools()) == 14
+def test_inventory_tool_count_is_sixteen() -> None:
+    assert len(_registered_inventory_tools()) == 16
 
 
 def test_derived_counters_match_the_registry_they_summarise() -> None:

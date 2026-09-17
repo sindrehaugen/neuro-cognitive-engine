@@ -80,6 +80,7 @@ from nce.vertical_modules.inventory._guard import (
 )
 from nce.vertical_modules.inventory.forecast import do_forecast_demand
 from nce.vertical_modules.inventory.goods_receipt import do_record_goods_receipt
+from nce.vertical_modules.inventory.kitting import do_release_kit, do_reserve_kit
 from nce.vertical_modules.inventory.reconcile import do_reconcile_dead_stock
 from nce.vertical_modules.inventory.refusals import (
     BUSINESS_REFUSALS,
@@ -651,6 +652,131 @@ async def api_inventory_release_stock(request) -> JSONResponse:
             exc,
             status_code=500,
             log_event="api_inventory_release_stock",
+        )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/inventory/reserve-kit
+# ---------------------------------------------------------------------------
+
+
+async def api_inventory_reserve_kit(request) -> JSONResponse:
+    """POST /api/inventory/reserve-kit
+
+    Reserve stock for a kit or package under the PACKAGE decision (Batch 136b /
+    Wave IN-2). Enforces the PACKAGE decision: packages are stocked as a UNIT
+    and never decomposed; kits expand confirmed components per piece.
+
+    Request body (JSON): ``namespace_id``, ``project_id``, ``location``, ``items``.
+    Optional: ``all_or_nothing`` (bool, default True).
+
+    Thin adapter over ``do_reserve_kit`` — no business logic here.
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+    assert namespace_id is not None
+
+    disabled = await _check_inventory_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
+
+    params: dict[str, Any] = {
+        "namespace_id": namespace_id,
+        "project_id": body.get("project_id"),
+        "location": body.get("location"),
+        "items": body.get("items"),
+        "all_or_nothing": body.get("all_or_nothing", True),
+    }
+
+    try:
+        result = await do_reserve_kit(admin_state.engine, params)
+        # Mirror the MCP dispatch loop: invalidate cached reads now the
+        # mutation has committed.
+        await bump_mcp_cache_generation(admin_state.engine, route="api_inventory_reserve_kit")
+        return JSONResponse(_json_safe(result))
+    except BUSINESS_REFUSALS as exc:
+        return JSONResponse(
+            _json_safe(refusal_payload(exc)),
+            status_code=REST_BUSINESS_REFUSED_STATUS,
+        )
+    except (ValueError, KeyError, TypeError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Inventory reserve-kit error",
+            exc,
+            status_code=500,
+            log_event="api_inventory_reserve_kit",
+        )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/inventory/release-kit
+# ---------------------------------------------------------------------------
+
+
+async def api_inventory_release_kit(request) -> JSONResponse:
+    """POST /api/inventory/release-kit
+
+    Release stock reservations for an expanded kit or package under the
+    PACKAGE decision.
+
+    Request body (JSON): ``namespace_id``, ``project_id``, ``location``, ``items``.
+
+    Thin adapter over ``do_release_kit`` — no business logic here.
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+    assert namespace_id is not None
+
+    disabled = await _check_inventory_enabled_rest(namespace_id)
+    if disabled is not None:
+        return disabled
+
+    params: dict[str, Any] = {
+        "namespace_id": namespace_id,
+        "project_id": body.get("project_id"),
+        "location": body.get("location"),
+        "items": body.get("items"),
+    }
+
+    try:
+        result = await do_release_kit(admin_state.engine, params)
+        # Mirror the MCP dispatch loop: invalidate cached reads now the
+        # mutation has committed.
+        await bump_mcp_cache_generation(admin_state.engine, route="api_inventory_release_kit")
+        return JSONResponse(_json_safe(result))
+    except BUSINESS_REFUSALS as exc:
+        return JSONResponse(
+            _json_safe(refusal_payload(exc)),
+            status_code=REST_BUSINESS_REFUSED_STATUS,
+        )
+    except (ValueError, KeyError, TypeError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Inventory release-kit error",
+            exc,
+            status_code=500,
+            log_event="api_inventory_release_kit",
         )
 
 

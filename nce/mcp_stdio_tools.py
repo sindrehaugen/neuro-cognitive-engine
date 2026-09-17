@@ -2377,6 +2377,60 @@ TOOLS = [
         },
     ),
     Tool(
+        name="inventory_reserve_kit",
+        description=(
+            "Reserve stock for a kit or package under the PACKAGE decision (Batch 136b / Wave IN-2). "
+            "Actor; mutation, admin_only. Enforces the PACKAGE decision: packages are stocked as a UNIT "
+            "and never decomposed in inventory; kits expand confirmed component lines per piece into "
+            "reservations. Live classifier accessory_of edges are never expanded at reservation time."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "project_id": {
+                    "type": "string",
+                    "description": "Project label (e.g. PROJECT:QUOTE-001).",
+                },
+                "location": {"type": "string", "description": "Location UUID holding the stock."},
+                "items": {
+                    "type": "array",
+                    "description": "Confirmed project content lines (packages, kits, or standard items).",
+                    "items": {"type": "object"},
+                },
+                "all_or_nothing": {
+                    "type": "boolean",
+                    "description": "If true (default), rollback reservations if any component has insufficient stock.",
+                },
+            },
+            "required": ["namespace_id", "project_id", "location", "items"],
+        },
+    ),
+    Tool(
+        name="inventory_release_kit",
+        description=(
+            "Release previously-reserved stock for an expanded kit or package under the PACKAGE decision. "
+            "Actor; mutation, admin_only. Releases reservations across expanded component lines or package units."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "project_id": {
+                    "type": "string",
+                    "description": "Project label (e.g. PROJECT:QUOTE-001).",
+                },
+                "location": {"type": "string", "description": "Location UUID holding the stock."},
+                "items": {
+                    "type": "array",
+                    "description": "Kit/package content lines to release.",
+                    "items": {"type": "object"},
+                },
+            },
+            "required": ["namespace_id", "project_id", "location", "items"],
+        },
+    ),
+    Tool(
         name="inventory_record_rma",
         description=(
             "Record a return with its WEEE state. Actor; mutation, admin_only. "
