@@ -36,10 +36,20 @@ It is deliberately **read-only**. It changes nothing; it reports.
 
 Limits, stated rather than implied
 ----------------------------------
-This compares **tables and columns**. It does not compare types, defaults, nullability,
-indexes, constraints, triggers or policies. A column present with the wrong type reads as
-present here. That is a real gap and it is named on purpose — a checker that quietly
-claims more coverage than it has is the failure mode this whole row is about.
+This compares **tables, columns, RLS enablement and policy presence**.
+
+RLS coverage was added after the column-only version nearly let step 2 through unsafely.
+Measured on ``f2dba69``: four tables have their tenant-isolation policy AND their
+``ENABLE ROW LEVEL SECURITY`` **only** in ``schema.sql`` and in no migration --
+``outbox_events``, ``replay_runs``, ``saga_execution_log``, ``topology_graph``. A
+column-only checker reports those databases clean. If ``schema.sql`` stopped running with
+a policy missing, the failure mode is a silent tenant-isolation hole, not a crash.
+
+Still NOT compared: column types, defaults, nullability, indexes, constraints, triggers,
+and the *predicate text* of a policy. Policy presence is checked by name; a policy that
+exists with a weakened ``USING`` clause reads as present. That is a real gap and it is
+named on purpose -- a checker that quietly claims more coverage than it has is the failure
+mode this whole row is about.
 
 Usage::
 
@@ -202,6 +212,143 @@ def compare(
     return missing_tables, missing_cols
 
 
+def tenant_tables_loop(sql: str) -> set[str]:
+    """The tables covered by ``schema.sql``'s dynamic tenant-isolation loop.
+
+    Most of this estate's RLS is not written as static DDL. ``schema.sql`` declares a
+    ``tenant_tables TEXT[] := ARRAY[...]`` literal and then, for each entry, executes::
+
+        ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE public.%I FORCE ROW LEVEL SECURITY;
+        DROP POLICY IF EXISTS tenant_isolation_policy ON public.%I;
+        CREATE POLICY tenant_isolation_policy ON public.%I
+            FOR ALL TO nce_app
+            USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+            WITH CHECK (...);
+        REVOKE ALL ON TABLE public.%I FROM nce_app;
+
+    It drops and *recreates* the policy on every connect, so any drift is silently
+    repaired -- which is another reason nothing has ever noticed that ``schema.sql`` is a
+    schema writer. It is also why Q-4 step 2 needs this checker: once the file stops
+    running, that repair loop stops with it.
+
+    A naive ``CREATE POLICY ... ON <table>`` regex captures ``%I`` here and yields a
+    policy on an empty table name -- a permanent false positive. Expanding the array is
+    both correct and far better coverage than skipping the loop.
+    """
+    m = re.search(r"tenant_tables\s+TEXT\[\]\s*:=\s*ARRAY\[(.*?)\];", sql, re.S | re.I)
+    if not m:
+        return set()
+    return {name.lower() for name in re.findall(r"'(\w+)'", m.group(1))}
+
+
+def expected_rls(schema_path: Path = _SCHEMA) -> tuple[set[str], set[tuple[str, str]]]:
+    """What ``schema.sql`` guarantees about row-level security.
+
+    Returns ``(tables with RLS enabled, {(table, policy_name)})``, combining the static
+    ``ALTER TABLE ... ENABLE ROW LEVEL SECURITY`` / ``CREATE POLICY`` statements with the
+    dynamic loop expanded over its table array.
+    """
+    sql = _strip_sql_comments(schema_path.read_text(encoding="utf-8", errors="replace"))
+    enabled = {
+        m.group(1).split(".")[-1].strip('"').lower()
+        for m in re.finditer(
+            r'ALTER\s+TABLE\s+"?([\w.]+)"?\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY', sql, re.I
+        )
+    }
+    policies = {
+        (m.group(2).split(".")[-1].strip('"').lower(), m.group(1).strip('"').lower())
+        for m in re.finditer(r'CREATE\s+POLICY\s+"?(\w+)"?\s+ON\s+"?([\w.]+)"?', sql, re.I)
+        # ``%I`` is a format placeholder, not a table; the loop is expanded below.
+        if m.group(2).split(".")[-1].strip('"')
+    }
+    looped = tenant_tables_loop(sql)
+    enabled |= looped
+    policies |= {(t, "tenant_isolation_policy") for t in looped}
+    return enabled, policies
+
+
+async def actual_rls(dsn: str) -> tuple[set[str], set[tuple[str, str]]]:
+    import asyncpg
+
+    conn = await asyncpg.connect(dsn)
+    try:
+        # relkind IN ('r','p') — 'p' is a PARTITIONED table, and on this estate the nine
+        # most important tenant tables are partitioned: memories, kg_nodes, kg_edges,
+        # event_log, contradictions, pii_redactions, memory_salience, memory_embeddings,
+        # embedding_aspects. Filtering to 'r' alone made every one of them invisible, so
+        # the checker reported "no RLS" for tables that had it, and would equally have
+        # reported nothing had they lost it.
+        rows = await conn.fetch(
+            "SELECT c.relname AS tbl, c.relrowsecurity AS enabled "
+            "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')"
+        )
+        pols = await conn.fetch(
+            "SELECT c.relname AS tbl, p.polname AS pol "
+            "FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid "
+            "JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public'"
+        )
+    finally:
+        await conn.close()
+    enabled = {r["tbl"].lower() for r in rows if r["enabled"]}
+    policies = {(r["tbl"].lower(), r["pol"].lower()) for r in pols}
+    return enabled, policies
+
+
+async def rls_role_posture(dsn: str) -> str | None:
+    """Does the connecting role actually obey the policies this script just verified?
+
+    This calls ``nce.master_key_registry.rls_visibility_problem``, which the F11 ratchet
+    requires of anything working in this area. It is used here as a **report, not a
+    refusal**, and the difference is deliberate:
+
+    ``rewrap_master_key.py`` refuses, because it reads wrapped *data rows* with no namespace
+    context -- a NOBYPASSRLS role sees zero of them and reports success while blobs stay
+    wrapped under the old key. This script reads only ``information_schema`` and the ``pg_*``
+    catalogues, which are not RLS-filtered, so its answer is correct for any role and
+    refusing would be cargo-cult.
+
+    But this script has the same failure mode in another form, and that is why the call is
+    worth making. "0 missing policies" reads as "tenant isolation works". On this deployment
+    it does not: ``mcp_user`` is ``rolsuper``/``rolbypassrls``, so every policy verified above
+    exists and constrains nothing. A verdict that looks reassuring while the mechanism is
+    inert is precisely the thing the guard was written about.
+    """
+    import asyncpg
+
+    # Run as ``python scripts/check_schema_drift.py`` — which is how CI invokes it —
+    # ``sys.path[0]`` is ``scripts/``, not the repo root, so ``nce`` is not importable.
+    # An import probe run from the repo root passes and hides this; only an end-to-end
+    # run catches it.
+    if str(_REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(_REPO_ROOT))
+    from nce.master_key_registry import rls_visibility_problem
+
+    conn = await asyncpg.connect(dsn)
+    try:
+        return await rls_visibility_problem(conn)
+    finally:
+        await conn.close()
+
+
+def compare_rls(
+    expected: tuple[set[str], set[tuple[str, str]]],
+    actual: tuple[set[str], set[tuple[str, str]]],
+) -> tuple[list[str], list[str]]:
+    """Return (tables missing RLS enablement, missing "table.policy" names).
+
+    Only one direction is reported. A table with RLS enabled that ``schema.sql`` does not
+    mention is almost always a migration doing its job, and flagging it would make the
+    checker useless on every real deployment -- the same reasoning as extra columns.
+    """
+    exp_enabled, exp_pols = expected
+    act_enabled, act_pols = actual
+    missing_rls = sorted(exp_enabled - act_enabled)
+    missing_pols = sorted(f"{t}.{p}" for t, p in (exp_pols - act_pols))
+    return missing_rls, missing_pols
+
+
 async def _main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dsn", required=True, help="postgresql://... of the database to check")
@@ -212,6 +359,10 @@ async def _main() -> int:
     expected = expected_columns(Path(args.schema))
     actual = await actual_columns(args.dsn)
     missing_tables, missing_cols = compare(expected, actual)
+    missing_rls, missing_pols = compare_rls(
+        expected_rls(Path(args.schema)), await actual_rls(args.dsn)
+    )
+    posture = await rls_role_posture(args.dsn)
 
     if args.json:
         print(
@@ -220,6 +371,9 @@ async def _main() -> int:
                     "expected_tables": len(expected),
                     "missing_tables": missing_tables,
                     "missing_columns": missing_cols,
+                    "missing_rls_enablement": missing_rls,
+                    "missing_policies": missing_pols,
+                    "rls_role_posture": posture,
                 },
                 indent=2,
                 sort_keys=True,
@@ -227,8 +381,11 @@ async def _main() -> int:
         )
     else:
         print(f"schema.sql guarantees {len(expected)} tables")
-        if not missing_tables and not missing_cols:
-            print("NO DRIFT: the database has every table and column schema.sql guarantees.")
+        if not (missing_tables or missing_cols or missing_rls or missing_pols):
+            print(
+                "NO DRIFT: the database has every table, column, RLS enablement and policy "
+                "schema.sql guarantees."
+            )
         else:
             if missing_tables:
                 print(f"\nMISSING TABLES ({len(missing_tables)}):")
@@ -239,12 +396,31 @@ async def _main() -> int:
                 print(f"\nMISSING COLUMNS ({total} across {len(missing_cols)} tables):")
                 for t, cols in sorted(missing_cols.items()):
                     print(f"  {t}: {', '.join(cols)}")
+            if missing_rls:
+                print(f"\nTABLES MISSING RLS ENABLEMENT ({len(missing_rls)}):")
+                for t in missing_rls:
+                    print(f"  {t}")
+            if missing_pols:
+                print(f"\nMISSING POLICIES ({len(missing_pols)}):")
+                for name in missing_pols:
+                    print(f"  {name}")
             print(
                 "\nThis database would be changed by running schema.sql. Until Q-4 step 2 "
                 "lands, connect() will apply these silently and without a ledger entry."
             )
+            if missing_rls or missing_pols:
+                print(
+                    "A missing policy is not a crash. It is one tenant reading another "
+                    "tenant's rows, quietly."
+                )
 
-    return 1 if (missing_tables or missing_cols) else 0
+    if posture and not args.json:
+        # Not a failure: the policies are present and correct, which is what this script
+        # checks. But "0 missing policies" must not be read as "tenant isolation is in
+        # force" when the connecting role bypasses all of it.
+        print(f"\nNOTE on what the RLS result means here: {posture}")
+
+    return 1 if (missing_tables or missing_cols or missing_rls or missing_pols) else 0
 
 
 if __name__ == "__main__":
