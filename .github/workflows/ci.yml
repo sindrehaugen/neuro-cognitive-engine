@@ -291,6 +291,31 @@ jobs:
           PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
         run: python scripts/apply_integration_schema.py
 
+      # Q-4 step 1. connect() runs TWO schema writers (orchestrator.py:205-206): the whole
+      # of schema.sql, then the numbered migration chain. schema.sql is not a dead second
+      # writer -- its unguarded ADD COLUMNs sit inside DO $$ blocks that probe
+      # information_schema first, so it detects missing columns and adds them on every
+      # connect. It is a migration runner that keeps no ledger.
+      #
+      # Measured on the live database 2026-09-17: applied_migrations held 74 rows (max 078)
+      # while all ten schema.sql-only columns were present and unrecorded.
+      #
+      # This step asserts the integration database -- built by apply_integration_schema.py
+      # from schema.sql plus every migration -- has everything schema.sql guarantees. It is
+      # the interlock for step 2: once _init_pg_schema is bootstrap-only, an existing
+      # database stops receiving schema.sql-only DDL, so "nothing is reachable only through
+      # schema.sql" has to be a checked property rather than a belief.
+      #
+      # Proven in both directions before wiring (a checker that cannot go red is the defect
+      # it is meant to catch):
+      #   fresh DB from schema.sql alone       -> 0 missing tables, 0 missing columns
+      #   live DB (image predates migration 079) -> found system_design_geometry.node_geometry_label
+      #   after DROP COLUMN + DROP TABLE       -> reported exactly those two
+      - name: Schema drift — the DB has everything schema.sql guarantees (Q-4)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+        run: python scripts/check_schema_drift.py --dsn "$PG_DSN"
+
       - name: Integration smoke (RLS, schema, event log, outbox)
         env:
           PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
