@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 273  # 272 baseline + 1 System Design procurement view tool (Wave SD-6)
+_EXPECTED_TOTAL = 275  # 273 baseline + 2 Assets tools: warranty_eol & netbox_sync (Wave A-3)
 
 
 def test_registry_has_expected_entries():
@@ -255,6 +255,8 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "sales_create_lead",
         "sales_create_deal",
         "sales_edit_deal",
+        # Wave A-3 -- Assets NetBox sync bridge mutation
+        "assets_sync_netbox",
     }
 )
 
@@ -267,7 +269,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 117  # 115 baseline + 2 Support ecosystem tools (Wave SU-3)
+    assert len(MUTATION_TOOLS) == 118  # 117 baseline + 1 Assets netbox sync (Wave A-3)
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -444,6 +446,8 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "project_status_report",
         # Wave SD-6 -- System Design procurement view (cacheable read)
         "system_design_procurement_view",
+        # Wave A-3 -- Assets warranty/EOL watcher (cacheable read)
+        "assets_check_warranty_eol",
     }
 )
 
@@ -456,9 +460,7 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert (
-        len(CACHEABLE_TOOLS) == 111
-    )  # 106 baseline + 4 Project REST reads promoted to cacheable tools (Wave PJ-4)
+    assert len(CACHEABLE_TOOLS) == 112  # 111 baseline + 1 Assets warranty/EOL watcher (Wave A-3)
 
 
 # ---------------------------------------------------------------------------
@@ -602,6 +604,8 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "customer_portal_advisor_answer",
         "customer_portal_raise_service_request",
         "customer_portal_register_expansion_interest",
+        # Wave A-3 -- Assets NetBox sync bridge (admin_only mutation)
+        "assets_sync_netbox",
     }
 )
 
@@ -614,7 +618,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 88  # 86 baseline + 2 Support ecosystem tools (Wave SU-3)
+    assert len(ADMIN_ONLY_TOOLS) == 89  # 88 baseline + 1 Assets NetBox sync bridge (Wave A-3)
 
 
 # ---------------------------------------------------------------------------

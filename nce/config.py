@@ -1317,6 +1317,20 @@ class _Config:
         "NCE_INVENTORY_LOW_STOCK_ALERT_ENABLED", False
     )
 
+    # --- Assets Warranty & EOL Watcher & NetBox Bridge (Module 9 Wave 3) ---
+    # How often to scan namespaces for assets nearing warranty expiry or EOL.
+    # Default: 1440 minutes (daily). Minimum: 5 minutes.
+    NCE_ASSETS_ENABLED: bool = _bool_env("NCE_ASSETS_ENABLED", True)
+    NCE_ASSETS_WARRANTY_WARN_DAYS: int = _int_env("NCE_ASSETS_WARRANTY_WARN_DAYS", 30, minimum=1)
+    NCE_ASSETS_EOL_WARN_DAYS: int = _int_env("NCE_ASSETS_EOL_WARN_DAYS", 90, minimum=1)
+    NCE_ASSETS_WARRANTY_EOL_WATCHER_INTERVAL_MINUTES: int = _int_env(
+        "NCE_ASSETS_WARRANTY_EOL_WATCHER_INTERVAL_MINUTES", 1440, minimum=5
+    )
+    # Minimum SequenceMatcher ratio to accept a fuzzy name match for NetBox device reconciliation (0.0-1.0).
+    NCE_ASSETS_NETBOX_FUZZY_THRESHOLD: float = _float_env(
+        "NCE_ASSETS_NETBOX_FUZZY_THRESHOLD", 0.85, minimum=0.5
+    )
+
     # --- C6 Shared Pricing Service (Wave 12) ---
     # Maximum age (seconds) before a price row is considered stale.
     # A stale cost is flagged in the resolve_price return, never silently used.
