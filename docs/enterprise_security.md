@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 739e0ff (main) · **Last-audited:** 2026-09-17
 
 # NCE Enterprise Security Guide
 
@@ -316,7 +316,7 @@ $$ LANGUAGE plpgsql STABLE;
 ```
 
 ### 8b. Default Table Policy Pattern
-For all 87 tenant-scoped tables (`EXPECTED_TENANT_RLS_TABLES` in `nce/event_log.py`), RLS policies are defined in DDL:
+For all 89 tenant-scoped tables (`EXPECTED_TENANT_RLS_TABLES` in `nce/event_log.py`), RLS policies are defined in DDL:
 
 ```sql
 ALTER TABLE memories ENABLE ROW LEVEL SECURITY;

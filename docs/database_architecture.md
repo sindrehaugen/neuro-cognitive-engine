@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 739e0ff (main) · **Last-audited:** 2026-09-17
 
 # NCE Database Architecture
 
@@ -313,7 +313,7 @@ The table participates in the global tenant database boundary:
 
 ## 9. PostgreSQL Schema Source & Lifecycle Management
 
-> **Authoritative DDL Source:** The canonical DDL is maintained in [`nce/schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) and the sequential migration chain in [`nce/migrations/`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/) (`001_enable_rls.sql` through `061_system_design_node_state.sql`).
+> **Authoritative DDL Source:** The canonical DDL is maintained in [`nce/schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) and the sequential migration chain in [`nce/migrations/`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/) (`001_enable_rls.sql` through `078_event_log_chain_hash_validate.sql`).
 >
 > ⚠ **Important Provisioning Notice:** Do not copy or execute static embedded SQL snippets from documentation to provision database tables. Doing so bypasses the migration lifecycle and risks provisioning tenant tables without mandatory Row-Level Security (RLS) policies and security triggers. Always allow the engine to initialize its schema automatically via `NCEEngine._init_pg_schema()` or execute the versioned migrations in order.
 
@@ -324,7 +324,7 @@ At engine startup, `NCEEngine.connect()` ([`nce/orchestrator.py`](https://github
 > **Test Environment Setup (`schema.sql` is not enough)**
 > `nce/schema.sql` alone is not a usable database. A schema-only initialization will yield a false green on test runs by skipping hundreds of tests (e.g. missing `public.event_log.chain_hash`, missing `v3_cognitive_ledger`). All files in `nce/migrations/*.sql` **must be applied on top**, in filename order, to reach a full green test run.
 
-### 9b. Complete Versioned Migrations Catalog (001 through 061)
+### 9b. Complete Versioned Migrations Catalog (001 through 078)
 
 Schema evolution is governed by chronological migration scripts located in [`nce/migrations/`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/):
 
