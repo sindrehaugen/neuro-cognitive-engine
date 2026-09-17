@@ -25,6 +25,23 @@ from typing import Any, Final
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent.parent
 _DOCS_DIR: Final[Path] = _REPO_ROOT / "docs"
 _CONFIG_PATH: Final[Path] = _REPO_ROOT / "nce" / "config.py"
+_ENGINE_STATUS_PATH: Final[Path] = _REPO_ROOT / "docs" / "vertical_engines" / "ENGINE_STATUS.md"
+_MIGRATIONS_DIR: Final[Path] = _REPO_ROOT / "nce" / "migrations"
+_TOOL_REGISTRY_TEST_PATH: Final[Path] = _REPO_ROOT / "tests" / "test_tool_registry.py"
+_GOLDEN_THREAD_TEST_PATH: Final[Path] = (
+    _REPO_ROOT / "tests" / "integration" / "test_golden_thread.py"
+)
+
+# Regexes for ENGINE_STATUS.md figure inventory (A-FIG / I-10 extension)
+_ENGINE_STATUS_TOOLS_RE: Final[re.Pattern[str]] = re.compile(
+    r"\|\s*`TOOL_REGISTRY` entries\s*\|\s*\*\*(\d+)\*\*\s+MCP tools"
+)
+_ENGINE_STATUS_MAX_MIGRATION_RE: Final[re.Pattern[str]] = re.compile(
+    r"\|\s*SQL migrations\s*\|\s*.*?`001`\s*→\s*`(\d{3})`"
+)
+_ENGINE_STATUS_GOLDEN_THREAD_RE: Final[re.Pattern[str]] = re.compile(
+    r"\|\s*Golden Thread seam burndown\s*\|\s*\*\*(\d+)\s+of\s+(\d+)\*\*\s+lifecycle steps broken"
+)
 
 # Regex for Notation A: `NAME`, def N[, min M]
 _NOTATION_A_RE: Final[re.Pattern[str]] = re.compile(
@@ -364,3 +381,142 @@ def test_positive_control_ignores_non_config_prose_numbers() -> None:
 
     assert len(extracted_a) == 0, f"Expected 0 Notation A matches, got {extracted_a}"
     assert len(extracted_b) == 0, f"Expected 0 Notation B matches, got {extracted_b}"
+
+
+# ---------------------------------------------------------------------------
+# A-FIG: Figure Counters in docs/vertical_engines/ENGINE_STATUS.md
+# ---------------------------------------------------------------------------
+
+
+def extract_engine_status_figures(text: str) -> dict[str, Any]:
+    """Extract inventory figures from docs/vertical_engines/ENGINE_STATUS.md text."""
+    m_tools = _ENGINE_STATUS_TOOLS_RE.search(text)
+    assert m_tools, "Could not find `TOOL_REGISTRY` entries row in ENGINE_STATUS.md"
+    tool_count = int(m_tools.group(1))
+
+    m_mig = _ENGINE_STATUS_MAX_MIGRATION_RE.search(text)
+    assert m_mig, "Could not find SQL migrations row in ENGINE_STATUS.md"
+    max_migration = m_mig.group(1)
+
+    m_gt = _ENGINE_STATUS_GOLDEN_THREAD_RE.search(text)
+    assert m_gt, "Could not find Golden Thread seam burndown row in ENGINE_STATUS.md"
+    gt_open_breaks = int(m_gt.group(1))
+    gt_total_steps = int(m_gt.group(2))
+
+    return {
+        "tool_count": tool_count,
+        "max_migration": max_migration,
+        "gt_open_breaks": gt_open_breaks,
+        "gt_total_steps": gt_total_steps,
+    }
+
+
+def get_expected_tool_count_from_repo() -> int:
+    """Retrieve expected TOOL_REGISTRY total from tests/test_tool_registry.py AST."""
+    tree = ast.parse(_TOOL_REGISTRY_TEST_PATH.read_bytes())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "_EXPECTED_TOTAL":
+                    if isinstance(node.value, ast.Constant) and isinstance(node.value.value, int):
+                        return node.value.value
+    raise ValueError(f"_EXPECTED_TOTAL not found in {_TOOL_REGISTRY_TEST_PATH}")
+
+
+def get_max_migration_from_repo() -> str:
+    """Retrieve highest 3-digit migration prefix from nce/migrations/."""
+    mig_nums = [
+        int(m.group(1))
+        for f in _MIGRATIONS_DIR.glob("*.sql")
+        if (m := re.match(r"^([0-9]{3})_", f.name))
+    ]
+    assert mig_nums, f"No SQL migrations found in {_MIGRATIONS_DIR}"
+    return f"{max(mig_nums):03d}"
+
+
+def get_golden_thread_breaks_from_repo() -> tuple[int, int]:
+    """Count open breaks (strict xfails) and total lifecycle steps in Golden Thread."""
+    tree = ast.parse(_GOLDEN_THREAD_TEST_PATH.read_bytes())
+    open_breaks = 0
+    total_steps = 0
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if re.match(r"^test_step_\d+_\w+$", node.name):
+                total_steps += 1
+                for dec in node.decorator_list:
+                    call = dec if isinstance(dec, ast.Call) else None
+                    func = call.func if call else dec
+                    name = getattr(func, "attr", None) or getattr(func, "id", None)
+                    if name == "xfail":
+                        open_breaks += 1
+                        break
+    assert total_steps > 0, f"No Golden Thread lifecycle steps found in {_GOLDEN_THREAD_TEST_PATH}"
+    return open_breaks, total_steps
+
+
+# NOTE (A-FIG re-scope per ML-orch directive):
+# The TOOL_REGISTRY tool-count assertion is deferred to D-GEN (DL lane),
+# which makes that figure generated rather than written, rendering a hand-maintained
+# ratchet redundant. The two stable counters below (max migration number and
+# Golden Thread lifecycle breaks) are ratcheted here.
+
+
+def test_engine_status_max_migration_matches_migrations_dir() -> None:
+    """A-FIG Counter 2: Verify max migration number in ENGINE_STATUS.md matches nce/migrations/.
+
+    Truth on main: highest nce/migrations/0XX_*.sql.
+    ENGINE_STATUS.md: 001 -> max migration.
+    """
+    text = _ENGINE_STATUS_PATH.read_text(encoding="utf-8")
+    figs = extract_engine_status_figures(text)
+    repo_max = get_max_migration_from_repo()
+    doc_max = figs["max_migration"]
+    assert doc_max == repo_max, (
+        f"docs/vertical_engines/ENGINE_STATUS.md max migration ({doc_max}) does not match "
+        f"highest migration in nce/migrations/ ({repo_max}). "
+        f"Routed to DL / D-GEN to regenerate docs via scripts/gen_engine_figures.py."
+    )
+
+
+def test_engine_status_golden_thread_breaks_match_suite() -> None:
+    """A-FIG Counter 3: Verify Golden Thread open breaks in ENGINE_STATUS.md matches test suite.
+
+    Truth on main: 0 open breaks of 28 lifecycle steps in test_golden_thread.py.
+    ENGINE_STATUS.md says: 0 of 28 lifecycle steps broken.
+    Verdict: GREEN.
+    """
+    text = _ENGINE_STATUS_PATH.read_text(encoding="utf-8")
+    figs = extract_engine_status_figures(text)
+    repo_open, repo_total = get_golden_thread_breaks_from_repo()
+    assert (figs["gt_open_breaks"], figs["gt_total_steps"]) == (repo_open, repo_total), (
+        f"docs/vertical_engines/ENGINE_STATUS.md Golden Thread breaks ({figs['gt_open_breaks']} of {figs['gt_total_steps']}) "
+        f"does not match test_golden_thread.py xfails ({repo_open} of {repo_total})."
+    )
+
+
+def test_positive_control_catches_synthetic_migration_drift() -> None:
+    """Standing positive control (U18): verify ratchet catches migration number divergence."""
+    repo_max = get_max_migration_from_repo()
+    synthetic_max = f"{int(repo_max) + 1:03d}"
+    synthetic_doc = (
+        "| `TOOL_REGISTRY` entries | **259** MCP tools (69 shared + 190 engine) |\n"
+        f"| SQL migrations | 76 files (+1 optional), `001` → `{synthetic_max}` — gaps ... |\n"
+        "| Golden Thread seam burndown | **0 of 28** lifecycle steps broken ... |\n"
+    )
+    figs = extract_engine_status_figures(synthetic_doc)
+    assert figs["max_migration"] == synthetic_max
+    assert figs["max_migration"] != repo_max
+
+
+def test_positive_control_catches_synthetic_golden_thread_drift() -> None:
+    """Standing positive control (U18): verify ratchet catches Golden Thread break count divergence."""
+    repo_open, repo_total = get_golden_thread_breaks_from_repo()
+    synthetic_open = repo_open + 1
+    synthetic_doc = (
+        "| `TOOL_REGISTRY` entries | **259** MCP tools (69 shared + 190 engine) |\n"
+        "| SQL migrations | 74 files (+1 optional), `001` → `078` — gaps ... |\n"
+        f"| Golden Thread seam burndown | **{synthetic_open} of {repo_total}** lifecycle steps broken ... |\n"
+    )
+    figs = extract_engine_status_figures(synthetic_doc)
+    assert (figs["gt_open_breaks"], figs["gt_total_steps"]) == (synthetic_open, repo_total)
+    assert (figs["gt_open_breaks"], figs["gt_total_steps"]) != (repo_open, repo_total)
