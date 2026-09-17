@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `e026c21` (public `main`) · **Last-audited:** 2026-09-17
+> **Status:** shipped · **Verified-against:** `1dda962` (public `main`) · **Last-audited:** 2026-09-17
 
 # NCE Vertical Engines — Build & Production Status
 
@@ -21,7 +21,7 @@
 > python scripts/gen_surface_table.py --repo . --baseline HEAD --out docs/_generated/surface.md
 > ```
 
-## Measured inventory at `e026c21`
+## Measured inventory at `1dda962`
 
 | Instrument | Value |
 |---|---|
