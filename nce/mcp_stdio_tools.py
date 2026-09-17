@@ -1968,16 +1968,12 @@ TOOLS = [
     Tool(
         name="system_design_validate_design_graph",
         description=(
-            "[M6.W13c] Read-only: run the five System Design design-quality checks "
-            "over a DESIGN's graph — signal-flow continuity, port/format "
+            "[M6.W13c / Wave SD-4] Consolidated validator: run the five System Design "
+            "design-quality checks over a DESIGN's graph — signal-flow continuity, port/format "
             "compatibility, power/heat budget, SPOF redundancy, and AVIXA "
-            "checkpoint conformance — and return {passed, reasons}. 'passed' is "
-            "true only when every check passes. Two behaviours are deliberate and "
-            "will not change: an unknown signal format does NOT fail the design, "
-            "and the power/heat budget is INFORMATIONAL — it always contributes "
-            "its totals to 'reasons' and never sets passed=false, because NCE "
-            "holds no budget ceiling. So a non-empty 'reasons' does not by itself "
-            "mean the design failed: read 'passed'."
+            "checkpoint conformance — and return {passed, reasons}. When optional 'decisions' "
+            "are provided, validates propose-only line decisions (§9.3), records them to "
+            "the cognitive ledger, and bumps the design version."
         ),
         inputSchema={
             "type": "object",
@@ -1989,6 +1985,33 @@ TOOLS = [
                 "design_id": {
                     "type": "string",
                     "description": "Design identifier (the DESIGN node's id).",
+                },
+                "decisions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "line_id": {
+                                "type": "string",
+                                "description": "DESIGN_LINE label or ref.",
+                            },
+                            "verdict": {
+                                "type": "string",
+                                "enum": ["accept", "override"],
+                                "description": "Human validation verdict.",
+                            },
+                            "reason": {
+                                "type": "string",
+                                "description": "Rationale for override verdicts.",
+                            },
+                        },
+                        "required": ["line_id", "verdict"],
+                    },
+                    "description": "Optional human validation decisions (propose-only, §9.3).",
+                },
+                "validate_graph": {
+                    "type": "boolean",
+                    "description": "Optional flag to also run graph structural validation alongside decisions.",
                 },
             },
             "required": ["namespace_id", "design_id"],

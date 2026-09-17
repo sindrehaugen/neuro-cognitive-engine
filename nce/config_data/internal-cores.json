@@ -98,10 +98,5 @@
     "engine": "support",
     "owner": "MLV15B-SU1",
     "reason": "Automated ticket generation from IoT telemetry alerts; scheduled for watcher in Wave SU-1."
-  },
-  "nce/vertical_modules/system_design/validate.py::do_validate_design": {
-    "engine": "system_design",
-    "owner": "MLV15C-SD4",
-    "reason": "Design graph topology validator; scheduled for consolidation with validate_design_graph in MLV15C Wave SD-4."
   }
 }
