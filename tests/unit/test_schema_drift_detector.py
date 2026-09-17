@@ -206,3 +206,131 @@ def test_migration_081_covers_every_schema_only_column(table: str, col: str) -> 
     ).read_text(encoding="utf-8")
     assert f"ALTER TABLE {table}" in mig, f"081 no longer touches {table}"
     assert col in mig, f"081 no longer provides {table}.{col}"
+
+
+# ---------------------------------------------------------------------------
+# Q-4 step 1b — RLS coverage
+#
+# The column-only version of this checker reported a database as clean while four tables
+# had their tenant-isolation policy ONLY in schema.sql. A missing column eventually raises
+# an error at query time; a missing policy raises nothing at all. It is one tenant reading
+# another tenant's rows with every test still green.
+# ---------------------------------------------------------------------------
+
+
+def test_the_dynamic_tenant_loop_is_expanded_not_skipped() -> None:
+    """🔴 Most of this estate's RLS is dynamic, not static DDL.
+
+    ``schema.sql`` declares ``tenant_tables TEXT[] := ARRAY[...]`` and loops over it,
+    executing ``format('CREATE POLICY ... ON public.%I', t)``. A naive regex captures
+    ``%I`` as the table name and yields a policy on an empty string -- a permanent false
+    positive that would make the check red forever. Skipping the loop instead would drop
+    the majority of the estate's policies from the expected set.
+    """
+    from check_schema_drift import _strip_sql_comments, tenant_tables_loop
+
+    schema = Path(__file__).resolve().parents[2] / "nce" / "schema.sql"
+    looped = tenant_tables_loop(_strip_sql_comments(schema.read_text(encoding="utf-8")))
+
+    assert len(looped) > 30, f"the tenant_tables array should be large; parsed {len(looped)}"
+    for core in ("memories", "kg_nodes", "kg_edges"):
+        assert core in looped, f"{core} fell out of the tenant-isolation loop"
+
+
+def test_no_policy_is_parsed_with_an_empty_table_name() -> None:
+    """The ``%I`` placeholder must never reach the expected set as a real table."""
+    from check_schema_drift import expected_rls
+
+    _enabled, policies = expected_rls()
+    malformed = [p for p in policies if not p[0] or not p[1]]
+    assert not malformed, (
+        f"malformed policy entries would be permanent false positives: {malformed}"
+    )
+
+
+def test_the_four_schema_only_rls_tables_are_expected() -> None:
+    """These four have policy AND enablement in schema.sql and in no migration.
+
+    Measured on `f2dba69`. They are the reason migration 082 exists, and the reason Q-4
+    step 2 cannot land on the column-only checker.
+    """
+    from check_schema_drift import expected_rls
+
+    enabled, policies = expected_rls()
+    for table in ("outbox_events", "replay_runs", "saga_execution_log", "topology_graph"):
+        assert table in enabled, f"{table} lost its expected RLS enablement"
+    assert ("outbox_events", "tenant_isolation_policy") in policies
+    assert ("topology_graph", "topology_graph_tenant_isolation") in policies
+
+
+def test_compare_rls_reports_missing_enablement_and_policies() -> None:
+    from check_schema_drift import compare_rls
+
+    expected = ({"a", "b"}, {("a", "pol_a"), ("b", "pol_b")})
+    actual = ({"a"}, {("a", "pol_a")})
+    assert compare_rls(expected, actual) == (["b"], ["b.pol_b"])
+
+
+def test_compare_rls_is_clean_when_the_database_matches() -> None:
+    """🔴 The over-claim control, again. Red on a correct database gets switched off."""
+    from check_schema_drift import compare_rls
+
+    state = ({"a", "b"}, {("a", "pol_a"), ("b", "pol_b")})
+    assert compare_rls(state, state) == ([], [])
+
+
+def test_extra_rls_in_the_database_is_not_drift() -> None:
+    """Migrations enable RLS on tables schema.sql never mentions; that is them working."""
+    from check_schema_drift import compare_rls
+
+    expected = ({"a"}, {("a", "pol_a")})
+    actual = ({"a", "from_a_migration"}, {("a", "pol_a"), ("from_a_migration", "pol_m")})
+    assert compare_rls(expected, actual) == ([], [])
+
+
+@pytest.mark.parametrize(
+    "table,policy",
+    [
+        ("outbox_events", "tenant_isolation_policy"),
+        ("replay_runs", "tenant_isolation_policy"),
+        ("saga_execution_log", "tenant_isolation_policy"),
+        ("topology_graph", "topology_graph_tenant_isolation"),
+    ],
+)
+def test_migration_082_covers_every_schema_only_policy(table: str, policy: str) -> None:
+    """🔴 The step-2 safety interlock for RLS, mirroring the one 081 has for columns."""
+    mig = (
+        Path(__file__).resolve().parents[2]
+        / "nce"
+        / "migrations"
+        / "082_schema_sql_only_rls_baseline.sql"
+    ).read_text(encoding="utf-8")
+    assert "ENABLE ROW LEVEL SECURITY" in mig
+    assert table in mig, f"082 no longer covers {table}"
+    assert policy in mig, f"082 no longer creates {policy}"
+
+
+def test_migration_082_reproduces_topology_graph_weakly_on_purpose() -> None:
+    """🔴 A baseline must not silently tighten a security predicate.
+
+    ``topology_graph``'s policy in ``schema.sql`` has no ``WITH CHECK``, so it constrains
+    reads but not writes -- a caller can INSERT a row carrying another namespace's id.
+    082 reproduces that faithfully. Adding ``WITH CHECK`` here would be a behaviour change
+    wearing a no-op's clothing, landing without anyone deciding it. The gap is filed as
+    its own row instead.
+
+    If someone strengthens it, this test fails and forces the decision into the open.
+    """
+    mig = (
+        Path(__file__).resolve().parents[2]
+        / "nce"
+        / "migrations"
+        / "082_schema_sql_only_rls_baseline.sql"
+    ).read_text(encoding="utf-8")
+    start = mig.index("CREATE POLICY topology_graph_tenant_isolation")
+    body = mig[start : mig.index(";", start)]
+    assert "WITH CHECK" not in body, (
+        "082 now adds WITH CHECK to topology_graph. That is a real security improvement "
+        "and it may well be right -- but it is a behaviour change, so it does not belong "
+        "in a baseline migration. Land it as its own PR with its own reasoning."
+    )
