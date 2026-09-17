@@ -296,6 +296,42 @@ async def actual_rls(dsn: str) -> tuple[set[str], set[tuple[str, str]]]:
     return enabled, policies
 
 
+async def rls_role_posture(dsn: str) -> str | None:
+    """Does the connecting role actually obey the policies this script just verified?
+
+    This calls ``nce.master_key_registry.rls_visibility_problem``, which the F11 ratchet
+    requires of anything working in this area. It is used here as a **report, not a
+    refusal**, and the difference is deliberate:
+
+    ``rewrap_master_key.py`` refuses, because it reads wrapped *data rows* with no namespace
+    context -- a NOBYPASSRLS role sees zero of them and reports success while blobs stay
+    wrapped under the old key. This script reads only ``information_schema`` and the ``pg_*``
+    catalogues, which are not RLS-filtered, so its answer is correct for any role and
+    refusing would be cargo-cult.
+
+    But this script has the same failure mode in another form, and that is why the call is
+    worth making. "0 missing policies" reads as "tenant isolation works". On this deployment
+    it does not: ``mcp_user`` is ``rolsuper``/``rolbypassrls``, so every policy verified above
+    exists and constrains nothing. A verdict that looks reassuring while the mechanism is
+    inert is precisely the thing the guard was written about.
+    """
+    import asyncpg
+
+    # Run as ``python scripts/check_schema_drift.py`` — which is how CI invokes it —
+    # ``sys.path[0]`` is ``scripts/``, not the repo root, so ``nce`` is not importable.
+    # An import probe run from the repo root passes and hides this; only an end-to-end
+    # run catches it.
+    if str(_REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(_REPO_ROOT))
+    from nce.master_key_registry import rls_visibility_problem
+
+    conn = await asyncpg.connect(dsn)
+    try:
+        return await rls_visibility_problem(conn)
+    finally:
+        await conn.close()
+
+
 def compare_rls(
     expected: tuple[set[str], set[tuple[str, str]]],
     actual: tuple[set[str], set[tuple[str, str]]],
@@ -326,6 +362,7 @@ async def _main() -> int:
     missing_rls, missing_pols = compare_rls(
         expected_rls(Path(args.schema)), await actual_rls(args.dsn)
     )
+    posture = await rls_role_posture(args.dsn)
 
     if args.json:
         print(
@@ -336,6 +373,7 @@ async def _main() -> int:
                     "missing_columns": missing_cols,
                     "missing_rls_enablement": missing_rls,
                     "missing_policies": missing_pols,
+                    "rls_role_posture": posture,
                 },
                 indent=2,
                 sort_keys=True,
@@ -375,6 +413,12 @@ async def _main() -> int:
                     "A missing policy is not a crash. It is one tenant reading another "
                     "tenant's rows, quietly."
                 )
+
+    if posture and not args.json:
+        # Not a failure: the policies are present and correct, which is what this script
+        # checks. But "0 missing policies" must not be read as "tenant isolation is in
+        # force" when the connecting role bypasses all of it.
+        print(f"\nNOTE on what the RLS result means here: {posture}")
 
     return 1 if (missing_tables or missing_cols or missing_rls or missing_pols) else 0
 

@@ -334,3 +334,71 @@ def test_migration_082_reproduces_topology_graph_weakly_on_purpose() -> None:
         "and it may well be right -- but it is a behaviour change, so it does not belong "
         "in a baseline migration. Land it as its own PR with its own reasoning."
     )
+
+
+# ---------------------------------------------------------------------------
+# The RLS-posture report (F11 ratchet)
+# ---------------------------------------------------------------------------
+
+
+class _FakeConn:
+    """Minimal asyncpg stand-in, mirroring tests/test_rewrap_sweep_requires_bypassrls.py."""
+
+    def __init__(self, *, can_bypass: bool | None, user: str = "probe_role") -> None:
+        self._can_bypass = can_bypass
+        self._user = user
+
+    async def fetchval(self, query: str, *_args: object) -> object:
+        if "rolbypassrls" in query:
+            return self._can_bypass
+        if "current_user" in query:
+            return self._user
+        raise AssertionError(f"unexpected fetchval: {query}")
+
+    async def close(self) -> None:  # pragma: no cover - not used by these tests
+        pass
+
+
+@pytest.mark.asyncio
+async def test_posture_is_silent_for_a_bypassrls_role() -> None:
+    """``mcp_user`` bypasses RLS, so there is nothing to caveat about the verdict."""
+    from nce.master_key_registry import rls_visibility_problem
+
+    assert await rls_visibility_problem(_FakeConn(can_bypass=True, user="mcp_user")) is None
+
+
+@pytest.mark.asyncio
+async def test_posture_speaks_up_for_a_restricted_role() -> None:
+    """🔴 The point of calling the guard here.
+
+    This script reads only catalogues, so unlike ``rewrap_master_key.py`` its answer is
+    correct for any role and it does NOT refuse. What it must not do is let "0 missing
+    policies" be read as "tenant isolation is in force" by someone whose role cannot see
+    the data those policies govern.
+    """
+    from nce.master_key_registry import rls_visibility_problem
+
+    msg = await rls_visibility_problem(_FakeConn(can_bypass=False, user="nce_app"))
+    assert msg is not None
+    assert "nce_app" in msg
+
+
+def test_the_posture_call_is_a_report_not_a_refusal() -> None:
+    """🔴 Pin the deliberate difference from the rewrap sweep.
+
+    ``rewrap_master_key.py`` REFUSES on a restricted role, because it reads wrapped data
+    rows and would under-report silently. This script reads ``information_schema`` and the
+    ``pg_*`` catalogues, which are not RLS-filtered, so refusing would be cargo-cult and
+    would make the checker unusable for exactly the roles most worth checking.
+
+    If someone converts this into a refusal, that is a real decision and it should be made
+    on purpose, not by copying the neighbouring script.
+    """
+    src = (Path(__file__).resolve().parents[2] / "scripts" / "check_schema_drift.py").read_text(
+        encoding="utf-8"
+    )
+    start = src.index("async def rls_role_posture")
+    body = src[start : src.index("\ndef ", start)]
+    assert "return await rls_visibility_problem(conn)" in body
+    assert "sys.exit" not in body, "posture must not terminate the run"
+    assert "raise" not in body, "posture must not refuse; it reports"
