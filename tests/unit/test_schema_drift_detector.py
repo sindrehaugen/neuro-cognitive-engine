@@ -402,3 +402,67 @@ def test_the_posture_call_is_a_report_not_a_refusal() -> None:
     assert "return await rls_visibility_problem(conn)" in body
     assert "sys.exit" not in body, "posture must not terminate the run"
     assert "raise" not in body, "posture must not refuse; it reports"
+
+
+# ---------------------------------------------------------------------------
+# Q-4 step 1c — indexes, constraints, triggers, functions
+#
+# Measured on `1dda962`:
+#     INDEX       schema.sql=185  migrations=152  only in schema.sql=47
+#     TRIGGER     schema.sql=  6  migrations=  5  only in schema.sql= 1
+#     FUNCTION    schema.sql=  7  migrations=  4  only in schema.sql= 3
+#     CONSTRAINT  schema.sql= 23  migrations= 22  only in schema.sql= 9
+# ---------------------------------------------------------------------------
+
+
+def test_the_worm_guard_is_recognised_as_a_schema_sql_promise() -> None:
+    """🔴 The sharpest object in the whole row.
+
+    ``trg_event_log_worm`` and ``prevent_mutation`` are the append-only guarantee for the
+    event log, and both live only in ``schema.sql``. Migration 080 hardened that guard
+    against TRUNCATE and *calls* ``prevent_mutation()`` without creating it. If the parser
+    stopped seeing these, step 2 would look safe while the WORM trigger quietly stopped
+    being maintained on existing databases.
+    """
+    from check_schema_drift import expected_objects
+
+    objs = expected_objects()
+    assert "trg_event_log_worm" in objs["trigger"]
+    assert "prevent_mutation" in objs["function"]
+
+
+def test_object_kinds_are_all_populated() -> None:
+    """A kind that silently parses to an empty set is a check that is not looking."""
+    from check_schema_drift import expected_objects
+
+    objs = expected_objects()
+    for kind, floor in (("index", 100), ("trigger", 3), ("function", 3), ("constraint", 10)):
+        assert len(objs[kind]) >= floor, (
+            f"{kind} parsed {len(objs[kind])} from schema.sql, below the floor of {floor} — "
+            "the pattern probably stopped matching"
+        )
+
+
+def test_compare_objects_reports_only_what_is_missing() -> None:
+    from check_schema_drift import compare_objects
+
+    expected = {"index": {"a", "b"}, "trigger": {"t"}, "function": set(), "constraint": set()}
+    actual = {"index": {"a"}, "trigger": {"t"}, "function": {"extra"}, "constraint": set()}
+    assert compare_objects(expected, actual) == {"index": ["b"]}
+
+
+def test_extra_objects_in_the_database_are_not_drift() -> None:
+    """Migrations add 152 indexes schema.sql never mentions. Flagging those is useless."""
+    from check_schema_drift import compare_objects
+
+    expected = {"index": {"a"}}
+    actual = {"index": {"a", "idx_from_a_migration", "idx_from_another"}}
+    assert compare_objects(expected, actual) == {}
+
+
+def test_compare_objects_is_clean_when_everything_is_present() -> None:
+    """🔴 The over-claim control for the fourth time. Red on a correct DB gets switched off."""
+    from check_schema_drift import compare_objects
+
+    state = {"index": {"a", "b"}, "trigger": {"t"}, "function": {"f"}, "constraint": {"c"}}
+    assert compare_objects(state, state) == {}
