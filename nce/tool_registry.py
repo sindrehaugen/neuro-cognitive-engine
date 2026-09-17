@@ -1335,6 +1335,18 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=True,
     ),
+    "assets_check_warranty_eol": ToolSpec(
+        _h(assets_mcp_handlers, "handle_assets_check_warranty_eol"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "assets_sync_netbox": ToolSpec(
+        _h(assets_mcp_handlers, "handle_assets_sync_netbox"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
     # ------------------------------------------------------------------
     # Support vertical module tools (Module 10, Wave 5, ML10-B5)
     # ------------------------------------------------------------------

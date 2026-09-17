@@ -180,6 +180,9 @@ GLOBBED_UNMARKED_BY_DESIGN: frozenset[str] = frozenset(
         # Pure-unit A2A/seam test for Module 9.Wave 7; mocks the DB boundary and
         # says so in its own module docstring.  Matched by tests/test_assets_*.py.
         "tests/test_assets_sla.py",
+        # Pure-unit / hermetic mock test for Wave A-3 (warranty/EOL + NetBox sync);
+        # mocks DB and external HTTP NetBox boundaries. Matched by tests/test_assets_*.py.
+        "tests/test_assets_warranty_netbox.py",
     }
 )
 

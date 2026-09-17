@@ -44,3 +44,11 @@ nodes.
 """
 
 from __future__ import annotations
+
+from nce.vertical_modules.assets.netbox_bridge import do_sync_netbox
+from nce.vertical_modules.assets.warranty import do_check_warranty_eol
+
+__all__ = [
+    "do_check_warranty_eol",
+    "do_sync_netbox",
+]

@@ -113,6 +113,8 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/assets/health` | `api_assets_health` |
 | POST | `/api/assets/seed-from-bom` | `api_assets_seed_from_bom` |
 | POST | `/api/assets/sla/attach` | `api_assets_attach_sla` |
+| POST | `/api/assets/sync-netbox` | `api_assets_sync_netbox` |
+| GET | `/api/assets/warranty-eol` | `api_assets_check_warranty_eol` |
 | GET | `/api/assets/{id}` | `api_assets_get` |
 | GET | `/api/assets/{id}/health` | `api_assets_health` |
 | POST | `/api/assets/{id}/lifecycle` | `api_assets_advance_lifecycle` |
@@ -322,12 +324,14 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `agreements_suggest_revision` | yes | yes |  |  |
 | `assets_advance_lifecycle` |  | yes |  |  |
 | `assets_attach_sla` |  | yes |  |  |
+| `assets_check_warranty_eol` |  |  | yes |  |
 | `assets_compute_health` |  | yes |  |  |
 | `assets_get` |  |  | yes |  |
 | `assets_list` |  |  | yes |  |
 | `assets_ping` |  |  | yes |  |
 | `assets_pull_telemetry` | yes | yes |  |  |
 | `assets_seed_from_bom` |  | yes |  |  |
+| `assets_sync_netbox` | yes | yes |  |  |
 | `boost_memory` |  | yes |  |  |
 | `bridge_status` |  |  |  |  |
 | `business_insights_ask_business` | yes |  |  |  |
@@ -576,4 +580,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 285 REST endpoints, 273 MCP tools._
+_Totals: 287 REST endpoints, 275 MCP tools._

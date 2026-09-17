@@ -2056,6 +2056,70 @@ async def _assets_telemetry_tick(pool: asyncpg.Pool) -> None:
         await release_cron_lock(lock)
 
 
+async def _assets_warranty_eol_tick(pool: asyncpg.Pool) -> None:
+    """APScheduler job: periodic warranty expiry and EOL/lifespan check (Wave A-3).
+
+    Runs periodically (NCE_ASSETS_WARRANTY_EOL_WATCHER_INTERVAL_MINUTES).
+    Scans active namespaces with assets, detects assets near warranty expiration,
+    EOL status, or lifespan exceeded, and records alerts in the cognitive ledger.
+    """
+    interval_m = getattr(cfg, "NCE_ASSETS_WARRANTY_EOL_WATCHER_INTERVAL_MINUTES", 1440)
+    ttl = max(300, interval_m * 60 + 60)
+    lock: CronLock | None = await acquire_cron_lock("assets_warranty_eol_watcher", ttl)
+    if lock is None:
+        log.debug("Skipping assets_warranty_eol_watcher — lock held by another instance")
+        return
+
+    try:
+        from nce.orchestrator import NCEEngine
+        from nce.vertical_modules.assets.warranty import do_check_warranty_eol
+
+        async with unmanaged_pg_connection(pool, site="cron.assets_warranty_eol.scan") as conn:
+            rows = await conn.fetch(
+                """
+                SELECT DISTINCT namespace_id
+                FROM assets
+                LIMIT 500
+                """
+            )
+
+        if not rows:
+            return
+
+        engine = NCEEngine()
+        engine.pg_pool = pool
+
+        for row in rows:
+            ns_id = row["namespace_id"]
+            try:
+                res = await do_check_warranty_eol(
+                    engine,
+                    {
+                        "namespace_id": str(ns_id),
+                    },
+                )
+                w_count = res.get("warranty_alerts_count", 0)
+                e_count = res.get("eol_alerts_count", 0)
+                if (w_count + e_count) > 0:
+                    log.info(
+                        "assets_warranty_eol_tick: ns=%s found %d warranty alerts, %d EOL alerts",
+                        ns_id,
+                        w_count,
+                        e_count,
+                    )
+            except Exception as exc:
+                log.warning("assets_warranty_eol_tick failed for ns=%s: %s", ns_id, exc)
+    except _CRON_TICK_ERRORS as exc:
+        log.exception("assets_warranty_eol_tick failed unexpectedly")
+        await _dispatch_throttled_alert(
+            "cron.assets_warranty_eol_watcher.global",
+            "Cron Job Failed: assets_warranty_eol_watcher",
+            f"Assets warranty/EOL watcher tick failed: {type(exc).__name__}: {exc}",
+        )
+    finally:
+        await release_cron_lock(lock)
+
+
 async def async_main() -> None:
     global scheduler
 
@@ -2359,6 +2423,20 @@ async def async_main() -> None:
         replace_existing=True,
     )
 
+    assets_warranty_eol_minutes = max(
+        5,
+        int(getattr(cfg, "NCE_ASSETS_WARRANTY_EOL_WATCHER_INTERVAL_MINUTES", 1440)),
+    )
+    scheduler.add_job(
+        _assets_warranty_eol_tick,
+        IntervalTrigger(minutes=assets_warranty_eol_minutes),
+        args=[pool],
+        id="assets_warranty_eol_watcher",
+        coalesce=True,
+        max_instances=1,
+        replace_existing=True,
+    )
+
     hr_cert_expiry_minutes = max(5, int(_HR_CERT_EXPIRY_WATCHER_INTERVAL_MINUTES))
     scheduler.add_job(
         _hr_cert_expiry_watcher_tick,
@@ -2458,6 +2536,7 @@ async def async_main() -> None:
         _support_sla_watcher_tick(pool),
         _hr_compliance_watcher_tick(pool),
         _sales_stalled_deal_watcher_tick(pool),
+        _assets_warranty_eol_tick(pool),
     ]
     if cfg.NCE_D365_ENABLED:
         startup_coros.append(_d365_sync_tick(pool))

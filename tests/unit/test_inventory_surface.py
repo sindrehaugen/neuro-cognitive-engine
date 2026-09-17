@@ -175,14 +175,15 @@ def test_tool_count_updated_for_inventory() -> None:
     assert "inventory_stock_levels" in TOOL_REGISTRY
     assert "inventory_transfer_stock" in TOOL_REGISTRY
     assert "inventory_record_consumption" in TOOL_REGISTRY
-    assert len(TOOL_REGISTRY) == 273, (
-        f"Expected 273 tools (repo-wide ratchet), "
+    assert len(TOOL_REGISTRY) == 275, (
+        f"Expected 275 tools (repo-wide ratchet), "
         f"from Batch 141 + 3 assets tools from Batch 143 + 1 system_design tool "
         f"from Batch 067b + 2 system_design authoring tools from Batch 067c "
         f"+ 1 system_design validator from Batch 067d "
         f"+ 1 system_design retire tool from Batch 067h "
         f"+ 11 inventory tools from Batch 138a, M11.W10a -- surface completion, "
-        f"registering the Inventory cores Batch 131's single surface wave predated + 8 hr tools from Module 13 (HR engine)), "
+        f"registering the Inventory cores Batch 131's single surface wave predated + 8 hr tools from Module 13 (HR engine) "
+        f"+ 2 assets tools from Wave A-3), "
         f"got {len(TOOL_REGISTRY)}: "
         f"{sorted(TOOL_REGISTRY)}"
     )

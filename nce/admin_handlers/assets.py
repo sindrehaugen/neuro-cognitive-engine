@@ -46,11 +46,13 @@ from nce.admin_handlers._shared import (
 from nce.vertical_modules.assets.mcp_handlers import (
     do_advance_lifecycle,
     do_attach_sla,
+    do_check_warranty_eol,
     do_compute_health,
     do_get_asset,
     do_list_assets,
     do_pull_telemetry,
     do_seed_asset_from_bom,
+    do_sync_netbox,
 )
 
 log = logging.getLogger("nce.admin_handlers.assets")
@@ -430,4 +432,108 @@ async def api_assets_health(request: Any) -> JSONResponse:
             exc,
             status_code=500,
             log_event="api_assets_health",
+        )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/assets/warranty-eol
+# ---------------------------------------------------------------------------
+
+
+async def api_assets_check_warranty_eol(request: Any) -> JSONResponse:
+    """GET /api/assets/warranty-eol
+
+    Check assets for expiring warranty and EOL status (Watcher, read-only).
+
+    Query parameters:
+        namespace_id          (str, required): Active namespace UUID.
+        warranty_window_days  (int, optional): Lookahead in days for warranty.
+        eol_window_days       (int, optional): Lookahead in days for EOL.
+        default_lifespan_days (int, optional): Expected lifespan in days.
+        asset_id              (str, optional): Single asset UUID filter.
+        functional_location_id (str, optional): Functional location filter.
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
+    if err is not None:
+        return err
+
+    params: dict[str, Any] = {"namespace_id": namespace_id}
+    for key in ("warranty_window_days", "eol_window_days", "default_lifespan_days"):
+        val = request.query_params.get(key)
+        if val is not None and str(val).isdigit():
+            params[key] = int(val)
+    for key in ("asset_id", "functional_location_id", "now"):
+        val = request.query_params.get(key)
+        if val:
+            params[key] = val
+
+    try:
+        result = await do_check_warranty_eol(admin_state.engine, params)
+        return JSONResponse(result)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Assets check warranty/EOL error",
+            exc,
+            status_code=500,
+            log_event="api_assets_check_warranty_eol",
+        )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/assets/sync-netbox
+# ---------------------------------------------------------------------------
+
+
+async def api_assets_sync_netbox(request: Any) -> JSONResponse:
+    """POST /api/assets/sync-netbox
+
+    Reconcile assets with NetBox DCIM devices and write maps_to graph edges (Operator/bridge).
+
+    Request body (JSON) or query params:
+        namespace_id     (str, required): Active namespace UUID.
+        fuzzy_threshold  (float, optional): Fuzzy matching threshold.
+        limit            (int, optional): NetBox devices fetch limit.
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    body: dict[str, Any] = {}
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    ns_raw = body.get("namespace_id") or request.query_params.get("namespace_id")
+    namespace_id, err = _require_namespace_id(ns_raw)
+    if err is not None:
+        return err
+
+    params: dict[str, Any] = {"namespace_id": namespace_id}
+    if "fuzzy_threshold" in body:
+        params["fuzzy_threshold"] = float(body["fuzzy_threshold"])
+    elif "fuzzy_threshold" in request.query_params:
+        params["fuzzy_threshold"] = float(request.query_params["fuzzy_threshold"])
+
+    if "limit" in body:
+        params["limit"] = int(body["limit"])
+    elif "limit" in request.query_params:
+        params["limit"] = int(request.query_params["limit"])
+
+    try:
+        result = await do_sync_netbox(admin_state.engine, params)
+        await bump_mcp_cache_generation(admin_state.engine, route="api_assets_sync_netbox")
+        return JSONResponse(result)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Assets NetBox sync error",
+            exc,
+            status_code=500,
+            log_event="api_assets_sync_netbox",
         )
