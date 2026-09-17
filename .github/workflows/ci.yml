@@ -402,6 +402,132 @@ jobs:
           tests/test_event_log_verification.py
           -m integration -q --tb=short
 
+      # Q-12 (ML-CI1) — the bulk wiring. 68 test files that ran in ZERO workflows now run here.
+      #
+      # These were not new tests and not broken ones: they were simply never invoked. Census
+      # taken 2026-09-17 against a database built by apply_integration_schema.py, running
+      # every one of the 99 files still in KNOWN_UNWIRED:
+      #
+      #     pass cleanly   72        fail  14        error 3        all-skipped 6
+      #
+      # 🔴 The 72 was then re-verified with MONGO_URI pointed at a dead port, because THIS JOB
+      # HAS NO MONGO SERVICE -- only postgres and redis. Four of the 72 passed only because the
+      # measuring machine happened to have Mongo on 27017:
+      #     test_explain_past_decision, test_replay_handlers_integration,
+      #     test_vendors_registry, and one pass+skip case (test_garbage_collector, kept -- its
+      #     single skip is unrelated to Mongo).
+      # Wiring those four would have turned main red on the first run. 68 survive and are wired.
+      #
+      # The 14 that FAIL are deliberately NOT wired. They are tracked as their own finding: a
+      # test that fails where nothing observes it is the same defect class as B-B128, which
+      # merged clean because its test ran in no workflow. They need triage, not silencing.
+      #
+      # Grouped by theme so a future red names its own area rather than one 68-file blob.
+
+      - name: Integration — agreements, procurement & vendors (Q-12)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: >-
+          pytest
+          tests/test_agreements_coverage.py
+          tests/test_agreements_extract.py
+          tests/test_agreements_graph.py
+          tests/test_agreements_kickback.py
+          tests/test_agreements_review.py
+          tests/test_procurement_bids.py
+          tests/test_procurement_frontier.py
+          tests/test_procurement_generate_po.py
+          tests/test_procurement_graph.py
+          tests/test_procurement_recalibration.py
+          tests/test_procurement_submit_po.py
+          tests/test_vendors_contractor_match.py
+          tests/test_vendors_frontier.py
+          tests/test_vendors_partner_view.py
+          tests/test_vendors_performance.py
+          tests/test_vendors_procurement_feed.py
+          tests/test_vendors_scorecard.py
+          tests/test_vendors_tiers.py
+          -m integration -q --tb=short
+
+      - name: Integration — product, sales & project (Q-12)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: >-
+          pytest
+          tests/test_price_resolution.py
+          tests/test_pricing_surface.py
+          tests/test_product_eol_watcher.py
+          tests/test_product_golden_record.py
+          tests/test_product_matching.py
+          tests/test_product_schema.py
+          tests/test_project_advance.py
+          tests/test_project_automation.py
+          tests/test_project_baseline.py
+          tests/test_project_convert.py
+          tests/test_project_insights.py
+          tests/test_project_pl.py
+          tests/test_project_recall.py
+          tests/test_project_sync_bom_tasks.py
+          tests/test_sales_ai.py
+          tests/test_sales_commission.py
+          tests/test_sales_divergence.py
+          tests/test_sales_flip.py
+          tests/test_sales_read_model.py
+          tests/test_sales_write_routing.py
+          tests/unit/test_project_case_study.py
+          -m integration -q --tb=short
+
+      - name: Integration — graph, entity resolution & consolidation (Q-12)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: >-
+          pytest
+          tests/test_cascade_residual.py
+          tests/test_causal_dag.py
+          tests/test_change_origin.py
+          tests/test_consolidation_depth.py
+          tests/test_d365_incremental.py
+          tests/test_d365_kg_upsert.py
+          tests/test_entity_merge_queue.py
+          tests/test_entity_resolution_surface.py
+          tests/test_entity_resolver.py
+          tests/test_explain_memory.py
+          tests/test_grounded_helper.py
+          tests/test_merge_queue_api.py
+          tests/test_node_ownership_registry.py
+          tests/test_node_ownership_seed.py
+          tests/test_ownership_guard.py
+          tests/test_survivorship.py
+          -m integration -q --tb=short
+
+      - name: Integration — platform, migrations & the rest (Q-12)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: >-
+          pytest
+          tests/test_autonomy_schema.py
+          tests/test_c1_donewhen.py
+          tests/test_c2_donewhen.py
+          tests/test_c5_donewhen.py
+          tests/test_event_bus_interface.py
+          tests/test_migration_003_quota_check.py
+          tests/test_migration_004_event_sequences_backfill.py
+          tests/test_outbox_idempotency.py
+          tests/test_pg_trgm_extension.py
+          tests/test_principal_sessions.py
+          tests/test_schema_contract.py
+          tests/test_source_mode_resolver.py
+          tests/test_source_mode_table.py
+          -m integration -q --tb=short
+
       - name: Integration — security controls (ML-CI1)
         env:
           PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
