@@ -45,11 +45,28 @@ Measured on ``f2dba69``: four tables have their tenant-isolation policy AND thei
 column-only checker reports those databases clean. If ``schema.sql`` stopped running with
 a policy missing, the failure mode is a silent tenant-isolation hole, not a crash.
 
-Still NOT compared: column types, defaults, nullability, indexes, constraints, triggers,
-and the *predicate text* of a policy. Policy presence is checked by name; a policy that
-exists with a weakened ``USING`` clause reads as present. That is a real gap and it is
-named on purpose -- a checker that quietly claims more coverage than it has is the failure
-mode this whole row is about.
+Indexes, constraints, triggers and functions were added after measuring on ``1dda962``::
+
+    INDEX       schema.sql=185  migrations=152  only in schema.sql=47
+    TRIGGER     schema.sql=  6  migrations=  5  only in schema.sql= 1
+    FUNCTION    schema.sql=  7  migrations=  4  only in schema.sql= 3
+    CONSTRAINT  schema.sql= 23  migrations= 22  only in schema.sql= 9
+
+The one trigger is ``trg_event_log_worm`` and the functions include ``prevent_mutation``:
+together, the WORM append-only guarantee. Migration 080 *calls* ``prevent_mutation()`` and
+does not create it, so applying the chain to a database that never ran ``schema.sql`` fails
+with *"function prevent_mutation() does not exist"* -- proven on a throwaway database. The
+migration chain has never been a standalone path, and that is worth knowing before anyone
+reasons about step 2 from the file names alone.
+
+Still NOT compared: column types, defaults, nullability, index and constraint
+*definitions*, function *bodies*, and policy *predicate text*. Everything beyond
+tables/columns is matched **by name**. A policy with a weakened ``USING`` clause, or a
+function whose body changed, reads as present. That last one matters for step 2:
+``CREATE OR REPLACE FUNCTION`` in ``schema.sql`` is how function updates currently reach
+existing databases, and this checker would not notice if they stopped. Named on purpose --
+a checker that quietly claims more coverage than it has is the failure mode this whole row
+is about.
 
 Usage::
 
@@ -296,6 +313,76 @@ async def actual_rls(dsn: str) -> tuple[set[str], set[tuple[str, str]]]:
     return enabled, policies
 
 
+# Object kinds compared beyond tables/columns. Each maps a ``schema.sql`` pattern to the
+# catalogue query that answers "does the database have it?". Names only -- see the module
+# docstring for what that does and does not prove.
+_OBJECT_PATTERNS: dict[str, str] = {
+    "index": r'CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?'
+    r'(?:IF\s+NOT\s+EXISTS\s+)?"?([\w.]+)"?',
+    "trigger": r'CREATE\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+"?([\w.]+)"?',
+    "function": r'CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+"?([\w.]+)"?\s*\(',
+    "constraint": r'ADD\s+CONSTRAINT\s+"?([\w.]+)"?',
+}
+
+
+def expected_objects(schema_path: Path = _SCHEMA) -> dict[str, set[str]]:
+    """Indexes, triggers, functions and constraints ``schema.sql`` guarantees, by kind.
+
+    Measured on ``1dda962`` -- this is why the checker needed to grow again::
+
+        INDEX       schema.sql=185  migrations=152  only in schema.sql=47
+        TRIGGER     schema.sql=  6  migrations=  5  only in schema.sql= 1
+        FUNCTION    schema.sql=  7  migrations=  4  only in schema.sql= 3
+        CONSTRAINT  schema.sql= 23  migrations= 22  only in schema.sql= 9
+
+    The single trigger is ``trg_event_log_worm`` and the functions include
+    ``prevent_mutation`` -- together, the WORM append-only guarantee. Migration 080 calls
+    ``prevent_mutation()`` and does not create it; applying 080 to a database that never
+    ran ``schema.sql`` fails with *"function prevent_mutation() does not exist"*, proven on
+    a throwaway database. The migration chain has never been a standalone path.
+    """
+    sql = _strip_sql_comments(schema_path.read_text(encoding="utf-8", errors="replace"))
+    return {
+        kind: {m.group(1).strip('"').split(".")[-1].lower() for m in re.finditer(pat, sql, re.I)}
+        for kind, pat in _OBJECT_PATTERNS.items()
+    }
+
+
+async def actual_objects(dsn: str) -> dict[str, set[str]]:
+    import asyncpg
+
+    queries = {
+        "index": "SELECT indexname AS n FROM pg_indexes WHERE schemaname = 'public'",
+        "trigger": "SELECT tgname AS n FROM pg_trigger WHERE NOT tgisinternal",
+        "function": "SELECT p.proname AS n FROM pg_proc p JOIN pg_namespace ns "
+        "ON ns.oid = p.pronamespace WHERE ns.nspname = 'public'",
+        "constraint": "SELECT conname AS n FROM pg_constraint c JOIN pg_namespace ns "
+        "ON ns.oid = c.connamespace WHERE ns.nspname = 'public'",
+    }
+    conn = await asyncpg.connect(dsn)
+    try:
+        return {kind: {r["n"].lower() for r in await conn.fetch(q)} for kind, q in queries.items()}
+    finally:
+        await conn.close()
+
+
+def compare_objects(
+    expected: dict[str, set[str]], actual: dict[str, set[str]]
+) -> dict[str, list[str]]:
+    """Return ``{kind: [missing names]}``, one direction only.
+
+    Extra objects are not drift: migrations add indexes and constraints ``schema.sql``
+    never mentions, and reporting those would make the checker useless on every real
+    deployment -- the same reasoning as extra columns and extra policies.
+    """
+    out: dict[str, list[str]] = {}
+    for kind, names in expected.items():
+        gap = sorted(names - actual.get(kind, set()))
+        if gap:
+            out[kind] = gap
+    return out
+
+
 async def rls_role_posture(dsn: str) -> str | None:
     """Does the connecting role actually obey the policies this script just verified?
 
@@ -363,6 +450,9 @@ async def _main() -> int:
         expected_rls(Path(args.schema)), await actual_rls(args.dsn)
     )
     posture = await rls_role_posture(args.dsn)
+    missing_objs = compare_objects(
+        expected_objects(Path(args.schema)), await actual_objects(args.dsn)
+    )
 
     if args.json:
         print(
@@ -373,6 +463,7 @@ async def _main() -> int:
                     "missing_columns": missing_cols,
                     "missing_rls_enablement": missing_rls,
                     "missing_policies": missing_pols,
+                    "missing_objects": missing_objs,
                     "rls_role_posture": posture,
                 },
                 indent=2,
@@ -381,10 +472,10 @@ async def _main() -> int:
         )
     else:
         print(f"schema.sql guarantees {len(expected)} tables")
-        if not (missing_tables or missing_cols or missing_rls or missing_pols):
+        if not (missing_tables or missing_cols or missing_rls or missing_pols or missing_objs):
             print(
-                "NO DRIFT: the database has every table, column, RLS enablement and policy "
-                "schema.sql guarantees."
+                "NO DRIFT: the database has every table, column, RLS enablement, policy, "
+                "index, constraint, trigger and function schema.sql guarantees."
             )
         else:
             if missing_tables:
@@ -404,6 +495,11 @@ async def _main() -> int:
                 print(f"\nMISSING POLICIES ({len(missing_pols)}):")
                 for name in missing_pols:
                     print(f"  {name}")
+            for kind, names in sorted(missing_objs.items()):
+                plural = "INDEXES" if kind == "index" else f"{kind.upper()}S"
+                print(f"\nMISSING {plural} ({len(names)}):")
+                for name in names:
+                    print(f"  {name}")
             print(
                 "\nThis database would be changed by running schema.sql. Until Q-4 step 2 "
                 "lands, connect() will apply these silently and without a ledger entry."
@@ -420,7 +516,9 @@ async def _main() -> int:
         # force" when the connecting role bypasses all of it.
         print(f"\nNOTE on what the RLS result means here: {posture}")
 
-    return 1 if (missing_tables or missing_cols or missing_rls or missing_pols) else 0
+    return (
+        1 if (missing_tables or missing_cols or missing_rls or missing_pols or missing_objs) else 0
+    )
 
 
 if __name__ == "__main__":
