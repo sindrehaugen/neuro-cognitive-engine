@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 277  # 276 baseline + 1 Assets failure pattern recorder (Wave A-5)
+_EXPECTED_TOTAL = 279  # 277 baseline + 2 Inventory kitting & package reservation (Wave IN-2)
 
 
 def test_registry_has_expected_entries():
@@ -259,6 +259,9 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "assets_sync_netbox",
         # Wave A-5 -- Assets failure pattern recorder (Actor mutation)
         "assets_record_failure_pattern",
+        # Wave IN-2 -- Inventory kitting & package reservation (Actor mutations)
+        "inventory_reserve_kit",
+        "inventory_release_kit",
     }
 )
 
@@ -271,7 +274,9 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 119  # 118 baseline + 1 Assets failure pattern recorder (Wave A-5)
+    assert (
+        len(MUTATION_TOOLS) == 121
+    )  # 119 baseline + 2 Inventory kitting & package reservation (Wave IN-2)
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -612,6 +617,9 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "assets_sync_netbox",
         # Wave A-5 -- Assets failure pattern recorder (admin_only mutation)
         "assets_record_failure_pattern",
+        # Wave IN-2 -- Inventory kitting & package reservation (admin_only mutations)
+        "inventory_reserve_kit",
+        "inventory_release_kit",
     }
 )
 
@@ -624,7 +632,9 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 90  # 89 baseline + 1 Assets failure pattern recorder (Wave A-5)
+    assert (
+        len(ADMIN_ONLY_TOOLS) == 92
+    )  # 90 baseline + 2 Inventory kitting & package reservation (Wave IN-2)
 
 
 # ---------------------------------------------------------------------------

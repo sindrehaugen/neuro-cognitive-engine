@@ -15,6 +15,10 @@ from nce.vertical_modules.inventory._guard import (
 )
 from nce.vertical_modules.inventory.forecast import do_forecast_demand
 from nce.vertical_modules.inventory.goods_receipt import do_record_goods_receipt
+from nce.vertical_modules.inventory.kitting import (
+    do_release_kit,
+    do_reserve_kit,
+)
 from nce.vertical_modules.inventory.reconcile import do_reconcile_dead_stock
 from nce.vertical_modules.inventory.replenishment import do_recommend_restock
 from nce.vertical_modules.inventory.reservation import (
@@ -52,7 +56,9 @@ __all__ = [
     "do_record_rma",
     "do_reconcile_dead_stock",
     "do_recommend_restock",
+    "do_release_kit",
     "do_release_stock",
+    "do_reserve_kit",
     "do_reserve_stock",
     "do_restock_from_rma",
     "do_stock_levels",

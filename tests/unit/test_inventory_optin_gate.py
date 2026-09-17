@@ -65,6 +65,8 @@ _MCP_HANDLER_CORES: dict[str, str] = {
     "handle_inventory_forecast_demand": "do_forecast_demand",
     "handle_inventory_reserve_stock": "do_reserve_stock",
     "handle_inventory_release_stock": "do_release_stock",
+    "handle_inventory_reserve_kit": "do_reserve_kit",
+    "handle_inventory_release_kit": "do_release_kit",
     "handle_inventory_record_rma": "do_record_rma",
     "handle_inventory_valuation": "do_valuation",
     "handle_inventory_record_goods_receipt_and_match": (
@@ -85,6 +87,8 @@ _REST_ROUTE_CORES: dict[str, tuple[str, bool]] = {
     "api_inventory_forecast_demand": ("do_forecast_demand", False),
     "api_inventory_reserve_stock": ("do_reserve_stock", False),
     "api_inventory_release_stock": ("do_release_stock", False),
+    "api_inventory_reserve_kit": ("do_reserve_kit", False),
+    "api_inventory_release_kit": ("do_release_kit", False),
     "api_inventory_record_rma": ("do_record_rma", False),
     "api_inventory_valuation": ("do_valuation", True),
     "api_inventory_record_goods_receipt_and_match": (

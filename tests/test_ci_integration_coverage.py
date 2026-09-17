@@ -118,6 +118,9 @@ GLOBBED_UNMARKED_BY_DESIGN: frozenset[str] = frozenset(
         # Pure-unit test for Wave A-5 (Assets failure pattern recording);
         # mocks DB boundary and verifies Contract-A. Matched by tests/test_assets_*.py.
         "tests/test_assets_failure_pattern.py",
+        # Pure-unit test for Wave IN-2 (Inventory kitting & package reservation);
+        # tests in-memory domain logic and mocks DB boundary. Matched by tests/test_inventory_*.py.
+        "tests/test_inventory_kitting.py",
     }
 )
 

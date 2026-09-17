@@ -101,6 +101,7 @@ from nce.vertical_modules.inventory._guard import (
 )
 from nce.vertical_modules.inventory.forecast import do_forecast_demand
 from nce.vertical_modules.inventory.goods_receipt import do_record_goods_receipt
+from nce.vertical_modules.inventory.kitting import do_release_kit, do_reserve_kit
 from nce.vertical_modules.inventory.reconcile import do_reconcile_dead_stock
 from nce.vertical_modules.inventory.refusals import BUSINESS_REFUSALS, mcp_refusal
 from nce.vertical_modules.inventory.replenishment import do_recommend_restock
@@ -323,6 +324,42 @@ async def handle_inventory_release_stock(engine: NCEEngine, arguments: dict[str,
     await _check_inventory_enabled(engine, arguments)
     try:
         result = await do_release_stock(engine, dict(arguments))
+    except BUSINESS_REFUSALS as exc:
+        raise mcp_refusal(exc) from exc
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_inventory_reserve_kit(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: inventory_reserve_kit — reserve stock for kit/package (Actor).
+
+    Requires ``namespace_id``, ``project_id``, ``location``, and ``items``.
+    Actor / admin-only (``mutation=True, admin_only=True``).
+    Enforces the PACKAGE decision: packages stocked as a UNIT; kits expand
+    confirmed components per piece. Live accessory_of edges never expanded.
+
+    Thin adapter — all logic lives in ``kitting.do_reserve_kit``.
+    """
+    await _check_inventory_enabled(engine, arguments)
+    try:
+        result = await do_reserve_kit(engine, dict(arguments))
+    except BUSINESS_REFUSALS as exc:
+        raise mcp_refusal(exc) from exc
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_inventory_release_kit(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: inventory_release_kit — release kit/package reservation (Actor).
+
+    Requires ``namespace_id``, ``project_id``, ``location``, and ``items``.
+    Actor / admin-only (``mutation=True, admin_only=True``).
+
+    Thin adapter — all logic lives in ``kitting.do_release_kit``.
+    """
+    await _check_inventory_enabled(engine, arguments)
+    try:
+        result = await do_release_kit(engine, dict(arguments))
     except BUSINESS_REFUSALS as exc:
         raise mcp_refusal(exc) from exc
     return json.dumps(result, default=str)

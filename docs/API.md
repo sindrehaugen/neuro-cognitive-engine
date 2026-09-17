@@ -184,7 +184,9 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/inventory/record-goods-receipt` | `api_inventory_record_goods_receipt` |
 | POST | `/api/inventory/record-goods-receipt-and-match` | `api_inventory_record_goods_receipt_and_match` |
 | POST | `/api/inventory/record-rma` | `api_inventory_record_rma` |
+| POST | `/api/inventory/release-kit` | `api_inventory_release_kit` |
 | POST | `/api/inventory/release-stock` | `api_inventory_release_stock` |
+| POST | `/api/inventory/reserve-kit` | `api_inventory_reserve_kit` |
 | POST | `/api/inventory/reserve-stock` | `api_inventory_reserve_stock` |
 | POST | `/api/inventory/restock-from-rma` | `api_inventory_restock_from_rma` |
 | GET | `/api/inventory/stock-levels` | `api_inventory_stock_levels` |
@@ -438,7 +440,9 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `inventory_record_goods_receipt` | yes | yes |  |  |
 | `inventory_record_goods_receipt_and_match` | yes | yes |  |  |
 | `inventory_record_rma` | yes | yes |  |  |
+| `inventory_release_kit` | yes | yes |  |  |
 | `inventory_release_stock` | yes | yes |  |  |
+| `inventory_reserve_kit` | yes | yes |  |  |
 | `inventory_reserve_stock` | yes | yes |  |  |
 | `inventory_restock_from_rma` | yes | yes |  |  |
 | `inventory_stock_levels` |  |  | yes |  |
@@ -587,4 +591,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 292 REST endpoints, 277 MCP tools._
+_Totals: 294 REST endpoints, 279 MCP tools._
