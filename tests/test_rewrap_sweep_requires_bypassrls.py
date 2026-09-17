@@ -151,6 +151,32 @@ async def test_the_guard_runs_BEFORE_any_column_work() -> None:
 # correct and the run reports success.
 
 
+_DB_MODULES = {"asyncpg", "psycopg", "psycopg2", "sqlalchemy"}
+
+
+def _can_reach_a_database(tree: ast.AST) -> bool:
+    """Could this script open a database connection at all?
+
+    Judged from the **AST**, not raw source. The first version used a regex and matched
+    ``NCEEngine.connect()`` inside ``split_schema.py``'s docstring -- prose describing the
+    defect the script exists to fix, not a call the script makes. Matching prose is the
+    error this whole scan is careful about elsewhere, so it should not be reintroduced here.
+
+    Deliberately generous within that: importing a driver counts even if the import is never
+    used. A script has to be unambiguously offline to be skipped. Erring permissive costs a
+    false positive someone must justify; erring the other way silently drops a script from a
+    security scan.
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if any(a.name.split(".")[0] in _DB_MODULES for a in node.names):
+                return True
+        elif isinstance(node, ast.ImportFrom):
+            if node.module and node.module.split(".")[0] in _DB_MODULES:
+                return True
+    return False
+
+
 def _scripts_reading_wrapped_columns() -> dict[str, bool]:
     """Map script name -> whether it calls ``rls_visibility_problem``.
 
@@ -179,6 +205,17 @@ def _scripts_reading_wrapped_columns() -> dict[str, bool]:
         except SyntaxError:  # pragma: no cover - a broken script is another test's problem
             continue
         if not any(re.search(re.escape(table), source) for table in tables):
+            continue
+        if not _can_reach_a_database(tree):
+            # A script that never opens a connection cannot read a wrapped column, so it has
+            # no connection on which to call the guard. `scripts/split_schema.py` is the case
+            # that forced this: it partitions schema.sql as text and names `memories` in its
+            # docstring, which the raw-source scan matched.
+            #
+            # This narrows the scan; it does not soften it. The rule is still "if you can
+            # reach the data, call the guard" -- and the deliberate false positive on a table
+            # named only in a comment is PRESERVED for every script that does connect, which
+            # is how `check_schema_drift.py` was correctly caught.
             continue
         found[path.name] = any(
             isinstance(node, ast.Call)
@@ -258,3 +295,33 @@ async def go(conn):
     )
     assert mentions, "the scan's in-scope test failed to see a wrapped table name"
     assert not guarded, "the scan's guard test reported a guard that is not there"
+
+
+def test_the_scan_narrowing_does_not_soften_the_ratchet() -> None:
+    """🔴 The narrowing added for `split_schema.py` must exclude ONLY offline scripts.
+
+    The scan deliberately matches raw source including comments, so a table named in a
+    docstring counts -- that is how `check_schema_drift.py` was correctly caught. But a
+    script that never imports a driver has no connection on which to call the guard, and
+    `scripts/split_schema.py` partitions schema.sql as text while naming `memories` in its
+    docstring.
+
+    If this narrowing ever grows to exclude something that DOES connect, the ratchet stops
+    catching the class it exists for. So both directions are asserted.
+    """
+    offline = "import re\n'''mentions memories and NCEEngine.connect() in prose'''\n"
+    connects = "import asyncpg\n\nasync def go(dsn):\n    return await asyncpg.connect(dsn)\n"
+    from_import = "from asyncpg import connect\n"
+
+    assert not _can_reach_a_database(ast.parse(offline)), (
+        "a text-only script has no connection to guard"
+    )
+    assert _can_reach_a_database(ast.parse(connects)), "a driver import must keep it in scope"
+    assert _can_reach_a_database(ast.parse(from_import)), "from-import must count too"
+
+
+def test_the_scripts_that_can_reach_the_data_are_still_scanned() -> None:
+    """The narrowing must not have emptied the scan. These three must remain in scope."""
+    found = _scripts_reading_wrapped_columns()
+    for name in ("rewrap_master_key.py", "check_schema_drift.py", "migrate_bridge_tokens.py"):
+        assert name in found, f"{name} fell out of the F11 scan"

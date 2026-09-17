@@ -35,6 +35,12 @@ class MockTransaction:
 class MockConnection:
     def __init__(self):
         self.execute = AsyncMock()
+        # Q-4 step 2: _init_pg_schema now probes the migration ledger to decide whether the
+        # bootstrap half runs, so a connection stand-in needs fetchval. Returning None means
+        # "applied_migrations does not exist" -> treated as a fresh database, which is the
+        # right default for a mock and keeps this test exercising the path it is about (the
+        # nce_app password DO block), not the ledger branch.
+        self.fetchval = AsyncMock(return_value=None)
         self.tx = MockTransaction()
 
     def transaction(self):
@@ -75,17 +81,25 @@ async def test_init_pg_schema_special_character_password():
 
     # execute() calls, in order:
     #   1. pg_advisory_xact_lock   -- schema batch
-    #   2. execute(ddl)
-    #   3. pg_advisory_xact_lock   -- role refresh, same lock. schema.sql itself
+    #   2. execute(schema_bootstrap.sql)  -- Q-4 step 2; see below
+    #   3. execute(schema_runtime.sql)
+    #   4. pg_advisory_xact_lock   -- role refresh, same lock. The schema itself
     #      ALTER ROLEs nce_app, so an unlocked refresh races it on the pg_authid
     #      tuple; see tests/test_schema_ddl_lock.py.
-    #   4. set_config
-    #   5. DO block
+    #   5. set_config
+    #   6. DO block
     #
-    # Located by content rather than index: this test is about the special-character
-    # password being passed as a parameter, not about how many locks are taken.
+    # 5 -> 6 because Q-4 step 2 split schema.sql in two. `MockConnection.fetchval`
+    # returns None, i.e. `applied_migrations` does not exist, i.e. a fresh database --
+    # so BOTH halves run here. On an existing database only the runtime half would,
+    # and this count would be 5 again.
+    #
+    # The count stays exact rather than becoming a >= : this test is about the
+    # special-character password reaching the DO block as a *parameter*, but an exact
+    # count is also what would catch DDL being executed twice by accident, which is
+    # worth keeping now that there are two files to execute.
     calls = mock_conn.execute.call_args_list
-    assert len(calls) == 5, [c[0][0] for c in calls]
+    assert len(calls) == 6, [c[0][0] for c in calls]
 
     locks = [c for c in calls if "pg_advisory_xact_lock" in c[0][0]]
     assert len(locks) == 2, "both DDL transactions must take the schema advisory lock"
