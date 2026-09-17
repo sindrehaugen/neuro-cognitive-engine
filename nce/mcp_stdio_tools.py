@@ -2737,6 +2737,44 @@ TOOLS = [
         },
     ),
     Tool(
+        name="assets_record_failure_pattern",
+        description=(
+            "Record a failure pattern boundary edge from ASSET to PRODUCT_SKU in the Knowledge Graph (Wave A-5). "
+            "Enforces Contract-A single-writer ownership for ASSET and closes the feedback loop to Product. Actor; mutation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "asset_id": {
+                    "type": "string",
+                    "description": "Asset UUID that experienced the failure.",
+                },
+                "product_sku": {
+                    "type": "string",
+                    "description": "Product SKU string.",
+                },
+                "confidence": {
+                    "type": "number",
+                    "description": "Optional confidence float between 0.0 and 1.0 (default: 1.0).",
+                },
+                "failure_mode": {
+                    "type": "string",
+                    "description": "Optional failure mode description (e.g. overheating, port failure).",
+                },
+                "severity": {
+                    "type": "string",
+                    "description": "Optional severity string (e.g. critical, major, minor).",
+                },
+                "pattern_notes": {
+                    "type": "string",
+                    "description": "Optional detailed notes on the observed failure.",
+                },
+            },
+            "required": ["namespace_id", "asset_id", "product_sku"],
+        },
+    ),
+    Tool(
         name="vendors_get_vendor",
         description="Fetch a single vendor. Watcher; read-only, cacheable.",
         inputSchema={

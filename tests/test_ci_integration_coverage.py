@@ -183,6 +183,9 @@ GLOBBED_UNMARKED_BY_DESIGN: frozenset[str] = frozenset(
         # Pure-unit test for Wave A-4 (QR generator & room register);
         # mocks DB boundary. Matched by tests/test_assets_*.py.
         "tests/test_assets_qr_register.py",
+        # Pure-unit test for Wave A-5 (Assets failure pattern recording);
+        # mocks DB boundary and verifies Contract-A. Matched by tests/test_assets_*.py.
+        "tests/test_assets_failure_pattern.py",
     }
 )
 

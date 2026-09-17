@@ -54,6 +54,11 @@ from nce.vertical_modules.assets.mcp_handlers import (
     do_seed_asset_from_bom,
     do_sync_netbox,
 )
+from nce.vertical_modules.assets.failure_pattern import (
+    AssetNotFoundError,
+    do_get_failure_patterns,
+    do_record_failure_pattern,
+)
 from nce.vertical_modules.assets.qr import (
     do_generate_asset_qr,
     do_get_room_register,
@@ -647,3 +652,98 @@ async def api_assets_register(request: Any) -> JSONResponse:
             status_code=500,
             log_event="api_assets_register",
         )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/assets/failure-pattern or POST /api/assets/{id}/failure-pattern
+# ---------------------------------------------------------------------------
+
+
+async def api_assets_record_failure_pattern(request: Any) -> JSONResponse:
+    """POST /api/assets/failure-pattern or POST /api/assets/{id}/failure-pattern
+
+    Record a failure pattern edge from ASSET to PRODUCT_SKU (Wave A-5).
+
+    Path parameter:
+        id (str, optional): Asset UUID.
+
+    Request body (JSON):
+        namespace_id (str, required): Active namespace UUID.
+        asset_id     (str, optional): Asset UUID (if id not in path).
+        product_sku  (str, required): Product SKU.
+        confidence   (float, optional): Confidence between 0.0 and 1.0 (default 1.0).
+        failure_mode (str, optional): Description of failure mode.
+        severity     (str, optional): Failure severity.
+        notes        (str, optional): Contextual notes.
+
+    Response (JSON):
+        {"ok": True, "asset_id": str, "product_sku": str, "edge": str, ...} HTTP 200
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    namespace_id, err = _require_namespace_id(
+        body.get("namespace_id") or request.query_params.get("namespace_id")
+    )
+    if err is not None:
+        return err
+
+    asset_id = (
+        request.path_params.get("id")
+        or body.get("asset_id")
+        or body.get("id")
+        or request.query_params.get("asset_id")
+        or ""
+    ).strip()
+    if not asset_id:
+        return JSONResponse({"error": "Missing parameter: id or asset_id"}, status_code=422)
+
+    product_sku = str(
+        body.get("product_sku") or request.query_params.get("product_sku") or ""
+    ).strip()
+    if not product_sku:
+        return JSONResponse({"error": "Missing parameter: product_sku"}, status_code=422)
+
+    params: dict[str, Any] = {
+        "namespace_id": namespace_id,
+        "asset_id": asset_id,
+        "product_sku": product_sku,
+    }
+    if "confidence" in body:
+        params["confidence"] = body["confidence"]
+    elif "confidence" in request.query_params:
+        params["confidence"] = request.query_params["confidence"]
+
+    if "failure_mode" in body:
+        params["failure_mode"] = body["failure_mode"]
+    if "severity" in body:
+        params["severity"] = body["severity"]
+    if "notes" in body:
+        params["notes"] = body["notes"]
+    elif "pattern_notes" in body:
+        params["pattern_notes"] = body["pattern_notes"]
+
+    try:
+        result = await do_record_failure_pattern(admin_state.engine, params)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except AssetNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except Exception as exc:
+        return admin_error_response(
+            "Assets failure pattern recording error",
+            exc,
+            status_code=500,
+            log_event="api_assets_record_failure_pattern",
+        )
+
+    if result.get("not_found"):
+        return JSONResponse(result, status_code=404)
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_assets_record_failure_pattern")
+    return JSONResponse(result)

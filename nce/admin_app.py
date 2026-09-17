@@ -1267,6 +1267,17 @@ def build_admin_routes() -> list[Route]:
             endpoint=assets_handlers.api_assets_health,
             methods=["GET"],
         ),
+        # Assets vertical module failure pattern recording (Wave A-5)
+        Route(
+            "/api/assets/{id}/failure-pattern",
+            endpoint=assets_handlers.api_assets_record_failure_pattern,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/assets/failure-pattern",
+            endpoint=assets_handlers.api_assets_record_failure_pattern,
+            methods=["POST"],
+        ),
         # ------------------------------------------------------------------
         # Support vertical module endpoints (Module 10, Wave 6, ML10-B6)
         # ------------------------------------------------------------------
