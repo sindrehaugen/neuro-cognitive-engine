@@ -365,6 +365,43 @@ jobs:
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/test_worm_truncate_guard.py -m integration -q --tb=short
 
+      # Q-12 (ML-CI1). These three were in KNOWN_UNWIRED -- 10 integration tests over the
+      # actor-trust ledger, event-log concurrency and event-log chain verification, running
+      # in zero workflows. Their pass/fail had never been observed by anything.
+      #
+      # They were not unwirable, they were SKIPPED: each needs an active row in
+      # `signing_keys`, and the fixture refuses to seed one unless
+      # NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL is set -- because seeding writes a key
+      # encrypted with the current shell's master key and would orphan a real deployment.
+      # CI's database is disposable and recreated per run, which is exactly the case that
+      # guard's own message permits. Same env as every other integration step here.
+      #
+      # Verified against a real Postgres built by apply_integration_schema.py before wiring:
+      #   test_actor_trust            7 passed
+      #   test_event_log_concurrency  2 passed
+      #   test_event_log_verification 1 passed
+      #
+      # 🔴 Deliberately NOT added here, each with a measured reason:
+      #   test_governed_decorator            - test_governed_pending_does_not_touch_db FAILS.
+      #       Real regression from B-B128: @governed now requires conn + namespace_id and the
+      #       test passes None. Routed to MLV15B. Wiring it would put a known break in CI.
+      #   test_envelope_read_consumers       - skips, needs an isolated stack on PG:5433 /
+      #       Mongo:27018 / Redis:6380 that this job does not provide.
+      #   test_envelope_encryption_integration, test_batch49_pii_derivation
+      #                                      - need a real MinIO; setting MINIO_ACCESS_KEY
+      #       alone still errors after ~65s of connection attempts.
+      - name: Integration — trust ledger, event-log concurrency & chain verify (Q-12)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: >-
+          pytest
+          tests/test_actor_trust.py
+          tests/test_event_log_concurrency.py
+          tests/test_event_log_verification.py
+          -m integration -q --tb=short
+
       - name: Integration — security controls (ML-CI1)
         env:
           PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
