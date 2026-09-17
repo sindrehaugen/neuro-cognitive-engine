@@ -110,6 +110,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/agreements/upsert` | `api_agreements_upsert` |
 | GET | `/api/agreements/{id}` | `api_agreements_detail` |
 | GET | `/api/assets` | `api_assets_list` |
+| POST | `/api/assets/failure-pattern` | `api_assets_record_failure_pattern` |
 | GET | `/api/assets/health` | `api_assets_health` |
 | GET | `/api/assets/qr` | `api_assets_generate_qr` |
 | GET | `/api/assets/register` | `api_assets_register` |
@@ -118,6 +119,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/assets/sync-netbox` | `api_assets_sync_netbox` |
 | GET | `/api/assets/warranty-eol` | `api_assets_check_warranty_eol` |
 | GET | `/api/assets/{id}` | `api_assets_get` |
+| POST | `/api/assets/{id}/failure-pattern` | `api_assets_record_failure_pattern` |
 | GET | `/api/assets/{id}/health` | `api_assets_health` |
 | POST | `/api/assets/{id}/lifecycle` | `api_assets_advance_lifecycle` |
 | GET | `/api/assets/{id}/qr` | `api_assets_generate_qr` |
@@ -334,6 +336,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `assets_list` |  |  | yes |  |
 | `assets_ping` |  |  | yes |  |
 | `assets_pull_telemetry` | yes | yes |  |  |
+| `assets_record_failure_pattern` | yes | yes |  |  |
 | `assets_seed_from_bom` |  | yes |  |  |
 | `assets_sync_netbox` | yes | yes |  |  |
 | `boost_memory` |  | yes |  |  |
@@ -584,4 +587,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 290 REST endpoints, 276 MCP tools._
+_Totals: 292 REST endpoints, 277 MCP tools._

@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 276  # 275 baseline + 1 Assets QR generator (Wave A-4)
+_EXPECTED_TOTAL = 277  # 276 baseline + 1 Assets failure pattern recorder (Wave A-5)
 
 
 def test_registry_has_expected_entries():
@@ -257,6 +257,8 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "sales_edit_deal",
         # Wave A-3 -- Assets NetBox sync bridge mutation
         "assets_sync_netbox",
+        # Wave A-5 -- Assets failure pattern recorder (Actor mutation)
+        "assets_record_failure_pattern",
     }
 )
 
@@ -269,7 +271,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 118  # 117 baseline + 1 Assets netbox sync (Wave A-3)
+    assert len(MUTATION_TOOLS) == 119  # 118 baseline + 1 Assets failure pattern recorder (Wave A-5)
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -608,6 +610,8 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "customer_portal_register_expansion_interest",
         # Wave A-3 -- Assets NetBox sync bridge (admin_only mutation)
         "assets_sync_netbox",
+        # Wave A-5 -- Assets failure pattern recorder (admin_only mutation)
+        "assets_record_failure_pattern",
     }
 )
 
@@ -620,7 +624,7 @@ def test_admin_only_tools_exact_match():
 
 
 def test_admin_only_tools_count():
-    assert len(ADMIN_ONLY_TOOLS) == 89  # 88 baseline + 1 Assets NetBox sync bridge (Wave A-3)
+    assert len(ADMIN_ONLY_TOOLS) == 90  # 89 baseline + 1 Assets failure pattern recorder (Wave A-5)
 
 
 # ---------------------------------------------------------------------------
