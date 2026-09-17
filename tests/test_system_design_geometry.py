@@ -262,6 +262,21 @@ async def _author_tenant(engine: Any, ns_id: uuid.UUID, tag: str) -> None:
         await _dispatch_ok(engine, _TOPOLOGY_TOOL, _topology_args(ns_id, tag))
 
 
+async def _seed_kg_node(
+    conn: Any, ns_id: uuid.UUID, label: str, entity_type: str = "DEVICE"
+) -> None:
+    await conn.execute(
+        """
+        INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)
+        VALUES ($1, $2, $3::uuid, 'sync')
+        ON CONFLICT (label, namespace_id) DO NOTHING
+        """,
+        label,
+        entity_type,
+        str(ns_id),
+    )
+
+
 async def _geometry_row_count(pg_pool: Any, ns_id: uuid.UUID) -> int:
     """GEOMETRY rows for this namespace — grain 1 only, explicit ns predicate.
 
@@ -347,6 +362,8 @@ class TestSchema:
         ns_id: uuid.UUID = await make_namespace()
         async with scoped_pg_session(pg_pool, ns_id) as conn:
             for i, good in enumerate(("front", "rear", None)):
+                label = f"DEVICE:CHECK:OK{i}"
+                await _seed_kg_node(conn, ns_id, label)
                 await conn.execute(
                     """
                     INSERT INTO system_design_geometry
@@ -354,7 +371,7 @@ class TestSchema:
                     VALUES ($1::uuid, $2, $3)
                     """,
                     str(ns_id),
-                    f"DEVICE:CHECK:OK{i}",
+                    label,
                     good,
                 )
 
@@ -463,6 +480,7 @@ class TestSchema:
                             )
             # Sibling: the largest double IS storable, so the constraint is not
             # simply refusing everything large.
+            await _seed_kg_node(conn, ns_id, "DEVICE:RANGE:OK")
             await conn.execute(
                 """
                 INSERT INTO system_design_geometry (namespace_id, node_label, x)
@@ -527,6 +545,7 @@ class TestSchema:
         from nce.db_utils import scoped_pg_session
 
         async with scoped_pg_session(pg_pool, ns_id) as conn:
+            await _seed_kg_node(conn, ns_id, _DEVICE_LABEL)
             await upsert_node_geometry(conn, ns_id, _DEVICE_LABEL, {"x": 1.5})
         assert await _geometry_row_count(pg_pool, ns_id) == 1
 
@@ -582,6 +601,7 @@ class TestSchema:
 
             # The sibling half: a non-blank label is accepted, so the constraint
             # is not simply refusing everything.
+            await _seed_kg_node(conn, ns_id, _DEVICE_LABEL)
             await conn.execute(
                 """
                 INSERT INTO system_design_geometry (namespace_id, node_label)
@@ -620,6 +640,9 @@ class TestSchema:
             # Sibling: 0 and a positive value are accepted, and NULL (a geometry
             # row) is accepted — so the constraint is not refusing everything.
             for i, good in enumerate((0, 1, None)):
+                label = _DESIGN_LABEL + ":OK" + str(i)
+                if good is None:
+                    await _seed_kg_node(conn, ns_id, label)
                 await conn.execute(
                     """
                     INSERT INTO system_design_geometry
@@ -627,7 +650,7 @@ class TestSchema:
                     VALUES ($1::uuid, $2, $3)
                     """,
                     str(ns_id),
-                    _DESIGN_LABEL + ":OK" + str(i),
+                    label,
                     good,
                 )
 
@@ -641,6 +664,7 @@ class TestSchema:
 
         ns_id: uuid.UUID = await make_namespace()
         async with scoped_pg_session(pg_pool, ns_id) as conn:
+            await _seed_kg_node(conn, ns_id, _DEVICE_LABEL)
             await upsert_node_geometry(conn, ns_id, _DEVICE_LABEL, {"rack_position": 12.5})
             geom = await fetch_geometry_by_labels(conn, ns_id, [_DEVICE_LABEL])
         assert geom[_DEVICE_LABEL]["rack_position"] == 12.5
@@ -671,6 +695,7 @@ class TestTwoKeyGrains:
 
         ns_id: uuid.UUID = await make_namespace()
         async with scoped_pg_session(pg_pool, ns_id) as conn:
+            await _seed_kg_node(conn, ns_id, _DEVICE_LABEL)
             await upsert_node_geometry(conn, ns_id, _DEVICE_LABEL, {"x": 1.5, "y": 2.5})
             assert await bump_design_version(conn, ns_id, _DESIGN_ID, None) == 1
 
@@ -708,6 +733,7 @@ class TestTwoKeyGrains:
 
         ns_id: uuid.UUID = await make_namespace()
         async with scoped_pg_session(pg_pool, ns_id) as conn:
+            await _seed_kg_node(conn, ns_id, _DEVICE_LABEL)
             await upsert_node_geometry(conn, ns_id, _DEVICE_LABEL, {"x": 1.5})
             await bump_design_version(conn, ns_id, _DESIGN_ID, None)
             geom = await fetch_geometry_by_labels(conn, ns_id, [_DEVICE_LABEL, _DESIGN_LABEL])
@@ -748,6 +774,7 @@ class TestTwoKeyGrains:
 
         ns_id: uuid.UUID = await make_namespace()
         async with scoped_pg_session(pg_pool, ns_id) as conn:
+            await _seed_kg_node(conn, ns_id, _DESIGN_LABEL, "DESIGN")
             await upsert_node_geometry(conn, ns_id, _DESIGN_LABEL, {"x": 9.5})
             version = await fetch_design_version(conn, ns_id, _DESIGN_LABEL)
 
@@ -1047,8 +1074,10 @@ class TestOwnerPoolIsolation:
         ns_b: uuid.UUID = await make_namespace()
 
         async with scoped_pg_session(pg_pool, ns_a) as conn:
+            await _seed_kg_node(conn, ns_a, _DEVICE_LABEL)
             await upsert_node_geometry(conn, ns_a, _DEVICE_LABEL, {"x": 1.5, "cable_type": "A"})
         async with scoped_pg_session(pg_pool, ns_b) as conn:
+            await _seed_kg_node(conn, ns_b, _DEVICE_LABEL)
             await upsert_node_geometry(conn, ns_b, _DEVICE_LABEL, {"x": 2.5, "cable_type": "B"})
 
         async with scoped_pg_session(pg_pool, ns_a) as conn:
@@ -1182,6 +1211,7 @@ class TestGeometryWriteSemantics:
 
         ns_id: uuid.UUID = await make_namespace()
         async with scoped_pg_session(pg_pool, ns_id) as conn:
+            await _seed_kg_node(conn, ns_id, _DEVICE_LABEL)
             await upsert_node_geometry(
                 conn, ns_id, _DEVICE_LABEL, {"x": 1.5, "rack_face": "rear", "rack_position": 7.0}
             )
@@ -1205,6 +1235,7 @@ class TestGeometryWriteSemantics:
 
         ns_id: uuid.UUID = await make_namespace()
         async with scoped_pg_session(pg_pool, ns_id) as conn:
+            await _seed_kg_node(conn, ns_id, _DEVICE_LABEL)
             await upsert_node_geometry(
                 conn, ns_id, _DEVICE_LABEL, {"meta": {"copper.room.w": 5.0, "gone": 1}}
             )
@@ -1601,6 +1632,7 @@ class TestGeometryValidation:
 
         ns_id: uuid.UUID = await make_namespace()
         async with scoped_pg_session(pg_pool, ns_id) as conn:
+            await _seed_kg_node(conn, ns_id, _DEVICE_LABEL)
             await upsert_node_geometry(conn, ns_id, _DEVICE_LABEL, geometry)
         assert await _geometry_row_count(pg_pool, ns_id) == 1
 
@@ -1899,6 +1931,7 @@ class TestVersionBumpGrainGuard:
         ns_id: uuid.UUID = await make_namespace()
 
         async with scoped_pg_session(pg_pool, ns_id) as conn:
+            await _seed_kg_node(conn, ns_id, _DESIGN_LABEL, "DESIGN")
             await upsert_node_geometry(conn, ns_id, _DESIGN_LABEL, {"x": 7.5})
 
         async with scoped_pg_session(pg_pool, ns_id) as conn:
