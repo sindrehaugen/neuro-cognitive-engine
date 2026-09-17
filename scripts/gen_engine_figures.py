@@ -474,6 +474,16 @@ def main() -> int:
                 print(
                     f"CHECK FAILED: {out_path} has drifted from generated state.", file=sys.stderr
                 )
+                # The counters are read from --baseline (a git ref), not from the working
+                # tree. Regenerating BEFORE `git add` therefore produces a file that is
+                # already stale by the time it is committed, and the run looks mysterious
+                # because the local regenerate "worked". This has cost three CI runs.
+                print(
+                    "  Counters come from --baseline (a git ref), not the working tree. "
+                    "If you just added a migration or a tool, `git add` it FIRST, then "
+                    "regenerate, then commit.",
+                    file=sys.stderr,
+                )
                 drift = True
 
         if status_path and status_path.exists():
