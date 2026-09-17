@@ -43,6 +43,10 @@ from nce.admin_handlers._shared import (
     admin_state,
     bump_mcp_cache_generation,
 )
+from nce.vertical_modules.assets.failure_pattern import (
+    AssetNotFoundError,
+    do_record_failure_pattern,
+)
 from nce.vertical_modules.assets.mcp_handlers import (
     do_advance_lifecycle,
     do_attach_sla,
@@ -53,11 +57,6 @@ from nce.vertical_modules.assets.mcp_handlers import (
     do_pull_telemetry,
     do_seed_asset_from_bom,
     do_sync_netbox,
-)
-from nce.vertical_modules.assets.failure_pattern import (
-    AssetNotFoundError,
-    do_get_failure_patterns,
-    do_record_failure_pattern,
 )
 from nce.vertical_modules.assets.qr import (
     do_generate_asset_qr,

@@ -69,8 +69,6 @@ from nce.db_utils import scoped_pg_session
 from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import mcp_handler
 from nce.vertical_modules.assets.failure_pattern import (
-    AssetNotFoundError,
-    do_get_failure_patterns,
     do_record_failure_pattern,
 )
 from nce.vertical_modules.assets.health import do_compute_health
@@ -446,9 +444,7 @@ async def handle_assets_generate_qr(engine: NCEEngine, arguments: dict[str, Any]
 
 
 @mcp_handler
-async def handle_assets_record_failure_pattern(
-    engine: NCEEngine, arguments: dict[str, Any]
-) -> str:
+async def handle_assets_record_failure_pattern(engine: NCEEngine, arguments: dict[str, Any]) -> str:
     """MCP tool: assets_record_failure_pattern — record failure pattern edge from ASSET to PRODUCT_SKU (Actor, mutation).
 
     Requires ``namespace_id``, ``asset_id``, and ``product_sku``.

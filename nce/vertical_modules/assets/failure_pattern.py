@@ -20,7 +20,7 @@ from typing import Any
 from uuid import UUID
 
 from nce.db_utils import scoped_pg_session
-from nce.entity_resolution.ownership import OwnershipError, assert_owner
+from nce.entity_resolution.ownership import assert_owner
 from nce.mcp_args import require_namespace_id
 
 log = logging.getLogger("nce.vertical_modules.assets.failure_pattern")

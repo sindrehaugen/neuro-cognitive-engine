@@ -28,6 +28,7 @@ from uuid import uuid4
 
 import pytest
 
+from nce.admin_handlers import assets as assets_admin_handlers
 from nce.entity_resolution.ownership import OwnershipError
 from nce.vertical_modules.assets.failure_pattern import (
     AssetNotFoundError,
@@ -37,7 +38,6 @@ from nce.vertical_modules.assets.failure_pattern import (
 from nce.vertical_modules.assets.mcp_handlers import (
     handle_assets_record_failure_pattern,
 )
-from nce.admin_handlers import assets as assets_admin_handlers
 
 
 @pytest.fixture
@@ -73,17 +73,22 @@ async def test_record_failure_pattern_success(sample_ns_id, sample_asset_id):
     """Verify recording a failure pattern edge succeeds and executes expected SQL."""
     mock_conn = AsyncMock()
     # 1. asset exists
-    mock_conn.fetchrow.return_value = FakeRecord({
-        "id": sample_asset_id,
-        "bom_line_id": "BL-001",
-        "serial": "SN-ABC-123",
-        "functional_location_id": "ROOM-101",
-        "lifecycle_state": "ACTIVE",
-    })
+    mock_conn.fetchrow.return_value = FakeRecord(
+        {
+            "id": sample_asset_id,
+            "bom_line_id": "BL-001",
+            "serial": "SN-ABC-123",
+            "functional_location_id": "ROOM-101",
+            "lifecycle_state": "ACTIVE",
+        }
+    )
 
-    with patch("nce.vertical_modules.assets.failure_pattern.scoped_pg_session") as mock_scoped, \
-         patch("nce.vertical_modules.assets.failure_pattern.assert_owner", new_callable=AsyncMock) as mock_assert:
-
+    with (
+        patch("nce.vertical_modules.assets.failure_pattern.scoped_pg_session") as mock_scoped,
+        patch(
+            "nce.vertical_modules.assets.failure_pattern.assert_owner", new_callable=AsyncMock
+        ) as mock_assert,
+    ):
         mock_scoped.return_value.__aenter__.return_value = mock_conn
 
         params = {
@@ -105,7 +110,10 @@ async def test_record_failure_pattern_success(sample_ns_id, sample_asset_id):
         assert result["confidence"] == 0.95
         assert result["failure_mode"] == "overheating_shutdown"
         assert result["severity"] == "critical"
-        assert result["edge"] == f"ASSET:{sample_asset_id} -[failure_pattern]-> PRODUCT_SKU:SKU-AMP-800"
+        assert (
+            result["edge"]
+            == f"ASSET:{sample_asset_id} -[failure_pattern]-> PRODUCT_SKU:SKU-AMP-800"
+        )
 
         # Assert Contract-A was called
         mock_assert.assert_awaited_once()
@@ -153,9 +161,15 @@ async def test_record_failure_pattern_contract_a_violation(sample_ns_id, sample_
     mock_conn = AsyncMock()
     mock_conn.fetchrow.return_value = FakeRecord({"id": sample_asset_id})
 
-    with patch("nce.vertical_modules.assets.failure_pattern.scoped_pg_session") as mock_scoped, \
-         patch("nce.vertical_modules.assets.failure_pattern.assert_owner", side_effect=OwnershipError(node_type="ASSET", writer_engine="assets", owner_engine=None, transition=None)):
-
+    with (
+        patch("nce.vertical_modules.assets.failure_pattern.scoped_pg_session") as mock_scoped,
+        patch(
+            "nce.vertical_modules.assets.failure_pattern.assert_owner",
+            side_effect=OwnershipError(
+                node_type="ASSET", writer_engine="assets", owner_engine=None, transition=None
+            ),
+        ),
+    ):
         mock_scoped.return_value.__aenter__.return_value = mock_conn
 
         params = {
@@ -176,28 +190,37 @@ async def test_record_failure_pattern_validation(sample_ns_id, sample_asset_id):
 
     # Missing product_sku
     with pytest.raises(ValueError, match="product_sku is required"):
-        await do_record_failure_pattern(mock_pool, {
-            "namespace_id": sample_ns_id,
-            "asset_id": sample_asset_id,
-            "product_sku": "",
-        })
+        await do_record_failure_pattern(
+            mock_pool,
+            {
+                "namespace_id": sample_ns_id,
+                "asset_id": sample_asset_id,
+                "product_sku": "",
+            },
+        )
 
     # Invalid confidence (< 0 or > 1)
     with pytest.raises(ValueError, match="confidence must be between"):
-        await do_record_failure_pattern(mock_pool, {
-            "namespace_id": sample_ns_id,
-            "asset_id": sample_asset_id,
-            "product_sku": "SKU-01",
-            "confidence": 1.5,
-        })
+        await do_record_failure_pattern(
+            mock_pool,
+            {
+                "namespace_id": sample_ns_id,
+                "asset_id": sample_asset_id,
+                "product_sku": "SKU-01",
+                "confidence": 1.5,
+            },
+        )
 
     # Invalid asset UUID
     with pytest.raises(ValueError, match="invalid asset_id"):
-        await do_record_failure_pattern(mock_pool, {
-            "namespace_id": sample_ns_id,
-            "asset_id": "not-a-uuid",
-            "product_sku": "SKU-01",
-        })
+        await do_record_failure_pattern(
+            mock_pool,
+            {
+                "namespace_id": sample_ns_id,
+                "asset_id": "not-a-uuid",
+                "product_sku": "SKU-01",
+            },
+        )
 
 
 @pytest.mark.asyncio
@@ -205,25 +228,30 @@ async def test_get_failure_patterns(sample_ns_id, sample_asset_id):
     """Verify querying failure patterns with filters."""
     mock_conn = AsyncMock()
     mock_conn.fetch.return_value = [
-        FakeRecord({
-            "subject_label": f"ASSET:{sample_asset_id}",
-            "predicate": "failure_pattern",
-            "object_label": "PRODUCT_SKU:SKU-MIC-01",
-            "confidence": 0.9,
-            "created_at": None,
-            "updated_at": None,
-        })
+        FakeRecord(
+            {
+                "subject_label": f"ASSET:{sample_asset_id}",
+                "predicate": "failure_pattern",
+                "object_label": "PRODUCT_SKU:SKU-MIC-01",
+                "confidence": 0.9,
+                "created_at": None,
+                "updated_at": None,
+            }
+        )
     ]
 
     with patch("nce.vertical_modules.assets.failure_pattern.scoped_pg_session") as mock_scoped:
         mock_scoped.return_value.__aenter__.return_value = mock_conn
 
         mock_pool = MagicMock()
-        res = await do_get_failure_patterns(mock_pool, {
-            "namespace_id": sample_ns_id,
-            "asset_id": sample_asset_id,
-            "product_sku": "SKU-MIC-01",
-        })
+        res = await do_get_failure_patterns(
+            mock_pool,
+            {
+                "namespace_id": sample_ns_id,
+                "asset_id": sample_asset_id,
+                "product_sku": "SKU-MIC-01",
+            },
+        )
 
         assert res["ok"] is True
         assert res["count"] == 1
@@ -240,14 +268,19 @@ async def test_handle_assets_record_failure_pattern_mcp(mock_engine, sample_ns_i
         "edge": f"ASSET:{sample_asset_id} -[failure_pattern]-> PRODUCT_SKU:SKU-001",
     }
 
-    with patch("nce.vertical_modules.assets.mcp_handlers.do_record_failure_pattern", new_callable=AsyncMock) as mock_core:
+    with patch(
+        "nce.vertical_modules.assets.mcp_handlers.do_record_failure_pattern", new_callable=AsyncMock
+    ) as mock_core:
         mock_core.return_value = expected
 
-        raw = await handle_assets_record_failure_pattern(mock_engine, {
-            "namespace_id": sample_ns_id,
-            "asset_id": sample_asset_id,
-            "product_sku": "SKU-001",
-        })
+        raw = await handle_assets_record_failure_pattern(
+            mock_engine,
+            {
+                "namespace_id": sample_ns_id,
+                "asset_id": sample_asset_id,
+                "product_sku": "SKU-001",
+            },
+        )
 
         data = json.loads(raw)
         assert data["ok"] is True
@@ -261,12 +294,14 @@ async def test_rest_record_failure_pattern_success(mock_engine, sample_ns_id, sa
     req = AsyncMock()
     req.path_params = {"id": sample_asset_id}
     req.query_params = {}
-    req.json = AsyncMock(return_value={
-        "namespace_id": sample_ns_id,
-        "product_sku": "SKU-SWITCH-48P",
-        "confidence": 1.0,
-        "failure_mode": "poe_controller_fault",
-    })
+    req.json = AsyncMock(
+        return_value={
+            "namespace_id": sample_ns_id,
+            "product_sku": "SKU-SWITCH-48P",
+            "confidence": 1.0,
+            "failure_mode": "poe_controller_fault",
+        }
+    )
 
     expected = {
         "ok": True,
@@ -275,10 +310,15 @@ async def test_rest_record_failure_pattern_success(mock_engine, sample_ns_id, sa
         "edge": f"ASSET:{sample_asset_id} -[failure_pattern]-> PRODUCT_SKU:SKU-SWITCH-48P",
     }
 
-    with patch("nce.admin_handlers.assets.admin_state") as mock_state, \
-         patch("nce.admin_handlers.assets.do_record_failure_pattern", new_callable=AsyncMock) as mock_core, \
-         patch("nce.admin_handlers.assets.bump_mcp_cache_generation", new_callable=AsyncMock) as mock_bump:
-
+    with (
+        patch("nce.admin_handlers.assets.admin_state") as mock_state,
+        patch(
+            "nce.admin_handlers.assets.do_record_failure_pattern", new_callable=AsyncMock
+        ) as mock_core,
+        patch(
+            "nce.admin_handlers.assets.bump_mcp_cache_generation", new_callable=AsyncMock
+        ) as mock_bump,
+    ):
         mock_state.engine = mock_engine
         mock_core.return_value = expected
 
@@ -298,14 +338,19 @@ async def test_rest_record_failure_pattern_not_found(mock_engine, sample_ns_id, 
     req = AsyncMock()
     req.path_params = {"id": sample_asset_id}
     req.query_params = {}
-    req.json = AsyncMock(return_value={
-        "namespace_id": sample_ns_id,
-        "product_sku": "SKU-001",
-    })
+    req.json = AsyncMock(
+        return_value={
+            "namespace_id": sample_ns_id,
+            "product_sku": "SKU-001",
+        }
+    )
 
-    with patch("nce.admin_handlers.assets.admin_state") as mock_state, \
-         patch("nce.admin_handlers.assets.do_record_failure_pattern", new_callable=AsyncMock) as mock_core:
-
+    with (
+        patch("nce.admin_handlers.assets.admin_state") as mock_state,
+        patch(
+            "nce.admin_handlers.assets.do_record_failure_pattern", new_callable=AsyncMock
+        ) as mock_core,
+    ):
         mock_state.engine = mock_engine
         mock_core.return_value = {"ok": False, "not_found": True, "error": "Asset not found"}
 
@@ -320,15 +365,18 @@ async def test_cross_engine_product_reader_sees_asset_edge(sample_ns_id, sample_
 
     mock_conn = AsyncMock()
     mock_conn.fetch.return_value = [
-        FakeRecord({
-            "subject_label": f"ASSET:{sample_asset_id}",
-            "predicate": "failure_pattern",
-            "object_label": "PRODUCT_SKU:SKU-DISPLAY-75",
-            "confidence": 0.88,
-        })
+        FakeRecord(
+            {
+                "subject_label": f"ASSET:{sample_asset_id}",
+                "predicate": "failure_pattern",
+                "object_label": "PRODUCT_SKU:SKU-DISPLAY-75",
+                "confidence": 0.88,
+            }
+        )
     ]
 
     from uuid import UUID
+
     patterns = await get_failure_patterns(
         mock_conn,
         UUID(sample_ns_id),
