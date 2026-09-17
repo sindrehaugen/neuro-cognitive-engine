@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NCE Admin — engine screen design proposal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ──────────────────────────────────────────────────────────────────────────
+   PROPOSAL ONLY — not wired.
+   v2: density pass. This is a surface someone works in all day, not a page
+   they look at once. Full-bleed, 28px table rows, one screen showing the whole
+   pipeline without scrolling. Palette and structure follow an internal sibling
+   design system - dark-first, one luminous accent, four-level ink scale,
+   hairline rules - but the generous whitespace is gone.
+   ────────────────────────────────────────────────────────────────────────── */
+:root{
+  --bg:#0a1320; --bg-deep:#060e18; --bg-soft:#0f1d30;
+  --surface:#122036; --surface-soft:#172943; --hover:#1b2f4d;
+  --line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.13);
+  --ink:#f2f6fb; --ink-2:#c2cfe0; --ink-3:#7b8da6; --ink-4:#4a5d7c;
+  --accent:#3ddbd0; --accent-soft:#1fa79e; --accent-glow:rgba(61,219,208,.22); --accent-tint:rgba(61,219,208,.09);
+  --warn:#e3b341; --bad:#e8856b; --good:#5ad19a;
+  --r:7px; --r-sm:5px; --r-pill:999px;
+  --row:28px;
+}
+:root[data-theme="light"]{
+  --bg:#f4f1ec; --bg-deep:#eae5dc; --bg-soft:#ffffff;
+  --surface:#ffffff; --surface-soft:#faf8f4; --hover:#f2efe9;
+  --line:rgba(24,30,40,.09); --line-2:rgba(24,30,40,.15);
+  --ink:#161c25; --ink-2:#39434f; --ink-3:#6d7889; --ink-4:#939eaf;
+  --accent:#0f7d74; --accent-soft:#0b625b; --accent-glow:rgba(15,125,116,.18); --accent-tint:rgba(15,125,116,.08);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:'Hanken Grotesk',-apple-system,system-ui,sans-serif;
+  font-size:13px; line-height:1.35; -webkit-font-smoothing:antialiased;
+}
+.shell{display:grid; grid-template-columns:186px 1fr; height:100vh; overflow:hidden}
+
+/* ── rail ────────────────────────────────────────────────────────────────── */
+.rail{border-right:1px solid var(--line); background:var(--bg-deep); overflow-y:auto; padding-bottom:10px}
+.brand{display:flex; align-items:center; gap:7px; padding:9px 11px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg-deep); z-index:2}
+.mark{width:18px;height:18px;border-radius:5px;background:linear-gradient(135deg,var(--accent),var(--accent-soft));flex:none}
+.brand b{font-size:12.5px; letter-spacing:-.01em}
+.nav-section{color:var(--ink-4); font-size:9.5px; text-transform:uppercase; letter-spacing:.1em; padding:10px 11px 4px}
+.nav-item{display:flex; align-items:center; gap:7px; padding:4px 11px; color:var(--ink-3); cursor:pointer; font-size:12.5px; border-left:2px solid transparent}
+.nav-item:hover{background:var(--surface-soft); color:var(--ink-2)}
+.nav-item.is-on{background:var(--accent-tint); color:var(--ink); border-left-color:var(--accent)}
+.count{margin-left:auto; font-size:10px; color:var(--ink-4); font-variant-numeric:tabular-nums}
+.nav-item.is-on .count{color:var(--accent)}
+
+/* ── main ────────────────────────────────────────────────────────────────── */
+.main{display:flex; flex-direction:column; min-width:0; overflow:hidden}
+.bar{display:flex; align-items:center; gap:10px; padding:0 12px; height:38px; border-bottom:1px solid var(--line); background:var(--bg-deep); flex:none}
+.bar h1{margin:0; font-size:14px; font-weight:600; letter-spacing:-.01em}
+.bar .meta{color:var(--ink-4); font-size:11.5px}
+.sp{flex:1}
+.btn{border:1px solid var(--line-2); background:var(--surface); color:var(--ink-2); font:inherit; font-size:11.5px;
+  padding:3px 10px; border-radius:var(--r-sm); cursor:pointer; white-space:nowrap}
+.btn:hover{border-color:var(--accent-glow); color:var(--ink)}
+.btn.primary{background:var(--accent); color:#04211f; border-color:transparent; font-weight:600}
+.inp{background:var(--bg); border:1px solid var(--line-2); color:var(--ink-2); font:inherit; font-size:11.5px;
+  padding:3px 8px; border-radius:var(--r-sm); width:170px}
+
+/* stat strip — one compact row, not cards */
+.strip{display:flex; align-items:stretch; border-bottom:1px solid var(--line); background:var(--surface); flex:none}
+.st{padding:6px 14px; border-right:1px solid var(--line); min-width:0}
+.st .k{color:var(--ink-4); font-size:9.5px; text-transform:uppercase; letter-spacing:.08em; white-space:nowrap}
+.st .v{font-size:16px; font-weight:600; font-variant-numeric:tabular-nums; margin-top:1px; white-space:nowrap}
+.st .d{font-size:10.5px; color:var(--ink-3); white-space:nowrap}
+.up{color:var(--good)} .down{color:var(--bad)}
+
+.body{flex:1; display:grid; grid-template-columns:1fr 310px; min-height:0}
+.pane{min-width:0; display:flex; flex-direction:column; overflow:hidden}
+.pane + .pane{border-left:1px solid var(--line)}
+.ph{display:flex; align-items:center; gap:8px; padding:0 12px; height:28px; border-bottom:1px solid var(--line);
+  background:var(--bg-soft); flex:none}
+.ph h2{margin:0; font-size:11.5px; font-weight:600; color:var(--ink-2)}
+.route{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; color:var(--ink-4); margin-left:auto}
+.scroll{overflow:auto; flex:1}
+
+table{width:100%; border-collapse:collapse; font-size:12.5px}
+thead th{position:sticky; top:0; background:var(--bg-soft); text-align:left; color:var(--ink-4); font-weight:600;
+  font-size:9.5px; text-transform:uppercase; letter-spacing:.07em; padding:0 10px; height:24px;
+  border-bottom:1px solid var(--line); white-space:nowrap; z-index:1}
+td{padding:0 10px; height:var(--row); border-bottom:1px solid var(--line); color:var(--ink-2); white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis}
+tbody tr:hover td{background:var(--hover)}
+tbody tr.sel td{background:var(--accent-tint)}
+.num{font-variant-numeric:tabular-nums; text-align:right}
+.pill{font-size:10px; padding:1px 7px; border-radius:var(--r-pill); border:1px solid var(--line-2); color:var(--ink-3)}
+.pill.win{color:var(--good); border-color:rgba(90,209,154,.35)}
+.pill.risk{color:var(--warn); border-color:rgba(227,179,65,.35)}
+.pill.cold{color:var(--bad); border-color:rgba(232,133,107,.35)}
+.mut{color:var(--ink-4)}
+
+.feed{padding:7px 0}
+.f{display:flex; gap:8px; padding:5px 12px; border-bottom:1px solid var(--line)}
+.f:hover{background:var(--hover)}
+.f .tick{width:2px; border-radius:2px; background:var(--accent); opacity:.6; flex:none}
+.f p{margin:0; font-size:12px; color:var(--ink-2)}
+.f .m{font-size:10px; color:var(--ink-4); margin-top:1px}
+.ok{padding:14px 12px; color:var(--ink-4); font-size:11.5px; text-align:center}
+
+.foot{height:24px; border-top:1px solid var(--line); background:var(--bg-deep); display:flex; align-items:center;
+  gap:12px; padding:0 12px; font-size:10.5px; color:var(--ink-4); flex:none}
+.dot{width:5px;height:5px;border-radius:50%;background:var(--good);box-shadow:0 0 6px rgba(90,209,154,.6)}
+@media (max-width:1180px){.body{grid-template-columns:1fr}.pane+.pane{display:none}}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <aside class="rail">
+    <div class="brand"><div class="mark"></div><b>NCE</b></div>
+    <div class="nav-section">Platform</div>
+    <div class="nav-item">Namespaces<span class="count">80</span></div>
+    <div class="nav-item">Event log</div>
+    <div class="nav-item">Graph</div>
+    <div class="nav-item">Security</div>
+    <div class="nav-item">Tools<span class="count">273</span></div>
+    <div class="nav-section">Engines</div>
+    <div class="nav-item is-on">Sales<span class="count">21</span></div>
+    <div class="nav-item">Inventory<span class="count">17</span></div>
+    <div class="nav-item">HR<span class="count">17</span></div>
+    <div class="nav-item">Support<span class="count">15</span></div>
+    <div class="nav-item">Assets<span class="count">15</span></div>
+    <div class="nav-item">Agreements<span class="count">15</span></div>
+    <div class="nav-item">Resources<span class="count">14</span></div>
+    <div class="nav-item">Economy<span class="count">13</span></div>
+    <div class="nav-item">System design<span class="count">12</span></div>
+    <div class="nav-item">Field tech<span class="count">12</span></div>
+    <div class="nav-item">Project<span class="count">10</span></div>
+    <div class="nav-item">Procurement<span class="count">10</span></div>
+    <div class="nav-item">Marketing<span class="count">10</span></div>
+    <div class="nav-item">Product<span class="count">9</span></div>
+    <div class="nav-item">Vendors<span class="count">9</span></div>
+    <div class="nav-item">Business insights<span class="count">6</span></div>
+  </aside>
+
+  <main class="main">
+    <div class="bar">
+      <h1>Sales</h1>
+      <span class="meta">19 endpoints</span>
+      <input class="inp" placeholder="Filter deals…">
+      <span class="sp"></span>
+      <button class="btn">Targets</button>
+      <button class="btn">Commission</button>
+      <button class="btn">Divergences</button>
+      <button class="btn primary">New quote</button>
+    </div>
+
+    <div class="strip">
+      <div class="st"><div class="k">Open pipeline</div><div class="v">4 820 000</div><div class="d"><span class="up">▲6.2%</span> wk</div></div>
+      <div class="st"><div class="k">Deals</div><div class="v">37</div><div class="d">9 past stage</div></div>
+      <div class="st"><div class="k">Win rate</div><div class="v">31%</div><div class="d"><span class="down">▼2.1%</span> qtr</div></div>
+      <div class="st"><div class="k">Attainment</div><div class="v">78%</div><div class="d">Q3 · 6 wks</div></div>
+      <div class="st"><div class="k">Avg cycle</div><div class="v">44d</div><div class="d">target 35d</div></div>
+      <div class="st"><div class="k">Quotes open</div><div class="v">12</div><div class="d">2 expiring</div></div>
+      <div class="st"><div class="k">Stalled</div><div class="v">6</div><div class="d">&gt;14d idle</div></div>
+      <div class="st"><div class="k">Divergences</div><div class="v">0</div><div class="d">D365 ↔ NCE</div></div>
+    </div>
+
+    <div class="body">
+      <div class="pane">
+        <div class="ph"><h2>Deals</h2><span class="route">GET /api/sales/deals</span></div>
+        <div class="scroll">
+          <table>
+            <thead><tr>
+              <th>Customer</th><th>Owner</th><th>Stage</th><th>Idle</th><th>Next step</th>
+              <th class="num">Value</th><th class="num">Prob</th><th class="num">Close</th>
+            </tr></thead>
+            <tbody>
+              <tr class="sel"><td>Havn Logistikk</td><td>T. Lind</td><td><span class="pill risk">Proposal</span></td><td class="mut">21d</td><td>Chase signature</td><td class="num">2 100 000</td><td class="num">55%</td><td class="num mut">10-04</td></tr>
+              <tr><td>Nordvik Eiendom</td><td>A. Krogh</td><td><span class="pill win">Negotiation</span></td><td class="mut">2d</td><td>Legal review</td><td class="num">1 240 000</td><td class="num">75%</td><td class="num mut">09-28</td></tr>
+              <tr><td>Fjell Industrier</td><td>M. Sund</td><td><span class="pill">Discovery</span></td><td class="mut">4d</td><td>Site survey</td><td class="num">860 000</td><td class="num">30%</td><td class="num mut">11-15</td></tr>
+              <tr><td>Brygge Hotell</td><td>A. Krogh</td><td><span class="pill win">Negotiation</span></td><td class="mut">1d</td><td>Final pricing</td><td class="num">620 000</td><td class="num">80%</td><td class="num mut">09-24</td></tr>
+              <tr><td>Sør Kraft AS</td><td>T. Lind</td><td><span class="pill">Qualified</span></td><td class="mut">7d</td><td>Demo booked</td><td class="num">1 480 000</td><td class="num">40%</td><td class="num mut">11-02</td></tr>
+              <tr><td>Vestland Skole</td><td>M. Sund</td><td><span class="pill cold">Stalled</span></td><td class="mut">38d</td><td>—</td><td class="num">310 000</td><td class="num">10%</td><td class="num mut">—</td></tr>
+              <tr><td>Bergen Marine</td><td>K. Aas</td><td><span class="pill">Discovery</span></td><td class="mut">3d</td><td>Scope call</td><td class="num">940 000</td><td class="num">25%</td><td class="num mut">12-01</td></tr>
+              <tr><td>Trondheim Media</td><td>A. Krogh</td><td><span class="pill win">Proposal</span></td><td class="mut">5d</td><td>Quote sent</td><td class="num">505 000</td><td class="num">60%</td><td class="num mut">10-11</td></tr>
+              <tr><td>Arktisk Fiskeri</td><td>K. Aas</td><td><span class="pill risk">Proposal</span></td><td class="mut">16d</td><td>Follow up</td><td class="num">1 760 000</td><td class="num">45%</td><td class="num mut">10-20</td></tr>
+              <tr><td>Oslo Kontorbygg</td><td>T. Lind</td><td><span class="pill">Qualified</span></td><td class="mut">9d</td><td>Budget confirm</td><td class="num">2 340 000</td><td class="num">35%</td><td class="num mut">11-28</td></tr>
+              <tr><td>Rogaland Bygg</td><td>M. Sund</td><td><span class="pill win">Negotiation</span></td><td class="mut">2d</td><td>Contract draft</td><td class="num">1 120 000</td><td class="num">70%</td><td class="num mut">10-02</td></tr>
+              <tr><td>Nord Energi</td><td>K. Aas</td><td><span class="pill">Discovery</span></td><td class="mut">6d</td><td>Tech workshop</td><td class="num">3 050 000</td><td class="num">20%</td><td class="num mut">01-15</td></tr>
+              <tr><td>Kyst Hotell Group</td><td>A. Krogh</td><td><span class="pill cold">Stalled</span></td><td class="mut">27d</td><td>—</td><td class="num">780 000</td><td class="num">15%</td><td class="num mut">—</td></tr>
+              <tr><td>Innlandet Skole</td><td>T. Lind</td><td><span class="pill">Qualified</span></td><td class="mut">11d</td><td>Reference call</td><td class="num">420 000</td><td class="num">35%</td><td class="num mut">11-08</td></tr>
+              <tr><td>Stavanger Offshore</td><td>M. Sund</td><td><span class="pill win">Proposal</span></td><td class="mut">3d</td><td>Quote review</td><td class="num">2 610 000</td><td class="num">55%</td><td class="num mut">10-25</td></tr>
+              <tr><td>Fjord Transport</td><td>K. Aas</td><td><span class="pill">Discovery</span></td><td class="mut">8d</td><td>Discovery #2</td><td class="num">690 000</td><td class="num">25%</td><td class="num mut">12-10</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="pane">
+        <div class="ph"><h2>Morning brief</h2><span class="route">GET /api/sales/morning-brief</span></div>
+        <div class="scroll">
+          <div class="feed">
+            <div class="f"><div class="tick"></div><div><p>Havn Logistikk idle 21d — largest open deal.</p><div class="m">stalled-deal watcher · 07:02</div></div></div>
+            <div class="f"><div class="tick"></div><div><p>2 quotes expire this week, no signature request.</p><div class="m">agreements · 07:02</div></div></div>
+            <div class="f"><div class="tick"></div><div><p>Q3 commission run ready to preview.</p><div class="m">economy · 07:02</div></div></div>
+            <div class="f"><div class="tick"></div><div><p>Vestland Skole 38d idle — suggest close-lost.</p><div class="m">stalled-deal watcher · 07:02</div></div></div>
+            <div class="f"><div class="tick"></div><div><p>Nord Energi moved to Discovery, 3.05M added.</p><div class="m">pipeline · 06:58</div></div></div>
+          </div>
+          <div class="ph" style="border-top:1px solid var(--line)"><h2>Source divergence</h2><span class="route">/api/sales/divergences</span></div>
+          <div class="ok">D365 and NCE agree on every deal in range.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="foot">
+      <span class="dot"></span><span>live</span>
+      <span>·</span><span>37 deals · 16 shown</span>
+      <span>·</span><span>ns: bravo-steps</span>
+      <span class="sp"></span>
+      <span>Proposal only — routes are real, data is illustrative</span>
+      <button class="btn" style="padding:1px 8px" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark'">light / dark</button>
+    </div>
+  </main>
+</div>
+</body>
+</html>
