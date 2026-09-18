@@ -7460,6 +7460,28 @@ TOOLS = [
         },
     ),
     Tool(
+        name="legal_entities_enrich_from_registry",
+        description=(
+            "Look up one legal entity's company data in Norway's BRREG Enhetsregisteret and "
+            "merge it into the entity's metadata. Operator/cron pull; mutation; fails soft "
+            "(matched=false) when the entity is not found in the registry."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Tenant namespace UUID.",
+                },
+                "entity_id": {
+                    "type": "string",
+                    "description": "UUID of the legal_entities row to enrich (its own org_nr is used for the lookup).",
+                },
+            },
+            "required": ["namespace_id", "entity_id"],
+        },
+    ),
+    Tool(
         name="decision_feedback_record",
         description=(
             "Record ground-truth human decision or outcome feedback across vertical engines "
