@@ -29,6 +29,15 @@ object: by the time any test runs, ``TOOL_REGISTRY.update(...)`` has already
 happened, so a collision would have already silently occurred and the live
 dict would show only the (wrong) C12 version under that name -- there would
 be nothing left to diff against.
+
+This is why ``tests/test_tool_registry.py``'s derived MUTATION_TOOLS/
+CACHEABLE_TOOLS pins (and the three per-engine siblings in
+``test_{agreements,economy,product}_hardening.py``) cannot substitute for
+this file: every one of them checks set membership of tool NAMES, which is
+unchanged by a collision (the key stays; only the value silently swaps).
+Fixing the pins' exposure to legitimate C12 growth and fixing this file's
+exposure to silent name collisions are two different failure modes with two
+different detection mechanisms -- one is not a subset of the other.
 """
 
 from __future__ import annotations
