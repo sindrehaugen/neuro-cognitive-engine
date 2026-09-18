@@ -462,16 +462,64 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/search` | `api_search` |
 | POST | `/api/snapshot/export` | `api_snapshot_export` |
 | GET | `/api/support/at-risk-aggregate` | `api_support_at_risk_aggregate` |
+| GET | `/api/support/customer-health` | `handle_list` |
+| POST | `/api/support/customer-health` | `handle_create` |
+| POST | `/api/support/customer-health/bulk` | `handle_bulk` |
+| GET | `/api/support/customer-health/{id}` | `handle_get` |
+| PATCH | `/api/support/customer-health/{id}` | `handle_patch` |
+| POST | `/api/support/customer-health/{id}/archive` | `handle_archive` |
+| GET | `/api/support/customer-health/{id}/comments` | `handle_list_comments` |
+| POST | `/api/support/customer-health/{id}/comments` | `handle_add_comment` |
+| GET | `/api/support/customer-health/{id}/documents` | `handle_list_documents` |
+| POST | `/api/support/customer-health/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/support/customer-health/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/support/customer-health/{id}/events` | `handle_events` |
+| POST | `/api/support/customer-health/{id}/restore` | `handle_restore` |
+| GET | `/api/support/customer-health/{id}/tags` | `handle_list_tags` |
+| POST | `/api/support/customer-health/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/support/customer-health/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/support/customers/{id}/health` | `api_support_customer_health` |
+| GET | `/api/support/sla-clocks` | `handle_list` |
+| POST | `/api/support/sla-clocks` | `handle_create` |
+| POST | `/api/support/sla-clocks/bulk` | `handle_bulk` |
+| GET | `/api/support/sla-clocks/{id}` | `handle_get` |
+| PATCH | `/api/support/sla-clocks/{id}` | `handle_patch` |
+| POST | `/api/support/sla-clocks/{id}/archive` | `handle_archive` |
+| GET | `/api/support/sla-clocks/{id}/comments` | `handle_list_comments` |
+| POST | `/api/support/sla-clocks/{id}/comments` | `handle_add_comment` |
+| GET | `/api/support/sla-clocks/{id}/documents` | `handle_list_documents` |
+| POST | `/api/support/sla-clocks/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/support/sla-clocks/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/support/sla-clocks/{id}/events` | `handle_events` |
+| POST | `/api/support/sla-clocks/{id}/restore` | `handle_restore` |
+| GET | `/api/support/sla-clocks/{id}/tags` | `handle_list_tags` |
+| POST | `/api/support/sla-clocks/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/support/sla-clocks/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/support/sync/now` | `api_support_sync_now` |
 | GET | `/api/support/sync/status` | `api_support_sync_status` |
 | GET | `/api/support/tickets` | `api_support_tickets_list` |
+| GET | `/api/support/tickets` | `handle_list` |
 | POST | `/api/support/tickets` | `api_support_tickets_open` |
+| POST | `/api/support/tickets` | `handle_create` |
+| POST | `/api/support/tickets/bulk` | `handle_bulk` |
 | GET | `/api/support/tickets/{id}` | `api_support_tickets_get` |
+| GET | `/api/support/tickets/{id}` | `handle_get` |
+| PATCH | `/api/support/tickets/{id}` | `handle_patch` |
+| POST | `/api/support/tickets/{id}/archive` | `handle_archive` |
+| GET | `/api/support/tickets/{id}/comments` | `handle_list_comments` |
+| POST | `/api/support/tickets/{id}/comments` | `handle_add_comment` |
 | POST | `/api/support/tickets/{id}/dispatch` | `api_support_tickets_dispatch` |
+| GET | `/api/support/tickets/{id}/documents` | `handle_list_documents` |
+| POST | `/api/support/tickets/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/support/tickets/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/support/tickets/{id}/events` | `handle_events` |
 | POST | `/api/support/tickets/{id}/failure-pattern` | `api_support_tickets_failure_pattern` |
 | POST | `/api/support/tickets/{id}/resolve` | `api_support_tickets_resolve` |
+| POST | `/api/support/tickets/{id}/restore` | `handle_restore` |
 | GET | `/api/support/tickets/{id}/sla-clock` | `api_support_ticket_sla_clock` |
+| GET | `/api/support/tickets/{id}/tags` | `handle_list_tags` |
+| POST | `/api/support/tickets/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/support/tickets/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/support/tickets/{id}/triage` | `api_support_tickets_triage` |
 | POST | `/api/support/tickets/{id}/upsell-signal` | `api_support_tickets_upsell_signal` |
 | POST | `/api/support/touchpoints` | `api_support_touchpoints_record` |
@@ -810,10 +858,19 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `store_media` |  | yes |  |  |
 | `store_memory` |  | yes |  |  |
 | `suggest_queries` |  |  |  |  |
+| `support_archive_customer_health` |  | yes |  |  |
+| `support_archive_sla_clocks` |  | yes |  |  |
+| `support_archive_tickets` |  | yes |  |  |
 | `support_at_risk_aggregate` |  |  | yes |  |
 | `support_dispatch_work_order` | yes | yes |  |  |
 | `support_failure_pattern` | yes | yes |  |  |
+| `support_get_customer_health` |  |  | yes |  |
+| `support_get_sla_clocks` |  |  | yes |  |
+| `support_get_tickets` |  |  | yes |  |
 | `support_health_score` |  |  | yes |  |
+| `support_list_customer_health` |  |  | yes |  |
+| `support_list_sla_clocks` |  |  | yes |  |
+| `support_list_tickets` |  |  | yes |  |
 | `support_open_ticket` | yes | yes |  |  |
 | `support_query_ticket` |  |  | yes |  |
 | `support_record_touchpoint` |  | yes |  |  |
@@ -823,6 +880,9 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `support_triage_ticket` |  |  | yes |  |
 | `support_troubleshoot` |  |  | yes |  |
 | `support_upsell_signal` | yes | yes |  |  |
+| `support_upsert_customer_health` |  | yes |  |  |
+| `support_upsert_sla_clocks` |  | yes |  |  |
+| `support_upsert_tickets` |  | yes |  |  |
 | `system_design_author_functional_location` |  | yes |  |  |
 | `system_design_author_topology` |  | yes |  |  |
 | `system_design_delete_planned` | yes | yes |  |  |
@@ -865,4 +925,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 507 REST endpoints, 340 MCP tools._
+_Totals: 555 REST endpoints, 352 MCP tools._

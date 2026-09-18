@@ -359,6 +359,13 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # Lane E Wave E-5 -- C12 Vendors CONTRACTOR resource surface mutations (upsert + archive)
         "vendors_upsert_contractors",
         "vendors_archive_contractors",
+        # Lane E Wave E-8 -- C12 Support TICKET/SLA/SUPPORT_HEALTH_SCORE resource surface mutations
+        "support_upsert_tickets",
+        "support_archive_tickets",
+        "support_upsert_sla_clocks",
+        "support_archive_sla_clocks",
+        "support_upsert_customer_health",
+        "support_archive_customer_health",
     }
 )
 
@@ -621,6 +628,13 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         # Lane E Wave E-5 -- C12 Vendors CONTRACTOR resource surface cacheable reads (list + get)
         "vendors_list_contractors",
         "vendors_get_contractors",
+        # Lane E Wave E-8 -- C12 Support TICKET/SLA/SUPPORT_HEALTH_SCORE resource surface cacheable reads
+        "support_list_tickets",
+        "support_get_tickets",
+        "support_list_sla_clocks",
+        "support_get_sla_clocks",
+        "support_list_customer_health",
+        "support_get_customer_health",
     }
 )
 
