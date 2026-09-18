@@ -2884,6 +2884,153 @@ TOOLS = [
         },
     ),
     # -----------------------------------------------------------------
+    # C12 Resource Surface — Notifications & Reminders (Wave A-3)
+    # -----------------------------------------------------------------
+    Tool(
+        name="notifications_list_notifications",
+        description="List and query Notification resources for notifications.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500},
+                "cursor": {
+                    "type": "string",
+                    "description": "Pagination cursor from previous response.",
+                },
+                "q": {"type": "string", "description": "Full-text search term."},
+                "principal_id": {"type": "string", "description": "Filter by principal_id."},
+                "severity": {"type": "string", "description": "Filter by severity."},
+                "category": {"type": "string", "description": "Filter by category."},
+                "source_selector": {"type": "string", "description": "Filter by source_selector."},
+                "source_id": {"type": "string", "description": "Filter by source_id."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="notifications_get_notifications",
+        description="Fetch a single Notification resource by ID.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {"type": "string", "description": "Unique identifier of the Notification."},
+            },
+            "required": ["namespace_id", "id"],
+        },
+    ),
+    Tool(
+        name="notifications_upsert_notifications",
+        description="Create or update a Notification resource.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {
+                    "type": "string",
+                    "description": "Optional ID of existing Notification to update.",
+                },
+                "expected_version": {"type": "string", "description": "Concurrency check version."},
+                "principal_id": {"description": "Value for principal_id."},
+                "title": {"description": "Value for title."},
+                "body": {"description": "Value for body."},
+                "severity": {"description": "Value for severity."},
+                "category": {"description": "Value for category."},
+                "source_selector": {"description": "Value for source_selector."},
+                "source_id": {"description": "Value for source_id."},
+                "read_at": {"description": "Value for read_at."},
+                "seen_at": {"description": "Value for seen_at."},
+                "is_archived": {"description": "Value for is_archived."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="notifications_archive_notifications",
+        description="Soft-archive a Notification resource.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {"type": "string", "description": "ID of Notification to archive."},
+                "reason": {"type": "string", "description": "Audit reason for archiving."},
+            },
+            "required": ["namespace_id", "id"],
+        },
+    ),
+    Tool(
+        name="notifications_list_reminders",
+        description="List and query Reminder resources for notifications.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500},
+                "cursor": {
+                    "type": "string",
+                    "description": "Pagination cursor from previous response.",
+                },
+                "q": {"type": "string", "description": "Full-text search term."},
+                "principal_id": {"type": "string", "description": "Filter by principal_id."},
+                "node_type": {"type": "string", "description": "Filter by node_type."},
+                "node_id": {"type": "string", "description": "Filter by node_id."},
+                "status": {"type": "string", "description": "Filter by status."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="notifications_get_reminders",
+        description="Fetch a single Reminder resource by ID.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {"type": "string", "description": "Unique identifier of the Reminder."},
+            },
+            "required": ["namespace_id", "id"],
+        },
+    ),
+    Tool(
+        name="notifications_upsert_reminders",
+        description="Create or update a Reminder resource.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {
+                    "type": "string",
+                    "description": "Optional ID of existing Reminder to update.",
+                },
+                "expected_version": {"type": "string", "description": "Concurrency check version."},
+                "principal_id": {"description": "Value for principal_id."},
+                "node_type": {"description": "Value for node_type."},
+                "node_id": {"description": "Value for node_id."},
+                "title": {"description": "Value for title."},
+                "note": {"description": "Value for note."},
+                "remind_at": {"description": "Value for remind_at."},
+                "status": {"description": "Value for status."},
+                "fired_at": {"description": "Value for fired_at."},
+                "is_archived": {"description": "Value for is_archived."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="notifications_archive_reminders",
+        description="Soft-archive a Reminder resource.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {"type": "string", "description": "ID of Reminder to archive."},
+                "reason": {"type": "string", "description": "Audit reason for archiving."},
+            },
+            "required": ["namespace_id", "id"],
+        },
+    ),
+    # -----------------------------------------------------------------
     # OQ-3 tranche 2 (2026-09-01) — the six registered tools whose argument
     # contract is stated EXPLICITLY in their handler docstring, so nothing
     # here is inferred. Derived from the docstring's "Requires ..." sentence

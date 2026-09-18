@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 299  # 283 baseline + 16 C12 Inventory resource tools (Wave A-1)
+_EXPECTED_TOTAL = 307  # 299 baseline + 8 C12 Notifications & Reminders resource tools (Wave A-3)
 
 
 def test_registry_has_expected_entries():
@@ -275,6 +275,11 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "inventory_archive_goods_receipts",
         "inventory_upsert_inventory_rma",
         "inventory_archive_inventory_rma",
+        # Wave A-3 -- C12 Notifications resource surface mutations (upsert + archive)
+        "notifications_upsert_notifications",
+        "notifications_archive_notifications",
+        "notifications_upsert_reminders",
+        "notifications_archive_reminders",
     }
 )
 
@@ -287,7 +292,9 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 131  # 123 baseline + 8 C12 Inventory mutations (Wave A-1)
+    assert (
+        len(MUTATION_TOOLS) == 135
+    )  # 131 baseline + 4 C12 Notifications & Reminders mutations (Wave A-3)
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -480,6 +487,11 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "inventory_get_goods_receipts",
         "inventory_list_inventory_rma",
         "inventory_get_inventory_rma",
+        # Wave A-3 -- C12 Notifications resource surface cacheable reads (list + get)
+        "notifications_list_notifications",
+        "notifications_get_notifications",
+        "notifications_list_reminders",
+        "notifications_get_reminders",
     }
 )
 
@@ -493,8 +505,8 @@ def test_cacheable_tools_exact_match():
 
 def test_cacheable_tools_count():
     assert (
-        len(CACHEABLE_TOOLS) == 123
-    )  # 115 baseline + 8 C12 Inventory cacheable reads (Wave A-1)
+        len(CACHEABLE_TOOLS) == 127
+    )  # 123 baseline + 4 C12 Notifications & Reminders cacheable reads (Wave A-3)
 
 
 # ---------------------------------------------------------------------------

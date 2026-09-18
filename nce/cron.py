@@ -1410,6 +1410,45 @@ async def _sales_stalled_deal_watcher_tick(pool: asyncpg.Pool) -> None:
         await release_cron_lock(lock)
 
 
+_REMINDERS_WATCHER_INTERVAL_MINUTES: int = 1
+
+
+async def _reminders_watcher_tick(pool: asyncpg.Pool) -> None:
+    """
+    APScheduler job: scan and fire pending reminders across active namespaces (Wave A-3).
+    """
+    ttl = _REMINDERS_WATCHER_INTERVAL_MINUTES * 60 + 60
+    lock: CronLock | None = await acquire_cron_lock("reminders_watcher", ttl)
+    if lock is None:
+        log.debug("Skipping reminders_watcher — lock held by another instance")
+        return
+    try:
+        from nce.vertical_modules.notifications.reminders import fire_pending_reminders
+
+        async with unmanaged_pg_connection(
+            pool, site="cron.reminders_watcher.namespace_scan"
+        ) as conn:
+            rows = await conn.fetch("SELECT id FROM namespaces")
+
+        for row in rows:
+            ns_id: UUID = row["id"]
+            try:
+                async with scoped_pg_session(pool, ns_id) as conn:
+                    fired = await fire_pending_reminders(conn, namespace_id=ns_id)
+                    if fired:
+                        log.debug(
+                            "reminders_watcher tick namespace=%s fired %d reminder(s)",
+                            ns_id,
+                            len(fired),
+                        )
+            except _CRON_TICK_ERRORS:
+                log.exception("reminders_watcher tick failed for namespace=%s", ns_id)
+    except _CRON_TICK_ERRORS:
+        log.exception("reminders_watcher tick failed unexpectedly")
+    finally:
+        await release_cron_lock(lock)
+
+
 async def _actor_trust_tick(pool: asyncpg.Pool) -> None:
     """
     Hourly tick: recompute Laplace-smoothed trust scores in ``actor_trust``.
@@ -2226,6 +2265,9 @@ async def async_main() -> None:
     from nce.vertical_modules.hr.compliance import (
         register_hr_compliance_subscribers,
     )
+    from nce.vertical_modules.notifications.subscribers import (
+        register_notifications_subscribers,
+    )
     from nce.vertical_modules.project import automation as project_automation
     from nce.vertical_modules.project import tasks as project_tasks
     from nce.vertical_modules.resources import watcher as resources_watcher
@@ -2241,6 +2283,7 @@ async def async_main() -> None:
     register_field_tech_subscribers()
     register_resources_event_subscribers()
     register_hr_compliance_subscribers()
+    register_notifications_subscribers()
 
     # Module 7's three C4 selectors (M0.W20d) -- PO_LINE.status_changed,
     # GOODS_RECEIPT.created and BOM_LINE.status_changed. Their handlers were
@@ -2492,6 +2535,17 @@ async def async_main() -> None:
         replace_existing=True,
     )
 
+    reminders_minutes = max(1, int(_REMINDERS_WATCHER_INTERVAL_MINUTES))
+    scheduler.add_job(
+        _reminders_watcher_tick,
+        IntervalTrigger(minutes=reminders_minutes),
+        args=[pool],
+        id="reminders_watcher",
+        coalesce=True,
+        max_instances=1,
+        replace_existing=True,
+    )
+
     scheduler.start()
     log.info(
         "Started bridge renewal scheduler: interval=%s min, lookahead=%s h",
@@ -2537,6 +2591,7 @@ async def async_main() -> None:
         _hr_compliance_watcher_tick(pool),
         _sales_stalled_deal_watcher_tick(pool),
         _assets_warranty_eol_tick(pool),
+        _reminders_watcher_tick(pool),
     ]
     if cfg.NCE_D365_ENABLED:
         startup_coros.append(_d365_sync_tick(pool))

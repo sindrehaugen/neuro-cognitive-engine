@@ -3975,3 +3975,92 @@ BEGIN
             ON DELETE CASCADE;
     END IF;
 END $$;
+
+-- ============================================================================
+-- C13 Notifications and Reminders (Wave A-3)
+-- Migration 083_notifications_reminders.sql
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    namespace_id UUID NOT NULL,
+    principal_id TEXT NOT NULL,
+    title VARCHAR(256) NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    severity VARCHAR(32) NOT NULL DEFAULT 'info',
+    category VARCHAR(64) NOT NULL DEFAULT 'general',
+    source_selector VARCHAR(128),
+    source_id VARCHAR(256),
+    idempotency_key VARCHAR(256),
+    read_at TIMESTAMPTZ,
+    seen_at TIMESTAMPTZ,
+    is_archived BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_lookup
+    ON notifications (namespace_id, principal_id, is_archived, created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_idempotency
+    ON notifications (namespace_id, idempotency_key)
+    WHERE idempotency_key IS NOT NULL;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE notifications FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE notifications TO nce_app;
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS reminders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    namespace_id UUID NOT NULL,
+    principal_id TEXT NOT NULL,
+    node_type VARCHAR(64) NOT NULL,
+    node_id VARCHAR(256) NOT NULL,
+    title VARCHAR(256) NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    remind_at TIMESTAMPTZ NOT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'pending',
+    fired_at TIMESTAMPTZ,
+    is_archived BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_reminders_lookup
+    ON reminders (namespace_id, principal_id, status, remind_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_reminders_pending_scan
+    ON reminders (status, remind_at ASC)
+    WHERE status = 'pending' AND is_archived = FALSE;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE reminders FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE reminders TO nce_app;
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS notification_subscriptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    namespace_id UUID NOT NULL,
+    principal_id TEXT NOT NULL,
+    selector VARCHAR(128) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_notification_subscriptions UNIQUE (namespace_id, principal_id, selector)
+);
+
+CREATE INDEX IF NOT EXISTS idx_notification_subs_lookup
+    ON notification_subscriptions (namespace_id, selector);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE notification_subscriptions FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE notification_subscriptions TO nce_app;
+    END IF;
+END $$;

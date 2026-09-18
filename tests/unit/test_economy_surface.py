@@ -259,8 +259,9 @@ def test_economy_tools_registered_with_correct_flags(tool_name: str) -> None:
 
 
 def test_tool_count_includes_economy_tools() -> None:
-    from nce.tool_registry import TOOL_REGISTRY
     from tests.test_tool_registry import _EXPECTED_TOTAL
+
+    from nce.tool_registry import TOOL_REGISTRY
 
     assert "economy_match_invoice" in TOOL_REGISTRY
     assert "economy_compute_periodisering" in TOOL_REGISTRY

@@ -48,7 +48,10 @@ EVENT_CATALOGUE: Mapping[str, EventContract] = {
         node_type="PO_LINE",
         op="status_changed",
         declared_producers=("nce/vertical_modules/procurement/po_line.py",),
-        declared_consumers=("nce/vertical_modules/project/automation.py",),
+        declared_consumers=(
+            "nce/vertical_modules/project/automation.py",
+            "nce/vertical_modules/notifications/subscribers.py",
+        ),
         status="ACTIVE",
         description="Emitted when a purchase order line status advances (e.g. ORDERED).",
     ),
@@ -117,7 +120,10 @@ EVENT_CATALOGUE: Mapping[str, EventContract] = {
             "nce/vertical_modules/hr/certs.py",
             "nce/vertical_modules/vendors/certs.py",
         ),
-        declared_consumers=("nce/vertical_modules/resources/watcher.py",),
+        declared_consumers=(
+            "nce/vertical_modules/resources/watcher.py",
+            "nce/vertical_modules/notifications/subscribers.py",
+        ),
         status="ACTIVE",
         description="Emitted when a certification lapses, triggering allocation invalidation.",
     ),
@@ -481,8 +487,8 @@ EVENT_CATALOGUE: Mapping[str, EventContract] = {
         node_type="TICKET",
         op="sla_breached",
         declared_producers=("nce/vertical_modules/support/sla.py",),
-        declared_consumers=(),
-        status="UNCONSUMED",
+        declared_consumers=("nce/vertical_modules/notifications/subscribers.py",),
+        status="ACTIVE",
         description="Emitted when a support service ticket breaches its first-response or resolution SLA deadline.",
     ),
     "ABSENCE.compliance_alert": EventContract(
@@ -704,6 +710,48 @@ EVENT_CATALOGUE: Mapping[str, EventContract] = {
         status="UNCONSUMED",
         reason="Security audit event emitted on signing key rotation; replayed by nce/replay.py for provenance.",
         description="Emitted when a new active signing key is generated and the outgoing key is retired.",
+    ),
+    # ---------------------------------------------------------------------------
+    # C13 Notifications and Reminders (Wave A-3)
+    # ---------------------------------------------------------------------------
+    "REMINDER.fired": EventContract(
+        selector="REMINDER.fired",
+        node_type="REMINDER",
+        op="fired",
+        declared_producers=("nce/vertical_modules/notifications/reminders.py",),
+        declared_consumers=("nce/vertical_modules/notifications/subscribers.py",),
+        status="ACTIVE",
+        description="Emitted when a scheduled reminder deadline has elapsed and the reminder fires.",
+    ),
+    "AGREEMENT.renewal_due": EventContract(
+        selector="AGREEMENT.renewal_due",
+        node_type="AGREEMENT",
+        op="renewal_due",
+        declared_producers=(),
+        declared_consumers=("nce/vertical_modules/notifications/subscribers.py",),
+        status="UNPRODUCED",
+        reason="Future agreement renewal alert emitter scheduled for Lane B Wave B-12 agreement lifecycle; subscribed now for C13 notification inbox delivery.",
+        description="Emitted when a customer or vendor agreement reaches its renewal notice window.",
+    ),
+    "DEAL.stalled": EventContract(
+        selector="DEAL.stalled",
+        node_type="DEAL",
+        op="stalled",
+        declared_producers=(),
+        declared_consumers=("nce/vertical_modules/notifications/subscribers.py",),
+        status="UNPRODUCED",
+        reason="Future stalled deal alert emitter scheduled for Lane S Wave S-4 deal progression; subscribed now for C13 notification inbox delivery.",
+        description="Emitted when an opportunity deal stalls without activity past the threshold.",
+    ),
+    "ASSET.health_changed": EventContract(
+        selector="ASSET.health_changed",
+        node_type="ASSET",
+        op="health_changed",
+        declared_producers=(),
+        declared_consumers=("nce/vertical_modules/notifications/subscribers.py",),
+        status="UNPRODUCED",
+        reason="Future asset health transition emitter scheduled for Lane D Wave D-9 asset telemetry; subscribed now for C13 notification inbox delivery.",
+        description="Emitted when an installed asset hardware telemetry status or health degrades.",
     ),
 }
 

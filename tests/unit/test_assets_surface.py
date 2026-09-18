@@ -179,8 +179,9 @@ def test_assets_tools_registered_with_correct_flags(
 
 
 def test_tool_count_updated_for_assets_surface() -> None:
-    from nce.tool_registry import TOOL_REGISTRY
     from tests.test_tool_registry import _EXPECTED_TOTAL
+
+    from nce.tool_registry import TOOL_REGISTRY
 
     assert "assets_get" in TOOL_REGISTRY
     assert "assets_list" in TOOL_REGISTRY

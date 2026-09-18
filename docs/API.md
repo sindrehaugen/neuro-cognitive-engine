@@ -255,6 +255,32 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/marketing/testimonials` | `api_marketing_testimonials` |
 | POST | `/api/marketing/testimonials/capture` | `api_marketing_capture_testimonial` |
 | POST | `/api/marketing/testimonials/retract` | `api_marketing_retract_testimonial` |
+| GET | `/api/notifications/notifications` | `handle_list` |
+| POST | `/api/notifications/notifications` | `handle_create` |
+| POST | `/api/notifications/notifications/bulk` | `handle_bulk` |
+| GET | `/api/notifications/notifications/{id}` | `handle_get` |
+| PATCH | `/api/notifications/notifications/{id}` | `handle_patch` |
+| POST | `/api/notifications/notifications/{id}/archive` | `handle_archive` |
+| GET | `/api/notifications/notifications/{id}/comments` | `handle_list_comments` |
+| POST | `/api/notifications/notifications/{id}/comments` | `handle_add_comment` |
+| GET | `/api/notifications/notifications/{id}/events` | `handle_events` |
+| POST | `/api/notifications/notifications/{id}/restore` | `handle_restore` |
+| GET | `/api/notifications/notifications/{id}/tags` | `handle_list_tags` |
+| POST | `/api/notifications/notifications/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/notifications/notifications/{id}/tags/{tag}` | `handle_remove_tag` |
+| GET | `/api/notifications/reminders` | `handle_list` |
+| POST | `/api/notifications/reminders` | `handle_create` |
+| POST | `/api/notifications/reminders/bulk` | `handle_bulk` |
+| GET | `/api/notifications/reminders/{id}` | `handle_get` |
+| PATCH | `/api/notifications/reminders/{id}` | `handle_patch` |
+| POST | `/api/notifications/reminders/{id}/archive` | `handle_archive` |
+| GET | `/api/notifications/reminders/{id}/comments` | `handle_list_comments` |
+| POST | `/api/notifications/reminders/{id}/comments` | `handle_add_comment` |
+| GET | `/api/notifications/reminders/{id}/events` | `handle_events` |
+| POST | `/api/notifications/reminders/{id}/restore` | `handle_restore` |
+| GET | `/api/notifications/reminders/{id}/tags` | `handle_list_tags` |
+| POST | `/api/notifications/reminders/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/notifications/reminders/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET,POST | `/api/procurement/bids/resolve` | `api_procurement_resolve_bids` |
 | POST | `/api/procurement/frontier/forecast-rebate` | `api_procurement_forecast_rebate` |
 | POST | `/api/procurement/frontier/recommend-move-spend` | `api_procurement_recommend_move_spend` |
@@ -542,6 +568,14 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `merge_queue_reject` | yes | yes |  |  |
 | `migration_status` |  |  |  | yes |
 | `neuromorphic_search` |  |  | yes |  |
+| `notifications_archive_notifications` |  | yes |  |  |
+| `notifications_archive_reminders` |  | yes |  |  |
+| `notifications_get_notifications` |  |  | yes |  |
+| `notifications_get_reminders` |  |  | yes |  |
+| `notifications_list_notifications` |  |  | yes |  |
+| `notifications_list_reminders` |  |  | yes |  |
+| `notifications_upsert_notifications` |  | yes |  |  |
+| `notifications_upsert_reminders` |  | yes |  |  |
 | `pricing_resolve` |  |  | yes |  |
 | `procurement_aggregate_savings` |  |  | yes |  |
 | `procurement_calculate_tco` |  |  | yes |  |
@@ -668,4 +702,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 351 REST endpoints, 299 MCP tools._
+_Totals: 377 REST endpoints, 307 MCP tools._

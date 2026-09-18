@@ -170,8 +170,9 @@ def test_inventory_tools_registered_with_correct_flags(
 
 
 def test_tool_count_updated_for_inventory() -> None:
-    from nce.tool_registry import TOOL_REGISTRY
     from tests.test_tool_registry import _EXPECTED_TOTAL
+
+    from nce.tool_registry import TOOL_REGISTRY
 
     assert "inventory_stock_levels" in TOOL_REGISTRY
     assert "inventory_transfer_stock" in TOOL_REGISTRY
