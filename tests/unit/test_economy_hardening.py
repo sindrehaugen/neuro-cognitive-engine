@@ -84,13 +84,28 @@ _BALANCED_EVENT: dict[str, Any] = {
 
 
 def test_exact_economy_tool_count() -> None:
-    """Economy tools registered in TOOL_REGISTRY must be exactly the 9 listed tools."""
+    """Economy tools registered in TOOL_REGISTRY must be exactly the 15 listed
+    tools, plus any C12 resource-surface tools this engine has registered.
+
+    Since Wave A-1b, a C12 ResourceSpec registered for this engine would add
+    4 tools (list/get/upsert/archive) to TOOL_REGISTRY with no edit to any
+    tool file (janitor pass 7, K-H4 -- same exposure that made
+    tests/test_tool_registry.py's frozenset pins break on every C12
+    registration). None is registered for "economy" today, but this union
+    means a future one won't turn this exact-match assertion red.
+    """
+    from nce.resource_surface import build_all_resource_tool_specs
     from nce.tool_registry import TOOL_REGISTRY
 
+    c12_economy_tools = {
+        name for name in build_all_resource_tool_specs() if name.startswith("economy_")
+    }
+    expected = _ECONOMY_TOOLS | c12_economy_tools
+
     registered_economy = {name for name in TOOL_REGISTRY if name.startswith("economy_")}
-    assert registered_economy == _ECONOMY_TOOLS, (
+    assert registered_economy == expected, (
         f"Economy tool set mismatch.\n"
-        f"  Expected:   {sorted(_ECONOMY_TOOLS)}\n"
+        f"  Expected:   {sorted(expected)}\n"
         f"  Got:        {sorted(registered_economy)}"
     )
 

@@ -276,12 +276,24 @@ def test_exact_agreements_tool_count() -> None:
     loudly if a future wave registers a second agreements tool without
     updating this test.
     """
+    from nce.resource_surface import build_all_resource_tool_specs
     from nce.tool_registry import TOOL_REGISTRY
 
+    # Since Wave A-1b, a C12 ResourceSpec registered for this engine would add
+    # 4 tools (list/get/upsert/archive) to TOOL_REGISTRY with no edit to any
+    # tool file (janitor pass 7, K-H4 -- same exposure MUTATION_TOOLS had).
+    # None is registered for "agreements" today, but this union means a
+    # future one won't turn this exact-match assertion red the way it broke
+    # tests/test_tool_registry.py's pins.
+    c12_agreements_tools = {
+        name for name in build_all_resource_tool_specs() if name.startswith("agreements_")
+    }
+    expected = _AGREEMENTS_TOOLS | c12_agreements_tools
+
     registered_agreements = {name for name in TOOL_REGISTRY if name.startswith("agreements_")}
-    assert registered_agreements == _AGREEMENTS_TOOLS, (
+    assert registered_agreements == expected, (
         f"Agreements tool set mismatch.\n"
-        f"  Expected:   {sorted(_AGREEMENTS_TOOLS)}\n"
+        f"  Expected:   {sorted(expected)}\n"
         f"  Got:        {sorted(registered_agreements)}"
     )
 
