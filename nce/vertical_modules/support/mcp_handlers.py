@@ -65,6 +65,8 @@ from nce.vertical_modules.support.tickets import (
     InvalidTicketStatusError,
     TicketAlreadyResolvedError,
     TicketNotFoundError,
+    do_get_ticket_timeline,
+    do_log_ticket_action,
     do_open_ticket,
     do_query_ticket,
     do_resolve_ticket,
@@ -366,6 +368,46 @@ async def handle_support_at_risk_aggregate(engine: Any, arguments: dict[str, Any
     await _check_support_enabled(engine, arguments)
     try:
         result = await do_support_at_risk_aggregate(engine, dict(arguments))
+    except ValueError as exc:
+        raise McpError(-32602, str(exc)) from exc
+    return json.dumps({"ok": True, **result}, default=str)
+
+
+@mcp_handler
+async def handle_support_log_ticket_action(engine: Any, arguments: dict[str, Any]) -> str:
+    """MCP tool: support_log_ticket_action — append an action/intervention record to a ticket.
+
+    Actor; mutation, admin_only. Requires ``namespace_id``, ``ticket_id``, and ``action_type``.
+    """
+    await _check_support_enabled(engine, arguments)
+    try:
+        result = await do_log_ticket_action(engine, dict(arguments))
+    except TicketNotFoundError as exc:
+        raise McpError(
+            _MCP_BUSINESS_REFUSED_CODE,
+            str(exc),
+            data={"reason": "ticket_not_found", "ticket_id": exc.ticket_id},
+        ) from exc
+    except ValueError as exc:
+        raise McpError(-32602, str(exc)) from exc
+    return json.dumps({"ok": True, **result}, default=str)
+
+
+@mcp_handler
+async def handle_support_ticket_timeline(engine: Any, arguments: dict[str, Any]) -> str:
+    """MCP tool: support_ticket_timeline — retrieve timeline of actions for a ticket.
+
+    Watcher; read-only, cacheable. Requires ``namespace_id`` and ``ticket_id``.
+    """
+    await _check_support_enabled(engine, arguments)
+    try:
+        result = await do_get_ticket_timeline(engine, dict(arguments))
+    except TicketNotFoundError as exc:
+        raise McpError(
+            _MCP_BUSINESS_REFUSED_CODE,
+            str(exc),
+            data={"reason": "ticket_not_found", "ticket_id": exc.ticket_id},
+        ) from exc
     except ValueError as exc:
         raise McpError(-32602, str(exc)) from exc
     return json.dumps({"ok": True, **result}, default=str)

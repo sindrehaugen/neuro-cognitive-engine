@@ -70,6 +70,8 @@ from nce.vertical_modules.support.tickets import (
     InvalidTicketStatusError,
     TicketAlreadyResolvedError,
     TicketNotFoundError,
+    do_get_ticket_timeline,
+    do_log_ticket_action,
     do_open_ticket,
     do_query_ticket,
     do_resolve_ticket,
@@ -1062,6 +1064,144 @@ async def api_support_at_risk_aggregate(request: Any) -> JSONResponse:
             exc,
             status_code=500,
             log_event="api_support_at_risk_aggregate",
+        )
+
+    return JSONResponse({"ok": True, **result})
+
+
+# ---------------------------------------------------------------------------
+# POST /api/support/tickets/{id}/actions
+# ---------------------------------------------------------------------------
+
+
+async def api_support_tickets_log_action(request: Any) -> JSONResponse:
+    """POST /api/support/tickets/{id}/actions — append an action/intervention record to a ticket.
+
+    Path parameter:
+        id (str): Ticket UUID.
+
+    Request body (JSON):
+        namespace_id (str, required): Active namespace UUID.
+        action_type (str, required): Category of action performed.
+        action_summary (str, required): Summary of action/tiltak taken.
+        action_details (str, optional): Detailed narrative or data.
+        outcome (str, optional): Outcome of action.
+        outcome_notes (str, optional): Outcome notes.
+        performed_by (str, optional): Technician or agent name.
+        performed_at (str, optional): ISO timestamp.
+        change_origin (str, optional): Origin enum.
+
+    Response (JSON):
+        {"ok": True, "action": {...}, "ticket_id": str, "status": "logged"}
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    ticket_id = (request.path_params.get("id") or "").strip()
+    if not ticket_id:
+        return JSONResponse({"error": "Missing path parameter: id"}, status_code=422)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    namespace_id, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_support_enabled(pool, namespace_id)
+    except SupportDisabledError as exc:
+        return JSONResponse({"error": str(exc), "reason": "support_disabled"}, status_code=409)
+
+    params = dict(body)
+    params["namespace_id"] = namespace_id
+    params["ticket_id"] = ticket_id
+
+    try:
+        result = await do_log_ticket_action(admin_state.engine, params)
+    except TicketNotFoundError as exc:
+        return JSONResponse(
+            {"error": str(exc), "not_found": True, "ticket_id": exc.ticket_id},
+            status_code=404,
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Support ticket log action error",
+            exc,
+            status_code=500,
+            log_event="api_support_tickets_log_action",
+        )
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_support_tickets_log_action")
+    return JSONResponse({"ok": True, **result})
+
+
+# ---------------------------------------------------------------------------
+# GET /api/support/tickets/{id}/timeline
+# ---------------------------------------------------------------------------
+
+
+async def api_support_tickets_timeline(request: Any) -> JSONResponse:
+    """GET /api/support/tickets/{id}/timeline — retrieve action timeline for a ticket.
+
+    Path parameter:
+        id (str): Ticket UUID.
+
+    Query parameters:
+        namespace_id (str, required): Active namespace UUID.
+        limit (int, optional): Max records to return.
+
+    Response (JSON):
+        {"ok": True, "ticket_id": str, "ticket_summary": str, "actions": [...], ...}
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    ticket_id = (request.path_params.get("id") or "").strip()
+    if not ticket_id:
+        return JSONResponse({"error": "Missing path parameter: id"}, status_code=422)
+
+    namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
+    if err is not None:
+        return err
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_support_enabled(pool, namespace_id)
+    except SupportDisabledError as exc:
+        return JSONResponse({"error": str(exc), "reason": "support_disabled"}, status_code=409)
+
+    params: dict[str, Any] = {
+        "namespace_id": namespace_id,
+        "ticket_id": ticket_id,
+    }
+    limit = request.query_params.get("limit")
+    if limit is not None:
+        try:
+            params["limit"] = int(limit)
+        except ValueError:
+            return JSONResponse({"error": "limit must be an integer"}, status_code=422)
+
+    try:
+        result = await do_get_ticket_timeline(admin_state.engine, params)
+    except TicketNotFoundError as exc:
+        return JSONResponse(
+            {"error": str(exc), "not_found": True, "ticket_id": exc.ticket_id},
+            status_code=404,
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Support ticket timeline error",
+            exc,
+            status_code=500,
+            log_event="api_support_tickets_timeline",
         )
 
     return JSONResponse({"ok": True, **result})

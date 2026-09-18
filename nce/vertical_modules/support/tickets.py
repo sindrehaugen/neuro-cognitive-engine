@@ -576,3 +576,257 @@ async def do_resolve_ticket(
         "ledger_id": str(ledger_id),
         "status": "resolved",
     }
+
+
+# ============================================================================
+# Wave D-5: TICKET_ACTION Log & Timeline (ADR 0042)
+# ============================================================================
+
+_ALLOWED_ACTION_TYPES = frozenset(
+    {
+        "diagnostic",
+        "configuration",
+        "restart",
+        "firmware_update",
+        "hardware_replacement",
+        "cable_check",
+        "vendor_escalation",
+        "work_order",
+        "user_instruction",
+        "other",
+    }
+)
+
+_ALLOWED_OUTCOMES = frozenset(
+    {
+        "resolved",
+        "improved",
+        "no_change",
+        "worsened",
+        "inconclusive",
+        "failed",
+        "pending_verification",
+    }
+)
+
+EVENT_TYPE_TICKET_ACTION_LOGGED: str = "support_ticket_action_logged"
+
+
+async def do_log_ticket_action(
+    engine_or_pool: Any,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    """Append a structured action log entry (tiltak + utfall) to a support ticket per ADR 0042.
+
+    Inserts into support_ticket_actions table, appends to service_tickets.events JSONB,
+    and returns the created ticket action record.
+
+    Parameters in params:
+        - namespace_id: UUID | str (required)
+        - ticket_id: UUID | str (required)
+        - action_type: str (required, validated against _ALLOWED_ACTION_TYPES)
+        - action_summary: str (required, non-blank -- the intervention / tiltak)
+        - action_details: str | None (optional extended details)
+        - outcome: str (required, validated against _ALLOWED_OUTCOMES -- the result / utfall)
+        - outcome_notes: str | None (optional outcome notes)
+        - performed_by: str (required, non-blank technician/agent ID)
+        - performed_at: datetime | str | None (optional, defaults to now)
+        - change_origin: str (optional, default 'agent')
+
+    Returns:
+        {
+            "action": dict, # complete support_ticket_actions row as dict
+            "ticket_id": str,
+            "status": "logged",
+        }
+    """
+    ns_uuid = _parse_uuid(params.get("namespace_id"), "namespace_id")
+    ticket_uuid = _parse_uuid(params.get("ticket_id"), "ticket_id")
+
+    action_type = str(params.get("action_type") or "").strip().lower()
+    if action_type not in _ALLOWED_ACTION_TYPES:
+        raise ValueError(
+            f"Invalid action_type {action_type!r}. Allowed: {sorted(_ALLOWED_ACTION_TYPES)}"
+        )
+
+    action_summary = str(params.get("action_summary") or "").strip()
+    if not action_summary:
+        raise ValueError("action_summary must not be blank")
+
+    outcome = str(params.get("outcome") or "").strip().lower()
+    if outcome not in _ALLOWED_OUTCOMES:
+        raise ValueError(f"Invalid outcome {outcome!r}. Allowed: {sorted(_ALLOWED_OUTCOMES)}")
+
+    performed_by = str(params.get("performed_by") or "").strip()
+    if not performed_by:
+        raise ValueError("performed_by must not be blank")
+
+    action_details = params.get("action_details")
+    if action_details is not None:
+        action_details = str(action_details).strip() or None
+
+    outcome_notes = params.get("outcome_notes")
+    if outcome_notes is not None:
+        outcome_notes = str(outcome_notes).strip() or None
+
+    change_origin = str(params.get("change_origin") or "agent").strip().lower()
+    if change_origin not in _ALLOWED_CHANGE_ORIGINS:
+        change_origin = "agent"
+
+    now_dt = datetime.datetime.now(datetime.timezone.utc)
+    raw_performed_at = params.get("performed_at")
+    if raw_performed_at is None:
+        performed_at_dt = now_dt
+    elif isinstance(raw_performed_at, datetime.datetime):
+        performed_at_dt = raw_performed_at
+    else:
+        try:
+            performed_at_dt = datetime.datetime.fromisoformat(str(raw_performed_at))
+        except (ValueError, TypeError):
+            performed_at_dt = now_dt
+
+    pool = _extract_pool(engine_or_pool)
+    action_id = uuid4()
+
+    async with scoped_pg_session(pool, ns_uuid) as conn:
+        ticket_row = await conn.fetchrow(
+            """
+            SELECT id, summary, status
+            FROM service_tickets
+            WHERE id = $1::uuid AND namespace_id = $2::uuid
+            """,
+            ticket_uuid,
+            ns_uuid,
+        )
+        if not ticket_row:
+            raise TicketNotFoundError(ticket_id=str(ticket_uuid))
+
+        action_row = await conn.fetchrow(
+            """
+            INSERT INTO support_ticket_actions (
+                id, namespace_id, ticket_id,
+                action_type, action_summary, action_details,
+                outcome, outcome_notes, performed_by,
+                performed_at, change_origin, created_at, updated_at
+            ) VALUES (
+                $1::uuid, $2::uuid, $3::uuid,
+                $4, $5, $6,
+                $7, $8, $9,
+                $10::timestamptz, $11, $12::timestamptz, $12::timestamptz
+            )
+            RETURNING *
+            """,
+            action_id,
+            ns_uuid,
+            ticket_uuid,
+            action_type,
+            action_summary,
+            action_details,
+            outcome,
+            outcome_notes,
+            performed_by,
+            performed_at_dt,
+            change_origin,
+            now_dt,
+        )
+
+        action_event = {
+            "event_type": EVENT_TYPE_TICKET_ACTION_LOGGED,
+            "action_id": str(action_id),
+            "action_type": action_type,
+            "action_summary": action_summary,
+            "outcome": outcome,
+            "performed_by": performed_by,
+            "performed_at": performed_at_dt.isoformat(),
+        }
+        await conn.execute(
+            """
+            UPDATE service_tickets
+            SET events = events || $3::jsonb,
+                updated_at = $4::timestamptz
+            WHERE id = $1::uuid AND namespace_id = $2::uuid
+            """,
+            ticket_uuid,
+            ns_uuid,
+            json.dumps([action_event]),
+            now_dt,
+        )
+
+    return {
+        "action": _row_to_dict(action_row),
+        "ticket_id": str(ticket_uuid),
+        "status": "logged",
+    }
+
+
+async def do_get_ticket_timeline(
+    engine_or_pool: Any,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    """Retrieve the chronological timeline of actions and milestones for a ticket.
+
+    Parameters in params:
+        - namespace_id: UUID | str (required)
+        - ticket_id: UUID | str (required)
+        - limit: int (optional, default 100)
+
+    Returns:
+        {
+            "ticket_id": str,
+            "ticket_summary": str,
+            "ticket_status": str,
+            "created_at": str,
+            "actions": list[dict],
+            "total_actions": int,
+            "latest_outcome": str | None,
+        }
+    """
+    ns_uuid = _parse_uuid(params.get("namespace_id"), "namespace_id")
+    ticket_uuid = _parse_uuid(params.get("ticket_id"), "ticket_id")
+
+    limit = params.get("limit", 100)
+    try:
+        limit = max(1, min(500, int(limit)))
+    except (TypeError, ValueError):
+        limit = 100
+
+    pool = _extract_pool(engine_or_pool)
+
+    async with scoped_pg_session(pool, ns_uuid) as conn:
+        ticket_row = await conn.fetchrow(
+            """
+            SELECT id, summary, status, created_at, first_response_at, resolved_at
+            FROM service_tickets
+            WHERE id = $1::uuid AND namespace_id = $2::uuid
+            """,
+            ticket_uuid,
+            ns_uuid,
+        )
+        if not ticket_row:
+            raise TicketNotFoundError(ticket_id=str(ticket_uuid))
+
+        action_rows = await conn.fetch(
+            """
+            SELECT *
+            FROM support_ticket_actions
+            WHERE ticket_id = $1::uuid AND namespace_id = $2::uuid
+            ORDER BY performed_at ASC, created_at ASC
+            LIMIT $3
+            """,
+            ticket_uuid,
+            ns_uuid,
+            limit,
+        )
+
+    actions = [_row_to_dict(r) for r in action_rows]
+    latest_outcome = actions[-1]["outcome"] if actions else None
+
+    return {
+        "ticket_id": str(ticket_uuid),
+        "ticket_summary": ticket_row["summary"],
+        "ticket_status": ticket_row["status"],
+        "created_at": ticket_row["created_at"].isoformat() if ticket_row["created_at"] else None,
+        "actions": actions,
+        "total_actions": len(actions),
+        "latest_outcome": latest_outcome,
+    }

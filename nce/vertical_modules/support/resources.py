@@ -1,13 +1,11 @@
-"""nce.vertical_modules.support.resources — Resource definitions for Support.
+"""nce.vertical_modules.support.resources — Resource definitions for Support Engine.
 
-Lane E Wave E-8:
-Registers C12 ResourceSpecs for Support's owned node types in
-node-ownership.json that have a real, tenant-scoped, single-table DDL:
-  - TICKET (service_tickets table -- NOT "support_tickets"; the prior
-    exemption text named the wrong table, corrected here)
+Lane E Wave E-8 & Phase D Wave D-5:
+Registers C12 ResourceSpecs for Support's owned node types:
+  - TICKET (service_tickets table)
   - SLA (sla_clocks table; PK is ticket_id, no id column)
-  - SUPPORT_HEALTH_SCORE (customer_health table; PK is
-    (namespace_id, customer_id), no id column)
+  - SUPPORT_HEALTH_SCORE (customer_health table; PK is (namespace_id, customer_id), no id column)
+  - TICKET_ACTION (support_ticket_actions table, ADR 0042 append-only log)
 
 SUPPORT_DIAGNOSIS stays exempted: it is not a separate table at all -- the
 AI diagnosis payload lives in service_tickets.ai_diagnosis (JSONB), so there
@@ -28,8 +26,16 @@ TICKET_SPEC = ResourceSpec(
     id_field="id",
     version_field="updated_at",
     soft_delete_field=None,
-    filterable_fields=("status", "priority", "customer_id", "room_id", "asset_id", "source"),
-    searchable_fields=("summary", "description", "customer_id"),
+    filterable_fields=(
+        "source",
+        "status",
+        "priority",
+        "asset_id",
+        "room_id",
+        "customer_id",
+        "sla_profile",
+    ),
+    searchable_fields=("summary", "description", "customer_id", "room_id", "source_id"),
     writable_fields=(
         "source",
         "source_id",
@@ -41,7 +47,40 @@ TICKET_SPEC = ResourceSpec(
         "summary",
         "description",
         "sla_profile",
+        "change_origin",
     ),
+    tier_allowlists={
+        "external-customer": (
+            "id",
+            "source",
+            "status",
+            "priority",
+            "summary",
+            "description",
+            "asset_id",
+            "room_id",
+            "created_at",
+            "updated_at",
+            "first_response_at",
+            "resolved_at",
+        ),
+        "contractor": (
+            "id",
+            "source",
+            "status",
+            "priority",
+            "summary",
+            "description",
+            "asset_id",
+            "room_id",
+            "customer_id",
+            "sla_profile",
+            "created_at",
+            "updated_at",
+            "first_response_at",
+            "resolved_at",
+        ),
+    },
     description="Service tickets: status/priority lifecycle, SLA profile, and AI diagnosis payload.",
 )
 register_resource(TICKET_SPEC)
@@ -86,3 +125,54 @@ SUPPORT_HEALTH_SCORE_SPEC = ResourceSpec(
     description="Rolling per-customer health score, churn risk, and contributing drivers.",
 )
 register_resource(SUPPORT_HEALTH_SCORE_SPEC)
+
+
+# 4. TICKET_ACTION
+TICKET_ACTION_SPEC = ResourceSpec(
+    engine="support",
+    entity="ticket-actions",
+    node_type="TICKET_ACTION",
+    table_name="support_ticket_actions",
+    id_field="id",
+    version_field="updated_at",
+    soft_delete_field=None,
+    filterable_fields=("ticket_id", "action_type", "outcome", "performed_by"),
+    searchable_fields=("action_summary", "outcome_notes", "action_details"),
+    writable_fields=(
+        "ticket_id",
+        "action_type",
+        "action_summary",
+        "action_details",
+        "outcome",
+        "outcome_notes",
+        "performed_by",
+        "performed_at",
+        "change_origin",
+    ),
+    tier_allowlists={
+        "external-customer": (
+            "id",
+            "ticket_id",
+            "action_type",
+            "action_summary",
+            "outcome",
+            "outcome_notes",
+            "performed_at",
+        ),
+        "contractor": (
+            "id",
+            "ticket_id",
+            "action_type",
+            "action_summary",
+            "action_details",
+            "outcome",
+            "outcome_notes",
+            "performed_by",
+            "performed_at",
+        ),
+    },
+    description="Append-only ticket action log tracking interventions (tiltak) and outcomes (utfall) per ticket per ADR 0042.",
+)
+register_resource(TICKET_ACTION_SPEC)
+
+SUPPORT_SPECS = [TICKET_SPEC, SLA_SPEC, SUPPORT_HEALTH_SCORE_SPEC, TICKET_ACTION_SPEC]
