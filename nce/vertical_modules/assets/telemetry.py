@@ -166,6 +166,11 @@ VENDOR_PLATFORMS: dict[str, str] = {
     # own space tree. Named here (not just wired) so an unknown-platform typo
     # is refused the same way the AV vendors already are.
     "neowit": "Neowit smartbygg platform API",
+    # Added MLV16F Wave F-4: Disruptive Technologies wireless sensors, read
+    # directly (not only through Neowit's aggregation) for the operational
+    # figures Neowit does not carry — battery, signal strength, which Data
+    # Connector a sensor speaks through.
+    "disruptive": "Disruptive Technologies REST API",
 }
 
 _TRUTHY = {"1", "true", "yes", "on"}
@@ -391,6 +396,10 @@ def select_telemetry_adapter(platform: str) -> TelemetryAdapter:
             from nce.vertical_modules.assets.neowit import NeowitTelemetryAdapter
 
             return NeowitTelemetryAdapter()
+        if name == "disruptive":
+            from nce.vertical_modules.assets.disruptive import DisruptiveTelemetryAdapter
+
+            return DisruptiveTelemetryAdapter()
         return UnimplementedVendorAdapter(name, vendor_api)
     return MockTelemetryAdapter()
 
