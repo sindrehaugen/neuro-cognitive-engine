@@ -377,6 +377,54 @@ async def post_me_govern(request: Request) -> JSONResponse:
 
     ns_id: UUID = ns_ctx.namespace_id
 
+    # Enforce namespace matching if passed as query parameter
+    query_ns = request.query_params.get("namespace_id")
+    if query_ns:
+        try:
+            query_ns_uuid = UUID(str(query_ns).strip())
+        except ValueError:
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -32007,
+                        "message": "Invalid namespace_id format",
+                        "data": {"reason": "invalid_namespace_format"},
+                    },
+                    "id": None,
+                },
+                status_code=400,
+            )
+        if query_ns_uuid != ns_id:
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -32005,
+                        "message": "Forbidden",
+                        "data": {"reason": "cross-namespace request is denied"},
+                    },
+                    "id": None,
+                },
+                status_code=403,
+            )
+
+    # Enforce agent matching if passed as query parameter
+    query_agent = request.query_params.get("agent_id")
+    if query_agent and query_agent.strip() != ns_ctx.agent_id:
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32005,
+                    "message": "Forbidden",
+                    "data": {"reason": "cross-agent request is denied"},
+                },
+                "id": None,
+            },
+            status_code=403,
+        )
+
     try:
         body = await request.json()
     except Exception:
@@ -391,6 +439,54 @@ async def post_me_govern(request: Request) -> JSONResponse:
                 "id": None,
             },
             status_code=400,
+        )
+
+    # Enforce namespace matching if passed in request body
+    body_ns = body.get("namespace_id")
+    if body_ns:
+        try:
+            body_ns_uuid = UUID(str(body_ns).strip())
+        except ValueError:
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -32007,
+                        "message": "Invalid namespace_id format",
+                        "data": {"reason": "invalid_namespace_format"},
+                    },
+                    "id": None,
+                },
+                status_code=400,
+            )
+        if body_ns_uuid != ns_id:
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -32005,
+                        "message": "Forbidden",
+                        "data": {"reason": "cross-namespace request is denied"},
+                    },
+                    "id": None,
+                },
+                status_code=403,
+            )
+
+    # Enforce agent matching if passed in request body
+    body_agent = body.get("agent_id")
+    if body_agent and str(body_agent).strip() != ns_ctx.agent_id:
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32005,
+                    "message": "Forbidden",
+                    "data": {"reason": "cross-agent request is denied"},
+                },
+                "id": None,
+            },
+            status_code=403,
         )
 
     memory_id_str = body.get("memory_id")

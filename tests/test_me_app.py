@@ -144,6 +144,8 @@ class TestMeAppUnit:
 
                 async def fetchrow(self, query: str, *args: Any) -> dict[str, Any] | None:
                     if "memories" in query.lower():
+                        if args and str(args[0]) == "00000000-0000-0000-0000-000000000404":
+                            return None
                         return {
                             "id": args[0],
                             "assertion_type": "fact",
@@ -242,6 +244,32 @@ class TestMeAppUnit:
         assert data[0]["confidence"] == 0.95
         assert len(data[0]["contradictions"]) == 1
         assert data[0]["contradictions"][0]["memory_a_id"] == "11111111-2222-3333-4444-555555555555"
+
+    def test_get_profile_unauthorized(self) -> None:
+        with TestClient(app) as client:
+            resp = client.get("/api/me/profile")
+        assert resp.status_code == 401
+        assert resp.json()["error"]["code"] == -32005
+
+    def test_get_profile_cross_namespace(self) -> None:
+        token = make_token(_base_payload(ns_id=valid_ns_id))
+        with TestClient(app) as client:
+            resp = client.get(
+                f"/api/me/profile?namespace_id={valid_ns_id_b}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 403
+        assert resp.json()["error"]["data"]["reason"] == "cross-namespace request is denied"
+
+    def test_get_profile_cross_agent(self) -> None:
+        token = make_token(_base_payload(agent_id="agent-alpha"))
+        with TestClient(app) as client:
+            resp = client.get(
+                "/api/me/profile?agent_id=agent-beta",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 403
+        assert resp.json()["error"]["data"]["reason"] == "cross-agent request is denied"
 
     def test_post_govern_edit_success(self) -> None:
         token = make_token(_base_payload(agent_id="agent-abc"))
@@ -359,6 +387,140 @@ class TestMeAppUnit:
         assert data["shredded_count"] == 1
         assert len(data["receipts"]) == 1
         assert data["receipts"][0]["dek_destroyed"] is True
+
+    def test_post_govern_unauthorized(self) -> None:
+        with TestClient(app) as client:
+            resp = client.post(
+                "/api/me/govern",
+                json={"memory_id": "11111111-2222-3333-4444-555555555555", "action": "pin"},
+            )
+        assert resp.status_code == 401
+        assert resp.json()["error"]["code"] == -32005
+
+    def test_post_govern_cross_namespace_query(self) -> None:
+        token = make_token(_base_payload(ns_id=valid_ns_id))
+        with TestClient(app) as client:
+            resp = client.post(
+                f"/api/me/govern?namespace_id={valid_ns_id_b}",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"memory_id": "11111111-2222-3333-4444-555555555555", "action": "pin"},
+            )
+        assert resp.status_code == 403
+        assert resp.json()["error"]["data"]["reason"] == "cross-namespace request is denied"
+
+    def test_post_govern_cross_namespace_body(self) -> None:
+        token = make_token(_base_payload(ns_id=valid_ns_id))
+        with TestClient(app) as client:
+            resp = client.post(
+                "/api/me/govern",
+                headers={"Authorization": f"Bearer {token}"},
+                json={
+                    "memory_id": "11111111-2222-3333-4444-555555555555",
+                    "action": "pin",
+                    "namespace_id": valid_ns_id_b,
+                },
+            )
+        assert resp.status_code == 403
+        assert resp.json()["error"]["data"]["reason"] == "cross-namespace request is denied"
+
+    def test_post_govern_cross_agent_query(self) -> None:
+        token = make_token(_base_payload(agent_id="agent-alpha"))
+        with TestClient(app) as client:
+            resp = client.post(
+                "/api/me/govern?agent_id=agent-beta",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"memory_id": "11111111-2222-3333-4444-555555555555", "action": "pin"},
+            )
+        assert resp.status_code == 403
+        assert resp.json()["error"]["data"]["reason"] == "cross-agent request is denied"
+
+    def test_post_govern_cross_agent_body(self) -> None:
+        token = make_token(_base_payload(agent_id="agent-alpha"))
+        with TestClient(app) as client:
+            resp = client.post(
+                "/api/me/govern",
+                headers={"Authorization": f"Bearer {token}"},
+                json={
+                    "memory_id": "11111111-2222-3333-4444-555555555555",
+                    "action": "pin",
+                    "agent_id": "agent-beta",
+                },
+            )
+        assert resp.status_code == 403
+        assert resp.json()["error"]["data"]["reason"] == "cross-agent request is denied"
+
+    def test_post_govern_cross_namespace_memory_lookup_404(self) -> None:
+        token = make_token(_base_payload(ns_id=valid_ns_id))
+        with TestClient(app) as client:
+            resp = client.post(
+                "/api/me/govern",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"memory_id": "00000000-0000-0000-0000-000000000404", "action": "pin"},
+            )
+        assert resp.status_code == 404
+        assert resp.json()["error"]["data"]["reason"] == "memory not found or already deleted"
+
+    def test_post_profile_govern_alias(self) -> None:
+        token = make_token(_base_payload(agent_id="agent-abc"))
+        with TestClient(app) as client:
+            # Unauthorized
+            r_unauth = client.post(
+                "/api/me/profile/govern",
+                json={"memory_id": "11111111-2222-3333-4444-555555555555", "action": "pin"},
+            )
+            assert r_unauth.status_code == 401
+
+            # Cross-namespace query
+            r_cross_ns = client.post(
+                f"/api/me/profile/govern?namespace_id={valid_ns_id_b}",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"memory_id": "11111111-2222-3333-4444-555555555555", "action": "pin"},
+            )
+            assert r_cross_ns.status_code == 403
+
+            # Cross-agent body
+            r_cross_agent = client.post(
+                "/api/me/profile/govern",
+                headers={"Authorization": f"Bearer {token}"},
+                json={
+                    "memory_id": "11111111-2222-3333-4444-555555555555",
+                    "action": "pin",
+                    "agent_id": "agent-beta",
+                },
+            )
+            assert r_cross_agent.status_code == 403
+
+            # Success
+            r_ok = client.post(
+                "/api/me/profile/govern",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"memory_id": "11111111-2222-3333-4444-555555555555", "action": "pin"},
+            )
+            assert r_ok.status_code == 200
+            assert r_ok.json()["status"] == "success"
+
+    def test_post_dsar_erase_unauthorized(self) -> None:
+        with TestClient(app) as client:
+            resp = client.post("/api/me/dsar/erase")
+        assert resp.status_code == 401
+
+    def test_post_dsar_erase_cross_namespace(self) -> None:
+        token = make_token(_base_payload(ns_id=valid_ns_id))
+        with TestClient(app) as client:
+            resp = client.post(
+                f"/api/me/dsar/erase?namespace_id={valid_ns_id_b}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 403
+
+    def test_post_dsar_erase_cross_agent(self) -> None:
+        token = make_token(_base_payload(agent_id="agent-alpha"))
+        with TestClient(app) as client:
+            resp = client.post(
+                "/api/me/dsar/erase?agent_id=agent-beta",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 403
 
 
 # ---------------------------------------------------------------------------
