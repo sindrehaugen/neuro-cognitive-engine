@@ -683,6 +683,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `inventory_upsert_stock_locations` |  | yes |  |  |
 | `inventory_valuation` | yes |  |  |  |
 | `legal_entities_archive_legal_entities` |  | yes |  |  |
+| `legal_entities_enrich_from_registry` | yes | yes |  |  |
 | `legal_entities_get_legal_entities` |  |  | yes |  |
 | `legal_entities_list_legal_entities` |  |  | yes |  |
 | `legal_entities_upsert_legal_entities` |  | yes |  |  |
@@ -860,4 +861,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 507 REST endpoints, 335 MCP tools._
+_Totals: 507 REST endpoints, 336 MCP tools._
