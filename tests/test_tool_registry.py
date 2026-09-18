@@ -46,7 +46,7 @@ _C12_TOOL_NAMES = frozenset(_C12_TOOL_SPECS)
 _C12_MUTATION_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.mutation)
 _C12_CACHEABLE_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.cacheable)
 
-_EXPECTED_STATIC_TOTAL = 283  # hand-written tools only; see _C12_TOOL_NAMES above
+_EXPECTED_STATIC_TOTAL = 284  # hand-written tools only; see _C12_TOOL_NAMES above; +1 BRREG registry-feed tool (Lane F Wave F-8)
 
 # Re-exported for tests/unit/test_{assets,economy,inventory}_surface.py and
 # test_sales_skeleton.py, which each do `from tests.test_tool_registry import
@@ -334,6 +334,8 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # Lane A Wave A-5 -- C15 Legal-Entity Register resource surface mutations (upsert + archive)
         "legal_entities_upsert_legal_entities",
         "legal_entities_archive_legal_entities",
+        # Lane F Wave F-8 -- C15 Legal-Entity Register BRREG registry-feed enrichment
+        "legal_entities_enrich_from_registry",
         # Lane E Wave E-5 -- C12 Vendors CONTRACTOR resource surface mutations (upsert + archive)
         "vendors_upsert_contractors",
         "vendors_archive_contractors",
@@ -368,7 +370,8 @@ def test_mutation_tools_count():
     ... Batch 067h system_design_delete_planned, M6.W17
     ... Batch 138a inventory Actor tools, M11.W10a (7 of 11 registered tools mutate)
     ... ML12-B5 field_tech, ML13-B3 HR, ML14-B3 marketing, and every wave through
-    Wave A-4 documents (now derived, not counted here)."""
+    Wave A-4 documents (now derived, not counted here).
+    +1 Lane F Wave F-8 legal_entities_enrich_from_registry -> 124."""
     c12_mutation_tools = frozenset(
         n for n, s in build_all_resource_tool_specs().items() if s.mutation
     )
@@ -377,8 +380,8 @@ def test_mutation_tools_count():
     assert len(MUTATION_TOOLS) >= 123, (
         f"Sanity floor: expected at least 123 mutation tools, got {len(MUTATION_TOOLS)}."
     )
-    assert len(hand_written_mutation_tools) == 123, (
-        "Hand-written (non-C12) mutation tool count changed: expected 123, "
+    assert len(hand_written_mutation_tools) == 124, (
+        "Hand-written (non-C12) mutation tool count changed: expected 124, "
         f"got {len(hand_written_mutation_tools)}. If you added/removed a "
         "hand-written mutation tool, update this pin by import. If you only "
         "registered a new C12 ResourceSpec, this number should not move -- "
@@ -777,6 +780,9 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "inventory_release_kit",
         # Wave IN-3 -- Inventory restock PO creation (admin_only mutation)
         "inventory_create_restock_po",
+        # Lane F Wave F-8 -- C15 Legal-Entity Register BRREG registry-feed enrichment
+        # (operator/cron pull against an external registry, admin_only mutation)
+        "legal_entities_enrich_from_registry",
     }
 )
 
@@ -790,8 +796,8 @@ def test_admin_only_tools_exact_match():
 
 def test_admin_only_tools_count():
     assert (
-        len(ADMIN_ONLY_TOOLS) == 93
-    )  # 90 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3)
+        len(ADMIN_ONLY_TOOLS) == 94
+    )  # 90 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3) + 1 BRREG registry-feed enrichment (Lane F Wave F-8)
 
 
 # ---------------------------------------------------------------------------

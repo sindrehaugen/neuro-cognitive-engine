@@ -53,12 +53,10 @@ _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
 # --- MEASURED on branch mlv16a/a1-c12-resource-surface -------------------------
 # python -c "import nce.tool_registry as tr; print(len(tr.TOOL_REGISTRY))"
-_TOTAL_TOOLS = 335  # 283 + 16 C12 Inventory tools + 8 C13 Notifications tools + 4 C12 Procurement PO_LINE tools + 4 C14 Document Register tools + 8 C12 Resources ALLOCATION/TRAVEL_LEG tools + 4 C12 Product tools + 4 C15 Legal-Entity Register tools + 4 C12 Vendors CONTRACTOR tools
-_MUTATION_TOOLS = 149  # 123 + 8 C12 Inventory mutations + 4 C13 Notifications mutations + 2 C12 Procurement mutations + 2 C14 Document Register mutations + 4 C12 Resources mutations + 2 C12 Product mutations + 2 C15 Legal-Entity mutations + 2 C12 Vendors mutations
+_TOTAL_TOOLS = 336  # 283 + 16 C12 Inventory tools + 8 C13 Notifications tools + 4 C12 Procurement PO_LINE tools + 4 C14 Document Register tools + 8 C12 Resources ALLOCATION/TRAVEL_LEG tools + 4 C12 Product tools + 4 C15 Legal-Entity Register tools + 4 C12 Vendors CONTRACTOR tools + 1 BRREG registry-feed tool (Lane F Wave F-8)
+_MUTATION_TOOLS = 150  # 123 + 8 C12 Inventory mutations + 4 C13 Notifications mutations + 2 C12 Procurement mutations + 2 C14 Document Register mutations + 4 C12 Resources mutations + 2 C12 Product mutations + 2 C15 Legal-Entity mutations + 2 C12 Vendors mutations + 1 BRREG registry-feed mutation (Lane F Wave F-8)
 _CACHEABLE_TOOLS = 141  # 115 + 8 C12 Inventory reads + 4 C13 Notifications reads + 2 C12 Procurement reads + 2 C14 Document Register reads + 4 C12 Resources reads + 2 C12 Product reads + 2 C15 Legal-Entity reads + 2 C12 Vendors reads
-_ADMIN_ONLY_TOOLS = (
-    93  # 90 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3)
-)
+_ADMIN_ONLY_TOOLS = 94  # 90 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3) + 1 BRREG registry-feed enrichment (Lane F Wave F-8)
 _MIGRATION_TOOLS = 5
 
 

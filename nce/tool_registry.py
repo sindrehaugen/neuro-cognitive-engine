@@ -56,6 +56,7 @@ from nce.vertical_modules.economy import mcp_handlers as economy_mcp_handlers
 from nce.vertical_modules.field_tech import mcp_handlers as field_tech_mcp_handlers
 from nce.vertical_modules.hr import mcp_handlers as hr_mcp_handlers
 from nce.vertical_modules.inventory import mcp_handlers as inventory_mcp_handlers
+from nce.vertical_modules.legal_entities import mcp_handlers as legal_entities_mcp_handlers
 from nce.vertical_modules.marketing import mcp_handlers as marketing_mcp_handlers
 from nce.vertical_modules.netbox import circuits as netbox_circuits
 from nce.vertical_modules.procurement import mcp_handlers as procurement_mcp_handlers
@@ -1882,6 +1883,16 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=True,
         mutation=False,
         engine="business_insights",
+    ),
+    # C15 Legal-Entity Register national business registry feed (Wave F-8) —
+    # an operator/cron pull against an external public registry, same
+    # reasoning as assets_pull_telemetry: admin_only, not an ordinary Actor
+    # action.
+    "legal_entities_enrich_from_registry": ToolSpec(
+        _h(legal_entities_mcp_handlers, "handle_legal_entities_enrich_from_registry"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
     ),
 }
 

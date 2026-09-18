@@ -618,9 +618,9 @@ class TestProjectAdvancePhaseToolRegistry:
         assert len(MUTATION_TOOLS) >= 123, (
             f"Sanity floor: expected at least 123 mutation tools, got {len(MUTATION_TOOLS)}."
         )
-        assert len(hand_written_mutation_tools) == 123, (
+        assert len(hand_written_mutation_tools) == 124, (
             "Hand-written (non-C12) mutation tool count changed: expected "
-            f"123, got {len(hand_written_mutation_tools)}. If you "
+            f"124, got {len(hand_written_mutation_tools)}. If you "
             "added/removed a hand-written mutation tool, update this pin by "
             "import. If you only registered a new C12 ResourceSpec, this "
             f"number should not move -- investigate. Tools: "
@@ -666,7 +666,7 @@ class TestProjectAdvancePhaseToolRegistry:
                 "h4_probe_archive_k_h4_synthetic",
             }
             assert after_total == before_total  # TOOL_REGISTRY snapshot doesn't re-scan; see below
-            assert len(hand_written_after) == 123, (
+            assert len(hand_written_after) == 124, (
                 "Registering a new C12 spec must not move the hand-written "
                 f"baseline: got {len(hand_written_after)}."
             )
@@ -715,5 +715,6 @@ class TestProjectAdvancePhaseToolRegistry:
         +1 Wave A-3 assets_sync_netbox tool;
         +1 Wave A-5 assets_record_failure_pattern tool;
         +2 Wave IN-2 inventory kitting tools: inventory_reserve_kit, inventory_release_kit;
-        +1 Wave IN-3 inventory restock PO: inventory_create_restock_po)."""
-        assert len(ADMIN_ONLY_TOOLS) == 93
+        +1 Wave IN-3 inventory restock PO: inventory_create_restock_po;
+        +1 Wave F-8 legal_entities_enrich_from_registry, admin_only)."""
+        assert len(ADMIN_ONLY_TOOLS) == 94
