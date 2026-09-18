@@ -4064,3 +4064,93 @@ BEGIN
         GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE notification_subscriptions TO nce_app;
     END IF;
 END $$;
+
+-- ============================================================================
+-- C14 Document Register (Wave A-4)
+-- Migration 084_document_register.sql
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    namespace_id UUID NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    title VARCHAR(256) NOT NULL,
+    document_ref TEXT NOT NULL,
+    source_kind VARCHAR(64) NOT NULL DEFAULT 'sharepoint',
+    document_kind VARCHAR(64) NOT NULL DEFAULT 'other',
+    file_name VARCHAR(256),
+    mime_type VARCHAR(128),
+    file_size_bytes BIGINT,
+    sha256 VARCHAR(64),
+    tags TEXT[] NOT NULL DEFAULT '{}',
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    archived BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_documents_lookup
+    ON documents (namespace_id, archived, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_documents_kind
+    ON documents (namespace_id, document_kind, source_kind);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE documents FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE documents TO nce_app;
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS document_links (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    namespace_id UUID NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    entity_type VARCHAR(64) NOT NULL,
+    entity_id VARCHAR(256) NOT NULL,
+    relation VARCHAR(64) NOT NULL DEFAULT 'about',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_document_links UNIQUE (namespace_id, document_id, entity_type, entity_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_document_links_entity
+    ON document_links (namespace_id, entity_type, entity_id);
+
+CREATE INDEX IF NOT EXISTS idx_document_links_doc
+    ON document_links (namespace_id, document_id);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE document_links FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE document_links TO nce_app;
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS document_shares (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    share_id VARCHAR(128) NOT NULL,
+    namespace_id UUID NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    customer_scope_id UUID,
+    granted_by VARCHAR(128) NOT NULL DEFAULT 'system',
+    expires_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_document_shares UNIQUE (share_id, namespace_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_document_shares_lookup
+    ON document_shares (namespace_id, share_id);
+
+CREATE INDEX IF NOT EXISTS idx_document_shares_doc
+    ON document_shares (namespace_id, document_id);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE document_shares FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE document_shares TO nce_app;
+    END IF;
+END $$;

@@ -130,6 +130,22 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/business-insights/morning-brief` | `api_business_insights_morning_brief` |
 | GET | `/api/business-insights/risk-radar` | `api_business_insights_risk_radar` |
 | POST | `/api/business-insights/run-scenario` | `api_business_insights_run_scenario` |
+| GET | `/api/documents/documents` | `handle_list` |
+| POST | `/api/documents/documents` | `handle_create` |
+| POST | `/api/documents/documents/bulk` | `handle_bulk` |
+| GET | `/api/documents/documents/{id}` | `handle_get` |
+| PATCH | `/api/documents/documents/{id}` | `handle_patch` |
+| POST | `/api/documents/documents/{id}/archive` | `handle_archive` |
+| GET | `/api/documents/documents/{id}/comments` | `handle_list_comments` |
+| POST | `/api/documents/documents/{id}/comments` | `handle_add_comment` |
+| GET | `/api/documents/documents/{id}/documents` | `handle_list_documents` |
+| POST | `/api/documents/documents/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/documents/documents/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/documents/documents/{id}/events` | `handle_events` |
+| POST | `/api/documents/documents/{id}/restore` | `handle_restore` |
+| GET | `/api/documents/documents/{id}/tags` | `handle_list_tags` |
+| POST | `/api/documents/documents/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/documents/documents/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET,POST | `/api/economy/close-narrative` | `api_economy_close_narrative` |
 | POST | `/api/economy/contracts/validate` | `api_economy_validate_contract` |
 | GET,POST | `/api/economy/dunning` | `api_economy_dunning` |
@@ -187,6 +203,9 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/inventory/goods-receipts/{id}/archive` | `handle_archive` |
 | GET | `/api/inventory/goods-receipts/{id}/comments` | `handle_list_comments` |
 | POST | `/api/inventory/goods-receipts/{id}/comments` | `handle_add_comment` |
+| GET | `/api/inventory/goods-receipts/{id}/documents` | `handle_list_documents` |
+| POST | `/api/inventory/goods-receipts/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/inventory/goods-receipts/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/inventory/goods-receipts/{id}/events` | `handle_events` |
 | POST | `/api/inventory/goods-receipts/{id}/restore` | `handle_restore` |
 | GET | `/api/inventory/goods-receipts/{id}/tags` | `handle_list_tags` |
@@ -200,6 +219,9 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/inventory/inventory-items/{id}/archive` | `handle_archive` |
 | GET | `/api/inventory/inventory-items/{id}/comments` | `handle_list_comments` |
 | POST | `/api/inventory/inventory-items/{id}/comments` | `handle_add_comment` |
+| GET | `/api/inventory/inventory-items/{id}/documents` | `handle_list_documents` |
+| POST | `/api/inventory/inventory-items/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/inventory/inventory-items/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/inventory/inventory-items/{id}/events` | `handle_events` |
 | POST | `/api/inventory/inventory-items/{id}/restore` | `handle_restore` |
 | GET | `/api/inventory/inventory-items/{id}/tags` | `handle_list_tags` |
@@ -213,6 +235,9 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/inventory/inventory-rma/{id}/archive` | `handle_archive` |
 | GET | `/api/inventory/inventory-rma/{id}/comments` | `handle_list_comments` |
 | POST | `/api/inventory/inventory-rma/{id}/comments` | `handle_add_comment` |
+| GET | `/api/inventory/inventory-rma/{id}/documents` | `handle_list_documents` |
+| POST | `/api/inventory/inventory-rma/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/inventory/inventory-rma/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/inventory/inventory-rma/{id}/events` | `handle_events` |
 | POST | `/api/inventory/inventory-rma/{id}/restore` | `handle_restore` |
 | GET | `/api/inventory/inventory-rma/{id}/tags` | `handle_list_tags` |
@@ -238,6 +263,9 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/inventory/stock-locations/{id}/archive` | `handle_archive` |
 | GET | `/api/inventory/stock-locations/{id}/comments` | `handle_list_comments` |
 | POST | `/api/inventory/stock-locations/{id}/comments` | `handle_add_comment` |
+| GET | `/api/inventory/stock-locations/{id}/documents` | `handle_list_documents` |
+| POST | `/api/inventory/stock-locations/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/inventory/stock-locations/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/inventory/stock-locations/{id}/events` | `handle_events` |
 | POST | `/api/inventory/stock-locations/{id}/restore` | `handle_restore` |
 | GET | `/api/inventory/stock-locations/{id}/tags` | `handle_list_tags` |
@@ -263,6 +291,9 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/notifications/notifications/{id}/archive` | `handle_archive` |
 | GET | `/api/notifications/notifications/{id}/comments` | `handle_list_comments` |
 | POST | `/api/notifications/notifications/{id}/comments` | `handle_add_comment` |
+| GET | `/api/notifications/notifications/{id}/documents` | `handle_list_documents` |
+| POST | `/api/notifications/notifications/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/notifications/notifications/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/notifications/notifications/{id}/events` | `handle_events` |
 | POST | `/api/notifications/notifications/{id}/restore` | `handle_restore` |
 | GET | `/api/notifications/notifications/{id}/tags` | `handle_list_tags` |
@@ -276,6 +307,9 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/notifications/reminders/{id}/archive` | `handle_archive` |
 | GET | `/api/notifications/reminders/{id}/comments` | `handle_list_comments` |
 | POST | `/api/notifications/reminders/{id}/comments` | `handle_add_comment` |
+| GET | `/api/notifications/reminders/{id}/documents` | `handle_list_documents` |
+| POST | `/api/notifications/reminders/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/notifications/reminders/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/notifications/reminders/{id}/events` | `handle_events` |
 | POST | `/api/notifications/reminders/{id}/restore` | `handle_restore` |
 | GET | `/api/notifications/reminders/{id}/tags` | `handle_list_tags` |
@@ -294,6 +328,9 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/procurement/po-lines/{id}/archive` | `handle_archive` |
 | GET | `/api/procurement/po-lines/{id}/comments` | `handle_list_comments` |
 | POST | `/api/procurement/po-lines/{id}/comments` | `handle_add_comment` |
+| GET | `/api/procurement/po-lines/{id}/documents` | `handle_list_documents` |
+| POST | `/api/procurement/po-lines/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/procurement/po-lines/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/procurement/po-lines/{id}/events` | `handle_events` |
 | POST | `/api/procurement/po-lines/{id}/restore` | `handle_restore` |
 | GET | `/api/procurement/po-lines/{id}/tags` | `handle_list_tags` |
@@ -477,6 +514,10 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `diag_ingest_bundle` |  | yes |  |  |
 | `diag_list_anomalies` |  |  | yes |  |
 | `disconnect_bridge` |  | yes |  |  |
+| `documents_archive_documents` |  | yes |  |  |
+| `documents_get_documents` |  |  | yes |  |
+| `documents_list_documents` |  |  | yes |  |
+| `documents_upsert_documents` |  | yes |  |  |
 | `economy_approve_invoice` | yes | yes |  |  |
 | `economy_compute_dunning` |  |  | yes |  |
 | `economy_compute_periodisering` |  |  | yes |  |
@@ -719,4 +760,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 390 REST endpoints, 311 MCP tools._
+_Totals: 427 REST endpoints, 315 MCP tools._
