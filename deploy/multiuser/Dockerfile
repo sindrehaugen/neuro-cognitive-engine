@@ -45,7 +45,7 @@ RUN pip install --no-cache-dir -r requirements.lock --no-index --find-links=/whe
 # Copy application code
 COPY nce ./nce
 COPY start_worker.py health_probe.py ./
-COPY admin_server.py server.py ./
+COPY admin_server.py server.py portal_server.py ./
 COPY admin ./admin
 COPY deploy/multiuser/entrypoint.sh ./entrypoint.sh
 

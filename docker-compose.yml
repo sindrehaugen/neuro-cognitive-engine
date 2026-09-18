@@ -5,7 +5,7 @@
 #   docker compose up -d --build
 #
 # Ports (host): 5432 Postgres, 27017 Mongo, 6379 Redis, 9002 MinIO S3, 9003 MinIO console,
-# 11435 cognitive, 8003 Admin UI + REST API, 8004 A2A, 8080 webhooks, 80 Caddy (UI + webhooks).
+# 11435 cognitive, 8003 Admin UI + REST API, 8004 A2A, 8005 customer-portal, 8080 webhooks, 80 Caddy (UI + webhooks).
 
 services:
   redis:
@@ -588,6 +588,90 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  customer-portal:
+    build:
+      context: .
+      dockerfile: deploy/multiuser/Dockerfile
+      # Build stamp so a version-skew failure can name the image (recipe #2).
+      args:
+        NCE_GIT_SHA: ${NCE_GIT_SHA:-}
+        NCE_BUILD_TIME: ${NCE_BUILD_TIME:-}
+    # Multicore (VI.5a): stateless HTTP service — run N uvicorn worker processes.
+    # Dedicated customer-facing portal service (Charter Layer 3 / Wave CP-5).
+    command:
+      [
+        "uvicorn",
+        "portal_server:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8005",
+        "--workers",
+        "${PORTAL_WORKERS:-2}",
+      ]
+    container_name: nce-customer-portal
+    env_file:
+      - deploy/compose.stack.env
+      - deploy/compose.stack.env.generated
+    environment:
+      # Credentials inline (Redis AUTH) — password from ${REDIS_PASSWORD}, never a literal.
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0
+      PG_DSN: postgresql://mcp_user:${POSTGRES_PASSWORD:-mcp_password}@postgres:5432/memory_meta
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-mcp_admin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-super_secure_minio_password}
+      # CPU-thread tuning (VI.5a / M2): pin native thread pools to the CPU quota.
+      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-2}
+      MKL_NUM_THREADS: ${MKL_NUM_THREADS:-2}
+      TOKENIZERS_PARALLELISM: ${TOKENIZERS_PARALLELISM:-false}
+      # Disk-I/O tuning (VI.5c D4/D5): RAM-backed temp/staging.
+      NCE_ARTIFACT_STAGING_DIR: ${NCE_ARTIFACT_STAGING_DIR:-/dev/shm/nce-staging}
+      TMPDIR: /dev/shm/nce-staging
+      NCE_APP_PASSWORD: nce_app_secret
+      # File-based secrets (out of /proc/<pid>/environ); see secret_env.
+      NCE_MASTER_KEY_FILE: /run/secrets/nce_master_key
+      # Confinement: customer-portal has 0 admin credentials and no broad keys in environ.
+      NCE_MASTER_KEY: ""
+      NCE_ADMIN_API_KEY: ""
+    tmpfs:
+      - /dev/shm/nce-staging
+    secrets:
+      - nce_master_key
+    # Non-root user confinement (UID 10001) & prevent privilege escalation
+    user: "10001:10001"
+    security_opt:
+      - "no-new-privileges:true"
+    ports:
+      - "${PORTAL_PORT:-8005}:8005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8005/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
     logging:
       driver: json-file

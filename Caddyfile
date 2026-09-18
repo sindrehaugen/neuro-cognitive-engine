@@ -47,6 +47,20 @@ http://:80, https://:443 {
 		}
 	}
 
+	# Route customer portal endpoints to dedicated customer-portal service
+	handle /api/portal/* {
+		# Limit customer portal payload size to 10MB
+		request_body {
+			max_size 10485760
+		}
+		reverse_proxy customer-portal:8005 {
+			# Sanitize proxy headers to prevent client-side IP spoofing
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
 	# Route everything else to the Admin UI / REST API
 	handle {
 		reverse_proxy admin:8003 {

@@ -19,7 +19,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _COMPOSE = _REPO_ROOT / "docker-compose.yml"
 
 # Stateless HTTP services that are safe to run with multiple uvicorn workers.
-_HTTP_SERVICES = ("admin", "a2a", "webhook-receiver")
+_HTTP_SERVICES = ("admin", "a2a", "webhook-receiver", "customer-portal")
 # Services that must NOT carry --workers because they run background loops
 # in-process (duplicating them would double GC/outbox/re-embed/cron work).
 _BACKGROUND_LOOP_SERVICES = ("worker", "cron")

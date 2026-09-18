@@ -241,6 +241,28 @@ def _validate_scope_and_resource(
 
 async def portal_health(request: Request) -> JSONResponse:
     """Public health check endpoint for customer portal."""
+    engine = getattr(request.app.state, "engine", None)
+    if engine is not None and hasattr(engine, "check_health"):
+        try:
+            res = await engine.check_health()
+            if isinstance(res, dict) and res.get("status") in ("down", "unhealthy"):
+                return JSONResponse(
+                    {
+                        "status": "down",
+                        "surface": "customer_portal",
+                        "reason": res.get("reason", "degraded"),
+                    },
+                    status_code=503,
+                )
+        except Exception:
+            return JSONResponse(
+                {
+                    "status": "down",
+                    "surface": "customer_portal",
+                    "reason": "health_probe_raised",
+                },
+                status_code=503,
+            )
     return JSONResponse({"status": "ok", "surface": "customer_portal"})
 
 
@@ -684,7 +706,7 @@ async def api_portal_advisor(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(exc)}, status_code=404)
 
 
-def build_customer_portal_app(engine: Any = None) -> Starlette:
+def build_customer_portal_app(engine: Any = None, lifespan: Any = None) -> Starlette:
     """Construct the isolated Customer Portal application."""
     routes = [
         Route("/health", portal_health, methods=["GET"]),
@@ -710,6 +732,7 @@ def build_customer_portal_app(engine: Any = None) -> Starlette:
         debug=False,
         routes=routes,
         middleware=middleware,
+        lifespan=lifespan,
     )
     app.state.engine = engine
     return app
