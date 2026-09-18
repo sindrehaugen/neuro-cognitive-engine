@@ -115,7 +115,9 @@ def load_merged_prs(repo: str, live: bool = False) -> list[dict[str, Any]]:
             merged_list = sorted(cached_prs.values(), key=lambda x: x["number"])
             if cache_path.parent.exists():
                 crlf_content = (
-                    (json.dumps(merged_list, indent=2) + "\n").replace("\r\n", "\n").replace("\n", "\r\n")
+                    (json.dumps(merged_list, indent=2) + "\n")
+                    .replace("\r\n", "\n")
+                    .replace("\n", "\r\n")
                 )
                 cache_path.write_bytes(crlf_content.encode("utf-8"))
             return merged_list
