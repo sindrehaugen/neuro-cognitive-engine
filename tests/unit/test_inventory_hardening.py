@@ -51,24 +51,26 @@ _NAMESPACE_ID = "00000000-0000-4000-8000-000000000001"
 _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
-# --- MEASURED post-rebase onto 00588aa (#243/#251/#237/#249/#250/#255/#256/#257)
-# plus this branch's own economy POSTING C12 registration (Lane E Wave E-7):
+# --- MEASURED post-rebase onto a725678 (#243/#251/#237/#249/#250/#255/#256/
+# #257/#239) plus this branch's own economy POSTING C12 registration (Lane E
+# Wave E-7):
 #   NCE_MASTER_KEY="x"*32 python -c "
 #     import nce.tool_registry as tr
 #     print(len(tr.TOOL_REGISTRY), len(tr.MUTATION_TOOLS), len(tr.CACHEABLE_TOOLS), len(tr.ADMIN_ONLY_TOOLS))"
-# TOTAL: 283 hand-written baseline + 1 BRREG registry-feed (Lane F Wave F-8,
-# hand-written) + 56 live C12 tools (16 Inventory + 8 Notifications +
-# 4 Procurement PO_LINE + 4 Document Register + 8 Resources
-# ALLOCATION/TRAVEL_LEG + 4 Product + 4 Legal-Entity Register + 4 Vendors
-# CONTRACTOR + 4 Economy POSTING, Lane E Wave E-7) = 340. See
-# tests/test_tool_registry.py for the equivalent derived hand-written/C12
-# split for MUTATION (124 hand-written incl. BRREG + 28 live C12 = 152) and
-# CACHEABLE (115 hand-written + 28 live C12 = 143); ADMIN_ONLY (94) is
-# unaffected by economy -- E-7 registered no admin_only tools.
-_TOTAL_TOOLS = 340
-_MUTATION_TOOLS = 152
-_CACHEABLE_TOOLS = 143
-_ADMIN_ONLY_TOOLS = 94
+# TOTAL: 283 hand-written baseline + 1 BRREG registry-feed (Lane F Wave F-8)
+# + 2 geodata OSM (Lane F Wave F-11) hand-written + 56 live C12 tools
+# (16 Inventory + 8 Notifications + 4 Procurement PO_LINE + 4 Document
+# Register + 8 Resources ALLOCATION/TRAVEL_LEG + 4 Product + 4 Legal-Entity
+# Register + 4 Vendors CONTRACTOR + 4 Economy POSTING, Lane E Wave E-7) =
+# 342. See tests/test_tool_registry.py for the equivalent derived
+# hand-written/C12 split for MUTATION (125 hand-written incl. BRREG+geodata
+# + 28 live C12 = 153) and CACHEABLE (116 hand-written incl. geodata + 28
+# live C12 = 144); ADMIN_ONLY (95) is unaffected by economy -- E-7
+# registered no admin_only tools.
+_TOTAL_TOOLS = 342
+_MUTATION_TOOLS = 153
+_CACHEABLE_TOOLS = 144
+_ADMIN_ONLY_TOOLS = 95
 _MIGRATION_TOOLS = 5
 
 
