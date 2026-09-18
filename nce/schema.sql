@@ -5372,3 +5372,37 @@ BEGIN
         GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE legal_entities TO nce_app;
     END IF;
 END $$;
+
+-- Geodata FEED module, OSM local store (Wave F-11, migration 086). GLOBAL,
+-- not tenant-scoped — see that migration's header for the full reasoning.
+CREATE TABLE IF NOT EXISTS geodata_osm_elements (
+    id          BIGSERIAL   NOT NULL,
+    osm_type    TEXT        NOT NULL,
+    osm_id      BIGINT      NOT NULL,
+    tags        JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    geometry    JSONB       NOT NULL,
+    bbox        BOX         NOT NULL,
+    source_file TEXT        NOT NULL,
+    imported_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    CONSTRAINT geodata_osm_elements_osm_uq UNIQUE (osm_type, osm_id),
+    CONSTRAINT geodata_osm_elements_osm_type_check
+        CHECK (osm_type IN ('node', 'way', 'relation')),
+    CONSTRAINT geodata_osm_elements_source_file_not_blank
+        CHECK (btrim(source_file) <> '')
+);
+
+CREATE INDEX IF NOT EXISTS idx_geodata_osm_elements_bbox
+    ON geodata_osm_elements USING gist (bbox);
+
+CREATE INDEX IF NOT EXISTS idx_geodata_osm_elements_tags
+    ON geodata_osm_elements USING gin (tags);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE geodata_osm_elements FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE geodata_osm_elements TO nce_app;
+        GRANT USAGE, SELECT ON SEQUENCE geodata_osm_elements_id_seq TO nce_app;
+    END IF;
+END $$;

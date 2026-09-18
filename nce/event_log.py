@@ -424,6 +424,10 @@ EXPECTED_GLOBAL_TABLES: set[str] = {
     # Deployment state, not tenant data: which migration files this database
     # has applied (see nce/migration_ledger.py).
     "applied_migrations",
+    # OpenStreetMap elements describe the physical world, not a tenant's
+    # data — the same reasoning as product_catalog above (MLV16F Wave F-11,
+    # migration 086).
+    "geodata_osm_elements",
 }
 
 

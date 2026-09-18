@@ -54,6 +54,7 @@ from nce.vertical_modules.diagnostics import mcp_handlers as diag_mcp_handlers
 from nce.vertical_modules.dynamics365 import mcp_handlers as d365_mcp_handlers
 from nce.vertical_modules.economy import mcp_handlers as economy_mcp_handlers
 from nce.vertical_modules.field_tech import mcp_handlers as field_tech_mcp_handlers
+from nce.vertical_modules.geodata import mcp_handlers as geodata_mcp_handlers
 from nce.vertical_modules.hr import mcp_handlers as hr_mcp_handlers
 from nce.vertical_modules.inventory import mcp_handlers as inventory_mcp_handlers
 from nce.vertical_modules.legal_entities import mcp_handlers as legal_entities_mcp_handlers
@@ -1893,6 +1894,20 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         cacheable=False,
         admin_only=True,
         mutation=True,
+    ),
+    # Geodata FEED module (Wave F-11) — a GLOBAL table (migration 086), not
+    # a tenant vertical engine, so no `engine=` opt-in gate applies.
+    "geodata_import_osm_elements": ToolSpec(
+        _h(geodata_mcp_handlers, "handle_geodata_import_osm_elements"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "geodata_query_osm_elements": ToolSpec(
+        _h(geodata_mcp_handlers, "handle_geodata_query_osm_elements"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
     ),
 }
 

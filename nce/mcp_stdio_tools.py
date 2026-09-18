@@ -7482,6 +7482,55 @@ TOOLS = [
         },
     ),
     Tool(
+        name="geodata_import_osm_elements",
+        description=(
+            "Upsert a batch of already-parsed OSM elements into the local geodata store. "
+            "Operator/batch job; mutation; no namespace_id (global table)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "source_file": {
+                    "type": "string",
+                    "description": "Name of the extract this batch came from (e.g. an .osm.pbf export).",
+                },
+                "elements": {
+                    "type": "array",
+                    "description": (
+                        "Overpass-shaped elements: [{type, id, tags?, geometry?, lat?, lon?}, ...]."
+                    ),
+                    "items": {"type": "object"},
+                },
+            },
+            "required": ["source_file", "elements"],
+        },
+    ),
+    Tool(
+        name="geodata_query_osm_elements",
+        description=(
+            "Read OSM elements whose stored bounding box intersects the requested viewport. "
+            "Actor; read-only; no namespace_id (global table)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "min_lon": {"type": "number", "description": "Viewport minimum longitude."},
+                "min_lat": {"type": "number", "description": "Viewport minimum latitude."},
+                "max_lon": {"type": "number", "description": "Viewport maximum longitude."},
+                "max_lat": {"type": "number", "description": "Viewport maximum latitude."},
+                "osm_type": {
+                    "type": "string",
+                    "description": "Optional filter: 'node', 'way', or 'relation'.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum rows to return (default and ceiling 500).",
+                },
+            },
+            "required": ["min_lon", "min_lat", "max_lon", "max_lat"],
+        },
+    ),
+    Tool(
         name="decision_feedback_record",
         description=(
             "Record ground-truth human decision or outcome feedback across vertical engines "

@@ -76,6 +76,11 @@ UNMANAGED_PG_AUDITED_SITES: Final[frozenset[str]] = frozenset(
         "cron.sales_stalled_deal_watcher.namespace_scan",
         # Wave A-3: Reminders watcher tick -- scans active namespaces
         "cron.reminders_watcher.namespace_scan",
+        # Wave F-11: geodata_osm_elements is a GLOBAL table (migration 086,
+        # same reasoning as product_catalog) -- import and bbox-query both
+        # read/write it with no namespace_id to scope against.
+        "geodata.osm.import",
+        "geodata.osm.bbox_query",
     }
 )
 

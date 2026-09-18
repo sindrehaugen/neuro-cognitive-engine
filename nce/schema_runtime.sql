@@ -2005,3 +2005,12 @@ BEGIN
         GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE legal_entities TO nce_app;
     END IF;
 END $$;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE geodata_osm_elements FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE geodata_osm_elements TO nce_app;
+        GRANT USAGE, SELECT ON SEQUENCE geodata_osm_elements_id_seq TO nce_app;
+    END IF;
+END $$;
