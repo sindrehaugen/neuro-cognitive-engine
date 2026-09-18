@@ -1226,3 +1226,180 @@ async def handle_system_design_sync_device_capabilities(
         raise ValueError("device_label is required")
     result = await do_sync_device_capabilities(engine, arguments)
     return json.dumps(result, default=str)
+
+
+# ---------------------------------------------------------------------------
+# Wave C-1: Functional Location Tree MCP Handlers
+# ---------------------------------------------------------------------------
+
+
+@mcp_handler
+async def handle_system_design_list_functional_locations(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_list_functional_locations -- search or list functional locations."""
+    from nce.vertical_modules.system_design.fl_tree import search_fl_nodes
+
+    namespace_id = require_namespace_id(arguments)
+    q = arguments.get("query") or arguments.get("q")
+    kind = arguments.get("kind")
+    as_built = arguments.get("as_built")
+    limit = int(arguments.get("limit") or 50)
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            results = await search_fl_nodes(
+                conn, namespace_id, q=q, kind=kind, as_built=as_built, limit=limit
+            )
+    else:
+        results = await search_fl_nodes(
+            None, namespace_id, q=q, kind=kind, as_built=as_built, limit=limit
+        )
+    return json.dumps(results, default=str)
+
+
+@mcp_handler
+async def handle_system_design_get_functional_location(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_get_functional_location -- retrieve a functional location by id or label."""
+    from nce.vertical_modules.system_design.fl_tree import get_fl_node
+
+    namespace_id = require_namespace_id(arguments)
+    node_id = str(arguments.get("node_id") or "").strip()
+    if not node_id:
+        raise ValueError("node_id is required")
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            node = await get_fl_node(conn, namespace_id, node_id)
+    else:
+        node = await get_fl_node(None, namespace_id, node_id)
+    return json.dumps(node, default=str)
+
+
+@mcp_handler
+async def handle_system_design_get_fl_children(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: system_design_get_fl_children -- retrieve child functional locations."""
+    from nce.vertical_modules.system_design.fl_tree import get_fl_children
+
+    namespace_id = require_namespace_id(arguments)
+    node_id = str(arguments.get("node_id") or "").strip()
+    if not node_id:
+        raise ValueError("node_id is required")
+    recursive = bool(arguments.get("recursive", False))
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            children = await get_fl_children(conn, namespace_id, node_id, recursive=recursive)
+    else:
+        children = await get_fl_children(None, namespace_id, node_id, recursive=recursive)
+    return json.dumps(children, default=str)
+
+
+@mcp_handler
+async def handle_system_design_get_fl_ancestors(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_get_fl_ancestors -- retrieve ancestor hierarchy chain."""
+    from nce.vertical_modules.system_design.fl_tree import get_fl_ancestors
+
+    namespace_id = require_namespace_id(arguments)
+    node_id = str(arguments.get("node_id") or "").strip()
+    if not node_id:
+        raise ValueError("node_id is required")
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            ancestors = await get_fl_ancestors(conn, namespace_id, node_id)
+    else:
+        ancestors = await get_fl_ancestors(None, namespace_id, node_id)
+    return json.dumps(ancestors, default=str)
+
+
+@mcp_handler
+async def handle_system_design_get_fl_path(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: system_design_get_fl_path -- retrieve full path [root, ..., node] and path string."""
+    from nce.vertical_modules.system_design.fl_tree import get_fl_path
+
+    namespace_id = require_namespace_id(arguments)
+    node_id = str(arguments.get("node_id") or "").strip()
+    if not node_id:
+        raise ValueError("node_id is required")
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            path_info = await get_fl_path(conn, namespace_id, node_id)
+    else:
+        path_info = await get_fl_path(None, namespace_id, node_id)
+    return json.dumps(path_info, default=str)
+
+
+@mcp_handler
+async def handle_system_design_move_functional_location(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_move_functional_location -- move a node under a new parent with cycle detection."""
+    from nce.vertical_modules.system_design.fl_tree import move_fl_node
+
+    namespace_id = require_namespace_id(arguments)
+    node_id = str(arguments.get("node_id") or "").strip()
+    new_parent_id = str(arguments.get("new_parent_id") or "").strip()
+    if not node_id or not new_parent_id:
+        raise ValueError("node_id and new_parent_id are required")
+    actor = actor_of(arguments)
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            result = await move_fl_node(conn, namespace_id, node_id, new_parent_id, actor=actor)
+    else:
+        result = await move_fl_node(None, namespace_id, node_id, new_parent_id, actor=actor)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_system_design_merge_functional_locations(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_merge_functional_locations -- merge absorbed node into survivor node."""
+    from nce.vertical_modules.system_design.fl_tree import merge_fl_nodes
+
+    namespace_id = require_namespace_id(arguments)
+    survivor_id = str(arguments.get("survivor_id") or "").strip()
+    absorbed_id = str(arguments.get("absorbed_id") or "").strip()
+    if not survivor_id or not absorbed_id:
+        raise ValueError("survivor_id and absorbed_id are required")
+    reversible = bool(arguments.get("reversible", True))
+    actor = actor_of(arguments)
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            result = await merge_fl_nodes(
+                conn, namespace_id, survivor_id, absorbed_id, reversible=reversible, actor=actor
+            )
+    else:
+        result = await merge_fl_nodes(
+            None, namespace_id, survivor_id, absorbed_id, reversible=reversible, actor=actor
+        )
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_system_design_promote_functional_location(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_promote_functional_location -- promote FL from design-intent to as-built."""
+    from nce.vertical_modules.system_design.fl_tree import promote_fl_node
+
+    namespace_id = require_namespace_id(arguments)
+    node_id = str(arguments.get("node_id") or "").strip()
+    if not node_id:
+        raise ValueError("node_id is required")
+    actor = actor_of(arguments)
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            result = await promote_fl_node(conn, namespace_id, node_id, actor=actor)
+    else:
+        result = await promote_fl_node(None, namespace_id, node_id, actor=actor)
+    return json.dumps(result, default=str)

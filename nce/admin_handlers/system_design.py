@@ -1022,3 +1022,427 @@ async def api_system_design_sync_device_capabilities(request) -> JSONResponse:
         admin_state.engine, route="api_system_design_sync_device_capabilities"
     )
     return JSONResponse(result)
+
+
+# ---------------------------------------------------------------------------
+# Wave C-1: Functional Location Tree REST Handlers
+# ---------------------------------------------------------------------------
+
+
+async def api_system_design_list_functional_locations(request) -> JSONResponse:
+    """GET /api/system-design/functional-locations
+
+    Query parameters:
+        namespace_id (str, required): Active namespace UUID.
+        q            (str, optional): Search query matching label or name.
+        kind         (str, optional): Filter by kind (site, building, floor, room, desk, vessel).
+        as_built     (bool, optional): Filter by as-built vs design-intent.
+        limit        (int, optional): Max records to return (default 50).
+
+    Response (JSON):
+        {"status": "ok", "items": [...], "count": int}
+    """
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.fl_tree import search_fl_nodes
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    q = request.query_params.get("q") or request.query_params.get("query")
+    kind = request.query_params.get("kind")
+    as_built_raw = request.query_params.get("as_built")
+    as_built = as_built_raw.lower() in ("true", "1") if as_built_raw is not None else None
+    try:
+        limit = int(request.query_params.get("limit") or 50)
+    except ValueError:
+        limit = 50
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                items = await search_fl_nodes(
+                    conn, namespace_id, q=q, kind=kind, as_built=as_built, limit=limit
+                )
+        else:
+            items = await search_fl_nodes(
+                None, namespace_id, q=q, kind=kind, as_built=as_built, limit=limit
+            )
+    except Exception as exc:
+        log.exception("api_system_design_list_functional_locations: unexpected error")
+        return admin_error_response("Failed to search functional locations", exc)
+
+    return JSONResponse({"status": "ok", "items": items, "count": len(items)})
+
+
+async def api_system_design_get_functional_location(request) -> JSONResponse:
+    """GET /api/system-design/functional-locations/{id}
+
+    Path parameters:
+        id (str, required): Functional location UUID or label.
+    Query parameters:
+        namespace_id (str, required): Active namespace UUID.
+
+    Response (JSON):
+        {"status": "ok", "node": {...}}
+    """
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.fl_tree import (
+        FLNodeNotFoundError,
+        get_fl_node,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    node_id = str(request.path_params.get("id") or "").strip()
+    if not node_id:
+        return JSONResponse({"error": "Missing node id"}, status_code=422)
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                node = await get_fl_node(conn, namespace_id, node_id)
+        else:
+            node = await get_fl_node(None, namespace_id, node_id)
+    except FLNodeNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except Exception as exc:
+        log.exception("api_system_design_get_functional_location: unexpected error")
+        return admin_error_response("Failed to get functional location", exc)
+
+    return JSONResponse({"status": "ok", "node": node})
+
+
+async def api_system_design_get_fl_children(request) -> JSONResponse:
+    """GET /api/system-design/functional-locations/{id}/children
+
+    Path parameters:
+        id (str, required): Parent functional location UUID or label.
+    Query parameters:
+        namespace_id (str, required): Active namespace UUID.
+        recursive    (bool, optional): If true, return all descendants.
+
+    Response (JSON):
+        {"status": "ok", "children": [...], "count": int}
+    """
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.fl_tree import (
+        FLNodeNotFoundError,
+        get_fl_children,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    node_id = str(request.path_params.get("id") or "").strip()
+    if not node_id:
+        return JSONResponse({"error": "Missing node id"}, status_code=422)
+
+    recursive_raw = request.query_params.get("recursive")
+    recursive = recursive_raw.lower() in ("true", "1") if recursive_raw is not None else False
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                children = await get_fl_children(conn, namespace_id, node_id, recursive=recursive)
+        else:
+            children = await get_fl_children(None, namespace_id, node_id, recursive=recursive)
+    except FLNodeNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except Exception as exc:
+        log.exception("api_system_design_get_fl_children: unexpected error")
+        return admin_error_response("Failed to get functional location children", exc)
+
+    return JSONResponse({"status": "ok", "children": children, "count": len(children)})
+
+
+async def api_system_design_get_fl_ancestors(request) -> JSONResponse:
+    """GET /api/system-design/functional-locations/{id}/ancestors
+
+    Path parameters:
+        id (str, required): Target functional location UUID or label.
+    Query parameters:
+        namespace_id (str, required): Active namespace UUID.
+
+    Response (JSON):
+        {"status": "ok", "ancestors": [...], "count": int}
+    """
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.fl_tree import (
+        FLNodeNotFoundError,
+        get_fl_ancestors,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    node_id = str(request.path_params.get("id") or "").strip()
+    if not node_id:
+        return JSONResponse({"error": "Missing node id"}, status_code=422)
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                ancestors = await get_fl_ancestors(conn, namespace_id, node_id)
+        else:
+            ancestors = await get_fl_ancestors(None, namespace_id, node_id)
+    except FLNodeNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except Exception as exc:
+        log.exception("api_system_design_get_fl_ancestors: unexpected error")
+        return admin_error_response("Failed to get functional location ancestors", exc)
+
+    return JSONResponse({"status": "ok", "ancestors": ancestors, "count": len(ancestors)})
+
+
+async def api_system_design_get_fl_path(request) -> JSONResponse:
+    """GET /api/system-design/functional-locations/{id}/path
+
+    Path parameters:
+        id (str, required): Target functional location UUID or label.
+    Query parameters:
+        namespace_id (str, required): Active namespace UUID.
+
+    Response (JSON):
+        {"status": "ok", "path_nodes": [...], "path_string": str, "depth": int}
+    """
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.fl_tree import (
+        FLNodeNotFoundError,
+        get_fl_path,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    node_id = str(request.path_params.get("id") or "").strip()
+    if not node_id:
+        return JSONResponse({"error": "Missing node id"}, status_code=422)
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                path_info = await get_fl_path(conn, namespace_id, node_id)
+        else:
+            path_info = await get_fl_path(None, namespace_id, node_id)
+    except FLNodeNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except Exception as exc:
+        log.exception("api_system_design_get_fl_path: unexpected error")
+        return admin_error_response("Failed to get functional location path", exc)
+
+    return JSONResponse({"status": "ok", **path_info})
+
+
+async def api_system_design_move_functional_location(request) -> JSONResponse:
+    """POST /api/system-design/functional-locations/{id}/move
+
+    Path parameters:
+        id (str, required): Target functional location UUID or label.
+    JSON Body:
+        namespace_id (str, required): Active namespace UUID.
+        new_parent_id (str, required): New parent UUID or label.
+        actor (str, optional): Identity of the actor initiating the move.
+
+    Response (JSON):
+        {"status": "ok", "moved": true, ...}
+    """
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.fl_tree import (
+        CycleDetectedError,
+        FLNodeNotFoundError,
+        InvalidMoveError,
+        move_fl_node,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
+
+    node_id = str(request.path_params.get("id") or "").strip()
+    new_parent_id = str(body.get("new_parent_id") or "").strip()
+    if not node_id or not new_parent_id:
+        return JSONResponse({"error": "node_id and new_parent_id are required"}, status_code=422)
+
+    actor = body.get("actor")
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                result = await move_fl_node(conn, namespace_id, node_id, new_parent_id, actor=actor)
+        else:
+            result = await move_fl_node(None, namespace_id, node_id, new_parent_id, actor=actor)
+    except FLNodeNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except (CycleDetectedError, InvalidMoveError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    except Exception as exc:
+        log.exception("api_system_design_move_functional_location: unexpected error")
+        return admin_error_response("Failed to move functional location", exc)
+
+    await bump_mcp_cache_generation(
+        admin_state.engine, route="api_system_design_move_functional_location"
+    )
+    return JSONResponse({"status": "ok", **result})
+
+
+async def api_system_design_merge_functional_locations(request) -> JSONResponse:
+    """POST /api/system-design/functional-locations/{id}/merge
+
+    Path parameters:
+        id (str, required): Survivor functional location UUID or label.
+    JSON Body:
+        namespace_id (str, required): Active namespace UUID.
+        absorbed_id (str, required): Absorbed functional location UUID or label.
+        reversible (bool, optional): Default true.
+        actor (str, optional): Identity of the actor initiating the merge.
+
+    Response (JSON):
+        {"status": "ok", "merged": true, "audit": {...}}
+    """
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.fl_tree import (
+        FLNodeNotFoundError,
+        MergeConflictError,
+        merge_fl_nodes,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
+
+    survivor_id = str(request.path_params.get("id") or "").strip()
+    absorbed_id = str(body.get("absorbed_id") or "").strip()
+    if not survivor_id or not absorbed_id:
+        return JSONResponse({"error": "survivor_id and absorbed_id are required"}, status_code=422)
+
+    reversible = bool(body.get("reversible", True))
+    actor = body.get("actor")
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                result = await merge_fl_nodes(
+                    conn, namespace_id, survivor_id, absorbed_id, reversible=reversible, actor=actor
+                )
+        else:
+            result = await merge_fl_nodes(
+                None, namespace_id, survivor_id, absorbed_id, reversible=reversible, actor=actor
+            )
+    except FLNodeNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except MergeConflictError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    except Exception as exc:
+        log.exception("api_system_design_merge_functional_locations: unexpected error")
+        return admin_error_response("Failed to merge functional locations", exc)
+
+    await bump_mcp_cache_generation(
+        admin_state.engine, route="api_system_design_merge_functional_locations"
+    )
+    return JSONResponse({"status": "ok", **result})
+
+
+async def api_system_design_promote_functional_location(request) -> JSONResponse:
+    """POST /api/system-design/functional-locations/{id}/promote
+
+    Path parameters:
+        id (str, required): Target functional location UUID or label.
+    JSON Body:
+        namespace_id (str, required): Active namespace UUID.
+        actor (str, optional): Identity of the actor initiating promotion.
+
+    Response (JSON):
+        {"status": "ok", "as_built": true, ...}
+    """
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.fl_tree import (
+        FLNodeNotFoundError,
+        promote_fl_node,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
+
+    node_id = str(request.path_params.get("id") or "").strip()
+    if not node_id:
+        return JSONResponse({"error": "Missing node id"}, status_code=422)
+
+    actor = body.get("actor")
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                result = await promote_fl_node(conn, namespace_id, node_id, actor=actor)
+        else:
+            result = await promote_fl_node(None, namespace_id, node_id, actor=actor)
+    except FLNodeNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except Exception as exc:
+        log.exception("api_system_design_promote_functional_location: unexpected error")
+        return admin_error_response("Failed to promote functional location", exc)
+
+    await bump_mcp_cache_generation(
+        admin_state.engine, route="api_system_design_promote_functional_location"
+    )
+    return JSONResponse({"status": "ok", **result})

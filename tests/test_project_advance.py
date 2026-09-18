@@ -597,7 +597,8 @@ class TestProjectAdvancePhaseToolRegistry:
         +1 Wave C-5 system_design_sync_device_capabilities;
         +8 Wave A-1 inventory resource surface mutations;
         +4 Wave A-3 notifications/reminders resource surface mutations;
-        +2 Wave A-4 documents resource surface mutations.
+        +2 Wave A-4 documents resource surface mutations;
+        +3 Wave C-1 FL tree mutations.
 
         Converted to a derived assertion (janitor pass 7, K-H4): since Wave
         A-1b, every C12 ResourceSpec registration mounts 2 mutation tools
@@ -615,12 +616,12 @@ class TestProjectAdvancePhaseToolRegistry:
         }
         hand_written_mutation_tools = MUTATION_TOOLS - c12_mutation_tools
 
-        assert len(MUTATION_TOOLS) >= 123, (
-            f"Sanity floor: expected at least 123 mutation tools, got {len(MUTATION_TOOLS)}."
+        assert len(MUTATION_TOOLS) >= 130, (
+            f"Sanity floor: expected at least 130 mutation tools, got {len(MUTATION_TOOLS)}."
         )
-        assert len(hand_written_mutation_tools) == 127, (
+        assert len(hand_written_mutation_tools) == 130, (
             "Hand-written (non-C12) mutation tool count changed: expected "
-            f"127, got {len(hand_written_mutation_tools)}. If you "
+            f"130, got {len(hand_written_mutation_tools)}. If you "
             "added/removed a hand-written mutation tool, update this pin by "
             "import. If you only registered a new C12 ResourceSpec, this "
             f"number should not move -- investigate. Tools: "
@@ -632,7 +633,7 @@ class TestProjectAdvancePhaseToolRegistry:
         split actually tracks C12 growth rather than being vacuously true.
         Registers a synthetic ResourceSpec, confirms MUTATION_TOOLS grows by
         exactly 2 (upsert + archive) and that the hand-written baseline
-        (123) is untouched -- the exact invariant the old raw pin broke on
+        (126) is untouched -- the exact invariant the old raw pin broke on
         every real registration."""
         from nce.resource_surface import register_resource, unregister_resource
         from nce.resource_surface.spec import ResourceSpec
@@ -666,7 +667,7 @@ class TestProjectAdvancePhaseToolRegistry:
                 "h4_probe_archive_k_h4_synthetic",
             }
             assert after_total == before_total  # TOOL_REGISTRY snapshot doesn't re-scan; see below
-            assert len(hand_written_after) == 127, (
+            assert len(hand_written_after) == 130, (
                 "Registering a new C12 spec must not move the hand-written "
                 f"baseline: got {len(hand_written_after)}."
             )

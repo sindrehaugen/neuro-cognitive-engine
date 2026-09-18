@@ -5476,6 +5476,170 @@ TOOLS = [
             "required": ["namespace_id", "device_label"],
         },
     ),
+    Tool(
+        name="system_design_list_functional_locations",
+        description=(
+            "List or search FUNCTIONAL_LOCATION nodes in the graph tree for a namespace, with optional parent_id filter or text search."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "parent_id": {
+                    "type": "string",
+                    "description": "Optional parent node UUID or label to list immediate children.",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Optional text search query across FL names and descriptions.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results to return (default 50, max 200).",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="system_design_get_functional_location",
+        description=(
+            "Get a single FUNCTIONAL_LOCATION node by its UUID or label, including its structural metadata and derived kind."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "node_id": {
+                    "type": "string",
+                    "description": "Functional location UUID or label.",
+                },
+            },
+            "required": ["namespace_id", "node_id"],
+        },
+    ),
+    Tool(
+        name="system_design_get_fl_children",
+        description=("Get direct child functional location nodes ordered by position and name."),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "node_id": {
+                    "type": "string",
+                    "description": "Parent functional location UUID or label.",
+                },
+            },
+            "required": ["namespace_id", "node_id"],
+        },
+    ),
+    Tool(
+        name="system_design_get_fl_ancestors",
+        description=(
+            "Get the lineage path of ancestor functional location nodes from the root down to the parent."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "node_id": {
+                    "type": "string",
+                    "description": "Functional location UUID or label.",
+                },
+            },
+            "required": ["namespace_id", "node_id"],
+        },
+    ),
+    Tool(
+        name="system_design_get_fl_path",
+        description=(
+            "Get the breadcrumb path components and formatted path string for a functional location."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "node_id": {
+                    "type": "string",
+                    "description": "Functional location UUID or label.",
+                },
+            },
+            "required": ["namespace_id", "node_id"],
+        },
+    ),
+    Tool(
+        name="system_design_move_functional_location",
+        description=(
+            "Re-parent a functional location node under a new parent with cycle detection."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "node_id": {
+                    "type": "string",
+                    "description": "Target functional location UUID or label to move.",
+                },
+                "new_parent_id": {
+                    "type": "string",
+                    "description": "New parent functional location UUID or label.",
+                },
+                "actor": {
+                    "type": "string",
+                    "description": "Actor identity initiating the move.",
+                },
+            },
+            "required": ["namespace_id", "node_id", "new_parent_id"],
+        },
+    ),
+    Tool(
+        name="system_design_merge_functional_locations",
+        description=(
+            "Merge two functional location nodes (re-parenting children and creating an audit record)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "survivor_id": {
+                    "type": "string",
+                    "description": "Survivor functional location UUID or label.",
+                },
+                "absorbed_id": {
+                    "type": "string",
+                    "description": "Absorbed functional location UUID or label to fold.",
+                },
+                "reversible": {
+                    "type": "boolean",
+                    "description": "Whether merge is marked reversible (default true).",
+                },
+                "actor": {
+                    "type": "string",
+                    "description": "Actor identity initiating the merge.",
+                },
+            },
+            "required": ["namespace_id", "survivor_id", "absorbed_id"],
+        },
+    ),
+    Tool(
+        name="system_design_promote_functional_location",
+        description=("Promote a design-intent functional location node to as-built."),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "node_id": {
+                    "type": "string",
+                    "description": "Target functional location UUID or label to promote.",
+                },
+                "actor": {
+                    "type": "string",
+                    "description": "Actor identity initiating promotion.",
+                },
+            },
+            "required": ["namespace_id", "node_id"],
+        },
+    ),
     # -----------------------------------------------------------------
     # Support vertical module tools (Module 10, Wave 5, ML10-B5)
     # -----------------------------------------------------------------
