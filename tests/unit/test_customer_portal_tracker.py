@@ -40,12 +40,25 @@ def test_room_tracker_stages_config_contract():
 
     stages = config["stages"]
     stage_ids = [s["id"] for s in stages]
-    assert stage_ids == ["planned", "ordered", "delivered", "installed", "tested", "ready"]
+    assert stage_ids == [
+        "planned",
+        "ordered",
+        "delivered",
+        "installed",
+        "tested",
+        "ready",
+        "not_tracked",
+    ]
 
-    # Monotonic weighting up to 100
-    weights = [s["weight_pct"] for s in stages]
+    # Monotonic weighting up to 100 for ranked stages
+    ranked_stages = [s for s in stages if "weight_pct" in s and s["weight_pct"] is not None]
+    weights = [s["weight_pct"] for s in ranked_stages]
     assert weights == sorted(weights)
     assert weights[-1] == 100
+
+    # CP-3: not_tracked stage has no weight_pct
+    not_tracked = next(s for s in stages if s["id"] == "not_tracked")
+    assert "weight_pct" not in not_tracked
 
     # Ensure 4 messy reality rules are defined
     messy_rules = config["messy_reality_rules"]
@@ -54,6 +67,42 @@ def test_room_tracker_stages_config_contract():
         assert "customer_safe_status" in messy_rules[case]
         assert "customer_safe_narrative" in messy_rules[case]
         assert "redact_fields" in messy_rules[case]
+
+
+def test_room_tracker_unmapped_status_is_not_tracked_and_not_a_rung():
+    """CP-3 (Wave CP-3): Unmapped BOM status or asset lifecycle renders as 'Not tracked', excluded from %-ready."""
+    # 1. Solely unmapped items: must NOT fall back to 'Planned' (10%)
+    stage, pct, status, narrative = compute_room_stage_and_progress(
+        bom_lines=[{"status": "discontinued_vendor_code_99"}],
+        assets=[{"lifecycle": "quarantined_unknown"}],
+    )
+    rungs = {"Planned", "Ordered", "Delivered", "Installed", "Tested", "Ready"}
+    rung_ids = {"planned", "ordered", "delivered", "installed", "tested", "ready"}
+
+    assert stage == "not_tracked"
+    assert stage not in rung_ids
+    assert status.lower() == "not tracked"
+    assert status not in rungs
+    assert pct == 0
+    assert "not tracked" in narrative.lower()
+
+    # 2. Mixed: unmapped items must be excluded from average weight calculation
+    stage_mixed, pct_mixed, status_mixed, _ = compute_room_stage_and_progress(
+        bom_lines=[{"status": "delivered"}, {"status": "unmapped_status_xyz"}],
+        assets=[],
+    )
+    assert stage_mixed == "delivered"
+    assert pct_mixed == 50
+    assert status_mixed == "Delivered"
+
+    # 3. Assets solely unmapped
+    stage_asset, pct_asset, status_asset, _ = compute_room_stage_and_progress(
+        bom_lines=[],
+        assets=[{"lifecycle": "unknown_vintage_eol"}],
+    )
+    assert stage_asset == "not_tracked"
+    assert status_asset.lower() == "not tracked"
+    assert pct_asset == 0
 
 
 def test_room_tracker_happy_path_dominos_progression():

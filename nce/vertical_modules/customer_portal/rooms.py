@@ -40,40 +40,48 @@ def compute_room_stage_and_progress(
     """
     config = load_room_tracker_stages()
     stages = {s["id"]: s for s in config["stages"]}
-    stage_order = [s["id"] for s in config["stages"]]
+    stage_order = [
+        s["id"] for s in config["stages"] if "weight_pct" in s and s["weight_pct"] is not None
+    ]
     bom_map = config["bom_status_to_stage"]
     asset_map = config["asset_lifecycle_to_stage"]
 
-    stage_weights = [0]
+    tracked_weights: list[int] = []
 
     for line in bom_lines:
-        status = str(line.get("status", "planned")).lower()
-        stg_id = bom_map.get(status, "planned")
-        stg_cfg = stages.get(stg_id, stages["planned"])
-        stage_weights.append(stg_cfg["weight_pct"])
+        status = str(line.get("status", "")).lower()
+        stg_id = bom_map.get(status, "not_tracked")
+        stg_cfg = stages.get(stg_id, stages.get("not_tracked", {}))
+        if "weight_pct" in stg_cfg and stg_cfg["weight_pct"] is not None:
+            tracked_weights.append(stg_cfg["weight_pct"])
 
     for asset in assets:
-        lifecycle = str(asset.get("lifecycle", asset.get("status", "planned"))).lower()
-        stg_id = asset_map.get(lifecycle, "planned")
-        stg_cfg = stages.get(stg_id, stages["planned"])
-        stage_weights.append(stg_cfg["weight_pct"])
+        lifecycle = str(asset.get("lifecycle", asset.get("status", ""))).lower()
+        stg_id = asset_map.get(lifecycle, "not_tracked")
+        stg_cfg = stages.get(stg_id, stages.get("not_tracked", {}))
+        if "weight_pct" in stg_cfg and stg_cfg["weight_pct"] is not None:
+            tracked_weights.append(stg_cfg["weight_pct"])
 
-    # Calculate average weight
-    if len(stage_weights) > 1:
-        avg_weight = sum(stage_weights[1:]) / (len(stage_weights) - 1)
+    # Calculate average weight across tracked items
+    if tracked_weights:
+        avg_weight = sum(tracked_weights) / len(tracked_weights)
+        percent_ready = int(round(avg_weight))
+
+        # Derive representative stage among ranked stages
+        matched_stage_id = stage_order[0]
+        for stg_id in stage_order:
+            if percent_ready >= stages[stg_id]["weight_pct"]:
+                matched_stage_id = stg_id
+
+        stage_display = stages[matched_stage_id]["display_name"]
+        narrative = stages[matched_stage_id]["description"]
     else:
-        avg_weight = 10.0
-
-    percent_ready = int(round(avg_weight))
-
-    # Derive representative stage
-    matched_stage_id = stage_order[0]
-    for stg_id in stage_order:
-        if percent_ready >= stages[stg_id]["weight_pct"]:
-            matched_stage_id = stg_id
-
-    stage_display = stages[matched_stage_id]["display_name"]
-    narrative = stages[matched_stage_id]["description"]
+        # No tracked items (all unmapped or empty room)
+        percent_ready = 0
+        matched_stage_id = "not_tracked"
+        not_tracked_cfg = stages.get("not_tracked", {})
+        stage_display = not_tracked_cfg.get("display_name", "Not tracked")
+        narrative = not_tracked_cfg.get("description", "Equipment status is not tracked.")
 
     # Apply Messy Reality Overrides (Charter §4)
     if messy_context and "case" in messy_context:

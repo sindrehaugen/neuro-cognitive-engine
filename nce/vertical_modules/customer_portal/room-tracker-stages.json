@@ -38,9 +38,15 @@
       "display_name": "Ready",
       "weight_pct": 100,
       "description": "Room fully operational and ready for handover."
+    },
+    {
+      "id": "not_tracked",
+      "display_name": "Not tracked",
+      "description": "Equipment status is not tracked."
     }
   ],
   "bom_status_to_stage": {
+    "not_tracked": "not_tracked",
     "draft": "planned",
     "planned": "planned",
     "approved": "planned",
@@ -59,6 +65,7 @@
     "closed": "ready"
   },
   "asset_lifecycle_to_stage": {
+    "not_tracked": "not_tracked",
     "planned": "planned",
     "procured": "ordered",
     "delivered": "delivered",
