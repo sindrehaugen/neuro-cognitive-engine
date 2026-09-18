@@ -1,4 +1,4 @@
-"""Integration tests for Sales DealRoom (Batch 089)."""
+"""Integration tests for Sales DealRoom (Batch 089 / Wave S-3)."""
 
 from __future__ import annotations
 
@@ -9,10 +9,8 @@ from uuid import UUID, uuid4
 
 import asyncpg  # type: ignore[import-untyped]
 import pytest
-from bson import ObjectId
 
 from nce.auth import set_namespace_context
-from nce.orchestrator import NCEEngine
 from nce.vertical_modules.sales.dealroom import do_open_dealroom
 
 
@@ -45,37 +43,77 @@ async def _insert_sales_record(
     )
 
 
-async def _insert_kg_node(
+async def _insert_bom_line_content(
     conn: asyncpg.Connection,  # type: ignore[type-arg]
     namespace_id: UUID,
-    label: str,
-    entity_type: str,
-    payload_ref: str | None = None,
+    bom_line_label: str,
+    quote_id: str,
+    line_ref: str,
+    qty: float = 1.0,
+    unit_price: float | None = None,
+    line_total: float | None = None,
+    currency: str = "NOK",
+    priced: bool = True,
+    origin_kind: str = "manual",
+    origin_ref: str | None = None,
+    writer_engine: str = "sales",
 ) -> None:
-    """Helper to insert knowledge graph nodes."""
+    """Helper to insert bom_line_content records directly for testing."""
     await conn.execute(
         """
-        INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin, payload_ref)
-        VALUES ($1, $2, $3::uuid, 'agent', $4)
-        ON CONFLICT (label, namespace_id) DO NOTHING
+        INSERT INTO bom_line_content
+            (namespace_id, bom_line_label, quote_id, line_ref, qty, unit_price, line_total, currency, priced, origin_kind, origin_ref, writer_engine)
+        VALUES
+            ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        ON CONFLICT (namespace_id, bom_line_label) DO UPDATE SET
+            qty = EXCLUDED.qty,
+            unit_price = EXCLUDED.unit_price,
+            line_total = EXCLUDED.line_total,
+            priced = EXCLUDED.priced,
+            origin_ref = EXCLUDED.origin_ref
         """,
-        label,
-        entity_type,
-        str(namespace_id),
-        payload_ref,
+        namespace_id,
+        bom_line_label,
+        quote_id,
+        line_ref,
+        qty,
+        unit_price if unit_price is not None else 0.0,
+        line_total if line_total is not None else 0.0,
+        currency,
+        priced,
+        origin_kind,
+        origin_ref,
+        writer_engine,
+    )
+
+
+async def _insert_product_catalog(
+    conn: asyncpg.Connection,  # type: ignore[type-arg]
+    manufacturer: str,
+    mfr_part_no: str,
+    product_source_id: str = "test-prod",
+) -> None:
+    """Helper to insert product catalog records directly for testing."""
+    await conn.execute(
+        """
+        INSERT INTO product_catalog (manufacturer, mfr_part_no, product_source_id)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (manufacturer, mfr_part_no) DO NOTHING
+        """,
+        manufacturer,
+        mfr_part_no,
+        product_source_id,
     )
 
 
 def _make_dealroom_engine_stub(pg_pool: asyncpg.Pool) -> Any:  # type: ignore[type-arg]
-    """Minimal engine stub exposing ``pg_pool`` and ``mongo_client`` (unused
-    when seeded BOM_LINE nodes carry no ``payload_ref``)."""
+    """Minimal engine stub exposing ``pg_pool``."""
 
     class _EngineStub:
         pass
 
     stub = _EngineStub()
     stub.pg_pool = pg_pool  # type: ignore[attr-defined]
-    stub.mongo_client = None  # type: ignore[attr-defined]
     return stub
 
 
@@ -89,157 +127,119 @@ class TestSalesDealRoom:
         pg_pool: asyncpg.Pool,
         make_namespace: Any,
     ) -> None:
-        """Verify that do_open_dealroom fetches nodes, prices via C6, and handles options toggles."""
+        """Verify that do_open_dealroom fetches bom_line_content, correlates product_catalog, and handles options toggles."""
         ns = await make_namespace()
         quote_id = f"q-{uuid4().hex[:8]}"
+        label1 = f"BOM_LINE:{quote_id.upper()}:LINE-1"
+        label2 = f"BOM_LINE:{quote_id.upper()}:LINE-2"
 
-        # 1. Setup NCEEngine and database connection
-        engine = NCEEngine()
-        await engine.connect()
+        engine = _make_dealroom_engine_stub(pg_pool)
 
-        try:
-            # Generate 2 MongoDB ObjectIDs for BOM lines
-            oid1 = ObjectId()
-            oid2 = ObjectId()
+        # 1. Seed PostgreSQL sales_read_model, product_catalog, and bom_line_content
+        async with pg_pool.acquire() as conn:
+            async with conn.transaction():
+                await set_namespace_context(conn, ns)
 
-            # Insert payloads in MongoDB
-            assert engine.mongo_client is not None
-            mongo_db = engine.mongo_client.memory_archive
-            await mongo_db.episodes.insert_many(
-                [
+                # Seed quote in read model
+                await _insert_sales_record(
+                    conn,
+                    ns,
+                    "quotes",
+                    quote_id,
+                    "Interactive Design Quote",
                     {
-                        "_id": oid1,
-                        "manufacturer": "Sony",
-                        "model": "VPL-XW5000ES",
-                        "quantity": 1,
-                        "dg_pct": 0.3,
-                        "is_optional": False,
-                        "toggled": True,
-                        "product": {
-                            "base_price": 50000.0,
-                            # A price is only ON RECORD when it is dated: every tier
-                            # builder in nce/pricing/resolver.py requires the pair.
-                            # Without this the line resolves to UNPRICED, which is
-                            # what this test spent a day asserting against.
-                            "base_as_of": datetime.datetime.now(datetime.timezone.utc),
-                        },
+                        "quoteid": quote_id,
+                        "name": "Interactive Design Quote",
+                        "description": "AV DealRoom quote description",
                     },
-                    {
-                        "_id": oid2,
-                        "manufacturer": "Chief",
-                        "model": "Mount-X",
-                        "quantity": 2,
-                        "dg_pct": 0.4,
-                        "is_optional": True,
-                        "toggled": True,
-                        "product": {
-                            "base_price": 1000.0,
-                            "base_as_of": datetime.datetime.now(datetime.timezone.utc),
-                        },
-                    },
-                ]
-            )
+                )
 
-            # Seed PostgreSQL
-            async with pg_pool.acquire() as conn:
-                async with conn.transaction():
-                    await set_namespace_context(conn, ns)
+                # Seed product catalog
+                await _insert_product_catalog(conn, "Sony", "VPL-XW5000ES")
+                await _insert_product_catalog(conn, "Chief", "Mount-X")
 
-                    # Seed quote in read model
-                    await _insert_sales_record(
-                        conn,
-                        ns,
-                        "quotes",
-                        quote_id,
-                        "Interactive Design Quote",
-                        {
-                            "quoteid": quote_id,
-                            "name": "Interactive Design Quote",
-                            "description": "AV DealRoom quote description",
-                        },
-                    )
+                # Seed BOM lines in PostgreSQL bom_line_content
+                # Line 1: Sony Projector, unit_price = 50000.0 / 0.7, qty = 1
+                unit_p1 = 50000.0 / 0.7
+                await _insert_bom_line_content(
+                    conn,
+                    ns,
+                    label1,
+                    quote_id,
+                    "LINE-1",
+                    qty=1.0,
+                    unit_price=unit_p1,
+                    line_total=unit_p1 * 1.0,
+                    priced=True,
+                    origin_ref="VPL-XW5000ES",
+                )
 
-                    # Seed BOM_LINE nodes in graph
-                    await _insert_kg_node(
-                        conn,
-                        ns,
-                        f"BOM_LINE:{quote_id.upper()}:LINE-1",
-                        "BOM_LINE",
-                        payload_ref=str(oid1),
-                    )
-                    await _insert_kg_node(
-                        conn,
-                        ns,
-                        f"BOM_LINE:{quote_id.upper()}:LINE-2",
-                        "BOM_LINE",
-                        payload_ref=str(oid2),
-                    )
+                # Line 2: Chief Mount, unit_price = 1000.0 / 0.6, qty = 2
+                unit_p2 = 1000.0 / 0.6
+                await _insert_bom_line_content(
+                    conn,
+                    ns,
+                    label2,
+                    quote_id,
+                    "LINE-2",
+                    qty=2.0,
+                    unit_price=unit_p2,
+                    line_total=unit_p2 * 2.0,
+                    priced=True,
+                    origin_ref="Mount-X",
+                )
 
-            # 2. Call do_open_dealroom with all toggled on (default)
-            res = await do_open_dealroom(
-                engine,
-                {
-                    "namespace_id": str(ns),
-                    "quote_id": quote_id,
+        # 2. Call do_open_dealroom with all toggled on (default)
+        res = await do_open_dealroom(
+            engine,
+            {
+                "namespace_id": str(ns),
+                "quote_id": quote_id,
+            },
+        )
+
+        assert res["quote_id"] == quote_id
+        assert res["name"] == "Interactive Design Quote"
+        assert res["description"] == "AV DealRoom quote description"
+
+        # Check lines
+        lines = res["lines"]
+        assert len(lines) == 2
+
+        # Line 1: Sony Projector
+        assert lines[0]["manufacturer"] == "Sony"
+        assert lines[0]["model"] == "VPL-XW5000ES"
+        assert lines[0]["quantity"] == 1
+        assert abs(lines[0]["unit_price"] - (50000.0 / 0.7)) < 1e-2
+        assert lines[0]["toggled"] is True
+
+        # Line 2: Chief Mount
+        assert lines[1]["manufacturer"] == "Chief"
+        assert lines[1]["model"] == "Mount-X"
+        assert lines[1]["quantity"] == 2
+        assert abs(lines[1]["unit_price"] - (1000.0 / 0.6)) < 1e-2
+        assert lines[1]["toggled"] is True
+
+        # Total quote price: (50000 / 0.7) + 2 * (1000 / 0.6) = 71428.57 + 3333.33 = 74761.90
+        expected_total = (50000.0 / 0.7) + (2000.0 / 0.6)
+        assert abs(res["total_price_nok"] - expected_total) < 1e-2
+
+        # 3. Toggle off Line 2 (Chief Mount) and verify recalculation
+        res_toggled = await do_open_dealroom(
+            engine,
+            {
+                "namespace_id": str(ns),
+                "quote_id": quote_id,
+                "toggled_options": {
+                    label2: False,
                 },
-            )
+            },
+        )
 
-            assert res["quote_id"] == quote_id
-            assert res["name"] == "Interactive Design Quote"
-            assert res["description"] == "AV DealRoom quote description"
-
-            # Check lines
-            lines = res["lines"]
-            assert len(lines) == 2
-
-            # Line 1: Sony Projector
-            # base cost = 50000.0, dg_pct = 0.3
-            # unit price = 50000.0 / (1 - 0.3) = 71428.5714...
-            # total price = unit_price * 1 = 71428.5714...
-            assert lines[0]["manufacturer"] == "Sony"
-            assert lines[0]["model"] == "VPL-XW5000ES"
-            assert lines[0]["quantity"] == 1
-            assert abs(lines[0]["unit_price"] - (50000.0 / 0.7)) < 1e-2
-            assert lines[0]["toggled"] is True
-
-            # Line 2: Chief Mount
-            # base cost = 1000.0, dg_pct = 0.4
-            # unit price = 1000.0 / (1 - 0.4) = 1666.6666...
-            # total price = unit_price * 2 = 3333.3333...
-            assert lines[1]["manufacturer"] == "Chief"
-            assert lines[1]["model"] == "Mount-X"
-            assert lines[1]["quantity"] == 2
-            assert abs(lines[1]["unit_price"] - (1000.0 / 0.6)) < 1e-2
-            assert lines[1]["toggled"] is True
-
-            # Total quote price: (50000 / 0.7) + 2 * (1000 / 0.6) = 71428.57 + 3333.33 = 74761.90
-            expected_total = (50000.0 / 0.7) + (2000.0 / 0.6)
-            assert abs(res["total_price_nok"] - expected_total) < 1e-2
-
-            # 3. Toggle off Line 2 (Chief Mount) and verify recalculation
-            res_toggled = await do_open_dealroom(
-                engine,
-                {
-                    "namespace_id": str(ns),
-                    "quote_id": quote_id,
-                    "toggled_options": {
-                        f"BOM_LINE:{quote_id.upper()}:LINE-2": False,
-                    },
-                },
-            )
-
-            # Recomputed price should only include Sony projector (Line 1)
-            expected_toggled_total = 50000.0 / 0.7
-            assert abs(res_toggled["total_price_nok"] - expected_toggled_total) < 1e-2
-            assert res_toggled["lines"][1]["toggled"] is False
-
-            # Verify toggled state is persisted in MongoDB
-            doc2 = await mongo_db.episodes.find_one({"_id": oid2})
-            assert doc2 is not None
-            assert doc2["toggled"] is False
-
-        finally:
-            await engine.disconnect()
+        # Recomputed price should only include Sony projector (Line 1)
+        expected_toggled_total = 50000.0 / 0.7
+        assert abs(res_toggled["total_price_nok"] - expected_toggled_total) < 1e-2
+        assert res_toggled["lines"][1]["toggled"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -280,8 +280,12 @@ class TestSalesDealRoomBomLineLabelMatching:
         async with pg_pool.acquire() as conn:
             async with conn.transaction():
                 await set_namespace_context(conn, ns)
-                await _insert_kg_node(conn, ns, label_own, "BOM_LINE")
-                await _insert_kg_node(conn, ns, label_victim, "BOM_LINE")
+                await _insert_bom_line_content(
+                    conn, ns, label_own, quote_with_underscore, "AMP01", priced=False
+                )
+                await _insert_bom_line_content(
+                    conn, ns, label_victim, quote_collision_victim, "AMP01", priced=False
+                )
 
         result = await do_open_dealroom(
             engine,
@@ -313,8 +317,12 @@ class TestSalesDealRoomBomLineLabelMatching:
         async with pg_pool.acquire() as conn:
             async with conn.transaction():
                 await set_namespace_context(conn, ns)
-                await _insert_kg_node(conn, ns, label_own, "BOM_LINE")
-                await _insert_kg_node(conn, ns, label_victim, "BOM_LINE")
+                await _insert_bom_line_content(
+                    conn, ns, label_own, quote_with_percent, "AMP01", priced=False
+                )
+                await _insert_bom_line_content(
+                    conn, ns, label_victim, quote_collision_victim, "AMP01", priced=False
+                )
 
         result = await do_open_dealroom(
             engine,
@@ -346,9 +354,11 @@ class TestSalesDealRoomBomLineLabelMatching:
         async with pg_pool.acquire() as conn:
             async with conn.transaction():
                 await set_namespace_context(conn, ns)
-                await _insert_kg_node(conn, ns, label_a, "BOM_LINE")
-                await _insert_kg_node(conn, ns, label_b, "BOM_LINE")
-                await _insert_kg_node(conn, ns, label_other, "BOM_LINE")
+                await _insert_bom_line_content(conn, ns, label_a, quote_id, "AMP01", priced=False)
+                await _insert_bom_line_content(conn, ns, label_b, quote_id, "CABLE01", priced=False)
+                await _insert_bom_line_content(
+                    conn, ns, label_other, other_quote_id, "AMP01", priced=False
+                )
 
         result = await do_open_dealroom(
             engine,
@@ -357,35 +367,6 @@ class TestSalesDealRoomBomLineLabelMatching:
 
         labels = sorted(line["label"] for line in result["lines"])
         assert labels == sorted([label_a, label_b])
-
-
-class _FakeEpisodes:
-    """Stands in for ``mongo_client.memory_archive.episodes``."""
-
-    def __init__(self, docs: dict[str, dict[str, Any]]) -> None:
-        self._docs = docs
-
-    async def find_one(self, query: dict[str, Any]) -> dict[str, Any] | None:
-        return self._docs.get(str(query["_id"]))
-
-    async def update_one(self, query: dict[str, Any], update: dict[str, Any]) -> None:
-        doc = self._docs.get(str(query["_id"]))
-        if doc is not None:
-            doc.update(update.get("$set", {}))
-
-
-class _FakeMongoClient:
-    def __init__(self, docs: dict[str, dict[str, Any]]) -> None:
-        self.memory_archive = type("_Db", (), {"episodes": _FakeEpisodes(docs)})()
-
-
-def _make_dealroom_engine_stub_with_mongo(
-    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
-    docs: dict[str, dict[str, Any]],
-) -> Any:
-    stub = _make_dealroom_engine_stub(pg_pool)
-    stub.mongo_client = _FakeMongoClient(docs)  # type: ignore[attr-defined]
-    return stub
 
 
 @pytest.mark.integration
@@ -411,7 +392,9 @@ class TestSalesDealRoomNeverFabricatesAPrice:
         async with pg_pool.acquire() as conn:
             async with conn.transaction():
                 await set_namespace_context(conn, ns)
-                await _insert_kg_node(conn, ns, label, "BOM_LINE")
+                await _insert_bom_line_content(
+                    conn, ns, label, quote_id, "LINE-1", priced=False, unit_price=0.0
+                )
 
         result = await do_open_dealroom(engine, {"namespace_id": str(ns), "quote_id": quote_id})
 
@@ -441,7 +424,7 @@ class TestSalesDealRoomNeverFabricatesAPrice:
         ``resolve_price``'s tier builders each require the (amount, as_of) PAIR --
         an undated price cannot be judged stale, so it is not a usable tier. This
         guard used to check the amounts alone, so such a record passed, reached
-        ``resolve_price``, and came back "no price tier available", which dealroom
+        ``resolve_price``, and came back 'no price tier available', which dealroom
         reported as ``price_resolution_failed`` -- blaming the server for a record
         that was simply incomplete.
 
@@ -451,26 +434,27 @@ class TestSalesDealRoomNeverFabricatesAPrice:
         ns = await make_namespace()
         quote_id = f"Q-UNDATED-{uuid4().hex[:8]}"
         label = f"BOM_LINE:{quote_id.upper()}:LINE-1"
-        oid = ObjectId()
-        docs = {
-            str(oid): {
-                "product": {"base_price": 5000.0},  # amount, NO base_as_of
-                "customer": {},
-                "quantity": 1,
-                "dg_pct": 0.5,
-                "manufacturer": "Sony",
-                "model": "VPL",
-                "toggled": True,
-            }
-        }
-        engine = _make_dealroom_engine_stub_with_mongo(pg_pool, docs)
+        engine = _make_dealroom_engine_stub(pg_pool)
 
         async with pg_pool.acquire() as conn:
             async with conn.transaction():
                 await set_namespace_context(conn, ns)
-                await _insert_kg_node(conn, ns, label, "BOM_LINE", payload_ref=str(oid))
+                await _insert_bom_line_content(
+                    conn, ns, label, quote_id, "LINE-1", priced=True, unit_price=5000.0
+                )
 
-        result = await do_open_dealroom(engine, {"namespace_id": str(ns), "quote_id": quote_id})
+        result = await do_open_dealroom(
+            engine,
+            {
+                "namespace_id": str(ns),
+                "quote_id": quote_id,
+                "product_override": {
+                    label: {
+                        "base_price": 5000.0,  # amount, NO base_as_of
+                    }
+                },
+            },
+        )
 
         line = result["lines"][0]
         assert line["priced"] is False
@@ -490,27 +474,7 @@ class TestSalesDealRoomNeverFabricatesAPrice:
         ns = await make_namespace()
         quote_id = f"Q-RESOLVEFAIL-{uuid4().hex[:8]}"
         label = f"BOM_LINE:{quote_id.upper()}:LINE-1"
-        oid = ObjectId()
-        docs = {
-            str(oid): {
-                "product": {
-                    # Dated on purpose: resolve_price's tier builders require the
-                    # (amount, as_of) PAIR, so an undated price is not a price on
-                    # record. These fixtures monkeypatch resolve_price, so before
-                    # this they passed a record the real resolver would reject and
-                    # only the patch hid it.
-                    "base_price": 5000.0,
-                    "base_as_of": datetime.datetime.now(datetime.timezone.utc),
-                },
-                "customer": {},
-                "quantity": 2,
-                "dg_pct": 0.5,
-                "manufacturer": "Sony",
-                "model": "VPL",
-                "toggled": True,
-            }
-        }
-        engine = _make_dealroom_engine_stub_with_mongo(pg_pool, docs)
+        engine = _make_dealroom_engine_stub(pg_pool)
 
         async def _boom(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
             raise RuntimeError("pricing service unavailable")
@@ -520,9 +484,23 @@ class TestSalesDealRoomNeverFabricatesAPrice:
         async with pg_pool.acquire() as conn:
             async with conn.transaction():
                 await set_namespace_context(conn, ns)
-                await _insert_kg_node(conn, ns, label, "BOM_LINE", payload_ref=str(oid))
+                await _insert_bom_line_content(
+                    conn, ns, label, quote_id, "LINE-1", priced=True, unit_price=5000.0
+                )
 
-        result = await do_open_dealroom(engine, {"namespace_id": str(ns), "quote_id": quote_id})
+        result = await do_open_dealroom(
+            engine,
+            {
+                "namespace_id": str(ns),
+                "quote_id": quote_id,
+                "product_override": {
+                    label: {
+                        "base_price": 5000.0,
+                        "base_as_of": datetime.datetime.now(datetime.timezone.utc),
+                    }
+                },
+            },
+        )
 
         line = result["lines"][0]
         assert line["priced"] is False, (
@@ -530,7 +508,7 @@ class TestSalesDealRoomNeverFabricatesAPrice:
             f"total_price={line['total_price']!r} base_cost={line['base_cost']!r}"
         )
         # A price WAS on record here -- the failure is a different operator
-        # problem from "nothing was ever recorded", and must read differently.
+        # problem from 'nothing was ever recorded', and must read differently.
         assert line["unpriced_reason"] == "price_resolution_failed"
         assert line["unit_price"] is None, (
             f"a pricing FAILURE was turned into the number {line['unit_price']!r}"
@@ -543,42 +521,29 @@ class TestSalesDealRoomNeverFabricatesAPrice:
         self,
         pg_pool: asyncpg.Pool,
         make_namespace: Any,
-        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         ns = await make_namespace()
         quote_id = f"Q-MIXED-{uuid4().hex[:8]}"
         priced_label = f"BOM_LINE:{quote_id.upper()}:LINE-1"
         unpriced_label = f"BOM_LINE:{quote_id.upper()}:LINE-2"
-        oid = ObjectId()
-        docs = {
-            str(oid): {
-                "product": {
-                    # Dated on purpose: resolve_price's tier builders require the
-                    # (amount, as_of) PAIR, so an undated price is not a price on
-                    # record. These fixtures monkeypatch resolve_price, so before
-                    # this they passed a record the real resolver would reject and
-                    # only the patch hid it.
-                    "base_price": 1000.0,
-                    "base_as_of": datetime.datetime.now(datetime.timezone.utc),
-                },
-                "customer": {},
-                "quantity": 1,
-                "dg_pct": 0.5,
-                "toggled": True,
-            }
-        }
-        engine = _make_dealroom_engine_stub_with_mongo(pg_pool, docs)
-
-        async def _ok(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
-            return {"cost": 1000.0}
-
-        monkeypatch.setattr("nce.vertical_modules.sales.dealroom.resolve_price", _ok)
+        engine = _make_dealroom_engine_stub(pg_pool)
 
         async with pg_pool.acquire() as conn:
             async with conn.transaction():
                 await set_namespace_context(conn, ns)
-                await _insert_kg_node(conn, ns, priced_label, "BOM_LINE", payload_ref=str(oid))
-                await _insert_kg_node(conn, ns, unpriced_label, "BOM_LINE")
+                await _insert_bom_line_content(
+                    conn,
+                    ns,
+                    priced_label,
+                    quote_id,
+                    "LINE-1",
+                    priced=True,
+                    unit_price=2000.0,
+                    line_total=2000.0,
+                )
+                await _insert_bom_line_content(
+                    conn, ns, unpriced_label, quote_id, "LINE-2", priced=False, unit_price=0.0
+                )
 
         result = await do_open_dealroom(engine, {"namespace_id": str(ns), "quote_id": quote_id})
 
@@ -602,7 +567,6 @@ class TestSalesDealRoomNeverFabricatesAPrice:
         self,
         pg_pool: asyncpg.Pool,
         make_namespace: Any,
-        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """An unpriced line toggled OFF contributes no money, so the total over
         the remaining lines is still honest."""
@@ -610,36 +574,24 @@ class TestSalesDealRoomNeverFabricatesAPrice:
         quote_id = f"Q-OFF-{uuid4().hex[:8]}"
         priced_label = f"BOM_LINE:{quote_id.upper()}:LINE-1"
         unpriced_label = f"BOM_LINE:{quote_id.upper()}:LINE-2"
-        oid = ObjectId()
-        docs = {
-            str(oid): {
-                "product": {
-                    # Dated on purpose: resolve_price's tier builders require the
-                    # (amount, as_of) PAIR, so an undated price is not a price on
-                    # record. These fixtures monkeypatch resolve_price, so before
-                    # this they passed a record the real resolver would reject and
-                    # only the patch hid it.
-                    "base_price": 1000.0,
-                    "base_as_of": datetime.datetime.now(datetime.timezone.utc),
-                },
-                "customer": {},
-                "quantity": 1,
-                "dg_pct": 0.5,
-                "toggled": True,
-            }
-        }
-        engine = _make_dealroom_engine_stub_with_mongo(pg_pool, docs)
-
-        async def _ok(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
-            return {"cost": 1000.0}
-
-        monkeypatch.setattr("nce.vertical_modules.sales.dealroom.resolve_price", _ok)
+        engine = _make_dealroom_engine_stub(pg_pool)
 
         async with pg_pool.acquire() as conn:
             async with conn.transaction():
                 await set_namespace_context(conn, ns)
-                await _insert_kg_node(conn, ns, priced_label, "BOM_LINE", payload_ref=str(oid))
-                await _insert_kg_node(conn, ns, unpriced_label, "BOM_LINE")
+                await _insert_bom_line_content(
+                    conn,
+                    ns,
+                    priced_label,
+                    quote_id,
+                    "LINE-1",
+                    priced=True,
+                    unit_price=2000.0,
+                    line_total=2000.0,
+                )
+                await _insert_bom_line_content(
+                    conn, ns, unpriced_label, quote_id, "LINE-2", priced=False, unit_price=0.0
+                )
 
         result = await do_open_dealroom(
             engine,

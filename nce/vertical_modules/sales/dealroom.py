@@ -1,9 +1,10 @@
 """
 nce/vertical_modules/sales/dealroom.py
 ======================================
-DealRoom operations for Sales Engine (Batch 089).
-Implements do_open_dealroom which assembles the room from QUOTE/BOM nodes,
-updating and recomputing prices through C6 shared pricing service.
+DealRoom operations for Sales Engine (Batch 089 / Wave S-3).
+Materialises the room from PostgreSQL bom_line_content, correlating product
+details through the global product_catalog, and computing prices through
+the C6 shared pricing service without MongoDB or fabricated defaults.
 """
 
 from __future__ import annotations
@@ -13,12 +14,19 @@ import logging
 from typing import Any
 from uuid import UUID
 
-from bson import ObjectId
-
 from nce.db_utils import scoped_pg_session
-from nce.pricing import dg_price, resolve_price
+from nce.pricing import dg_price, load_dg, resolve_price
 
 log = logging.getLogger("nce.vertical_modules.sales.dealroom")
+
+
+def _get_namespace_dg(namespace_id: str | UUID) -> float:
+    """Load per-namespace DG% margin from pricing config, falling back to default."""
+    ns_key = str(namespace_id)
+    try:
+        return load_dg(ns_key)
+    except KeyError:
+        return load_dg("default")
 
 
 async def do_open_dealroom(
@@ -35,13 +43,17 @@ async def do_open_dealroom(
     Returns:
       dict: DealRoom payload containing quote details, lines list, and recomputed total price.
 
-    A price is never invented.  A line whose price cannot be established is
+    A price is never invented. A line whose price cannot be established is
     returned with ``priced: False``, ``unit_price``/``total_price``/``base_cost``
     set to ``None`` and an ``unpriced_reason`` of either ``"no_price_on_record"``
     (nothing was ever recorded for it) or ``"price_resolution_failed"`` (a price
-    existed but resolving it raised).  Because such a line carries money of an
+    existed but resolving it raised). Because such a line carries money of an
     unknown amount, ``total_price_nok`` is ``None`` whenever any *toggled* line
     is unpriced; ``unpriced_line_count`` reports how many toggled lines that is.
+
+    Manufacturer, model, and optionality resolve via correlation to the global
+    product_catalog. When unlinked or absent, fields render as None (absent),
+    never as invented default constants.
     """
     ns_raw = params.get("namespace_id")
     if not ns_raw:
@@ -55,7 +67,7 @@ async def do_open_dealroom(
     toggled_options = params.get("toggled_options") or {}
 
     async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
-        # 1. Fetch quote details from read model (or fallback to graph node)
+        # 1. Fetch quote details from read model
         quote = await conn.fetchrow(
             """
             SELECT name, source_json, manual
@@ -71,7 +83,6 @@ async def do_open_dealroom(
         quote_name = "DealRoom Quote"
         quote_desc = ""
         if quote:
-            # Merged source_json and manual
             source_json = quote["source_json"] or {}
             if isinstance(source_json, str):
                 source_json = json.loads(source_json)
@@ -82,148 +93,128 @@ async def do_open_dealroom(
             quote_name = quote["name"] or merged_quote.get("name", quote_name)
             quote_desc = merged_quote.get("description", "")
 
-        # 2. Fetch BOM lines from graph nodes. Literal prefix test via
-        # starts_with() -- NOT SQL LIKE. `quote_id` is caller-supplied and
-        # this surface renders the result to the customer (DealRoom); `_`
-        # and `%` are ordinary LIKE metacharacters (`_` matches any single
-        # character, `%` matches any sequence), so a quote id containing
-        # either would, against a raw LIKE pattern, silently widen the match
-        # to a DIFFERENT quote's BOM lines -- showing one customer another
-        # quote's line items (confirmed live:
-        # 'BOM_LINE:QA1:AMP01' LIKE 'BOM_LINE:Q_1:%' is true). starts_with()
-        # is a plain literal-prefix test with no pattern semantics at all, so
-        # no quote_id can ever be crafted to widen the match. Mirrors
-        # economy/cascade.py's _read_actual_cost_total (Batch 120).
+        # 2. Fetch BOM lines from Postgres bom_line_content with LATERAL product_catalog join.
+        # Literal prefix test via starts_with() protects against LIKE metacharacter
+        # leaks ('_' / '%') in user-supplied quote_id.
         bom_label_prefix = f"BOM_LINE:{quote_id.upper()}:"
         rows = await conn.fetch(
             """
-            SELECT label, payload_ref
-            FROM kg_nodes
-            WHERE entity_type = 'BOM_LINE'
-              AND namespace_id = $1::uuid
-              AND starts_with(label, $2)
-            ORDER BY label
+            SELECT
+                b.id,
+                b.bom_line_label,
+                b.quote_id,
+                b.line_ref,
+                b.qty,
+                b.unit_price,
+                b.line_total,
+                b.currency,
+                b.priced,
+                b.origin_kind,
+                b.origin_ref,
+                pc.manufacturer,
+                pc.mfr_part_no AS model
+            FROM bom_line_content b
+            LEFT JOIN LATERAL (
+                SELECT manufacturer, mfr_part_no
+                FROM product_catalog
+                WHERE (b.origin_ref IS NOT NULL AND (id::text = b.origin_ref OR mfr_part_no = b.origin_ref))
+                   OR mfr_part_no = b.line_ref
+                LIMIT 1
+            ) pc ON TRUE
+            WHERE b.namespace_id = $1::uuid
+              AND (b.quote_id = $2 OR starts_with(b.bom_line_label, $3))
+            ORDER BY b.bom_line_label
             """,
             str(ns_uuid),
+            quote_id,
             bom_label_prefix,
         )
 
-        lines_list = []
+        lines_list: list[dict[str, Any]] = []
         total_price_nok = 0.0
         unpriced_toggled_count = 0
 
         for r in rows:
-            label = r["label"]
-            payload_ref = r["payload_ref"]
-
-            product: dict[str, Any] = {}
-            customer: dict[str, Any] = {}
-            quantity = 1
-            dg_pct = 0.3
-            is_optional = True
-            toggled = True
-            manufacturer = "Unknown"
-            model = "Unknown"
-
-            # Fetch MongoDB payload details if available
-            if payload_ref and engine.mongo_client:
-                try:
-                    doc = await engine.mongo_client.memory_archive.episodes.find_one(
-                        {"_id": ObjectId(payload_ref)}
-                    )
-                    if doc:
-                        product = doc.get("product") or {}
-                        customer = doc.get("customer") or {}
-                        quantity = doc.get("quantity", quantity)
-                        dg_pct = doc.get("dg_pct", dg_pct)
-                        is_optional = doc.get("is_optional", is_optional)
-                        toggled = doc.get("toggled", toggled)
-                        manufacturer = doc.get("manufacturer", manufacturer)
-                        model = doc.get("model", model)
-
-                        # If product/customer sub-dicts don't exist, build from root keys
-                        if not product:
-                            product = {
-                                "supplier_list_price": doc.get("supplier_list_price"),
-                                "supplier_list_as_of": doc.get("supplier_list_as_of"),
-                                "base_price": doc.get("base_price"),
-                                "base_as_of": doc.get("base_as_of"),
-                            }
-                        if not customer:
-                            customer = {
-                                "bid_price": doc.get("bid_price"),
-                                "bid_as_of": doc.get("bid_as_of"),
-                            }
-                except Exception as e:
-                    log.warning("Failed to fetch mongo payload for BOM line %s: %s", label, e)
-
-            # A price must be ON RECORD.  Never substitute a plausible number
-            # for a missing one -- carry the absence instead.
-            #
-            # "On record" means what ``resolve_price`` means by it, and that is a
-            # PAIR: every tier builder in ``nce/pricing/resolver.py``
-            # (``_build_bid_tier``, ``_build_supplier_list_tier``, ``_build_base_tier``)
-            # returns None unless BOTH the amount and its ``*_as_of`` are present --
-            # an undated price cannot be judged stale, so it is not a usable tier.
-            #
-            # This check used to test the amounts alone. A record carrying
-            # ``base_price`` and no ``base_as_of`` therefore passed the guard, went
-            # into ``resolve_price``, and came back "no price tier available" --
-            # reported as ``price_resolution_failed``, i.e. as a SERVER fault, when
-            # the truth is that the record is incomplete. Two answers to one question
-            # in one codebase; the guard now asks the resolver's question instead of
-            # its own.
-            has_price_on_record = bool(
-                (product.get("base_price") is not None and product.get("base_as_of") is not None)
-                or (
-                    product.get("supplier_list_price") is not None
-                    and product.get("supplier_list_as_of") is not None
-                )
-                or (customer.get("bid_price") is not None and customer.get("bid_as_of") is not None)
+            label: str = r["bom_line_label"]
+            line_ref: str = r["line_ref"] or label.split(":")[-1]
+            quantity: float = float(r["qty"])
+            is_priced: bool = bool(r["priced"])
+            stored_unit_price: float | None = (
+                float(r["unit_price"]) if r["unit_price"] is not None else None
+            )
+            stored_line_total: float | None = (
+                float(r["line_total"]) if r["line_total"] is not None else None
             )
 
-            # Determine toggle override from params
-            line_ref = label.split(":")[-1]
+            manufacturer: str | None = r["manufacturer"]
+            model: str | None = r["model"]
+            is_optional: bool | None = None
+
+            # Dynamic toggle state from caller params; active by default unless toggled off
             toggled_val = None
             if label in toggled_options:
                 toggled_val = toggled_options[label]
             elif line_ref in toggled_options:
                 toggled_val = toggled_options[line_ref]
 
-            if toggled_val is not None:
-                toggled = bool(toggled_val)
-                # Persist updated toggle state back to Mongo
-                if payload_ref and engine.mongo_client:
-                    try:
-                        await engine.mongo_client.memory_archive.episodes.update_one(
-                            {"_id": ObjectId(payload_ref)}, {"$set": {"toggled": toggled}}
-                        )
-                    except Exception as e:
-                        log.warning("Failed to update toggled state in mongo for %s: %s", label, e)
+            toggled: bool = True if toggled_val is None else bool(toggled_val)
 
-            # Price line through C6 Pricing Service.  Two different operator
-            # problems are kept distinguishable: nothing was ever recorded, vs
-            # a recorded price whose resolution failed.
+            # Price line: either from bom_line_content record or C6 resolver
             cost: float | None = None
+            unit_price: float | None = None
+            total_price: float | None = None
             unpriced_reason: str | None = None
-            if not has_price_on_record:
+
+            if not is_priced:
                 unpriced_reason = "no_price_on_record"
                 log.warning("No price on record for line %s; returning it unpriced", label)
             else:
-                try:
-                    price_result = await resolve_price(
-                        conn,
-                        namespace_id=str(ns_uuid),
-                        product=product,
-                        customer=customer,
+                # When priced, check if dynamic pricing override / resolution applies
+                product_info = params.get("product_override", {}).get(label)
+                customer_info = params.get("customer_override", {}).get(label)
+                if product_info is not None or customer_info is not None:
+                    p = product_info or {}
+                    c = customer_info or {}
+                    has_price_on_record = bool(
+                        (p.get("base_price") is not None and p.get("base_as_of") is not None)
+                        or (
+                            p.get("supplier_list_price") is not None
+                            and p.get("supplier_list_as_of") is not None
+                        )
+                        or (c.get("bid_price") is not None and c.get("bid_as_of") is not None)
                     )
-                    cost = float(price_result["cost"])
-                except Exception as e:
-                    log.warning("Price resolution failed for line %s: %s", label, e)
-                    unpriced_reason = "price_resolution_failed"
+                    if not has_price_on_record:
+                        unpriced_reason = "no_price_on_record"
+                    else:
+                        try:
+                            price_result = await resolve_price(
+                                conn,
+                                namespace_id=str(ns_uuid),
+                                product=p,
+                                customer=c,
+                            )
+                            cost = float(price_result["cost"])
+                            dg_pct = _get_namespace_dg(ns_uuid)
+                            unit_price = dg_price(cost, dg_pct)
+                            total_price = unit_price * quantity
+                        except Exception as e:
+                            log.warning("Price resolution failed for line %s: %s", label, e)
+                            unpriced_reason = "price_resolution_failed"
+                else:
+                    if stored_unit_price is None:
+                        unpriced_reason = "no_price_on_record"
+                    else:
+                        unit_price = stored_unit_price
+                        total_price = (
+                            stored_line_total
+                            if stored_line_total is not None
+                            else (unit_price * quantity if unit_price is not None else None)
+                        )
 
-            unit_price = dg_price(cost, dg_pct) if cost is not None else None
-            total_price = unit_price * quantity if unit_price is not None else None
+            if unpriced_reason is not None:
+                cost = None
+                unit_price = None
+                total_price = None
 
             lines_list.append(
                 {

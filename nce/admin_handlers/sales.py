@@ -21,6 +21,7 @@ Exports:
   ``api_admin_sales_morning_brief_slice`` — GET  /api/sales/morning-brief
   ``api_admin_sales_lead_score`` — POST /api/sales/lead-score
   ``api_admin_sales_quote_draft`` — POST /api/sales/quote-draft
+  ``api_admin_sales_dealroom`` — POST /api/sales/dealroom
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ from nce.db_utils import scoped_pg_session
 from nce.source_mode.divergence import flip_blocked
 from nce.vertical_modules.sales.ai import do_draft_quote, do_score_lead
 from nce.vertical_modules.sales.commission import do_calculate_commission
+from nce.vertical_modules.sales.dealroom import do_open_dealroom
 from nce.vertical_modules.sales.flip import (
     do_morning_brief_slice,
     do_read_sales_divergence,
@@ -1297,4 +1299,70 @@ async def api_admin_sales_quote_draft(request) -> JSONResponse:
             exc,
             status_code=500,
             log_event="api_admin_sales_quote_draft",
+        )
+
+
+async def api_admin_sales_dealroom(request: Any) -> JSONResponse:
+    """POST /api/sales/dealroom
+
+    Materialise or refresh a DealRoom quote payload with toggle-able option lines.
+
+    Request Body (JSON):
+        namespace_id (str, required): Owning namespace UUID string.
+        quote_id (str, required): Quote identifier.
+        toggled_options (dict[str, bool], optional): Toggle states by line label or ref.
+
+    Response (JSON):
+        {
+          "status": "ok",
+          "dealroom": {
+            "quote_id": str,
+            "name": str,
+            "description": str,
+            "total_price_nok": float | None,
+            "unpriced_line_count": int,
+            "lines": list[dict],
+          }
+        }
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    namespace_id = str(
+        body.get("namespace_id") or request.query_params.get("namespace_id") or ""
+    ).strip()
+    if not namespace_id:
+        return JSONResponse({"error": "Missing required field: namespace_id"}, status_code=422)
+
+    try:
+        uuid.UUID(namespace_id)
+    except ValueError as exc:
+        return JSONResponse({"error": f"Invalid namespace_id: {exc}"}, status_code=422)
+
+    quote_id = str(body.get("quote_id") or request.query_params.get("quote_id") or "").strip()
+    if not quote_id:
+        return JSONResponse({"error": "Missing required field: quote_id"}, status_code=422)
+
+    params: dict[str, Any] = {
+        "namespace_id": namespace_id,
+        "quote_id": quote_id,
+        "toggled_options": body.get("toggled_options") or {},
+    }
+
+    try:
+        result = await do_open_dealroom(admin_state.engine, params)
+        return JSONResponse({"status": "ok", "dealroom": result}, status_code=200)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Sales dealroom open error",
+            exc,
+            status_code=500,
+            log_event="api_admin_sales_dealroom",
         )
