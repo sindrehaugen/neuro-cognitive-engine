@@ -134,10 +134,11 @@ def test_the_documented_vendor_platforms_are_exactly_the_declared_set() -> None:
     """``09-assets-engine.md`` names the core AV cloud platforms; MLV16F
     Wave F-3 added ``neowit`` (a smart-building aggregator), Wave F-4
     added ``disruptive`` (a sensor vendor read directly, not only through
-    Neowit's aggregation), and Wave F-5 added ``ochno`` (a USB-C
-    switch/hub platform). Pinning the whole set — not a sample of it — so
-    a dropped or renamed platform is caught rather than discovered by an
-    operator whose env key stops working.
+    Neowit's aggregation), Wave F-5 added ``ochno`` (a USB-C switch/hub
+    platform), and Wave F-7 added ``ais`` (a vessel-position feed).
+    Pinning the whole set — not a sample of it — so a dropped or renamed
+    platform is caught rather than discovered by an operator whose env
+    key stops working.
     """
     assert set(VENDOR_PLATFORMS) == {
         "crestron",
@@ -152,6 +153,7 @@ def test_the_documented_vendor_platforms_are_exactly_the_declared_set() -> None:
         "neowit",
         "disruptive",
         "ochno",
+        "ais",
     }
     assert MOCK_PLATFORM not in VENDOR_PLATFORMS
 
@@ -217,6 +219,10 @@ def test_vendor_platform_swaps_to_its_real_adapter_when_the_flag_is_set(
         from nce.vertical_modules.assets.ochno import OchnoTelemetryAdapter
 
         assert isinstance(adapter, OchnoTelemetryAdapter)
+    elif platform == "ais":
+        from nce.vertical_modules.assets.ais import AisTelemetryAdapter
+
+        assert isinstance(adapter, AisTelemetryAdapter)
     else:
         assert isinstance(adapter, UnimplementedVendorAdapter)
         assert adapter.platform == platform
@@ -2091,3 +2097,187 @@ class TestOchnoAdapter:
 
         adapter = _ochno_adapter(handler)
         assert await adapter.fetch_samples(uuid.uuid4(), serial="O474C90FA5EDC1") == []
+
+
+# ---------------------------------------------------------------------------
+# AIS: a vessel-position feed (new platform, MLV16F Wave F-7, the last of
+# the seven vendor telemetry adapters) — not an AV cloud vendor.
+# ---------------------------------------------------------------------------
+
+
+def _ais_adapter(handler: Any, *, authenticated: bool = True) -> Any:
+    from nce.vertical_modules.assets.ais import AisTelemetryAdapter
+
+    kwargs: dict[str, Any] = {
+        "endpoint_url": "https://kilde.example/ais",
+        "transport": httpx.MockTransport(handler),
+    }
+    if authenticated:
+        kwargs.update(
+            client_id="ais-client",
+            client_secret="ais-secret",
+            token_url="https://kilde.example/oauth2/token",
+            scope="ais:read",
+        )
+    return AisTelemetryAdapter(**kwargs)
+
+
+class TestAisAdapter:
+    @pytest.mark.asyncio
+    async def test_ais_adapter_unconfigured_raises(self) -> None:
+        from nce.vertical_modules.assets.ais import AisTelemetryAdapter
+
+        adapter = AisTelemetryAdapter(endpoint_url=None, timeout=10.0)
+        assert adapter.platform == "ais"
+        assert adapter._timeout <= 4.9
+
+        with pytest.raises(NotImplementedError, match="ais") as excinfo:
+            await adapter.fetch_samples(uuid.uuid4(), serial="259139000")
+        assert "NCE_ASSETS_AIS_ENDPOINT_URL" in str(excinfo.value)
+
+    @pytest.mark.asyncio
+    async def test_ais_adapter_client_id_without_secret_or_token_url_raises(self) -> None:
+        """An open source needs nothing; a claimed authenticated one must
+        be fully configured — half of it is not a valid state."""
+        from nce.vertical_modules.assets.ais import AisTelemetryAdapter
+
+        adapter = AisTelemetryAdapter(
+            endpoint_url="https://kilde.example/ais", client_id="ais-client", timeout=10.0
+        )
+        with pytest.raises(NotImplementedError) as excinfo:
+            await adapter.fetch_samples(uuid.uuid4(), serial="259139000")
+        assert "NCE_ASSETS_AIS_CLIENT_SECRET" in str(excinfo.value)
+        assert "NCE_ASSETS_AIS_TOKEN_URL" in str(excinfo.value)
+
+    @pytest.mark.asyncio
+    async def test_ais_adapter_without_a_serial_is_skipped_before_any_http_call(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("no HTTP call should be made when serial is missing")
+
+        adapter = _ais_adapter(handler)
+        assert await adapter.fetch_samples(uuid.uuid4(), serial=None) == []
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="  ") == []
+
+    @pytest.mark.asyncio
+    async def test_ais_adapter_a_non_numeric_serial_is_refused_as_not_an_mmsi(self) -> None:
+        """MMSI is nine digits; a serial that isn't purely numeric cannot
+        be one, and is refused before any network call rather than sent
+        as a malformed filter."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("no HTTP call should be made for a non-numeric serial")
+
+        adapter = _ais_adapter(handler)
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="not-an-mmsi") == []
+
+    @pytest.mark.asyncio
+    async def test_ais_adapter_refuses_a_path_outside_its_allow_list(self) -> None:
+        """Gate item 1+2 (MLV16 charter, Lane F): a call outside the
+        explicit allow-list literal is refused before any HTTP request."""
+        from nce.vertical_modules.assets.ais import AisAllowListRefusal
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("a refused call must never reach the transport")
+
+        adapter = _ais_adapter(handler)
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            with pytest.raises(AisAllowListRefusal):
+                await adapter._gated_request(
+                    client, "DELETE", "", headers={"Accept": "application/json"}
+                )
+            with pytest.raises(AisAllowListRefusal):
+                await adapter._gated_request(
+                    client, "GET", "vessels/259139000", headers={"Accept": "application/json"}
+                )
+
+    @pytest.mark.asyncio
+    async def test_ais_adapter_live_http_authenticated(self) -> None:
+        """A recorded-fixture-shaped round trip: OAuth2 client-credentials
+        via FORM FIELDS (not a Basic header, unlike F-1's YMCS), one call
+        returning the whole fleet snapshot, filtered client-side on MMSI —
+        never a fabricated per-vessel telemetry endpoint. Known AIS
+        'not available' sentinels (511 for heading, 360 for course over
+        ground) are filtered, not stored as if real."""
+        seen: list[tuple[str, str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            seen.append((request.method, url))
+            if url == "https://kilde.example/oauth2/token":
+                assert request.headers.get("Content-Type") == "application/x-www-form-urlencoded"
+                return httpx.Response(200, json={"access_token": "ais-tok", "expires_in": 3600})
+            assert request.headers.get("Authorization") == "Bearer ais-tok"
+            if request.url.path == "/ais":
+                assert request.url.params.get("modelType") == "Full"
+                return httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "mmsi": 258500000,
+                            "name": "NORDKAPP",
+                            "latitude": 68.4,
+                            "longitude": 15.1,
+                            "speedOverGround": 12.3,
+                            "trueHeading": 511,
+                            "courseOverGround": 87.5,
+                        },
+                        {
+                            "mmsi": 259139000,
+                            "name": "NORDLYS",
+                            "latitude": 69.6,
+                            "longitude": 18.9,
+                            "speedOverGround": 0.0,
+                            "trueHeading": 182.5,
+                            "courseOverGround": 360,
+                        },
+                    ],
+                )
+            raise AssertionError(f"unexpected call: {request.method} {url}")
+
+        adapter = _ais_adapter(handler)
+        samples = await adapter.fetch_samples(uuid.uuid4(), serial="259139000")
+        metrics = {s.metric: s.value for s in samples}
+        assert metrics["latitude"] == 69.6
+        assert metrics["longitude"] == 18.9
+        assert metrics["speedOverGround"] == 0.0
+        assert metrics["trueHeading"] == 182.5
+        # courseOverGround == 360 is the sentinel for "not available" and
+        # must NOT appear as a sample.
+        assert "courseOverGround" not in metrics
+        assert ("POST", "https://kilde.example/oauth2/token") in seen
+        assert ("GET", "https://kilde.example/ais?modelType=Full") in seen
+
+    @pytest.mark.asyncio
+    async def test_ais_adapter_open_source_sends_no_authorization_header(self) -> None:
+        """No client id configured is a valid, deliberate mode — not a
+        half-configured one — matching the host's own documented shape."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert "Authorization" not in request.headers
+            return httpx.Response(
+                200,
+                json=[{"mmsi": 1, "latitude": 59.9, "longitude": 10.7, "trueHeading": 511}],
+            )
+
+        adapter = _ais_adapter(handler, authenticated=False)
+        samples = await adapter.fetch_samples(uuid.uuid4(), serial="1")
+        metrics = {s.metric: s.value for s in samples}
+        assert metrics["latitude"] == 59.9
+
+    @pytest.mark.asyncio
+    async def test_ais_adapter_unmatched_mmsi_returns_empty_without_error(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if "oauth2/token" in str(request.url):
+                return httpx.Response(200, json={"access_token": "tok"})
+            return httpx.Response(200, json=[])
+
+        adapter = _ais_adapter(handler)
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="999999999") == []
+
+    @pytest.mark.asyncio
+    async def test_ais_adapter_http_failure_degrades_gracefully(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, text="Service Unavailable")
+
+        adapter = _ais_adapter(handler)
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="259139000") == []
