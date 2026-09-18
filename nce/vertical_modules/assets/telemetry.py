@@ -208,11 +208,22 @@ class TelemetryAdapter(ABC):
         """The platform key this adapter actually speaks for."""
 
     @abstractmethod
-    async def fetch_samples(self, asset_id: UUID) -> Sequence[TelemetrySample]:
+    async def fetch_samples(
+        self, asset_id: UUID, *, serial: str | None = None
+    ) -> Sequence[TelemetrySample]:
         """Return the readings currently available for *asset_id*.
 
         Called OUTSIDE any database transaction (module docstring), so a real
         implementation may perform network I/O here.
+
+        ``serial`` is the asset's own ``assets.serial`` (MLV16F Wave F-1) —
+        the physical unit's serial number, captured at install time, when
+        present. A real adapter that must resolve a *vendor's own* device
+        identity (YMCS keys devices by serial number, for example) needs
+        this: ``asset_id`` is NCE's internal key and is never a vendor
+        identifier. Optional and keyword-only so the five pre-existing real
+        adapters that do not yet use it (their own retrofit waves) needed no
+        signature change beyond accepting and ignoring it.
         """
 
 
@@ -247,7 +258,9 @@ class MockTelemetryAdapter(TelemetryAdapter):
     def platform(self) -> str:
         return MOCK_PLATFORM
 
-    async def fetch_samples(self, asset_id: UUID) -> Sequence[TelemetrySample]:
+    async def fetch_samples(
+        self, asset_id: UUID, *, serial: str | None = None
+    ) -> Sequence[TelemetrySample]:
         seed = int(asset_id)
         return [
             TelemetrySample(
@@ -288,7 +301,9 @@ class UnimplementedVendorAdapter(TelemetryAdapter):
     def platform(self) -> str:
         return self._platform
 
-    async def fetch_samples(self, asset_id: UUID) -> Sequence[TelemetrySample]:
+    async def fetch_samples(
+        self, asset_id: UUID, *, serial: str | None = None
+    ) -> Sequence[TelemetrySample]:
         raise NotImplementedError(
             f"telemetry platform {self._platform!r} has no real adapter yet — "
             f"{self._vendor_api} would be called here. Unset "
@@ -414,22 +429,29 @@ def _validated_samples(samples: Sequence[TelemetrySample]) -> list[TelemetrySamp
 # ---------------------------------------------------------------------------
 
 
-async def _require_asset_in_namespace(engine: NCEEngine, ns_uuid: UUID, asset_id: UUID) -> None:
+async def _require_asset_in_namespace(
+    engine: NCEEngine, ns_uuid: UUID, asset_id: UUID
+) -> str | None:
     """Refuse an asset that is not visible in the caller's namespace.
 
     The ``namespace_id`` predicate is EXPLICIT, not left to RLS: the owner pool
     used by integration tests bypasses FORCE RLS, and ``asset_id`` alone is a
     perfectly good key there — so without this predicate a caller in one
     namespace could name another tenant's asset and get as far as the INSERT.
+
+    Returns the row's ``serial`` (MLV16F Wave F-1) — this SELECT already
+    reads the one row a real adapter needs to resolve a vendor device, so a
+    second query is not opened for it.
     """
     async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
-        found = await conn.fetchval(
-            "SELECT 1 FROM assets WHERE id = $1::uuid AND namespace_id = $2::uuid",
+        row = await conn.fetchrow(
+            "SELECT serial FROM assets WHERE id = $1::uuid AND namespace_id = $2::uuid",
             str(asset_id),
             str(ns_uuid),
         )
-    if found is None:
+    if row is None:
         raise ValueError(f"do_pull_telemetry: asset {asset_id} is not in namespace {ns_uuid}")
+    return row["serial"]
 
 
 async def _insert_samples(
@@ -526,11 +548,11 @@ async def do_pull_telemetry(engine: NCEEngine, params: dict[str, Any]) -> dict[s
     platform = str(params.get("platform") or MOCK_PLATFORM).strip().lower()
     adapter = select_telemetry_adapter(platform)
 
-    await _require_asset_in_namespace(engine, ns_uuid, asset_id)
+    serial = await _require_asset_in_namespace(engine, ns_uuid, asset_id)
 
     # Outside any transaction on purpose (module docstring): a real adapter
     # does network I/O here.
-    samples = _validated_samples(await adapter.fetch_samples(asset_id))
+    samples = _validated_samples(await adapter.fetch_samples(asset_id, serial=serial))
 
     written = await _insert_samples(engine, ns_uuid, asset_id, samples)
 

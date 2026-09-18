@@ -317,47 +317,66 @@ def test_a1_select_telemetry_adapter_ymcs(monkeypatch: pytest.MonkeyPatch):
 
 @pytest.mark.asyncio
 async def test_a1_ymcs_deterministic_fallback():
-    """Unconfigured adapter fails loud; configured adapter parses HTTP responses."""
+    """Unconfigured adapter fails loud; configured adapter parses HTTP responses.
+
+    MLV16F Wave F-1 retrofit: the adapter's real shape is OAuth2
+    client-credentials over the YMCS v2 REST API (``/v2/token`` +
+    ``/v2/dm/...``), not the fabricated single-endpoint shape this test
+    originally pinned — see ``tests/test_assets_telemetry.py``'s
+    ``TestAVCloudAdapters`` for the full allow-list/refusal coverage. This
+    test keeps its original job (unconfigured raises; configured parses a
+    real response) against the corrected shape.
+    """
     import httpx
 
-    adapter = YMCSTelemetryAdapter(endpoint_url=None, api_key=None)
+    adapter = YMCSTelemetryAdapter(endpoint_url=None, client_id=None, client_secret=None)
     asset_id = UUID("12345678-1234-5678-1234-567812345678")
     with pytest.raises(NotImplementedError, match="ymcs") as excinfo:
-        await adapter.fetch_samples(asset_id)
+        await adapter.fetch_samples(asset_id, serial="YL-A30-0007")
     assert "NCE_ASSETS_YMCS_ENDPOINT_URL" in str(excinfo.value)
-    assert "NCE_ASSETS_YMCS_API_KEY" in str(excinfo.value)
+    assert "NCE_ASSETS_YMCS_CLIENT_ID" in str(excinfo.value)
+    assert "NCE_ASSETS_YMCS_CLIENT_SECRET" in str(excinfo.value)
 
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200,
-            json={
-                "metrics": {
-                    "uptime_seconds": 1200.0,
-                    "temperature_celsius": 38.5,
-                    "packet_loss_percent": 0.05,
-                    "mic_mute_status": 0.0,
-                    "link_status": 1.0,
+        path = request.url.path
+        if path == "/v2/token":
+            return httpx.Response(200, json={"accessToken": "tok"})
+        if path == "/v2/dm/listDevices":
+            return httpx.Response(
+                200, json={"data": [{"id": "dev-1", "sn": "YL-A30-0007"}], "total": 1}
+            )
+        if path == "/v2/dm/devices/dev-1":
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "wifi": {"signalStrength": 12},
+                        "sensor": {"temperature": 38.5},
+                    }
                 },
-                "raw": {"source": "ymcs", "device": "Yealink-MeetingBar-A30"},
-            },
-        )
+            )
+        if path == "/v2/dm/devices/dev-1/listParts":
+            return httpx.Response(200, json={"data": [{"id": "part-1"}]})
+        if path == "/v2/dm/devices/dev-1/parts/part-1":
+            return httpx.Response(
+                200, json={"data": {"extraInfo": {"motionState": 0, "irradiance": 5}}}
+            )
+        raise AssertionError(f"unexpected call: {path}")
 
     adapter_live = YMCSTelemetryAdapter(
         endpoint_url="https://ymcs.yealink.com",
-        api_key="secret-key",
+        client_id="test-id",
+        client_secret="test-secret",
         transport=httpx.MockTransport(handler),
     )
-    samples = await adapter_live.fetch_samples(asset_id)
+    samples = await adapter_live.fetch_samples(asset_id, serial="yl-a30-0007")
 
-    assert len(samples) >= 5
+    assert len(samples) >= 3
     metrics = {s.metric: s.value for s in samples}
-    assert "uptime_seconds" in metrics
-    assert "temperature_celsius" in metrics
-    assert "packet_loss_percent" in metrics
-    assert "mic_mute_status" in metrics
-    assert "link_status" in metrics
-    assert metrics["packet_loss_percent"] < 1.0
-    assert 20.0 < metrics["temperature_celsius"] < 60.0
+    assert metrics["signalStrength"] == 12.0
+    assert metrics["temperature"] == 38.5
+    assert metrics["motionState"] == 0.0
+    assert metrics["irradiance"] == 5.0
 
 
 def test_a1_ymcs_timeout_enforcement():
