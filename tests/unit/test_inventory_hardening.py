@@ -51,14 +51,17 @@ _NAMESPACE_ID = "00000000-0000-4000-8000-000000000001"
 _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
-# --- MEASURED post-rebase onto main (Wave D-5 Support Ticket Action + Wave D-1 Asset Resource + Wave D-7 on-call rota) + Lane D Wave D-3 assets service history:
-# TOTAL: 396 from main + 1 assets_service_history = 397.
-# MUTATION: 178 (unaffected -- assets_service_history is read-only).
-# CACHEABLE: 173 from main + 1 assets_service_history = 174.
-# ADMIN_ONLY: 99 (unaffected -- assets_service_history is not admin-only).
-_TOTAL_TOOLS = 397
-_MUTATION_TOOLS = 178
-_CACHEABLE_TOOLS = 174
+# --- MEASURED post-rebase onto main (post Wave D-1, D-5, D-7, D-3) plus Lane B Wave B-1 (sales resource surface: +16 total, +8 mutation, +8 cacheable):
+#   $env:NCE_MASTER_KEY="01234567890123456789012345678901"; python -c "
+#     import nce.tool_registry as tr
+#     print(len(tr.TOOL_REGISTRY), len(tr.MUTATION_TOOLS), len(tr.CACHEABLE_TOOLS), len(tr.ADMIN_ONLY_TOOLS))"
+# TOTAL: 397 baseline + 16 C12 Sales tools = 413.
+# MUTATION: 178 baseline + 8 C12 Sales mutations = 186.
+# CACHEABLE: 174 baseline + 8 C12 Sales cacheable = 182.
+# ADMIN_ONLY: 99 (unaffected).
+_TOTAL_TOOLS = 413
+_MUTATION_TOOLS = 186
+_CACHEABLE_TOOLS = 182
 _ADMIN_ONLY_TOOLS = 99
 _MIGRATION_TOOLS = 5
 

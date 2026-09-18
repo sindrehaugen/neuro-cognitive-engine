@@ -26,9 +26,9 @@ def test_marketing_tables_registered_in_expected_tenant_rls_tables():
 
 
 def test_expected_tenant_rls_tables_total_count():
-    """Verify total count of tenant RLS tables after C17 sites additions and Wave D-5 support_ticket_actions is 100."""
-    assert len(EXPECTED_TENANT_RLS_TABLES) == 100, (
-        f"Expected 100 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
+    """Verify total count of tenant RLS tables after C17 sites, Wave D-5 support_ticket_actions, and C12 sales additions is 104."""
+    assert len(EXPECTED_TENANT_RLS_TABLES) == 104, (
+        f"Expected 104 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
     )
 
 

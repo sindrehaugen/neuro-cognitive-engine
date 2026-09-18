@@ -42,9 +42,9 @@ def test_customer_portal_tables_registered_in_expected_tenant_rls_tables():
 
 
 def test_expected_tenant_rls_tables_total_count():
-    """Total count of tenant RLS tables after C17 Sites and Wave D-5 support_ticket_actions must be 100."""
-    assert len(EXPECTED_TENANT_RLS_TABLES) == 100, (
-        f"Expected 100 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
+    """Total count of tenant RLS tables after C17 Sites, Wave D-5 support_ticket_actions, and C12 Sales resource additions must be 104."""
+    assert len(EXPECTED_TENANT_RLS_TABLES) == 104, (
+        f"Expected 104 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
     )
 
 

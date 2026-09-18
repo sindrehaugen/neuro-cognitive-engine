@@ -164,30 +164,6 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     # ---------------------------------------------------------------------------
     # Sales Engine (Lane B Waves B-1, B-4 / Lane E)
     # ---------------------------------------------------------------------------
-    "CUSTOMER": ResourceExemption(
-        owner_engine="sales",
-        reason=(
-            "No sales_customers table exists (grep -c \"CREATE TABLE IF NOT EXISTS "
-            "sales_customers\" nce/schema.sql -> 0, and the string appears nowhere "
-            "else in the file). CUSTOMER rows are multiplexed into the polymorphic "
-            "sales_read_model table (entity discriminator column, natural key "
-            "(namespace_id, entity, source_id), line 1644) alongside LEAD/DEAL/"
-            "QUOTE/OPPORTUNITY -- a single ResourceSpec.table_name cannot represent "
-            "one node type out of a shared multi-entity table without an "
-            "entity-filter capability the spec shape does not have today. Corrected "
-            "by Lane E's exemptions sweep (matches Lane B's independent K-B1 "
-            "finding). Scheduled for Wave B-1 CUSTOMER resource declaration."
-        ),
-    ),
-    "LEAD": ResourceExemption(
-        owner_engine="sales",
-        reason=(
-            "No sales_leads table exists (grep -c \"CREATE TABLE IF NOT EXISTS "
-            "sales_leads\" nce/schema.sql -> 0). Same polymorphic sales_read_model "
-            "shape as CUSTOMER (see that entry). Corrected by Lane E's exemptions "
-            "sweep. Scheduled for Wave B-1 LEAD resource declaration."
-        ),
-    ),
     "OPPORTUNITY": ResourceExemption(
         owner_engine="sales",
         reason=(
@@ -196,24 +172,6 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
             "OPPORTUNITY maps onto it does not hold either. Same polymorphic "
             "sales_read_model shape as CUSTOMER. Corrected by Lane E's exemptions "
             "sweep. Scheduled for Wave B-1 / B-3 deal lifecycle restructuring."
-        ),
-    ),
-    "DEAL": ResourceExemption(
-        owner_engine="sales",
-        reason=(
-            "No sales_deals table exists (grep -c \"CREATE TABLE IF NOT EXISTS "
-            "sales_deals\" nce/schema.sql -> 0). Same polymorphic sales_read_model "
-            "shape as CUSTOMER. Corrected by Lane E's exemptions sweep. Scheduled "
-            "for Wave B-1 DEAL resource declaration."
-        ),
-    ),
-    "QUOTE": ResourceExemption(
-        owner_engine="sales",
-        reason=(
-            "No sales_quotes table exists (grep -c \"CREATE TABLE IF NOT EXISTS "
-            "sales_quotes\" nce/schema.sql -> 0). Same polymorphic sales_read_model "
-            "shape as CUSTOMER. Corrected by Lane E's exemptions sweep. Scheduled "
-            "for Wave B-1 QUOTE resource declaration."
         ),
     ),
     "SIGNED_BASELINE": ResourceExemption(
