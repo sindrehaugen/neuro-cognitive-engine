@@ -167,36 +167,53 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     "CUSTOMER": ResourceExemption(
         owner_engine="sales",
         reason=(
-            "Real attribute table (sales_customers). Scheduled for Wave B-1 "
-            "CUSTOMER resource declaration replacing duplicate hand-written routes."
+            "No sales_customers table exists (grep -c \"CREATE TABLE IF NOT EXISTS "
+            "sales_customers\" nce/schema.sql -> 0, and the string appears nowhere "
+            "else in the file). CUSTOMER rows are multiplexed into the polymorphic "
+            "sales_read_model table (entity discriminator column, natural key "
+            "(namespace_id, entity, source_id), line 1644) alongside LEAD/DEAL/"
+            "QUOTE/OPPORTUNITY -- a single ResourceSpec.table_name cannot represent "
+            "one node type out of a shared multi-entity table without an "
+            "entity-filter capability the spec shape does not have today. Corrected "
+            "by Lane E's exemptions sweep (matches Lane B's independent K-B1 "
+            "finding). Scheduled for Wave B-1 CUSTOMER resource declaration."
         ),
     ),
     "LEAD": ResourceExemption(
         owner_engine="sales",
         reason=(
-            "Real attribute table (sales_leads). Scheduled for Wave B-1 LEAD "
-            "resource declaration replacing duplicate hand-written routes."
+            "No sales_leads table exists (grep -c \"CREATE TABLE IF NOT EXISTS "
+            "sales_leads\" nce/schema.sql -> 0). Same polymorphic sales_read_model "
+            "shape as CUSTOMER (see that entry). Corrected by Lane E's exemptions "
+            "sweep. Scheduled for Wave B-1 LEAD resource declaration."
         ),
     ),
     "OPPORTUNITY": ResourceExemption(
         owner_engine="sales",
         reason=(
-            "Sub-deal stage in the sales pipeline mapped onto sales_deals; scheduled "
-            "for Wave B-1 / B-3 deal lifecycle restructuring."
+            "No sales_deals table exists (grep -c \"CREATE TABLE IF NOT EXISTS "
+            "sales_deals\" nce/schema.sql -> 0); the prior reason's own claim that "
+            "OPPORTUNITY maps onto it does not hold either. Same polymorphic "
+            "sales_read_model shape as CUSTOMER. Corrected by Lane E's exemptions "
+            "sweep. Scheduled for Wave B-1 / B-3 deal lifecycle restructuring."
         ),
     ),
     "DEAL": ResourceExemption(
         owner_engine="sales",
         reason=(
-            "Real attribute table (sales_deals). Scheduled for Wave B-1 DEAL "
-            "resource declaration replacing duplicate hand-written routes."
+            "No sales_deals table exists (grep -c \"CREATE TABLE IF NOT EXISTS "
+            "sales_deals\" nce/schema.sql -> 0). Same polymorphic sales_read_model "
+            "shape as CUSTOMER. Corrected by Lane E's exemptions sweep. Scheduled "
+            "for Wave B-1 DEAL resource declaration."
         ),
     ),
     "QUOTE": ResourceExemption(
         owner_engine="sales",
         reason=(
-            "Real attribute table (sales_quotes). Scheduled for Wave B-1 QUOTE "
-            "resource declaration replacing duplicate hand-written routes."
+            "No sales_quotes table exists (grep -c \"CREATE TABLE IF NOT EXISTS "
+            "sales_quotes\" nce/schema.sql -> 0). Same polymorphic sales_read_model "
+            "shape as CUSTOMER. Corrected by Lane E's exemptions sweep. Scheduled "
+            "for Wave B-1 QUOTE resource declaration."
         ),
     ),
     "SIGNED_BASELINE": ResourceExemption(
@@ -243,8 +260,14 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     "AGREEMENT": ResourceExemption(
         owner_engine="agreements",
         reason=(
-            "Real attribute table (agreements). Scheduled for Wave B-9 AGREEMENT "
-            "resource declaration replacing duplicate hand-written routes."
+            "kg_nodes-only stub, not a real table -- no agreements table exists "
+            "(grep -c \"CREATE TABLE IF NOT EXISTS agreements\" nce/schema.sql -> 0; "
+            "the string 'agreements' appears only as the agreements_source_id column "
+            "and in comments). nce/vertical_modules/agreements/graph.py inserts only "
+            "into kg_nodes (label, entity_type, namespace_id, agreements_source_id, "
+            "change_origin) -- no dedicated attribute row. Corrected by Lane E's "
+            "exemptions sweep. Scheduled for Wave B-9 AGREEMENT resource declaration "
+            "once a backing table exists."
         ),
     ),
     "AGREEMENT_TERM": ResourceExemption(
@@ -339,8 +362,11 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     "WORK_ORDER": ResourceExemption(
         owner_engine="field_tech",
         reason=(
-            "Real attribute table (field_tech_work_orders). Scheduled for Wave C-9 "
-            "WORK_ORDER resource declaration."
+            "Real attribute table -- named work_orders, not field_tech_work_orders as "
+            "the prior exemption text claimed (grep -c \"CREATE TABLE IF NOT EXISTS "
+            "field_tech_work_orders\" nce/schema.sql -> 0; \"...work_orders\" -> 1, "
+            "line 4069). Corrected by Lane E's exemptions sweep. Scheduled for Wave "
+            "C-9 WORK_ORDER resource declaration."
         ),
     ),
     "FIELD_TECH_CHECKLIST": ResourceExemption(
@@ -353,8 +379,11 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     "FIELD_TECH_TIME_ENTRY": ResourceExemption(
         owner_engine="field_tech",
         reason=(
-            "Real attribute table (field_tech_time_entries). Scheduled for Wave C-7 "
-            "TIME_ENTRY spec and approval workflow."
+            "Real attribute table -- named time_entries, not field_tech_time_entries "
+            "as the prior exemption text claimed (grep -c \"CREATE TABLE IF NOT "
+            "EXISTS field_tech_time_entries\" nce/schema.sql -> 0; \"...time_entries\" "
+            "-> 1, line 4167). Corrected by Lane E's exemptions sweep. Scheduled for "
+            "Wave C-7 TIME_ENTRY spec and approval workflow."
         ),
     ),
     "FIELD_TECH_SCAN": ResourceExemption(
