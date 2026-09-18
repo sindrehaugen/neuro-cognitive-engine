@@ -74,11 +74,6 @@
     "owner": "MLV15C-C10",
     "reason": "Deal loss telemetry capture core; scheduled for wiring into C10 decision feedback table in MLV15C."
   },
-  "nce/vertical_modules/sales/dealroom.py::do_open_dealroom": {
-    "engine": "sales",
-    "owner": "MLV15B-S3",
-    "reason": "Customer dealroom provisioning core; pending migration to bom_lines and exposure in v1.5 Wave S-3."
-  },
   "nce/vertical_modules/sales/flip.py::do_flip_function": {
     "engine": "sales",
     "owner": "MLV15B-S4",

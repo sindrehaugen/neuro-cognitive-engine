@@ -677,6 +677,11 @@ def build_admin_routes() -> list[Route]:
             endpoint=sales_handlers.api_admin_sales_quote_draft,
             methods=["POST"],
         ),
+        Route(
+            "/api/sales/dealroom",
+            endpoint=sales_handlers.api_admin_sales_dealroom,
+            methods=["POST"],
+        ),
         # ------------------------------------------------------------------
         # Entity resolution admin endpoints
         # ------------------------------------------------------------------
