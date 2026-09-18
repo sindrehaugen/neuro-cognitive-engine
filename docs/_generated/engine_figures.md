@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `51044aa` (public `main`) · **Last-audited:** generated
+> **Status:** shipped · **Verified-against:** `761e8fe` (public `main`) · **Last-audited:** generated
 
 # NCE Engine Figures — Inventory & Counters
 
@@ -14,11 +14,11 @@
 
 | Counter | Value | Source of Truth |
 |---|---|---|
-| `TOOL_REGISTRY` entries | **311** MCP tools (69 shared + 242 across 21 engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = 311` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |
-| SQL migrations | 79 files (+1 optional), `001` → `083` — gaps at `002`, `009`, `010`, `059` | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |
+| `TOOL_REGISTRY` entries | **315** MCP tools (69 shared + 246 across 22 engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = 315` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |
+| SQL migrations | 80 files (+1 optional), `001` → `084` — gaps at `002`, `009`, `010`, `059` | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |
 | Golden Thread seam burndown | **0 of 28** lifecycle steps broken (0 distinct seams) | Generated in [`docs/_generated/golden_thread_seams.md`](golden_thread_seams.md) from [`tests/integration/test_golden_thread.py`](../../tests/integration/test_golden_thread.py) |
-| v1.6 C12 resource-surface registrations | **3 of 21** engines have `resources.py` | AST of `nce/vertical_modules/<engine>/resources.py` per engine — see the v1.6 section below |
-| `EXPECTED_TENANT_RLS_TABLES` | **92** | AST of [`nce/event_log.py`](../../nce/event_log.py) |
+| v1.6 C12 resource-surface registrations | **4 of 22** engines have `resources.py` | AST of `nce/vertical_modules/<engine>/resources.py` per engine — see the v1.6 section below |
+| `EXPECTED_TENANT_RLS_TABLES` | **95** | AST of [`nce/event_log.py`](../../nce/event_log.py) |
 
 ## v1.6 — C12 Resource Surface Registration (Lane E)
 
@@ -34,6 +34,7 @@
 | `business_insights` | ⬜ | 0 |
 | `customer_portal` | ⬜ | 0 |
 | `diagnostics` | ⬜ | 0 |
+| `documents` | ✅ | 1 |
 | `dynamics365` | ⬜ | 0 |
 | `economy` | ⬜ | 0 |
 | `field_tech` | ⬜ | 0 |
@@ -53,9 +54,9 @@
 
 ## Tool Registry Breakdown
 
-- **Total Registered Tools:** 311
+- **Total Registered Tools:** 315
 - **Shared Core Tools:** 69
-- **Vertical Engine Tools:** 242 across 21 engine packages
+- **Vertical Engine Tools:** 246 across 22 engine packages
 
 | Engine Package | Tool Count |
 |---|---:|
@@ -64,6 +65,7 @@
 | `business_insights` | 6 |
 | `customer_portal` | 9 |
 | `diagnostics` | 5 |
+| `documents` | 4 |
 | `dynamics365` | 6 |
 | `economy` | 15 |
 | `field_tech` | 10 |
@@ -83,10 +85,10 @@
 
 ## SQL Migration Census
 
-- **Base Migrations:** 79 files (`001` → `083`)
+- **Base Migrations:** 80 files (`001` → `084`)
 - **Optional Migrations:** 1 files (`010_citus_sharding.sql`)
 - **Unallocated / Skipped Prefixes in Base:** `002`, `009`, `010`, `059`
-- **Total SQL Migration Files:** 80
+- **Total SQL Migration Files:** 81
 
 ## Golden Thread Seam Status
 

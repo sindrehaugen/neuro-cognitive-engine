@@ -71,6 +71,12 @@ def _clear_mem_store() -> None:
     _MEM_STORE.clear()
     _MEM_COMMENTS.clear()
     _MEM_TAGS.clear()
+    try:
+        from nce.vertical_modules.documents.service import _clear_mem_store as _clear_docs
+
+        _clear_docs()
+    except Exception:
+        pass
 
 
 def serialize_val(val: Any) -> Any:
@@ -441,8 +447,35 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                     )
         else:
             mem = _get_mem_bucket(spec, str(ns_uuid) if ns_uuid else None)
+            if "created_at" not in data:
+                data["created_at"] = now_iso
             mem[item_id] = dict(data)
             created = dict(data)
+            if spec.engine == "documents" and spec.entity == "documents":
+                try:
+                    from nce.vertical_modules.documents.models import DocumentRecord
+                    from nce.vertical_modules.documents.service import _MEM_DOCUMENTS
+
+                    doc_rec = DocumentRecord(
+                        id=UUID(item_id),
+                        namespace_id=ns_uuid or UUID("00000000-0000-0000-0000-000000000000"),
+                        title=str(data.get("title", "")),
+                        document_ref=str(data.get("document_ref", "")),
+                        source_kind=str(data.get("source_kind", "sharepoint")),
+                        document_kind=str(data.get("document_kind", "other")),
+                        file_name=data.get("file_name"),
+                        mime_type=data.get("mime_type"),
+                        file_size_bytes=data.get("file_size_bytes"),
+                        sha256=data.get("sha256"),
+                        tags=tuple(data.get("tags") or ()),
+                        metadata=dict(data.get("metadata") or {}),
+                        archived=bool(data.get("archived", False)),
+                        created_at=datetime.fromisoformat(now_iso),
+                        updated_at=datetime.fromisoformat(now_iso),
+                    )
+                    _MEM_DOCUMENTS.setdefault(str(ns_uuid), {})[item_id] = doc_rec
+                except Exception:
+                    pass
 
         if admin_state.engine:
             await bump_mcp_cache_generation(
@@ -972,6 +1005,297 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         tag_list = sorted(_MEM_TAGS.get(mem_key, set()))
         return JSONResponse({"status": "ok", "tags": tag_list})
 
+    async def handle_list_documents(request: Request) -> Response:
+        ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
+        if err_resp:
+            return err_resp
+
+        item_id = request.path_params.get("id")
+        if not item_id:
+            return admin_error_response(
+                "Missing id parameter", ValueError("Missing id"), status_code=400
+            )
+
+        tier = resolve_principal_tier(request)
+        include_archived = request.query_params.get("include_archived", "").strip().lower() in (
+            "true",
+            "1",
+        )
+
+        from nce.vertical_modules.documents.resources import DOCUMENT_SPEC
+        from nce.vertical_modules.documents.service import list_entity_documents
+
+        session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+        if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
+            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+                exc = NotImplementedError(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
+                )
+                return admin_error_response(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                    exc,
+                    status_code=501,
+                )
+            try:
+                async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                    docs = await list_entity_documents(
+                        conn,
+                        session_ns,
+                        spec.node_type,
+                        str(item_id),
+                        include_archived=include_archived,
+                    )
+            except Exception as exc:
+                return admin_error_response(
+                    f"Failed to list entity documents: {exc}", exc, status_code=500
+                )
+        else:
+            docs = await list_entity_documents(
+                None,
+                session_ns,
+                spec.node_type,
+                str(item_id),
+                include_archived=include_archived,
+            )
+
+        redacted = [redact_item(d, DOCUMENT_SPEC, tier) for d in docs]
+        return JSONResponse({"documents": redacted, "count": len(redacted)})
+
+    async def handle_attach_document(request: Request) -> Response:
+        try:
+            body = await request.json()
+        except Exception as exc:
+            return admin_error_response("Malformed JSON body", exc, status_code=400)
+
+        tier = resolve_principal_tier(request)
+        if is_global and tier == "external-customer":
+            exc = PermissionError("External customers cannot modify global catalog resources")
+            return admin_error_response(
+                "External customers cannot modify global resources", exc, status_code=403
+            )
+
+        ns_uuid, err_resp = extract_namespace_id(
+            request, body if isinstance(body, dict) else None, required=is_tenant
+        )
+        if err_resp:
+            return err_resp
+
+        item_id = request.path_params.get("id")
+        if not item_id:
+            return admin_error_response(
+                "Missing id parameter", ValueError("Missing id"), status_code=400
+            )
+
+        if not isinstance(body, dict):
+            return admin_error_response(
+                "Request body must be a JSON object",
+                ValueError("Invalid body"),
+                status_code=400,
+            )
+
+        relation = str(body.get("relation") or "about")
+        doc_id_raw = body.get("document_id") or body.get("doc_id")
+        doc_data = body.get("document") if isinstance(body.get("document"), dict) else None
+
+        from nce.vertical_modules.documents.service import link_document, register_document
+
+        session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+
+        if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
+            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+                exc = NotImplementedError(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
+                )
+                return admin_error_response(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                    exc,
+                    status_code=501,
+                )
+            try:
+                async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                    if doc_id_raw:
+                        try:
+                            doc_uuid = UUID(str(doc_id_raw))
+                        except Exception as exc:
+                            return admin_error_response(
+                                f"Invalid document UUID: {doc_id_raw}", exc, status_code=400
+                            )
+                    elif doc_data or ("title" in body and "document_ref" in body):
+                        dinfo = doc_data or body
+                        title = dinfo.get("title")
+                        doc_ref = dinfo.get("document_ref")
+                        if not title or not doc_ref:
+                            return admin_error_response(
+                                "Missing required title or document_ref for document registration",
+                                ValueError("Missing fields"),
+                                status_code=400,
+                            )
+                        new_doc = await register_document(
+                            conn,
+                            session_ns,
+                            str(title),
+                            str(doc_ref),
+                            source_kind=str(dinfo.get("source_kind", "sharepoint")),
+                            document_kind=str(dinfo.get("document_kind", "other")),
+                            file_name=dinfo.get("file_name"),
+                            mime_type=dinfo.get("mime_type"),
+                            file_size_bytes=dinfo.get("file_size_bytes"),
+                            sha256=dinfo.get("sha256"),
+                            tags=tuple(dinfo.get("tags") or ()),
+                            metadata=dinfo.get("metadata") or {},
+                        )
+                        doc_uuid = new_doc.id
+                    else:
+                        return admin_error_response(
+                            "Must provide document_id or document registration fields (title, document_ref)",
+                            ValueError("Validation error"),
+                            status_code=400,
+                        )
+
+                    link_rec = await link_document(
+                        conn,
+                        session_ns,
+                        doc_uuid,
+                        spec.node_type,
+                        str(item_id),
+                        relation=relation,
+                    )
+            except Exception as exc:
+                return admin_error_response(
+                    f"Failed to attach document: {exc}", exc, status_code=500
+                )
+        else:
+            if doc_id_raw:
+                try:
+                    doc_uuid = UUID(str(doc_id_raw))
+                except Exception as exc:
+                    return admin_error_response(
+                        f"Invalid document UUID: {doc_id_raw}", exc, status_code=400
+                    )
+            elif doc_data or ("title" in body and "document_ref" in body):
+                dinfo = doc_data or body
+                title = dinfo.get("title")
+                doc_ref = dinfo.get("document_ref")
+                if not title or not doc_ref:
+                    return admin_error_response(
+                        "Missing required title or document_ref for document registration",
+                        ValueError("Missing fields"),
+                        status_code=400,
+                    )
+                new_doc = await register_document(
+                    None,
+                    session_ns,
+                    str(title),
+                    str(doc_ref),
+                    source_kind=str(dinfo.get("source_kind", "sharepoint")),
+                    document_kind=str(dinfo.get("document_kind", "other")),
+                    file_name=dinfo.get("file_name"),
+                    mime_type=dinfo.get("mime_type"),
+                    file_size_bytes=dinfo.get("file_size_bytes"),
+                    sha256=dinfo.get("sha256"),
+                    tags=tuple(dinfo.get("tags") or ()),
+                    metadata=dinfo.get("metadata") or {},
+                )
+                doc_uuid = new_doc.id
+            else:
+                return admin_error_response(
+                    "Must provide document_id or document registration fields (title, document_ref)",
+                    ValueError("Validation error"),
+                    status_code=400,
+                )
+
+            link_rec = await link_document(
+                None, session_ns, doc_uuid, spec.node_type, str(item_id), relation=relation
+            )
+
+        if admin_state.engine:
+            await bump_mcp_cache_generation(
+                admin_state.engine,
+                engine_name=spec.engine,
+                route=f"api_{spec.engine}_{spec.mcp_slug}_documents",
+            )
+
+        return JSONResponse(
+            {
+                "status": "ok",
+                "link_id": str(link_rec.id),
+                "document_id": str(doc_uuid),
+                "relation": link_rec.relation,
+                "entity_type": link_rec.entity_type,
+                "entity_id": link_rec.entity_id,
+            },
+            status_code=201,
+        )
+
+    async def handle_detach_document(request: Request) -> Response:
+        tier = resolve_principal_tier(request)
+        if is_global and tier == "external-customer":
+            exc = PermissionError("External customers cannot modify global catalog resources")
+            return admin_error_response(
+                "External customers cannot modify global resources", exc, status_code=403
+            )
+
+        ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
+        if err_resp:
+            return err_resp
+
+        item_id = request.path_params.get("id")
+        doc_id_raw = request.path_params.get("doc_id")
+        if not item_id or not doc_id_raw:
+            return admin_error_response(
+                "Missing id or doc_id parameter",
+                ValueError("Missing parameters"),
+                status_code=400,
+            )
+
+        try:
+            doc_uuid = UUID(str(doc_id_raw))
+        except Exception as exc:
+            return admin_error_response(
+                f"Invalid document UUID: {doc_id_raw}", exc, status_code=400
+            )
+
+        from nce.vertical_modules.documents.service import unlink_document
+
+        session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+
+        if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
+            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+                exc = NotImplementedError(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
+                )
+                return admin_error_response(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                    exc,
+                    status_code=501,
+                )
+            try:
+                async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                    unlinked = await unlink_document(
+                        conn, session_ns, doc_uuid, spec.node_type, str(item_id)
+                    )
+            except Exception as exc:
+                return admin_error_response(
+                    f"Failed to detach document: {exc}", exc, status_code=500
+                )
+        else:
+            unlinked = await unlink_document(
+                None, session_ns, doc_uuid, spec.node_type, str(item_id)
+            )
+
+        if not unlinked:
+            exc = KeyError("Document link not found")
+            return admin_error_response("Document link not found", exc, status_code=404)
+
+        if admin_state.engine:
+            await bump_mcp_cache_generation(
+                admin_state.engine,
+                engine_name=spec.engine,
+                route=f"api_{spec.engine}_{spec.mcp_slug}_documents",
+            )
+
+        return JSONResponse({"status": "ok", "unlinked": True})
+
     async def handle_bulk(request: Request) -> Response:
         try:
             body = await request.json()
@@ -1066,4 +1390,11 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         Route(f"{prefix}/{{id}}/tags", endpoint=handle_list_tags, methods=["GET"]),
         Route(f"{prefix}/{{id}}/tags", endpoint=handle_add_tag, methods=["POST"]),
         Route(f"{prefix}/{{id}}/tags/{{tag}}", endpoint=handle_remove_tag, methods=["DELETE"]),
+        Route(f"{prefix}/{{id}}/documents", endpoint=handle_list_documents, methods=["GET"]),
+        Route(f"{prefix}/{{id}}/documents", endpoint=handle_attach_document, methods=["POST"]),
+        Route(
+            f"{prefix}/{{id}}/documents/{{doc_id}}",
+            endpoint=handle_detach_document,
+            methods=["DELETE"],
+        ),
     ]

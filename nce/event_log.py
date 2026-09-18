@@ -397,6 +397,10 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "notifications": "namespace_id",
     "reminders": "namespace_id",
     "notification_subscriptions": "namespace_id",
+    # C14 Document Register (Shared Core, Wave A-4): documents, links, and shares.
+    "documents": "namespace_id",
+    "document_links": "namespace_id",
+    "document_shares": "namespace_id",
 }
 
 

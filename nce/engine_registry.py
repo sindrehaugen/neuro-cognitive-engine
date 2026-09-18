@@ -35,6 +35,7 @@ VERTICAL_MODULE_NAMES: tuple[str, ...] = (
     "business_insights",
     "customer_portal",
     "diagnostics",
+    "documents",
     "dynamics365",
     "economy",
     "field_tech",

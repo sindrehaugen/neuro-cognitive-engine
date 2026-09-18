@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-> **Status:** shipped · **Verified-against:** `51044aa` (public `main`) · **Last-audited:** 2026-09-18
-=======
-> **Status:** shipped · **Verified-against:** `4f07ce5` (public `main`) · **Last-audited:** 2026-09-18
->>>>>>> 32bb34b (docs(instruments): regenerate figures and surface for Wave A-3; align gen_engine_figures.py with C12 resource tools)
+> **Status:** shipped · **Verified-against:** `761e8fe` (public `main`) · **Last-audited:** 2026-09-18
 
 # NCE Vertical Engines — Build & Production Status
 
@@ -26,7 +22,7 @@
 > ```
 
 <<<<<<< HEAD
-## Measured inventory at `51044aa`
+## Measured inventory at `761e8fe`
 =======
 ## Measured inventory at `4f07ce5`
 >>>>>>> 32bb34b (docs(instruments): regenerate figures and surface for Wave A-3; align gen_engine_figures.py with C12 resource tools)
@@ -35,17 +31,17 @@
 |---|---|
 | Module packages under `nce/vertical_modules/` | **20** (17 engines + `diagnostics`, `dynamics365`, `netbox`) |
 <<<<<<< HEAD
-| `TOOL_REGISTRY` entries | **311** MCP tools (69 shared + 242 engine) — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
+| `TOOL_REGISTRY` entries | **315** MCP tools (69 shared + 246 engine) — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 =======
 | `TOOL_REGISTRY` entries | **304** MCP tools (69 shared + 235 engine) — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 >>>>>>> 32bb34b (docs(instruments): regenerate figures and surface for Wave A-3; align gen_engine_figures.py with C12 resource tools)
 | REST routes on the admin app | measured per-engine in [`docs/_generated/surface.md`](../_generated/surface.md) (+12 on the Customer Portal's own app shell) — regenerate for a total, do not hand-add the column |
 | `do_*` domain cores | **228** distinct names across the 17 engines |
-| SQL migrations | 79 files (+1 optional), `001` → `083` — gaps at `002`, `009`, `059` (never allocated); `010` exists only under `nce/migrations/optional/`. — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
-| `EXPECTED_TENANT_RLS_TABLES` | **92** |
+| SQL migrations | 80 files (+1 optional), `001` → `084` — gaps at `002`, `009`, `059` (never allocated); `010` exists only under `nce/migrations/optional/`. — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
+| `EXPECTED_TENANT_RLS_TABLES` | **95** |
 | Tests | **6,423** `def test_` across 528 files |
 | Golden Thread seam burndown | **0 of 28** lifecycle steps broken (0 distinct seams) — mirrored from [`docs/_generated/golden_thread_seams.md`](../_generated/golden_thread_seams.md); see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
-| v1.6 C12 resource-surface registrations | **3 of 21** engines have `resources.py` — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
+| v1.6 C12 resource-surface registrations | **4 of 22** engines have `resources.py` — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 
 **Status legend**
 

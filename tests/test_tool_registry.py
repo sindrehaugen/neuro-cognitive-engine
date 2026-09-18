@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 311  # 307 + 4 C12 Procurement PO_LINE resource tools (Lane E Wave E-3)
+_EXPECTED_TOTAL = 315  # 311 + 4 C14 Document Register tools (Lane A Wave A-4)
 
 
 def test_registry_has_expected_entries():
@@ -283,6 +283,9 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # Lane E Wave E-3 -- C12 Procurement PO_LINE resource surface mutations (upsert + archive)
         "procurement_upsert_po_lines",
         "procurement_archive_po_lines",
+        # Lane A Wave A-4 -- C14 Document Register resource surface mutations (upsert + archive)
+        "documents_upsert_documents",
+        "documents_archive_documents",
     }
 )
 
@@ -296,8 +299,8 @@ def test_mutation_tools_exact_match():
 
 def test_mutation_tools_count():
     assert (
-        len(MUTATION_TOOLS) == 137
-    )  # 131 baseline + 4 C12 Notifications & Reminders mutations (Wave A-3) + 2 C12 Procurement mutations (Lane E Wave E-3)
+        len(MUTATION_TOOLS) == 139
+    )  # 131 baseline + 4 C12 Notifications & Reminders mutations (Wave A-3) + 2 C12 Procurement mutations (Lane E Wave E-3) + 2 C14 Document mutations (Lane A Wave A-4)
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -498,6 +501,9 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         # Lane E Wave E-3 -- C12 Procurement PO_LINE resource surface cacheable reads (list + get)
         "procurement_list_po_lines",
         "procurement_get_po_lines",
+        # Lane A Wave A-4 -- C14 Document Register resource surface cacheable reads (list + get)
+        "documents_list_documents",
+        "documents_get_documents",
     }
 )
 
@@ -511,8 +517,8 @@ def test_cacheable_tools_exact_match():
 
 def test_cacheable_tools_count():
     assert (
-        len(CACHEABLE_TOOLS) == 129
-    )  # 123 baseline + 4 C12 Notifications & Reminders cacheable reads (Wave A-3) + 2 C12 Procurement cacheable reads (Lane E Wave E-3)
+        len(CACHEABLE_TOOLS) == 131
+    )  # 123 baseline + 4 C12 Notifications & Reminders cacheable reads (Wave A-3) + 2 C12 Procurement cacheable reads (Lane E Wave E-3) + 2 C14 Document cacheable reads (Lane A Wave A-4)
 
 
 # ---------------------------------------------------------------------------

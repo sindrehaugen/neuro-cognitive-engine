@@ -1937,3 +1937,54 @@ BEGIN
         GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE notification_subscriptions TO nce_app;
     END IF;
 END $$;
+
+ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE documents FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON documents;
+CREATE POLICY tenant_isolation_policy ON documents
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE documents FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE documents TO nce_app;
+    END IF;
+END $$;
+
+ALTER TABLE document_links ENABLE ROW LEVEL SECURITY;
+ALTER TABLE document_links FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON document_links;
+CREATE POLICY tenant_isolation_policy ON document_links
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE document_links FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE document_links TO nce_app;
+    END IF;
+END $$;
+
+ALTER TABLE document_shares ENABLE ROW LEVEL SECURITY;
+ALTER TABLE document_shares FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON document_shares;
+CREATE POLICY tenant_isolation_policy ON document_shares
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE document_shares FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE document_shares TO nce_app;
+    END IF;
+END $$;
