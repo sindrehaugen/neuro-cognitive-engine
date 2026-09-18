@@ -55,8 +55,13 @@ _MEM_COMMENTS: dict[str, list[dict[str, Any]]] = {}
 _MEM_TAGS: dict[str, set[str]] = {}
 
 
-def _get_mem_bucket(spec: ResourceSpec, ns: str) -> dict[str, Any]:
-    key = f"{spec.engine}:{spec.entity}:{ns}"
+def _get_mem_bucket(spec: ResourceSpec, ns: str | None = None) -> dict[str, Any]:
+    if spec.tenant_scope == "global":
+        key = f"{spec.engine}:{spec.entity}:__global__"
+    elif spec.tenant_scope == "graph":
+        key = f"{spec.engine}:{spec.entity}:{ns or '__graph__'}"
+    else:
+        key = f"{spec.engine}:{spec.entity}:{ns}"
     if key not in _MEM_STORE:
         _MEM_STORE[key] = {}
     return _MEM_STORE[key]
@@ -133,7 +138,7 @@ def resolve_principal_tier(request: Request) -> str:
 
 
 def extract_namespace_id(
-    request: Request, body: dict[str, Any] | None = None
+    request: Request, body: dict[str, Any] | None = None, required: bool = True
 ) -> tuple[UUID | None, JSONResponse | None]:
     """Extract and validate namespace_id from query params, body, or headers."""
     raw = request.query_params.get("namespace_id")
@@ -143,6 +148,8 @@ def extract_namespace_id(
         raw = request.headers.get("X-NCE-Namespace-ID")
 
     if not raw or not str(raw).strip():
+        if not required:
+            return None, None
         exc = ValueError("Missing required query param: namespace_id")
         return None, admin_error_response(
             "Missing required query param: namespace_id", exc, status_code=422
@@ -159,17 +166,19 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
     """Generate all Starlette Route definitions for a ResourceSpec."""
 
     prefix = spec.rest_collection_path
+    is_tenant = spec.tenant_scope == "tenant"
+    is_global = spec.tenant_scope == "global"
+    is_graph = spec.tenant_scope == "graph"
 
     async def handle_list(request: Request) -> Response:
-        ns_uuid, err_resp = extract_namespace_id(request)
+        ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
         if err_resp:
             return err_resp
-        assert ns_uuid is not None
-
-        try:
-            set_namespace_context(NamespaceContext(namespace_id=ns_uuid))
-        except Exception:
-            pass
+        if ns_uuid is not None:
+            try:
+                set_namespace_context(NamespaceContext(namespace_id=ns_uuid))
+            except Exception:
+                pass
 
         tier = resolve_principal_tier(request)
         limit = 50
@@ -196,70 +205,88 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         items: list[dict[str, Any]] = []
         next_cursor: str | None = None
 
-        if admin_state.engine and getattr(admin_state.engine, "pg_pool", None) and spec.table_name:
-            try:
-                async with scoped_pg_session(admin_state.engine.pg_pool, ns_uuid) as conn:
-                    where_clauses = ["namespace_id = $1"]
-                    params: list[Any] = [ns_uuid]
-                    idx = 2
-
-                    if spec.soft_delete_field:
-                        include_archived = (
-                            request.query_params.get("include_archived", "false").lower() == "true"
-                        )
-                        if not include_archived:
-                            where_clauses.append(
-                                f"({spec.soft_delete_field} = false OR {spec.soft_delete_field} IS NULL)"
-                            )
-
-                    for f_col, f_val in active_filters.items():
-                        where_clauses.append(f"{f_col} = ${idx}")
-                        params.append(f_val)
-                        idx += 1
-
-                    if q and spec.searchable_fields:
-                        q_clauses = [
-                            f"{s_col}::text ILIKE ${idx}" for s_col in spec.searchable_fields
-                        ]
-                        where_clauses.append(f"({' OR '.join(q_clauses)})")
-                        params.append(f"%{q}%")
-                        idx += 1
-
-                    if cursor:
-                        try:
-                            dec = base64.b64decode(cursor).decode("utf-8")
-                            cursor_id = dec
-                            where_clauses.append(f"{spec.id_field} < ${idx}")
-                            params.append(cursor_id)
-                            idx += 1
-                        except Exception:
-                            pass
-
-                    params.append(limit + 1)
-                    limit_idx = idx
-
-                    query = f"""
-                        SELECT * FROM {spec.table_name}
-                        WHERE {' AND '.join(where_clauses)}
-                        ORDER BY {spec.id_field} DESC
-                        LIMIT ${limit_idx}
-                    """
-                    rows = await conn.fetch(query, *params)
-                    has_more = len(rows) > limit
-                    page_rows = rows[:limit]
-                    for r in page_rows:
-                        items.append(row_to_dict(r))
-
-                    if has_more and page_rows:
-                        last_id = str(page_rows[-1][spec.id_field])
-                        next_cursor = base64.b64encode(last_id.encode("utf-8")).decode("utf-8")
-            except Exception as exc:
-                return admin_error_response(
-                    f"Failed to query {spec.entity}: {exc}", exc, status_code=500
+        if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
+            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+                exc = NotImplementedError(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
                 )
+                return admin_error_response(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                    exc,
+                    status_code=501,
+                )
+            if spec.table_name:
+                try:
+                    session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                    async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                        if is_global:
+                            where_clauses: list[str] = []
+                            params: list[Any] = []
+                            idx = 1
+                        else:
+                            where_clauses = ["namespace_id = $1"]
+                            params = [ns_uuid]
+                            idx = 2
+
+                        if spec.soft_delete_field:
+                            include_archived = (
+                                request.query_params.get("include_archived", "false").lower()
+                                == "true"
+                            )
+                            if not include_archived:
+                                where_clauses.append(
+                                    f"({spec.soft_delete_field} = false OR {spec.soft_delete_field} IS NULL)"
+                                )
+
+                        for f_col, f_val in active_filters.items():
+                            where_clauses.append(f"{f_col} = ${idx}")
+                            params.append(f_val)
+                            idx += 1
+
+                        if q and spec.searchable_fields:
+                            q_clauses = [
+                                f"{s_col}::text ILIKE ${idx}" for s_col in spec.searchable_fields
+                            ]
+                            where_clauses.append(f"({' OR '.join(q_clauses)})")
+                            params.append(f"%{q}%")
+                            idx += 1
+
+                        if cursor:
+                            try:
+                                dec = base64.b64decode(cursor).decode("utf-8")
+                                cursor_id = dec
+                                where_clauses.append(f"{spec.id_field} < ${idx}")
+                                params.append(cursor_id)
+                                idx += 1
+                            except Exception:
+                                pass
+
+                        params.append(limit + 1)
+                        limit_idx = idx
+
+                        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+                        query = f"""
+                            SELECT * FROM {spec.table_name}
+                            {where_sql}
+                            ORDER BY {spec.id_field} DESC
+                            LIMIT ${limit_idx}
+                        """
+                        rows = await conn.fetch(query, *params)
+                        has_more = len(rows) > limit
+                        page_rows = rows[:limit]
+                        for r in page_rows:
+                            items.append(row_to_dict(r))
+
+                        if has_more and page_rows:
+                            last_id = str(page_rows[-1][spec.id_field])
+                            next_cursor = base64.b64encode(last_id.encode("utf-8")).decode("utf-8")
+                except Exception as exc:
+                    return admin_error_response(
+                        f"Failed to query {spec.entity}: {exc}", exc, status_code=500
+                    )
         else:
             # In-memory fallback
-            mem = _get_mem_bucket(spec, str(ns_uuid))
+            mem = _get_mem_bucket(spec, str(ns_uuid) if ns_uuid else None)
             raw_items = list(mem.values())
             # Apply filters
             soft_del_field = spec.soft_delete_field or "is_archived"
@@ -294,10 +321,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         )
 
     async def handle_get(request: Request) -> Response:
-        ns_uuid, err_resp = extract_namespace_id(request)
+        ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
         if err_resp:
             return err_resp
-        assert ns_uuid is not None
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -308,17 +334,34 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         tier = resolve_principal_tier(request)
 
         item: dict[str, Any] | None = None
-        if admin_state.engine and getattr(admin_state.engine, "pg_pool", None) and spec.table_name:
-            try:
-                async with scoped_pg_session(admin_state.engine.pg_pool, ns_uuid) as conn:
-                    query = f"SELECT * FROM {spec.table_name} WHERE namespace_id = $1 AND {spec.id_field} = $2"
-                    row = await conn.fetchrow(query, ns_uuid, item_id)
-                    if row:
-                        item = row_to_dict(row)
-            except Exception as exc:
-                return admin_error_response(f"Database fetch error: {exc}", exc, status_code=500)
+        if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
+            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+                exc = NotImplementedError(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
+                )
+                return admin_error_response(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                    exc,
+                    status_code=501,
+                )
+            if spec.table_name:
+                try:
+                    session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                    async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                        if is_global:
+                            query = f"SELECT * FROM {spec.table_name} WHERE {spec.id_field} = $1"
+                            row = await conn.fetchrow(query, item_id)
+                        else:
+                            query = f"SELECT * FROM {spec.table_name} WHERE namespace_id = $1 AND {spec.id_field} = $2"
+                            row = await conn.fetchrow(query, ns_uuid, item_id)
+                        if row:
+                            item = row_to_dict(row)
+                except Exception as exc:
+                    return admin_error_response(
+                        f"Database fetch error: {exc}", exc, status_code=500
+                    )
         else:
-            mem = _get_mem_bucket(spec, str(ns_uuid))
+            mem = _get_mem_bucket(spec, str(ns_uuid) if ns_uuid else None)
             item = mem.get(str(item_id))
 
         if not item:
@@ -337,10 +380,16 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         except Exception as exc:
             return admin_error_response("Malformed JSON body", exc, status_code=400)
 
-        ns_uuid, err_resp = extract_namespace_id(request, body)
+        tier = resolve_principal_tier(request)
+        if is_global and tier == "external-customer":
+            exc = PermissionError("External customers cannot modify global catalog resources")
+            return admin_error_response(
+                "External customers cannot modify global resources", exc, status_code=403
+            )
+
+        ns_uuid, err_resp = extract_namespace_id(request, body, required=is_tenant)
         if err_resp:
             return err_resp
-        assert ns_uuid is not None
 
         # Filter to allowed writable fields
         data: dict[str, Any] = {}
@@ -352,7 +401,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
 
         item_id = str(body.get(spec.id_field) or uuid.uuid4())
         data[spec.id_field] = item_id
-        data["namespace_id"] = str(ns_uuid)
+        if not is_global or "namespace_id" in spec.writable_fields:
+            if ns_uuid:
+                data["namespace_id"] = str(ns_uuid)
         now_iso = datetime.now(timezone.utc).isoformat()
         if spec.version_field:
             data[spec.version_field] = now_iso
@@ -360,25 +411,36 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         if spec.soft_delete_field and spec.soft_delete_field not in data:
             data[spec.soft_delete_field] = False
 
-        if admin_state.engine and getattr(admin_state.engine, "pg_pool", None) and spec.table_name:
-            try:
-                async with scoped_pg_session(admin_state.engine.pg_pool, ns_uuid) as conn:
-                    cols = list(data.keys())
-                    vals = [data[c] for c in cols]
-                    val_placeholders = [f"${i + 1}" for i in range(len(cols))]
-                    query = f"""
-                        INSERT INTO {spec.table_name} ({', '.join(cols)})
-                        VALUES ({', '.join(val_placeholders)})
-                        RETURNING *
-                    """
-                    row = await conn.fetchrow(query, *vals)
-                    created = row_to_dict(row) if row else data
-            except Exception as exc:
-                return admin_error_response(
-                    f"Failed to create {spec.entity}: {exc}", exc, status_code=500
+        if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
+            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+                exc = NotImplementedError(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
                 )
+                return admin_error_response(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                    exc,
+                    status_code=501,
+                )
+            if spec.table_name:
+                try:
+                    session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                    async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                        cols = list(data.keys())
+                        vals = [data[c] for c in cols]
+                        val_placeholders = [f"${i + 1}" for i in range(len(cols))]
+                        query = f"""
+                            INSERT INTO {spec.table_name} ({', '.join(cols)})
+                            VALUES ({', '.join(val_placeholders)})
+                            RETURNING *
+                        """
+                        row = await conn.fetchrow(query, *vals)
+                        created = row_to_dict(row) if row else data
+                except Exception as exc:
+                    return admin_error_response(
+                        f"Failed to create {spec.entity}: {exc}", exc, status_code=500
+                    )
         else:
-            mem = _get_mem_bucket(spec, str(ns_uuid))
+            mem = _get_mem_bucket(spec, str(ns_uuid) if ns_uuid else None)
             mem[item_id] = dict(data)
             created = dict(data)
 
@@ -399,10 +461,16 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         except Exception as exc:
             return admin_error_response("Malformed JSON body", exc, status_code=400)
 
-        ns_uuid, err_resp = extract_namespace_id(request, body)
+        tier = resolve_principal_tier(request)
+        if is_global and tier == "external-customer":
+            exc = PermissionError("External customers cannot modify global catalog resources")
+            return admin_error_response(
+                "External customers cannot modify global resources", exc, status_code=403
+            )
+
+        ns_uuid, err_resp = extract_namespace_id(request, body, required=is_tenant)
         if err_resp:
             return err_resp
-        assert ns_uuid is not None
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -418,17 +486,32 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
 
         # Fetch existing record
         existing: dict[str, Any] | None = None
-        if admin_state.engine and getattr(admin_state.engine, "pg_pool", None) and spec.table_name:
-            try:
-                async with scoped_pg_session(admin_state.engine.pg_pool, ns_uuid) as conn:
-                    query = f"SELECT * FROM {spec.table_name} WHERE namespace_id = $1 AND {spec.id_field} = $2"
-                    row = await conn.fetchrow(query, ns_uuid, item_id)
-                    if row:
-                        existing = row_to_dict(row)
-            except Exception as exc:
-                return admin_error_response(f"Database error: {exc}", exc, status_code=500)
+        if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
+            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+                exc = NotImplementedError(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
+                )
+                return admin_error_response(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                    exc,
+                    status_code=501,
+                )
+            if spec.table_name:
+                try:
+                    session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                    async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                        if is_global:
+                            query = f"SELECT * FROM {spec.table_name} WHERE {spec.id_field} = $1"
+                            row = await conn.fetchrow(query, item_id)
+                        else:
+                            query = f"SELECT * FROM {spec.table_name} WHERE namespace_id = $1 AND {spec.id_field} = $2"
+                            row = await conn.fetchrow(query, ns_uuid, item_id)
+                        if row:
+                            existing = row_to_dict(row)
+                except Exception as exc:
+                    return admin_error_response(f"Database error: {exc}", exc, status_code=500)
         else:
-            mem = _get_mem_bucket(spec, str(ns_uuid))
+            mem = _get_mem_bucket(spec, str(ns_uuid) if ns_uuid else None)
             existing = mem.get(str(item_id))
 
         if not existing:
@@ -469,23 +552,34 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
 
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None) and spec.table_name:
             try:
-                async with scoped_pg_session(admin_state.engine.pg_pool, ns_uuid) as conn:
-                    set_items = [f"{k} = ${i + 3}" for i, k in enumerate(updates.keys())]
+                session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
                     vals = list(updates.values())
-                    query = f"""
-                        UPDATE {spec.table_name}
-                        SET {', '.join(set_items)}
-                        WHERE namespace_id = $1 AND {spec.id_field} = $2
-                        RETURNING *
-                    """
-                    row = await conn.fetchrow(query, ns_uuid, item_id, *vals)
+                    if is_global:
+                        set_items = [f"{k} = ${i + 2}" for i, k in enumerate(updates.keys())]
+                        query = f"""
+                            UPDATE {spec.table_name}
+                            SET {', '.join(set_items)}
+                            WHERE {spec.id_field} = $1
+                            RETURNING *
+                        """
+                        row = await conn.fetchrow(query, item_id, *vals)
+                    else:
+                        set_items = [f"{k} = ${i + 3}" for i, k in enumerate(updates.keys())]
+                        query = f"""
+                            UPDATE {spec.table_name}
+                            SET {', '.join(set_items)}
+                            WHERE namespace_id = $1 AND {spec.id_field} = $2
+                            RETURNING *
+                        """
+                        row = await conn.fetchrow(query, ns_uuid, item_id, *vals)
                     updated = row_to_dict(row) if row else {**existing, **updates}
             except Exception as exc:
                 return admin_error_response(
                     f"Failed to update {spec.entity}: {exc}", exc, status_code=500
                 )
         else:
-            mem = _get_mem_bucket(spec, str(ns_uuid))
+            mem = _get_mem_bucket(spec, str(ns_uuid) if ns_uuid else None)
             updated = {**existing, **updates}
             mem[str(item_id)] = updated
 
@@ -504,10 +598,17 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             body = await request.json()
         except Exception:
             pass
-        ns_uuid, err_resp = extract_namespace_id(request, body)
+
+        tier = resolve_principal_tier(request)
+        if is_global and tier == "external-customer":
+            exc = PermissionError("External customers cannot modify global catalog resources")
+            return admin_error_response(
+                "External customers cannot modify global resources", exc, status_code=403
+            )
+
+        ns_uuid, err_resp = extract_namespace_id(request, body, required=is_tenant)
         if err_resp:
             return err_resp
-        assert ns_uuid is not None
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -516,24 +617,44 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             )
 
         field_name = spec.soft_delete_field or "is_archived"
-        if admin_state.engine and getattr(admin_state.engine, "pg_pool", None) and spec.table_name:
-            try:
-                async with scoped_pg_session(admin_state.engine.pg_pool, ns_uuid) as conn:
-                    query = f"""
-                        UPDATE {spec.table_name}
-                        SET {field_name} = true
-                        WHERE namespace_id = $1 AND {spec.id_field} = $2
-                        RETURNING *
-                    """
-                    row = await conn.fetchrow(query, ns_uuid, item_id)
-                    if not row:
-                        return admin_error_response(
-                            "Resource not found", KeyError("Not found"), status_code=404
-                        )
-            except Exception as exc:
-                return admin_error_response(f"Failed to archive: {exc}", exc, status_code=500)
+        if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
+            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+                exc = NotImplementedError(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
+                )
+                return admin_error_response(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                    exc,
+                    status_code=501,
+                )
+            if spec.table_name:
+                try:
+                    session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                    async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                        if is_global:
+                            query = f"""
+                                UPDATE {spec.table_name}
+                                SET {field_name} = true
+                                WHERE {spec.id_field} = $1
+                                RETURNING *
+                            """
+                            row = await conn.fetchrow(query, item_id)
+                        else:
+                            query = f"""
+                                UPDATE {spec.table_name}
+                                SET {field_name} = true
+                                WHERE namespace_id = $1 AND {spec.id_field} = $2
+                                RETURNING *
+                            """
+                            row = await conn.fetchrow(query, ns_uuid, item_id)
+                        if not row:
+                            return admin_error_response(
+                                "Resource not found", KeyError("Not found"), status_code=404
+                            )
+                except Exception as exc:
+                    return admin_error_response(f"Failed to archive: {exc}", exc, status_code=500)
         else:
-            mem = _get_mem_bucket(spec, str(ns_uuid))
+            mem = _get_mem_bucket(spec, str(ns_uuid) if ns_uuid else None)
             if str(item_id) not in mem:
                 return admin_error_response(
                     "Resource not found", KeyError("Not found"), status_code=404
@@ -555,10 +676,17 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             body = await request.json()
         except Exception:
             pass
-        ns_uuid, err_resp = extract_namespace_id(request, body)
+
+        tier = resolve_principal_tier(request)
+        if is_global and tier == "external-customer":
+            exc = PermissionError("External customers cannot modify global catalog resources")
+            return admin_error_response(
+                "External customers cannot modify global resources", exc, status_code=403
+            )
+
+        ns_uuid, err_resp = extract_namespace_id(request, body, required=is_tenant)
         if err_resp:
             return err_resp
-        assert ns_uuid is not None
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -567,24 +695,44 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             )
 
         field_name = spec.soft_delete_field or "is_archived"
-        if admin_state.engine and getattr(admin_state.engine, "pg_pool", None) and spec.table_name:
-            try:
-                async with scoped_pg_session(admin_state.engine.pg_pool, ns_uuid) as conn:
-                    query = f"""
-                        UPDATE {spec.table_name}
-                        SET {field_name} = false
-                        WHERE namespace_id = $1 AND {spec.id_field} = $2
-                        RETURNING *
-                    """
-                    row = await conn.fetchrow(query, ns_uuid, item_id)
-                    if not row:
-                        return admin_error_response(
-                            "Resource not found", KeyError("Not found"), status_code=404
-                        )
-            except Exception as exc:
-                return admin_error_response(f"Failed to restore: {exc}", exc, status_code=500)
+        if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
+            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+                exc = NotImplementedError(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
+                )
+                return admin_error_response(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                    exc,
+                    status_code=501,
+                )
+            if spec.table_name:
+                try:
+                    session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                    async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                        if is_global:
+                            query = f"""
+                                UPDATE {spec.table_name}
+                                SET {field_name} = false
+                                WHERE {spec.id_field} = $1
+                                RETURNING *
+                            """
+                            row = await conn.fetchrow(query, item_id)
+                        else:
+                            query = f"""
+                                UPDATE {spec.table_name}
+                                SET {field_name} = false
+                                WHERE namespace_id = $1 AND {spec.id_field} = $2
+                                RETURNING *
+                            """
+                            row = await conn.fetchrow(query, ns_uuid, item_id)
+                        if not row:
+                            return admin_error_response(
+                                "Resource not found", KeyError("Not found"), status_code=404
+                            )
+                except Exception as exc:
+                    return admin_error_response(f"Failed to restore: {exc}", exc, status_code=500)
         else:
-            mem = _get_mem_bucket(spec, str(ns_uuid))
+            mem = _get_mem_bucket(spec, str(ns_uuid) if ns_uuid else None)
             if str(item_id) not in mem:
                 return admin_error_response(
                     "Resource not found", KeyError("Not found"), status_code=404
@@ -601,10 +749,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         return JSONResponse({"status": "ok", "id": item_id, "archived": False})
 
     async def handle_events(request: Request) -> Response:
-        ns_uuid, err_resp = extract_namespace_id(request)
+        ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
         if err_resp:
             return err_resp
-        assert ns_uuid is not None
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -613,19 +760,28 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             )
 
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
+            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+                exc = NotImplementedError(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
+                )
+                return admin_error_response(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                    exc,
+                    status_code=501,
+                )
             try:
-                async with scoped_pg_session(admin_state.engine.pg_pool, ns_uuid) as conn:
-                    events = await fetch_entity_events(conn, ns_uuid, spec, str(item_id))
+                session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                    events = await fetch_entity_events(conn, session_ns, spec, str(item_id))
                     return JSONResponse({"events": events, "count": len(events)})
             except Exception as exc:
                 return admin_error_response(f"Failed to query events: {exc}", exc, status_code=500)
         return JSONResponse({"events": [], "count": 0})
 
     async def handle_list_comments(request: Request) -> Response:
-        ns_uuid, err_resp = extract_namespace_id(request)
+        ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
         if err_resp:
             return err_resp
-        assert ns_uuid is not None
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -634,15 +790,25 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             )
 
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
+            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+                exc = NotImplementedError(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
+                )
+                return admin_error_response(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                    exc,
+                    status_code=501,
+                )
             try:
-                async with scoped_pg_session(admin_state.engine.pg_pool, ns_uuid) as conn:
-                    comments = await fetch_entity_comments(conn, ns_uuid, spec, str(item_id))
+                session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                    comments = await fetch_entity_comments(conn, session_ns, spec, str(item_id))
                     return JSONResponse({"comments": comments, "count": len(comments)})
             except Exception as exc:
                 return admin_error_response(
                     f"Failed to query comments: {exc}", exc, status_code=500
                 )
-        mem_key = f"{ns_uuid}:{item_id}"
+        mem_key = f"{ns_uuid or '__global__'}:{item_id}"
         mem_comments = _MEM_COMMENTS.get(mem_key, [])
         return JSONResponse({"comments": mem_comments, "count": len(mem_comments)})
 
@@ -652,10 +818,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         except Exception as exc:
             return admin_error_response("Malformed JSON body", exc, status_code=400)
 
-        ns_uuid, err_resp = extract_namespace_id(request, body)
+        ns_uuid, err_resp = extract_namespace_id(request, body, required=is_tenant)
         if err_resp:
             return err_resp
-        assert ns_uuid is not None
 
         item_id = request.path_params.get("id")
         comment_text = body.get("comment") or body.get("body")
@@ -668,15 +833,25 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
 
         author = body.get("author", "operator")
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
+            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+                exc = NotImplementedError(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
+                )
+                return admin_error_response(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                    exc,
+                    status_code=501,
+                )
             try:
-                async with scoped_pg_session(admin_state.engine.pg_pool, ns_uuid) as conn:
+                session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
                     res = await append_entity_comment(
-                        conn, ns_uuid, spec, str(item_id), str(comment_text), str(author)
+                        conn, session_ns, spec, str(item_id), str(comment_text), str(author)
                     )
                     return JSONResponse({"status": "ok", "comment": res}, status_code=201)
             except Exception as exc:
                 return admin_error_response(f"Failed to add comment: {exc}", exc, status_code=500)
-        mem_key = f"{ns_uuid}:{item_id}"
+        mem_key = f"{ns_uuid or '__global__'}:{item_id}"
         import uuid
 
         entry = {
@@ -690,10 +865,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         return JSONResponse({"status": "ok", "comment": entry}, status_code=201)
 
     async def handle_list_tags(request: Request) -> Response:
-        ns_uuid, err_resp = extract_namespace_id(request)
+        ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
         if err_resp:
             return err_resp
-        assert ns_uuid is not None
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -702,13 +876,23 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             )
 
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
+            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+                exc = NotImplementedError(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
+                )
+                return admin_error_response(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                    exc,
+                    status_code=501,
+                )
             try:
-                async with scoped_pg_session(admin_state.engine.pg_pool, ns_uuid) as conn:
-                    tags = await fetch_entity_tags(conn, ns_uuid, spec, str(item_id))
+                session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                    tags = await fetch_entity_tags(conn, session_ns, spec, str(item_id))
                     return JSONResponse({"tags": tags, "count": len(tags)})
             except Exception as exc:
                 return admin_error_response(f"Failed to query tags: {exc}", exc, status_code=500)
-        mem_key = f"{ns_uuid}:{item_id}"
+        mem_key = f"{ns_uuid or '__global__'}:{item_id}"
         tag_list = sorted(_MEM_TAGS.get(mem_key, set()))
         return JSONResponse({"tags": tag_list, "count": len(tag_list)})
 
@@ -718,10 +902,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         except Exception as exc:
             return admin_error_response("Malformed JSON body", exc, status_code=400)
 
-        ns_uuid, err_resp = extract_namespace_id(request, body)
+        ns_uuid, err_resp = extract_namespace_id(request, body, required=is_tenant)
         if err_resp:
             return err_resp
-        assert ns_uuid is not None
 
         item_id = request.path_params.get("id")
         tag = body.get("tag")
@@ -731,22 +914,31 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             )
 
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
+            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+                exc = NotImplementedError(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
+                )
+                return admin_error_response(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                    exc,
+                    status_code=501,
+                )
             try:
-                async with scoped_pg_session(admin_state.engine.pg_pool, ns_uuid) as conn:
-                    tags = await add_entity_tag(conn, ns_uuid, spec, str(item_id), str(tag))
+                session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                    tags = await add_entity_tag(conn, session_ns, spec, str(item_id), str(tag))
                     return JSONResponse({"status": "ok", "tags": tags})
             except Exception as exc:
                 return admin_error_response(f"Failed to add tag: {exc}", exc, status_code=500)
-        mem_key = f"{ns_uuid}:{item_id}"
+        mem_key = f"{ns_uuid or '__global__'}:{item_id}"
         _MEM_TAGS.setdefault(mem_key, set()).add(str(tag))
         tag_list = sorted(_MEM_TAGS[mem_key])
         return JSONResponse({"status": "ok", "tags": tag_list})
 
     async def handle_remove_tag(request: Request) -> Response:
-        ns_uuid, err_resp = extract_namespace_id(request)
+        ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
         if err_resp:
             return err_resp
-        assert ns_uuid is not None
 
         item_id = request.path_params.get("id")
         tag = request.path_params.get("tag")
@@ -758,13 +950,23 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             )
 
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
+            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+                exc = NotImplementedError(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
+                )
+                return admin_error_response(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                    exc,
+                    status_code=501,
+                )
             try:
-                async with scoped_pg_session(admin_state.engine.pg_pool, ns_uuid) as conn:
-                    tags = await remove_entity_tag(conn, ns_uuid, spec, str(item_id), str(tag))
+                session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                    tags = await remove_entity_tag(conn, session_ns, spec, str(item_id), str(tag))
                     return JSONResponse({"status": "ok", "tags": tags})
             except Exception as exc:
                 return admin_error_response(f"Failed to remove tag: {exc}", exc, status_code=500)
-        mem_key = f"{ns_uuid}:{item_id}"
+        mem_key = f"{ns_uuid or '__global__'}:{item_id}"
         if mem_key in _MEM_TAGS and str(tag) in _MEM_TAGS[mem_key]:
             _MEM_TAGS[mem_key].remove(str(tag))
         tag_list = sorted(_MEM_TAGS.get(mem_key, set()))
@@ -776,10 +978,18 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         except Exception as exc:
             return admin_error_response("Malformed JSON body", exc, status_code=400)
 
-        ns_uuid, err_resp = extract_namespace_id(request, body if isinstance(body, dict) else None)
+        tier = resolve_principal_tier(request)
+        if is_global and tier == "external-customer":
+            exc = PermissionError("External customers cannot modify global catalog resources")
+            return admin_error_response(
+                "External customers cannot modify global resources", exc, status_code=403
+            )
+
+        ns_uuid, err_resp = extract_namespace_id(
+            request, body if isinstance(body, dict) else None, required=is_tenant
+        )
         if err_resp:
             return err_resp
-        assert ns_uuid is not None
 
         items_to_insert = body.get("items") if isinstance(body, dict) else body
         if not isinstance(items_to_insert, list):
@@ -789,22 +999,36 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                 status_code=400,
             )
 
+        if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
+            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+                exc = NotImplementedError(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
+                )
+                return admin_error_response(
+                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                    exc,
+                    status_code=501,
+                )
+
         created_ids: list[str] = []
         import uuid
 
+        session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
         for it in items_to_insert:
             if not isinstance(it, dict):
                 continue
             item_id = str(it.get(spec.id_field) or uuid.uuid4())
             data = {k: it[k] for k in spec.writable_fields if k in it}
             data[spec.id_field] = item_id
-            data["namespace_id"] = str(ns_uuid)
+            if not is_global or "namespace_id" in spec.writable_fields:
+                if ns_uuid:
+                    data["namespace_id"] = str(ns_uuid)
             if (
                 admin_state.engine
                 and getattr(admin_state.engine, "pg_pool", None)
                 and spec.table_name
             ):
-                async with scoped_pg_session(admin_state.engine.pg_pool, ns_uuid) as conn:
+                async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
                     cols = list(data.keys())
                     vals = [data[c] for c in cols]
                     placeholders = [f"${i + 1}" for i in range(len(cols))]
@@ -813,7 +1037,7 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                         *vals,
                     )
             else:
-                mem = _get_mem_bucket(spec, str(ns_uuid))
+                mem = _get_mem_bucket(spec, str(ns_uuid) if ns_uuid else None)
                 mem[item_id] = dict(data)
             created_ids.append(item_id)
 

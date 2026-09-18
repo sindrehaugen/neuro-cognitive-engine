@@ -43,6 +43,8 @@ def build_mcp_tool_definitions(spec: ResourceSpec) -> list[Tool]:
     upsert_tool_name = f"{prefix}_upsert_{slug}"
     archive_tool_name = f"{prefix}_archive_{slug}"
 
+    is_tenant = spec.tenant_scope == "tenant"
+
     # List Tool Schema
     list_props: dict[str, Any] = {
         "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
@@ -56,7 +58,7 @@ def build_mcp_tool_definitions(spec: ResourceSpec) -> list[Tool]:
     list_schema = {
         "type": "object",
         "properties": list_props,
-        "required": ["namespace_id"],
+        "required": ["namespace_id"] if is_tenant else [],
     }
 
     # Get Tool Schema
@@ -66,7 +68,7 @@ def build_mcp_tool_definitions(spec: ResourceSpec) -> list[Tool]:
             "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
             "id": {"type": "string", "description": f"Unique identifier of the {entity_title}."},
         },
-        "required": ["namespace_id", "id"],
+        "required": ["namespace_id", "id"] if is_tenant else ["id"],
     }
 
     # Upsert Tool Schema
@@ -84,7 +86,7 @@ def build_mcp_tool_definitions(spec: ResourceSpec) -> list[Tool]:
     upsert_schema = {
         "type": "object",
         "properties": upsert_props,
-        "required": ["namespace_id"],
+        "required": ["namespace_id"] if is_tenant else [],
     }
 
     # Archive Tool Schema
@@ -95,7 +97,7 @@ def build_mcp_tool_definitions(spec: ResourceSpec) -> list[Tool]:
             "id": {"type": "string", "description": f"ID of {entity_title} to archive."},
             "reason": {"type": "string", "description": "Audit reason for archiving."},
         },
-        "required": ["namespace_id", "id"],
+        "required": ["namespace_id", "id"] if is_tenant else ["id"],
     }
 
     return [
@@ -134,19 +136,32 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
     upsert_tool_name = f"{prefix}_upsert_{slug}"
     archive_tool_name = f"{prefix}_archive_{slug}"
 
+    is_tenant = spec.tenant_scope == "tenant"
+    is_global = spec.tenant_scope == "global"
+    is_graph = spec.tenant_scope == "graph"
+
     async def handle_list(engine: Any, arguments: dict[str, Any]) -> str:
         ns_raw = arguments.get("namespace_id")
-        if not ns_raw:
-            return json.dumps({"error": "Missing required argument: namespace_id"})
-        try:
-            ns_uuid = UUID(str(ns_raw))
-        except ValueError as exc:
-            return json.dumps({"error": f"Invalid namespace_id: {exc}"})
+        ns_uuid: UUID | None = None
+        if is_tenant:
+            if not ns_raw:
+                return json.dumps({"error": "Missing required argument: namespace_id"})
+            try:
+                ns_uuid = UUID(str(ns_raw))
+            except ValueError as exc:
+                return json.dumps({"error": f"Invalid namespace_id: {exc}"})
+        else:
+            if ns_raw:
+                try:
+                    ns_uuid = UUID(str(ns_raw))
+                except ValueError as exc:
+                    return json.dumps({"error": f"Invalid namespace_id: {exc}"})
 
-        try:
-            set_namespace_context(NamespaceContext(namespace_id=ns_uuid))
-        except Exception:
-            pass
+        if ns_uuid:
+            try:
+                set_namespace_context(NamespaceContext(namespace_id=ns_uuid))
+            except Exception:
+                pass
 
         limit = max(1, min(int(arguments.get("limit", 50)), 500))
         cursor = arguments.get("cursor")
@@ -161,57 +176,74 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
         items: list[dict[str, Any]] = []
         next_cursor: str | None = None
 
-        if hasattr(engine, "pg_pool") and engine.pg_pool and spec.table_name:
-            async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
-                where_clauses = ["namespace_id = $1"]
-                params: list[Any] = [ns_uuid]
-                idx = 2
+        if hasattr(engine, "pg_pool") and engine.pg_pool:
+            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+                return json.dumps(
+                    {
+                        "error": f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                        "status_code": 501,
+                    }
+                )
+            if spec.table_name:
+                session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                async with scoped_pg_session(engine.pg_pool, session_ns) as conn:
+                    if is_global:
+                        where_clauses: list[str] = []
+                        params: list[Any] = []
+                        idx = 1
+                    else:
+                        where_clauses = ["namespace_id = $1"]
+                        params = [ns_uuid]
+                        idx = 2
 
-                if spec.soft_delete_field:
-                    where_clauses.append(
-                        f"({spec.soft_delete_field} = false OR {spec.soft_delete_field} IS NULL)"
-                    )
+                    if spec.soft_delete_field:
+                        where_clauses.append(
+                            f"({spec.soft_delete_field} = false OR {spec.soft_delete_field} IS NULL)"
+                        )
 
-                for f_col, f_val in active_filters.items():
-                    where_clauses.append(f"{f_col} = ${idx}")
-                    params.append(f_val)
-                    idx += 1
-
-                if q and spec.searchable_fields:
-                    q_clauses = [f"{s_col}::text ILIKE ${idx}" for s_col in spec.searchable_fields]
-                    where_clauses.append(f"({' OR '.join(q_clauses)})")
-                    params.append(f"%{q}%")
-                    idx += 1
-
-                if cursor:
-                    try:
-                        cursor_id = base64.b64decode(cursor).decode("utf-8")
-                        where_clauses.append(f"{spec.id_field} < ${idx}")
-                        params.append(cursor_id)
+                    for f_col, f_val in active_filters.items():
+                        where_clauses.append(f"{f_col} = ${idx}")
+                        params.append(f_val)
                         idx += 1
-                    except Exception:
-                        pass
 
-                params.append(limit + 1)
-                limit_idx = idx
+                    if q and spec.searchable_fields:
+                        q_clauses = [
+                            f"{s_col}::text ILIKE ${idx}" for s_col in spec.searchable_fields
+                        ]
+                        where_clauses.append(f"({' OR '.join(q_clauses)})")
+                        params.append(f"%{q}%")
+                        idx += 1
 
-                query = f"""
-                    SELECT * FROM {spec.table_name}
-                    WHERE {' AND '.join(where_clauses)}
-                    ORDER BY {spec.id_field} DESC
-                    LIMIT ${limit_idx}
-                """
-                rows = await conn.fetch(query, *params)
-                has_more = len(rows) > limit
-                page_rows = rows[:limit]
-                for r in page_rows:
-                    items.append(row_to_dict(r))
+                    if cursor:
+                        try:
+                            cursor_id = base64.b64decode(cursor).decode("utf-8")
+                            where_clauses.append(f"{spec.id_field} < ${idx}")
+                            params.append(cursor_id)
+                            idx += 1
+                        except Exception:
+                            pass
 
-                if has_more and page_rows:
-                    last_id = str(page_rows[-1][spec.id_field])
-                    next_cursor = base64.b64encode(last_id.encode("utf-8")).decode("utf-8")
+                    params.append(limit + 1)
+                    limit_idx = idx
+
+                    where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+                    query = f"""
+                        SELECT * FROM {spec.table_name}
+                        {where_sql}
+                        ORDER BY {spec.id_field} DESC
+                        LIMIT ${limit_idx}
+                    """
+                    rows = await conn.fetch(query, *params)
+                    has_more = len(rows) > limit
+                    page_rows = rows[:limit]
+                    for r in page_rows:
+                        items.append(row_to_dict(r))
+
+                    if has_more and page_rows:
+                        last_id = str(page_rows[-1][spec.id_field])
+                        next_cursor = base64.b64encode(last_id.encode("utf-8")).decode("utf-8")
         else:
-            mem = _get_mem_bucket(spec, str(ns_uuid))
+            mem = _get_mem_bucket(spec, str(ns_uuid) if ns_uuid else None)
             raw_items = list(mem.values())
             filtered = []
             for it in raw_items:
@@ -238,24 +270,48 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
         )
 
     async def handle_get(engine: Any, arguments: dict[str, Any]) -> str:
-        ns_raw = arguments.get("namespace_id")
         item_id = arguments.get("id")
-        if not ns_raw or not item_id:
-            return json.dumps({"error": "Missing required argument: namespace_id or id"})
-        try:
-            ns_uuid = UUID(str(ns_raw))
-        except ValueError as exc:
-            return json.dumps({"error": f"Invalid namespace_id: {exc}"})
+        if not item_id:
+            return json.dumps({"error": "Missing required argument: id"})
+
+        ns_raw = arguments.get("namespace_id")
+        ns_uuid: UUID | None = None
+        if is_tenant:
+            if not ns_raw:
+                return json.dumps({"error": "Missing required argument: namespace_id"})
+            try:
+                ns_uuid = UUID(str(ns_raw))
+            except ValueError as exc:
+                return json.dumps({"error": f"Invalid namespace_id: {exc}"})
+        else:
+            if ns_raw:
+                try:
+                    ns_uuid = UUID(str(ns_raw))
+                except ValueError as exc:
+                    return json.dumps({"error": f"Invalid namespace_id: {exc}"})
 
         item: dict[str, Any] | None = None
-        if hasattr(engine, "pg_pool") and engine.pg_pool and spec.table_name:
-            async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
-                query = f"SELECT * FROM {spec.table_name} WHERE namespace_id = $1 AND {spec.id_field} = $2"
-                row = await conn.fetchrow(query, ns_uuid, item_id)
-                if row:
-                    item = row_to_dict(row)
+        if hasattr(engine, "pg_pool") and engine.pg_pool:
+            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+                return json.dumps(
+                    {
+                        "error": f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                        "status_code": 501,
+                    }
+                )
+            if spec.table_name:
+                session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                async with scoped_pg_session(engine.pg_pool, session_ns) as conn:
+                    if is_global:
+                        query = f"SELECT * FROM {spec.table_name} WHERE {spec.id_field} = $1"
+                        row = await conn.fetchrow(query, item_id)
+                    else:
+                        query = f"SELECT * FROM {spec.table_name} WHERE namespace_id = $1 AND {spec.id_field} = $2"
+                        row = await conn.fetchrow(query, ns_uuid, item_id)
+                    if row:
+                        item = row_to_dict(row)
         else:
-            mem = _get_mem_bucket(spec, str(ns_uuid))
+            mem = _get_mem_bucket(spec, str(ns_uuid) if ns_uuid else None)
             item = mem.get(str(item_id))
 
         if not item:
@@ -265,62 +321,95 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
 
     async def handle_upsert(engine: Any, arguments: dict[str, Any]) -> str:
         ns_raw = arguments.get("namespace_id")
-        if not ns_raw:
-            return json.dumps({"error": "Missing required argument: namespace_id"})
-        try:
-            ns_uuid = UUID(str(ns_raw))
-        except ValueError as exc:
-            return json.dumps({"error": f"Invalid namespace_id: {exc}"})
+        ns_uuid: UUID | None = None
+        if is_tenant:
+            if not ns_raw:
+                return json.dumps({"error": "Missing required argument: namespace_id"})
+            try:
+                ns_uuid = UUID(str(ns_raw))
+            except ValueError as exc:
+                return json.dumps({"error": f"Invalid namespace_id: {exc}"})
+        else:
+            if ns_raw:
+                try:
+                    ns_uuid = UUID(str(ns_raw))
+                except ValueError as exc:
+                    return json.dumps({"error": f"Invalid namespace_id: {exc}"})
 
         item_id = str(arguments.get("id") or uuid.uuid4())
         expected_version = arguments.get("expected_version")
 
         data: dict[str, Any] = {f: arguments[f] for f in spec.writable_fields if f in arguments}
         data[spec.id_field] = item_id
-        data["namespace_id"] = str(ns_uuid)
+        if not is_global or "namespace_id" in spec.writable_fields:
+            if ns_uuid:
+                data["namespace_id"] = str(ns_uuid)
         now_iso = datetime.now(timezone.utc).isoformat()
         if spec.version_field:
             data[spec.version_field] = now_iso
 
-        if hasattr(engine, "pg_pool") and engine.pg_pool and spec.table_name:
-            async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
-                # Check for existing
-                existing_row = await conn.fetchrow(
-                    f"SELECT * FROM {spec.table_name} WHERE namespace_id = $1 AND {spec.id_field} = $2",
-                    ns_uuid,
-                    item_id,
+        if hasattr(engine, "pg_pool") and engine.pg_pool:
+            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+                return json.dumps(
+                    {
+                        "error": f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                        "status_code": 501,
+                    }
                 )
-                if existing_row:
-                    existing = row_to_dict(existing_row)
-                    if expected_version and spec.version_field:
-                        actual = str(existing.get(spec.version_field, ""))
-                        if actual != str(expected_version):
-                            return json.dumps(
-                                {
-                                    "error": f"Version conflict: expected {expected_version}, got {actual}",
-                                    "reason": "version_conflict",
-                                    "status_code": 409,
-                                }
-                            )
+            if spec.table_name:
+                session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                async with scoped_pg_session(engine.pg_pool, session_ns) as conn:
+                    # Check for existing
+                    if is_global:
+                        existing_row = await conn.fetchrow(
+                            f"SELECT * FROM {spec.table_name} WHERE {spec.id_field} = $1",
+                            item_id,
+                        )
+                    else:
+                        existing_row = await conn.fetchrow(
+                            f"SELECT * FROM {spec.table_name} WHERE namespace_id = $1 AND {spec.id_field} = $2",
+                            ns_uuid,
+                            item_id,
+                        )
+                    if existing_row:
+                        existing = row_to_dict(existing_row)
+                        if expected_version and spec.version_field:
+                            actual = str(existing.get(spec.version_field, ""))
+                            if actual != str(expected_version):
+                                return json.dumps(
+                                    {
+                                        "error": f"Version conflict: expected {expected_version}, got {actual}",
+                                        "reason": "version_conflict",
+                                        "status_code": 409,
+                                    }
+                                )
 
-                    set_items = [f"{k} = ${i + 3}" for i, k in enumerate(data.keys())]
-                    vals = list(data.values())
-                    await conn.execute(
-                        f"UPDATE {spec.table_name} SET {', '.join(set_items)} WHERE namespace_id = $1 AND {spec.id_field} = $2",
-                        ns_uuid,
-                        item_id,
-                        *vals,
-                    )
-                else:
-                    cols = list(data.keys())
-                    vals = [data[c] for c in cols]
-                    placeholders = [f"${i + 1}" for i in range(len(cols))]
-                    await conn.execute(
-                        f"INSERT INTO {spec.table_name} ({', '.join(cols)}) VALUES ({', '.join(placeholders)})",
-                        *vals,
-                    )
+                        vals = list(data.values())
+                        if is_global:
+                            set_items = [f"{k} = ${i + 2}" for i, k in enumerate(data.keys())]
+                            await conn.execute(
+                                f"UPDATE {spec.table_name} SET {', '.join(set_items)} WHERE {spec.id_field} = $1",
+                                item_id,
+                                *vals,
+                            )
+                        else:
+                            set_items = [f"{k} = ${i + 3}" for i, k in enumerate(data.keys())]
+                            await conn.execute(
+                                f"UPDATE {spec.table_name} SET {', '.join(set_items)} WHERE namespace_id = $1 AND {spec.id_field} = $2",
+                                ns_uuid,
+                                item_id,
+                                *vals,
+                            )
+                    else:
+                        cols = list(data.keys())
+                        vals = [data[c] for c in cols]
+                        placeholders = [f"${i + 1}" for i in range(len(cols))]
+                        await conn.execute(
+                            f"INSERT INTO {spec.table_name} ({', '.join(cols)}) VALUES ({', '.join(placeholders)})",
+                            *vals,
+                        )
         else:
-            mem = _get_mem_bucket(spec, str(ns_uuid))
+            mem = _get_mem_bucket(spec, str(ns_uuid) if ns_uuid else None)
             existing = mem.get(item_id)
             if existing and expected_version and spec.version_field:
                 actual = str(existing.get(spec.version_field, ""))
@@ -339,27 +428,53 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
         )
 
     async def handle_archive(engine: Any, arguments: dict[str, Any]) -> str:
-        ns_raw = arguments.get("namespace_id")
         item_id = arguments.get("id")
-        if not ns_raw or not item_id:
-            return json.dumps({"error": "Missing required argument: namespace_id or id"})
-        try:
-            ns_uuid = UUID(str(ns_raw))
-        except ValueError as exc:
-            return json.dumps({"error": f"Invalid namespace_id: {exc}"})
+        if not item_id:
+            return json.dumps({"error": "Missing required argument: id"})
+
+        ns_raw = arguments.get("namespace_id")
+        ns_uuid: UUID | None = None
+        if is_tenant:
+            if not ns_raw:
+                return json.dumps({"error": "Missing required argument: namespace_id"})
+            try:
+                ns_uuid = UUID(str(ns_raw))
+            except ValueError as exc:
+                return json.dumps({"error": f"Invalid namespace_id: {exc}"})
+        else:
+            if ns_raw:
+                try:
+                    ns_uuid = UUID(str(ns_raw))
+                except ValueError as exc:
+                    return json.dumps({"error": f"Invalid namespace_id: {exc}"})
 
         field_name = spec.soft_delete_field or "is_archived"
-        if hasattr(engine, "pg_pool") and engine.pg_pool and spec.table_name:
-            async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
-                res = await conn.execute(
-                    f"UPDATE {spec.table_name} SET {field_name} = true WHERE namespace_id = $1 AND {spec.id_field} = $2",
-                    ns_uuid,
-                    item_id,
+        if hasattr(engine, "pg_pool") and engine.pg_pool:
+            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+                return json.dumps(
+                    {
+                        "error": f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                        "status_code": 501,
+                    }
                 )
-                if res.endswith("0"):
-                    return json.dumps({"error": f"{spec.node_type} {item_id} not found"})
+            if spec.table_name:
+                session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                async with scoped_pg_session(engine.pg_pool, session_ns) as conn:
+                    if is_global:
+                        res = await conn.execute(
+                            f"UPDATE {spec.table_name} SET {field_name} = true WHERE {spec.id_field} = $1",
+                            item_id,
+                        )
+                    else:
+                        res = await conn.execute(
+                            f"UPDATE {spec.table_name} SET {field_name} = true WHERE namespace_id = $1 AND {spec.id_field} = $2",
+                            ns_uuid,
+                            item_id,
+                        )
+                    if res.endswith("0"):
+                        return json.dumps({"error": f"{spec.node_type} {item_id} not found"})
         else:
-            mem = _get_mem_bucket(spec, str(ns_uuid))
+            mem = _get_mem_bucket(spec, str(ns_uuid) if ns_uuid else None)
             if str(item_id) not in mem:
                 return json.dumps({"error": f"{spec.node_type} {item_id} not found"})
             mem[str(item_id)][field_name] = True

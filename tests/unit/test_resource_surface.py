@@ -395,6 +395,122 @@ def test_global_scope_derivation_and_contract():
     assert "neither EXPECTED_TENANT_RLS_TABLES nor EXPECTED_GLOBAL_TABLES" in str(exc_info.value)
 
 
+def test_global_scope_read_without_namespace_id():
+    """Reads on global-scoped resources do not require namespace_id."""
+    global_spec = ResourceSpec(
+        engine="product",
+        entity="global-read-parts",
+        node_type="PRODUCT_SKU",
+        table_name="product_catalog",
+        writable_fields=("part_number", "title"),
+    )
+    client = _client_for_spec(global_spec)
+
+    # Create an item
+    create_resp = client.post(
+        "/api/product/global-read-parts",
+        json={"part_number": "PN-100", "title": "Capacitor 10uF"},
+    )
+    assert create_resp.status_code == 201, create_resp.text
+    item = create_resp.json()
+    item_id = item["id"]
+
+    # Read without namespace_id query param or header
+    get_resp = client.get(f"/api/product/global-read-parts/{item_id}")
+    assert get_resp.status_code == 200, get_resp.text
+    assert get_resp.json()["id"] == item_id
+    assert get_resp.json()["part_number"] == "PN-100"
+
+    # List without namespace_id query param or header
+    list_resp = client.get("/api/product/global-read-parts")
+    assert list_resp.status_code == 200, list_resp.text
+    assert list_resp.json()["total"] >= 1
+    assert any(it["id"] == item_id for it in list_resp.json()["items"])
+
+
+def test_global_scope_write_guards_external_customer():
+    """Writes to global-scoped resources return 403 Forbidden for external-customer tier."""
+    global_spec = ResourceSpec(
+        engine="product",
+        entity="global-write-parts",
+        node_type="PRODUCT_SKU",
+        table_name="product_catalog",
+        writable_fields=("part_number", "title"),
+    )
+    client = _client_for_spec(global_spec)
+
+    # 1. Create with employee succeeds
+    create_ok = client.post(
+        "/api/product/global-write-parts",
+        json={"part_number": "PN-200", "title": "Resistor 10k"},
+        headers={"X-NCE-Principal-Tier": "employee"},
+    )
+    assert create_ok.status_code == 201, create_ok.text
+    item_id = create_ok.json()["id"]
+
+    # 2. Create with external-customer returns 403
+    create_forbidden = client.post(
+        "/api/product/global-write-parts",
+        json={"part_number": "PN-201", "title": "Forbidden Resistor"},
+        headers={"X-NCE-Principal-Tier": "external-customer"},
+    )
+    assert create_forbidden.status_code == 403, create_forbidden.text
+    assert "External customers cannot modify global" in create_forbidden.json()["error"]
+
+    # 3. Patch with external-customer returns 403
+    patch_forbidden = client.patch(
+        f"/api/product/global-write-parts/{item_id}",
+        json={"title": "Hacked Title"},
+        headers={"X-NCE-Principal-Tier": "external-customer"},
+    )
+    assert patch_forbidden.status_code == 403, patch_forbidden.text
+
+    # 4. Archive with external-customer returns 403
+    archive_forbidden = client.post(
+        f"/api/product/global-write-parts/{item_id}/archive",
+        headers={"X-NCE-Principal-Tier": "external-customer"},
+    )
+    assert archive_forbidden.status_code == 403, archive_forbidden.text
+
+    # 5. Restore with external-customer returns 403
+    restore_forbidden = client.post(
+        f"/api/product/global-write-parts/{item_id}/restore",
+        headers={"X-NCE-Principal-Tier": "external-customer"},
+    )
+    assert restore_forbidden.status_code == 403, restore_forbidden.text
+
+    # 6. Bulk with external-customer returns 403
+    bulk_forbidden = client.post(
+        "/api/product/global-write-parts/bulk",
+        json={"operation": "create", "items": [{"part_number": "PN-202"}]},
+        headers={"X-NCE-Principal-Tier": "external-customer"},
+    )
+    assert bulk_forbidden.status_code == 403, bulk_forbidden.text
+
+
+def test_non_postgres_and_graph_dispatch_returns_501():
+    """Live DB pool dispatch for storage_kind != 'postgres' or graph scope returns 501."""
+    mongo_spec = ResourceSpec(
+        engine="vendors",
+        entity="vendor-profiles-501",
+        node_type="VENDOR",
+        storage_kind="mongo",
+    )
+    client = _client_for_spec(mongo_spec)
+
+    # Set mock engine with pg_pool to simulate live DB path
+    mock_engine = MagicMock()
+    mock_engine.pg_pool = MagicMock()
+    admin_state.engine = mock_engine
+
+    try:
+        resp = client.get(f"/api/vendors/vendor-profiles-501?namespace_id={_NS_A}")
+        assert resp.status_code == 501, resp.text
+        assert "mongo backend storage is not supported yet" in resp.json()["error"]
+    finally:
+        admin_state.engine = None
+
+
 # ===========================================================================
 # 4. MCP Twin Tools
 # ===========================================================================
