@@ -1135,39 +1135,179 @@ class TestAVCloudAdapters:
         assert adapter._timeout <= 4.9
 
         with pytest.raises(NotImplementedError, match="qsys") as excinfo:
-            await adapter.fetch_samples(uuid.uuid4())
+            await adapter.fetch_samples(uuid.uuid4(), serial="SN-1001")
         assert "NCE_ASSETS_QSYS_ENDPOINT_URL" in str(excinfo.value)
         assert "NCE_ASSETS_QSYS_API_KEY" in str(excinfo.value)
 
     @pytest.mark.asyncio
-    async def test_qsys_reflect_adapter_live_http(self) -> None:
+    async def test_qsys_reflect_adapter_without_a_serial_is_skipped_before_any_http_call(
+        self,
+    ) -> None:
         from nce.vertical_modules.assets.qsys_reflect import QSysReflectTelemetryAdapter
 
         def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200,
-                json={
-                    "metrics": {
-                        "status_online": 1.0,
-                        "dsp_cpu_percent": 24.5,
-                        "clock_master_locked": 1.0,
-                    },
-                    "raw": {"source": "qsys_reflect"},
-                },
-            )
+            raise AssertionError("no HTTP call should be made when serial is missing")
 
         adapter = QSysReflectTelemetryAdapter(
-            endpoint_url="https://reflect.qsc.com",
+            endpoint_url="https://reflect.qsc.com/api/public/v0",
             api_key="qsys-token",
             transport=httpx.MockTransport(handler),
         )
-        test_id = uuid.uuid4()
-        samples = await adapter.fetch_samples(test_id)
-        assert len(samples) == 3
+        assert await adapter.fetch_samples(uuid.uuid4(), serial=None) == []
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="  ") == []
+
+    @pytest.mark.asyncio
+    async def test_qsys_reflect_adapter_refuses_a_path_outside_its_allow_list(self) -> None:
+        """Gate item 1+2 (MLV16 charter, Lane F): a call outside the
+        explicit allow-list literal is refused before any HTTP request."""
+        from nce.vertical_modules.assets.qsys_reflect import (
+            QSysAllowListRefusal,
+            QSysReflectTelemetryAdapter,
+        )
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("a refused call must never reach the transport")
+
+        adapter = QSysReflectTelemetryAdapter(
+            endpoint_url="https://reflect.qsc.com/api/public/v0",
+            api_key="qsys-token",
+            transport=httpx.MockTransport(handler),
+        )
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            with pytest.raises(QSysAllowListRefusal, match="DELETE cores"):
+                await adapter._gated_request(client, "DELETE", "cores")
+            with pytest.raises(QSysAllowListRefusal):
+                await adapter._gated_request(client, "GET", "sites")
+
+    @pytest.mark.asyncio
+    async def test_qsys_reflect_adapter_live_http_matches_a_core_by_serial_number(self) -> None:
+        """A recorded-fixture-shaped round trip: resolving by ``serialNumber``
+        (the PHYSICAL serial, per the host's own test fixtures) — never
+        ``serial``, which is Reflect's own internal id and carries an
+        entirely different value (verified: ``"reflect-id"`` vs
+        ``"SN-1001"``). Never the fabricated single-endpoint shape this
+        replaced."""
+        from nce.vertical_modules.assets.qsys_reflect import QSysReflectTelemetryAdapter
+
+        seen: list[tuple[str, str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append((request.method, request.url.path))
+            assert request.headers.get("Authorization") == "Bearer qsys-token"
+            if request.url.path == "/api/public/v0/cores":
+                return httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "id": 1,
+                            "serial": "reflect-id",
+                            "serialNumber": "SN-1001",
+                            "name": "Rom A",
+                            "model": "Core 610",
+                            "status": {"code": 0, "message": "OK"},
+                            "redundancy": {"role": "Primary", "state": "Standby"},
+                        },
+                        {
+                            "id": 2,
+                            "serial": "reflect-id-2",
+                            "serialNumber": "SN-1002",
+                            "name": "Aktiv Core",
+                            "model": "Core 610",
+                            "status": {"code": 3, "message": "Fault"},
+                        },
+                    ],
+                )
+            raise AssertionError(f"unexpected call: {request.method} {request.url}")
+
+        adapter = QSysReflectTelemetryAdapter(
+            endpoint_url="https://reflect.qsc.com/api/public/v0",
+            api_key="qsys-token",
+            transport=httpx.MockTransport(handler),
+        )
+        samples = await adapter.fetch_samples(uuid.uuid4(), serial="sn-1002")
         metrics = {s.metric: s.value for s in samples}
-        assert metrics["status_online"] == 1.0
-        assert metrics["dsp_cpu_percent"] == 24.5
-        assert metrics["clock_master_locked"] == 1.0
+        assert metrics["status.code"] == 3.0
+        # A match on `serial` (Reflect's own id) instead of `serialNumber`
+        # would have picked core 1, not core 2 — this proves it did not.
+        assert ("GET", "/api/public/v0/cores") in seen
+
+    @pytest.mark.asyncio
+    async def test_qsys_reflect_adapter_falls_back_to_a_system_item_by_serial_number(
+        self,
+    ) -> None:
+        """An asset that is a component (mic, amp), not a Core, is found
+        by walking systems -> systems/{id}/items — verified two-tier
+        search shape."""
+        from nce.vertical_modules.assets.qsys_reflect import QSysReflectTelemetryAdapter
+
+        seen: list[tuple[str, str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append((request.method, request.url.path))
+            if request.url.path == "/api/public/v0/cores":
+                return httpx.Response(200, json=[])
+            if request.url.path == "/api/public/v0/systems":
+                return httpx.Response(
+                    200,
+                    json=[{"id": 10, "name": "Design A", "design": {"id": 10}, "core": {"id": 1}}],
+                )
+            if request.url.path == "/api/public/v0/systems/10/items":
+                return httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "id": 20,
+                            "name": "Mikrofon",
+                            "serialNumber": "MIC-123",
+                            "isOnline": True,
+                            "status": {"code": 0, "message": "OK"},
+                            "system": {"id": 10},
+                            "core": {"id": 1},
+                        }
+                    ],
+                )
+            raise AssertionError(f"unexpected call: {request.method} {request.url}")
+
+        adapter = QSysReflectTelemetryAdapter(
+            endpoint_url="https://reflect.qsc.com/api/public/v0",
+            api_key="qsys-token",
+            transport=httpx.MockTransport(handler),
+        )
+        samples = await adapter.fetch_samples(uuid.uuid4(), serial="mic-123")
+        metrics = {s.metric: s.value for s in samples}
+        assert metrics["status.code"] == 0.0
+        assert metrics["isOnline"] == 1.0
+        assert ("GET", "/api/public/v0/systems/10/items") in seen
+
+    @pytest.mark.asyncio
+    async def test_qsys_reflect_adapter_unmatched_serial_returns_empty_without_error(
+        self,
+    ) -> None:
+        from nce.vertical_modules.assets.qsys_reflect import QSysReflectTelemetryAdapter
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=[])
+
+        adapter = QSysReflectTelemetryAdapter(
+            endpoint_url="https://reflect.qsc.com/api/public/v0",
+            api_key="qsys-token",
+            transport=httpx.MockTransport(handler),
+        )
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="no-such-sn") == []
+
+    @pytest.mark.asyncio
+    async def test_qsys_reflect_adapter_http_failure_degrades_gracefully(self) -> None:
+        from nce.vertical_modules.assets.qsys_reflect import QSysReflectTelemetryAdapter
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, text="Service Unavailable")
+
+        adapter = QSysReflectTelemetryAdapter(
+            endpoint_url="https://reflect.qsc.com/api/public/v0",
+            api_key="qsys-token",
+            transport=httpx.MockTransport(handler),
+        )
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="SN-1001") == []
 
     @pytest.mark.asyncio
     async def test_shure_cloud_adapter_unconfigured_raises(self) -> None:
