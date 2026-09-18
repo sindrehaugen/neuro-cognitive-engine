@@ -132,11 +132,12 @@ async def test_unknown_platform_is_refused_before_any_db_call() -> None:
 
 def test_the_documented_vendor_platforms_are_exactly_the_declared_set() -> None:
     """``09-assets-engine.md`` names the core AV cloud platforms; MLV16F
-    Wave F-3 added ``neowit`` (a smart-building aggregator, not an AV
-    vendor) and Wave F-4 added ``disruptive`` (a sensor vendor read
-    directly, not only through Neowit's aggregation). Pinning the whole
-    set — not a sample of it — so a dropped or renamed platform is caught
-    rather than discovered by an operator whose env key stops working.
+    Wave F-3 added ``neowit`` (a smart-building aggregator), Wave F-4
+    added ``disruptive`` (a sensor vendor read directly, not only through
+    Neowit's aggregation), and Wave F-5 added ``ochno`` (a USB-C
+    switch/hub platform). Pinning the whole set — not a sample of it — so
+    a dropped or renamed platform is caught rather than discovered by an
+    operator whose env key stops working.
     """
     assert set(VENDOR_PLATFORMS) == {
         "crestron",
@@ -150,6 +151,7 @@ def test_the_documented_vendor_platforms_are_exactly_the_declared_set() -> None:
         "ymcs",
         "neowit",
         "disruptive",
+        "ochno",
     }
     assert MOCK_PLATFORM not in VENDOR_PLATFORMS
 
@@ -211,6 +213,10 @@ def test_vendor_platform_swaps_to_its_real_adapter_when_the_flag_is_set(
         from nce.vertical_modules.assets.disruptive import DisruptiveTelemetryAdapter
 
         assert isinstance(adapter, DisruptiveTelemetryAdapter)
+    elif platform == "ochno":
+        from nce.vertical_modules.assets.ochno import OchnoTelemetryAdapter
+
+        assert isinstance(adapter, OchnoTelemetryAdapter)
     else:
         assert isinstance(adapter, UnimplementedVendorAdapter)
         assert adapter.platform == platform
@@ -1958,3 +1964,130 @@ class TestDisruptiveAdapter:
 
         adapter = _disruptive_adapter(handler)
         assert await adapter.fetch_samples(uuid.uuid4(), serial="bjehn6sdm92g00c1nvo0") == []
+
+
+# ---------------------------------------------------------------------------
+# Ochno: a USB-C switch/hub platform (new platform, MLV16F Wave F-5) — not
+# an AV cloud vendor.
+# ---------------------------------------------------------------------------
+
+
+def _ochno_adapter(handler: Any) -> Any:
+    from nce.vertical_modules.assets.ochno import OchnoTelemetryAdapter
+
+    return OchnoTelemetryAdapter(
+        endpoint_url="https://operated.ochno.com",
+        token="ochno-bearer-token",
+        transport=httpx.MockTransport(handler),
+    )
+
+
+class TestOchnoAdapter:
+    @pytest.mark.asyncio
+    async def test_ochno_adapter_unconfigured_raises(self) -> None:
+        from nce.vertical_modules.assets.ochno import OchnoTelemetryAdapter
+
+        adapter = OchnoTelemetryAdapter(endpoint_url=None, token=None, timeout=10.0)
+        assert adapter.platform == "ochno"
+        assert adapter._timeout <= 4.9
+
+        with pytest.raises(NotImplementedError, match="ochno") as excinfo:
+            await adapter.fetch_samples(uuid.uuid4(), serial="O474C90FA5EDC1")
+        message = str(excinfo.value)
+        assert "NCE_ASSETS_OCHNO_ENDPOINT_URL" in message
+        assert "NCE_ASSETS_OCHNO_TOKEN" in message
+
+    @pytest.mark.asyncio
+    async def test_ochno_adapter_without_a_serial_is_skipped_before_any_http_call(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("no HTTP call should be made when serial is missing")
+
+        adapter = _ochno_adapter(handler)
+        assert await adapter.fetch_samples(uuid.uuid4(), serial=None) == []
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="  ") == []
+
+    @pytest.mark.asyncio
+    async def test_ochno_adapter_refuses_a_path_outside_its_allow_list(self) -> None:
+        """Gate item 1+2 (MLV16 charter, Lane F): a call outside the
+        explicit allow-list literal is refused before any HTTP request."""
+        from nce.vertical_modules.assets.ochno import OchnoAllowListRefusal
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("a refused call must never reach the transport")
+
+        adapter = _ochno_adapter(handler)
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            with pytest.raises(OchnoAllowListRefusal, match="DELETE /api/hubs"):
+                await adapter._gated_request(client, "DELETE", "/api/hubs")
+            # Ochno's own client reads four more endpoints (accounts,
+            # spaces, spaces/{id}, system/configuration) that this
+            # adapter has no business calling at all.
+            with pytest.raises(OchnoAllowListRefusal):
+                await adapter._gated_request(client, "GET", "/api/spaces")
+
+    @pytest.mark.asyncio
+    async def test_ochno_adapter_live_http(self) -> None:
+        """A recorded-fixture-shaped round trip against a bare bearer
+        token (no exchange, unlike every prior wave) and a bare JSON array
+        response (no envelope, unlike every prior wave) — resolving by
+        ``data.serial``, a field with real evidence behind it, and reading
+        port/connectivity state from the SAME response, never the
+        fabricated single-endpoint shape earlier waves replaced."""
+        seen: list[tuple[str, str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append((request.method, request.url.path))
+            assert request.headers.get("Authorization") == "Bearer ochno-bearer-token"
+            if request.url.path == "/api/hubs":
+                return httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "id": "hub-other",
+                            "spaceIds": ["room-a"],
+                            "data": {"serial": "OTHER-SN", "product": "O-PC-4"},
+                        },
+                        {
+                            "id": "hub-1",
+                            "spaceIds": ["room-b"],
+                            "data": {
+                                "presence": True,
+                                "product": "O-PC-4",
+                                "serial": "O474C90FA5EDC1",
+                                "state": {
+                                    "connected": [0, 0, 0, 1],
+                                    "active": 4,
+                                    "mtrmode": True,
+                                },
+                            },
+                        },
+                    ],
+                )
+            raise AssertionError(f"unexpected call: {request.method} {request.url}")
+
+        adapter = _ochno_adapter(handler)
+        samples = await adapter.fetch_samples(uuid.uuid4(), serial="o474c90fa5edc1")
+        metrics = {s.metric: s.value for s in samples}
+        assert metrics["presence"] == 1.0
+        assert metrics["state.active"] == 4.0
+        assert metrics["state.mtrmode"] == 1.0
+        assert metrics["state.connected.0"] == 0.0
+        assert metrics["state.connected.3"] == 1.0
+        # Resolution matched the SECOND row, not the first.
+        assert ("GET", "/api/hubs") in seen
+
+    @pytest.mark.asyncio
+    async def test_ochno_adapter_unmatched_serial_returns_empty_without_error(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=[])
+
+        adapter = _ochno_adapter(handler)
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="no-such-serial") == []
+
+    @pytest.mark.asyncio
+    async def test_ochno_adapter_http_failure_degrades_gracefully(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, text="Service Unavailable")
+
+        adapter = _ochno_adapter(handler)
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="O474C90FA5EDC1") == []
