@@ -321,27 +321,6 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     # ---------------------------------------------------------------------------
     # Support Engine (Lane D Waves D-5, D-6 / Lane E)
     # ---------------------------------------------------------------------------
-    "TICKET": ResourceExemption(
-        owner_engine="support",
-        reason=(
-            "Real attribute table (support_tickets). Scheduled for Wave D-5 TICKET_ACTION "
-            "and ticket resource declaration."
-        ),
-    ),
-    "SLA": ResourceExemption(
-        owner_engine="support",
-        reason=(
-            "Operational SLA policy clock and breach tracker; scheduled for Support "
-            "resource surface wave."
-        ),
-    ),
-    "SUPPORT_HEALTH_SCORE": ResourceExemption(
-        owner_engine="support",
-        reason=(
-            "Customer rolling health and sentiment score; scheduled for Support "
-            "resource surface wave."
-        ),
-    ),
     "SUPPORT_DIAGNOSIS": ResourceExemption(
         owner_engine="support",
         reason=(
