@@ -79,6 +79,16 @@ def load_known_unwired(repo: str, baseline: str) -> frozenset[str]:
 
 def load_merged_prs(repo: str, live: bool = False) -> list[dict[str, Any]]:
     """Load merged PRs from GitHub CLI (if live) or cached docs/_generated/merged_prs.json."""
+    cache_path = pathlib.Path(repo) / "docs" / "_generated" / "merged_prs.json"
+    cached_prs: dict[int, dict[str, Any]] = {}
+    if cache_path.exists():
+        try:
+            for p in json.loads(cache_path.read_text(encoding="utf-8")):
+                if isinstance(p, dict) and "number" in p:
+                    cached_prs[p["number"]] = p
+        except Exception:
+            pass
+
     if live:
         try:
             res = subprocess.run(
@@ -89,7 +99,7 @@ def load_merged_prs(repo: str, live: bool = False) -> list[dict[str, Any]]:
                     "--state",
                     "merged",
                     "--limit",
-                    "200",
+                    "500",
                     "--json",
                     "number,title,mergedAt,mergeCommit",
                 ],
@@ -98,21 +108,23 @@ def load_merged_prs(repo: str, live: bool = False) -> list[dict[str, Any]]:
                 check=True,
                 encoding="utf-8",
             )
-            data = json.loads(res.stdout)
-            cache_path = pathlib.Path(repo) / "docs" / "_generated" / "merged_prs.json"
+            live_data = json.loads(res.stdout)
+            for p in live_data:
+                if isinstance(p, dict) and "number" in p:
+                    cached_prs[p["number"]] = p
+            merged_list = sorted(cached_prs.values(), key=lambda x: x["number"])
             if cache_path.parent.exists():
                 crlf_content = (
-                    (json.dumps(data, indent=2) + "\n").replace("\r\n", "\n").replace("\n", "\r\n")
+                    (json.dumps(merged_list, indent=2) + "\n")
+                    .replace("\r\n", "\n")
+                    .replace("\n", "\r\n")
                 )
                 cache_path.write_bytes(crlf_content.encode("utf-8"))
-            return data
+            return merged_list
         except Exception:
             pass  # fallback to cached file
 
-    json_path = pathlib.Path(repo) / "docs" / "_generated" / "merged_prs.json"
-    if json_path.exists():
-        return json.loads(json_path.read_text(encoding="utf-8"))
-    return []
+    return sorted(cached_prs.values(), key=lambda x: x["number"])
 
 
 def parse_prs_by_wave(prs: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:

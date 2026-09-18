@@ -1,1171 +1,11 @@
 [
   {
     "mergeCommit": {
-      "oid": "6398b62d62cdc58aee5305f5c6556245a7530dd2"
-    },
-    "mergedAt": "2026-09-16T14:04:35Z",
-    "number": 166,
-    "title": "docs: update ENGINE_STATUS.md TOOL_REGISTRY count 258 -> 259"
-  },
-  {
-    "mergeCommit": {
-      "oid": "417bebd514f4dfa5d9bc45329cc5afa8845c0caa"
-    },
-    "mergedAt": "2026-09-16T11:36:30Z",
-    "number": 165,
-    "title": "feat(health): make a degraded verdict say why, and 503 when it is blocking (Wave HEALTH)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "6ac8157ad705ee3f0a155a90527f77da766b83ba"
-    },
-    "mergedAt": "2026-09-16T11:13:46Z",
-    "number": 164,
-    "title": "docs(readme): correct vertical-engine counts and list all 20 modules"
-  },
-  {
-    "mergeCommit": {
-      "oid": "dba095a5448d472e83f2da3821861bd2dbc7c59e"
-    },
-    "mergedAt": "2026-09-16T14:05:03Z",
-    "number": 162,
-    "title": "feat(business_insights): eliminate fabricated deals and balance sheet defaults from scenario modeling (Wave C-BI4)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "fcbe513b67f5e4e9ec72e65c5a622fa03ea35594"
-    },
-    "mergedAt": "2026-09-16T09:54:26Z",
-    "number": 161,
-    "title": "feat(instruments): make waves_landed.md byte-comparison advisory (Wave A-Q17)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "3d11e91d9074f0c73c8cfb5d6b81c42355a1412c"
-    },
-    "mergedAt": "2026-09-16T09:51:14Z",
-    "number": 159,
-    "title": "docs: audit enforcement claims against deployment and CI reality (DL D-ENF)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "120654ad5ae35e032578317c7a58f1cf5459879f"
-    },
-    "mergedAt": "2026-09-16T09:52:01Z",
-    "number": 158,
-    "title": "feat(sales): wire stalled-deal watcher on cron and morning brief slice read (Wave S-4)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "728c2123bcc6b031f8f013b2bb5c9f22c4219320"
-    },
-    "mergedAt": "2026-09-16T09:03:33Z",
-    "number": 157,
-    "title": "feat(business_insights): eliminate fabricated defaults from renderer and risk radar (Wave C-BI3)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "f298d1d47600b5445a0b768e49872a33baf2b31c"
-    },
-    "mergedAt": "2026-09-16T09:03:37Z",
-    "number": 156,
-    "title": "docs: document DECAY_PRUNE_INTERVAL_MINUTES as fixed constant in architecture-v1.md"
-  },
-  {
-    "mergeCommit": {
-      "oid": "99a85fa0c54a4c70c2ef5da5b1c31b6ec9c167a8"
-    },
-    "mergedAt": "2026-09-16T08:59:41Z",
-    "number": 155,
-    "title": "feat(sales): implement sales_divergence_log parity window reader (Wave S-7)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "ebf8ea65901bb99a56a844b9db4299d0132a4e8c"
-    },
-    "mergedAt": "2026-09-16T08:49:47Z",
-    "number": 154,
-    "title": "docs: document deployment truth of database isolation under mcp_user (DL D-RLS)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "46e613ae846caa94c5a723192a9d21b9d1706a95"
-    },
-    "mergedAt": "2026-09-16T09:33:52Z",
-    "number": 153,
-    "title": "feat(autonomy,admin): wire action_approval_queue writers in @governed and add approve/reject routes (Wave B-B128)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "628b231636610e0798e3e61d2eafb5904f43d9c8"
-    },
-    "mergedAt": "2026-09-16T08:35:25Z",
-    "number": 152,
-    "title": "docs: correct three measured inventory figures in ENGINE_STATUS.md (DL D-FIG)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "0565772789e7682cd05e37d1161d8aaa6299cb22"
-    },
-    "mergedAt": "2026-09-16T08:19:21Z",
-    "number": 151,
-    "title": "docs: correct BRIDGE_CRON_INTERVAL_MINUTES default to 45 in architecture-v1.md"
-  },
-  {
-    "mergeCommit": {
-      "oid": "bc7bc7b4ec8167c5a76df428871ba121a6b14d4e"
-    },
-    "mergedAt": "2026-09-16T08:28:11Z",
-    "number": 150,
-    "title": "feat(vendors): seed VENDOR identities from sales_read_model and Nettailer (Wave V-3)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "03b841b03905ec35b48c5f291f5054916878ae79"
-    },
-    "mergedAt": "2026-09-16T08:43:34Z",
-    "number": 149,
-    "title": "feat(customer_portal): internal MCP admin-only & scope assertion auditing (Wave T-6)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "a399aac09dfd38e521822267b293297fabaa5d8d"
-    },
-    "mergedAt": "2026-09-16T08:05:44Z",
-    "number": 148,
-    "title": "feat(security): adversarial review of C3 external scope and standing ratchets (Wave A-T6)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "293da0e42a0b28da43370d95157f356e73a3413f"
-    },
-    "mergedAt": "2026-09-16T08:05:40Z",
-    "number": 147,
-    "title": "feat(cache): scope MCP cache generation per engine (Wave A-T2)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "b13ce85b89a436de0690c6ab664c0bad20aca725"
-    },
-    "mergedAt": "2026-09-16T09:13:42Z",
-    "number": 146,
-    "title": "feat(instruments): implement waves landed on main instrument (Wave A-W1)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "02fde8b3ae8766b8b5d355ad159707f7a4fa3d0f"
-    },
-    "mergedAt": "2026-09-14T18:48:05Z",
-    "number": 135,
-    "title": "Delete scripts/rekey_master.py, the superseded single-key rotation path"
-  },
-  {
-    "mergeCommit": {
-      "oid": "b7cd18360546650e2659b8e7665e5e6b9fd80f8a"
-    },
-    "mergedAt": "2026-09-16T09:11:51Z",
-    "number": 134,
-    "title": "feat(instruments): implement config docs default value ratchet (Wave I-10)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "a8970cde4777490f06c3a8b967d1dd7c7c28361d"
-    },
-    "mergedAt": "2026-09-12T07:03:11Z",
-    "number": 133,
-    "title": "Every master-key script must refuse an RLS-blind role (F10, F11, F11b) + ratchet"
-  },
-  {
-    "mergeCommit": {
-      "oid": "f561b4eabcfa899e0f9634f92cc1cc7abdd38f54"
-    },
-    "mergedAt": "2026-09-10T12:14:27Z",
-    "number": 132,
-    "title": "docs(db): the 077 row states three things that are no longer true"
-  },
-  {
-    "mergeCommit": {
-      "oid": "2ee2f7f4a2b610cec5d45bd8da18bac994ce968a"
-    },
-    "mergedAt": "2026-09-10T11:44:38Z",
-    "number": 131,
-    "title": "Validate event_log_chain_hash_present \u2014 the row blocking it is gone"
-  },
-  {
-    "mergeCommit": {
-      "oid": "c6c79f54e0aec306987087853428b581177ad812"
-    },
-    "mergedAt": "2026-09-10T11:32:10Z",
-    "number": 130,
-    "title": "Make the rewrap sweep's completion signal reachable (F3), with F5 and F6"
-  },
-  {
-    "mergeCommit": {
-      "oid": "d9404c8b79ec2e2e636b5ed8824c8a10ef066c91"
-    },
-    "mergedAt": "2026-09-10T10:56:33Z",
-    "number": 129,
-    "title": "docs(product): only EOL tier 2 can fire \u2014 say so, and say why"
-  },
-  {
-    "mergeCommit": {
-      "oid": "6576cc76817f41af37a62d471181d3e1cedd8d9a"
-    },
-    "mergedAt": "2026-09-10T10:56:30Z",
-    "number": 128,
-    "title": "feat(instruments): implement event_log chokepoint and publish transactional ratchets (Wave I-8)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "66c18f21b883d075a5a5a975910d7e86561acbcc"
-    },
-    "mergedAt": "2026-09-09T15:55:15Z",
-    "number": 127,
-    "title": "Make the master-key fingerprint mandatory in signing_key_rotated"
-  },
-  {
-    "mergeCommit": {
-      "oid": "b7d03059f4582e12b2f91bb61d977e2b3e187898"
-    },
-    "mergedAt": "2026-09-09T14:04:17Z",
-    "number": 126,
-    "title": "feat(audit): implement signing_key_rotated audit trail, harden relay logging, fix tx mocks, and publish detector limits"
-  },
-  {
-    "mergeCommit": {
-      "oid": "673c870f77421669556cfb8115c857812081d5ba"
-    },
-    "mergedAt": "2026-09-09T14:41:35Z",
-    "number": 125,
-    "title": "feat(crypto): rewrap sweep + a two-key ring, so rotation needs no downtime"
-  },
-  {
-    "mergeCommit": {
-      "oid": "880dddbe4b5d7e708d0bb7f525c7c6f7ab556d2e"
-    },
-    "mergedAt": "2026-09-09T13:39:28Z",
-    "number": 124,
-    "title": "feat(config): refuse a structurally weak master key in production"
-  },
-  {
-    "mergeCommit": {
-      "oid": "ab782cc6883e4e434221b1fe0a35076e4c7df5b3"
-    },
-    "mergedAt": "2026-09-09T13:39:19Z",
-    "number": 123,
-    "title": "feat(crypto): v5 blobs record WHICH master key wrapped them"
-  },
-  {
-    "mergeCommit": {
-      "oid": "df824e5d53a6fb008e9fa5b6c416b0f1a84f40f9"
-    },
-    "mergedAt": "2026-09-09T13:35:36Z",
-    "number": 122,
-    "title": "feat(crypto): declare every master-key-wrapped column so rotation can be seamless"
-  },
-  {
-    "mergeCommit": {
-      "oid": "c95bca0fde251a18383f53645b777ee4417624ca"
-    },
-    "mergedAt": "2026-09-09T11:10:35Z",
-    "number": 121,
-    "title": "deps(deps): update extract-msg requirement from >=0.54.0 to >=0.56.1"
-  },
-  {
-    "mergeCommit": {
-      "oid": "214e2d9551c19cc8c5b00b6dba1133278a7c042d"
-    },
-    "mergedAt": "2026-09-09T10:58:54Z",
-    "number": 120,
-    "title": "deps(deps): update pdfplumber requirement from >=0.11.0 to >=0.11.10"
-  },
-  {
-    "mergeCommit": {
-      "oid": "774be13c6728d218bd60fb7d3e0d979dfbc6e01a"
-    },
-    "mergedAt": "2026-09-09T10:58:48Z",
-    "number": 119,
-    "title": "deps(deps): update python-pptx requirement from >=1.0.0 to >=1.0.2"
-  },
-  {
-    "mergeCommit": {
-      "oid": "5b896f098e295f90bf5c22d0147e54ca9eb13b1a"
-    },
-    "mergedAt": "2026-09-09T10:58:42Z",
-    "number": 118,
-    "title": "deps(deps): update tree-sitter-language-pack requirement from >=1.12.2 to >=1.16.2"
-  },
-  {
-    "mergeCommit": {
-      "oid": "d2592fc0153e221e93dd724e6a6f0133182ca5e8"
-    },
-    "mergedAt": "2026-09-09T10:58:37Z",
-    "number": 117,
-    "title": "deps(deps): update sse-starlette requirement from >=2.0.0 to >=3.4.11"
-  },
-  {
-    "mergeCommit": {
-      "oid": "9f9d426673877c459c806f7b3a695c381d08d63e"
-    },
-    "mergedAt": "2026-09-09T10:58:31Z",
-    "number": 116,
-    "title": "deps(deps): update mcp requirement from <2,>=1.28.1 to >=1.29.1,<2"
-  },
-  {
-    "mergeCommit": {
-      "oid": "c3c2b2a5291bc53c0727cce3a444af0dbd74f54e"
-    },
-    "mergedAt": "2026-09-09T10:58:25Z",
-    "number": 115,
-    "title": "deps(deps): update pillow requirement from >=11.0.0 to >=12.3.0"
-  },
-  {
-    "mergeCommit": {
-      "oid": "6b08e89b10cdbb362ad591047ab0a0ada1f1d4ad"
-    },
-    "mergedAt": "2026-09-09T10:54:51Z",
-    "number": 114,
-    "title": "feat(db): require a chain hash on new event_log rows (NOT VALID)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "4a32a4d33493f70f55cd9cf80a460baa05bd0877"
-    },
-    "mergedAt": "2026-09-09T10:46:52Z",
-    "number": 113,
-    "title": "ci: gate the platform coupling that broke, and stop re-proposing rejected upgrades"
-  },
-  {
-    "mergeCommit": {
-      "oid": "18c59367d3f465e1eac13236174912939ca1912c"
-    },
-    "mergedAt": "2026-09-09T10:23:16Z",
-    "number": 112,
-    "title": "fix(cron): the chain verifier was the main contributor to the corruption it reported"
-  },
-  {
-    "mergeCommit": {
-      "oid": "821a7db86d031fc9e46fc9474cf492b66ac57381"
-    },
-    "mergedAt": "2026-09-09T07:01:25Z",
-    "number": 111,
-    "title": "fix(test): stop constraint bodies leaking keywords into the declared column set"
-  },
-  {
-    "mergeCommit": {
-      "oid": "3cbfe5d46b019dceb426e414cdcfaf7210563c43"
-    },
-    "mergedAt": "2026-09-08T11:27:13Z",
-    "number": 110,
-    "title": "fix(outbox): harden relay predicate, split delivered counter, and add live drain test"
-  },
-  {
-    "mergeCommit": {
-      "oid": "a60466c31f4d533d6ae210f0400263e6a039faf0"
-    },
-    "mergedAt": "2026-09-08T10:46:40Z",
-    "number": 109,
-    "title": "fix(marketing): re-home approval audit onto event_log and eliminate bad insert allowlist"
-  },
-  {
-    "mergeCommit": {
-      "oid": "5708d7e6a835f83677d97ab2c1a970d4b3a3e5f5"
-    },
-    "mergedAt": "2026-09-08T10:22:58Z",
-    "number": 108,
-    "title": "test: extend DDL column detector to SELECT and WHERE phantom columns"
-  },
-  {
-    "mergeCommit": {
-      "oid": "5ffaf370ff9d8ca68d95a3e040d62a1faf96cc97"
-    },
-    "mergedAt": "2026-09-08T10:06:35Z",
-    "number": 107,
-    "title": "feat(outbox): align relay delivery contract with catalogue unconsumed declarations"
-  },
-  {
-    "mergeCommit": {
-      "oid": "1a0153ff5c024c087a7bd1d6ea4bbc8f3c987fca"
-    },
-    "mergedAt": "2026-09-09T10:24:03Z",
-    "number": 106,
-    "title": "deps(go): bump github.com/AzureAD/microsoft-authentication-library-for-go from 1.4.2 to 1.9.0 in /go"
-  },
-  {
-    "mergeCommit": {
-      "oid": "3a80f8d897922c4a0489b0c02dccf5f2bedf610d"
-    },
-    "mergedAt": "2026-09-08T08:48:51Z",
-    "number": 103,
-    "title": "ci+deps: make the patch routine collect, and the lock represent production"
-  },
-  {
-    "mergeCommit": {
-      "oid": "4ac4c3be6cdb10962bc460bd6a3debab06fa0596"
-    },
-    "mergedAt": "2026-09-09T10:24:35Z",
-    "number": 102,
-    "title": "deps(deps): update pdfminer-six requirement from >=20231228 to >=20260107"
-  },
-  {
-    "mergeCommit": {
-      "oid": "12dc23862180e893ae67d59455ec724dec36725e"
-    },
-    "mergedAt": "2026-09-09T11:10:50Z",
-    "number": 101,
-    "title": "deps(deps): update rq requirement from >=2.0.0 to >=2.12.0"
-  },
-  {
-    "mergeCommit": {
-      "oid": "4b3c5a8a6d6ed31ec4b2fe6acaf732f92aefafcc"
-    },
-    "mergedAt": "2026-09-09T11:10:26Z",
-    "number": 100,
-    "title": "deps(deps): update python-dotenv requirement from >=1.2.2 to >=1.2.3"
-  },
-  {
-    "mergeCommit": {
-      "oid": "94f683093ba0a78c8751f17c376f0a8dbf91d9f1"
-    },
-    "mergedAt": "2026-09-09T10:24:26Z",
-    "number": 98,
-    "title": "deps(deps-dev): bump pip-audit from 2.9.0 to 2.10.1"
-  },
-  {
-    "mergeCommit": {
-      "oid": "b018cace8e4194c805cfe6d24d15d6dbfdcc6cad"
-    },
-    "mergedAt": "2026-09-09T10:24:59Z",
-    "number": 97,
-    "title": "deps(deps): update redis requirement from >=5.0.1 to >=8.1.0"
-  },
-  {
-    "mergeCommit": {
-      "oid": "392285e2f0613bab96d742e9d8dac230464bc1b8"
-    },
-    "mergedAt": "2026-09-09T10:24:52Z",
-    "number": 96,
-    "title": "deps(deps): update networkx requirement from >=3.2.0 to >=3.4.2"
-  },
-  {
-    "mergeCommit": {
-      "oid": "9b7cad25353a375a3fa17b484db5e2f9a82fcaa8"
-    },
-    "mergedAt": "2026-09-09T10:24:45Z",
-    "number": 95,
-    "title": "deps(deps): update pyyaml requirement from >=6.0.2 to >=6.0.3"
-  },
-  {
-    "mergeCommit": {
-      "oid": "242a8e55afa48c1bc5456c1368dd74efdef6b43e"
-    },
-    "mergedAt": "2026-09-09T11:10:43Z",
-    "number": 94,
-    "title": "deps(deps): update pydantic requirement from >=2.13.4 to >=2.13.5"
-  },
-  {
-    "mergeCommit": {
-      "oid": "54d016794d14efc35a18e2bb96570f60369884d4"
-    },
-    "mergedAt": "2026-09-09T10:25:06Z",
-    "number": 93,
-    "title": "deps(deps): bump the ml-stack group across 1 directory with 4 updates"
-  },
-  {
-    "mergeCommit": {
-      "oid": "0c378d226bf30575f14c54f9381646f49e22443a"
-    },
-    "mergedAt": "2026-09-09T10:24:19Z",
-    "number": 92,
-    "title": "ci: bump actions/deploy-pages from 5.0.0 to 5.0.1"
-  },
-  {
-    "mergeCommit": {
-      "oid": "b7e507f60f0b67aa3e349bc2bb193c829d8b1219"
-    },
-    "mergedAt": "2026-09-09T10:24:11Z",
-    "number": 91,
-    "title": "ci: bump actions/setup-go from 5 to 7"
-  },
-  {
-    "mergeCommit": {
-      "oid": "ca7d65a2322292455c9989273e8deb52ac4dbcfe"
-    },
-    "mergedAt": "2026-09-07T12:58:37Z",
-    "number": 90,
-    "title": "fix(cron): assets telemetry tick queried a column assets does not have"
-  },
-  {
-    "mergeCommit": {
-      "oid": "4dfe8823876a4689d0071815b8831116924c3e4c"
-    },
-    "mergedAt": "2026-09-07T12:56:53Z",
-    "number": 89,
-    "title": "test: no test may rotate a signing key without the disposable-db opt-in"
-  },
-  {
-    "mergeCommit": {
-      "oid": "809a02991fa7fe2cda313d1aaf8dd8fce5dabb28"
-    },
-    "mergedAt": "2026-09-07T10:14:00Z",
-    "number": 88,
-    "title": "test: forbid production code that behaves differently because it is being tested"
-  },
-  {
-    "mergeCommit": {
-      "oid": "3ed34e612554c9b7f1e61e9b6c0bfe3d7b8b11e5"
-    },
-    "mergedAt": "2026-09-07T09:44:54Z",
-    "number": 87,
-    "title": "feat(hr,cron): implement statutory compliance-deadline watcher on cron (Wave HR-5)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "12aed5a37a29f4e2dc21ef4da99bbd49e6c7e8bd"
-    },
-    "mergedAt": "2026-09-07T09:05:44Z",
-    "number": 86,
-    "title": "fix(support): enforce atomic per-ticket transaction for SLA breach outbox emission (Wave SU-2 follow-up)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "09385d0b36e6281bb2e76a00f00a7deedeca4f13"
-    },
-    "mergedAt": "2026-09-07T09:05:12Z",
-    "number": 85,
-    "title": "test(events): ratchet produced-but-unconsumed outbox selectors; 52 pinned"
-  },
-  {
-    "mergeCommit": {
-      "oid": "84c79c73613c7cdf942da80cd21f6ef2d964fbeb"
-    },
-    "mergedAt": "2026-09-07T09:07:35Z",
-    "number": 84,
-    "title": "feat(customer_portal): C3 adversarial review & server-verified auth boundary (Wave T-6)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "1ebb0613c4ec50537097b7caf53baa4ce18a6ee3"
-    },
-    "mergedAt": "2026-09-07T08:46:47Z",
-    "number": 83,
-    "title": "feat(support,cron): implement SLA breach watcher on cron emitting TICKET.sla_breached (Wave SU-2)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "d41195465331b75910bdcda796c0871acff075a3"
-    },
-    "mergedAt": "2026-09-07T08:27:16Z",
-    "number": 82,
-    "title": "test(economy): include economy_get_gl_records in exact economy tool set ratchet"
-  },
-  {
-    "mergeCommit": {
-      "oid": "e1e3e45511bccacf9ca752fd098ef2111c636790"
-    },
-    "mergedAt": "2026-09-07T08:17:28Z",
-    "number": 80,
-    "title": "feat(economy,agreements): query GL records with C8 projection and rewire coverage seam (Wave B-AG1 / B-E2)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "6927e90bc8716e767eadd8322a1928110ef5287f"
-    },
-    "mergedAt": "2026-09-07T08:04:36Z",
-    "number": 79,
-    "title": "feat(procurement,agreements): wire agreements compliance audit for rebate override via engine.modules (Wave AG-3 / PR-5)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "42696cfb881c4fb69a436b4c2024244562847c13"
-    },
-    "mergedAt": "2026-09-07T08:06:06Z",
-    "number": 78,
-    "title": "feat(business_insights): ground do_ask_business in real KPI snapshots and cognitive memories (Wave C-BI2)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "0ffd305e420aee465e0db895e4df637f1c3cc08f"
-    },
-    "mergedAt": "2026-09-07T07:16:13Z",
-    "number": 77,
-    "title": "feat(auth): partner scope resolution and audit ratchet (Wave B-FT5)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "dd1da5d023296a5f585d6f2ac7f6242a7892a838"
-    },
-    "mergedAt": "2026-09-07T07:21:50Z",
-    "number": 76,
-    "title": "fix(resources): record degradation and report honest task coverage on payload resolution failure"
-  },
-  {
-    "mergeCommit": {
-      "oid": "ed47f86400772dcb90febbc4ade9d501f324945e"
-    },
-    "mergedAt": "2026-09-07T07:07:40Z",
-    "number": 75,
-    "title": "fix(resources): resolve planned project tasks via valid DDL columns and graph edges in demand forecasting"
-  },
-  {
-    "mergeCommit": {
-      "oid": "445b535c61c62ef87b1def54df5d094e29d96c2f"
-    },
-    "mergedAt": "2026-09-07T07:12:45Z",
-    "number": 74,
-    "title": "feat(signing): Wave Q-4 operator-entered signing credentials"
-  },
-  {
-    "mergeCommit": {
-      "oid": "489241723997a9064258c07763976ff662045ed1"
-    },
-    "mergedAt": "2026-09-07T06:49:37Z",
-    "number": 73,
-    "title": "chore(identity): scrub private module names and fix quota doc (Wave B-ID1)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "91fd5322c942e94cd5d6310d4c43e08da5224bac"
-    },
-    "mergedAt": "2026-09-07T06:51:27Z",
-    "number": 72,
-    "title": "fix(business-insights): a valid group_by must not skip the person-ranking check (EU AI Act Art. 5)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "5e5217474557c9c0362f8794c5846ef9fb9c64bb"
-    },
-    "mergedAt": "2026-09-07T06:33:53Z",
-    "number": 71,
-    "title": "feat(business-insights): invert person-grain barrier to allowlist (Wave B-BI1)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "796165ceea967fb765543130b3491cd00bca9149"
-    },
-    "mergedAt": "2026-09-07T06:48:32Z",
-    "number": 70,
-    "title": "feat(economy): surface PEPPOL and contract validation tools across MCP and REST (Wave E-2)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "5998e3b1d80953d907a663d5f46e9f222c5f97ec"
-    },
-    "mergedAt": "2026-09-07T06:14:27Z",
-    "number": 69,
-    "title": "fix(sql): four queries named columns their tables do not have; extend the DDL ratchet to UPDATE and SELECT"
-  },
-  {
-    "mergeCommit": {
-      "oid": "2ed98f361b1d6e3d542cf6f99a6847618dca9524"
-    },
-    "mergedAt": "2026-09-07T05:36:27Z",
-    "number": 68,
-    "title": "test: ratchet INSERT column lists against the DDL, and pin the one live offender"
-  },
-  {
-    "mergeCommit": {
-      "oid": "8c6e9bcb2f138b6013165435b85ea9cbdb40f6f9"
-    },
-    "mergedAt": "2026-09-07T04:59:39Z",
-    "number": 67,
-    "title": "test(c10): parse the CREATE TABLE body instead of grepping for column names"
-  },
-  {
-    "mergeCommit": {
-      "oid": "dcb3263b168879123242cf5b8d0ba65b74594a82"
-    },
-    "mergedAt": "2026-09-07T04:17:39Z",
-    "number": 66,
-    "title": "feat(c10,system_design): assert unpatched decision_feedback SQL execution and refine neutral outcome weighting (Wave C-RS3 / C-FT4 / C-SD2)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "0ca7892199972032bc69cf6bc04ab3dc4332b097"
-    },
-    "mergedAt": "2026-09-07T04:05:01Z",
-    "number": 65,
-    "title": "fix(project): pass the engine, not a connection, to record_decision_feedback"
-  },
-  {
-    "mergeCommit": {
-      "oid": "e22ed07f42fc997de4a9e0d8cfe18fc9333149d8"
-    },
-    "mergedAt": "2026-09-07T04:02:07Z",
-    "number": 64,
-    "title": "feat(system_design): enable outcome weighting in recommender (Wave C-SD2)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "0562e1852aceb7ed0677e6bb38bcbc98c53965b9"
-    },
-    "mergedAt": "2026-09-07T03:51:21Z",
-    "number": 63,
-    "title": "feat(sales): surface sales_calculate_commission tool and GET route (Wave S-6)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "f6822b416ba8c5dbb5bc0c54d8ea9ade76f9d1fb"
-    },
-    "mergedAt": "2026-09-07T03:35:33Z",
-    "number": 62,
-    "title": "test(golden-thread): count DB round trips instead of wall-clock, and remove the sleep that neutralised the floor"
-  },
-  {
-    "mergeCommit": {
-      "oid": "88fe7b9fce3d2a0b81418649d4eff0cfd52eed4d"
-    },
-    "mergedAt": "2026-09-07T03:19:46Z",
-    "number": 61,
-    "title": "fix(resources): align all 5 SQL query sites to canonical schema and close dead paths"
-  },
-  {
-    "mergeCommit": {
-      "oid": "7d07f6a0236030c0508d17810552a045b58f6542"
-    },
-    "mergedAt": "2026-09-07T03:18:45Z",
-    "number": 60,
-    "title": "feat(sales): Wave S-1 Sales Native Write Path"
-  },
-  {
-    "mergeCommit": {
-      "oid": "feda4aa1b311df9411c276d2e26dffa1003e6553"
-    },
-    "mergedAt": "2026-09-07T03:39:42Z",
-    "number": 59,
-    "title": "feat(project,marketing): wire case-study graph edge on G6 advance and discover candidates (Wave C-PJ2)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "d115b797ca3a389b2d2ed5263e02186f9566fc39"
-    },
-    "mergedAt": "2026-09-07T02:55:20Z",
-    "number": 58,
-    "title": "feat(resources,golden-thread): fix resources schema query and burn down final seam (Step 23, break-5a)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "749cda511e6b67a293ca9114f10893d497527d8a"
-    },
-    "mergedAt": "2026-09-07T02:33:24Z",
-    "number": 57,
-    "title": "test(golden-thread): rebuild test_golden_thread into live DB execution scenario (Charter \u00a713)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "92a8e2929f31d11fc577227dea45eb6c34fd46ec"
-    },
-    "mergedAt": "2026-09-06T23:37:58Z",
-    "number": 56,
-    "title": "feat(sales): deliver signed quote PDF by email to signer, case responsible, and account responsible (Wave Q-3)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "8d87154830951de77c10ea072d3cdec1ad051133"
-    },
-    "mergedAt": "2026-09-06T23:29:45Z",
-    "number": 55,
-    "title": "feat(marketing): surface marketing_retract_testimonial MCP tool and REST endpoint (Wave MK-2)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "c5fa8488b15ea57caa9a95bf9e4e599a3b303473"
-    },
-    "mergedAt": "2026-09-06T23:22:41Z",
-    "number": 54,
-    "title": "feat(sales): native email-code e-signature transport and provider selection (Wave Q-2)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "f47317a9fc4cbbfa586136169d2edde44b1a46aa"
-    },
-    "mergedAt": "2026-09-07T00:41:20Z",
-    "number": 53,
-    "title": "feat(hr,vendors): close break-5a with CERTIFICATION.EXPIRED and burn down Golden Thread Step 23 (Wave HR-1/V-2)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "bf12b1b612cd173b72e30894c2849ff847d65612"
-    },
-    "mergedAt": "2026-09-06T23:07:10Z",
-    "number": 52,
-    "title": "feat(procurement): surface procurement_aggregate_savings MCP tool and REST endpoint (Wave PR-3)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "17ec1e8e6d6c11e99854655bdc0952f842184127"
-    },
-    "mergedAt": "2026-09-06T23:11:17Z",
-    "number": 51,
-    "title": "feat(business_insights): transactional append_event, audit remediation, and static AST ratchets (Waves A-BI1, A-BI2, A-BI3)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "6932d0178e1df5845954fc9f08f9a476cdc8e3e1"
-    },
-    "mergedAt": "2026-09-06T22:55:56Z",
-    "number": 50,
-    "title": "feat(sales): render quote document from frozen baseline (Wave Q-1)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "cff869cdbe13767407c0ecd80bd90e98f28834aa"
-    },
-    "mergedAt": "2026-09-06T23:10:23Z",
-    "number": 49,
-    "title": "feat(assets): integrate AV cloud telemetry adapters (Crestron XiO, Neat, Sennheiser, Q-SYS, Shure) and correct Yealink YMCS"
-  },
-  {
-    "mergeCommit": {
-      "oid": "e60f1d4e70c3da5b01f613fc99bd168ec60486c4"
-    },
-    "mergedAt": "2026-09-06T22:52:09Z",
-    "number": 48,
-    "title": "feat(economy): surface economy_approve_invoice Actor tool and burn down Golden Thread Step 17 (Wave E-3)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "df9a6cfc519907f98f8250e4c6c4e93ed296a278"
-    },
-    "mergedAt": "2026-09-06T22:35:33Z",
-    "number": 47,
-    "title": "feat(resources): surface 4 master-data cores with MCP tools and REST endpoints (Wave RS-1)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "ef84c7221df47197a0b2e1da938f0984e6850cc3"
-    },
-    "mergedAt": "2026-09-06T18:53:46Z",
-    "number": 46,
-    "title": "feat(support,field_tech): dispatch ticket to work order via reactive TICKET.dispatched C4 event (Wave SU-1/FT-3)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "9a0ad5511ff3cf07a5e18e09b1b86f74f67fef17"
-    },
-    "mergedAt": "2026-09-06T18:30:17Z",
-    "number": 45,
-    "title": "feat(field_tech): enforce Contract-A node ownership and route ASSET writes to Assets engine (Wave FT-2)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "7d58bd852b3454dcf90f600cb4d5e22ce607d8b1"
-    },
-    "mergedAt": "2026-09-06T18:29:36Z",
-    "number": 44,
-    "title": "feat(hr): surface 5 cores with MCP tools and REST endpoints (Wave HR-2)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "80056051e009afb493957fab644c52131f1a080c"
-    },
-    "mergedAt": "2026-09-06T18:07:35Z",
-    "number": 43,
-    "title": "feat(vendors): surface 4 master-data cores with MCP tools and REST endpoints (Wave V-1)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "33c997afa15097d37bf5d23664008e09d7f55454"
-    },
-    "mergedAt": "2026-09-06T18:12:08Z",
-    "number": 42,
-    "title": "feat(field_tech): advance BOM_LINE ladder to INSTALLED and TESTED with FL promotion (Wave FT-1)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "5b340f1eb8d42830fa43ac26a71131d338850411"
-    },
-    "mergedAt": "2026-09-06T17:47:25Z",
-    "number": 41,
-    "title": "feat(inventory): emit GOODS_RECEIPT.created on receipt and link to BOM_LINE (Wave IN-1)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "9e5323c34cbb966ed959c6d2b7a608219b3a8954"
-    },
-    "mergedAt": "2026-09-06T22:01:16Z",
-    "number": 40,
-    "title": "feat(core): Phase 2 Real Data Behind the AI - Waves C10, P-1..P-3, PJ-1/SD-3, Wave 5, T-1"
-  },
-  {
-    "mergeCommit": {
-      "oid": "c841d48d0f43b9bfa2b1d98e0bd59a57d6c86c6d"
-    },
-    "mergedAt": "2026-09-06T17:34:36Z",
-    "number": 39,
-    "title": "feat(ci): implement test tiering, TDL-8 python floor, and nightly live stack (Wave T-3)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "032840aff18e00cbc956891e46c8e17930b204f9"
-    },
-    "mergedAt": "2026-09-06T17:48:39Z",
-    "number": 38,
-    "title": "feat(agreements): surface completion with 9 MCP tools, REST endpoints, allowlist pruning (Wave AG-2)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "82aeb7ef01a4d3c03c0a76ac9d5f75662b23a90b"
-    },
-    "mergedAt": "2026-09-06T17:13:46Z",
-    "number": 37,
-    "title": "feat(instruments): implement knowledge graph ownership ratchet (Wave I-4)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "dc415de4eae08fed642a7032264a6f2b1ef4a5b8"
-    },
-    "mergedAt": "2026-09-06T16:56:55Z",
-    "number": 36,
-    "title": "feat(instruments): implement event-contract catalogue and seam ratchet (Wave I-2)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "d9ac58be63329f6abe5ad62f92a0ec841b731405"
-    },
-    "mergedAt": "2026-09-06T17:22:03Z",
-    "number": 35,
-    "title": "feat(procurement): surface generate/submit PO actor tools and emit PO_LINE.status_changed (Wave PR-1)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "bb2143e792d979715460869e6ba4d6e003e69bad"
-    },
-    "mergedAt": "2026-09-06T14:41:32Z",
-    "number": 34,
-    "title": "docs: five missing engine guides + docs-status ratchet (DL-Orch D-1..D-6)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "34c8fb92360fe5e9c260d67b7084148c08c2ce95"
-    },
-    "mergedAt": "2026-09-06T14:05:07Z",
-    "number": 33,
-    "title": "feat(instruments): implement cross-engine degradation register and observability (Wave I-5)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "efd7b21d91ccbc88c3c280efeee821a129defb7f"
-    },
-    "mergedAt": "2026-09-06T13:11:58Z",
-    "number": 32,
-    "title": "feat(instruments): audit estate ratchets and add standing positive controls (Wave T-5)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "26b4c882b341f90914c195d8bf4e7889aff3939e"
-    },
-    "mergedAt": "2026-09-06T13:10:24Z",
-    "number": 31,
-    "title": "feat(hr): enforce EU AI Act Art. 5 no-person-grain guard C9b in skills and capacity (Wave HR-3)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "18da731ee39517a54d3781d89778d1f18c9a45a2"
-    },
-    "mergedAt": "2026-09-06T13:14:15Z",
-    "number": 30,
-    "title": "feat(procurement): implement PO_LINE status model, Contract-A ownership and RLS declaration (Wave PR-2)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "6b39e5985bca1cda6602482da66fc087d8996d7e"
-    },
-    "mergedAt": "2026-09-06T12:52:49Z",
-    "number": 29,
-    "title": "feat(instruments): implement Golden Thread scenario test and strict-xfail burndown scaffold (Wave I-7)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "1b0a62ee76a22f5e347a1e14a717b232d0cb339c"
-    },
-    "mergedAt": "2026-09-06T12:48:17Z",
-    "number": 28,
-    "title": "feat(economy): surface 6 read tools and REST endpoints, shrink allowlist to 76 (Wave E-1)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "5dd56701b4d9c1e977949723fc8babec41b08a71"
-    },
-    "mergedAt": "2026-09-06T12:31:20Z",
-    "number": 27,
-    "title": "fix(instruments): revert customer_portal placeholder and enforce shrink-only seam ratchet (Wave I-3)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "b75c873db1f0edfd99555ee015993e48926fd657"
-    },
-    "mergedAt": "2026-09-06T13:37:34Z",
-    "number": 26,
-    "title": "feat(customer_portal): close loop from service request to support ticket via W-1 engine registry (Wave CP-1)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "21d41b2981eab4196f6f6ed38989fd0d0d68a850"
-    },
-    "mergedAt": "2026-09-06T13:20:04Z",
-    "number": 25,
-    "title": "feat(sales): wire signed quote freeze, webhook receiver and admin attestation (Wave S-2a)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "63299c941fe16b8ed692034c753f6127b8e2b957"
-    },
-    "mergedAt": "2026-09-06T12:18:26Z",
-    "number": 24,
-    "title": "feat: v1.5 Phase 0 Instruments (Wave I-3 Seam Ratchet)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "78bb6c0ca6c5805bec34ed5b0315cda672bcfd37"
-    },
-    "mergedAt": "2026-09-06T12:08:42Z",
-    "number": 23,
-    "title": "feat: v1.5 Phase 0 Instruments (Wave I-1 Surface-Parity Ratchet)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "a7b665e3f939ceea1eaf970732793d37a3d098c4"
-    },
-    "mergedAt": "2026-09-06T12:09:10Z",
-    "number": 22,
-    "title": "test(vendors): harden Vendors test suite with 49 unit tests across 10 operations (Wave V-4)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "05e6b87f180df5b472632313c158669c815abf3e"
-    },
-    "mergedAt": "2026-09-06T11:58:19Z",
-    "number": 21,
-    "title": "feat: v1.5 Phase 0 Instruments (Wave I-0 Engine Registry)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "d6e2d05949b0e0211b6f0325512f6561d1da39e0"
-    },
-    "mergedAt": "2026-09-06T11:54:22Z",
-    "number": 20,
-    "title": "feat(assets): ML9b completion \u2014 surface the three orphaned cores, add do_compute_health"
-  },
-  {
-    "mergeCommit": {
-      "oid": "5b5686c289bb4339c2112744e3bf8aa45cf08415"
-    },
-    "mergedAt": "2026-09-06T11:42:39Z",
-    "number": 19,
-    "title": "fix(deploy): the bootstrap script rotated the master key on every run \u2014 and the boot guard could not have seen it"
-  },
-  {
-    "mergeCommit": {
-      "oid": "0775cc17344adc2f5ce488dc588fb61f3c54cbcb"
-    },
-    "mergedAt": "2026-09-06T11:19:02Z",
-    "number": 18,
-    "title": "docs+ci: make ENGINE_STATUS true again, fix the generator behind it, and stop the Pages job failing on every push"
-  },
-  {
-    "mergeCommit": {
-      "oid": "d531a45e695950e00d2e4df5d6ef8ceb8314d6f2"
-    },
-    "mergedAt": "2026-09-06T11:21:52Z",
-    "number": 17,
-    "title": "port: system namespace, signing key fingerprint, and the rotation audit (private -> public)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "dc751f9c703931b4c025c48d8d0125a195976be5"
-    },
-    "mergedAt": "2026-09-05T21:42:53Z",
-    "number": 16,
-    "title": "fix(portal): a client could set its own customer scope on all ten routes (IDOR)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "252957395ff342ac22989a628934fcd7ceb5b830"
-    },
-    "mergedAt": "2026-09-05T20:11:41Z",
-    "number": 15,
-    "title": "feat(customer-portal): Module 17 Customer Portal Engine \u2014 security spine, messy reality room tracker, post-handover projections, inbound intake & sandboxed advisor"
-  },
-  {
-    "mergeCommit": {
-      "oid": "1f93e3465686097cf4d8f2b13fef789d4c38a059"
-    },
-    "mergedAt": "2026-09-06T11:32:37Z",
-    "number": 14,
-    "title": "feat(business-insights): Module 16 Business Insights Engine \u2014 morning brief, cross-engine risk radar, scenario modeling, board pack, and role-scoped queries"
-  },
-  {
-    "mergeCommit": {
-      "oid": "6d4d2ba7cc1d83b3a6a3375224b7a70eca7efb18"
-    },
-    "mergedAt": "2026-09-05T18:51:32Z",
-    "number": 13,
-    "title": "fix(support): close DISPATCH_CEILING and AUTOCLOSE_CONFIDENCE autonomy bypasses"
-  },
-  {
-    "mergeCommit": {
-      "oid": "5e041c85bcfa0a77f43f3e48802b52147a10c841"
-    },
-    "mergedAt": "2026-09-05T19:07:02Z",
-    "number": 12,
-    "title": "feat(resources): Module 15 Staff & Resources Engine \u2014 capacity, scheduling, btree_gist exclusion, AI planner, van stock & Norwegian diett"
-  },
-  {
-    "mergeCommit": {
-      "oid": "e1d6f125f966f91af0c1bcc37a725efba8070853"
-    },
-    "mergedAt": "2026-09-05T17:46:27Z",
-    "number": 11,
-    "title": "feat(support): complete Module 10 Support Engine (B4 + B5, dispatch, proactive, and morning brief)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "1a658834ce8663e720c58fbc1ec08a5d2b42aea9"
-    },
-    "mergedAt": "2026-09-05T17:04:31Z",
-    "number": 10,
-    "title": "docs(inventory): correct five stale markers that understate M11 by five build phases"
-  },
-  {
-    "mergeCommit": {
-      "oid": "6ae61eed44aaba5075c32a74c90c5cced47be5bb"
-    },
-    "mergedAt": "2026-09-05T16:28:35Z",
-    "number": 9,
-    "title": "feat(marketing): Module 14 Marketing Engine \u2014 case study harvesting, testimonials, AEO/GEO SEO audit & asset pipeline"
-  },
-  {
-    "mergeCommit": {
-      "oid": "147af9cb5ff23a3b06fb8e44d5b9c523b446ecc8"
-    },
-    "mergedAt": "2026-09-05T16:27:42Z",
-    "number": 8,
-    "title": "RL-H2 \u2014 warn when the connecting role can bypass RLS (re-cut)"
-  },
-  {
-    "mergeCommit": {
-      "oid": "b13b8459b73a38fe54a275fcb10660960862407f"
-    },
-    "mergedAt": "2026-09-05T17:23:14Z",
-    "number": 7,
-    "title": "feat(hr): Module 13 HR Engine \u2014 master data, skills, certs, compliance & assignment infrastructure"
-  },
-  {
-    "mergeCommit": {
-      "oid": "e5429cc9f79411e10788209a2366370f3c5dcca9"
-    },
-    "mergedAt": "2026-09-05T14:39:09Z",
-    "number": 6,
-    "title": "Document \"kickback\" as the Norwegian term for a supplier rebate"
-  },
-  {
-    "mergeCommit": {
-      "oid": "2d80f6a81b7090561b40d6f888c7a52d03c92679"
-    },
-    "mergedAt": "2026-09-05T11:21:26Z",
-    "number": 5,
-    "title": "Rename the supplier-scoring kickback_proximity to rebate_proximity"
+      "oid": "14ed42515310583fd4cc28a2f5fa95e4c6e935fb"
+    },
+    "mergedAt": "2026-09-05T09:43:59Z",
+    "number": 2,
+    "title": "Module 10 \u2014 Support Engine (ML10, ported to public)"
   },
   {
     "mergeCommit": {
@@ -1177,10 +17,1762 @@
   },
   {
     "mergeCommit": {
-      "oid": "14ed42515310583fd4cc28a2f5fa95e4c6e935fb"
+      "oid": "2d80f6a81b7090561b40d6f888c7a52d03c92679"
     },
-    "mergedAt": "2026-09-05T09:43:59Z",
-    "number": 2,
-    "title": "Module 10 \u2014 Support Engine (ML10, ported to public)"
+    "mergedAt": "2026-09-05T11:21:26Z",
+    "number": 5,
+    "title": "Rename the supplier-scoring kickback_proximity to rebate_proximity"
+  },
+  {
+    "mergeCommit": {
+      "oid": "e5429cc9f79411e10788209a2366370f3c5dcca9"
+    },
+    "mergedAt": "2026-09-05T14:39:09Z",
+    "number": 6,
+    "title": "Document \"kickback\" as the Norwegian term for a supplier rebate"
+  },
+  {
+    "mergeCommit": {
+      "oid": "b13b8459b73a38fe54a275fcb10660960862407f"
+    },
+    "mergedAt": "2026-09-05T17:23:14Z",
+    "number": 7,
+    "title": "feat(hr): Module 13 HR Engine \u2014 master data, skills, certs, compliance & assignment infrastructure"
+  },
+  {
+    "mergeCommit": {
+      "oid": "147af9cb5ff23a3b06fb8e44d5b9c523b446ecc8"
+    },
+    "mergedAt": "2026-09-05T16:27:42Z",
+    "number": 8,
+    "title": "RL-H2 \u2014 warn when the connecting role can bypass RLS (re-cut)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "6ae61eed44aaba5075c32a74c90c5cced47be5bb"
+    },
+    "mergedAt": "2026-09-05T16:28:35Z",
+    "number": 9,
+    "title": "feat(marketing): Module 14 Marketing Engine \u2014 case study harvesting, testimonials, AEO/GEO SEO audit & asset pipeline"
+  },
+  {
+    "mergeCommit": {
+      "oid": "1a658834ce8663e720c58fbc1ec08a5d2b42aea9"
+    },
+    "mergedAt": "2026-09-05T17:04:31Z",
+    "number": 10,
+    "title": "docs(inventory): correct five stale markers that understate M11 by five build phases"
+  },
+  {
+    "mergeCommit": {
+      "oid": "e1d6f125f966f91af0c1bcc37a725efba8070853"
+    },
+    "mergedAt": "2026-09-05T17:46:27Z",
+    "number": 11,
+    "title": "feat(support): complete Module 10 Support Engine (B4 + B5, dispatch, proactive, and morning brief)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "5e041c85bcfa0a77f43f3e48802b52147a10c841"
+    },
+    "mergedAt": "2026-09-05T19:07:02Z",
+    "number": 12,
+    "title": "feat(resources): Module 15 Staff & Resources Engine \u2014 capacity, scheduling, btree_gist exclusion, AI planner, van stock & Norwegian diett"
+  },
+  {
+    "mergeCommit": {
+      "oid": "6d4d2ba7cc1d83b3a6a3375224b7a70eca7efb18"
+    },
+    "mergedAt": "2026-09-05T18:51:32Z",
+    "number": 13,
+    "title": "fix(support): close DISPATCH_CEILING and AUTOCLOSE_CONFIDENCE autonomy bypasses"
+  },
+  {
+    "mergeCommit": {
+      "oid": "1f93e3465686097cf4d8f2b13fef789d4c38a059"
+    },
+    "mergedAt": "2026-09-06T11:32:37Z",
+    "number": 14,
+    "title": "feat(business-insights): Module 16 Business Insights Engine \u2014 morning brief, cross-engine risk radar, scenario modeling, board pack, and role-scoped queries"
+  },
+  {
+    "mergeCommit": {
+      "oid": "252957395ff342ac22989a628934fcd7ceb5b830"
+    },
+    "mergedAt": "2026-09-05T20:11:41Z",
+    "number": 15,
+    "title": "feat(customer-portal): Module 17 Customer Portal Engine \u2014 security spine, messy reality room tracker, post-handover projections, inbound intake & sandboxed advisor"
+  },
+  {
+    "mergeCommit": {
+      "oid": "dc751f9c703931b4c025c48d8d0125a195976be5"
+    },
+    "mergedAt": "2026-09-05T21:42:53Z",
+    "number": 16,
+    "title": "fix(portal): a client could set its own customer scope on all ten routes (IDOR)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "d531a45e695950e00d2e4df5d6ef8ceb8314d6f2"
+    },
+    "mergedAt": "2026-09-06T11:21:52Z",
+    "number": 17,
+    "title": "port: system namespace, signing key fingerprint, and the rotation audit (private -> public)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "0775cc17344adc2f5ce488dc588fb61f3c54cbcb"
+    },
+    "mergedAt": "2026-09-06T11:19:02Z",
+    "number": 18,
+    "title": "docs+ci: make ENGINE_STATUS true again, fix the generator behind it, and stop the Pages job failing on every push"
+  },
+  {
+    "mergeCommit": {
+      "oid": "5b5686c289bb4339c2112744e3bf8aa45cf08415"
+    },
+    "mergedAt": "2026-09-06T11:42:39Z",
+    "number": 19,
+    "title": "fix(deploy): the bootstrap script rotated the master key on every run \u2014 and the boot guard could not have seen it"
+  },
+  {
+    "mergeCommit": {
+      "oid": "d6e2d05949b0e0211b6f0325512f6561d1da39e0"
+    },
+    "mergedAt": "2026-09-06T11:54:22Z",
+    "number": 20,
+    "title": "feat(assets): ML9b completion \u2014 surface the three orphaned cores, add do_compute_health"
+  },
+  {
+    "mergeCommit": {
+      "oid": "05e6b87f180df5b472632313c158669c815abf3e"
+    },
+    "mergedAt": "2026-09-06T11:58:19Z",
+    "number": 21,
+    "title": "feat: v1.5 Phase 0 Instruments (Wave I-0 Engine Registry)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "a7b665e3f939ceea1eaf970732793d37a3d098c4"
+    },
+    "mergedAt": "2026-09-06T12:09:10Z",
+    "number": 22,
+    "title": "test(vendors): harden Vendors test suite with 49 unit tests across 10 operations (Wave V-4)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "78bb6c0ca6c5805bec34ed5b0315cda672bcfd37"
+    },
+    "mergedAt": "2026-09-06T12:08:42Z",
+    "number": 23,
+    "title": "feat: v1.5 Phase 0 Instruments (Wave I-1 Surface-Parity Ratchet)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "63299c941fe16b8ed692034c753f6127b8e2b957"
+    },
+    "mergedAt": "2026-09-06T12:18:26Z",
+    "number": 24,
+    "title": "feat: v1.5 Phase 0 Instruments (Wave I-3 Seam Ratchet)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "21d41b2981eab4196f6f6ed38989fd0d0d68a850"
+    },
+    "mergedAt": "2026-09-06T13:20:04Z",
+    "number": 25,
+    "title": "feat(sales): wire signed quote freeze, webhook receiver and admin attestation (Wave S-2a)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "b75c873db1f0edfd99555ee015993e48926fd657"
+    },
+    "mergedAt": "2026-09-06T13:37:34Z",
+    "number": 26,
+    "title": "feat(customer_portal): close loop from service request to support ticket via W-1 engine registry (Wave CP-1)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "5dd56701b4d9c1e977949723fc8babec41b08a71"
+    },
+    "mergedAt": "2026-09-06T12:31:20Z",
+    "number": 27,
+    "title": "fix(instruments): revert customer_portal placeholder and enforce shrink-only seam ratchet (Wave I-3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "1b0a62ee76a22f5e347a1e14a717b232d0cb339c"
+    },
+    "mergedAt": "2026-09-06T12:48:17Z",
+    "number": 28,
+    "title": "feat(economy): surface 6 read tools and REST endpoints, shrink allowlist to 76 (Wave E-1)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "6b39e5985bca1cda6602482da66fc087d8996d7e"
+    },
+    "mergedAt": "2026-09-06T12:52:49Z",
+    "number": 29,
+    "title": "feat(instruments): implement Golden Thread scenario test and strict-xfail burndown scaffold (Wave I-7)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "18da731ee39517a54d3781d89778d1f18c9a45a2"
+    },
+    "mergedAt": "2026-09-06T13:14:15Z",
+    "number": 30,
+    "title": "feat(procurement): implement PO_LINE status model, Contract-A ownership and RLS declaration (Wave PR-2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "26b4c882b341f90914c195d8bf4e7889aff3939e"
+    },
+    "mergedAt": "2026-09-06T13:10:24Z",
+    "number": 31,
+    "title": "feat(hr): enforce EU AI Act Art. 5 no-person-grain guard C9b in skills and capacity (Wave HR-3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "efd7b21d91ccbc88c3c280efeee821a129defb7f"
+    },
+    "mergedAt": "2026-09-06T13:11:58Z",
+    "number": 32,
+    "title": "feat(instruments): audit estate ratchets and add standing positive controls (Wave T-5)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "34c8fb92360fe5e9c260d67b7084148c08c2ce95"
+    },
+    "mergedAt": "2026-09-06T14:05:07Z",
+    "number": 33,
+    "title": "feat(instruments): implement cross-engine degradation register and observability (Wave I-5)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "bb2143e792d979715460869e6ba4d6e003e69bad"
+    },
+    "mergedAt": "2026-09-06T14:41:32Z",
+    "number": 34,
+    "title": "docs: five missing engine guides + docs-status ratchet (DL-Orch D-1..D-6)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "d9ac58be63329f6abe5ad62f92a0ec841b731405"
+    },
+    "mergedAt": "2026-09-06T17:22:03Z",
+    "number": 35,
+    "title": "feat(procurement): surface generate/submit PO actor tools and emit PO_LINE.status_changed (Wave PR-1)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "dc415de4eae08fed642a7032264a6f2b1ef4a5b8"
+    },
+    "mergedAt": "2026-09-06T16:56:55Z",
+    "number": 36,
+    "title": "feat(instruments): implement event-contract catalogue and seam ratchet (Wave I-2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "82aeb7ef01a4d3c03c0a76ac9d5f75662b23a90b"
+    },
+    "mergedAt": "2026-09-06T17:13:46Z",
+    "number": 37,
+    "title": "feat(instruments): implement knowledge graph ownership ratchet (Wave I-4)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "032840aff18e00cbc956891e46c8e17930b204f9"
+    },
+    "mergedAt": "2026-09-06T17:48:39Z",
+    "number": 38,
+    "title": "feat(agreements): surface completion with 9 MCP tools, REST endpoints, allowlist pruning (Wave AG-2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "c841d48d0f43b9bfa2b1d98e0bd59a57d6c86c6d"
+    },
+    "mergedAt": "2026-09-06T17:34:36Z",
+    "number": 39,
+    "title": "feat(ci): implement test tiering, TDL-8 python floor, and nightly live stack (Wave T-3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "9e5323c34cbb966ed959c6d2b7a608219b3a8954"
+    },
+    "mergedAt": "2026-09-06T22:01:16Z",
+    "number": 40,
+    "title": "feat(core): Phase 2 Real Data Behind the AI - Waves C10, P-1..P-3, PJ-1/SD-3, Wave 5, T-1"
+  },
+  {
+    "mergeCommit": {
+      "oid": "5b340f1eb8d42830fa43ac26a71131d338850411"
+    },
+    "mergedAt": "2026-09-06T17:47:25Z",
+    "number": 41,
+    "title": "feat(inventory): emit GOODS_RECEIPT.created on receipt and link to BOM_LINE (Wave IN-1)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "33c997afa15097d37bf5d23664008e09d7f55454"
+    },
+    "mergedAt": "2026-09-06T18:12:08Z",
+    "number": 42,
+    "title": "feat(field_tech): advance BOM_LINE ladder to INSTALLED and TESTED with FL promotion (Wave FT-1)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "80056051e009afb493957fab644c52131f1a080c"
+    },
+    "mergedAt": "2026-09-06T18:07:35Z",
+    "number": 43,
+    "title": "feat(vendors): surface 4 master-data cores with MCP tools and REST endpoints (Wave V-1)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "7d58bd852b3454dcf90f600cb4d5e22ce607d8b1"
+    },
+    "mergedAt": "2026-09-06T18:29:36Z",
+    "number": 44,
+    "title": "feat(hr): surface 5 cores with MCP tools and REST endpoints (Wave HR-2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "9a0ad5511ff3cf07a5e18e09b1b86f74f67fef17"
+    },
+    "mergedAt": "2026-09-06T18:30:17Z",
+    "number": 45,
+    "title": "feat(field_tech): enforce Contract-A node ownership and route ASSET writes to Assets engine (Wave FT-2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "ef84c7221df47197a0b2e1da938f0984e6850cc3"
+    },
+    "mergedAt": "2026-09-06T18:53:46Z",
+    "number": 46,
+    "title": "feat(support,field_tech): dispatch ticket to work order via reactive TICKET.dispatched C4 event (Wave SU-1/FT-3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "df9a6cfc519907f98f8250e4c6c4e93ed296a278"
+    },
+    "mergedAt": "2026-09-06T22:35:33Z",
+    "number": 47,
+    "title": "feat(resources): surface 4 master-data cores with MCP tools and REST endpoints (Wave RS-1)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "e60f1d4e70c3da5b01f613fc99bd168ec60486c4"
+    },
+    "mergedAt": "2026-09-06T22:52:09Z",
+    "number": 48,
+    "title": "feat(economy): surface economy_approve_invoice Actor tool and burn down Golden Thread Step 17 (Wave E-3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "cff869cdbe13767407c0ecd80bd90e98f28834aa"
+    },
+    "mergedAt": "2026-09-06T23:10:23Z",
+    "number": 49,
+    "title": "feat(assets): integrate AV cloud telemetry adapters (Crestron XiO, Neat, Sennheiser, Q-SYS, Shure) and correct Yealink YMCS"
+  },
+  {
+    "mergeCommit": {
+      "oid": "6932d0178e1df5845954fc9f08f9a476cdc8e3e1"
+    },
+    "mergedAt": "2026-09-06T22:55:56Z",
+    "number": 50,
+    "title": "feat(sales): render quote document from frozen baseline (Wave Q-1)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "17ec1e8e6d6c11e99854655bdc0952f842184127"
+    },
+    "mergedAt": "2026-09-06T23:11:17Z",
+    "number": 51,
+    "title": "feat(business_insights): transactional append_event, audit remediation, and static AST ratchets (Waves A-BI1, A-BI2, A-BI3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "bf12b1b612cd173b72e30894c2849ff847d65612"
+    },
+    "mergedAt": "2026-09-06T23:07:10Z",
+    "number": 52,
+    "title": "feat(procurement): surface procurement_aggregate_savings MCP tool and REST endpoint (Wave PR-3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "f47317a9fc4cbbfa586136169d2edde44b1a46aa"
+    },
+    "mergedAt": "2026-09-07T00:41:20Z",
+    "number": 53,
+    "title": "feat(hr,vendors): close break-5a with CERTIFICATION.EXPIRED and burn down Golden Thread Step 23 (Wave HR-1/V-2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "c5fa8488b15ea57caa9a95bf9e4e599a3b303473"
+    },
+    "mergedAt": "2026-09-06T23:22:41Z",
+    "number": 54,
+    "title": "feat(sales): native email-code e-signature transport and provider selection (Wave Q-2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "8d87154830951de77c10ea072d3cdec1ad051133"
+    },
+    "mergedAt": "2026-09-06T23:29:45Z",
+    "number": 55,
+    "title": "feat(marketing): surface marketing_retract_testimonial MCP tool and REST endpoint (Wave MK-2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "92a8e2929f31d11fc577227dea45eb6c34fd46ec"
+    },
+    "mergedAt": "2026-09-06T23:37:58Z",
+    "number": 56,
+    "title": "feat(sales): deliver signed quote PDF by email to signer, case responsible, and account responsible (Wave Q-3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "749cda511e6b67a293ca9114f10893d497527d8a"
+    },
+    "mergedAt": "2026-09-07T02:33:24Z",
+    "number": 57,
+    "title": "test(golden-thread): rebuild test_golden_thread into live DB execution scenario (Charter \u00a713)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "d115b797ca3a389b2d2ed5263e02186f9566fc39"
+    },
+    "mergedAt": "2026-09-07T02:55:20Z",
+    "number": 58,
+    "title": "feat(resources,golden-thread): fix resources schema query and burn down final seam (Step 23, break-5a)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "feda4aa1b311df9411c276d2e26dffa1003e6553"
+    },
+    "mergedAt": "2026-09-07T03:39:42Z",
+    "number": 59,
+    "title": "feat(project,marketing): wire case-study graph edge on G6 advance and discover candidates (Wave C-PJ2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "7d07f6a0236030c0508d17810552a045b58f6542"
+    },
+    "mergedAt": "2026-09-07T03:18:45Z",
+    "number": 60,
+    "title": "feat(sales): Wave S-1 Sales Native Write Path"
+  },
+  {
+    "mergeCommit": {
+      "oid": "88fe7b9fce3d2a0b81418649d4eff0cfd52eed4d"
+    },
+    "mergedAt": "2026-09-07T03:19:46Z",
+    "number": 61,
+    "title": "fix(resources): align all 5 SQL query sites to canonical schema and close dead paths"
+  },
+  {
+    "mergeCommit": {
+      "oid": "f6822b416ba8c5dbb5bc0c54d8ea9ade76f9d1fb"
+    },
+    "mergedAt": "2026-09-07T03:35:33Z",
+    "number": 62,
+    "title": "test(golden-thread): count DB round trips instead of wall-clock, and remove the sleep that neutralised the floor"
+  },
+  {
+    "mergeCommit": {
+      "oid": "0562e1852aceb7ed0677e6bb38bcbc98c53965b9"
+    },
+    "mergedAt": "2026-09-07T03:51:21Z",
+    "number": 63,
+    "title": "feat(sales): surface sales_calculate_commission tool and GET route (Wave S-6)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "e22ed07f42fc997de4a9e0d8cfe18fc9333149d8"
+    },
+    "mergedAt": "2026-09-07T04:02:07Z",
+    "number": 64,
+    "title": "feat(system_design): enable outcome weighting in recommender (Wave C-SD2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "0ca7892199972032bc69cf6bc04ab3dc4332b097"
+    },
+    "mergedAt": "2026-09-07T04:05:01Z",
+    "number": 65,
+    "title": "fix(project): pass the engine, not a connection, to record_decision_feedback"
+  },
+  {
+    "mergeCommit": {
+      "oid": "dcb3263b168879123242cf5b8d0ba65b74594a82"
+    },
+    "mergedAt": "2026-09-07T04:17:39Z",
+    "number": 66,
+    "title": "feat(c10,system_design): assert unpatched decision_feedback SQL execution and refine neutral outcome weighting (Wave C-RS3 / C-FT4 / C-SD2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "8c6e9bcb2f138b6013165435b85ea9cbdb40f6f9"
+    },
+    "mergedAt": "2026-09-07T04:59:39Z",
+    "number": 67,
+    "title": "test(c10): parse the CREATE TABLE body instead of grepping for column names"
+  },
+  {
+    "mergeCommit": {
+      "oid": "2ed98f361b1d6e3d542cf6f99a6847618dca9524"
+    },
+    "mergedAt": "2026-09-07T05:36:27Z",
+    "number": 68,
+    "title": "test: ratchet INSERT column lists against the DDL, and pin the one live offender"
+  },
+  {
+    "mergeCommit": {
+      "oid": "5998e3b1d80953d907a663d5f46e9f222c5f97ec"
+    },
+    "mergedAt": "2026-09-07T06:14:27Z",
+    "number": 69,
+    "title": "fix(sql): four queries named columns their tables do not have; extend the DDL ratchet to UPDATE and SELECT"
+  },
+  {
+    "mergeCommit": {
+      "oid": "796165ceea967fb765543130b3491cd00bca9149"
+    },
+    "mergedAt": "2026-09-07T06:48:32Z",
+    "number": 70,
+    "title": "feat(economy): surface PEPPOL and contract validation tools across MCP and REST (Wave E-2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "5e5217474557c9c0362f8794c5846ef9fb9c64bb"
+    },
+    "mergedAt": "2026-09-07T06:33:53Z",
+    "number": 71,
+    "title": "feat(business-insights): invert person-grain barrier to allowlist (Wave B-BI1)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "91fd5322c942e94cd5d6310d4c43e08da5224bac"
+    },
+    "mergedAt": "2026-09-07T06:51:27Z",
+    "number": 72,
+    "title": "fix(business-insights): a valid group_by must not skip the person-ranking check (EU AI Act Art. 5)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "489241723997a9064258c07763976ff662045ed1"
+    },
+    "mergedAt": "2026-09-07T06:49:37Z",
+    "number": 73,
+    "title": "chore(identity): scrub private module names and fix quota doc (Wave B-ID1)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "445b535c61c62ef87b1def54df5d094e29d96c2f"
+    },
+    "mergedAt": "2026-09-07T07:12:45Z",
+    "number": 74,
+    "title": "feat(signing): Wave Q-4 operator-entered signing credentials"
+  },
+  {
+    "mergeCommit": {
+      "oid": "ed47f86400772dcb90febbc4ade9d501f324945e"
+    },
+    "mergedAt": "2026-09-07T07:07:40Z",
+    "number": 75,
+    "title": "fix(resources): resolve planned project tasks via valid DDL columns and graph edges in demand forecasting"
+  },
+  {
+    "mergeCommit": {
+      "oid": "dd1da5d023296a5f585d6f2ac7f6242a7892a838"
+    },
+    "mergedAt": "2026-09-07T07:21:50Z",
+    "number": 76,
+    "title": "fix(resources): record degradation and report honest task coverage on payload resolution failure"
+  },
+  {
+    "mergeCommit": {
+      "oid": "0ffd305e420aee465e0db895e4df637f1c3cc08f"
+    },
+    "mergedAt": "2026-09-07T07:16:13Z",
+    "number": 77,
+    "title": "feat(auth): partner scope resolution and audit ratchet (Wave B-FT5)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "42696cfb881c4fb69a436b4c2024244562847c13"
+    },
+    "mergedAt": "2026-09-07T08:06:06Z",
+    "number": 78,
+    "title": "feat(business_insights): ground do_ask_business in real KPI snapshots and cognitive memories (Wave C-BI2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "6927e90bc8716e767eadd8322a1928110ef5287f"
+    },
+    "mergedAt": "2026-09-07T08:04:36Z",
+    "number": 79,
+    "title": "feat(procurement,agreements): wire agreements compliance audit for rebate override via engine.modules (Wave AG-3 / PR-5)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "e1e3e45511bccacf9ca752fd098ef2111c636790"
+    },
+    "mergedAt": "2026-09-07T08:17:28Z",
+    "number": 80,
+    "title": "feat(economy,agreements): query GL records with C8 projection and rewire coverage seam (Wave B-AG1 / B-E2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "d41195465331b75910bdcda796c0871acff075a3"
+    },
+    "mergedAt": "2026-09-07T08:27:16Z",
+    "number": 82,
+    "title": "test(economy): include economy_get_gl_records in exact economy tool set ratchet"
+  },
+  {
+    "mergeCommit": {
+      "oid": "1ebb0613c4ec50537097b7caf53baa4ce18a6ee3"
+    },
+    "mergedAt": "2026-09-07T08:46:47Z",
+    "number": 83,
+    "title": "feat(support,cron): implement SLA breach watcher on cron emitting TICKET.sla_breached (Wave SU-2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "84c79c73613c7cdf942da80cd21f6ef2d964fbeb"
+    },
+    "mergedAt": "2026-09-07T09:07:35Z",
+    "number": 84,
+    "title": "feat(customer_portal): C3 adversarial review & server-verified auth boundary (Wave T-6)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "09385d0b36e6281bb2e76a00f00a7deedeca4f13"
+    },
+    "mergedAt": "2026-09-07T09:05:12Z",
+    "number": 85,
+    "title": "test(events): ratchet produced-but-unconsumed outbox selectors; 52 pinned"
+  },
+  {
+    "mergeCommit": {
+      "oid": "12aed5a37a29f4e2dc21ef4da99bbd49e6c7e8bd"
+    },
+    "mergedAt": "2026-09-07T09:05:44Z",
+    "number": 86,
+    "title": "fix(support): enforce atomic per-ticket transaction for SLA breach outbox emission (Wave SU-2 follow-up)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "3ed34e612554c9b7f1e61e9b6c0bfe3d7b8b11e5"
+    },
+    "mergedAt": "2026-09-07T09:44:54Z",
+    "number": 87,
+    "title": "feat(hr,cron): implement statutory compliance-deadline watcher on cron (Wave HR-5)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "809a02991fa7fe2cda313d1aaf8dd8fce5dabb28"
+    },
+    "mergedAt": "2026-09-07T10:14:00Z",
+    "number": 88,
+    "title": "test: forbid production code that behaves differently because it is being tested"
+  },
+  {
+    "mergeCommit": {
+      "oid": "4dfe8823876a4689d0071815b8831116924c3e4c"
+    },
+    "mergedAt": "2026-09-07T12:56:53Z",
+    "number": 89,
+    "title": "test: no test may rotate a signing key without the disposable-db opt-in"
+  },
+  {
+    "mergeCommit": {
+      "oid": "ca7d65a2322292455c9989273e8deb52ac4dbcfe"
+    },
+    "mergedAt": "2026-09-07T12:58:37Z",
+    "number": 90,
+    "title": "fix(cron): assets telemetry tick queried a column assets does not have"
+  },
+  {
+    "mergeCommit": {
+      "oid": "b7e507f60f0b67aa3e349bc2bb193c829d8b1219"
+    },
+    "mergedAt": "2026-09-09T10:24:11Z",
+    "number": 91,
+    "title": "ci: bump actions/setup-go from 5 to 7"
+  },
+  {
+    "mergeCommit": {
+      "oid": "0c378d226bf30575f14c54f9381646f49e22443a"
+    },
+    "mergedAt": "2026-09-09T10:24:19Z",
+    "number": 92,
+    "title": "ci: bump actions/deploy-pages from 5.0.0 to 5.0.1"
+  },
+  {
+    "mergeCommit": {
+      "oid": "54d016794d14efc35a18e2bb96570f60369884d4"
+    },
+    "mergedAt": "2026-09-09T10:25:06Z",
+    "number": 93,
+    "title": "deps(deps): bump the ml-stack group across 1 directory with 4 updates"
+  },
+  {
+    "mergeCommit": {
+      "oid": "242a8e55afa48c1bc5456c1368dd74efdef6b43e"
+    },
+    "mergedAt": "2026-09-09T11:10:43Z",
+    "number": 94,
+    "title": "deps(deps): update pydantic requirement from >=2.13.4 to >=2.13.5"
+  },
+  {
+    "mergeCommit": {
+      "oid": "9b7cad25353a375a3fa17b484db5e2f9a82fcaa8"
+    },
+    "mergedAt": "2026-09-09T10:24:45Z",
+    "number": 95,
+    "title": "deps(deps): update pyyaml requirement from >=6.0.2 to >=6.0.3"
+  },
+  {
+    "mergeCommit": {
+      "oid": "392285e2f0613bab96d742e9d8dac230464bc1b8"
+    },
+    "mergedAt": "2026-09-09T10:24:52Z",
+    "number": 96,
+    "title": "deps(deps): update networkx requirement from >=3.2.0 to >=3.4.2"
+  },
+  {
+    "mergeCommit": {
+      "oid": "b018cace8e4194c805cfe6d24d15d6dbfdcc6cad"
+    },
+    "mergedAt": "2026-09-09T10:24:59Z",
+    "number": 97,
+    "title": "deps(deps): update redis requirement from >=5.0.1 to >=8.1.0"
+  },
+  {
+    "mergeCommit": {
+      "oid": "94f683093ba0a78c8751f17c376f0a8dbf91d9f1"
+    },
+    "mergedAt": "2026-09-09T10:24:26Z",
+    "number": 98,
+    "title": "deps(deps-dev): bump pip-audit from 2.9.0 to 2.10.1"
+  },
+  {
+    "mergeCommit": {
+      "oid": "4b3c5a8a6d6ed31ec4b2fe6acaf732f92aefafcc"
+    },
+    "mergedAt": "2026-09-09T11:10:26Z",
+    "number": 100,
+    "title": "deps(deps): update python-dotenv requirement from >=1.2.2 to >=1.2.3"
+  },
+  {
+    "mergeCommit": {
+      "oid": "12dc23862180e893ae67d59455ec724dec36725e"
+    },
+    "mergedAt": "2026-09-09T11:10:50Z",
+    "number": 101,
+    "title": "deps(deps): update rq requirement from >=2.0.0 to >=2.12.0"
+  },
+  {
+    "mergeCommit": {
+      "oid": "4ac4c3be6cdb10962bc460bd6a3debab06fa0596"
+    },
+    "mergedAt": "2026-09-09T10:24:35Z",
+    "number": 102,
+    "title": "deps(deps): update pdfminer-six requirement from >=20231228 to >=20260107"
+  },
+  {
+    "mergeCommit": {
+      "oid": "3a80f8d897922c4a0489b0c02dccf5f2bedf610d"
+    },
+    "mergedAt": "2026-09-08T08:48:51Z",
+    "number": 103,
+    "title": "ci+deps: make the patch routine collect, and the lock represent production"
+  },
+  {
+    "mergeCommit": {
+      "oid": "1a0153ff5c024c087a7bd1d6ea4bbc8f3c987fca"
+    },
+    "mergedAt": "2026-09-09T10:24:03Z",
+    "number": 106,
+    "title": "deps(go): bump github.com/AzureAD/microsoft-authentication-library-for-go from 1.4.2 to 1.9.0 in /go"
+  },
+  {
+    "mergeCommit": {
+      "oid": "5ffaf370ff9d8ca68d95a3e040d62a1faf96cc97"
+    },
+    "mergedAt": "2026-09-08T10:06:35Z",
+    "number": 107,
+    "title": "feat(outbox): align relay delivery contract with catalogue unconsumed declarations"
+  },
+  {
+    "mergeCommit": {
+      "oid": "5708d7e6a835f83677d97ab2c1a970d4b3a3e5f5"
+    },
+    "mergedAt": "2026-09-08T10:22:58Z",
+    "number": 108,
+    "title": "test: extend DDL column detector to SELECT and WHERE phantom columns"
+  },
+  {
+    "mergeCommit": {
+      "oid": "a60466c31f4d533d6ae210f0400263e6a039faf0"
+    },
+    "mergedAt": "2026-09-08T10:46:40Z",
+    "number": 109,
+    "title": "fix(marketing): re-home approval audit onto event_log and eliminate bad insert allowlist"
+  },
+  {
+    "mergeCommit": {
+      "oid": "3cbfe5d46b019dceb426e414cdcfaf7210563c43"
+    },
+    "mergedAt": "2026-09-08T11:27:13Z",
+    "number": 110,
+    "title": "fix(outbox): harden relay predicate, split delivered counter, and add live drain test"
+  },
+  {
+    "mergeCommit": {
+      "oid": "821a7db86d031fc9e46fc9474cf492b66ac57381"
+    },
+    "mergedAt": "2026-09-09T07:01:25Z",
+    "number": 111,
+    "title": "fix(test): stop constraint bodies leaking keywords into the declared column set"
+  },
+  {
+    "mergeCommit": {
+      "oid": "18c59367d3f465e1eac13236174912939ca1912c"
+    },
+    "mergedAt": "2026-09-09T10:23:16Z",
+    "number": 112,
+    "title": "fix(cron): the chain verifier was the main contributor to the corruption it reported"
+  },
+  {
+    "mergeCommit": {
+      "oid": "4a32a4d33493f70f55cd9cf80a460baa05bd0877"
+    },
+    "mergedAt": "2026-09-09T10:46:52Z",
+    "number": 113,
+    "title": "ci: gate the platform coupling that broke, and stop re-proposing rejected upgrades"
+  },
+  {
+    "mergeCommit": {
+      "oid": "6b08e89b10cdbb362ad591047ab0a0ada1f1d4ad"
+    },
+    "mergedAt": "2026-09-09T10:54:51Z",
+    "number": 114,
+    "title": "feat(db): require a chain hash on new event_log rows (NOT VALID)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "c3c2b2a5291bc53c0727cce3a444af0dbd74f54e"
+    },
+    "mergedAt": "2026-09-09T10:58:25Z",
+    "number": 115,
+    "title": "deps(deps): update pillow requirement from >=11.0.0 to >=12.3.0"
+  },
+  {
+    "mergeCommit": {
+      "oid": "9f9d426673877c459c806f7b3a695c381d08d63e"
+    },
+    "mergedAt": "2026-09-09T10:58:31Z",
+    "number": 116,
+    "title": "deps(deps): update mcp requirement from <2,>=1.28.1 to >=1.29.1,<2"
+  },
+  {
+    "mergeCommit": {
+      "oid": "d2592fc0153e221e93dd724e6a6f0133182ca5e8"
+    },
+    "mergedAt": "2026-09-09T10:58:37Z",
+    "number": 117,
+    "title": "deps(deps): update sse-starlette requirement from >=2.0.0 to >=3.4.11"
+  },
+  {
+    "mergeCommit": {
+      "oid": "5b896f098e295f90bf5c22d0147e54ca9eb13b1a"
+    },
+    "mergedAt": "2026-09-09T10:58:42Z",
+    "number": 118,
+    "title": "deps(deps): update tree-sitter-language-pack requirement from >=1.12.2 to >=1.16.2"
+  },
+  {
+    "mergeCommit": {
+      "oid": "774be13c6728d218bd60fb7d3e0d979dfbc6e01a"
+    },
+    "mergedAt": "2026-09-09T10:58:48Z",
+    "number": 119,
+    "title": "deps(deps): update python-pptx requirement from >=1.0.0 to >=1.0.2"
+  },
+  {
+    "mergeCommit": {
+      "oid": "214e2d9551c19cc8c5b00b6dba1133278a7c042d"
+    },
+    "mergedAt": "2026-09-09T10:58:54Z",
+    "number": 120,
+    "title": "deps(deps): update pdfplumber requirement from >=0.11.0 to >=0.11.10"
+  },
+  {
+    "mergeCommit": {
+      "oid": "c95bca0fde251a18383f53645b777ee4417624ca"
+    },
+    "mergedAt": "2026-09-09T11:10:35Z",
+    "number": 121,
+    "title": "deps(deps): update extract-msg requirement from >=0.54.0 to >=0.56.1"
+  },
+  {
+    "mergeCommit": {
+      "oid": "df824e5d53a6fb008e9fa5b6c416b0f1a84f40f9"
+    },
+    "mergedAt": "2026-09-09T13:35:36Z",
+    "number": 122,
+    "title": "feat(crypto): declare every master-key-wrapped column so rotation can be seamless"
+  },
+  {
+    "mergeCommit": {
+      "oid": "ab782cc6883e4e434221b1fe0a35076e4c7df5b3"
+    },
+    "mergedAt": "2026-09-09T13:39:19Z",
+    "number": 123,
+    "title": "feat(crypto): v5 blobs record WHICH master key wrapped them"
+  },
+  {
+    "mergeCommit": {
+      "oid": "880dddbe4b5d7e708d0bb7f525c7c6f7ab556d2e"
+    },
+    "mergedAt": "2026-09-09T13:39:28Z",
+    "number": 124,
+    "title": "feat(config): refuse a structurally weak master key in production"
+  },
+  {
+    "mergeCommit": {
+      "oid": "673c870f77421669556cfb8115c857812081d5ba"
+    },
+    "mergedAt": "2026-09-09T14:41:35Z",
+    "number": 125,
+    "title": "feat(crypto): rewrap sweep + a two-key ring, so rotation needs no downtime"
+  },
+  {
+    "mergeCommit": {
+      "oid": "b7d03059f4582e12b2f91bb61d977e2b3e187898"
+    },
+    "mergedAt": "2026-09-09T14:04:17Z",
+    "number": 126,
+    "title": "feat(audit): implement signing_key_rotated audit trail, harden relay logging, fix tx mocks, and publish detector limits"
+  },
+  {
+    "mergeCommit": {
+      "oid": "66c18f21b883d075a5a5a975910d7e86561acbcc"
+    },
+    "mergedAt": "2026-09-09T15:55:15Z",
+    "number": 127,
+    "title": "Make the master-key fingerprint mandatory in signing_key_rotated"
+  },
+  {
+    "mergeCommit": {
+      "oid": "6576cc76817f41af37a62d471181d3e1cedd8d9a"
+    },
+    "mergedAt": "2026-09-10T10:56:30Z",
+    "number": 128,
+    "title": "feat(instruments): implement event_log chokepoint and publish transactional ratchets (Wave I-8)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "d9404c8b79ec2e2e636b5ed8824c8a10ef066c91"
+    },
+    "mergedAt": "2026-09-10T10:56:33Z",
+    "number": 129,
+    "title": "docs(product): only EOL tier 2 can fire \u2014 say so, and say why"
+  },
+  {
+    "mergeCommit": {
+      "oid": "c6c79f54e0aec306987087853428b581177ad812"
+    },
+    "mergedAt": "2026-09-10T11:32:10Z",
+    "number": 130,
+    "title": "Make the rewrap sweep's completion signal reachable (F3), with F5 and F6"
+  },
+  {
+    "mergeCommit": {
+      "oid": "2ee2f7f4a2b610cec5d45bd8da18bac994ce968a"
+    },
+    "mergedAt": "2026-09-10T11:44:38Z",
+    "number": 131,
+    "title": "Validate event_log_chain_hash_present \u2014 the row blocking it is gone"
+  },
+  {
+    "mergeCommit": {
+      "oid": "f561b4eabcfa899e0f9634f92cc1cc7abdd38f54"
+    },
+    "mergedAt": "2026-09-10T12:14:27Z",
+    "number": 132,
+    "title": "docs(db): the 077 row states three things that are no longer true"
+  },
+  {
+    "mergeCommit": {
+      "oid": "a8970cde4777490f06c3a8b967d1dd7c7c28361d"
+    },
+    "mergedAt": "2026-09-12T07:03:11Z",
+    "number": 133,
+    "title": "Every master-key script must refuse an RLS-blind role (F10, F11, F11b) + ratchet"
+  },
+  {
+    "mergeCommit": {
+      "oid": "b7cd18360546650e2659b8e7665e5e6b9fd80f8a"
+    },
+    "mergedAt": "2026-09-16T09:11:51Z",
+    "number": 134,
+    "title": "feat(instruments): implement config docs default value ratchet (Wave I-10)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "02fde8b3ae8766b8b5d355ad159707f7a4fa3d0f"
+    },
+    "mergedAt": "2026-09-14T18:48:05Z",
+    "number": 135,
+    "title": "Delete scripts/rekey_master.py, the superseded single-key rotation path"
+  },
+  {
+    "mergeCommit": {
+      "oid": "b275cd6bb08168bc461c0d1fbf7fc193e37a439f"
+    },
+    "mergedAt": "2026-09-16T19:18:05Z",
+    "number": 136,
+    "title": "deps(deps): update transformers requirement from >=5.16.1 to >=5.17.0 in the ml-stack group across 1 directory"
+  },
+  {
+    "mergeCommit": {
+      "oid": "7ad71bd48de22c7c5a9cb7eaea404adef12c5c86"
+    },
+    "mergedAt": "2026-09-16T15:54:54Z",
+    "number": 137,
+    "title": "deps(deps): update nbformat requirement from >=5.10.0 to >=5.11.1"
+  },
+  {
+    "mergeCommit": {
+      "oid": "879c2d1dbd9ed9fe9c07110ab0251de452e8397a"
+    },
+    "mergedAt": "2026-09-16T15:49:53Z",
+    "number": 138,
+    "title": "deps(deps): bump pytest-asyncio from 1.3.0 to 1.4.0"
+  },
+  {
+    "mergeCommit": {
+      "oid": "047ff9abf1fd26404900d21f7dc99aed5a5c3adf"
+    },
+    "mergedAt": "2026-09-16T15:55:13Z",
+    "number": 139,
+    "title": "deps(deps): update aiosmtplib requirement from <6,>=5.1.1 to >=5.1.3,<6"
+  },
+  {
+    "mergeCommit": {
+      "oid": "540011ea6b71c2a36b3061147074f71d71f0f31f"
+    },
+    "mergedAt": "2026-09-16T19:49:19Z",
+    "number": 140,
+    "title": "deps(deps): update tree-sitter-language-pack requirement from >=1.16.2 to >=1.19.1"
+  },
+  {
+    "mergeCommit": {
+      "oid": "6d5093bb3795851ab06fe51a60a741e23c8138a6"
+    },
+    "mergedAt": "2026-09-16T15:56:34Z",
+    "number": 141,
+    "title": "deps(deps): update mcp requirement from <2,>=1.29.1 to >=1.30.0,<2"
+  },
+  {
+    "mergeCommit": {
+      "oid": "a5a24e293e5d9a16ecf4d7a4b6ca0f44d1de0554"
+    },
+    "mergedAt": "2026-09-16T15:57:23Z",
+    "number": 142,
+    "title": "deps(deps): update motor requirement from >=3.3.2 to >=3.7.1"
+  },
+  {
+    "mergeCommit": {
+      "oid": "ae90e72d760626e82160c751416c61b96af461f2"
+    },
+    "mergedAt": "2026-09-16T15:54:59Z",
+    "number": 143,
+    "title": "deps(deps): update striprtf requirement from >=0.0.30 to >=0.0.33"
+  },
+  {
+    "mergeCommit": {
+      "oid": "76ae68d0e24a612eba11310ff6491fc87092b271"
+    },
+    "mergedAt": "2026-09-16T15:55:04Z",
+    "number": 144,
+    "title": "deps(deps): update chardet requirement from >=7.0.0 to >=7.6.0"
+  },
+  {
+    "mergeCommit": {
+      "oid": "17823b305cd1c114a983df70ba81c5f03833ab3c"
+    },
+    "mergedAt": "2026-09-16T15:55:08Z",
+    "number": 145,
+    "title": "deps(deps): update cachetools requirement from >=7.1.4 to >=7.1.8"
+  },
+  {
+    "mergeCommit": {
+      "oid": "b13ce85b89a436de0690c6ab664c0bad20aca725"
+    },
+    "mergedAt": "2026-09-16T09:13:42Z",
+    "number": 146,
+    "title": "feat(instruments): implement waves landed on main instrument (Wave A-W1)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "293da0e42a0b28da43370d95157f356e73a3413f"
+    },
+    "mergedAt": "2026-09-16T08:05:40Z",
+    "number": 147,
+    "title": "feat(cache): scope MCP cache generation per engine (Wave A-T2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "a399aac09dfd38e521822267b293297fabaa5d8d"
+    },
+    "mergedAt": "2026-09-16T08:05:44Z",
+    "number": 148,
+    "title": "feat(security): adversarial review of C3 external scope and standing ratchets (Wave A-T6)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "03b841b03905ec35b48c5f291f5054916878ae79"
+    },
+    "mergedAt": "2026-09-16T08:43:34Z",
+    "number": 149,
+    "title": "feat(customer_portal): internal MCP admin-only & scope assertion auditing (Wave T-6)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "bc7bc7b4ec8167c5a76df428871ba121a6b14d4e"
+    },
+    "mergedAt": "2026-09-16T08:28:11Z",
+    "number": 150,
+    "title": "feat(vendors): seed VENDOR identities from sales_read_model and Nettailer (Wave V-3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "0565772789e7682cd05e37d1161d8aaa6299cb22"
+    },
+    "mergedAt": "2026-09-16T08:19:21Z",
+    "number": 151,
+    "title": "docs: correct BRIDGE_CRON_INTERVAL_MINUTES default to 45 in architecture-v1.md"
+  },
+  {
+    "mergeCommit": {
+      "oid": "628b231636610e0798e3e61d2eafb5904f43d9c8"
+    },
+    "mergedAt": "2026-09-16T08:35:25Z",
+    "number": 152,
+    "title": "docs: correct three measured inventory figures in ENGINE_STATUS.md (DL D-FIG)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "46e613ae846caa94c5a723192a9d21b9d1706a95"
+    },
+    "mergedAt": "2026-09-16T09:33:52Z",
+    "number": 153,
+    "title": "feat(autonomy,admin): wire action_approval_queue writers in @governed and add approve/reject routes (Wave B-B128)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "ebf8ea65901bb99a56a844b9db4299d0132a4e8c"
+    },
+    "mergedAt": "2026-09-16T08:49:47Z",
+    "number": 154,
+    "title": "docs: document deployment truth of database isolation under mcp_user (DL D-RLS)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "99a85fa0c54a4c70c2ef5da5b1c31b6ec9c167a8"
+    },
+    "mergedAt": "2026-09-16T08:59:41Z",
+    "number": 155,
+    "title": "feat(sales): implement sales_divergence_log parity window reader (Wave S-7)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "f298d1d47600b5445a0b768e49872a33baf2b31c"
+    },
+    "mergedAt": "2026-09-16T09:03:37Z",
+    "number": 156,
+    "title": "docs: document DECAY_PRUNE_INTERVAL_MINUTES as fixed constant in architecture-v1.md"
+  },
+  {
+    "mergeCommit": {
+      "oid": "728c2123bcc6b031f8f013b2bb5c9f22c4219320"
+    },
+    "mergedAt": "2026-09-16T09:03:33Z",
+    "number": 157,
+    "title": "feat(business_insights): eliminate fabricated defaults from renderer and risk radar (Wave C-BI3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "120654ad5ae35e032578317c7a58f1cf5459879f"
+    },
+    "mergedAt": "2026-09-16T09:52:01Z",
+    "number": 158,
+    "title": "feat(sales): wire stalled-deal watcher on cron and morning brief slice read (Wave S-4)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "3d11e91d9074f0c73c8cfb5d6b81c42355a1412c"
+    },
+    "mergedAt": "2026-09-16T09:51:14Z",
+    "number": 159,
+    "title": "docs: audit enforcement claims against deployment and CI reality (DL D-ENF)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "fcbe513b67f5e4e9ec72e65c5a622fa03ea35594"
+    },
+    "mergedAt": "2026-09-16T09:54:26Z",
+    "number": 161,
+    "title": "feat(instruments): make waves_landed.md byte-comparison advisory (Wave A-Q17)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "dba095a5448d472e83f2da3821861bd2dbc7c59e"
+    },
+    "mergedAt": "2026-09-16T14:05:03Z",
+    "number": 162,
+    "title": "feat(business_insights): eliminate fabricated deals and balance sheet defaults from scenario modeling (Wave C-BI4)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "50826e339b7b1db790033dc2140155508ceb0c57"
+    },
+    "mergedAt": "2026-09-17T11:18:52Z",
+    "number": 163,
+    "title": "feat(instruments): ratchet the three figure counters in ENGINE_STATUS.md (Wave A-FIG)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "6ac8157ad705ee3f0a155a90527f77da766b83ba"
+    },
+    "mergedAt": "2026-09-16T11:13:46Z",
+    "number": 164,
+    "title": "docs(readme): correct vertical-engine counts and list all 20 modules"
+  },
+  {
+    "mergeCommit": {
+      "oid": "417bebd514f4dfa5d9bc45329cc5afa8845c0caa"
+    },
+    "mergedAt": "2026-09-16T11:36:30Z",
+    "number": 165,
+    "title": "feat(health): make a degraded verdict say why, and 503 when it is blocking (Wave HEALTH)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "6398b62d62cdc58aee5305f5c6556245a7530dd2"
+    },
+    "mergedAt": "2026-09-16T14:04:35Z",
+    "number": 166,
+    "title": "docs: update ENGINE_STATUS.md TOOL_REGISTRY count 258 -> 259"
+  },
+  {
+    "mergeCommit": {
+      "oid": "d069894c79dfc3b8f7ac6cb7801607a686c99315"
+    },
+    "mergedAt": "2026-09-16T14:23:07Z",
+    "number": 167,
+    "title": "feat(events): implement unconsumed drop rule, Prometheus counter, and read-model subscribers (Wave B-R2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "4bd1e9faf230f67fcf860ddba57ae08e7b8f175e"
+    },
+    "mergedAt": "2026-09-16T14:29:06Z",
+    "number": 168,
+    "title": "feat(sales): wire lead score and quote draft as grounded advisors (Wave S-5)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "9bf05d41728079bebc358edea3b63461583e204d"
+    },
+    "mergedAt": "2026-09-16T17:20:49Z",
+    "number": 169,
+    "title": "feat(support): surface failure pattern, upsell signal, and at-risk aggregate feeds (Wave SU-3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "5b6f50c20a4d8da9bd848e21acf16d5647fb8126"
+    },
+    "mergedAt": "2026-09-16T19:44:52Z",
+    "number": 170,
+    "title": "feat(procurement): surface procurement_resolve_bids and unify with pricing (Wave PR-4)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "66ab2ccecd6fe277e283a0b9f441088e173dbdfa"
+    },
+    "mergedAt": "2026-09-16T23:21:53Z",
+    "number": 171,
+    "title": "ci(security): wire eight security-control suites that ran in no workflow (ML-CI1)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "06ee0de7098ce0fa4b050b903179bab1cf252976"
+    },
+    "mergedAt": "2026-09-16T20:23:28Z",
+    "number": 172,
+    "title": "feat(project): surface project_recall_similar and REST endpoint (Wave PJ-3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "97f6983f4a635cda5414e4843d2766f3886fd896"
+    },
+    "mergedAt": "2026-09-16T20:45:23Z",
+    "number": 173,
+    "title": "feat(project): promote four REST reads to cacheable tools (Wave PJ-4)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "ab58d66bc6d1381c16c41a4e296c4a515f38c2b4"
+    },
+    "mergedAt": "2026-09-16T21:10:53Z",
+    "number": 174,
+    "title": "feat(product): implement manufacturer-sources trust weights (Wave P-5)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "ee108676a74682834473fc73dfc50f4bad8ad206"
+    },
+    "mergedAt": "2026-09-16T23:47:31Z",
+    "number": 175,
+    "title": "docs: generate engine inventory figures and unpin README count (Wave D-GEN)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "864d6fc0841c59e20a436bccc48111650cd4d6b0"
+    },
+    "mergedAt": "2026-09-16T23:54:02Z",
+    "number": 176,
+    "title": "feat(product): mount GET /api/product/quality surface route (Wave P-6)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "3c019bd924720b630f90baed50b9045c4f009279"
+    },
+    "mergedAt": "2026-09-17T10:52:10Z",
+    "number": 177,
+    "title": "fix(security): RL hardening batch \u2014 RL-H19, RL-H3, RL-H12"
+  },
+  {
+    "mergeCommit": {
+      "oid": "6643ce62f9437739b505607dde284e9c5433ec8b"
+    },
+    "mergedAt": "2026-09-17T00:28:32Z",
+    "number": 178,
+    "title": "feat(system_design): consolidate one validator core and surface decisions (Wave SD-4)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "989bdd4a59ac48e6b2775782b183e47aaa6b8309"
+    },
+    "mergedAt": "2026-09-17T00:47:51Z",
+    "number": 179,
+    "title": "docs(specs): retire stale OQ proposal banners for shipped engines (Wave D-2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "b8f45c512df5a8d30dc2b786e4aefe23643fde64"
+    },
+    "mergedAt": "2026-09-17T01:37:07Z",
+    "number": 180,
+    "title": "feat(system_design): enforce side-table to kg_nodes FK and cascade (Wave SD-1)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "739e0ffc35bbbaf06c1e20bf595f16d4e8577f9d"
+    },
+    "mergedAt": "2026-09-17T01:04:49Z",
+    "number": 181,
+    "title": "docs(surface): unpin brittle surface counts in FRONTEND_READINESS and api_reference, standardize status stamps"
+  },
+  {
+    "mergeCommit": {
+      "oid": "91ed4976db37f8f7c35598ab17b9ed7281742858"
+    },
+    "mergedAt": "2026-09-17T02:33:10Z",
+    "number": 182,
+    "title": "feat(system_design): thin signal-flow layer over DEVICE/PORT/CABLE (Wave SD-5)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "eb54c47948a1d373bba30377caae4d1be96e63f4"
+    },
+    "mergedAt": "2026-09-17T03:11:23Z",
+    "number": 183,
+    "title": "feat(system_design): frozen design grouped by ranked supplier (Wave SD-6)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "eea46096a9ae29760b6953bebf3ab72e892c5136"
+    },
+    "mergedAt": "2026-09-17T10:51:43Z",
+    "number": 184,
+    "title": "fix(worm): refuse TRUNCATE on the append-only tables \u2014 RL-H18, migration 080"
+  },
+  {
+    "mergeCommit": {
+      "oid": "ee3e4b182510dca9334a24695a5a12d54b7765c9"
+    },
+    "mergedAt": "2026-09-17T11:03:23Z",
+    "number": 185,
+    "title": "fix(docs): engine figures were stale on main, and the --check gate was wired into nothing"
+  },
+  {
+    "mergeCommit": {
+      "oid": "f86e859f15942a29d0cb866559eb5fbd783abd20"
+    },
+    "mergedAt": "2026-09-17T11:06:02Z",
+    "number": 186,
+    "title": "docs(migrations): audit migration catalog bounds 001-078 and update tenant table counts (Wave D-4)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "d596474e24c1edb5dd47dd6262b5cd0fb5ebe91e"
+    },
+    "mergedAt": "2026-09-17T11:49:27Z",
+    "number": 187,
+    "title": "feat(assets): warranty/EOL watcher and NetBox DCIM bridge (Wave A-3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "2262d2acbb0b5852582a86e93fc27ffbe5364356"
+    },
+    "mergedAt": "2026-09-17T11:19:39Z",
+    "number": 188,
+    "title": "docs(architecture): update migration bounds to 080 and align EXPECTED_TENANT_RLS_TABLES to 89 (Wave D-ALIGN)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "f2dba697bbc2a901be37c223c9a283bdbb2d9586"
+    },
+    "mergedAt": "2026-09-17T11:32:25Z",
+    "number": 189,
+    "title": "feat(schema): drift detector + migration 081 baseline (Q-4 step 1 of 3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "1dda962732a7e72e2f3c88c587172367d59c201a"
+    },
+    "mergedAt": "2026-09-17T12:03:57Z",
+    "number": 190,
+    "title": "feat(schema): extend drift detection to RLS \u2014 the column-only checker was unsafe (Q-4 step 1b)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "eaed4b42cfc9aa4e15f6acc8844e8859c8371125"
+    },
+    "mergedAt": "2026-09-17T12:31:03Z",
+    "number": 191,
+    "title": "feat(assets): QR generator and room-centric register (Wave A-4)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "dbf62766f6c825fd160c696dc9d2c625bb85d7e6"
+    },
+    "mergedAt": "2026-09-17T12:16:28Z",
+    "number": 192,
+    "title": "feat(schema): compare indexes, constraints, triggers and functions (Q-4 step 1c)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "c276f3651f19161279c3f076593bb9ba75376771"
+    },
+    "mergedAt": "2026-09-17T12:31:19Z",
+    "number": 193,
+    "title": "ci: wire three security test files that ran in no workflow (Q-12, 102 \u2192 99)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "116325409975ca8aeb6bef84e8ffbb98eaa4ff40"
+    },
+    "mergedAt": "2026-09-17T13:18:18Z",
+    "number": 194,
+    "title": "feat(assets): failure_pattern edges to Product (Wave A-5)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "32bb57b856b610b01fe3169b89cac018c20ae315"
+    },
+    "mergedAt": "2026-09-17T13:00:20Z",
+    "number": 195,
+    "title": "ci: wire 68 test files that ran in no workflow \u2014 355 tests (Q-12, 99 \u2192 31)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "e43481b34276c3218ebd6b812931069d74667962"
+    },
+    "mergedAt": "2026-09-17T18:55:33Z",
+    "number": 196,
+    "title": "chore: untrack stray empty test_out.log at repo root"
+  },
+  {
+    "mergeCommit": {
+      "oid": "da87657f118b0853b3e03cc9b9434ab42097488f"
+    },
+    "mergedAt": "2026-09-17T18:29:00Z",
+    "number": 197,
+    "title": "feat(inventory): kitting under PACKAGE decision (Wave IN-2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "c5b869f773e3079c4c4046403e97c1056a835469"
+    },
+    "mergedAt": "2026-09-17T18:54:44Z",
+    "number": 198,
+    "title": "feat(schema): split schema.sql into bootstrap and runtime halves (Q-4 step 2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "732592d1dbd2caebdc94da752a0c7c5195c54d51"
+    },
+    "mergedAt": "2026-09-17T18:56:49Z",
+    "number": 199,
+    "title": "feat(inventory): surface restock PO creation actor (Wave IN-3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "7dd0a657d8442d5cc45c108c874511e4bf700c8d"
+    },
+    "mergedAt": "2026-09-17T19:18:04Z",
+    "number": 200,
+    "title": "feat(product): match-decision feedback to C10 (Wave P-4)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "74052c2c56179d85001ef3ffc8879b9ea76f497f"
+    },
+    "mergedAt": "2026-09-17T20:12:51Z",
+    "number": 201,
+    "title": "docs(admin): approved design direction for the engine screens (proposal, not wired)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "becc2ff76aa258eafd908790ee41dd7824a79560"
+    },
+    "mergedAt": "2026-09-18T07:17:57Z",
+    "number": 202,
+    "title": "fix(tests): scope the health-probe chain scan to its own namespace (RL-H21)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "91a04e287bbe630f837572234d1c2c0a148787b2"
+    },
+    "mergedAt": "2026-09-18T07:42:59Z",
+    "number": 203,
+    "title": "docs(schema): document split schema boot execution and advance migration bounds to 082 (Wave D-Q4)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "4f6f4c436623e3acc2601ce9e8c97fd621abdbe6"
+    },
+    "mergedAt": "2026-09-18T08:31:53Z",
+    "number": 204,
+    "title": "docs(version): align product version claims to 3.0.0 and add version claims ratchet (Wave D-VER)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "57a1f73c63297d7e918270c92b53f7dde2017d52"
+    },
+    "mergedAt": "2026-09-18T09:51:26Z",
+    "number": 205,
+    "title": "feat(customer_portal): implement not_tracked stage and tracker honesty (Wave CP-3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "c61cb8a89e7b9c37937fd0c6941a414a24e2ff29"
+    },
+    "mergedAt": "2026-09-18T10:34:42Z",
+    "number": 206,
+    "title": "feat(customer_portal): negative RLS cases per route and portal test hardening (Wave CP-4)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "e164415ba39a7df0d1f52a0bde5df5d5fb6e6d5c"
+    },
+    "mergedAt": "2026-09-18T10:43:37Z",
+    "number": 207,
+    "title": "test(instruments): H-1 verb-mix floor ratchet (RED by design)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "654d5e1bc3fb0eca8e360f939f58f0a6a33b8e5b"
+    },
+    "mergedAt": "2026-09-18T10:56:59Z",
+    "number": 208,
+    "title": "feat(sales): cut over DealRoom to Postgres bom_line_content and remove fabricated defaults (Wave S-3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "6607f8c916eb60a657b53572dcd45a563d7833b4"
+    },
+    "mergedAt": "2026-09-18T10:47:38Z",
+    "number": 209,
+    "title": "feat(business_insights): resolve composed slices from registered reads and wire composition ratchet (Wave BI-2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "5cb5c41e5c9fbafef1d2b737d54020726a8ea24a"
+    },
+    "mergedAt": "2026-09-18T10:57:21Z",
+    "number": 211,
+    "title": "test(instruments): H-1b union scope rule + pinned residual (K-H1)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "8feca253c8521268c6690cbf5f955ca66dacf616"
+    },
+    "mergedAt": "2026-09-18T11:00:07Z",
+    "number": 212,
+    "title": "feat(instruments): H-2 host-parity table"
+  },
+  {
+    "mergeCommit": {
+      "oid": "b7b9e3f01a37c34da39ab591103fb3ca93a34737"
+    },
+    "mergedAt": "2026-09-18T11:11:44Z",
+    "number": 213,
+    "title": "feat(assets): real OAuth2 allow-list-gated YMCS telemetry adapter (Wave F-1)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "288b4b1ed1f2fd58591d726eb1adffa1b67dd8af"
+    },
+    "mergedAt": "2026-09-18T11:15:04Z",
+    "number": 214,
+    "title": "feat(assets): real allow-list-gated Neat Pulse telemetry adapter (Wave F-2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "53ac4f8020c3a7ed1094a7037c7c136c0e7e808e"
+    },
+    "mergedAt": "2026-09-18T11:11:50Z",
+    "number": 215,
+    "title": "test(marketing): H-7 test lift to 108, incl. a publish-gate finding"
+  },
+  {
+    "mergeCommit": {
+      "oid": "20692c53a9939432dff601572a97d815572e9c95"
+    },
+    "mergedAt": "2026-09-18T11:25:33Z",
+    "number": 216,
+    "title": "feat(assets): new Neowit smart-building telemetry adapter (Wave F-3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "885078e3c6c8e1150394e005d78765bd3c8a6dfc"
+    },
+    "mergedAt": "2026-09-18T11:21:52Z",
+    "number": 217,
+    "title": "feat(instruments): janitor pass + ENGINE_STATUS.md v1.6 column"
+  },
+  {
+    "mergeCommit": {
+      "oid": "36635010c27e3ad3456126b6fdf3d0516e0b89c5"
+    },
+    "mergedAt": "2026-09-18T11:39:18Z",
+    "number": 218,
+    "title": "feat(assets): new Disruptive Technologies telemetry adapter (Wave F-4)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "d2582aa00a0cd54b370c3ac84de67ba02bda2830"
+    },
+    "mergedAt": "2026-09-18T11:37:31Z",
+    "number": 219,
+    "title": "test(instruments): H-11 advertised-vs-implemented ratchet"
+  },
+  {
+    "mergeCommit": {
+      "oid": "cce9e0d0bf0f965e53644d3e7598154193b865c9"
+    },
+    "mergedAt": "2026-09-18T11:55:44Z",
+    "number": 220,
+    "title": "feat(assets): new Ochno Operated telemetry adapter (Wave F-5)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "4084a0b4eeb7f345780fc9e3edbe7676b6cade1f"
+    },
+    "mergedAt": "2026-09-18T11:44:15Z",
+    "number": 221,
+    "title": "feat(assets): real allow-list-gated Q-SYS Reflect telemetry adapter (Wave F-6)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "b14dcdcbcb5ed5cec2571ea96d1e4347d21b156f"
+    },
+    "mergedAt": "2026-09-18T12:08:38Z",
+    "number": 222,
+    "title": "feat(assets): new AIS vessel-position telemetry adapter (Wave F-7)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "b2b96acb8d2c3b9b8a290ba2da2e2281f0ca6c0c"
+    },
+    "mergedAt": "2026-09-18T12:23:30Z",
+    "number": 223,
+    "title": "fix(instruments): H-11 ratchet finds the real mechanical realness signal"
+  },
+  {
+    "mergeCommit": {
+      "oid": "c8fdfdcd9daa1ac4f48d84c707a9cf72520e5ef4"
+    },
+    "mergedAt": "2026-09-18T12:39:44Z",
+    "number": 224,
+    "title": "feat(customer_portal): deploy customer-portal container service behind Caddy (Wave CP-5)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "7af4d554fd41c243acea44500504631332cf59d8"
+    },
+    "mergedAt": "2026-09-18T13:37:20Z",
+    "number": 225,
+    "title": "feat(instruments): implement shared MCP error contract and escaped-guards ratchet (Wave T-4a)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "ef7765c7e51da223b030571810ec33adbe549f93"
+    },
+    "mergedAt": "2026-09-18T13:58:16Z",
+    "number": 226,
+    "title": "feat(system_design): standards, signal distribution rules, and device capability sync (Wave C-5)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "468d0b28f106e3b8a700afd696f1ca26a478329c"
+    },
+    "mergedAt": "2026-09-18T13:29:29Z",
+    "number": 227,
+    "title": "test(instruments): H-12 deployment-topology parity ratchet"
+  },
+  {
+    "mergeCommit": {
+      "oid": "25b7282cd5f9ad2b7eccbb1a05db424f89544cd9"
+    },
+    "mergedAt": "2026-09-18T14:59:10Z",
+    "number": 228,
+    "title": "feat(shared-core): C12 resource surface (A-1, A-2) and C13 notifications & reminders (A-3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "2ac8721064a8d984e8667bc72c4ac1e2b47ce4f0"
+    },
+    "mergedAt": "2026-09-18T15:13:37Z",
+    "number": 229,
+    "title": "fix(instruments): janitor pass after A-1 -- re-pin RLS table count 89->92"
+  },
+  {
+    "mergeCommit": {
+      "oid": "e00118e7a0c13e7bad13fd332b8d2d56fb8bd939"
+    },
+    "mergedAt": "2026-09-18T15:20:49Z",
+    "number": 230,
+    "title": "test(instruments): H-4 generated resource-surface positive controls"
   }
 ]

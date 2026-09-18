@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** b75c873 (main) · **Last-audited:** 2026-09-06
+> **Status:** shipped · **Verified-against:** e00118e (main) · **Last-audited:** 2026-09-18
 
 # Customer Portal Engine Admin Guide (Module 17)
 
-> **Status:** shipped · **Verified-against:** b75c873 (main) · **Last-audited:** 2026-09-06
+> **Status:** shipped · **Verified-against:** e00118e (main) · **Last-audited:** 2026-09-18
 
 This guide documents the administrative, architectural, and security boundaries of the **Customer Portal Engine** (`nce/vertical_modules/customer_portal/`) — NCE's only **internet-facing, customer-principal-authenticated** surface. It covers tenant enablement (there is none), the engine's own app shell and why it is not actually running anywhere outside tests, the RLS/tenant-isolation spine and its real reach, the redaction allow-list, the REST routes and auth model, and a live-drift finding this audit re-verified rather than copied from the board. Every claim is grounded in a specific file/line on `main @ b75c873`; where the design spec (`docs/vertical_engines/17-customer-portal-engine.md`) promises more than ships, this guide says so.
 
@@ -37,13 +37,12 @@ This guide documents the administrative, architectural, and security boundaries 
 | POST | `/api/portal/expansion-interest` | `api_portal_expansion_interest` | mutation |
 | POST | `/api/portal/advisor` | `api_portal_advisor` | |
 
-### 2.2 🔴 This app is never mounted or started anywhere in the running system
-A repo-wide search for `build_customer_portal_app` outside `nce/vertical_modules/customer_portal/app.py` finds it **only in test files** (`tests/unit/test_customer_portal_actions.py:25,156`; `test_customer_portal_advisor.py:21,168`; `test_customer_portal_post_handover.py:22,278`; `test_customer_portal_spine.py:151,205,225`; `test_customer_portal_tracker.py:378,380`), all instantiating it directly via Starlette's `TestClient`. There is:
-- No reference in `nce/admin_app.py` (confirmed: `grep customer_portal nce/admin_app.py` returns nothing).
-- No `Mount(...)` of it in any of the other four files that build a `Starlette(...)` app (`nce/a2a_server.py`, `nce/me_app.py`, `nce/observability.py`, plus `admin_app.py` itself).
-- No entry in any `docker-compose*.yml`, `*.sh` launcher, or `pyproject.toml` entry-point referencing `customer_portal`.
+### 2.2 Dedicated Container Deployment (Wave CP-5, PR #224)
+The Customer Portal runs as its own dedicated service container in `docker-compose.yml` (`container_name: nce-customer-portal`, port 8005) executing `portal_server.py:app` with Uvicorn worker processes (`PORTAL_WORKERS:-2`).
 
-**Practical implication:** the security spine (RLS-backed tables, allow-list redaction, rate-limit middleware, the separate app object) is real, buildable, and covered by tests — but as of this snapshot there is no running process that serves `/api/portal/*` to an actual customer. Standing this engine up in production requires someone to wire `build_customer_portal_app(engine)` into an ASGI entry point (its own container, or a `Mount()` on an existing one) — that wiring does not exist yet.
+- **Reverse Proxy Routing**: Caddy routes `/api/portal/*` directly to `customer-portal:8005` with a 10MB payload size limit (`max_size 10485760`) and proxy header sanitization (`Caddyfile:50-61`).
+- **Confinement & Privilege Separation**: The portal container runs as a non-root user (`user: "10001:10001"`, `no-new-privileges:true`) and explicitly holds **zero admin credentials** (`NCE_MASTER_KEY: ""` and `NCE_ADMIN_API_KEY: ""` in `docker-compose.yml:643-645`). Nothing in the internal stack depends on the portal container, so it can fail without taking core services down.
+- **Direct Port Exposure Observation (Wave H-12 / Q-40)**: `docker-compose.yml` maps port 8005 to `0.0.0.0` (as it does for port 8003 and 8080), meaning callers directly addressing the host port can bypass Caddy's 10MB payload size limit, TLS termination, and security headers. This is tracked under Q-40 pending production binding lockdown.
 
 ### 2.3 The rate limiter is a stub
 `CustomerRateLimitMiddleware` (`app.py:28-37`) is constructed with `max_requests_per_minute: int = 120` and is the sole middleware on the app (`app.py:377-379`), but its `dispatch` method is:
@@ -106,13 +105,11 @@ Every `do_*` core instead calls `evaluate_customer_scope_access(cust_scope, targ
 
 `C:\Claude\ORCH_BOARD.md` (ML-orch section, 2026-09-06) records: *"`resources_resolve_capacity` and `customer_portal_room_overview` surface refusals as `-32603 Internal error`... `ResourcesError` and `PermissionError` match no clause in `mcp_errors.py`'s `mcp_handler`. An IDOR refusal reported as an internal error is invisible in every log."* This is a serious finding if true — a permission refusal indistinguishable from a server crash defeats every monitoring/alerting rule built on error codes.
 
-**This audit re-checked the current code rather than copying the board entry, per the standing rule to validate the premise, not just the instrument.** As of `main @ b75c873`, `nce/mcp_errors.py`'s `mcp_handler` decorator **does** have both clauses:
-- `except PermissionError as e:` → `McpError(MCP_INVALID_REQUEST, "Permission denied", ...)` — code **`-32600`**, not `-32603` (`mcp_errors.py:288-294`).
-- `except _RESOURCES_ERRORS as e:` → `McpError(MCP_INVALID_PARAMS, "Invalid parameters", ...)` — code **`-32602`**, not `-32603` (`mcp_errors.py:333-338`, with the `ResourcesError` import guard at `mcp_errors.py:59-66`).
+**This audit re-checked the current code rather than copying the board entry, per the standing rule to validate the premise, not just the instrument.** In `nce/mcp_errors.py`'s `@mcp_handler` decorator:
+- `except PermissionError as e:` → `McpError(MCP_INVALID_REQUEST, "Permission denied", ...)` — code **`-32600`**, not `-32603`.
+- In Wave T-4a (PR #225), the legacy `_RESOURCES_ERRORS` hack was permanently retired in favor of the unified MCP error architecture: all 10 `<Engine>DisabledError` classes map to **`-32005 Engine disabled`**, `BusinessRefusalError` subclasses map to **`-32005 Business refusal`** with `data.reason`, while ordinary parameter validation failures map to **`-32602 Invalid parameters`**.
 
-`git blame` on both clauses attributes them to commit `16f86b0` ("feat(customer_portal): close loop from service request to support ticket via W-1 engine registry (Wave CP-1)"), which is the tip commit of `main @ b75c873` in this worktree (merged via PR #26, `mlv15b/cp1-customer-portal-ticket`). The diff (`git show 16f86b0 -- nce/mcp_errors.py`) shows both the `PermissionError` clause and the `ResourcesError`/`_RESOURCES_ERRORS` machinery were **added** in that same commit, alongside 24 lines of edits to `nce/mcp_errors.py`.
-
-**Verdict: the finding was true when the board entry was written, and it is fixed as of this worktree's HEAD.** `customer_portal_room_overview`'s `PermissionError` (raised on an IDOR refusal in `do_room_overview` → `do_room_tracker`, `rooms.py:97-99,138-140`) now surfaces as `-32600 Permission denied`, not `-32603 Internal error`. Do not re-open this as a live defect without re-checking `nce/mcp_errors.py` against whatever commit you are auditing — the fix landed in the same wave (CP-1) that this guide's other findings (§4.4's IDOR hardening) also came from, so it is plausible both were addressed together. If you are auditing an older commit or a different worktree, re-run this check before repeating the board's claim.
+**Verdict: the finding was true when originally raised, and is completely resolved on `main`.** `customer_portal_room_overview`'s `PermissionError` (raised on an IDOR refusal in `do_room_overview` → `do_room_tracker`, `rooms.py:97-99,138-140`) surfaces as `-32600 Permission denied`, not `-32603 Internal error`. Do not re-open this as a live defect without re-checking `nce/mcp_errors.py` against whatever commit you are auditing.
 
 ---
 

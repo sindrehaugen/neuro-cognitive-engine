@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** b75c873 (main) — **surface summary only, see note** · **Last-audited:** 2026-09-06
+> **Status:** shipped · **Verified-against:** e00118e (main) · **Last-audited:** 2026-09-18
 
 # Sales Engine User Guide (Doc 73)
 
-> **Status:** shipped · **Verified-against:** b75c873 (main) — **surface summary only, see note** · **Last-audited:** 2026-09-06
+> **Status:** shipped · **Verified-against:** e00118e (main) · **Last-audited:** 2026-09-18
 
 The **Sales Engine** (`nce/vertical_modules/sales/`) owns the deal lifecycle — lead/opportunity/deal → quote → DealRoom → signature — and is the single place a **signed baseline** is frozen for a quote. This guide documents the surfaces that actually exist in code today: the tenant-isolated read-model (mirrored from Dynamics 365), the DealRoom pricing recompute, the signing-and-freeze flow, the public customer-facing quote link, and the MCP tools other engines use to read the frozen baseline. Where the design spec (`docs/vertical_engines/05-sales-engine.md`) describes more than is built, this guide says so explicitly.
 
@@ -106,7 +106,7 @@ Unknown lookups fail closed with structured errors rather than empty success, e.
 ```
 `base_cost` and `unit_price` are present in this **internal** DealRoom payload — this is not the customer-facing shape (see §4 for what a customer actually sees). **Both are `null` on an unpriced line, and every consumer must handle that**: the second line above is what a line with no price on record looks like.
 
-There is no `sales_open_dealroom` MCP tool registered; DealRoom is reached only by calling `do_open_dealroom` directly (no dedicated REST route exists in `nce/admin_handlers/sales.py` either — the spec's `api_sales_dealroom` route is **not yet implemented**).
+There is no `sales_open_dealroom` MCP tool registered; DealRoom is reached by calling `do_open_dealroom` directly, or via the dedicated REST route `POST /api/sales/dealroom` (`api_admin_sales_dealroom` in `nce/admin_handlers/sales.py`, mounted in `admin_app.py`, landed in Wave S-3, PR #208).
 
 ---
 
@@ -267,6 +267,6 @@ result = await do_on_signed_callback(engine, {
 ## Appendix: spec vs. shipped (delta from `docs/vertical_engines/05-sales-engine.md`)
 
 The design spec describes a much larger MCP/REST surface than exists on `main` today. As of this audit:
-- **Not implemented as MCP tools:** `sales_list_customers`, `sales_customer_profile`, `sales_overview`, `sales_dashboard`, `sales_stats`, `sales_seller_detail`, `sales_quote_detail`, `sales_score_lead`, `sales_draft_quote`, `sales_open_dealroom`, `sales_request_signature`, `sales_freeze_signed_baseline`, `sales_convert_signed_quote_to_project`, `sales_sync_now` — all *(planned — not yet implemented as MCP tools)*. The underlying `do_*` functions exist for most of these (accessible via REST or direct call), except a dedicated DealRoom/signing REST route, which is also not present.
-- **Not implemented anywhere:** `api_sales_dealroom` (POST), `api_sales_signing_webhook` (POST), `api_sales_sync_status`/`api_sales_sync_now` REST routes, and the `NCE_SALES_*` config-var family described in the spec (see the admin guide §1 for what actually gates the engine today — namely, nothing).
-- **Implemented and matches spec:** the signed-baseline freeze mechanism (WORM), the C5 source-mode resolver + divergence log, the C8 public-quote redaction, and DealRoom's use of the shared C6 pricing service (no inline discount formula).
+- **Not implemented as MCP tools:** `sales_list_customers`, `sales_customer_profile`, `sales_overview`, `sales_dashboard`, `sales_stats`, `sales_seller_detail`, `sales_quote_detail`, `sales_score_lead`, `sales_draft_quote`, `sales_open_dealroom`, `sales_request_signature`, `sales_freeze_signed_baseline`, `sales_convert_signed_quote_to_project`, `sales_sync_now` — all *(planned — not yet implemented as MCP tools)*. The underlying `do_*` functions exist for most of these (accessible via REST or direct call), except a dedicated signing REST route, which is also not present.
+- **Not implemented anywhere:** `api_sales_signing_webhook` (POST), `api_sales_sync_status`/`api_sales_sync_now` REST routes, and the `NCE_SALES_*` config-var family described in the spec (see the admin guide §1 for what actually gates the engine today — namely, nothing).
+- **Implemented and matches spec:** the signed-baseline freeze mechanism (WORM), the C5 source-mode resolver + divergence log, the C8 public-quote redaction, DealRoom's PostgreSQL cutover (`bom_line_content` with LATERAL product_catalog join, zero MongoDB touches, no fabricated defaults, and shared C6 pricing resolver, Wave S-3), and the dedicated DealRoom REST route (`POST /api/sales/dealroom`).

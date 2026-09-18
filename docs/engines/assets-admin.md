@@ -1,8 +1,8 @@
-> **Status:** shipped (partial) · **Verified-against:** b75c873 (main) · **Last-audited:** 2026-09-06
+> **Status:** shipped (partial) · **Verified-against:** e00118e (main) · **Last-audited:** 2026-09-18
 
 # Assets Engine Admin Guide (Doc 91)
 
-> **Status:** shipped (partial) · **Verified-against:** b75c873 (main) · **Last-audited:** 2026-09-06
+> **Status:** shipped (partial) · **Verified-against:** e00118e (main) · **Last-audited:** 2026-09-18
 
 This guide documents the administrative, operational, and architectural boundaries of the **Assets Engine** (`nce/vertical_modules/assets/`): tenant enablement (there is none), the 2 SQL migrations and their RLS/grant posture, the 8 MCP tools and 7 REST routes, the graph-projection module that exists but is never called, the telemetry mock/real-adapter swap, health-score computation and its RS-3 mock-telemetry suppression rule, and the full spec-vs-shipped delta against `docs/vertical_engines/09-assets-engine.md`. Every claim below cites a specific file/line on `main @ b75c873`.
 
@@ -161,23 +161,33 @@ Mounted in `nce/admin_app.py:951-990`. Literal paths (`/api/assets/seed-from-bom
 
 ## 6. Telemetry adapter architecture
 
-`nce/vertical_modules/assets/telemetry.py` implements an abstract `TelemetryAdapter` (`platform` property + `fetch_samples(asset_id)`), selected exclusively through the one factory function `select_telemetry_adapter` (`telemetry.py:315-343`) — there is no `if platform == "crestron"` branch anywhere else in the module.
+`nce/vertical_modules/assets/telemetry.py` implements an abstract `TelemetryAdapter` (`platform` property + `fetch_samples(asset_id)`), selected exclusively through the factory function `select_telemetry_adapter` (`telemetry.py:315-343`).
 
-| Platform key | Vendor API a real adapter calls | Real adapter exists? |
-|---|---|---|
-| `mock` | — | **Yes** — default fixed epoch synthetic simulation |
-| `crestron` | Crestron XiO Cloud REST API | **Yes** — `CrestronXiOCloudTelemetryAdapter` (<5s timeout, NVX/Flex status) |
-| `neat` | Neat Pulse REST API | **Yes** — `NeatPulseTelemetryAdapter` (<5s timeout, air quality, people count) |
-| `sennheiser` | Sennheiser Control Cockpit API | **Yes** — `SennheiserTelemetryAdapter` (<5s timeout, TCC2 beamforming, EW-DX) |
-| `qsys` | Q-SYS Reflect Enterprise Manager API | **Yes** — `QSysReflectTelemetryAdapter` (<5s timeout, Core DSP load, PTP clock) |
-| `shure` | Shure SystemOn / Cloud API | **Yes** — `ShureCloudTelemetryAdapter` (<5s timeout, MXA920 lobes, Dante clock) |
-| `yealink` / `ymcs` | Yealink Management Cloud Service (YMCS) API | **Yes** — `YMCSTelemetryAdapter` (<5s timeout, MeetingBar/MVC telemetry) |
-| `poly` | Poly Lens API | No — `UnimplementedVendorAdapter` |
-| `huddly` | Huddly device API | No — `UnimplementedVendorAdapter` |
+The advertised platform registry `VENDOR_PLATFORMS` (`telemetry.py:154-180`) defines 14 keys (13 distinct platforms). Implementation status is strictly verified and machine-gated by `tests/test_advertised_capability_ratchet.py` (Wave H-11, PR #219):
 
-(`VENDOR_PLATFORMS`, `telemetry.py:154-164`)
+| Platform key | Vendor API | Implementation Status | Adapter Module & Structure |
+|---|---|---|---|
+| `mock` | — | **Verified Real (Default)** | `MockTelemetryAdapter` (`telemetry.py:219-256`, synthetic fixed epoch) |
+| `yealink` / `ymcs` | Yealink Management Cloud Service API | **Verified Real** (Wave F-1, PR #213) | `YMCSTelemetryAdapter` (`ymcs.py`, OAuth2 client-credentials, `_ALLOWED_READS`) |
+| `neat` | Neat Pulse API | **Verified Real** (Wave F-2, PR #214) | `NeatPulseTelemetryAdapter` (`neat_pulse.py`, API-key bearer, `_ALLOWED_READS`) |
+| `neowit` | Neowit smartbygg platform API | **Verified Real** (Wave F-3, PR #216) | `NeowitTelemetryAdapter` (`neowit.py`, bearer token, `_ALLOWED_READS`) |
+| `disruptive` | Disruptive Technologies REST API | **Verified Real** (Wave F-4, PR #218) | `DisruptiveTelemetryAdapter` (`disruptive.py`, service account auth, `_ALLOWED_READS`) |
+| `ochno` | Ochno Operated REST API | **Verified Real** (Wave F-5, PR #220) | `OchnoTelemetryAdapter` (`ochno.py`, token auth, `_ALLOWED_READS`) |
+| `qsys` | Q-SYS Reflect Enterprise Manager API | **Verified Real** (Wave F-6, PR #221) | `QSysReflectTelemetryAdapter` (`qsys_reflect.py`, API-key bearer, `_ALLOWED_READS`) |
+| `ais` | AIS live vessel-position API | **Verified Real** (Wave F-7, PR #222) | `AISTelemetryAdapter` (`ais.py`, BarentsWatch auth, `_ALLOWED_READS`) |
+| `crestron` | Crestron XiO Cloud REST API | *Scaffolding* (Unverified, Q-38) | `CrestronXiOCloudTelemetryAdapter` (`xio_cloud.py`, no `_ALLOWED_READS` marker) |
+| `sennheiser` | Sennheiser Control Cockpit API | *Scaffolding* (Unverified, Q-38) | `SennheiserTelemetryAdapter` (`sennheiser.py`, no `_ALLOWED_READS` marker) |
+| `shure` | Shure SystemOn / Cloud API | *Scaffolding* (Unverified, Q-38) | `ShureCloudTelemetryAdapter` (`shure_cloud.py`, no `_ALLOWED_READS` marker) |
+| `poly` | Poly Lens API | *Absent* (Unimplemented, Q-38) | `UnimplementedVendorAdapter` (`telemetry.py:265-292`, raises `NotImplementedError`) |
+| `huddly` | Huddly device API | *Absent* (Unimplemented, Q-38) | `UnimplementedVendorAdapter` (`telemetry.py:265-292`, raises `NotImplementedError`) |
 
-**The swap flag is `NCE_ASSETS_TELEMETRY_<PLATFORM>_REAL`** (e.g. `NCE_ASSETS_TELEMETRY_CRESTRON_REAL`), read live via `nce.config.live_env_str` (never captured at import, so a runtime env change and `monkeypatch.setenv` in tests both take effect immediately — `telemetry.py:305-312`). Its default (unset) means mock; setting it swaps to `UnimplementedVendorAdapter`, which raises `NotImplementedError` rather than serving mock data — a deployment that flips the flag without a built adapter fails loudly instead of quietly lying about device state (`telemetry.py:265-292`). **There is no `httpx` import, no network call, and no credential-handling code anywhere in this file** — building any of the five real adapters (auth, HTTP client via `nce.http_resilience.request_with_retry`, vendor pagination) is entirely unbuilt, not partially built.
+> [!IMPORTANT]
+> **Live-tenant verification caveat:** The 7 real telemetry adapters (`ymcs`, `neat`, `neowit`, `disruptive`, `ochno`, `qsys`, `ais`) landed in Waves F-1 through F-7 have verified HTTP request shapes, error handling, credentials ingestion via `connectors/save`, and strict `_ALLOWED_READS` (method, path) allowlist enforcement tested against recorded fixtures. **They have not been executed against live production vendor tenant accounts.** The flip to live production data requires staging smoke tests against real vendor credentials.
+
+**The swap flag is `NCE_ASSETS_TELEMETRY_<PLATFORM>_REAL`** (e.g. `NCE_ASSETS_TELEMETRY_YMCS_REAL` or `NCE_ASSETS_TELEMETRY_CRESTRON_REAL`), read live via `nce.config.live_env_str` (`telemetry.py:305-312`). When unset, `select_telemetry_adapter` returns `MockTelemetryAdapter`. When set:
+- For the 7 verified platforms, it instantiates the dedicated real adapter with credentials fetched from the secure store.
+- For scaffolding platforms (`crestron`, `sennheiser`, `shure`), it instantiates the unverified template adapter.
+- For absent platforms (`poly`, `huddly`), it returns `UnimplementedVendorAdapter`, which raises `NotImplementedError` rather than fabricating data.
 
 **The adapter call runs outside any database transaction, on purpose.** `do_pull_telemetry` opens two short `scoped_pg_session` blocks — a namespace-scoped existence pre-check, then the insert — with the (potentially slow, real-world) adapter call in between (`telemetry.py:62-70`). The accepted cost: an asset could in principle be deleted between the two checks, but the `ON DELETE CASCADE` FK turns that into a lost sample, not a corrupt row.
 

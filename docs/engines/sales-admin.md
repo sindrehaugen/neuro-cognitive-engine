@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) — **body not re-audited, see note** · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** e00118e (main) · **Last-audited:** 2026-09-18
 
-# Sales Engine Admin Guide (Doc 74)
+# Sales Engine Admin Guide (Doc 87)
 
-> **Status:** shipped · **Verified-against:** 7304330 (main) — **body not re-audited, see note** · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** e00118e (main) · **Last-audited:** 2026-09-18
 
 > [!WARNING]
 > **Not re-audited in this pass (2026-09-06).** This guide's "C7 signing ceremony wiring" section
@@ -109,8 +109,9 @@ Full C7 `SignTransport` protocol, the fire-and-pull anti-spoofing pattern, and `
 `do_open_dealroom` materializes the live interactive DealRoom web quote:
 - Reads quote details from `sales_read_model` (`entity = 'quotes'`).
 - Discovers BOM lines in `kg_nodes` with literal prefix matching `starts_with(label, 'BOM_LINE:{QUOTE}:')` (PR #67 / PR #76), preventing cross-quote line matching when quote IDs contain SQL `LIKE` metacharacters (`_` or `%`).
-- Fetches and updates option toggle overrides (`toggled: bool`) directly within MongoDB episode payloads (`memory_archive.episodes`).
-- Evaluates line pricing via the shared C6 pricing engine (`resolve_price()`).
+- In Wave S-3 (PR #208), cut over entirely from MongoDB to PostgreSQL: queries `bom_line_content` with a `LEFT JOIN LATERAL` to the global `product_catalog` table (`pc.manufacturer`, `pc.mfr_part_no`) to correlate hardware specs and optionality without cross-tenant leakage. Caller toggle overrides (`toggled_options`) are evaluated in-memory against these lines without touching Mongo.
+- Evaluates line pricing via the shared C6 pricing engine (`resolve_price()` and `dg_price()` with `load_dg(namespace_id)`), completely eliminating fabricated defaults (`dg_pct = 0.3`, `manufacturer = "Unknown"`, `model = "Unknown"`), machine-gated by `tests/unit/test_sales_dealroom_fabricated_defaults_ratchet.py`.
+- Surfaced over REST via `POST /api/sales/dealroom` (`api_admin_sales_dealroom` in `nce/admin_handlers/sales.py` mounted in `admin_app.py`).
 - **Event stream posture:** DealRoom is an ephemeral presentation and price-resolution surface; it does **not** append events to `event_log` or emit C4 outbox messages upon viewing or option toggling.
 
 ### 6.2 Sales Baseline Freeze WORM Posture (`baseline.py` / `signing.py`)
