@@ -62,7 +62,7 @@ _C12_TOOL_NAMES = frozenset(_C12_TOOL_SPECS)
 _C12_MUTATION_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.mutation)
 _C12_CACHEABLE_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.cacheable)
 
-_EXPECTED_STATIC_TOTAL = 286  # hand-written tools only; see _C12_TOOL_NAMES above; +1 BRREG registry-feed tool (Lane F Wave F-8); +2 geodata OSM tools (Lane F Wave F-11)
+_EXPECTED_STATIC_TOTAL = 288  # hand-written tools only; see _C12_TOOL_NAMES above; +1 BRREG registry-feed tool (Lane F Wave F-8); +2 geodata OSM tools (Lane F Wave F-11); +2 geodata N50 land-cover tools (Lane F Wave F-12)
 
 # Re-exported for tests/unit/test_{assets,economy,inventory}_surface.py and
 # test_sales_skeleton.py, which each do `from tests.test_tool_registry import
@@ -354,6 +354,8 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "legal_entities_enrich_from_registry",
         # Lane F Wave F-11 -- geodata OSM local-store import (global table, no namespace_id)
         "geodata_import_osm_elements",
+        # Lane F Wave F-12 -- geodata N50 land-cover import (global table, no namespace_id)
+        "geodata_import_n50_land_cover",
         # Lane E Wave E-5 -- C12 Vendors CONTRACTOR resource surface mutations (upsert + archive)
         "vendors_upsert_contractors",
         "vendors_archive_contractors",
@@ -390,7 +392,8 @@ def test_mutation_tools_count():
     ... ML12-B5 field_tech, ML13-B3 HR, ML14-B3 marketing, and every wave through
     Wave A-4 documents (now derived, not counted here).
     +1 Lane F Wave F-8 legal_entities_enrich_from_registry -> 124.
-    +1 Lane F Wave F-11 geodata_import_osm_elements -> 125."""
+    +1 Lane F Wave F-11 geodata_import_osm_elements -> 125.
+    +1 Lane F Wave F-12 geodata_import_n50_land_cover -> 126."""
     c12_mutation_tools = frozenset(
         n for n, s in build_all_resource_tool_specs().items() if s.mutation
     )
@@ -399,8 +402,8 @@ def test_mutation_tools_count():
     assert len(MUTATION_TOOLS) >= 123, (
         f"Sanity floor: expected at least 123 mutation tools, got {len(MUTATION_TOOLS)}."
     )
-    assert len(hand_written_mutation_tools) == 125, (
-        "Hand-written (non-C12) mutation tool count changed: expected 125, "
+    assert len(hand_written_mutation_tools) == 126, (
+        "Hand-written (non-C12) mutation tool count changed: expected 126, "
         f"got {len(hand_written_mutation_tools)}. If you added/removed a "
         "hand-written mutation tool, update this pin by import. If you only "
         "registered a new C12 ResourceSpec, this number should not move -- "
@@ -613,6 +616,8 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "legal_entities_get_legal_entities",
         # Lane F Wave F-11 -- geodata OSM bbox query (global table, no namespace_id)
         "geodata_query_osm_elements",
+        # Lane F Wave F-12 -- geodata N50 land-cover query (global table, no namespace_id)
+        "geodata_query_n50_land_cover",
         # Lane E Wave E-5 -- C12 Vendors CONTRACTOR resource surface cacheable reads (list + get)
         "vendors_list_contractors",
         "vendors_get_contractors",
@@ -642,8 +647,8 @@ def test_cacheable_tools_count():
     assert len(CACHEABLE_TOOLS) >= 115, (
         f"Sanity floor: expected at least 115 cacheable tools, got {len(CACHEABLE_TOOLS)}."
     )
-    assert len(hand_written_cacheable_tools) == 116, (
-        "Hand-written (non-C12) cacheable tool count changed: expected 116, "
+    assert len(hand_written_cacheable_tools) == 117, (
+        "Hand-written (non-C12) cacheable tool count changed: expected 117, "
         f"got {len(hand_written_cacheable_tools)}. If you added/removed a "
         "hand-written cacheable tool, update this pin by import. If you "
         "only registered a new C12 ResourceSpec, this number should not "
@@ -806,6 +811,8 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "legal_entities_enrich_from_registry",
         # Lane F Wave F-11 -- geodata OSM import (admin/batch job, admin_only mutation)
         "geodata_import_osm_elements",
+        # Lane F Wave F-12 -- geodata N50 land-cover import (admin/batch job, admin_only mutation)
+        "geodata_import_n50_land_cover",
     }
 )
 
@@ -819,8 +826,8 @@ def test_admin_only_tools_exact_match():
 
 def test_admin_only_tools_count():
     assert (
-        len(ADMIN_ONLY_TOOLS) == 95
-    )  # 90 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3) + 1 BRREG registry-feed enrichment (Lane F Wave F-8) + 1 geodata OSM import (Lane F Wave F-11)
+        len(ADMIN_ONLY_TOOLS) == 96
+    )  # 90 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3) + 1 BRREG registry-feed enrichment (Lane F Wave F-8) + 1 geodata OSM import (Lane F Wave F-11) + 1 geodata N50 land-cover import (Lane F Wave F-12)
 
 
 # ---------------------------------------------------------------------------

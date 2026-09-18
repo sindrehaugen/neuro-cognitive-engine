@@ -1909,6 +1909,20 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # Geodata FEED module (Wave F-12) — a GLOBAL table (migration 089), not
+    # a tenant vertical engine, so no `engine=` opt-in gate applies.
+    "geodata_import_n50_land_cover": ToolSpec(
+        _h(geodata_mcp_handlers, "handle_geodata_import_n50_land_cover"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "geodata_query_n50_land_cover": ToolSpec(
+        _h(geodata_mcp_handlers, "handle_geodata_query_n50_land_cover"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
 }
 
 # ---------------------------------------------------------------------------

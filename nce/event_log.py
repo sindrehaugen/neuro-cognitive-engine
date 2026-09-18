@@ -428,6 +428,10 @@ EXPECTED_GLOBAL_TABLES: set[str] = {
     # data — the same reasoning as product_catalog above (MLV16F Wave F-11,
     # migration 086).
     "geodata_osm_elements",
+    # Kartverket's N50 land-cover classification describes the physical
+    # world, not a tenant's data — the same reasoning as product_catalog
+    # above (MLV16F Wave F-12, migration 089).
+    "geodata_n50_land_cover",
 }
 
 

@@ -5406,3 +5406,42 @@ BEGIN
         GRANT USAGE, SELECT ON SEQUENCE geodata_osm_elements_id_seq TO nce_app;
     END IF;
 END $$;
+
+-- Geodata FEED module, N50 land-cover local store (Wave F-12, migration
+-- 089). GLOBAL, not tenant-scoped -- see that migration's header for the
+-- full reasoning.
+CREATE TABLE IF NOT EXISTS geodata_n50_land_cover (
+    id          BIGSERIAL   NOT NULL,
+    klasse      TEXT        NOT NULL,
+    objid       BIGINT      NOT NULL,
+    objtype     TEXT,
+    rings       JSONB       NOT NULL,
+    area_m2     NUMERIC,
+    bbox        BOX         NOT NULL,
+    source_file TEXT        NOT NULL,
+    imported_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    CONSTRAINT geodata_n50_land_cover_uq UNIQUE (klasse, objid),
+    CONSTRAINT geodata_n50_land_cover_klasse_not_blank
+        CHECK (btrim(klasse) <> ''),
+    CONSTRAINT geodata_n50_land_cover_source_file_not_blank
+        CHECK (btrim(source_file) <> '')
+);
+
+CREATE INDEX IF NOT EXISTS idx_geodata_n50_land_cover_bbox
+    ON geodata_n50_land_cover USING gist (bbox);
+
+CREATE INDEX IF NOT EXISTS idx_geodata_n50_land_cover_klasse
+    ON geodata_n50_land_cover (klasse);
+
+CREATE INDEX IF NOT EXISTS idx_geodata_n50_land_cover_area_desc
+    ON geodata_n50_land_cover (area_m2 DESC);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE geodata_n50_land_cover FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE geodata_n50_land_cover TO nce_app;
+        GRANT USAGE, SELECT ON SEQUENCE geodata_n50_land_cover_id_seq TO nce_app;
+    END IF;
+END $$;

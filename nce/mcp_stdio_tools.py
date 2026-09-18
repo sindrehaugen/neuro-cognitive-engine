@@ -7531,6 +7531,56 @@ TOOLS = [
         },
     ),
     Tool(
+        name="geodata_import_n50_land_cover",
+        description=(
+            "Upsert a batch of already-parsed N50 land-cover features into the local geodata "
+            "store. Operator/batch job; mutation; no namespace_id (global table)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "source_file": {
+                    "type": "string",
+                    "description": "Name of the source extract this batch came from.",
+                },
+                "features": {
+                    "type": "array",
+                    "description": (
+                        "[{klasse, objid, objtype?, rings, area_m2?}, ...] -- rings are "
+                        "[lon, lat] degree pairs, area_m2 the source's own precomputed area."
+                    ),
+                    "items": {"type": "object"},
+                },
+            },
+            "required": ["source_file", "features"],
+        },
+    ),
+    Tool(
+        name="geodata_query_n50_land_cover",
+        description=(
+            "Read N50 land-cover features whose stored bounding box intersects the requested "
+            "viewport, largest area first. Actor; read-only; no namespace_id (global table)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "min_lon": {"type": "number", "description": "Viewport minimum longitude."},
+                "min_lat": {"type": "number", "description": "Viewport minimum latitude."},
+                "max_lon": {"type": "number", "description": "Viewport maximum longitude."},
+                "max_lat": {"type": "number", "description": "Viewport maximum latitude."},
+                "klasse": {
+                    "type": "string",
+                    "description": "Optional exact-match land-cover class filter.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum rows to return (default and ceiling 500).",
+                },
+            },
+            "required": ["min_lon", "min_lat", "max_lon", "max_lat"],
+        },
+    ),
+    Tool(
         name="decision_feedback_record",
         description=(
             "Record ground-truth human decision or outcome feedback across vertical engines "

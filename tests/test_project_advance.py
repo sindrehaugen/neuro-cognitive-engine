@@ -618,9 +618,9 @@ class TestProjectAdvancePhaseToolRegistry:
         assert len(MUTATION_TOOLS) >= 123, (
             f"Sanity floor: expected at least 123 mutation tools, got {len(MUTATION_TOOLS)}."
         )
-        assert len(hand_written_mutation_tools) == 125, (
+        assert len(hand_written_mutation_tools) == 126, (
             "Hand-written (non-C12) mutation tool count changed: expected "
-            f"125, got {len(hand_written_mutation_tools)}. If you "
+            f"126, got {len(hand_written_mutation_tools)}. If you "
             "added/removed a hand-written mutation tool, update this pin by "
             "import. If you only registered a new C12 ResourceSpec, this "
             f"number should not move -- investigate. Tools: "
@@ -666,7 +666,7 @@ class TestProjectAdvancePhaseToolRegistry:
                 "h4_probe_archive_k_h4_synthetic",
             }
             assert after_total == before_total  # TOOL_REGISTRY snapshot doesn't re-scan; see below
-            assert len(hand_written_after) == 125, (
+            assert len(hand_written_after) == 126, (
                 "Registering a new C12 spec must not move the hand-written "
                 f"baseline: got {len(hand_written_after)}."
             )
@@ -717,5 +717,6 @@ class TestProjectAdvancePhaseToolRegistry:
         +2 Wave IN-2 inventory kitting tools: inventory_reserve_kit, inventory_release_kit;
         +1 Wave IN-3 inventory restock PO: inventory_create_restock_po;
         +1 Wave F-8 legal_entities_enrich_from_registry, admin_only;
-        +1 Wave F-11 geodata_import_osm_elements, admin_only)."""
-        assert len(ADMIN_ONLY_TOOLS) == 95
+        +1 Wave F-11 geodata_import_osm_elements, admin_only;
+        +1 Wave F-12 geodata_import_n50_land_cover, admin_only)."""
+        assert len(ADMIN_ONLY_TOOLS) == 96
