@@ -366,6 +366,9 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "support_archive_sla_clocks",
         "support_upsert_customer_health",
         "support_archive_customer_health",
+        # Lane E Wave E-7 -- C12 Economy POSTING resource surface mutations (upsert + archive)
+        "economy_upsert_postings",
+        "economy_archive_postings",
     }
 )
 
@@ -635,6 +638,9 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "support_get_sla_clocks",
         "support_list_customer_health",
         "support_get_customer_health",
+        # Lane E Wave E-7 -- C12 Economy POSTING resource surface cacheable reads (list + get)
+        "economy_list_postings",
+        "economy_get_postings",
     }
 )
 
