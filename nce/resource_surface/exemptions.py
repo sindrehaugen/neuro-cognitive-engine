@@ -283,15 +283,11 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     "INVOICE": ResourceExemption(
         owner_engine="economy",
         reason=(
-            "Real attribute table (economy_invoices). Scheduled for Wave B-13 "
-            "CUSTOMER_INVOICE resource declaration."
-        ),
-    ),
-    "POSTING": ResourceExemption(
-        owner_engine="economy",
-        reason=(
-            "General ledger posting line. Scheduled for Wave B-14 ECONOMY_POSTING_LINE "
-            "resource declaration."
+            "kg_nodes-only stub -- no economy_invoices table exists in nce/schema.sql "
+            "(grep -n \"CREATE TABLE IF NOT EXISTS.*invoice\" nce/schema.sql returns "
+            "nothing). The prior exemption text claiming a real table was wrong; "
+            "corrected by Lane E Wave E-7. Scheduled for Wave B-13 CUSTOMER_INVOICE "
+            "once that table is built."
         ),
     ),
     "PERIOD": ResourceExemption(

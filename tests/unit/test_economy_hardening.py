@@ -58,6 +58,11 @@ _ECONOMY_TOOLS: frozenset[str] = frozenset(
         "economy_generate_ehf",
         "economy_validate_contract",
         "economy_get_gl_records",
+        # Lane E Wave E-7 -- C12 POSTING resource surface (list/get/upsert/archive)
+        "economy_list_postings",
+        "economy_get_postings",
+        "economy_upsert_postings",
+        "economy_archive_postings",
     }
 )
 
