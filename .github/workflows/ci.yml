@@ -687,8 +687,9 @@ jobs:
       # Lane F Wave F-11: tests/test_geodata_osm.py -- box/GiST bbox-query and
       # ON CONFLICT upsert behaviour against the real geodata_osm_elements
       # global table, which no mock can prove. A dedicated step rather than a
-      # test_geodata_*.py glob: this is currently the only geodata integration
-      # file wired in this workflow. Flagged by ML-orch (2026-09-18): these
+      # test_geodata_*.py glob (two geodata integration files exist as of
+      # Wave F-12 below; a glob covering both is a later step, not this
+      # one's job to introduce). Flagged by ML-orch (2026-09-18): these
       # tests carried @pytest.mark.integration but ran in no workflow, so they
       # gated nothing.
       - name: Integration — geodata OSM elements (tests/test_geodata_osm.py)
@@ -697,6 +698,16 @@ jobs:
           NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/test_geodata_osm.py -m integration -q --tb=short
+
+      # Lane F Wave F-12: tests/test_geodata_n50.py -- same reasoning as
+      # F-11's geodata OSM step above, against the real geodata_n50_land_cover
+      # global table.
+      - name: Integration — geodata N50 land cover (tests/test_geodata_n50.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/test_geodata_n50.py -m integration -q --tb=short
 
       # Module 5, Wave 15 (Batch 132d): tests/test_sales_lines_manual.py -- the
       # MANUAL-PICK origination path for BOM_LINE, and the first real caller of

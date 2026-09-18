@@ -81,6 +81,12 @@ UNMANAGED_PG_AUDITED_SITES: Final[frozenset[str]] = frozenset(
         # read/write it with no namespace_id to scope against.
         "geodata.osm.import",
         "geodata.osm.bbox_query",
+        # Wave F-12: geodata_n50_land_cover is a GLOBAL table (migration
+        # 089, same reasoning as product_catalog) -- import and
+        # bbox-query both read/write it with no namespace_id to scope
+        # against.
+        "geodata.n50.import",
+        "geodata.n50.bbox_query",
     }
 )
 
