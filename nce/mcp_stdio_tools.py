@@ -2884,6 +2884,82 @@ TOOLS = [
         },
     ),
     # -----------------------------------------------------------------
+    # C12 Resource Surface — Procurement PO_LINE (Lane E Wave E-3)
+    # -----------------------------------------------------------------
+    Tool(
+        name="procurement_list_po_lines",
+        description="List and query Po Line resources for procurement.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500},
+                "cursor": {
+                    "type": "string",
+                    "description": "Pagination cursor from previous response.",
+                },
+                "q": {"type": "string", "description": "Full-text search term."},
+                "po_number": {"type": "string", "description": "Filter by po_number."},
+                "line_ref": {"type": "string", "description": "Filter by line_ref."},
+                "project_id": {"type": "string", "description": "Filter by project_id."},
+                "status": {"type": "string", "description": "Filter by status."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="procurement_get_po_lines",
+        description="Fetch a single Po Line resource by ID.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {"type": "string", "description": "Unique identifier of the Po Line."},
+            },
+            "required": ["namespace_id", "id"],
+        },
+    ),
+    Tool(
+        name="procurement_upsert_po_lines",
+        description="Create or update a Po Line resource.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {
+                    "type": "string",
+                    "description": "Optional ID of existing Po Line to update.",
+                },
+                "expected_version": {"type": "string", "description": "Concurrency check version."},
+                "po_number": {"description": "Value for po_number."},
+                "line_ref": {"description": "Value for line_ref."},
+                "project_id": {"description": "Value for project_id."},
+                "bom_line_label": {"description": "Value for bom_line_label."},
+                "artnr": {"description": "Value for artnr."},
+                "description": {"description": "Value for description."},
+                "quantity": {"description": "Value for quantity."},
+                "unit_price": {"description": "Value for unit_price."},
+                "line_total": {"description": "Value for line_total."},
+                "currency": {"description": "Value for currency."},
+                "status": {"description": "Value for status."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="procurement_archive_po_lines",
+        description="Soft-archive a Po Line resource.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {"type": "string", "description": "ID of Po Line to archive."},
+                "reason": {"type": "string", "description": "Audit reason for archiving."},
+            },
+            "required": ["namespace_id", "id"],
+        },
+    ),
+    # -----------------------------------------------------------------
     # C12 Resource Surface — Notifications & Reminders (Wave A-3)
     # -----------------------------------------------------------------
     Tool(
