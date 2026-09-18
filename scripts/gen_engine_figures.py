@@ -261,11 +261,58 @@ def extract_golden_thread_stats(repo: str, baseline: str) -> dict[str, Any]:
     }
 
 
+def extract_v16_resource_surface_stats(repo: str, baseline: str) -> dict[str, Any]:
+    """v1.6 C12 resource-surface registration per engine (Lane A-1 / Lane E).
+
+    Registration is defined mechanically, matching this codebase's own
+    convention: an engine is registered once
+    ``nce/vertical_modules/<engine>/resources.py`` exists in the tree at
+    *baseline*. Counts ``ResourceSpec(`` call sites via AST (never a line
+    grep, per charter §14 K-0) when the file exists. Every engine reads
+    unregistered until A-1 lands and Lane E starts (E-1..E-17) -- that is the
+    correct, honest measurement today, not a bug in this instrument.
+    """
+    engines = discover_vertical_engines(repo, baseline)
+    per_engine: dict[str, dict[str, Any]] = {}
+    registered = 0
+
+    for engine in engines:
+        paths = git_ls_tree(repo, baseline, f"nce/vertical_modules/{engine}/")
+        resources_path = f"nce/vertical_modules/{engine}/resources.py"
+        has_resources = resources_path in paths
+        spec_count = 0
+
+        if has_resources:
+            content = git_show(repo, baseline, resources_path)
+            try:
+                tree = ast.parse(content, filename=resources_path)
+            except SyntaxError:
+                tree = None
+            if tree is not None:
+                for node in ast.walk(tree):
+                    if (
+                        isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Name)
+                        and node.func.id == "ResourceSpec"
+                    ):
+                        spec_count += 1
+            registered += 1
+
+        per_engine[engine] = {"has_resources": has_resources, "spec_count": spec_count}
+
+    return {
+        "per_engine": per_engine,
+        "num_engines": len(engines),
+        "registered": registered,
+    }
+
+
 def generate_markdown(
     baseline_sha: str,
     tool_stats: dict[str, Any],
     mig_stats: dict[str, Any],
     gt_stats: dict[str, Any],
+    v16_stats: dict[str, Any],
 ) -> str:
     """Generate docs/_generated/engine_figures.md content."""
     lines: list[str] = [
@@ -288,16 +335,37 @@ def generate_markdown(
         f"| `TOOL_REGISTRY` entries | **{tool_stats['total_tools']}** MCP tools ({tool_stats['shared_count']} shared + {tool_stats['engine_count']} across {tool_stats['num_engines']} engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = {tool_stats['expected_total']}` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |",
         f"| SQL migrations | {mig_stats['base_count']} files (+{mig_stats['optional_count']} optional), `{mig_stats['min_prefix']}` → `{mig_stats['max_prefix']}` — gaps at {mig_stats['gaps_str']} | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |",
         f"| Golden Thread seam burndown | **{gt_stats['broken']} of {gt_stats['total_steps']}** lifecycle steps broken ({gt_stats['distinct_seams']} distinct seams) | Generated in [`docs/_generated/golden_thread_seams.md`](golden_thread_seams.md) from [`tests/integration/test_golden_thread.py`](../../tests/integration/test_golden_thread.py) |",
+        f"| v1.6 C12 resource-surface registrations | **{v16_stats['registered']} of {v16_stats['num_engines']}** engines have `resources.py` | AST of `nce/vertical_modules/<engine>/resources.py` per engine — see the v1.6 section below |",
         "",
-        "## Tool Registry Breakdown",
+        "## v1.6 — C12 Resource Surface Registration (Lane E)",
         "",
-        f"- **Total Registered Tools:** {tool_stats['total_tools']}",
-        f"- **Shared Core Tools:** {tool_stats['shared_count']}",
-        f"- **Vertical Engine Tools:** {tool_stats['engine_count']} across {tool_stats['num_engines']} engine packages",
+        "> Starts at 0 of N by design (charter `MLV16_ORCH_CHARTER_2026-09-18.md` §9 \"Lane E\") — this",
+        "> table fills in as A-1 lands and Lane E registers each engine (E-1..E-17), one",
+        "> `nce/vertical_modules/<engine>/resources.py` at a time. A never-changing 0 past that point",
+        "> is itself a finding, not a quiet default.",
         "",
-        "| Engine Package | Tool Count |",
-        "|---|---:|",
+        "| Engine | `resources.py` | `ResourceSpec` count |",
+        "|---|---|---:|",
     ]
+
+    for eng in sorted(v16_stats["per_engine"]):
+        info = v16_stats["per_engine"][eng]
+        badge = "✅" if info["has_resources"] else "⬜"
+        lines.append(f"| `{eng}` | {badge} | {info['spec_count']} |")
+
+    lines.extend(
+        [
+            "",
+            "## Tool Registry Breakdown",
+            "",
+            f"- **Total Registered Tools:** {tool_stats['total_tools']}",
+            f"- **Shared Core Tools:** {tool_stats['shared_count']}",
+            f"- **Vertical Engine Tools:** {tool_stats['engine_count']} across {tool_stats['num_engines']} engine packages",
+            "",
+            "| Engine Package | Tool Count |",
+            "|---|---:|",
+        ]
+    )
 
     for eng, count in tool_stats["per_engine"].items():
         lines.append(f"| `{eng}` | {count} |")
@@ -331,6 +399,7 @@ def update_engine_status(
     tool_stats: dict[str, Any],
     mig_stats: dict[str, Any],
     gt_stats: dict[str, Any],
+    v16_stats: dict[str, Any],
 ) -> str:
     """Return updated text for docs/vertical_engines/ENGINE_STATUS.md."""
     text = status_text
@@ -387,6 +456,28 @@ def update_engine_status(
         count=1,
     )
 
+    v16_row = (
+        f"| v1.6 C12 resource-surface registrations | **{v16_stats['registered']} of "
+        f"{v16_stats['num_engines']}** engines have `resources.py` — "
+        f"see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |"
+    )
+    if re.search(r"\|\s*v1\.6 C12 resource-surface registrations\s*\|", text):
+        text = re.sub(
+            r"\|\s*v1\.6 C12 resource-surface registrations\s*\|[^\n]*",
+            v16_row,
+            text,
+            count=1,
+        )
+    else:
+        # First run: insert right after the Golden Thread row so the summary
+        # table gains the v1.6 row without a hand-authored anchor edit.
+        text = re.sub(
+            r"(\|\s*Golden Thread seam burndown\s*\|[^\n]*\n)",
+            r"\1" + v16_row + "\n",
+            text,
+            count=1,
+        )
+
     return text
 
 
@@ -440,6 +531,7 @@ def main() -> int:
     tool_stats = extract_tool_registry_stats(repo, baseline)
     mig_stats = extract_migration_stats(repo, baseline)
     gt_stats = extract_golden_thread_stats(repo, baseline)
+    v16_stats = extract_v16_resource_surface_stats(repo, baseline)
 
     if (
         tool_stats["expected_total"] is not None
@@ -457,6 +549,7 @@ def main() -> int:
         tool_stats=tool_stats,
         mig_stats=mig_stats,
         gt_stats=gt_stats,
+        v16_stats=v16_stats,
     )
 
     out_path = pathlib.Path(repo) / args.out
@@ -494,6 +587,7 @@ def main() -> int:
                 tool_stats=tool_stats,
                 mig_stats=mig_stats,
                 gt_stats=gt_stats,
+                v16_stats=v16_stats,
             ).replace("\r\n", "\n")
             if normalize_volatile(current_status) != normalize_volatile(expected_status):
                 print(
@@ -520,6 +614,7 @@ def main() -> int:
             tool_stats=tool_stats,
             mig_stats=mig_stats,
             gt_stats=gt_stats,
+            v16_stats=v16_stats,
         )
         write_crlf(status_path, new_status)
         print(f"Updated {status_path} with verified-against `{baseline_sha}`")
