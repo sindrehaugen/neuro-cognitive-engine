@@ -39,32 +39,41 @@ here would just be a second, worse copy of that ratchet.
 
 **Why "resolves to an implementation" cannot be a mechanical "is it real"
 check, and this file does not pretend otherwise.** The three fabricated
-adapters (``crestron``, ``sennheiser``, ``shure``) and the one this wave
-additionally found in the same shape (``qsys`` — see below) are, byte for
-byte, the SAME TEMPLATE as the two verified-real adapters (``neat``,
-``yealink``/``ymcs``): an env-configurable endpoint URL, a
-``NotImplementedError`` guard when unconfigured, an ``httpx`` call, and the
-same degradation-logging ``except`` block. There is no property of the
-Python code itself that marks one real and the other fabricated — the only
-difference is external: whether the URL path and headers were derived from
-an actual vendor API reference anywhere in either repo. That is exactly what
-Q-38 measured (by grepping both repos for each vendor name), not something
-this test can re-derive by reading the adapter file. So this file does NOT
-attempt a "realness" heuristic. It proves the two things that ARE mechanical
-— (1) does a name resolve to a dedicated class at all, never the
-``UnimplementedVendorAdapter`` stand-in, and (2) is every registry entry
-accounted for by an explicit, reasoned classification — and treats "is it
-real" as an external fact that must be CITED (to Q-38, or to the wave that
+adapters (``crestron``, ``sennheiser``, ``shure``) and today's scaffolding
+(``qsys`` — see below) are, byte for byte, the SAME TEMPLATE as the two
+verified-real adapters (``neat``, ``yealink``/``ymcs``): an env-configurable
+endpoint URL, a ``NotImplementedError`` guard when unconfigured, an ``httpx``
+call, and the same degradation-logging ``except`` block. There is no
+property of the Python code itself that marks one real and the other
+fabricated — the only difference is external: whether the URL path and
+headers were derived from an actual vendor API reference anywhere in either
+repo. That is exactly what Q-38 measured (by grepping both repos for each
+vendor name), not something this test can re-derive by reading the adapter
+file alone (this worktree does not have the host portal repo checked out —
+see the survey note below). So this file does NOT attempt a "realness"
+heuristic. It proves the two things that ARE mechanical — (1) does a name
+resolve to a dedicated class at all, never the ``UnimplementedVendorAdapter``
+stand-in, and (2) is every registry entry accounted for by an explicit,
+reasoned classification — and treats "is it real" as an external fact that
+must be CITED (to Q-38, to Lane F's own host-repo survey, or to the wave that
 built and verified it), never inferred from code shape.
 
-**A finding of this wave's own survey, not yet in Q-38:** ``qsys`` shares the
-identical fabricated shape (hardcoded ``/api/v0/cores/{id}/telemetry``,
-verified via a repo-wide grep for "Q-SYS"/"qsys reflect"/"qsc" turning up only
-brand-name mentions in unrelated docs, same as the three Q-38 already flags).
-Q-38 does not mention it — charter §9 "Lane F" schedules Q-SYS Reflect as
-F-4, still queued, so this may be pre-F-4 scaffolding rather than a
-considered decision. Exempted here alongside the Q-38 three, cited
-separately since it is this wave's finding, not Q-38's.
+**A finding of this wave's own survey, refined after ML-orch cross-checked it
+against Lane F's host-repo survey:** ``qsys`` shares the identical fabricated
+shape (hardcoded ``/api/v0/cores/{id}/telemetry``) as the Q-38 three, found
+independently this wave via a repo-wide grep for "Q-SYS"/"qsys reflect"/"qsc"
+that (from this worktree, without the host repo) turned up only brand-name
+mentions in unrelated docs. Read in isolation that looked identical to the
+Q-38 three. It is not: Lane F's Q-38 investigation *did* survey the host
+repo's integrations directory and found a real ``qsys_reflect_client.py``
+there (GET-only, bare bearer token, unpaginated) — a reference implementation
+to build against, which the Q-38 three categorically lack. ``qsys`` is
+therefore classified separately below as ``pending_wave`` (charter §9 "Lane
+F", wave F-6), not lumped in with the Q-38 three: it shrinks when F-6 builds
+the real adapter from that reference, a different and much shorter lifecycle
+than the Q-38 three, which shrink only when Sindre rules on Q-38 and someone
+does the from-scratch vendor integration work Q-38 itself says is "larger
+than any F wave so far."
 
 **Registries surveyed for this defect shape, and why each is or is not
 here:**
@@ -92,11 +101,15 @@ here:**
   under ``nce/`` turned up nothing else shaped like "name advertised,
   implementation optional" (see PR description for the full list checked).
 
-Not surveyed, reported rather than silently assumed clean: the private host
-portal repository (out of scope for this worktree; Lane F's own Q-38
-measurement already covers the host-side half of the crestron/sennheiser/
-shure/qsys "no reference anywhere" claim, which this file cannot re-verify
-from here).
+Not surveyed directly, reported rather than silently assumed clean: the
+private host portal repository (out of scope for this worktree). This
+mattered concretely for ``qsys`` above — a repo-wide grep from this worktree
+alone made it look identical to the Q-38 three, and only cross-referencing
+Lane F's own host-repo survey (Q-38) surfaced the real
+``qsys_reflect_client.py`` reference that separates it from them. Treat any
+"no reference found" claim in this file as scoped to the repo this worktree
+can see, not the whole estate, unless it explicitly cites a survey (like
+Q-38's) that covered both.
 """
 
 from __future__ import annotations
@@ -118,15 +131,24 @@ from nce.vertical_modules.assets.telemetry import (
 # adapter — never by widening what "resolves to an implementation" means.
 #
 # status:
-#   "absent"                -> no adapter branch in select_telemetry_adapter
-#                               at all; always resolves to
-#                               UnimplementedVendorAdapter. Mechanically
-#                               reverified below on every run.
+#   "absent"                 -> no adapter branch in select_telemetry_adapter
+#                                at all; always resolves to
+#                                UnimplementedVendorAdapter. Mechanically
+#                                reverified below on every run.
 #   "unverified_scaffolding" -> DOES resolve to a dedicated class (would pass
-#                               a naive "is it Unimplemented" check), but no
-#                               reference to a real vendor API was found
-#                               anywhere in either repo. Not reassertable
-#                               mechanically -- see module docstring.
+#                                a naive "is it Unimplemented" check), but NO
+#                                reference implementation exists anywhere,
+#                                on either side (NCE or host). Shrinks only
+#                                when Sindre rules on Q-38 and someone does
+#                                the from-scratch vendor integration.
+#   "pending_wave"           -> DOES resolve to a dedicated class, fabricated
+#                                today, but a real reference implementation
+#                                to build it from DOES exist (a host client,
+#                                a queued charter wave). A materially smaller
+#                                and shorter-lived gap than the two statuses
+#                                above -- shrinks when that specific wave
+#                                lands, not when a policy question is ruled
+#                                on.
 # ---------------------------------------------------------------------------
 _VENDOR_PLATFORM_EXEMPTIONS: dict[str, dict[str, str]] = {
     "huddly": {
@@ -169,19 +191,21 @@ _VENDOR_PLATFORM_EXEMPTIONS: dict[str, dict[str, str]] = {
     },
     "qsys": {
         "owner": "Lane F",
-        "status": "unverified_scaffolding",
+        "status": "pending_wave",
         "reason": "QSysReflectTelemetryAdapter is byte-for-byte the same "
         "fabricated template as the Q-38 three (hardcoded "
-        "/api/v0/cores/{id}/telemetry). Not in Q-38 -- found independently "
-        "this wave (H-11) via the same no-reference-anywhere grep. Q-SYS "
-        "Reflect is charter F-4, still queued, so this is likely pre-F-4 "
-        "scaffolding rather than a considered build.",
-        "ref": "H-11",
+        "/api/v0/cores/{id}/telemetry), found independently this wave (H-11). "
+        "Unlike the Q-38 three, a real reference EXISTS: the host repo's "
+        "integrations directory has qsys_reflect_client.py (GET-only, bare "
+        "bearer token, unpaginated) per Lane F's Q-38 host-repo survey. This "
+        "is charter F-6 (Lane F, still queued), not unresolved policy -- "
+        "shrinks when F-6 builds the real adapter from that reference.",
+        "ref": "F-6",
     },
 }
 
 _REQUIRED_EXEMPTION_FIELDS = ("owner", "status", "reason", "ref")
-_VALID_STATUSES = frozenset({"absent", "unverified_scaffolding"})
+_VALID_STATUSES = frozenset({"absent", "unverified_scaffolding", "pending_wave"})
 
 
 def _resolves_to_real_adapter(platform: str, monkeypatch: pytest.MonkeyPatch) -> bool:
