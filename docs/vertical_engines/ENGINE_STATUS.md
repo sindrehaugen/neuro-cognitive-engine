@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `becc2ff` (public `main`) · **Last-audited:** 2026-09-18
+> **Status:** shipped · **Verified-against:** `8feca25` (public `main`) · **Last-audited:** 2026-09-18
 
 # NCE Vertical Engines — Build & Production Status
 
@@ -21,7 +21,7 @@
 > python scripts/gen_surface_table.py --repo . --baseline HEAD --out docs/_generated/surface.md
 > ```
 
-## Measured inventory at `becc2ff`
+## Measured inventory at `8feca25`
 
 | Instrument | Value |
 |---|---|
@@ -33,6 +33,7 @@
 | `EXPECTED_TENANT_RLS_TABLES` | **89** |
 | Tests | **6,423** `def test_` across 528 files |
 | Golden Thread seam burndown | **0 of 28** lifecycle steps broken (0 distinct seams) — mirrored from [`docs/_generated/golden_thread_seams.md`](../_generated/golden_thread_seams.md); see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
+| v1.6 C12 resource-surface registrations | **0 of 20** engines have `resources.py` — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 
 **Status legend**
 
