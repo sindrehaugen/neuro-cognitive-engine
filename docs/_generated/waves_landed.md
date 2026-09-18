@@ -12,10 +12,10 @@
 
 | Metric | Count |
 |---|---|
-| **Total Waves Evaluated** | **94** |
-| **LANDED on `main` (3-way consensus)** | **48** |
-| **Disagreements / Open / Planned** | **46** |
-| **Skipped Legacy / Pre-v1.5 Tokens** | **54** |
+| **Total Waves Evaluated** | **138** |
+| **LANDED on `main` (3-way consensus)** | **49** |
+| **Disagreements / Open / Planned** | **89** |
+| **Skipped Legacy / Pre-v1.5 Tokens** | **55** |
 | **Unmatched Wave Tokens** | **0** |
 
 ---
@@ -24,18 +24,18 @@
 
 | Wave ID | Phase | Evidence | Merged PR | Merge Date | Stamping Files | Marker Test | Description |
 |---|---|---|---|---|---|---|---|
-| **AG-2** | Phase 3 | `3-source` | #38 | 2026-09-06 | `nce/tool_registry.py`<br>`tests/unit/test_agreements_surface.py` | `tests/unit/test_agreements_surface.py` | Agreements Surface Completion |
+| **AG-2** | Phase 3 | `3-source` | #38 | 2026-09-06 | `nce/tool_registry.py`<br>`nce/vertical_modules/business_insights/slices.py`<br>*(+2 more)* | `tests/unit/test_agreements_surface.py` | Agreements Surface Completion |
 | **AG-3** | Phase 3 | `3-source` | #79 | 2026-09-07 | `nce/vertical_modules/procurement/po.py`<br>`tests/unit/test_agreements_procurement_cross_engine.py` | `tests/unit/test_agreements_procurement_cross_engine.py` | feat(procurement,agreements): wire agreements compliance audit for rebate override via engine.modules (Wave AG-3 / PR-5) |
 | **B-AG1** | Phase 3 | `3-source` | #80 | 2026-09-07 | `nce/tool_registry.py`<br>`tests/test_tool_registry.py`<br>*(+1 more)* | `tests/unit/test_economy_gl_records.py` | feat(economy,agreements): query GL records with C8 projection and rewire coverage seam (Wave B-AG1 / B-E2) |
 | **B-FT5** | Phase 1 | `3-source` | #77 | 2026-09-07 | `nce/auth.py`<br>`nce/vertical_modules/field_tech/partner_view.py`<br>*(+1 more)* | `tests/unit/test_partner_scope_ratchet.py` | Partner Scope Resolution & Internal Impersonation Audit |
 | **C-BI2** | Phase 2 | `3-source` | #78 | 2026-09-07 | `nce/vertical_modules/business_insights/ask.py`<br>`tests/unit/test_business_insights_ask_ratchet.py` | `tests/unit/test_business_insights_ask_ratchet.py` | feat(business_insights): ground do_ask_business in real KPI snapshots and cognitive memories (Wave C-BI2) |
 | **C-FT4** | Phase 2 | `2-source` | #66 | 2026-09-07 | `tests/unit/test_outcome_feed_c10_ratchet.py` | `tests/unit/test_outcome_feed_c10_ratchet.py` | feat(c10,system_design): assert unpatched decision_feedback SQL execution and refine neutral outcome weighting (Wave C-RS3 / C-FT4 / C-SD2) |
-| **C-PJ2** | Phase 2 | `3-source` | #59 | 2026-09-07 | `nce/tool_registry.py`<br>`nce/vertical_modules/project/mcp_handlers.py`<br>*(+4 more)* | `tests/unit/test_economy_surface.py` | feat(project,marketing): wire case-study graph edge on G6 advance and discover candidates (Wave C-PJ2) |
+| **C-PJ2** | Phase 2 | `3-source` | #59 | 2026-09-07 | `nce/tool_registry.py`<br>`nce/vertical_modules/project/mcp_handlers.py`<br>*(+3 more)* | `tests/unit/test_economy_surface.py` | feat(project,marketing): wire case-study graph edge on G6 advance and discover candidates (Wave C-PJ2) |
 | **C-RS3** | Phase 2 | `2-source` | #66 | 2026-09-07 | `tests/unit/test_outcome_feed_c10_ratchet.py` | `tests/unit/test_outcome_feed_c10_ratchet.py` | feat(c10,system_design): assert unpatched decision_feedback SQL execution and refine neutral outcome weighting (Wave C-RS3 / C-FT4 / C-SD2) |
-| **C-SD2** | Phase 2 | `3-source` | #66, #64 | 2026-09-07, 2026-09-07 | `nce/config.py`<br>`tests/unit/test_system_design_sd2_ratchet.py` | `tests/unit/test_system_design_sd2_ratchet.py` | feat(c10,system_design): assert unpatched decision_feedback SQL execution and refine neutral outcome weighting (Wave C-RS3 / C-FT4 / C-SD2) |
+| **C-SD2** | Phase 2 | `3-source` | #64, #66 | 2026-09-07, 2026-09-07 | `nce/config.py`<br>`tests/unit/test_system_design_sd2_ratchet.py` | `tests/unit/test_system_design_sd2_ratchet.py` | feat(c10,system_design): assert unpatched decision_feedback SQL execution and refine neutral outcome weighting (Wave C-RS3 / C-FT4 / C-SD2) |
 | **CP-1** | Phase 1 | `3-source` | #26 | 2026-09-06 | `tests/unit/test_customer_portal_cp1_loop.py`<br>`tests/unit/test_seam_ratchet.py` | `tests/unit/test_customer_portal_cp1_loop.py` | Customer request becomes ticket (via W-1 registry `engine.modules["support"]`) |
-| **E-1** | Phase 3 | `3-source` | #28 | 2026-09-06 | `nce/config_data/internal-cores.json`<br>`tests/test_tool_registry.py`<br>*(+1 more)* | `tests/unit/test_economy_surface.py` | feat(economy): surface 6 read tools and REST endpoints, shrink allowlist to 76 (Wave E-1) |
-| **E-2** | Phase 3 | `3-source` | #70 | 2026-09-07 | `nce/tool_registry.py`<br>`tests/test_project_advance.py`<br>*(+2 more)* | `tests/unit/test_economy_peppol_surface.py` | Economy PEPPOL & Contract Validation Cores Surface Completion |
+| **E-1** | Phase 3 | `3-source` | #28 | 2026-09-06 | `nce/config_data/internal-cores.json`<br>`nce/vertical_modules/business_insights/slices.py`<br>*(+2 more)* | `tests/unit/test_economy_surface.py` | feat(economy): surface 6 read tools and REST endpoints, shrink allowlist to 76 (Wave E-1) |
+| **E-2** | Phase 3 | `3-source` | #70 | 2026-09-07 | `nce/resource_surface/exemptions.py`<br>`nce/tool_registry.py`<br>*(+2 more)* | `tests/unit/test_economy_peppol_surface.py` | Economy PEPPOL & Contract Validation Cores Surface Completion |
 | **E-3** | Phase 1 | `3-source` | #48 | 2026-09-06 | `tests/test_tool_registry.py`<br>`tests/unit/test_economy_approve_invoice.py` | `tests/unit/test_economy_approve_invoice.py` | Close the loop (`economy_approve_invoice`) |
 | **FT-1** | Phase 1 | `3-source` | #42 | 2026-09-06 | `nce/events/catalogue.py`<br>`nce/vertical_modules/field_tech/checklist.py`<br>*(+2 more)* | `tests/unit/test_field_tech_ladder.py` | Field Tech install & test write the ladder |
 | **HR-1** | Phase 1 | `3-source` | #53 | 2026-09-07 | `nce/config_data/internal-cores.json`<br>`nce/cron.py`<br>*(+5 more)* | `tests/unit/test_hr1_v2_cert_expiry.py` | feat(hr,vendors): close break-5a with CERTIFICATION.EXPIRED and burn down Golden Thread Step 23 (Wave HR-1/V-2) |
@@ -43,7 +43,7 @@
 | **HR-5** | Phase 3 | `3-source` | #87 | 2026-09-07 | `nce/cron.py`<br>`nce/db_utils.py`<br>*(+2 more)* | `tests/unit/test_hr_compliance_watcher.py` | HR Statutory Compliance-Deadline Watcher on Cron |
 | **I-0** | Phase 0 | `2-source` | #21 | 2026-09-06 | `tests/unit/test_engine_registry.py` | `tests/unit/test_engine_registry.py` | W-1 Engine Registry (`engine.modules`) |
 | **I-2** | Phase 0 | `3-source` | #36 | 2026-09-06 | `nce/events/catalogue.py`<br>`tests/test_event_catalogue.py` | `tests/test_event_catalogue.py` | Event-Contract Catalogue |
-| **I-3** | Phase 0 | `2-source` | #27, #24 | 2026-09-06, 2026-09-06 | `tests/unit/test_seam_ratchet.py` | `tests/unit/test_seam_ratchet.py` | Seam Ratchet |
+| **I-3** | Phase 0 | `2-source` | #24, #27 | 2026-09-06, 2026-09-06 | `tests/unit/test_seam_ratchet.py` | `tests/unit/test_seam_ratchet.py` | Seam Ratchet |
 | **I-4** | Phase 0 | `2-source` | #37 | 2026-09-06 | `tests/unit/test_ownership_ratchet.py` | `tests/unit/test_ownership_ratchet.py` | Ownership Ratchet |
 | **I-5** | Phase 0 | `3-source` | #33 | 2026-09-06 | `nce/degradation.py`<br>`tests/unit/test_degradation_register.py` | `tests/unit/test_degradation_register.py` | Degradation Register |
 | **IN-1** | Phase 1 | `3-source` | #41 | 2026-09-06 | `nce/config_data/internal-cores.json`<br>`nce/vertical_modules/inventory/goods_receipt.py`<br>*(+2 more)* | `tests/unit/test_inventory_goods_receipt_created.py` | `GOODS_RECEIPT.created` producer |
@@ -52,22 +52,23 @@
 | **P-3** | Phase 2 | `3-source` | #40 | 2026-09-06 | `tests/test_tool_registry.py`<br>`tests/unit/test_product_p2_p3_ratchet.py` | `tests/unit/test_product_p2_p3_ratchet.py` | feat(core): Phase 2 Real Data Behind the AI - Waves C10, P-1..P-3, PJ-1/SD-3, Wave 5, T-1 |
 | **PJ-1** | Phase 2 | `3-source` | #40 | 2026-09-06 | `nce/tool_registry.py`<br>`tests/test_project_advance.py`<br>*(+2 more)* | `tests/unit/test_project_pj1_sd3_ratchet.py` | feat(core): Phase 2 Real Data Behind the AI - Waves C10, P-1..P-3, PJ-1/SD-3, Wave 5, T-1 |
 | **PR-1** | Phase 1 | `3-source` | #35 | 2026-09-06 | `nce/vertical_modules/procurement/mcp_handlers.py`<br>`nce/vertical_modules/procurement/po.py`<br>*(+3 more)* | `tests/unit/test_economy_surface.py` | Generate and submit PO (`PO_LINE.status_changed`) |
-| **PR-2** | Phase 1 | `3-source` | #30 | 2026-09-06 | `nce/migrations/074_procurement_po_lines.sql`<br>`nce/schema.sql`<br>*(+2 more)* | `tests/unit/test_procurement_po_line_model.py` | `PO_LINE` status model |
+| **PR-2** | Phase 1 | `3-source` | #30 | 2026-09-06 | `nce/migrations/074_procurement_po_lines.sql`<br>`nce/schema.sql`<br>*(+4 more)* | `tests/unit/test_procurement_po_line_model.py` | `PO_LINE` status model |
+| **PR-3** | Phase 3 | `3-source` | #52 | 2026-09-06 | `nce/vertical_modules/business_insights/slices.py` | `tests/unit/test_economy_surface.py` | Procurement Savings Surface Completion |
 | **Q-1** | Phase 1 | `2-source` | #50 | 2026-09-06 | `tests/unit/test_sales_quote_render_ratchet.py` | `tests/unit/test_sales_quote_render_ratchet.py` | feat(sales): render quote document from frozen baseline (Wave Q-1) |
 | **Q-2** | Phase 1 | `3-source` | #54 | 2026-09-06 | `nce/signing_service/__init__.py`<br>`nce/signing_service/email_code.py`<br>*(+3 more)* | `tests/unit/test_sales_signing_email_code_ratchet.py` | feat(sales): native email-code e-signature transport and provider selection (Wave Q-2) |
 | **Q-3** | Phase 1 | `3-source` | #56 | 2026-09-06 | `nce/mailer.py`<br>`nce/vertical_modules/sales/signing.py`<br>*(+2 more)* | `tests/unit/test_sales_signing_delivery_ratchet.py` | feat(sales): deliver signed quote PDF by email to signer, case responsible, and account responsible (Wave Q-3) |
-| **Q-4** | Phase 1 | `3-source` | #74 | 2026-09-07 | `nce/event_log.py`<br>`nce/master_key_registry.py`<br>*(+4 more)* | `tests/unit/test_signing_credentials_q4_ratchet.py` | feat(signing): Wave Q-4 operator-entered signing credentials |
+| **Q-4** | Phase 1 | `3-source` | #74 | 2026-09-07 | `nce/event_log.py`<br>`nce/master_key_registry.py`<br>*(+5 more)* | `tests/unit/test_signing_credentials_q4_ratchet.py` | feat(signing): Wave Q-4 operator-entered signing credentials |
 | **RS-1** | Phase 3 | `3-source` | #47 | 2026-09-06 | `nce/admin_handlers/resources.py`<br>`nce/tool_registry.py`<br>*(+2 more)* | `tests/unit/test_economy_surface.py` | Resources Master-Data Surface Completion |
 | **S-1** | Phase 3 | `3-source` | #60 | 2026-09-07 | `nce/tool_registry.py`<br>`tests/unit/test_sales_write_surface.py` | `tests/unit/test_economy_surface.py` | Sales Native Write Path |
-| **S-2a** | Phase 1 | `3-source` | #25 | 2026-09-06 | `nce/config_data/internal-cores.json`<br>`nce/tool_registry.py`<br>*(+4 more)* | `tests/unit/test_economy_surface.py` | feat(sales): wire signed quote freeze, webhook receiver and admin attestation (Wave S-2a) |
+| **S-2a** | Phase 1 | `3-source` | #25 | 2026-09-06 | `nce/config_data/internal-cores.json`<br>`nce/tool_registry.py`<br>*(+3 more)* | `tests/unit/test_economy_surface.py` | feat(sales): wire signed quote freeze, webhook receiver and admin attestation (Wave S-2a) |
 | **S-6** | Phase 3 | `3-source` | #63 | 2026-09-07 | `nce/tool_registry.py`<br>`tests/test_tool_registry.py`<br>*(+1 more)* | `tests/unit/test_economy_surface.py` | Sales Commission Calculation Surface Completion |
 | **SD-3** | Phase 2 | `3-source` | #40 | 2026-09-06 | `nce/vertical_modules/system_design/mcp_handlers.py`<br>`tests/unit/test_project_pj1_sd3_ratchet.py` | `tests/unit/test_project_pj1_sd3_ratchet.py` | feat(core): Phase 2 Real Data Behind the AI - Waves C10, P-1..P-3, PJ-1/SD-3, Wave 5, T-1 |
 | **SU-1** | Phase 1 | `3-source` | #46 | 2026-09-06 | `nce/config_data/internal-cores.json`<br>`nce/vertical_modules/field_tech/work_orders.py`<br>*(+2 more)* | `tests/unit/test_support_field_tech_dispatch_event.py` | feat(support,field_tech): dispatch ticket to work order via reactive TICKET.dispatched C4 event (Wave SU-1/FT-3) |
-| **SU-2** | Phase 3 | `3-source` | #86, #83 | 2026-09-07, 2026-09-07 | `nce/cron.py`<br>`nce/db_utils.py`<br>*(+2 more)* | `tests/unit/test_support_sla_watcher.py` | Support SLA Breach Watcher on Cron (TICKET.sla_breached) |
+| **SU-2** | Phase 3 | `3-source` | #83, #86 | 2026-09-07, 2026-09-07 | `nce/cron.py`<br>`nce/db_utils.py`<br>*(+2 more)* | `tests/unit/test_support_sla_watcher.py` | Support SLA Breach Watcher on Cron (TICKET.sla_breached) |
 | **T-1** | Phase 4 | `3-source` | #40 | 2026-09-06 | `nce/tool_registry.py`<br>`nce/trust_dial.py`<br>*(+4 more)* | `tests/unit/test_trust_dial_t1_ratchet.py` | feat(core): Phase 2 Real Data Behind the AI - Waves C10, P-1..P-3, PJ-1/SD-3, Wave 5, T-1 |
 | **T-3** | Phase 0 | `2-source` | #39 | 2026-09-06 | `tests/unit/test_test_tiering.py` | `tests/unit/test_test_tiering.py` | Test Tiering |
 | **T-5** | Phase 0 | `3-source` | #32 | 2026-09-06 | `tests/test_api_docs_current.py`<br>`tests/test_ci_integration_coverage.py`<br>*(+5 more)* | `tests/unit/test_check_empty_with.py` | Ratchets with Holes |
-| **T-6** | Phase 4 | `3-source` | #149, #84 | 2026-09-16, 2026-09-07 | `nce/vertical_modules/customer_portal/sessions.py`<br>`tests/test_project_advance.py`<br>*(+4 more)* | `tests/unit/test_customer_portal_c3_adversarial.py` | feat(customer_portal): C3 adversarial review & server-verified auth boundary (Wave T-6) |
+| **T-6** | Phase 4 | `3-source` | #84, #149 | 2026-09-07, 2026-09-16 | `nce/vertical_modules/customer_portal/sessions.py`<br>`tests/test_project_advance.py`<br>*(+4 more)* | `tests/unit/test_customer_portal_c3_adversarial.py` | feat(customer_portal): C3 adversarial review & server-verified auth boundary (Wave T-6) |
 | **V-1** | Phase 3 | `3-source` | #43 | 2026-09-06 | `nce/admin_handlers/vendors.py`<br>`tests/unit/test_vendors_surface.py` | `tests/unit/test_economy_surface.py` | Vendors Master-Data Writes & Surface Completion |
 | **V-2** | Phase 1 | `3-source` | #53 | 2026-09-07 | `nce/cron.py`<br>`nce/db_utils.py`<br>*(+2 more)* | `tests/unit/test_hr1_v2_cert_expiry.py` | feat(hr,vendors): close break-5a with CERTIFICATION.EXPIRED and burn down Golden Thread Step 23 (Wave HR-1/V-2) |
 | **V-3** | Phase 3 | `3-source` | #150 | 2026-09-16 | `tests/unit/test_vendors_seed.py` | `tests/unit/test_vendors_surface.py` | Seed VENDOR Identities from sales_read_model and Nettailer |
@@ -82,7 +83,11 @@ These waves have partial signal (e.g. stamped in tree without PR or test, or pla
 
 | Wave ID | Phase | Verdict | PR(s) | Stamp File(s) | Marker Test Status | Notes |
 |---|---|---|---|---|---|---|
-| **A-1** | Phase 2 | `STAMPED_UNLANDED` | - | `nce/cron.py`<br>`nce/db_utils.py` | None | Wave A-1 |
+| **A-1** | Phase 2 | `STAMPED_UNLANDED` | - | `nce/cron.py`<br>`nce/db_utils.py`<br>`nce/mcp_stdio_tools.py`<br>`nce/resource_surface/__init__.py`<br>`nce/resource_surface/comments.py`<br>`nce/resource_surface/events.py`<br>`nce/resource_surface/mcp.py`<br>`nce/resource_surface/rest.py`<br>`nce/resource_surface/spec.py`<br>`nce/vertical_modules/inventory/resources.py`<br>`tests/test_project_advance.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_c12_resource_surface_ratchet.py`<br>`tests/unit/test_inventory_hardening.py`<br>`tests/unit/test_resource_surface.py` | None | Wave A-1 |
+| **A-2** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py`<br>`tests/unit/test_c12_resource_surface_ratchet.py` | None |  |
+| **A-3** | Unspecified | `MISSING_MARKER_TEST` | #187 | `nce/cron.py`<br>`nce/db_utils.py`<br>`nce/event_log.py`<br>`nce/events/catalogue.py`<br>`nce/mcp_stdio_tools.py`<br>`nce/migrations/083_notifications_reminders.sql`<br>`nce/schema.sql`<br>`nce/schema_bootstrap.sql`<br>`nce/vertical_modules/assets/netbox_bridge.py`<br>`nce/vertical_modules/assets/warranty.py`<br>`nce/vertical_modules/notifications/models.py`<br>`nce/vertical_modules/notifications/reminders.py`<br>`nce/vertical_modules/notifications/resources.py`<br>`nce/vertical_modules/notifications/service.py`<br>`nce/vertical_modules/notifications/subscribers.py`<br>`tests/test_assets_warranty_netbox.py`<br>`tests/test_ci_integration_coverage.py`<br>`tests/test_project_advance.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_c13_notifications.py`<br>`tests/unit/test_support_sla_watcher.py` | None |  |
+| **A-4** | Unspecified | `MISSING_MARKER_TEST` | #191 | `nce/vertical_modules/assets/qr.py`<br>`tests/test_assets_qr_register.py`<br>`tests/test_ci_integration_coverage.py`<br>`tests/test_tool_registry.py` | None |  |
+| **A-5** | Unspecified | `MISSING_MARKER_TEST` | #194 | `nce/admin_app.py`<br>`nce/admin_handlers/assets.py`<br>`nce/mcp_stdio_tools.py`<br>`nce/vertical_modules/assets/failure_pattern.py`<br>`tests/test_assets_failure_pattern.py`<br>`tests/test_ci_integration_coverage.py`<br>`tests/test_project_advance.py`<br>`tests/test_tool_registry.py` | None |  |
 | **A-BI1** | Phase 0 | `PR_AND_TEST_NO_STAMP` | #51 | - | `tests/unit/test_business_insights_aggregation.py` (COLLECTED) | feat(business_insights): transactional append_event, audit remediation, and static AST ratchets (Waves A-BI1, A-BI2, A-BI3) |
 | **A-BI2** | Phase 0 | `PR_AND_TEST_NO_STAMP` | #51 | - | `tests/unit/test_business_insights_ask_ratchet.py` (COLLECTED) | feat(business_insights): transactional append_event, audit remediation, and static AST ratchets (Waves A-BI1, A-BI2, A-BI3) |
 | **A-BI3** | Phase 0 | `PR_AND_TEST_NO_STAMP` | #51 | - | `tests/unit/test_business_insights_ask_ratchet.py` (COLLECTED) | feat(business_insights): transactional append_event, audit remediation, and static AST ratchets (Waves A-BI1, A-BI2, A-BI3) |
@@ -91,15 +96,46 @@ These waves have partial signal (e.g. stamped in tree without PR or test, or pla
 | **A-T6** | Unspecified | `MISSING_MARKER_TEST` | #148 | `tests/unit/test_c3_external_scope_review_ratchet.py` | None |  |
 | **A-W1** | Unspecified | `PR_ONLY` | #146 | - | None |  |
 | **AG-1** | Phase 1 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave AG-1 |
+| **B-1** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
+| **B-12** | Unspecified | `STAMPED_UNLANDED` | - | `nce/events/catalogue.py` | None |  |
+| **B-13** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
+| **B-14** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
+| **B-4** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
+| **B-9** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
 | **B-B128** | Unspecified | `MISSING_MARKER_TEST` | #153 | `tests/test_producer_coverage.py`<br>`tests/unit/test_action_approval_queue.py` | None |  |
 | **B-BI1** | Phase 1 | `PR_AND_TEST_NO_STAMP` | #71 | - | `tests/unit/test_business_insights_aggregation.py` (COLLECTED) | Invert the person-grain barrier (EU AI Act Article 5 floor) |
 | **B-E2** | Phase 3 | `PR_AND_TEST_NO_STAMP` | #80 | - | `tests/unit/test_economy_gl_records.py` (COLLECTED) | feat(economy,agreements): query GL records with C8 projection and rewire coverage seam (Wave B-AG1 / B-E2) |
 | **B-ID1** | Phase 1 | `PR_AND_TEST_NO_STAMP` | #73 | - | `tests/test_no_identifying_literals.py` (COLLECTED) | Scrub 5 Private Module Names & Fix Legacy TRIMCP Quota Token |
-| **B-R2** | Unspecified | `STAMPED_UNLANDED` | - | `nce/events/bus.py`<br>`nce/read_model_subscribers.py`<br>`tests/test_outbox_selectors_have_consumers.py` | None |  |
+| **B-R2** | Unspecified | `MISSING_MARKER_TEST` | #167 | `nce/events/bus.py`<br>`nce/read_model_subscribers.py`<br>`tests/test_outbox_selectors_have_consumers.py` | None |  |
 | **BI-1** | Phase 3 | `PLANNED` | - | - | None | Business Insights person-grain barrier allowlist |
+| **BI-2** | Unspecified | `MISSING_MARKER_TEST` | #209 | `nce/vertical_modules/business_insights/board_pack.py`<br>`nce/vertical_modules/business_insights/slices.py`<br>`tests/unit/test_business_insights_composed_slices_ratchet.py` | None |  |
+| **C-1** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
+| **C-3** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
+| **C-5** | Unspecified | `MISSING_MARKER_TEST` | #226 | `nce/admin_app.py`<br>`nce/tool_registry.py`<br>`nce/vertical_modules/system_design/capability_sync.py`<br>`nce/vertical_modules/system_design/signal_distribution.py`<br>`nce/vertical_modules/system_design/standards.py`<br>`tests/test_project_advance.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_system_design_standards_and_signals.py`<br>`tests/unit/test_system_design_toolcount.py` | None |  |
+| **C-6** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
+| **C-7** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
+| **C-8** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
+| **C-9** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
 | **C-BI3** | Unspecified | `MISSING_MARKER_TEST` | #157 | `tests/unit/test_business_insights_fabricated_defaults_ratchet.py` | None |  |
 | **C-BI4** | Unspecified | `MISSING_MARKER_TEST` | #162 | `tests/unit/test_business_insights_fabricated_defaults_ratchet.py` | None |  |
 | **CP-2** | Unspecified | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Customer portal external security review / adversarial gates |
+| **CP-3** | Unspecified | `MISSING_MARKER_TEST` | #205 | `tests/unit/test_customer_portal_tracker.py` | None |  |
+| **CP-4** | Unspecified | `PR_ONLY` | #206 | - | None |  |
+| **CP-5** | Unspecified | `MISSING_MARKER_TEST` | #224 | `tests/unit/test_customer_portal_server.py` | None |  |
+| **D-1** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
+| **D-2** | Unspecified | `PR_ONLY` | #179 | - | None |  |
+| **D-4** | Unspecified | `PR_ONLY` | #186 | - | None |  |
+| **D-5** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
+| **D-8** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
+| **D-9** | Unspecified | `STAMPED_UNLANDED` | - | `nce/events/catalogue.py` | None |  |
+| **D-Q4** | Unspecified | `PR_ONLY` | #203 | - | None |  |
+| **F-1** | Unspecified | `MISSING_MARKER_TEST` | #213 | `nce/vertical_modules/assets/neat_pulse.py`<br>`nce/vertical_modules/assets/qsys_reflect.py`<br>`nce/vertical_modules/assets/telemetry.py`<br>`nce/vertical_modules/assets/ymcs.py`<br>`tests/unit/test_wave5_sd2_rs3_ft4_a1_ratchet.py` | None |  |
+| **F-2** | Unspecified | `MISSING_MARKER_TEST` | #214 | `nce/vertical_modules/assets/neat_pulse.py` | None |  |
+| **F-3** | Unspecified | `MISSING_MARKER_TEST` | #216 | `nce/vertical_modules/assets/disruptive.py`<br>`nce/vertical_modules/assets/neowit.py`<br>`nce/vertical_modules/assets/ochno.py`<br>`nce/vertical_modules/assets/telemetry.py`<br>`tests/test_assets_telemetry.py` | None |  |
+| **F-4** | Unspecified | `MISSING_MARKER_TEST` | #218 | `nce/vertical_modules/assets/disruptive.py`<br>`nce/vertical_modules/assets/telemetry.py`<br>`tests/test_assets_telemetry.py` | None |  |
+| **F-5** | Unspecified | `MISSING_MARKER_TEST` | #220 | `nce/vertical_modules/assets/ochno.py`<br>`nce/vertical_modules/assets/telemetry.py`<br>`tests/test_assets_telemetry.py` | None |  |
+| **F-6** | Unspecified | `MISSING_MARKER_TEST` | #221 | `nce/vertical_modules/assets/qsys_reflect.py`<br>`tests/test_advertised_capability_ratchet.py` | None |  |
+| **F-7** | Unspecified | `MISSING_MARKER_TEST` | #222 | `nce/vertical_modules/assets/ais.py`<br>`nce/vertical_modules/assets/telemetry.py`<br>`tests/test_assets_telemetry.py` | None |  |
 | **FT-2** | Phase 1 | `PR_AND_TEST_NO_STAMP` | #45 | - | `tests/unit/test_ownership_ratchet.py` (COLLECTED) | The owner writes the node (Contract A) |
 | **FT-3** | Phase 1 | `PR_AND_TEST_NO_STAMP` | #46 | - | `tests/unit/test_support_field_tech_dispatch_event.py` (COLLECTED) | feat(support,field_tech): dispatch ticket to work order via reactive TICKET.dispatched C4 event (Wave SU-1/FT-3) |
 | **FT-4** | Phase 2 | `STAMPED_UNLANDED` | - | `nce/vertical_modules/field_tech/outcome.py` | None | Wave FT-4 |
@@ -110,24 +146,32 @@ These waves have partial signal (e.g. stamped in tree without PR or test, or pla
 | **I-6** | Phase 0 | `UNMERGED_PR` | - | `tests/test_docs_engine_guides_ratchet.py` | `tests/test_docs_engine_guides_ratchet.py` (COLLECTED) | Docs-Status Ratchet |
 | **I-7** | Phase 0 | `PR_AND_TEST_NO_STAMP` | #29 | - | `tests/integration/test_golden_thread.py` (COLLECTED) | Golden Thread Scaffold |
 | **I-8** | Phase 0 | `PR_ONLY` | #128 | - | `tests/unit/test_event_log_chokepoint_ratchet.py` (ABSENT_FILE) | feat(instruments): implement event_log chokepoint and publish transactional ratchets (Wave I-8) |
+| **IN-2** | Unspecified | `MISSING_MARKER_TEST` | #197 | `nce/admin_handlers/inventory.py`<br>`nce/mcp_stdio_tools.py`<br>`nce/vertical_modules/inventory/kitting.py`<br>`tests/test_ci_integration_coverage.py`<br>`tests/test_inventory_kitting.py`<br>`tests/test_project_advance.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_inventory_hardening.py` | None |  |
+| **IN-3** | Unspecified | `MISSING_MARKER_TEST` | #199 | `nce/admin_handlers/inventory.py`<br>`tests/test_project_advance.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_inventory_hardening.py`<br>`tests/unit/test_inventory_surface.py` | None |  |
 | **P-2** | Phase 2 | `UNMERGED_PR` | - | `tests/test_project_advance.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_product_p2_p3_ratchet.py` | `tests/unit/test_product_p2_p3_ratchet.py` (COLLECTED) | Wave P-2 |
-| **P-5** | Unspecified | `STAMPED_UNLANDED` | - | `tests/unit/test_product_manufacturer_sources.py` | None |  |
-| **P-6** | Unspecified | `STAMPED_UNLANDED` | - | `nce/admin_app.py`<br>`nce/admin_handlers/product.py`<br>`nce/vertical_modules/product/quality.py`<br>`tests/unit/test_product_quality_rest.py` | None |  |
-| **PJ-3** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/admin_app.py`<br>`nce/admin_handlers/project.py`<br>`nce/tool_registry.py`<br>`nce/vertical_modules/project/mcp_handlers.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_project_similar_surface.py` | `tests/unit/test_project_similar.py` (ABSENT_FILE) | Similarity recall query over completed projects; scheduled for cacheable tool in MLV15C Wave PJ-3 |
-| **PJ-4** | Unspecified | `STAMPED_UNLANDED` | - | `nce/tool_registry.py`<br>`nce/vertical_modules/project/mcp_handlers.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_inventory_hardening.py`<br>`tests/unit/test_project_rest_reads_surface.py` | None |  |
+| **P-4** | Unspecified | `MISSING_MARKER_TEST` | #200 | `nce/vertical_modules/product/matching.py`<br>`tests/unit/test_outcome_feed_c10_ratchet.py`<br>`tests/unit/test_product_match_decision_c10.py` | None |  |
+| **P-5** | Unspecified | `MISSING_MARKER_TEST` | #174 | `tests/unit/test_product_manufacturer_sources.py` | None |  |
+| **P-6** | Unspecified | `MISSING_MARKER_TEST` | #176 | `nce/admin_app.py`<br>`nce/admin_handlers/product.py`<br>`nce/vertical_modules/product/quality.py`<br>`tests/unit/test_product_quality_rest.py` | None |  |
+| **PJ-3** | Phase 3 | `MISSING_MARKER_TEST` | #172 | `nce/admin_app.py`<br>`nce/admin_handlers/project.py`<br>`nce/tool_registry.py`<br>`nce/vertical_modules/project/mcp_handlers.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_project_similar_surface.py` | `tests/unit/test_project_similar.py` (ABSENT_FILE) | Similarity recall query over completed projects; scheduled for cacheable tool in MLV15C Wave PJ-3 |
+| **PJ-4** | Unspecified | `MISSING_MARKER_TEST` | #173 | `nce/tool_registry.py`<br>`nce/vertical_modules/project/mcp_handlers.py`<br>`tests/unit/test_project_rest_reads_surface.py` | None |  |
 | **PJ-5** | Unspecified | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave PJ-5 |
-| **PR-3** | Phase 3 | `PR_AND_TEST_NO_STAMP` | #52 | - | `tests/unit/test_economy_surface.py` (COLLECTED) | Procurement Savings Surface Completion |
-| **PR-4** | Unspecified | `STAMPED_UNLANDED` | - | `tests/test_tool_registry.py`<br>`tests/unit/test_procurement_bid_resolution_surface.py` | None |  |
+| **PR-4** | Unspecified | `MISSING_MARKER_TEST` | #170 | `tests/test_tool_registry.py`<br>`tests/unit/test_procurement_bid_resolution_surface.py` | None |  |
 | **PR-5** | Phase 3 | `PR_AND_TEST_NO_STAMP` | #79 | - | `tests/unit/test_agreements_procurement_cross_engine.py` (COLLECTED) | feat(procurement,agreements): wire agreements compliance audit for rebate override via engine.modules (Wave AG-3 / PR-5) |
 | **PR-6** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave PR-6 |
 | **RS-3** | Phase 2 | `UNMERGED_PR` | - | `nce/tool_registry.py`<br>`tests/test_project_advance.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_product_p2_p3_ratchet.py`<br>`tests/unit/test_project_pj1_sd3_ratchet.py` | `tests/unit/test_product_p2_p3_ratchet.py` (COLLECTED) | Wave RS-3 |
-| **S-3** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave S-3 |
-| **S-4** | Phase 3 | `MISSING_MARKER_TEST` | #158 | `nce/cron.py`<br>`nce/db_utils.py`<br>`nce/tool_registry.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_sales_stalled_and_brief.py` | None | Wave S-4 |
-| **S-5** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/tool_registry.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_sales_ai_surface.py` | None | Wave S-5 |
+| **RS-4** | Unspecified | `STAMPED_UNLANDED` | - | `nce/vertical_modules/business_insights/slices.py` | None |  |
+| **S-3** | Phase 3 | `MISSING_MARKER_TEST` | #208 | `nce/vertical_modules/sales/dealroom.py`<br>`tests/test_sales_dealroom.py`<br>`tests/unit/test_dealroom_cutover.py`<br>`tests/unit/test_sales_dealroom_fabricated_defaults_ratchet.py` | None | Wave S-3 |
+| **S-4** | Phase 3 | `MISSING_MARKER_TEST` | #158 | `nce/cron.py`<br>`nce/db_utils.py`<br>`nce/events/catalogue.py`<br>`nce/tool_registry.py`<br>`nce/vertical_modules/business_insights/slices.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_sales_stalled_and_brief.py` | None | Wave S-4 |
+| **S-5** | Phase 3 | `MISSING_MARKER_TEST` | #168 | `nce/tool_registry.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_sales_ai_surface.py` | None | Wave S-5 |
 | **S-7** | Unspecified | `MISSING_MARKER_TEST` | #155 | `nce/tool_registry.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_sales_divergence_surface.py` | None |  |
+| **SD-1** | Unspecified | `MISSING_MARKER_TEST` | #180 | `nce/migrations/079_system_design_sidetable_fk_cascade.sql`<br>`nce/schema.sql`<br>`nce/schema_bootstrap.sql`<br>`tests/test_system_design_sidetable_fk_cascade.py` | None |  |
 | **SD-2** | Phase 2 | `STAMPED_UNLANDED` | - | `nce/vertical_modules/system_design/propose.py` | None | Wave SD-2 |
-| **SD-4** | Phase 3 | `STAMPED_UNLANDED` | - | `nce/mcp_stdio_tools.py`<br>`tests/unit/test_system_design_one_validator.py` | None | Wave SD-4 |
-| **SU-3** | Unspecified | `STAMPED_UNLANDED` | - | `nce/admin_app.py`<br>`nce/mcp_stdio_tools.py`<br>`nce/tool_registry.py`<br>`tests/test_project_advance.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_inventory_hardening.py`<br>`tests/unit/test_support_ecosystem_surface.py` | None |  |
+| **SD-4** | Phase 3 | `MISSING_MARKER_TEST` | #178 | `nce/mcp_stdio_tools.py`<br>`tests/unit/test_system_design_one_validator.py` | None | Wave SD-4 |
+| **SD-5** | Unspecified | `MISSING_MARKER_TEST` | #182 | `nce/admin_app.py`<br>`nce/admin_handlers/system_design.py`<br>`nce/mcp_stdio_tools.py`<br>`nce/tool_registry.py`<br>`nce/vertical_modules/system_design/signal_flow.py`<br>`tests/test_system_design_signal_flow.py`<br>`tests/unit/test_system_design_toolcount.py` | None |  |
+| **SD-6** | Unspecified | `MISSING_MARKER_TEST` | #183 | `nce/admin_app.py`<br>`nce/admin_handlers/system_design.py`<br>`nce/mcp_stdio_tools.py`<br>`nce/tool_registry.py`<br>`nce/vertical_modules/system_design/procurement_view.py`<br>`tests/test_system_design_procurement_view.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_system_design_toolcount.py` | None |  |
+| **SU-3** | Unspecified | `MISSING_MARKER_TEST` | #169 | `nce/admin_app.py`<br>`nce/mcp_stdio_tools.py`<br>`nce/tool_registry.py`<br>`nce/vertical_modules/business_insights/slices.py`<br>`tests/test_project_advance.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_support_ecosystem_surface.py` | None |  |
+| **T-4a** | Unspecified | `MISSING_MARKER_TEST` | #225 | `tests/unit/test_error_contract_ratchet.py` | None |  |
+| **T-4b** | Unspecified | `STAMPED_UNLANDED` | - | `tests/unit/test_error_contract_ratchet.py` | None |  |
 
 ---
 
@@ -136,6 +180,6 @@ These waves have partial signal (e.g. stamped in tree without PR or test, or pla
 Pre-v1.5 module waves use bare numeric IDs (`Wave 1`..`31`, `Wave 10b`, `Wave C10`, `Wave M0.W20b`).
 These belong to earlier architecture phases and are deliberately excluded from the v1.5 surface instrument.
 
-**Tokens (54):**
-`Wave 1`, `Wave 1.`, `Wave 10`, `Wave 10**`, `Wave 10.`, `Wave 10b`, `Wave 10c`, `Wave 11`, `Wave 12`, `Wave 12.`, `Wave 12a`, `Wave 13`, `Wave 13a`, `Wave 13b`, `Wave 13c`, `Wave 14`, `Wave 15`, `Wave 16`, `Wave 16+`, `Wave 16b`, `Wave 17`, `Wave 17b`, `Wave 19`, `Wave 2`, `Wave 2.`, `Wave 22`, `Wave 23`, `Wave 26`, `Wave 27`, `Wave 27.`, `Wave 28`, `Wave 2b`, `Wave 3`, `Wave 3.`, `Wave 31`, `Wave 4`, `Wave 4.`, `Wave 4a`, `Wave 5`, `Wave 5-6`, `Wave 5.`, `Wave 6`, `Wave 6.`, `Wave 6b`, `Wave 7`, `Wave 7.`, `Wave 7b`, `Wave 8`, `Wave 8.`, `Wave 9`, `Wave 9.`, `Wave C10`, `Wave M0.W20b`, `Wave blocker`
+**Tokens (55):**
+`Wave 1`, `Wave 1.`, `Wave 10`, `Wave 10**`, `Wave 10.`, `Wave 10b`, `Wave 10c`, `Wave 11`, `Wave 12`, `Wave 12.`, `Wave 12a`, `Wave 13`, `Wave 132h`, `Wave 13a`, `Wave 13b`, `Wave 13c`, `Wave 14`, `Wave 15`, `Wave 16`, `Wave 16+`, `Wave 16b`, `Wave 17`, `Wave 17b`, `Wave 19`, `Wave 2`, `Wave 2.`, `Wave 22`, `Wave 23`, `Wave 26`, `Wave 27`, `Wave 27.`, `Wave 28`, `Wave 2b`, `Wave 3`, `Wave 3.`, `Wave 31`, `Wave 4`, `Wave 4.`, `Wave 4a`, `Wave 5`, `Wave 5-6`, `Wave 5.`, `Wave 6`, `Wave 6.`, `Wave 6b`, `Wave 7`, `Wave 7.`, `Wave 7b`, `Wave 8`, `Wave 8.`, `Wave 9`, `Wave 9.`, `Wave C10`, `Wave M0.W20b`, `Wave blocker`
 

@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** b75c873 (main) · **Last-audited:** 2026-09-06
+> **Status:** shipped · **Verified-against:** e00118e (main) · **Last-audited:** 2026-09-18
 
 # Resources Engine Admin Guide
 
-> **Status:** shipped · **Verified-against:** b75c873 (main) · **Last-audited:** 2026-09-06
+> **Status:** shipped · **Verified-against:** e00118e (main) · **Last-audited:** 2026-09-18
 
 This guide documents the administrative, operational, and security surface of the **Resources Engine** (`nce/vertical_modules/resources/`, internally Module 15): tenant enablement, the `allocations` migration and its database-enforced no-double-booking guarantee, the 10 mounted REST routes and their auth model, the 9 MCP tools' cache/mutation/admin flags, a JSON-RPC error-mapping finding that was live in this codebase and is now resolved, the AI-planner weights and Norwegian travel/per-diem config, and the RS-2 through RS-5 hardening rules enforced in code.
 
@@ -166,20 +166,23 @@ The idempotency-key + ceiling + explicit-confirm gate on `action="book"` is desc
 
 ---
 
-## 7. The `-32603` Finding — Verified and RESOLVED at This Commit
+## 7. The `-32603` Finding & Shared Error Contract Alignment (Wave T-4a, PR #225)
 
-The finding tracked on the ORCH_BOARD (searched for `resources_resolve_capacity`) describes `resources_resolve_capacity` surfacing domain refusals as JSON-RPC `-32603 Internal error` instead of a proper client-actionable error code, because a `ResourcesError` (the base class for every domain exception in this module — `ResourceValidationError`, `ResourceNotFoundError`, `ResourceConcurrencyError`, `ResourcesDisabledError`) matched no explicit clause in `mcp_errors.py`'s `mcp_handler` decorator and fell through to the generic `except Exception` catch-all (`mcp_errors.py:351-362`), which always returns `MCP_INTERNAL_ERROR = -32603` (`mcp_errors.py:77`).
+The historical finding tracked on the ORCH_BOARD (searched for `resources_resolve_capacity`) described `resources_resolve_capacity` surfacing domain refusals as JSON-RPC `-32603 Internal error` instead of a proper client-actionable error code.
 
-**This was true.** `git diff d4c2366 16f86b0 -- nce/mcp_errors.py` in this worktree shows the fix landing as part of commit `16f86b0` ("feat(customer_portal): close loop from service request to support ticket via W-1 engine registry (Wave CP-1)") — a bundled, unrelated-titled commit. Before that commit, `mcp_errors.py` had no import of `ResourcesError` and no dedicated except-clause for it; any `ResourceValidationError` raised by `do_resolve_capacity` (e.g. an invalid `resource_type` filter, `capacity.py:44-46`) would indeed have fallen through to `-32603`.
+Commit `16f86b0` originally added a temporary `_RESOURCES_ERRORS` tuple in `nce/mcp_errors.py` mapping all `ResourcesError` exceptions to `-32602`.
 
-**As of `b75c873` (this worktree's HEAD, which contains `16f86b0`), it is fixed:**
-- `mcp_errors.py:59-66` imports `ResourcesError` from `nce.vertical_modules.resources._guard` and builds `_RESOURCES_ERRORS: tuple[type[BaseException], ...] = (ResourcesError,)`.
-- `mcp_errors.py:333-338` adds `except _RESOURCES_ERRORS as e: raise McpError(MCP_INVALID_PARAMS, "Invalid parameters", data=invalid_arguments_data(e))` — positioned after `(ValueError, TypeError)` and before `A2AAuthorizationError`, which is safe because `ResourcesError` derives only from `Exception` (verified: `_guard.py:17-18`, `class ResourcesError(Exception)`) and is not itself a `ValueError`/`TypeError` subclass, so clause ordering does not shadow it.
-- Net effect: **every** `ResourcesError` subclass raised inside an `@mcp_handler`-decorated Resources handler — including `resources_resolve_capacity`'s `ResourceValidationError` — now maps to **`-32602 Invalid parameters`**, not `-32603`. This is documented in the module's own error-mapping table (`mcp_errors.py:32`).
+**In Wave T-4a (PR #225), the error architecture was permanently unified across all vertical modules:**
+- The legacy `_RESOURCES_ERRORS` hack in `nce/mcp_errors.py` was retired.
+- `ResourcesDisabledError` inherits from `EngineDisabledError` (`_guard.py:27`) with dual inheritance from `ResourcesError`, cleanly mapping to **`-32005 Engine disabled`** with `data.reason = "engine_disabled"` (resolving the previous misclassification of a disabled engine as an invalid parameter error).
+- Domain validation exceptions in Resources inherit from `ValueError` (or map as validation refusals) and surface as **`-32602 Invalid parameters`**.
+- Domain business refusals inherit from `BusinessRefusalError` and map to **`-32005 Business refusal`** with preserved class-level `reason` discriminators.
+- All vertical exceptions escaping to `-32603` are strictly guarded against by the AST ratchet in `tests/unit/test_error_contract_ratchet.py` (Wave T-4a).
 
-**Operational implication for anyone still relying on the old behavior:** a monitoring rule, log-alert, or client retry policy written against "`resources_resolve_capacity` refusals show up as `-32603`" is now stale — refusals surface as `-32602` with `data.reason == "invalid_arguments"` and (in dev only, `client_visible_detail()`) the original message. If your alerting still treats `-32603` from Resources as the refusal signal, it will silently stop firing on ordinary validation refusals after this fix; re-point any such rule at `-32602` and `data.reason`.
-
-**What is unaffected by this fix:** a genuinely unexpected failure inside a Resources handler — a database connection drop, an unhandled programming error, anything that is *not* a `ResourcesError` subclass — still correctly falls through to `-32603 Internal error` via the final `except Exception` clause. The fix narrows the internal-error bucket to true internal errors; it does not (and should not) make `-32603` disappear from this module entirely.
+**Operational implication:** Monitoring rules and retry policies should expect:
+- `-32005` (non-retryable without config/status change) when the Resources engine is disabled.
+- `-32602` with `data.reason == "invalid_arguments"` for malformed capacity filter requests.
+- Genuinely unexpected system failures (database drops, unhandled bugs) continue to fall through to `-32603 Internal error`.
 
 ---
 
@@ -208,7 +211,7 @@ Repeating the user-guide §9 finding from the admin angle: `do_create_resource`,
 ## Appendix: Drift & Known Gaps
 
 1. **Per-tenant `resources.enabled=false` disable is caller-opt-in, not dispatch-enforced** (§1.1) — no code path fetches `namespaces.metadata` and injects `namespace_metadata` before calling a Resources `do_*`; only the global `NCE_RESOURCES_ENABLED` toggle is unconditionally enforced.
-2. **`resources_resolve_capacity`'s `-32603` misclassification was real, and is fixed as of this worktree's HEAD** (§7) — flagged here because the fix landed inside an unrelated-titled commit (`16f86b0`, a Customer Portal feature) and is easy to miss; any monitoring built against the old `-32603` signal needs to move to `-32602`.
+2. **`resources_resolve_capacity` error mapping is unified under Wave T-4a** (§7) — `ResourcesDisabledError` maps to `-32005` (`engine_disabled`), while parameter validation errors map to `-32602` (`invalid_params`), under the central MCP error contract in `nce/mcp_errors.py`.
 3. **`do_resolve_capacity` does not yet compute real utilization** — every resource returned is unconditionally `"status": "available"`; `utilized_resources` is always empty (user guide §1). True occupancy-aware capacity resolution only exists inside `do_forecast_demand` and `do_plan_allocation`'s own conflict pre-filter, not in the capacity tool itself.
 4. **`resources-travel-policy.json` declares cost caps and distance thresholds that no code path reads** (§6) — `lodging_standard_cap_nok`, `flight_economy_standard_cap_nok`, `distance_threshold_km_for_travel`, `overnight_distance_threshold_km` are dead configuration as of this audit.
 5. **`resources_plan_allocation` is not flagged `mutation: true`** even though it can call `do_reserve` internally under tiered autonomy (§4) — an auto-reserving plan call will not trigger the same cache-generation bump an explicit `resources_reserve` call does.

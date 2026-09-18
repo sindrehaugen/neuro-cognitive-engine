@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** 91a04e2 (main) · **Last-audited:** 2026-09-18
+> **Status:** shipped · **Verified-against:** e00118e (main) · **Last-audited:** 2026-09-18
 
 # NCE Documentation Index
 
@@ -108,6 +108,7 @@ Design specs for all engines (including not-yet-shipped ones) live under [**Vert
 ## Reference & Supplementary
 
 - [**API Reference**](API.md): Auto-generated route and tool surface (regenerate via `scripts/gen_api_docs.py`).
+- [**Host Parity Matrix**](_generated/host_parity.md): Auto-generated host-to-NCE route family parity table (regenerate via `scripts/gen_portal_parity.py`).
 - [**Architecture Decision Records**](adr/README.md): Ratified ADRs 0001–0007 (WORM log, Quad-DB, forced RLS, signing v2, shadow re-embedding, env-only master key, snapshot/replay).
 - [**Data-Source Modes**](DATA_SOURCE_MODES.md): Per-function `d365 | both | nce` switch — living architecture spec.
 - [**Frontend Readiness**](FRONTEND_READINESS.md): Living spec for making NCE fully front-end-ready; NCE-FE-1..6 build list.

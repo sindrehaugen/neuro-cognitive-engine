@@ -5,6 +5,7 @@
 - Reference & Specifications
   - [API Reference](api_reference.md)
   - [API Surface (Auto-Generated)](API.md)
+  - [Host Parity Matrix (Auto-Generated)](_generated/host_parity.md)
   - [MCP Tool Cookbook](mcp_tool_cookbook.md)
   - [API Usage Examples](api_usage_examples.md)
   - [Usage Modes & Payloads](usage_modes.md)

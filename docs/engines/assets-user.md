@@ -1,8 +1,8 @@
-> **Status:** shipped (partial) · **Verified-against:** b75c873 (main) · **Last-audited:** 2026-09-06
+> **Status:** shipped (partial) · **Verified-against:** e00118e (main) · **Last-audited:** 2026-09-18
 
 # Assets Engine User Guide (Doc 90)
 
-> **Status:** shipped (partial) · **Verified-against:** b75c873 (main) · **Last-audited:** 2026-09-06
+> **Status:** shipped (partial) · **Verified-against:** e00118e (main) · **Last-audited:** 2026-09-18
 
 The **Assets Engine** (`nce/vertical_modules/assets/`) owns the relational **register of installed devices** — one row per physical unit, seeded from the BOM line it was installed from, tracked through a 14-state lifecycle, and (optionally) linked to a room-level SLA. It is the engine that answers "what device is in this room, what state is it in, and is it healthy" for anything a Field Tech installs.
 
@@ -100,13 +100,27 @@ Call with `{namespace_id, asset_id}` to fuse whatever inputs exist (telemetry, M
 
 ---
 
-## 3. Telemetry: the mock is the only real adapter — say this plainly
+## 3. Telemetry: mock simulation and 7 verified real adapters
 
-`nce/vertical_modules/assets/telemetry.py` names five manufacturer platforms in `VENDOR_PLATFORMS` (`crestron`, `qsys`, `neat`, `huddly`, `poly`), each mapped to the vendor API a real adapter would call (e.g. "Crestron XiO Cloud / Fusion xAPI"). **None of the five has a real HTTP client.** `select_telemetry_adapter` (`telemetry.py:315-343`) always returns `MockTelemetryAdapter` unless the deployment sets `NCE_ASSETS_TELEMETRY_<PLATFORM>_REAL` — and even then, what it returns is `UnimplementedVendorAdapter`, whose `fetch_samples` raises `NotImplementedError` naming the vendor API that a future adapter would call (`telemetry.py:265-292`). There is no `httpx` import, no network call, and no credential handling anywhere in this file.
+`nce/vertical_modules/assets/telemetry.py` defines 14 keys across 13 distinct platforms in `VENDOR_PLATFORMS` (`telemetry.py:154-180`). By default, `select_telemetry_adapter` (`telemetry.py:315-343`) returns `MockTelemetryAdapter` for deterministic synthetic testing.
 
-**What `MockTelemetryAdapter` actually returns** (`telemetry.py:233-256`): a fixed, deterministic synthetic history of three metrics (`uptime_seconds`, `temperature_celsius`, `packet_loss_percent`) derived from the asset's UUID and a fixed epoch (2026-01-01), so re-pulling the same asset is a genuine replay (proves the idempotency constraint) rather than new-looking data every time. It is a stand-in for a live sensor feed, not a live sensor feed.
+When enabled via the deployment flag `NCE_ASSETS_TELEMETRY_<PLATFORM>_REAL=1` (e.g. `NCE_ASSETS_TELEMETRY_YMCS_REAL=1`), concrete, HTTP-connected adapters exist for **7 verified platforms** landed in Waves F-1 through F-7:
+- **Yealink / YMCS**: `YMCSTelemetryAdapter` (`assets/ymcs.py`, OAuth2 client-credentials over `/v2/dm/...`)
+- **Neat Pulse**: `NeatPulseTelemetryAdapter` (`assets/neat_pulse.py`, API-key bearer)
+- **Neowit**: `NeowitTelemetryAdapter` (`assets/neowit.py`, bearer token)
+- **Disruptive Technologies**: `DisruptiveTelemetryAdapter` (`assets/disruptive.py`, service account auth)
+- **Ochno**: `OchnoTelemetryAdapter` (`assets/ochno.py`, token auth)
+- **Q-SYS Reflect**: `QSysReflectTelemetryAdapter` (`assets/qsys_reflect.py`, API-key bearer)
+- **AIS**: `AISTelemetryAdapter` (`assets/ais.py`, BarentsWatch auth)
 
-Every sample this adapter produces is tagged `"source": "mock"` in its `raw` payload — and that tag is exactly what §4's health scorer and predictive-failure watcher key off of to know they are looking at simulated data.
+All 7 real adapters declare explicit `_ALLOWED_READS` (method, path) allowlist literals and refuse unauthorized requests before any transport call. Implementation status is machine-gated by `tests/test_advertised_capability_ratchet.py` (Wave H-11, PR #219). Three platforms remain unverified scaffolding (`crestron`, `sennheiser`, `shure`, cited to Q-38), and two are absent (`huddly`, `poly`, raising `NotImplementedError`).
+
+> [!IMPORTANT]
+> **Live-tenant caveat:** The 7 real adapters have verified HTTP shapes, error handling, credentials ingestion, and allowlist enforcement tested against recorded fixtures, but have not yet been executed against live production vendor tenant accounts. The flip to live production data requires staging smoke tests against real vendor accounts.
+
+**What `MockTelemetryAdapter` returns** (`telemetry.py:233-256`): a fixed, deterministic synthetic history of three metrics (`uptime_seconds`, `temperature_celsius`, `packet_loss_percent`) derived from the asset's UUID and a fixed epoch (2026-01-01), so re-pulling the same asset is a genuine replay (proves the idempotency constraint) rather than new-looking data every time.
+
+Every sample the mock adapter produces is tagged `"source": "mock"` in its `raw` payload — and that tag is exactly what §4's health scorer and predictive-failure watcher key off of to know they are looking at simulated data.
 
 ---
 
@@ -115,7 +129,7 @@ Every sample this adapter produces is tagged `"source": "mock"` in its `raw` pay
 `assets_compute_health` (`nce/vertical_modules/assets/health.py`) fuses up to four inputs — age (always available), telemetry, NetBox MTBF failure probability, and open service tickets — into a single 0-100 score, weighted by `nce/vertical_modules/assets/asset-health-weights.json` (`telemetry_weight: 0.35`, `mtbf_weight: 0.25`, `tickets_weight: 0.20`, `age_weight: 0.20`). Missing inputs are dropped from the weighted average rather than defaulted to a fake value, and the response's `coverage` field says exactly what went into the number — e.g. `"age-only, no telemetry"` when nothing else is available, matching the engine spec's demand to "expose coverage, don't fake confidence."
 
 > [!WARNING]
-> **Predictive-failure alerts are suppressed when the telemetry behind them is the mock adapter.** `compute_asset_health` (`health.py:254-296`) checks every sample's `raw.source` tag (§3); if telemetry indicates a high failure risk (score < 40, or the mock adapter's MTBF input crosses the configured threshold) but the samples came from `MockTelemetryAdapter`, the function sets `predictive_failure: false` and `predictive_failure_suppressed: true` with `suppression_reason: "RS-3: predictive failure watcher silenced on mock telemetry adapter"` — it never raises a fabricated predictive-failure alert off synthetic numbers. The alert only fires (`predictive_failure: true`) once telemetry is coming from a real (non-mock) source — which, per §3, does not exist in this codebase yet. **In practice: today, `assets_compute_health` never raises a real predictive-failure alert**, because the only working telemetry source is mock.
+> **Predictive-failure alerts are suppressed when the telemetry behind them is the mock adapter.** `compute_asset_health` (`health.py:254-296`) checks every sample's `raw.source` tag (§3); if telemetry indicates a high failure risk (score < 40, or the mock adapter's MTBF input crosses the configured threshold) but the samples came from `MockTelemetryAdapter`, the function sets `predictive_failure: false` and `predictive_failure_suppressed: true` with `suppression_reason: "RS-3: predictive failure watcher silenced on mock telemetry adapter"` — it never raises a fabricated predictive-failure alert off synthetic numbers. The alert only fires (`predictive_failure: true`) once telemetry is coming from a real (non-mock) source — which requires enabling one of the 7 real adapters via `NCE_ASSETS_TELEMETRY_<PLATFORM>_REAL=1` with valid credentials. When the mock adapter is active, `assets_compute_health` silences predictive-failure alerts by design to prevent false alarms from synthetic numbers.
 
 Separately from the predictive-failure suppression, a real, persisted side effect **does** happen on this tool: if the fused score falls below `degraded_threshold` (default `60.0`) while the asset is `ACTIVE`, the tool transitions it to `DEGRADED` and updates `assets.lifecycle_state` — this part is not gated on telemetry source, since age alone is enough to trigger it. The computation is also appended to `v3_cognitive_ledger` as an `asset_health_computed` event on a best-effort basis (a ledger write failure is logged and swallowed, not raised — `health.py:490-491`).
 
