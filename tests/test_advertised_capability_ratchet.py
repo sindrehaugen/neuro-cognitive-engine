@@ -1,17 +1,16 @@
 """H-11: the advertised-vs-implemented ratchet (charter §9 "Lane H", filed after
-today's residual-pin and Lane F findings converged on the same defect shape).
+today's residual-pin and Lane F findings converged on the same defect shape;
+revised the same day once Lane F's F-3..F-7 waves changed what is mechanically
+provable here -- see "Revision" below).
 
 **The defect class.** A registry that maps a NAME a caller can select at
 runtime to a description of a capability, where the presence of the name is
 decoupled from whether anything real backs it. H-1b's residual pin found this
 shape once today (a route that belonged to an engine but matched no scope
 limb); Lane F found it again hours later in
-``nce.vertical_modules.assets.telemetry.VENDOR_PLATFORMS``: nine advertised
-platforms, and measured against the tree, only some are reachable, and among
-the reachable ones some call a documented vendor API and some call a
-hardcoded endpoint that references nothing anywhere in either repo (filed as
-Q-38). Nothing raised, nothing failed CI, because nothing before this file
-ever asked "does every advertised name have something real behind it."
+``nce.vertical_modules.assets.telemetry.VENDOR_PLATFORMS``. Nothing raised,
+nothing failed CI, because nothing before this file ever asked "does every
+advertised name have something real behind it."
 
 **How this differs from I-1 and A-2 (say this so the next reader does not
 collapse the three).**
@@ -37,82 +36,64 @@ collapse the three).**
 selector with no producer/consumer is already I-2's job, and duplicating it
 here would just be a second, worse copy of that ratchet.
 
-**Why "resolves to an implementation" cannot be a mechanical "is it real"
-check, and this file does not pretend otherwise.** The three fabricated
-adapters (``crestron``, ``sennheiser``, ``shure``) and today's scaffolding
-(``qsys`` — see below) are, byte for byte, the SAME TEMPLATE as the two
-verified-real adapters (``neat``, ``yealink``/``ymcs``): an env-configurable
-endpoint URL, a ``NotImplementedError`` guard when unconfigured, an ``httpx``
-call, and the same degradation-logging ``except`` block. There is no
-property of the Python code itself that marks one real and the other
-fabricated — the only difference is external: whether the URL path and
-headers were derived from an actual vendor API reference anywhere in either
-repo. That is exactly what Q-38 measured (by grepping both repos for each
-vendor name), not something this test can re-derive by reading the adapter
-file alone (this worktree does not have the host portal repo checked out —
-see the survey note below). So this file does NOT attempt a "realness"
-heuristic. It proves the two things that ARE mechanical — (1) does a name
-resolve to a dedicated class at all, never the ``UnimplementedVendorAdapter``
-stand-in, and (2) is every registry entry accounted for by an explicit,
-reasoned classification — and treats "is it real" as an external fact that
-must be CITED (to Q-38, to Lane F's own host-repo survey, or to the wave that
-built and verified it), never inferred from code shape.
+**Revision, same day: a mechanical "is it real" signal DOES exist, and this
+file was wrong to say otherwise.** The version of this file that shipped in
+PR #219 compared ``neat_pulse.py`` against ``xio_cloud.py`` and found them
+byte-for-byte the same template, and concluded no code-shape property
+distinguishes real from fabricated. That was true of the code AT THAT TIME,
+but it missed the actual gate the charter itself imposes: charter §9 "Lane F"
+requires "an EXPLICIT ALLOW-LIST LITERAL of (method, path) pairs... the
+single most important line in the lane," and "a wave without its allow-list
+literal will be rejected however green its tests are." Every adapter that
+went through that real Lane F review carries a module-level
+``_ALLOWED_READS: frozenset[tuple[str, str]]`` (``ymcs``, ``neat_pulse``,
+``qsys_reflect``, ``neowit``, ``disruptive``, ``ochno``, ``ais`` all have it,
+verified by reading each file). ``xio_cloud``, ``sennheiser``, ``shure_cloud``
+have none. This is not a heuristic about URL plausibility — it is checking
+for a SPECIFIC STRUCTURE the codebase's own governance process mandates
+before Lane D will merge an adapter, which is exactly the kind of "external,
+cited fact" the original version of this file said it would defer to, except
+it turns out to be mechanically checkable after all. So: "resolves to an
+implementation" is now defined as (1) resolves to a dedicated class (never
+``UnimplementedVendorAdapter``), AND (2) that class's module declares
+``_ALLOWED_READS``. Both mechanical; neither infers anything about whether
+the *endpoint itself* is correct (that remains Lane D's review + Q-38's
+territory).
 
-**A finding of this wave's own survey, refined after ML-orch cross-checked it
-against Lane F's host-repo survey:** ``qsys`` shares the identical fabricated
-shape (hardcoded ``/api/v0/cores/{id}/telemetry``) as the Q-38 three, found
-independently this wave via a repo-wide grep for "Q-SYS"/"qsys reflect"/"qsc"
-that (from this worktree, without the host repo) turned up only brand-name
-mentions in unrelated docs. Read in isolation that looked identical to the
-Q-38 three. It is not: Lane F's Q-38 investigation *did* survey the host
-repo's integrations directory and found a real ``qsys_reflect_client.py``
-there (GET-only, bare bearer token, unpaginated) — a reference implementation
-to build against, which the Q-38 three categorically lack. ``qsys`` is
-therefore classified separately below as ``pending_wave`` (charter §9 "Lane
-F", wave F-6), not lumped in with the Q-38 three: it shrinks when F-6 builds
-the real adapter from that reference, a different and much shorter lifecycle
-than the Q-38 three, which shrink only when Sindre rules on Q-38 and someone
-does the from-scratch vendor integration work Q-38 itself says is "larger
-than any F wave so far."
+**Consequence of the revision:** ``qsys`` no longer needs an exemption. When
+this file shipped, ``qsys_reflect.py`` was 116 lines of the fabricated
+template with no allow-list, indistinguishable in code shape from
+``crestron``/``sennheiser``/``shure``. Wave F-6 retrofitted it against the
+host's real ``qsys_reflect_client.py`` (per that file's own docstring, which
+credits this ratchet's initial flag for prompting the check) and it now
+carries ``_ALLOWED_READS``. It is removed from
+``_VENDOR_PLATFORM_EXEMPTIONS`` below — a wave landed and the ratchet must
+show that, not keep exempting a platform that now passes on its own.
 
 **Registries surveyed for this defect shape, and why each is or is not
-here:**
+here:** ``VENDOR_PLATFORMS`` (``nce/vertical_modules/assets/telemetry.py``) —
+**has the defect**, walked below. ``nce.event_types.EVENT_CATALOGUE`` —
+excluded; I-2's job already. ``nce/vertical_modules/diagnostics/profiles.py``'s
+``_REGISTRY`` — excluded: populated exclusively via ``register_profile(name,
+profile)`` calls that always supply a real object in the same statement, so
+the defect is structurally impossible there. ``nce/source_mode/resolver.py``'s
+dispatch tables — excluded: a closed three-value literal, not an open
+registry. ``nce/vertical_modules/product/sources/`` — excluded: two concrete,
+fully-implemented source classes. A repo-wide ``dict[str, str] = {`` sweep
+found nothing else in this shape.
 
-* ``VENDOR_PLATFORMS`` (``nce/vertical_modules/assets/telemetry.py``) —
-  **has the defect**, walked below.
-* ``nce.event_types.EVENT_CATALOGUE`` — excluded; I-2 already covers
-  producer/consumer completeness for selectors, and this file must not
-  become a second copy of that ratchet.
-* ``nce/vertical_modules/diagnostics/profiles.py``'s ``_REGISTRY`` —
-  surveyed, excluded: it is populated exclusively via ``register_profile(name,
-  profile)`` calls that always supply a real ``LogProfile`` object in the
-  same statement. A name cannot enter this registry without an
-  implementation already attached — the defect is structurally impossible
-  here, not merely absent today.
-* ``nce/source_mode/resolver.py``'s ``_READ_DISPATCH``/``_WRITE_DISPATCH`` —
-  surveyed, excluded: keyed by a closed three-value ``SourceMode`` literal
-  (``d365``/``nce``/``both``), not an open registry a caller extends by
-  adding a vendor name. Every key is a language keyword, not a capability
-  advertisement.
-* ``nce/vertical_modules/product/sources/`` — surveyed, excluded: two
-  concrete, fully-implemented source classes (``nettailer``,
-  ``manufacturer_api``); no dict of advertised-but-unbacked source names.
-* A repo-wide sweep for other ``dict[str, str] = {`` module-level registries
-  under ``nce/`` turned up nothing else shaped like "name advertised,
-  implementation optional" (see PR description for the full list checked).
-
-Not surveyed directly, reported rather than silently assumed clean: the
-private host portal repository (out of scope for this worktree). This
-mattered concretely for ``qsys`` above — a repo-wide grep from this worktree
-alone made it look identical to the Q-38 three, and only cross-referencing
-Lane F's own host-repo survey (Q-38) surfaced the real
-``qsys_reflect_client.py`` reference that separates it from them. Treat any
-"no reference found" claim in this file as scoped to the repo this worktree
-can see, not the whole estate, unless it explicitly cites a survey (like
-Q-38's) that covered both.
+Not surveyed directly: the private host portal repository (out of scope for
+this worktree). Treat any "no reference found" claim in this file as scoped
+to what this worktree can see, not the whole estate, unless it cites a survey
+(like Q-38's) that covered both — the ``qsys`` correction above is exactly a
+case where a worktree-scoped grep looked identical to a two-sided one and was
+wrong.
 """
 
 from __future__ import annotations
+
+import ast
+import pathlib
 
 import pytest
 
@@ -123,32 +104,97 @@ from nce.vertical_modules.assets.telemetry import (
     select_telemetry_adapter,
 )
 
+_ASSETS_DIR = pathlib.Path(__file__).resolve().parent.parent / "nce" / "vertical_modules" / "assets"
+_TELEMETRY_FILE = _ASSETS_DIR / "telemetry.py"
+
+
+def _platform_names_in_test(test_node: ast.expr) -> list[str]:
+    """Extract platform string(s) from an `if name == "x":` or
+    `if name in ("x", "y"):` comparison node."""
+    if not isinstance(test_node, ast.Compare):
+        return []
+    names: list[str] = []
+    for comparator in test_node.comparators:
+        if isinstance(comparator, ast.Constant) and isinstance(comparator.value, str):
+            names.append(comparator.value)
+        elif isinstance(comparator, (ast.Tuple, ast.List)):
+            for elt in comparator.elts:
+                if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                    names.append(elt.value)
+    return names
+
+
+def _adapter_module_map() -> dict[str, str]:
+    """platform -> dotted module it imports its real adapter class from,
+    parsed from select_telemetry_adapter's own if-chain (AST, never a line
+    grep -- K-0). A platform with no branch (huddly, poly) is simply absent
+    from the returned mapping."""
+    tree = ast.parse(_TELEMETRY_FILE.read_text(encoding="utf-8"), filename=str(_TELEMETRY_FILE))
+    mapping: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef) or node.name != "select_telemetry_adapter":
+            continue
+        for inner in ast.walk(node):
+            if not isinstance(inner, ast.If):
+                continue
+            platforms = _platform_names_in_test(inner.test)
+            if not platforms:
+                continue
+            for stmt in inner.body:
+                if isinstance(stmt, ast.ImportFrom) and stmt.module:
+                    for platform in platforms:
+                        mapping[platform] = stmt.module
+    return mapping
+
+
+def _module_has_allow_list(dotted_module: str) -> bool:
+    """True iff *dotted_module* declares a module-level `_ALLOWED_READS`
+    assignment -- the charter's own Lane F review-gate marker (§9 "Lane F"),
+    verified AST-side rather than by importing the module (which would
+    require network-adjacent dependencies to be satisfied)."""
+    rel = dotted_module.replace("nce.vertical_modules.assets.", "")
+    path = _ASSETS_DIR / f"{rel}.py"
+    if not path.exists():
+        return False
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in tree.body:
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            if node.target.id == "_ALLOWED_READS":
+                return True
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "_ALLOWED_READS":
+                    return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Shrink-only exemption list, shaped like tests/test_surface_parity.py's
 # internal-cores.json allowlist: every entry needs an owner, a reason, and
 # (here, since the reason is itself a filed finding) a citation. An entry
-# leaves this list only when a wave gives that platform a verified-real
-# adapter — never by widening what "resolves to an implementation" means.
+# leaves this list only when a wave gives that platform a real, allow-list-
+# gated adapter -- never by widening what "resolves to an implementation"
+# means.
 #
 # status:
 #   "absent"                 -> no adapter branch in select_telemetry_adapter
 #                                at all; always resolves to
 #                                UnimplementedVendorAdapter. Mechanically
 #                                reverified below on every run.
-#   "unverified_scaffolding" -> DOES resolve to a dedicated class (would pass
-#                                a naive "is it Unimplemented" check), but NO
-#                                reference implementation exists anywhere,
-#                                on either side (NCE or host). Shrinks only
-#                                when Sindre rules on Q-38 and someone does
-#                                the from-scratch vendor integration.
-#   "pending_wave"           -> DOES resolve to a dedicated class, fabricated
-#                                today, but a real reference implementation
-#                                to build it from DOES exist (a host client,
-#                                a queued charter wave). A materially smaller
-#                                and shorter-lived gap than the two statuses
-#                                above -- shrinks when that specific wave
-#                                lands, not when a policy question is ruled
-#                                on.
+#   "unverified_scaffolding" -> resolves to a dedicated class, but that
+#                                module has NO _ALLOWED_READS marker -- never
+#                                went through Lane F's real-adapter review at
+#                                all. Shrinks only when Sindre rules on Q-38
+#                                and someone does the from-scratch vendor
+#                                integration.
+#   "pending_wave"           -> same as unverified_scaffolding today, but a
+#                                real reference implementation to build it
+#                                from DOES exist (a host client, a queued
+#                                charter wave) -- a materially smaller and
+#                                shorter-lived gap. Mechanically reverified
+#                                below: if the module GAINS _ALLOWED_READS,
+#                                that is exactly the win this status exists
+#                                to detect, and the entry must be removed.
 # ---------------------------------------------------------------------------
 _VENDOR_PLATFORM_EXEMPTIONS: dict[str, dict[str, str]] = {
     "huddly": {
@@ -168,39 +214,29 @@ _VENDOR_PLATFORM_EXEMPTIONS: dict[str, dict[str, str]] = {
     "crestron": {
         "owner": "Lane F",
         "status": "unverified_scaffolding",
-        "reason": "CrestronXiOCloudTelemetryAdapter calls a single hardcoded "
-        "GET with no reference to a real Crestron XiO Cloud API found anywhere "
-        "in either repo (grepped for crestron/xio/fusion).",
+        "reason": "CrestronXiOCloudTelemetryAdapter (nce/vertical_modules/assets/"
+        "xio_cloud.py) has no _ALLOWED_READS marker -- never went through Lane "
+        "F's real-adapter review. Calls a single hardcoded GET with no reference "
+        "to a real Crestron XiO Cloud API found anywhere in either repo.",
         "ref": "Q-38",
     },
     "sennheiser": {
         "owner": "Lane F",
         "status": "unverified_scaffolding",
-        "reason": "SennheiserTelemetryAdapter calls a single hardcoded GET "
-        "with no reference to a real Sennheiser Control Cockpit API found "
+        "reason": "SennheiserTelemetryAdapter (nce/vertical_modules/assets/"
+        "sennheiser.py) has no _ALLOWED_READS marker. Calls a single hardcoded "
+        "GET with no reference to a real Sennheiser Control Cockpit API found "
         "anywhere in either repo.",
         "ref": "Q-38",
     },
     "shure": {
         "owner": "Lane F",
         "status": "unverified_scaffolding",
-        "reason": "ShureCloudTelemetryAdapter calls a single hardcoded GET "
-        "with no reference to a real Shure Cloud API found anywhere in "
-        "either repo.",
+        "reason": "ShureCloudTelemetryAdapter (nce/vertical_modules/assets/"
+        "shure_cloud.py) has no _ALLOWED_READS marker. Calls a single "
+        "hardcoded GET with no reference to a real Shure Cloud API found "
+        "anywhere in either repo.",
         "ref": "Q-38",
-    },
-    "qsys": {
-        "owner": "Lane F",
-        "status": "pending_wave",
-        "reason": "QSysReflectTelemetryAdapter is byte-for-byte the same "
-        "fabricated template as the Q-38 three (hardcoded "
-        "/api/v0/cores/{id}/telemetry), found independently this wave (H-11). "
-        "Unlike the Q-38 three, a real reference EXISTS: the host repo's "
-        "integrations directory has qsys_reflect_client.py (GET-only, bare "
-        "bearer token, unpaginated) per Lane F's Q-38 host-repo survey. This "
-        "is charter F-6 (Lane F, still queued), not unresolved policy -- "
-        "shrinks when F-6 builds the real adapter from that reference.",
-        "ref": "F-6",
     },
 }
 
@@ -210,8 +246,8 @@ _VALID_STATUSES = frozenset({"absent", "unverified_scaffolding", "pending_wave"}
 
 def _resolves_to_real_adapter(platform: str, monkeypatch: pytest.MonkeyPatch) -> bool:
     """True iff *platform*, with its real-adapter flag on, resolves to
-    anything other than the Unimplemented stand-in. Proves reachability, not
-    correctness -- see module docstring."""
+    anything other than the Unimplemented stand-in. Necessary but not
+    sufficient -- see _is_verified_real."""
     monkeypatch.setenv(real_adapter_env_key(platform), "1")
     try:
         adapter = select_telemetry_adapter(platform)
@@ -220,31 +256,42 @@ def _resolves_to_real_adapter(platform: str, monkeypatch: pytest.MonkeyPatch) ->
     return not isinstance(adapter, UnimplementedVendorAdapter)
 
 
+def _is_verified_real(platform: str, monkeypatch: pytest.MonkeyPatch) -> bool:
+    """True iff *platform* resolves to a dedicated class AND that class's
+    module carries the charter's Lane F allow-list marker."""
+    if not _resolves_to_real_adapter(platform, monkeypatch):
+        return False
+    module = _adapter_module_map().get(platform)
+    return bool(module) and _module_has_allow_list(module)
+
+
 def test_vendor_platforms_discovery_floor() -> None:
     """Guard-the-guard: the registry itself must not have silently collapsed."""
-    assert len(VENDOR_PLATFORMS) >= 8, (
+    assert len(VENDOR_PLATFORMS) >= 12, (
         f"Only {len(VENDOR_PLATFORMS)} entries in VENDOR_PLATFORMS -- expected at "
-        "least 8 based on the 2026-09-18 census (9). Either a real platform was "
-        "removed, or the import is broken."
+        "least 12 based on the 2026-09-18 census (13, after F-3..F-7). Either a "
+        "real platform was removed, or the import is broken."
     )
 
 
 def test_every_vendor_platform_is_classified(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Every VENDOR_PLATFORMS key is EITHER verified-reachable OR exempted with
-    a reason -- never silently untested. This is this file's "a family with no
-    disposition is RED" (H-2's phrase, same shape here)."""
+    """Every VENDOR_PLATFORMS key is EITHER verified-real (dedicated class +
+    allow-list marker) OR exempted with a reason -- never silently untested.
+    This is this file's "a family with no disposition is RED" (H-2's phrase,
+    same shape here)."""
     unclassified: list[str] = []
     for platform in VENDOR_PLATFORMS:
         if platform in _VENDOR_PLATFORM_EXEMPTIONS:
             continue
-        if not _resolves_to_real_adapter(platform, monkeypatch):
+        if not _is_verified_real(platform, monkeypatch):
             unclassified.append(platform)
 
     assert not unclassified, (
-        f"{len(unclassified)} VENDOR_PLATFORMS entries resolve to "
-        f"UnimplementedVendorAdapter and are NOT in the exemption list: "
-        f"{unclassified}. Either build the adapter, or add a reasoned "
-        "exemption to _VENDOR_PLATFORM_EXEMPTIONS (status='absent')."
+        f"{len(unclassified)} VENDOR_PLATFORMS entries are neither verified-real "
+        f"(dedicated class + _ALLOWED_READS) nor in the exemption list: "
+        f"{unclassified}. Either finish the adapter (add _ALLOWED_READS once it "
+        "is reviewed against a real reference), or add a reasoned exemption to "
+        "_VENDOR_PLATFORM_EXEMPTIONS."
     )
 
 
@@ -279,17 +326,34 @@ def test_absent_exemptions_still_resolve_to_unimplemented(
     for platform, entry in _VENDOR_PLATFORM_EXEMPTIONS.items():
         if entry["status"] != "absent":
             continue
-        monkeypatch.setenv(real_adapter_env_key(platform), "1")
-        try:
-            adapter = select_telemetry_adapter(platform)
-        finally:
-            monkeypatch.delenv(real_adapter_env_key(platform), raising=False)
-        assert isinstance(adapter, UnimplementedVendorAdapter), (
-            f"{platform} is exempted as status='absent' but now resolves to "
-            f"{type(adapter).__name__} -- it has gained a real dispatch branch. "
-            "Remove it from _VENDOR_PLATFORM_EXEMPTIONS (a real win, but it "
-            "must be a conscious edit, not a silent one)."
+        assert not _resolves_to_real_adapter(platform, monkeypatch), (
+            f"{platform} is exempted as status='absent' but now resolves to a "
+            "real dispatch branch. Remove it from _VENDOR_PLATFORM_EXEMPTIONS "
+            "(a real win, but it must be a conscious edit, not a silent one)."
         )
+
+
+def test_scaffolding_exemptions_have_not_quietly_become_real(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shrink-only regression guard for 'unverified_scaffolding' AND
+    'pending_wave': if any exempted platform's module gains _ALLOWED_READS
+    (exactly what happened to qsys in wave F-6), this fails until the entry
+    is consciously removed from the exemption list. This is the check whose
+    absence let PR #219 keep exempting qsys silently after F-6 made it real
+    -- the finding this revision exists to fix."""
+    still_scaffolding: list[str] = []
+    for platform, entry in _VENDOR_PLATFORM_EXEMPTIONS.items():
+        if entry["status"] not in ("unverified_scaffolding", "pending_wave"):
+            continue
+        if _is_verified_real(platform, monkeypatch):
+            still_scaffolding.append(platform)
+
+    assert not still_scaffolding, (
+        f"{still_scaffolding} now resolve to a real, allow-list-gated adapter "
+        "but are still in _VENDOR_PLATFORM_EXEMPTIONS. Remove them -- a wave "
+        "landed and this exemption list must show it."
+    )
 
 
 def test_positive_control_unclassified_platform_is_caught(
@@ -312,13 +376,28 @@ def test_positive_control_unclassified_platform_is_caught(
     # shape a careless PR would introduce -- and prove
     # test_every_vendor_platform_is_classified's own detection logic flags it.
     monkeypatch.setitem(VENDOR_PLATFORMS, synthetic, "Totally Fabricated Vendor Cloud API")
-    assert not _resolves_to_real_adapter(synthetic, monkeypatch), (
-        "A synthetic platform with no dispatch branch resolved to something "
-        "other than UnimplementedVendorAdapter -- the fixture itself is broken."
+    assert not _is_verified_real(synthetic, monkeypatch), (
+        "A synthetic platform with no dispatch branch resolved as verified-real "
+        "-- the fixture itself is broken."
     )
     unclassified = [
         p
         for p in VENDOR_PLATFORMS
-        if p not in _VENDOR_PLATFORM_EXEMPTIONS and not _resolves_to_real_adapter(p, monkeypatch)
+        if p not in _VENDOR_PLATFORM_EXEMPTIONS and not _is_verified_real(p, monkeypatch)
     ]
     assert synthetic in unclassified
+
+
+def test_positive_control_allow_list_detection_is_not_vacuous() -> None:
+    """U18 for _module_has_allow_list specifically: prove it distinguishes a
+    real module (has the marker) from a fabricated one (does not), using
+    today's concrete cases so a regression in the AST walk itself is caught."""
+    real_module = _adapter_module_map().get("neat")
+    fabricated_module = _adapter_module_map().get("crestron")
+    assert real_module and _module_has_allow_list(real_module), (
+        "neat's adapter module should carry _ALLOWED_READS -- detection may be broken."
+    )
+    assert fabricated_module and not _module_has_allow_list(fabricated_module), (
+        "crestron's adapter module should NOT carry _ALLOWED_READS -- detection "
+        "may be matching too broadly."
+    )
