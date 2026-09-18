@@ -334,6 +334,9 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # Lane A Wave A-5 -- C15 Legal-Entity Register resource surface mutations (upsert + archive)
         "legal_entities_upsert_legal_entities",
         "legal_entities_archive_legal_entities",
+        # Lane E Wave E-5 -- C12 Vendors CONTRACTOR resource surface mutations (upsert + archive)
+        "vendors_upsert_contractors",
+        "vendors_archive_contractors",
     }
 )
 
@@ -586,6 +589,9 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         # Lane A Wave A-5 -- C15 Legal-Entity Register resource surface cacheable reads (list + get)
         "legal_entities_list_legal_entities",
         "legal_entities_get_legal_entities",
+        # Lane E Wave E-5 -- C12 Vendors CONTRACTOR resource surface cacheable reads (list + get)
+        "vendors_list_contractors",
+        "vendors_get_contractors",
     }
 )
 
