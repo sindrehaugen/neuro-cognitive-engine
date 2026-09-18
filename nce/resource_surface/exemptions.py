@@ -30,16 +30,6 @@ class ResourceExemption:
 
 RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     # ---------------------------------------------------------------------------
-    # Product Engine (Lane E Wave E-2 / Product resources)
-    # ---------------------------------------------------------------------------
-    "PRODUCT_SKU": ResourceExemption(
-        owner_engine="product",
-        reason=(
-            "Real attribute table (product_catalog, 9 cols). Scheduled for Lane E "
-            "Wave E-2 declaration once global scope contract is verified."
-        ),
-    ),
-    # ---------------------------------------------------------------------------
     # Procurement Engine (Lane C Wave C-8 / Lane E)
     # ---------------------------------------------------------------------------
     "PO": ResourceExemption(
