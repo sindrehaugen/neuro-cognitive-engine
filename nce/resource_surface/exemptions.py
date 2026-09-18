@@ -49,13 +49,6 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
             "Scheduled for Wave C-8 PURCHASE_ORDER resource declaration."
         ),
     ),
-    "PO_LINE": ResourceExemption(
-        owner_engine="procurement",
-        reason=(
-            "Real attribute table (procurement_po_lines, ~14 cols). Transition-split "
-            "node across draft/ordered/received/cancelled. Scheduled for Wave C-8 / Lane E."
-        ),
-    ),
     "PROCUREMENT_MATCH": ResourceExemption(
         owner_engine="procurement",
         reason=(
