@@ -34,6 +34,10 @@ _TENANT_B_NS = UUID("22222222-0000-4000-8000-000000000002")
 _TENANT_B_SCOPE = UUID("bbbbbbbb-0000-4000-8000-000000000002")
 _TENANT_B_EMAIL = "bjorn@tenant-b.no"
 
+_TENANT_C_NS = UUID("33333333-0000-4000-8000-000000000003")
+_TENANT_C_SCOPE = UUID("cccccccc-0000-4000-8000-000000000003")
+_TENANT_C_EMAIL = "clara@tenant-c.no"
+
 _NIL_UUID = "00000000-0000-0000-0000-000000000000"
 
 
@@ -222,6 +226,16 @@ def tenant_b_session() -> str:
         namespace_id=_TENANT_B_NS,
         customer_scope_id=_TENANT_B_SCOPE,
         email=_TENANT_B_EMAIL,
+    )
+    return session.token
+
+
+@pytest.fixture
+def tenant_c_session() -> str:
+    session = default_session_store.create_session(
+        namespace_id=_TENANT_C_NS,
+        customer_scope_id=_TENANT_C_SCOPE,
+        email=_TENANT_C_EMAIL,
     )
     return session.token
 
@@ -598,3 +612,188 @@ def test_twin_tenants_receive_isolated_resources_with_identical_labels(
     assert sla_b["tier_name"] == "Gold SLA"
     assert sla_a["current_clock_hours"] == 1.5
     assert sla_b["current_clock_hours"] == 3.0
+
+
+# ============================================================================
+# 7. CROSS-CUSTOMER SCOPE HEADER TAMPERING REFUSAL ACROSS ALL 10 ROUTES
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [
+        ("GET", "/api/portal/rooms/overview", None),
+        ("GET", "/api/portal/rooms/room-alpha-1/tracker", None),
+        ("GET", "/api/portal/rooms/room-alpha-1/assets", None),
+        ("GET", "/api/portal/documents", None),
+        ("GET", "/api/portal/documents/share-fdv-1", None),
+        ("GET", "/api/portal/sla", None),
+        ("GET", "/api/portal/invoices", None),
+        ("POST", "/api/portal/service-requests", {"summary": "help"}),
+        ("POST", "/api/portal/expansion-interest", {"summary": "expand"}),
+        ("POST", "/api/portal/advisor", {"query": "how are my rooms?"}),
+    ],
+)
+def test_cross_customer_scope_header_tampering_refused(
+    client: TestClient,
+    tenant_a_session: str,
+    method: str,
+    path: str,
+    body: dict[str, Any] | None,
+) -> None:
+    """Tenant A session sending Tenant B customer scope in header must refuse with 403."""
+    headers = {
+        "Authorization": f"Bearer {tenant_a_session}",
+        "X-Customer-Scope-ID": str(_TENANT_B_SCOPE),  # Tampered scope!
+    }
+    if method == "GET":
+        r = client.get(path, headers=headers)
+    else:
+        r = client.post(path, headers=headers, json=body)
+
+    assert r.status_code == 403, (
+        f"Route {path} allowed cross-customer scope tampering! Got {r.status_code}: {r.text}"
+    )
+    assert "cross-customer access denied" in r.json()["error"]
+
+
+# ============================================================================
+# 8. CROSS-CUSTOMER TARGET SCOPE PARAMETER TAMPERING REFUSAL ACROSS ALL 10 ROUTES
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [
+        ("GET", "/api/portal/rooms/overview", None),
+        ("GET", "/api/portal/rooms/room-alpha-1/tracker", None),
+        ("GET", "/api/portal/rooms/room-alpha-1/assets", None),
+        ("GET", "/api/portal/documents", None),
+        ("GET", "/api/portal/documents/share-fdv-1", None),
+        ("GET", "/api/portal/sla", None),
+        ("GET", "/api/portal/invoices", None),
+        ("POST", "/api/portal/service-requests", {"summary": "help"}),
+        ("POST", "/api/portal/expansion-interest", {"summary": "expand"}),
+        ("POST", "/api/portal/advisor", {"query": "how are my rooms?"}),
+    ],
+)
+def test_cross_customer_target_scope_param_tampering_refused(
+    client: TestClient,
+    tenant_a_session: str,
+    method: str,
+    path: str,
+    body: dict[str, Any] | None,
+) -> None:
+    """Specifying mismatched target_scope_id in query or body must refuse with 403."""
+    headers = {"Authorization": f"Bearer {tenant_a_session}"}
+    if method == "GET":
+        r = client.get(path, headers=headers, params={"target_scope_id": str(_TENANT_B_SCOPE)})
+    else:
+        req_body = {**(body or {}), "target_scope_id": str(_TENANT_B_SCOPE)}
+        r = client.post(path, headers=headers, json=req_body)
+
+    assert r.status_code == 403, (
+        f"Route {path} allowed target_scope_id tampering! Got {r.status_code}: {r.text}"
+    )
+    assert "cross-customer access denied" in r.json()["error"]
+
+
+# ============================================================================
+# 9. CLEAN EMPTY SCOPE ISOLATION (ZERO RESOURCES RETURNS EMPTY-OR-404, NEVER 500)
+# ============================================================================
+
+
+def test_clean_empty_scope_listings_return_empty_lists_not_500(
+    client: TestClient, tenant_c_session: str
+) -> None:
+    """A tenant scope with zero records returns 200 with empty collections, never 500."""
+    headers = {"Authorization": f"Bearer {tenant_c_session}"}
+
+    # Rooms overview
+    r_rooms = client.get("/api/portal/rooms/overview", headers=headers)
+    assert r_rooms.status_code == 200
+    assert r_rooms.json().get("rooms") == []
+
+    # Documents listing
+    r_docs = client.get("/api/portal/documents", headers=headers)
+    assert r_docs.status_code == 200
+    assert r_docs.json().get("documents") == []
+
+    # Invoices listing
+    r_inv = client.get("/api/portal/invoices", headers=headers)
+    assert r_inv.status_code == 200
+    assert r_inv.json().get("invoices") == []
+
+    # SLA status returns valid structure without unhandled exceptions
+    r_sla = client.get("/api/portal/sla", headers=headers)
+    assert r_sla.status_code == 200
+    assert "tier_name" in r_sla.json()
+
+
+def test_clean_empty_scope_resource_lookups_refused_with_404_or_403(
+    client: TestClient, tenant_c_session: str
+) -> None:
+    """Looking up non-owned resources from empty tenant scope returns 403 or 404, never 500."""
+    headers = {"Authorization": f"Bearer {tenant_c_session}"}
+
+    # Foreign room tracker
+    r_track = client.get("/api/portal/rooms/room-alpha-1/tracker", headers=headers)
+    assert r_track.status_code in (403, 404)
+    assert r_track.status_code != 200
+
+    # Foreign room assets
+    r_assets = client.get("/api/portal/rooms/room-alpha-1/assets", headers=headers)
+    assert r_assets.status_code in (403, 404)
+    assert r_assets.status_code != 200
+
+    # Foreign document share
+    r_doc = client.get("/api/portal/documents/share-fdv-1", headers=headers)
+    assert r_doc.status_code in (403, 404)
+    assert r_doc.status_code != 200
+
+    # Non-existent room tracker
+    r_non_track = client.get("/api/portal/rooms/room-missing-xyz/tracker", headers=headers)
+    assert r_non_track.status_code == 404
+
+    # Non-existent document
+    r_non_doc = client.get("/api/portal/documents/share-missing-xyz", headers=headers)
+    assert r_non_doc.status_code == 404
+
+
+def test_clean_empty_scope_actions_on_foreign_resources_refused(
+    client: TestClient, tenant_c_session: str
+) -> None:
+    """Action endpoints on foreign or nonexistent resources return 403 or 404, never 500."""
+    headers = {"Authorization": f"Bearer {tenant_c_session}"}
+
+    # Service request on foreign room
+    r_sr_foreign = client.post(
+        "/api/portal/service-requests",
+        headers=headers,
+        json={"room_id": "room-alpha-1", "summary": "Fix broken screen"},
+    )
+    assert r_sr_foreign.status_code in (403, 404)
+
+    # Advisor on foreign room
+    r_adv_foreign = client.post(
+        "/api/portal/advisor",
+        headers=headers,
+        json={"room_id": "room-alpha-1", "query": "Is room ready?"},
+    )
+    assert r_adv_foreign.status_code in (403, 404)
+
+    # Service request on nonexistent room
+    r_sr_non = client.post(
+        "/api/portal/service-requests",
+        headers=headers,
+        json={"room_id": "room-ghost", "summary": "Fix broken screen"},
+    )
+    assert r_sr_non.status_code == 404
+
+    # Advisor on nonexistent room
+    r_adv_non = client.post(
+        "/api/portal/advisor",
+        headers=headers,
+        json={"room_id": "room-ghost", "query": "Is room ready?"},
+    )
+    assert r_adv_non.status_code == 404
