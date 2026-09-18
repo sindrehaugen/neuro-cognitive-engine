@@ -44,15 +44,36 @@ file's author could not run against a live database to verify.
   ``performance_score is None`` / ``insufficient_data is True`` rather than a
   bare ``None`` return, since the function always returns a result dict.
 
+**Finding, not a fix (frontier.py ``do_calibrate_weights``):** this function
+reads namespace-scoped ledger data (late-delivery and defect counts filtered
+by ``namespace_id``) but writes its result to
+``nce/config_data/vendor-scorecard-weights.json`` -- a single file on disk
+with no namespace column, read by ``scorecard.py::load_scorecard_weights()``
+for every namespace's subsequent vendor-scorecard computation. Namespace A
+calling this function measurably changes the weights namespace B's
+scorecards are computed with. Caught by ML-orch reviewing this file's first
+draft, which had filed this under "no fitting shape" alongside the truly
+namespace-wide functions -- it does not fit the write-then-cross-read
+template (there is no per-entity key), but it is not an absence of
+isolation to test; it is a proven cross-tenant write, of exactly the kind
+charter §10 rule 1 asks every wave to check for. Whether one shared global
+weighting model is the intended design, or every namespace should calibrate
+its own, is a product/security decision outside this lane's mandate --
+stated here as a finding, not resolved as a bug fix, and not asserted as
+correct. ``test_calibrate_weights_leaks_across_namespaces`` below proves the
+leak mechanically (patched to a throwaway config directory, never the real
+frozen one) and is marked ``xfail(strict=True)``: RED by design, documenting
+a real gap rather than a broken assertion, and it will XPASS (failing CI)
+the day someone namespaces the weights file, forcing a deliberate removal of
+the marker instead of a silent behaviour change.
+
 **Explicitly left out, with reasons (verified by reading the source, not
 assumed):**
 - certs.py ``do_check_cert_expiry`` -- no caller-supplied identifier
   parameter at all; it scans every CERT node in the namespace, so there is
   nothing to look up by the same key in another namespace.
-- frontier.py ``do_reliability_radar`` and ``do_calibrate_weights`` --
-  namespace-wide advisor/aggregate functions with no single-entity key
-  parameter; ``do_calibrate_weights``' side effect is also a shared JSON
-  config file on disk, not a namespaced database row.
+- frontier.py ``do_reliability_radar`` -- namespace-wide advisor/aggregate
+  function with no single-entity key parameter.
 - matching.py ``do_match_contractor`` -- ranks every contractor profile in
   the namespace against a job spec; the caller supplies no target
   identifier, so there is no single-ID read to assert isolation against (a
@@ -71,14 +92,17 @@ assumed):**
 
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from typing import Any
+from unittest.mock import patch
 from urllib.parse import urlparse, urlunparse
 
 import asyncpg  # type: ignore[import-untyped]
 import pytest
 
+from nce.auth import set_namespace_context
 from nce.config import cfg
 from nce.db_utils import scoped_pg_session
 from nce.vertical_modules.vendors.certs import do_upsert_cert
@@ -86,6 +110,7 @@ from nce.vertical_modules.vendors.feed import (
     do_check_tier_at_risk,
     do_detect_reliability_degradation,
 )
+from nce.vertical_modules.vendors.frontier import do_calibrate_weights
 from nce.vertical_modules.vendors.partner_view import do_partner_view
 from nce.vertical_modules.vendors.performance import do_compute_performance
 from nce.vertical_modules.vendors.registry import do_upsert_vendor
@@ -130,6 +155,11 @@ async def _seed_ownership(
         node_type,
         owner_engine,
     )
+
+
+def _without_comment(weights: dict[str, Any]) -> dict[str, Any]:
+    """load_scorecard_weights() strips any '_'-prefixed key (e.g. _comment)."""
+    return {k: v for k, v in weights.items() if not k.startswith("_")}
 
 
 @pytest.mark.integration
@@ -303,3 +333,80 @@ async def test_contractor_performance_cross_tenant_isolation(
         assert result["sample_n"] == 0
     finally:
         await app_pool.close()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "K-H-vendors finding (2026-09-18, ML-orch review): do_calibrate_weights "
+        "reads namespace-scoped ledger data but writes the result to a single, "
+        "un-namespaced JSON file (nce/config_data/vendor-scorecard-weights.json) "
+        "that scorecard.py::load_scorecard_weights() serves to every namespace. "
+        "This is a real, proven cross-tenant write, not a hypothetical one. "
+        "Whether one shared global weighting model is intended, or every "
+        "namespace should calibrate its own, is a product/security decision "
+        "outside this lane's mandate -- documented here, not silently fixed or "
+        "silently accepted. XPASSes (fails CI) the day someone namespaces the "
+        "weights file, forcing a deliberate removal of this marker."
+    ),
+)
+async def test_calibrate_weights_leaks_across_namespaces(
+    pg_pool: asyncpg.Pool, make_namespace: Any, tmp_path: Any
+) -> None:
+    """Proves the finding above mechanically, patched to a throwaway config
+    directory (never the real frozen nce/config_data/) so this test cannot
+    pollute any other test or the checked-in file: calibrating weights from
+    namespace A's heavily skewed delivery history changes what namespace B
+    reads back as its own weights, even though B has recorded zero issues."""
+    ns_a = await make_namespace()
+    ns_b = await make_namespace()
+
+    initial_weights = {
+        "_comment": "Test vendor scorecard weights configuration.",
+        "on_time_weight": 0.40,
+        "defect_rma_weight": 0.30,
+        "substitution_weight": 0.10,
+        "reliability_weight": 0.20,
+    }
+    config_dir = tmp_path / "nce" / "config_data"
+    config_dir.mkdir(parents=True)
+    weights_file = config_dir / "vendor-scorecard-weights.json"
+    weights_file.write_text(json.dumps(initial_weights, indent=2), encoding="utf-8")
+
+    engine = EngineStub(pg_pool)
+
+    # Seed a heavy, distinctive skew in namespace A only: 10 late deliveries,
+    # 0 defects -- guaranteed to move on_time_weight/defect_rma_weight far
+    # from the 0.40/0.30 baseline above.
+    _ZERO_TENSOR = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    async with pg_pool.acquire() as conn:
+        await set_namespace_context(conn, ns_a)
+        for _ in range(10):
+            await conn.execute(
+                """
+                INSERT INTO v3_cognitive_ledger (namespace_id, empathic_tensor, tlx_scores, model_version)
+                VALUES ($1, $2::float[], $3::jsonb, 'test-1.0')
+                """,
+                ns_a,
+                _ZERO_TENSOR,
+                json.dumps({"event_type": "match_decision", "on_time": False, "defect_rma": False}),
+            )
+
+    with (
+        patch("nce.vertical_modules.vendors.frontier._CONFIG_DATA_DIR", config_dir),
+        patch("nce.vertical_modules.vendors.scorecard._CONFIG_DATA_DIR", config_dir),
+    ):
+        res_a = await do_calibrate_weights(engine, {"namespace_id": ns_a})
+        assert res_a["total_issues"] == 10  # positive control: the skew was recorded
+
+        # Namespace B has recorded zero issues of its own.
+        res_b = await do_calibrate_weights(engine, {"namespace_id": ns_b})
+        assert res_b["total_issues"] == 0  # positive control: B is genuinely empty
+
+        assert res_b["calibrated_weights"] == _without_comment(initial_weights), (
+            "Namespace B's weights must reflect only namespace B's own history "
+            "(none), not namespace A's calibration -- but the shared config "
+            "file makes B read back A's calibrated weights."
+        )

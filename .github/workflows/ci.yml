@@ -567,7 +567,7 @@ jobs:
           NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: |
-          pytest tests/test_c3_adversarial.py             tests/test_external_scope_rls.py             tests/test_worm_db_enforcement.py             tests/test_vendors_contractor_rls.py             tests/test_diag_schema_rls.py             tests/test_batch44_worm_pii_sidesinks.py             tests/test_active_learning_signals.py             tests/test_sales_signed_baseline.py             -m integration -q --tb=short
+          pytest tests/test_c3_adversarial.py             tests/test_external_scope_rls.py             tests/test_worm_db_enforcement.py             tests/test_vendors_contractor_rls.py             tests/test_vendors_negative_rls.py             tests/test_diag_schema_rls.py             tests/test_batch44_worm_pii_sidesinks.py             tests/test_active_learning_signals.py             tests/test_sales_signed_baseline.py             -m integration -q --tb=short
 
       # M3 Agreements (W7-W10). These 2 757 lines of tests previously ran in NO
       # CI job: they are all @pytest.mark.integration, and the unit job selects
