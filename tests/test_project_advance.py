@@ -37,6 +37,7 @@ import pytest
 
 from nce.auth import set_namespace_context
 from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
+from nce.resource_surface import build_all_resource_tool_specs
 from nce.tool_registry import ADMIN_ONLY_TOOLS, CACHEABLE_TOOLS, MUTATION_TOOLS, TOOL_REGISTRY
 from nce.vertical_modules.project.advance import do_advance_phase
 from nce.vertical_modules.project.convert import _gate_label, _project_label
@@ -596,12 +597,81 @@ class TestProjectAdvancePhaseToolRegistry:
         +1 Wave C-5 system_design_sync_device_capabilities;
         +8 Wave A-1 inventory resource surface mutations;
         +4 Wave A-3 notifications/reminders resource surface mutations;
-        +2 Wave A-4 documents resource surface mutations;
-        +2 Lane E Wave E-3 procurement PO_LINE resource surface mutations;
-        +4 Lane E Wave E-6 resources ALLOCATION/TRAVEL_LEG resource surface mutations;
-        +2 Lane E Wave E-2 product PRODUCT_SKU resource surface mutations;
-        +2 Wave A-5 legal_entities resource surface mutations."""
-        assert len(MUTATION_TOOLS) == 147
+        +2 Wave A-4 documents resource surface mutations.
+
+        Converted to a derived assertion (janitor pass 7, K-H4): since Wave
+        A-1b, every C12 ResourceSpec registration mounts 2 mutation tools
+        (upsert, archive) via TOOL_REGISTRY.update(build_all_resource_tool_specs())
+        in nce/tool_registry.py, with no edit to any tool file. A raw pin
+        here re-breaks on every future Lane A/E resource-surface
+        registration -- it moved 135->137->139->141 in one day before this
+        fix. The 123 hand-written baseline above (everything through Wave
+        A-4's *hand-written* additions, i.e. excluding the resource-surface
+        mutations already itemised in this history) is now checked in
+        isolation from the live C12 contribution, which is derived fresh
+        from the real registry each run -- not re-pinned."""
+        c12_mutation_tools = {
+            name for name, spec in build_all_resource_tool_specs().items() if spec.mutation
+        }
+        hand_written_mutation_tools = MUTATION_TOOLS - c12_mutation_tools
+
+        assert len(MUTATION_TOOLS) >= 123, (
+            f"Sanity floor: expected at least 123 mutation tools, got {len(MUTATION_TOOLS)}."
+        )
+        assert len(hand_written_mutation_tools) == 123, (
+            "Hand-written (non-C12) mutation tool count changed: expected "
+            f"123, got {len(hand_written_mutation_tools)}. If you "
+            "added/removed a hand-written mutation tool, update this pin by "
+            "import. If you only registered a new C12 ResourceSpec, this "
+            f"number should not move -- investigate. Tools: "
+            f"{sorted(hand_written_mutation_tools)}"
+        )
+
+    def test_mutation_count_is_resilient_to_new_c12_registrations(self) -> None:
+        """Positive control (K-H4): proves test_mutation_count's derived
+        split actually tracks C12 growth rather than being vacuously true.
+        Registers a synthetic ResourceSpec, confirms MUTATION_TOOLS grows by
+        exactly 2 (upsert + archive) and that the hand-written baseline
+        (123) is untouched -- the exact invariant the old raw pin broke on
+        every real registration."""
+        from nce.resource_surface import register_resource, unregister_resource
+        from nce.resource_surface.spec import ResourceSpec
+
+        before_total = len(MUTATION_TOOLS)
+        before_c12 = {
+            name for name, spec in build_all_resource_tool_specs().items() if spec.mutation
+        }
+        assert len(before_c12) > 0, (
+            "Positive-control precondition failed: no C12 mutation tools "
+            "exist yet, so this control cannot prove the split tracks them."
+        )
+
+        synthetic = ResourceSpec(
+            engine="h4_probe",
+            entity="k-h4-synthetic",
+            node_type="K_H4_SYNTHETIC_PROBE",
+            storage_kind="kg_nodes",
+            writable_fields=("label",),
+        )
+        register_resource(synthetic)
+        try:
+            after_c12 = {
+                name for name, spec in build_all_resource_tool_specs().items() if spec.mutation
+            }
+            after_total = len(MUTATION_TOOLS)
+            hand_written_after = MUTATION_TOOLS - after_c12
+
+            assert after_c12 - before_c12 == {
+                "h4_probe_upsert_k_h4_synthetic",
+                "h4_probe_archive_k_h4_synthetic",
+            }
+            assert after_total == before_total  # TOOL_REGISTRY snapshot doesn't re-scan; see below
+            assert len(hand_written_after) == 123, (
+                "Registering a new C12 spec must not move the hand-written "
+                f"baseline: got {len(hand_written_after)}."
+            )
+        finally:
+            unregister_resource("h4_probe", "k-h4-synthetic")
 
     def test_admin_only_count(self) -> None:
         """Admin-only tools must total 32 (unified realignment registry;
