@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 283  # 280 baseline + 3 System Design standards/signals/capability sync (Wave C-5)
+_EXPECTED_TOTAL = 307  # 299 baseline + 8 C12 Notifications & Reminders resource tools (Wave A-3)
 
 
 def test_registry_has_expected_entries():
@@ -266,6 +266,20 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "inventory_release_kit",
         # Wave IN-3 -- Inventory restock PO creation (Actor mutation)
         "inventory_create_restock_po",
+        # Wave A-1 -- C12 Inventory resource surface mutations (upsert + archive)
+        "inventory_upsert_stock_locations",
+        "inventory_archive_stock_locations",
+        "inventory_upsert_inventory_items",
+        "inventory_archive_inventory_items",
+        "inventory_upsert_goods_receipts",
+        "inventory_archive_goods_receipts",
+        "inventory_upsert_inventory_rma",
+        "inventory_archive_inventory_rma",
+        # Wave A-3 -- C12 Notifications resource surface mutations (upsert + archive)
+        "notifications_upsert_notifications",
+        "notifications_archive_notifications",
+        "notifications_upsert_reminders",
+        "notifications_archive_reminders",
     }
 )
 
@@ -278,7 +292,9 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert len(MUTATION_TOOLS) == 123  # 122 baseline + 1 System Design capability sync (Wave C-5)
+    assert (
+        len(MUTATION_TOOLS) == 135
+    )  # 131 baseline + 4 C12 Notifications & Reminders mutations (Wave A-3)
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -462,6 +478,20 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "assets_check_warranty_eol",
         # Wave A-4 -- Assets QR generator (cacheable read)
         "assets_generate_qr",
+        # Wave A-1 -- C12 Inventory resource surface cacheable reads (list + get)
+        "inventory_list_stock_locations",
+        "inventory_get_stock_locations",
+        "inventory_list_inventory_items",
+        "inventory_get_inventory_items",
+        "inventory_list_goods_receipts",
+        "inventory_get_goods_receipts",
+        "inventory_list_inventory_rma",
+        "inventory_get_inventory_rma",
+        # Wave A-3 -- C12 Notifications resource surface cacheable reads (list + get)
+        "notifications_list_notifications",
+        "notifications_get_notifications",
+        "notifications_list_reminders",
+        "notifications_get_reminders",
     }
 )
 
@@ -475,8 +505,8 @@ def test_cacheable_tools_exact_match():
 
 def test_cacheable_tools_count():
     assert (
-        len(CACHEABLE_TOOLS) == 115
-    )  # 113 baseline + 2 System Design standards & signals (Wave C-5)
+        len(CACHEABLE_TOOLS) == 127
+    )  # 123 baseline + 4 C12 Notifications & Reminders cacheable reads (Wave A-3)
 
 
 # ---------------------------------------------------------------------------

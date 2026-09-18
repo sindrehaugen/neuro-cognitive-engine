@@ -34,6 +34,9 @@ def _runtime_selectors() -> set[str]:
     from nce.read_model_subscribers import register_read_model_subscribers
     from nce.vertical_modules.field_tech.work_orders import register_field_tech_subscribers
     from nce.vertical_modules.hr.compliance import register_hr_compliance_subscribers
+    from nce.vertical_modules.notifications.subscribers import (
+        register_notifications_subscribers,
+    )
     from nce.vertical_modules.project import automation as project_automation
     from nce.vertical_modules.project import tasks as project_tasks
     from nce.vertical_modules.resources.watcher import register_resources_event_subscribers
@@ -47,6 +50,7 @@ def _runtime_selectors() -> set[str]:
         register_field_tech_subscribers,
         register_resources_event_subscribers,
         register_hr_compliance_subscribers,
+        register_notifications_subscribers,
         project_tasks.register_bom_task_subscriber,
         project_automation.register_automation_subscribers,
     ):

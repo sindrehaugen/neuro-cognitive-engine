@@ -393,6 +393,10 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "decision_feedback": "namespace_id",
     # Signing Service (Sales / Cross-Engine Wave Q-4): encrypted provider credentials.
     "signing_credentials": "namespace_id",
+    # C13 Notifications and Reminders (Shared Core, Wave A-3): inbox, reminders, and subscriptions.
+    "notifications": "namespace_id",
+    "reminders": "namespace_id",
+    "notification_subscriptions": "namespace_id",
 }
 
 

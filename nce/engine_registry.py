@@ -42,6 +42,7 @@ VERTICAL_MODULE_NAMES: tuple[str, ...] = (
     "inventory",
     "marketing",
     "netbox",
+    "notifications",
     "procurement",
     "product",
     "project",

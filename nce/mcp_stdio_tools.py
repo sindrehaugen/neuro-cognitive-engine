@@ -2610,6 +2610,427 @@ TOOLS = [
         },
     ),
     # -----------------------------------------------------------------
+    # C12 Resource Surface — Inventory reference resources (Wave A-1)
+    # -----------------------------------------------------------------
+    Tool(
+        name="inventory_list_stock_locations",
+        description="List and query Stock Location resources for inventory.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500},
+                "cursor": {
+                    "type": "string",
+                    "description": "Pagination cursor from previous response.",
+                },
+                "q": {"type": "string", "description": "Full-text search term."},
+                "kind": {"type": "string", "description": "Filter by kind."},
+                "parent_id": {"type": "string", "description": "Filter by parent_id."},
+                "level": {"type": "string", "description": "Filter by level."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="inventory_get_stock_locations",
+        description="Fetch a single Stock Location resource by ID.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {"type": "string", "description": "Unique identifier of the Stock Location."},
+            },
+            "required": ["namespace_id", "id"],
+        },
+    ),
+    Tool(
+        name="inventory_upsert_stock_locations",
+        description="Create or update a Stock Location resource.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {
+                    "type": "string",
+                    "description": "Optional ID of existing Stock Location to update.",
+                },
+                "expected_version": {"type": "string", "description": "Concurrency check version."},
+                "kind": {"description": "Value for kind."},
+                "name": {"description": "Value for name."},
+                "parent_id": {"description": "Value for parent_id."},
+                "level": {"description": "Value for level."},
+                "vehicle_ref": {"description": "Value for vehicle_ref."},
+                "raw": {"description": "Value for raw."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="inventory_archive_stock_locations",
+        description="Soft-archive a Stock Location resource.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {"type": "string", "description": "ID of Stock Location to archive."},
+                "reason": {"type": "string", "description": "Audit reason for archiving."},
+            },
+            "required": ["namespace_id", "id"],
+        },
+    ),
+    Tool(
+        name="inventory_list_inventory_items",
+        description="List and query Inventory Item resources for inventory.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500},
+                "cursor": {
+                    "type": "string",
+                    "description": "Pagination cursor from previous response.",
+                },
+                "q": {"type": "string", "description": "Full-text search term."},
+                "sku": {"type": "string", "description": "Filter by sku."},
+                "location_id": {"type": "string", "description": "Filter by location_id."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="inventory_get_inventory_items",
+        description="Fetch a single Inventory Item resource by ID.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {"type": "string", "description": "Unique identifier of the Inventory Item."},
+            },
+            "required": ["namespace_id", "id"],
+        },
+    ),
+    Tool(
+        name="inventory_upsert_inventory_items",
+        description="Create or update a Inventory Item resource.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {
+                    "type": "string",
+                    "description": "Optional ID of existing Inventory Item to update.",
+                },
+                "expected_version": {"type": "string", "description": "Concurrency check version."},
+                "sku": {"description": "Value for sku."},
+                "location_id": {"description": "Value for location_id."},
+                "qty_on_hand": {"description": "Value for qty_on_hand."},
+                "qty_reserved": {"description": "Value for qty_reserved."},
+                "qty_blocked": {"description": "Value for qty_blocked."},
+                "reorder_point": {"description": "Value for reorder_point."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="inventory_archive_inventory_items",
+        description="Soft-archive a Inventory Item resource.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {"type": "string", "description": "ID of Inventory Item to archive."},
+            },
+            "required": ["namespace_id", "id"],
+        },
+    ),
+    Tool(
+        name="inventory_list_goods_receipts",
+        description="List and query Goods Receipt resources for inventory.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500},
+                "cursor": {
+                    "type": "string",
+                    "description": "Pagination cursor from previous response.",
+                },
+                "q": {"type": "string", "description": "Full-text search term."},
+                "po_ref": {"type": "string", "description": "Filter by po_ref."},
+                "delivery_note_ref": {
+                    "type": "string",
+                    "description": "Filter by delivery_note_ref.",
+                },
+                "location_id": {"type": "string", "description": "Filter by location_id."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="inventory_get_goods_receipts",
+        description="Fetch a single Goods Receipt resource by ID.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {"type": "string", "description": "Unique identifier of the Goods Receipt."},
+            },
+            "required": ["namespace_id", "id"],
+        },
+    ),
+    Tool(
+        name="inventory_upsert_goods_receipts",
+        description="Create or update a Goods Receipt resource.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {
+                    "type": "string",
+                    "description": "Optional ID of existing Goods Receipt to update.",
+                },
+                "expected_version": {"type": "string", "description": "Concurrency check version."},
+                "po_ref": {"description": "Value for po_ref."},
+                "delivery_note_ref": {"description": "Value for delivery_note_ref."},
+                "location_id": {"description": "Value for location_id."},
+                "lines": {"description": "Value for lines."},
+                "scans": {"description": "Value for scans."},
+                "match_result": {"description": "Value for match_result."},
+                "receipt_hash": {"description": "Value for receipt_hash."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="inventory_archive_goods_receipts",
+        description="Soft-archive a Goods Receipt resource.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {"type": "string", "description": "ID of Goods Receipt to archive."},
+                "reason": {"type": "string", "description": "Audit reason for archiving."},
+            },
+            "required": ["namespace_id", "id"],
+        },
+    ),
+    Tool(
+        name="inventory_list_inventory_rma",
+        description="List and query Inventory Rma resources for inventory.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500},
+                "cursor": {
+                    "type": "string",
+                    "description": "Pagination cursor from previous response.",
+                },
+                "q": {"type": "string", "description": "Full-text search term."},
+                "rma_ref": {"type": "string", "description": "Filter by rma_ref."},
+                "sku": {"type": "string", "description": "Filter by sku."},
+                "location_id": {"type": "string", "description": "Filter by location_id."},
+                "reason": {"type": "string", "description": "Filter by reason."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="inventory_get_inventory_rma",
+        description="Fetch a single Inventory Rma resource by ID.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {"type": "string", "description": "Unique identifier of the Inventory Rma."},
+            },
+            "required": ["namespace_id", "id"],
+        },
+    ),
+    Tool(
+        name="inventory_upsert_inventory_rma",
+        description="Create or update a Inventory Rma resource.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {
+                    "type": "string",
+                    "description": "Optional ID of existing Inventory Rma to update.",
+                },
+                "expected_version": {"type": "string", "description": "Concurrency check version."},
+                "rma_ref": {"description": "Value for rma_ref."},
+                "sku": {"description": "Value for sku."},
+                "serial": {"description": "Value for serial."},
+                "location_id": {"description": "Value for location_id."},
+                "qty": {"description": "Value for qty."},
+                "reason": {"description": "Value for reason."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="inventory_archive_inventory_rma",
+        description="Soft-archive a Inventory Rma resource.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {"type": "string", "description": "ID of Inventory Rma to archive."},
+                "reason": {"type": "string", "description": "Audit reason for archiving."},
+            },
+            "required": ["namespace_id", "id"],
+        },
+    ),
+    # -----------------------------------------------------------------
+    # C12 Resource Surface — Notifications & Reminders (Wave A-3)
+    # -----------------------------------------------------------------
+    Tool(
+        name="notifications_list_notifications",
+        description="List and query Notification resources for notifications.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500},
+                "cursor": {
+                    "type": "string",
+                    "description": "Pagination cursor from previous response.",
+                },
+                "q": {"type": "string", "description": "Full-text search term."},
+                "principal_id": {"type": "string", "description": "Filter by principal_id."},
+                "severity": {"type": "string", "description": "Filter by severity."},
+                "category": {"type": "string", "description": "Filter by category."},
+                "source_selector": {"type": "string", "description": "Filter by source_selector."},
+                "source_id": {"type": "string", "description": "Filter by source_id."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="notifications_get_notifications",
+        description="Fetch a single Notification resource by ID.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {"type": "string", "description": "Unique identifier of the Notification."},
+            },
+            "required": ["namespace_id", "id"],
+        },
+    ),
+    Tool(
+        name="notifications_upsert_notifications",
+        description="Create or update a Notification resource.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {
+                    "type": "string",
+                    "description": "Optional ID of existing Notification to update.",
+                },
+                "expected_version": {"type": "string", "description": "Concurrency check version."},
+                "principal_id": {"description": "Value for principal_id."},
+                "title": {"description": "Value for title."},
+                "body": {"description": "Value for body."},
+                "severity": {"description": "Value for severity."},
+                "category": {"description": "Value for category."},
+                "source_selector": {"description": "Value for source_selector."},
+                "source_id": {"description": "Value for source_id."},
+                "read_at": {"description": "Value for read_at."},
+                "seen_at": {"description": "Value for seen_at."},
+                "is_archived": {"description": "Value for is_archived."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="notifications_archive_notifications",
+        description="Soft-archive a Notification resource.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {"type": "string", "description": "ID of Notification to archive."},
+                "reason": {"type": "string", "description": "Audit reason for archiving."},
+            },
+            "required": ["namespace_id", "id"],
+        },
+    ),
+    Tool(
+        name="notifications_list_reminders",
+        description="List and query Reminder resources for notifications.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500},
+                "cursor": {
+                    "type": "string",
+                    "description": "Pagination cursor from previous response.",
+                },
+                "q": {"type": "string", "description": "Full-text search term."},
+                "principal_id": {"type": "string", "description": "Filter by principal_id."},
+                "node_type": {"type": "string", "description": "Filter by node_type."},
+                "node_id": {"type": "string", "description": "Filter by node_id."},
+                "status": {"type": "string", "description": "Filter by status."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="notifications_get_reminders",
+        description="Fetch a single Reminder resource by ID.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {"type": "string", "description": "Unique identifier of the Reminder."},
+            },
+            "required": ["namespace_id", "id"],
+        },
+    ),
+    Tool(
+        name="notifications_upsert_reminders",
+        description="Create or update a Reminder resource.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {
+                    "type": "string",
+                    "description": "Optional ID of existing Reminder to update.",
+                },
+                "expected_version": {"type": "string", "description": "Concurrency check version."},
+                "principal_id": {"description": "Value for principal_id."},
+                "node_type": {"description": "Value for node_type."},
+                "node_id": {"description": "Value for node_id."},
+                "title": {"description": "Value for title."},
+                "note": {"description": "Value for note."},
+                "remind_at": {"description": "Value for remind_at."},
+                "status": {"description": "Value for status."},
+                "fired_at": {"description": "Value for fired_at."},
+                "is_archived": {"description": "Value for is_archived."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="notifications_archive_reminders",
+        description="Soft-archive a Reminder resource.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "id": {"type": "string", "description": "ID of Reminder to archive."},
+                "reason": {"type": "string", "description": "Audit reason for archiving."},
+            },
+            "required": ["namespace_id", "id"],
+        },
+    ),
+    # -----------------------------------------------------------------
     # OQ-3 tranche 2 (2026-09-01) — the six registered tools whose argument
     # contract is stated EXPLICITLY in their handler docstring, so nothing
     # here is inferred. Derived from the docstring's "Requires ..." sentence

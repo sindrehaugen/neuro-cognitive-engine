@@ -100,6 +100,9 @@ async def run_stdio_server(*, app: Server | None = None, engine: NCEEngine | Non
         from nce.vertical_modules.hr.compliance import (
             register_hr_compliance_subscribers,
         )
+        from nce.vertical_modules.notifications.subscribers import (
+            register_notifications_subscribers,
+        )
         from nce.vertical_modules.project import automation as project_automation
         from nce.vertical_modules.project import tasks as project_tasks
         from nce.vertical_modules.resources import watcher as resources_watcher
@@ -125,6 +128,7 @@ async def run_stdio_server(*, app: Server | None = None, engine: NCEEngine | Non
         resources_watcher.register_engine(engine)
         register_resources_event_subscribers()
         register_hr_compliance_subscribers()
+        register_notifications_subscribers()
 
         # Module 7's three C4 selectors (M0.W20d). Same reason, same ordering:
         # PO_LINE.status_changed, GOODS_RECEIPT.created and

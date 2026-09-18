@@ -40,6 +40,7 @@ from nce import (
 from nce.admin_handlers import settings as settings_mcp_handlers
 from nce.entity_resolution import mcp_handlers as entity_resolution_mcp_handlers
 from nce.pricing import mcp_handlers as pricing_mcp_handlers
+from nce.resource_surface import build_all_resource_tool_specs
 from nce.vertical_modules.agreements import mcp_handlers as agreements_mcp_handlers
 from nce.vertical_modules.assets import mcp_handlers as assets_mcp_handlers
 from nce.vertical_modules.business_insights import (
@@ -1882,6 +1883,11 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         engine="business_insights",
     ),
 }
+
+# ---------------------------------------------------------------------------
+# C12 Resource Surface auto-mounted tools
+# ---------------------------------------------------------------------------
+TOOL_REGISTRY.update(build_all_resource_tool_specs())
 
 
 # ---------------------------------------------------------------------------

@@ -51,20 +51,19 @@ _NAMESPACE_ID = "00000000-0000-4000-8000-000000000001"
 _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
-# --- MEASURED on branch mlv15b/close-the-loop --------------------------------
+# --- MEASURED on branch mlv16a/a1-c12-resource-surface -------------------------
 # python -c "import nce.tool_registry as tr; print(len(tr.TOOL_REGISTRY))"
-_TOTAL_TOOLS = 283  # 280 baseline + 3 System Design standards/signals/capability sync (Wave C-5)
-_MUTATION_TOOLS = 123  # 122 baseline + 1 System Design sync_device_capabilities (Wave C-5)
-_CACHEABLE_TOOLS = 115  # 113 baseline + 2 System Design get_standards/get_signal_rules (Wave C-5)
+_TOTAL_TOOLS = 307  # 283 + 16 C12 Inventory tools + 8 C13 Notifications tools
+_MUTATION_TOOLS = 135  # 123 + 8 C12 Inventory mutations + 4 C13 Notifications mutations
+_CACHEABLE_TOOLS = 127  # 115 + 8 C12 Inventory reads + 4 C13 Notifications reads
 _ADMIN_ONLY_TOOLS = (
     93  # 90 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3)
 )
 _MIGRATION_TOOLS = 5
 
 
-# The Inventory vertical's tools, read from ``TOOL_REGISTRY`` itself.  17, not
-# the 12 the plan expected and not the 11 B138a added: three predate B138a,
-# plus two from Wave IN-2 (kitting & package reservation), plus one from Wave IN-3 (restock PO).
+# The Inventory vertical's tools, read from ``TOOL_REGISTRY`` itself:
+# 17 legacy tools + 16 C12 resource surface tools (4 resources x 4 tools) = 33 tools.
 _INVENTORY_TOOLS = frozenset(
     {
         "inventory_create_restock_po",
@@ -84,6 +83,23 @@ _INVENTORY_TOOLS = frozenset(
         "inventory_stock_levels",
         "inventory_transfer_stock",
         "inventory_valuation",
+        # C12 Resource Surface tools (Wave A-1)
+        "inventory_list_stock_locations",
+        "inventory_get_stock_locations",
+        "inventory_upsert_stock_locations",
+        "inventory_archive_stock_locations",
+        "inventory_list_inventory_items",
+        "inventory_get_inventory_items",
+        "inventory_upsert_inventory_items",
+        "inventory_archive_inventory_items",
+        "inventory_list_goods_receipts",
+        "inventory_get_goods_receipts",
+        "inventory_upsert_goods_receipts",
+        "inventory_archive_goods_receipts",
+        "inventory_list_inventory_rma",
+        "inventory_get_inventory_rma",
+        "inventory_upsert_inventory_rma",
+        "inventory_archive_inventory_rma",
     }
 )
 
@@ -101,6 +117,15 @@ _INVENTORY_MUTATION = frozenset(
         "inventory_reserve_stock",
         "inventory_restock_from_rma",
         "inventory_transfer_stock",
+        # C12 Resource Surface mutations
+        "inventory_upsert_stock_locations",
+        "inventory_archive_stock_locations",
+        "inventory_upsert_inventory_items",
+        "inventory_archive_inventory_items",
+        "inventory_upsert_goods_receipts",
+        "inventory_archive_goods_receipts",
+        "inventory_upsert_inventory_rma",
+        "inventory_archive_inventory_rma",
     }
 )
 _INVENTORY_CACHEABLE = frozenset(
@@ -108,12 +133,35 @@ _INVENTORY_CACHEABLE = frozenset(
         "inventory_forecast_demand",
         "inventory_recommend_restock",
         "inventory_stock_levels",
+        # C12 Resource Surface reads
+        "inventory_list_stock_locations",
+        "inventory_get_stock_locations",
+        "inventory_list_inventory_items",
+        "inventory_get_inventory_items",
+        "inventory_list_goods_receipts",
+        "inventory_get_goods_receipts",
+        "inventory_list_inventory_rma",
+        "inventory_get_inventory_rma",
     }
 )
-_INVENTORY_ADMIN_ONLY = _INVENTORY_MUTATION | {
-    "inventory_reconcile_dead_stock",
-    "inventory_valuation",
-}
+_INVENTORY_ADMIN_ONLY = frozenset(
+    {
+        "inventory_create_restock_po",
+        "inventory_dispose_rma_weee",
+        "inventory_record_consumption",
+        "inventory_record_goods_receipt",
+        "inventory_record_goods_receipt_and_match",
+        "inventory_record_rma",
+        "inventory_release_kit",
+        "inventory_release_stock",
+        "inventory_reserve_kit",
+        "inventory_reserve_stock",
+        "inventory_restock_from_rma",
+        "inventory_transfer_stock",
+        "inventory_reconcile_dead_stock",
+        "inventory_valuation",
+    }
+)
 
 
 def _registered_inventory_tools() -> frozenset[str]:
@@ -134,8 +182,8 @@ def test_inventory_tool_names_are_exactly_the_measured_set() -> None:
     assert found == _INVENTORY_TOOLS, found ^ _INVENTORY_TOOLS
 
 
-def test_inventory_tool_count_is_seventeen() -> None:
-    assert len(_registered_inventory_tools()) == 17
+def test_inventory_tool_count_is_thirty_three() -> None:
+    assert len(_registered_inventory_tools()) == 33
 
 
 def test_derived_counters_match_the_registry_they_summarise() -> None:

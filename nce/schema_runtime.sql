@@ -1886,3 +1886,54 @@ BEGIN
         GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE signing_credentials TO nce_app;
     END IF;
 END $$;
+
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON notifications;
+CREATE POLICY tenant_isolation_policy ON notifications
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE notifications FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE notifications TO nce_app;
+    END IF;
+END $$;
+
+ALTER TABLE reminders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reminders FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON reminders;
+CREATE POLICY tenant_isolation_policy ON reminders
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE reminders FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE reminders TO nce_app;
+    END IF;
+END $$;
+
+ALTER TABLE notification_subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notification_subscriptions FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON notification_subscriptions;
+CREATE POLICY tenant_isolation_policy ON notification_subscriptions
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE notification_subscriptions FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE notification_subscriptions TO nce_app;
+    END IF;
+END $$;

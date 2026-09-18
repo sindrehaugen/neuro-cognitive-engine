@@ -176,6 +176,62 @@ def extract_tool_registry_stats(repo: str, baseline: str) -> dict[str, Any]:
                             }
                         )
 
+    # v1.6 C12 Resource Surface auto-mounted tools (Lane A-1 / Lane E)
+    # Each ResourceSpec registered in nce/vertical_modules/<engine>/resources.py
+    # dynamically mounts 4 MCP tools (list, get, upsert, archive) into TOOL_REGISTRY.
+    for engine in vertical_engines:
+        paths = git_ls_tree(repo, baseline, f"nce/vertical_modules/{engine}/")
+        resources_path = f"nce/vertical_modules/{engine}/resources.py"
+        if resources_path in paths:
+            content = git_show(repo, baseline, resources_path)
+            try:
+                rtree = ast.parse(content, filename=resources_path)
+            except SyntaxError:
+                rtree = None
+            if rtree is not None:
+                for rnode in ast.walk(rtree):
+                    if (
+                        isinstance(rnode, ast.Call)
+                        and isinstance(rnode.func, ast.Name)
+                        and rnode.func.id == "ResourceSpec"
+                    ):
+                        eng = engine
+                        ent = None
+                        for kw in rnode.keywords:
+                            if kw.arg == "engine" and isinstance(kw.value, ast.Constant):
+                                eng = str(kw.value.value)
+                            elif kw.arg == "entity" and isinstance(kw.value, ast.Constant):
+                                ent = str(kw.value.value)
+                        slug = (ent or "resource").replace("-", "_")
+                        tools.append(
+                            {
+                                "name": f"{eng}_list_{slug}",
+                                "engine": eng,
+                                "flags": ["cacheable"],
+                            }
+                        )
+                        tools.append(
+                            {
+                                "name": f"{eng}_get_{slug}",
+                                "engine": eng,
+                                "flags": ["cacheable"],
+                            }
+                        )
+                        tools.append(
+                            {
+                                "name": f"{eng}_upsert_{slug}",
+                                "engine": eng,
+                                "flags": ["mutation"],
+                            }
+                        )
+                        tools.append(
+                            {
+                                "name": f"{eng}_archive_{slug}",
+                                "engine": eng,
+                                "flags": ["mutation"],
+                            }
+                        )
+
     test_code = git_show(repo, baseline, "tests/test_tool_registry.py")
     test_tree = ast.parse(test_code)
     expected_total: int | None = None

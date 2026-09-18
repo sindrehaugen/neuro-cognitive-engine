@@ -146,8 +146,6 @@ def test_generated_surface_doc_matches_the_generator():
         )
         r_str = "<br>".join(f"`{r['path']}` -> `{r['endpoint']}`" for r in data["routes"])
         c_str = "<br>".join(sorted({f"`{c['name']}`" for c in data["do_functions"]}))
-        if not t_str and not r_str and not c_str:
-            continue
         lines.append(f"| **{eng}** | {t_str or '-'} | {r_str or '-'} | {c_str or '-'} |")
     expected = "\n".join(lines) + "\n"
 

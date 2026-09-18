@@ -179,6 +179,45 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/inventory/create-restock-po` | `api_inventory_create_restock_po` |
 | POST | `/api/inventory/dispose-rma-weee` | `api_inventory_dispose_rma_weee` |
 | POST | `/api/inventory/forecast-demand` | `api_inventory_forecast_demand` |
+| GET | `/api/inventory/goods-receipts` | `handle_list` |
+| POST | `/api/inventory/goods-receipts` | `handle_create` |
+| POST | `/api/inventory/goods-receipts/bulk` | `handle_bulk` |
+| GET | `/api/inventory/goods-receipts/{id}` | `handle_get` |
+| PATCH | `/api/inventory/goods-receipts/{id}` | `handle_patch` |
+| POST | `/api/inventory/goods-receipts/{id}/archive` | `handle_archive` |
+| GET | `/api/inventory/goods-receipts/{id}/comments` | `handle_list_comments` |
+| POST | `/api/inventory/goods-receipts/{id}/comments` | `handle_add_comment` |
+| GET | `/api/inventory/goods-receipts/{id}/events` | `handle_events` |
+| POST | `/api/inventory/goods-receipts/{id}/restore` | `handle_restore` |
+| GET | `/api/inventory/goods-receipts/{id}/tags` | `handle_list_tags` |
+| POST | `/api/inventory/goods-receipts/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/inventory/goods-receipts/{id}/tags/{tag}` | `handle_remove_tag` |
+| GET | `/api/inventory/inventory-items` | `handle_list` |
+| POST | `/api/inventory/inventory-items` | `handle_create` |
+| POST | `/api/inventory/inventory-items/bulk` | `handle_bulk` |
+| GET | `/api/inventory/inventory-items/{id}` | `handle_get` |
+| PATCH | `/api/inventory/inventory-items/{id}` | `handle_patch` |
+| POST | `/api/inventory/inventory-items/{id}/archive` | `handle_archive` |
+| GET | `/api/inventory/inventory-items/{id}/comments` | `handle_list_comments` |
+| POST | `/api/inventory/inventory-items/{id}/comments` | `handle_add_comment` |
+| GET | `/api/inventory/inventory-items/{id}/events` | `handle_events` |
+| POST | `/api/inventory/inventory-items/{id}/restore` | `handle_restore` |
+| GET | `/api/inventory/inventory-items/{id}/tags` | `handle_list_tags` |
+| POST | `/api/inventory/inventory-items/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/inventory/inventory-items/{id}/tags/{tag}` | `handle_remove_tag` |
+| GET | `/api/inventory/inventory-rma` | `handle_list` |
+| POST | `/api/inventory/inventory-rma` | `handle_create` |
+| POST | `/api/inventory/inventory-rma/bulk` | `handle_bulk` |
+| GET | `/api/inventory/inventory-rma/{id}` | `handle_get` |
+| PATCH | `/api/inventory/inventory-rma/{id}` | `handle_patch` |
+| POST | `/api/inventory/inventory-rma/{id}/archive` | `handle_archive` |
+| GET | `/api/inventory/inventory-rma/{id}/comments` | `handle_list_comments` |
+| POST | `/api/inventory/inventory-rma/{id}/comments` | `handle_add_comment` |
+| GET | `/api/inventory/inventory-rma/{id}/events` | `handle_events` |
+| POST | `/api/inventory/inventory-rma/{id}/restore` | `handle_restore` |
+| GET | `/api/inventory/inventory-rma/{id}/tags` | `handle_list_tags` |
+| POST | `/api/inventory/inventory-rma/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/inventory/inventory-rma/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/inventory/recommend-restock` | `api_inventory_recommend_restock` |
 | POST | `/api/inventory/reconcile-dead-stock` | `api_inventory_reconcile_dead_stock` |
 | POST | `/api/inventory/record-consumption` | `api_inventory_record_consumption` |
@@ -191,6 +230,19 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/inventory/reserve-stock` | `api_inventory_reserve_stock` |
 | POST | `/api/inventory/restock-from-rma` | `api_inventory_restock_from_rma` |
 | GET | `/api/inventory/stock-levels` | `api_inventory_stock_levels` |
+| GET | `/api/inventory/stock-locations` | `handle_list` |
+| POST | `/api/inventory/stock-locations` | `handle_create` |
+| POST | `/api/inventory/stock-locations/bulk` | `handle_bulk` |
+| GET | `/api/inventory/stock-locations/{id}` | `handle_get` |
+| PATCH | `/api/inventory/stock-locations/{id}` | `handle_patch` |
+| POST | `/api/inventory/stock-locations/{id}/archive` | `handle_archive` |
+| GET | `/api/inventory/stock-locations/{id}/comments` | `handle_list_comments` |
+| POST | `/api/inventory/stock-locations/{id}/comments` | `handle_add_comment` |
+| GET | `/api/inventory/stock-locations/{id}/events` | `handle_events` |
+| POST | `/api/inventory/stock-locations/{id}/restore` | `handle_restore` |
+| GET | `/api/inventory/stock-locations/{id}/tags` | `handle_list_tags` |
+| POST | `/api/inventory/stock-locations/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/inventory/stock-locations/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/inventory/transfer-stock` | `api_inventory_transfer_stock` |
 | GET | `/api/inventory/valuation` | `api_inventory_valuation` |
 | POST | `/api/marketing/approve` | `api_marketing_approve_content` |
@@ -203,6 +255,32 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/marketing/testimonials` | `api_marketing_testimonials` |
 | POST | `/api/marketing/testimonials/capture` | `api_marketing_capture_testimonial` |
 | POST | `/api/marketing/testimonials/retract` | `api_marketing_retract_testimonial` |
+| GET | `/api/notifications/notifications` | `handle_list` |
+| POST | `/api/notifications/notifications` | `handle_create` |
+| POST | `/api/notifications/notifications/bulk` | `handle_bulk` |
+| GET | `/api/notifications/notifications/{id}` | `handle_get` |
+| PATCH | `/api/notifications/notifications/{id}` | `handle_patch` |
+| POST | `/api/notifications/notifications/{id}/archive` | `handle_archive` |
+| GET | `/api/notifications/notifications/{id}/comments` | `handle_list_comments` |
+| POST | `/api/notifications/notifications/{id}/comments` | `handle_add_comment` |
+| GET | `/api/notifications/notifications/{id}/events` | `handle_events` |
+| POST | `/api/notifications/notifications/{id}/restore` | `handle_restore` |
+| GET | `/api/notifications/notifications/{id}/tags` | `handle_list_tags` |
+| POST | `/api/notifications/notifications/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/notifications/notifications/{id}/tags/{tag}` | `handle_remove_tag` |
+| GET | `/api/notifications/reminders` | `handle_list` |
+| POST | `/api/notifications/reminders` | `handle_create` |
+| POST | `/api/notifications/reminders/bulk` | `handle_bulk` |
+| GET | `/api/notifications/reminders/{id}` | `handle_get` |
+| PATCH | `/api/notifications/reminders/{id}` | `handle_patch` |
+| POST | `/api/notifications/reminders/{id}/archive` | `handle_archive` |
+| GET | `/api/notifications/reminders/{id}/comments` | `handle_list_comments` |
+| POST | `/api/notifications/reminders/{id}/comments` | `handle_add_comment` |
+| GET | `/api/notifications/reminders/{id}/events` | `handle_events` |
+| POST | `/api/notifications/reminders/{id}/restore` | `handle_restore` |
+| GET | `/api/notifications/reminders/{id}/tags` | `handle_list_tags` |
+| POST | `/api/notifications/reminders/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/notifications/reminders/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET,POST | `/api/procurement/bids/resolve` | `api_procurement_resolve_bids` |
 | POST | `/api/procurement/frontier/forecast-rebate` | `api_procurement_forecast_rebate` |
 | POST | `/api/procurement/frontier/recommend-move-spend` | `api_procurement_recommend_move_spend` |
@@ -437,9 +515,21 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `hr_update_absence_compliance` | yes | yes |  |  |
 | `import_snapshot` |  | yes |  |  |
 | `index_code_file` |  | yes |  |  |
+| `inventory_archive_goods_receipts` |  | yes |  |  |
+| `inventory_archive_inventory_items` |  | yes |  |  |
+| `inventory_archive_inventory_rma` |  | yes |  |  |
+| `inventory_archive_stock_locations` |  | yes |  |  |
 | `inventory_create_restock_po` | yes | yes |  |  |
 | `inventory_dispose_rma_weee` | yes | yes |  |  |
 | `inventory_forecast_demand` |  |  | yes |  |
+| `inventory_get_goods_receipts` |  |  | yes |  |
+| `inventory_get_inventory_items` |  |  | yes |  |
+| `inventory_get_inventory_rma` |  |  | yes |  |
+| `inventory_get_stock_locations` |  |  | yes |  |
+| `inventory_list_goods_receipts` |  |  | yes |  |
+| `inventory_list_inventory_items` |  |  | yes |  |
+| `inventory_list_inventory_rma` |  |  | yes |  |
+| `inventory_list_stock_locations` |  |  | yes |  |
 | `inventory_recommend_restock` |  |  | yes |  |
 | `inventory_reconcile_dead_stock` | yes |  |  |  |
 | `inventory_record_consumption` | yes | yes |  |  |
@@ -453,6 +543,10 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `inventory_restock_from_rma` | yes | yes |  |  |
 | `inventory_stock_levels` |  |  | yes |  |
 | `inventory_transfer_stock` | yes | yes |  |  |
+| `inventory_upsert_goods_receipts` |  | yes |  |  |
+| `inventory_upsert_inventory_items` |  | yes |  |  |
+| `inventory_upsert_inventory_rma` |  | yes |  |  |
+| `inventory_upsert_stock_locations` |  | yes |  |  |
 | `inventory_valuation` | yes |  |  |  |
 | `list_bridges` |  |  |  |  |
 | `list_contradictions` |  |  |  |  |
@@ -474,6 +568,14 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `merge_queue_reject` | yes | yes |  |  |
 | `migration_status` |  |  |  | yes |
 | `neuromorphic_search` |  |  | yes |  |
+| `notifications_archive_notifications` |  | yes |  |  |
+| `notifications_archive_reminders` |  | yes |  |  |
+| `notifications_get_notifications` |  |  | yes |  |
+| `notifications_get_reminders` |  |  | yes |  |
+| `notifications_list_notifications` |  |  | yes |  |
+| `notifications_list_reminders` |  |  | yes |  |
+| `notifications_upsert_notifications` |  | yes |  |  |
+| `notifications_upsert_reminders` |  | yes |  |  |
 | `pricing_resolve` |  |  | yes |  |
 | `procurement_aggregate_savings` |  |  | yes |  |
 | `procurement_calculate_tco` |  |  | yes |  |
@@ -600,4 +702,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 299 REST endpoints, 283 MCP tools._
+_Totals: 377 REST endpoints, 307 MCP tools._

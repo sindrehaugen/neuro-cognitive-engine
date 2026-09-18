@@ -74,6 +74,8 @@ UNMANAGED_PG_AUDITED_SITES: Final[frozenset[str]] = frozenset(
         "cron.hr_compliance_watcher.namespace_scan",
         # Wave S-4: Sales stalled deal watcher tick -- scans active namespaces
         "cron.sales_stalled_deal_watcher.namespace_scan",
+        # Wave A-3: Reminders watcher tick -- scans active namespaces
+        "cron.reminders_watcher.namespace_scan",
     }
 )
 

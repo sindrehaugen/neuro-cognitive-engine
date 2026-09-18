@@ -179,6 +179,8 @@ def test_assets_tools_registered_with_correct_flags(
 
 
 def test_tool_count_updated_for_assets_surface() -> None:
+    from tests.test_tool_registry import _EXPECTED_TOTAL
+
     from nce.tool_registry import TOOL_REGISTRY
 
     assert "assets_get" in TOOL_REGISTRY
@@ -192,16 +194,8 @@ def test_tool_count_updated_for_assets_surface() -> None:
     assert "assets_sync_netbox" in TOOL_REGISTRY
     assert "assets_generate_qr" in TOOL_REGISTRY
     assert "assets_record_failure_pattern" in TOOL_REGISTRY
-    assert len(TOOL_REGISTRY) == 283, (
-        f"Expected 283 tools (repo-wide ratchet), "
-        f"from Batch 067b, M6.W13a + 2 system_design authoring tools from "
-        f"Batch 067c, M6.W13b + 1 system_design validator from Batch 067d, M6.W13c "
-        f"+ 1 system_design retire tool from Batch 067h, M6.W17 "
-        f"+ 11 inventory tools from Batch 138a, M11.W10a -- the Inventory "
-        f"surface-completion wave; this Assets test carries a repo-wide registry "
-        f"ratchet, so it moves whenever ANY module registers a tool + 8 hr tools from Module 13 (HR engine) "
-        f"+ 2 assets tools from Wave A-3 + 1 assets tool from Wave A-4 + 1 assets failure pattern tool from Wave A-5 "
-        f"+ 2 inventory tools from Wave IN-2 + 1 inventory restock PO from Wave IN-3 + 3 system_design from Wave C-5), "
+    assert len(TOOL_REGISTRY) == _EXPECTED_TOTAL, (
+        f"Expected {_EXPECTED_TOTAL} tools (repo-wide ratchet), "
         f"got {len(TOOL_REGISTRY)}: {sorted(TOOL_REGISTRY)}"
     )
 
