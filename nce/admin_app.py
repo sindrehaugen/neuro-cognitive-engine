@@ -43,6 +43,7 @@ from nce.mtls import MTLSAuthMiddleware
 from nce.notifications import dispatcher
 from nce.observability import OpenTelemetryTraceMiddleware
 from nce.orchestrator import NCEEngine
+from nce.resource_surface import build_all_resource_routes
 
 logger = logging.getLogger("nce-admin")
 
@@ -1697,6 +1698,7 @@ def build_admin_routes() -> list[Route]:
             endpoint=business_insights_handlers.api_business_insights_ask,
             methods=["POST"],
         ),
+        *build_all_resource_routes(),
     ]
 
 

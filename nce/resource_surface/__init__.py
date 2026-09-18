@@ -1,0 +1,118 @@
+"""nce.resource_surface — C12 generated resource surfaces for vertical engines.
+
+Phase A Wave A-1:
+Unified resource surface framework that generates:
+  - Starlette REST endpoints (list, get, create, patch, archive, restore, events, comments, tags, bulk)
+  - MCP tool definitions and tool execution specs
+  - Concurrency control (409 on version mismatch)
+  - Principal tier redaction (C3/C8)
+  - Multi-tenant RLS isolation
+"""
+
+from __future__ import annotations
+
+import importlib
+import logging
+import pkgutil
+from typing import TYPE_CHECKING
+
+from mcp.types import Tool
+from starlette.routing import Route
+
+from nce.resource_surface.mcp import build_mcp_tool_definitions, build_mcp_tool_specs
+from nce.resource_surface.rest import make_resource_routes
+from nce.resource_surface.spec import ResourceSpec
+
+if TYPE_CHECKING:
+    from nce.tool_registry import ToolSpec
+
+log = logging.getLogger(__name__)
+
+# Global in-process registry mapping (engine, entity) -> ResourceSpec
+_REGISTRY: dict[tuple[str, str], ResourceSpec] = {}
+
+
+def register_resource(spec: ResourceSpec) -> None:
+    """Register a ResourceSpec in the global registry."""
+    key = (spec.engine, spec.rest_slug)
+    _REGISTRY[key] = spec
+
+
+def unregister_resource(engine: str, entity: str) -> bool:
+    """Remove a ResourceSpec from the global registry (used by positive controls)."""
+    slug = entity.replace("_", "-").strip("-")
+    key = (engine, slug)
+    if key in _REGISTRY:
+        del _REGISTRY[key]
+        return True
+    return False
+
+
+def get_resource_spec(engine: str, entity: str) -> ResourceSpec | None:
+    """Look up a registered ResourceSpec by engine and entity slug."""
+    slug = entity.replace("_", "-").strip("-")
+    return _REGISTRY.get((engine, slug))
+
+
+def get_all_resource_specs() -> list[ResourceSpec]:
+    """Return all currently registered ResourceSpec instances."""
+    return list(_REGISTRY.values())
+
+
+def load_all_engine_resources() -> None:
+    """Discover and import all resources.py modules in nce.vertical_modules."""
+    import nce.vertical_modules as vm_pkg
+
+    if not hasattr(vm_pkg, "__path__"):
+        return
+
+    for _, module_name, is_pkg in pkgutil.iter_modules(vm_pkg.__path__):
+        if is_pkg:
+            full_mod_name = f"nce.vertical_modules.{module_name}.resources"
+            try:
+                importlib.import_module(full_mod_name)
+            except ModuleNotFoundError:
+                # Engine has not declared resources yet (e.g. before Wave E lands)
+                pass
+            except Exception as exc:
+                log.warning("Failed importing resource module %s: %s", full_mod_name, exc)
+
+
+def build_all_resource_routes() -> list[Route]:
+    """Generate all Starlette routes for all registered ResourceSpecs."""
+    load_all_engine_resources()
+    routes: list[Route] = []
+    for spec in _REGISTRY.values():
+        routes.extend(make_resource_routes(spec))
+    return routes
+
+
+def build_all_resource_tool_definitions() -> list[Tool]:
+    """Generate all mcp.types.Tool objects for all registered ResourceSpecs."""
+    load_all_engine_resources()
+    tools: list[Tool] = []
+    for spec in _REGISTRY.values():
+        tools.extend(build_mcp_tool_definitions(spec))
+    return tools
+
+
+def build_all_resource_tool_specs() -> dict[str, ToolSpec]:
+    """Generate all ToolSpec entries for TOOL_REGISTRY."""
+    load_all_engine_resources()
+    specs: dict[str, ToolSpec] = {}
+    for spec in _REGISTRY.values():
+        specs.update(build_mcp_tool_specs(spec))
+    return specs
+
+
+__all__ = [
+    "ResourceSpec",
+    "register_resource",
+    "unregister_resource",
+    "get_resource_spec",
+    "get_all_resource_specs",
+    "load_all_engine_resources",
+    "build_all_resource_routes",
+    "build_all_resource_tool_definitions",
+    "build_all_resource_tool_specs",
+]
