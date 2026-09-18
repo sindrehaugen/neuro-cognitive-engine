@@ -19,6 +19,10 @@ from typing import TYPE_CHECKING
 from mcp.types import Tool
 from starlette.routing import Route
 
+from nce.resource_surface.exemptions import (
+    RESOURCE_SURFACE_EXEMPTIONS,
+    ResourceExemption,
+)
 from nce.resource_surface.mcp import build_mcp_tool_definitions, build_mcp_tool_specs
 from nce.resource_surface.rest import make_resource_routes
 from nce.resource_surface.spec import ResourceSpec
@@ -107,6 +111,8 @@ def build_all_resource_tool_specs() -> dict[str, ToolSpec]:
 
 __all__ = [
     "ResourceSpec",
+    "ResourceExemption",
+    "RESOURCE_SURFACE_EXEMPTIONS",
     "register_resource",
     "unregister_resource",
     "get_resource_spec",
