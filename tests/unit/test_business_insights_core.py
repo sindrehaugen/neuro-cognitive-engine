@@ -58,6 +58,9 @@ class DummyConnection:
             "occurred_at": datetime.now(timezone.utc),
             "hash": b"0" * 32,
             "chain_hash": b"0" * 32,
+            "support_enabled": True,
+            "economy_enabled": True,
+            "bi_enabled": True,
         }
 
     async def fetchval(self, query: str, *args):
@@ -72,7 +75,7 @@ class DummyPool:
     def __init__(self):
         self.conn = DummyConnection()
 
-    def acquire(self):
+    def acquire(self, *args, **kwargs):
         class _Ctx:
             def __init__(self, conn):
                 self.conn = conn
