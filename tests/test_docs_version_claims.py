@@ -87,7 +87,6 @@ _EXEMPT_V1_0_SITES: dict[tuple[str, str], str] = {
         "docs/service_integrations.md",
         "BR->>SP: PATCH /v1.0/subscriptions/{id}",
     ): "Microsoft Graph API v1.0 mermaid sequence diagram",
-
     # --- Bucket 3: Architecture specification revision label (Spec v1.0) ---
     (
         "docs/architecture-v1.md",
