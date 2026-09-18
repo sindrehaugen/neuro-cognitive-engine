@@ -15,6 +15,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from nce.db_utils import scoped_pg_session
+from nce.mcp_errors import BusinessRefusalError
 from nce.vertical_modules.resources._guard import (
     require_resources_enabled,
 )
@@ -186,11 +187,11 @@ async def handle_hr_cert_change(
         }
 
 
-class IncompletePayloadError(RuntimeError):
+class IncompletePayloadError(BusinessRefusalError, RuntimeError):
     """A CERTIFICATION event matched this subscriber but carries no namespace."""
 
 
-class EngineNotRegisteredError(RuntimeError):
+class EngineNotRegisteredError(BusinessRefusalError, RuntimeError):
     """No engine was registered in this process, so no scoped session can be opened."""
 
 

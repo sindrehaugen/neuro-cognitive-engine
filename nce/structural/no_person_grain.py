@@ -60,6 +60,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum, auto
 
+from nce.mcp_errors import BusinessRefusalError
+
 
 class AggregationGrain(Enum):
     """The grain at which a query result is aggregated.
@@ -89,7 +91,7 @@ _SAFE_GRAINS: frozenset[AggregationGrain] = frozenset(
 )
 
 
-class PersonGrainRejected(Exception):
+class PersonGrainRejected(BusinessRefusalError):
     """Raised when a person-grain comparison/ranking query cannot be satisfied.
 
     This exception is a structural gate — it is not a soft warning.

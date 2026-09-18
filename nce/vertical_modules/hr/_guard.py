@@ -16,6 +16,7 @@ from typing import Any
 
 from asyncpg.exceptions import DataError
 
+from nce.engine_registry import EngineDisabledError
 from nce.structural.no_person_grain import (
     AggregationGrain,
     PersonGrainRejected,
@@ -29,7 +30,7 @@ log = logging.getLogger("nce.vertical_modules.hr._guard")
 NCE_HR_RANKING_DISABLED: bool = True
 
 
-class HrDisabledError(Exception):
+class HrDisabledError(EngineDisabledError):
     """Raised when a namespace has not opted in to the HR vertical."""
 
 

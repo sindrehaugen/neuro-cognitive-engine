@@ -25,6 +25,7 @@ from uuid import UUID, uuid4
 
 from nce.db_utils import scoped_pg_session
 from nce.entity_resolution.ownership import assert_owner
+from nce.mcp_errors import BusinessRefusalError
 
 log = logging.getLogger("nce.vertical_modules.field_tech.work_orders")
 
@@ -43,7 +44,7 @@ _NODE_TYPE_WORK_ORDER = "WORK_ORDER"
 _FIELD_TECH_ENGINE = "field_tech"
 
 
-class WorkOrderNotFoundError(Exception):
+class WorkOrderNotFoundError(BusinessRefusalError):
     """No work_orders row exists for this (work_order_id, namespace_id) pair."""
 
     def __init__(self, *, work_order_id: str) -> None:
@@ -51,11 +52,11 @@ class WorkOrderNotFoundError(Exception):
         super().__init__(f"no work_orders row for work_order_id={work_order_id!r}")
 
 
-class WorkOrderEligibilityError(Exception):
+class WorkOrderEligibilityError(BusinessRefusalError):
     """Assignee does not satisfy qualification or certification requirements."""
 
 
-class WorkOrderInvalidTransitionError(Exception):
+class WorkOrderInvalidTransitionError(BusinessRefusalError):
     """Work order status transition is invalid."""
 
 

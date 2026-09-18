@@ -23,13 +23,15 @@ from typing import TYPE_CHECKING, Any
 
 from asyncpg.exceptions import DataError
 
+from nce.engine_registry import EngineDisabledError
+
 if TYPE_CHECKING:
     pass
 
 log = logging.getLogger("nce.vertical_modules.product._guard")
 
 
-class ProductDisabledError(Exception):
+class ProductDisabledError(EngineDisabledError):
     """Raised when a namespace has not opted in to the Product vertical."""
 
 

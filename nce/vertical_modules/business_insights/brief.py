@@ -20,6 +20,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 from uuid import UUID
 
+from nce.mcp_errors import BusinessRefusalError
 from nce.vertical_modules.business_insights._guard import assert_exec_or_board_role
 from nce.vertical_modules.business_insights.coverage import compute_coverage_indicator
 from nce.vertical_modules.business_insights.events import (
@@ -38,7 +39,7 @@ from nce.vertical_modules.business_insights.slices import resolve_slice
 log = logging.getLogger("nce.vertical_modules.business_insights.brief")
 
 
-class MorningBriefUngroundedError(Exception):
+class MorningBriefUngroundedError(BusinessRefusalError):
     """Raised when a morning brief claim lacks traceability/provenance to source graph nodes."""
 
 

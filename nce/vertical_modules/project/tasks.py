@@ -61,6 +61,7 @@ import asyncpg  # type: ignore[import-untyped]
 from nce.db_utils import scoped_pg_session
 from nce.entity_resolution.ownership import assert_owner
 from nce.events.bus import OutboxDeliveryError, subscribe
+from nce.mcp_errors import BusinessRefusalError
 
 if TYPE_CHECKING:
     from nce.orchestrator import NCEEngine
@@ -99,7 +100,7 @@ _STATUS_ORDER: list[str] = ["PLANNED", "ORDERED", "DELIVERED", "INSTALLED", "TES
 _GENERATES_CONFIDENCE: float = 0.9
 
 
-class EngineNotRegisteredError(OutboxDeliveryError):
+class EngineNotRegisteredError(BusinessRefusalError, OutboxDeliveryError):
     """No ``NCEEngine`` was registered in this process, so the work cannot run.
 
     A subclass of ``OutboxDeliveryError`` so the relay (``run_outbox_relay_once``)
@@ -118,7 +119,7 @@ class EngineNotRegisteredError(OutboxDeliveryError):
     """
 
 
-class IncompletePayloadError(OutboxDeliveryError):
+class IncompletePayloadError(BusinessRefusalError, OutboxDeliveryError):
     """The event payload is missing a field this handler needs to act on it.
 
     A subclass of ``OutboxDeliveryError`` for the identical reason as

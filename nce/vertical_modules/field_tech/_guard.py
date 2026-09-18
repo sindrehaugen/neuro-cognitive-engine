@@ -22,10 +22,12 @@ from typing import Any
 
 from asyncpg.exceptions import DataError
 
+from nce.engine_registry import EngineDisabledError
+
 log = logging.getLogger("nce.vertical_modules.field_tech._guard")
 
 
-class FieldTechDisabledError(Exception):
+class FieldTechDisabledError(EngineDisabledError):
     """Raised when a namespace has not opted in to the Field Tech vertical."""
 
 

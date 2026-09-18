@@ -21,6 +21,7 @@ from uuid import UUID, uuid4
 from nce.bom_lines import update_bom_line_status
 from nce.db_utils import scoped_pg_session
 from nce.entity_resolution.ownership import assert_owner
+from nce.mcp_errors import BusinessRefusalError
 
 log = logging.getLogger("nce.vertical_modules.field_tech.checklist")
 
@@ -33,11 +34,11 @@ _TEMPLATES_PATH = (
 )
 
 
-class ChecklistNotFoundError(Exception):
+class ChecklistNotFoundError(BusinessRefusalError):
     """No checklist row found."""
 
 
-class ChecklistIncompleteError(Exception):
+class ChecklistIncompleteError(BusinessRefusalError):
     """Checklist has required items that have not been completed/verified."""
 
 

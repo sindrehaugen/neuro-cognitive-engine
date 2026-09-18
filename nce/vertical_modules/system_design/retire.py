@@ -173,6 +173,7 @@ import asyncpg
 
 from nce.entity_resolution.ownership import assert_owner
 from nce.events.emit import emit_graph_write
+from nce.mcp_errors import BusinessRefusalError
 
 log = logging.getLogger("nce.vertical_modules.system_design.retire")
 
@@ -242,7 +243,7 @@ _DENY_MESSAGES: dict[str, str] = {
 }
 
 
-class RetireDeniedError(Exception):
+class RetireDeniedError(BusinessRefusalError):
     """One or more named nodes are not in a retirable state.
 
     **Its own class, deliberately not a ``ValueError``**, for the same reason

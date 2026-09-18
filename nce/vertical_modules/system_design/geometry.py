@@ -78,6 +78,7 @@ from uuid import UUID
 
 import asyncpg  # type: ignore[import-untyped]
 
+from nce.mcp_errors import BusinessRefusalError
 from nce.vertical_modules.system_design.devices import (
     cable_label,
     device_label,
@@ -175,7 +176,7 @@ _NUMERIC_MEMBERS: tuple[str, ...] = ("x", "y", "rack_position", "cable_length_m"
 _DOCUMENT_MEMBERS: tuple[str, ...] = ("meta",)
 
 
-class VersionConflictError(Exception):
+class VersionConflictError(BusinessRefusalError):
     """Raised when ``expected_version`` does not match the design's version.
 
     Its own class — deliberately **not** a ``ValueError`` — so that neither

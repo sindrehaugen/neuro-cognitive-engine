@@ -24,6 +24,7 @@ from uuid import UUID, uuid4
 
 from nce.config import cfg
 from nce.db_utils import scoped_pg_session
+from nce.mcp_errors import BusinessRefusalError
 
 log = logging.getLogger("nce.vertical_modules.support.tickets")
 
@@ -79,7 +80,7 @@ _DEFAULT_SLA_TARGETS: dict[str, dict[str, datetime.timedelta]] = {
 _ZERO_TENSOR: list[float] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 
-class TicketNotFoundError(Exception):
+class TicketNotFoundError(BusinessRefusalError):
     """No service_tickets row exists for this (id, namespace_id) pair."""
 
     def __init__(self, *, ticket_id: str) -> None:
@@ -87,7 +88,7 @@ class TicketNotFoundError(Exception):
         super().__init__(f"no service_tickets row for ticket_id={ticket_id!r}")
 
 
-class TicketAlreadyResolvedError(Exception):
+class TicketAlreadyResolvedError(BusinessRefusalError):
     """The ticket is already in 'resolved' status."""
 
     def __init__(self, *, ticket_id: str, status: str) -> None:
@@ -96,7 +97,7 @@ class TicketAlreadyResolvedError(Exception):
         super().__init__(f"ticket_id={ticket_id!r} is already resolved (status={status!r})")
 
 
-class InvalidTicketStatusError(Exception):
+class InvalidTicketStatusError(BusinessRefusalError):
     """Ticket status transition is invalid (e.g. attempting to resolve closed/cancelled)."""
 
     def __init__(self, *, ticket_id: str, status: str) -> None:
@@ -105,7 +106,7 @@ class InvalidTicketStatusError(Exception):
         super().__init__(f"ticket_id={ticket_id!r} with status={status!r} cannot be resolved")
 
 
-class AutocloseConfidenceRefusalError(Exception):
+class AutocloseConfidenceRefusalError(BusinessRefusalError):
     """Refusal when autonomous ticket resolution confidence is below the required threshold."""
 
     def __init__(self, *, confidence: float, threshold: float) -> None:

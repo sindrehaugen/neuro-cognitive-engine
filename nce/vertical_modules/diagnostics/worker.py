@@ -57,6 +57,7 @@ from typing import TYPE_CHECKING, Any
 from nce.config import cfg
 from nce.db_utils import scoped_pg_session
 from nce.dead_letter_queue import _clear_attempt, store_dead_letter
+from nce.mcp_errors import BusinessRefusalError
 from nce.vertical_modules.diagnostics.digest_writer import CentralSink
 from nce.vertical_modules.diagnostics.enrichment import resolve_device_context
 from nce.vertical_modules.diagnostics.profiles import get_profile
@@ -82,7 +83,7 @@ _DISK_SAFETY_MARGIN_BYTES = 64 * _BYTES_PER_MB
 _TASK_NAME = "process_diag_bundle"
 
 
-class _NonRetryableBundleError(Exception):
+class _NonRetryableBundleError(BusinessRefusalError):
     """Internal marker: a permanent defect that must be dead-lettered, not retried.
 
     Wraps the human-readable reason for the DLQ payload.  Distinct from

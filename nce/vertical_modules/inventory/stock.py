@@ -267,6 +267,7 @@ import asyncpg  # type: ignore[import-untyped]
 from nce.db_utils import scoped_pg_session
 from nce.entity_resolution.ownership import assert_owner
 from nce.events.emit import emit_graph_write
+from nce.mcp_errors import BusinessRefusalError
 from nce.vertical_modules.inventory.transactions import (
     REASON_CONSUMPTION,
     REASON_TRANSFER_IN,
@@ -392,7 +393,7 @@ def _canonical_lock_order(a: UUID, b: UUID) -> tuple[UUID, UUID]:
 # ---------------------------------------------------------------------------
 
 
-class InsufficientStockError(Exception):
+class InsufficientStockError(BusinessRefusalError):
     """Raised when a decrement's ``WHERE qty_on_hand >= n`` guard affects
     zero rows — either the row exists but does not hold enough stock, or no
     ``inventory_items`` row exists yet for this ``(sku, location)`` (treated

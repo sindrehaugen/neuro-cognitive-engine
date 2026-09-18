@@ -19,30 +19,33 @@ from typing import Any
 
 from asyncpg.exceptions import DataError
 
+from nce.engine_registry import EngineDisabledError
+from nce.mcp_errors import BusinessRefusalError
+
 log = logging.getLogger("nce.vertical_modules.marketing._guard")
 
 
-class MarketingDisabledError(Exception):
+class MarketingDisabledError(EngineDisabledError):
     """Raised when a namespace has not opted into the Marketing vertical."""
 
 
-class MarketingUngroundedClaimError(Exception):
+class MarketingUngroundedClaimError(BusinessRefusalError):
     """Raised when a marketing draft contains claims ungrounded in the cognitive graph (MK-2)."""
 
 
-class MarketingSensitiveDataLeakError(Exception):
+class MarketingSensitiveDataLeakError(BusinessRefusalError):
     """Raised when sensitive internal fields (margin, cost, rates) are found in marketing data (MK-3)."""
 
 
-class MarketingConsentMissingError(Exception):
+class MarketingConsentMissingError(BusinessRefusalError):
     """Raised when publishing is attempted without required consent recorded (MK-4)."""
 
 
-class MarketingLowHealthTriggerError(Exception):
+class MarketingLowHealthTriggerError(BusinessRefusalError):
     """Raised when marketing outreach is attempted on low-health/dissatisfied customers (MK-5)."""
 
 
-class MarketingUnapprovedPublishError(Exception):
+class MarketingUnapprovedPublishError(BusinessRefusalError):
     """Raised when content is pushed for publishing without recorded human approval (MK-1)."""
 
 
