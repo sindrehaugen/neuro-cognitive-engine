@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 91a04e2 (main) · **Last-audited:** 2026-09-18
 
 # NCE Documentation Index
 
@@ -16,7 +16,7 @@ Technical specifications, architectural guides, and operational references for N
 
 ## Architecture & System Design
 
-- [**Architecture v1.0 Specification**](architecture-v1.md): Runtime topology, temporal engine, A2A protocol, cognitive workers, GraphRAG pipeline (§7.1), partitioning tradeoffs, and MCP tool surface.
+- [**Architecture Specification (Spec v1.0)**](architecture-v1.md): Runtime topology, temporal engine, A2A protocol, cognitive workers, GraphRAG pipeline (§7.1), partitioning tradeoffs, and MCP tool surface.
 - [**Database Architecture**](database_architecture.md): Connection pools (asyncpg, Motor, Redis, MinIO), `scoped_pg_session` pattern, Saga cross-DB write path, GraphRAG hydration pipeline, WORM event log design, and module map.
 - [**Recursive Indexing Flow**](recursive_indexing_flow.md): Async code-indexing via MCP + RQ workers; how NCE ingests its own codebase or any directory.
 - [**Push Architecture**](push_architecture.md): Document Bridge push flow — webhook ingest from providers through the worker and subscription renewal lifecycle.

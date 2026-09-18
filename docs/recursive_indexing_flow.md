@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 91a04e2 (main) · **Last-audited:** 2026-09-18
 
 # NCE Recursive Indexing Flow
 
-This document covers **async code indexing** via MCP + RQ. For the full **v1.0** runtime (temporal queries, A2A, scheduled re-embedding, GC), see [architecture-v1.md](./architecture-v1.md).
+This document covers **async code indexing** via MCP + RQ. For the full system architecture (temporal queries, A2A, scheduled re-embedding, GC), see [architecture-v1.md (Spec v1.0)](./architecture-v1.md).
 
 NCE ingests source code in two ways:
 

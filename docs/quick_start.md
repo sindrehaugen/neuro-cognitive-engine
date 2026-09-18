@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 91a04e2 (main) · **Last-audited:** 2026-09-18
 
 # NCE Quick Start Guide
 
-Welcome to **NCE v1.0**. This guide covers running the engine **from source** (Docker + Python), selecting a deployment posture, and connecting the MCP server to Cursor or Claude Desktop. Package installers, when available, layer on top of the same `server.py` and Compose stack.
+Welcome to **NCE v3.0.0**. This guide covers running the engine **from source** (Docker + Python), selecting a deployment posture, and connecting the MCP server to Cursor or Claude Desktop. Package installers, when available, layer on top of the same `server.py` and Compose stack.
 
 ## 1. Prerequisite: stack and repo
 
@@ -22,7 +22,7 @@ Welcome to **NCE v1.0**. This guide covers running the engine **from source** (D
 
 ### Cloud
 
-- Use managed equivalents for each store; point `.env` at cloud URIs. No code changes required for the v1.0 paths.
+- Use managed equivalents for each store; point `.env` at cloud URIs. No code changes required for the v3.0.0 paths.
 
 ## 3. Connect to your LLM client
 
@@ -78,7 +78,7 @@ Note: In production environments, admin tools are further protected by the `admi
 
 ## Architecture reference
 
-**v1.0 runtime** (temporal engine, A2A protocol, cognitive / background workers, Mermaid diagrams): [architecture-v1.md](./architecture-v1.md).
+**Architecture specification (Spec v1.0)** (temporal engine, A2A protocol, cognitive / background workers, Mermaid diagrams): [architecture-v1.md](./architecture-v1.md).
 
 Phase **0.1** / **0.2** (multi-tenant model, signing): [multi_tenancy.md](./multi_tenancy.md) and [signing.md](./signing.md).
 
