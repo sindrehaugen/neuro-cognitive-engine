@@ -233,13 +233,6 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
             "payload_ref; scheduled for storage_kind='mongo' Vendors resource wave."
         ),
     ),
-    "CONTRACTOR": ResourceExemption(
-        owner_engine="vendors",
-        reason=(
-            "Real attribute table (contractor_profiles, 8 cols). Scheduled for Lane E "
-            "/ Wave D-8 Vendors resource declaration."
-        ),
-    ),
     "CERT": ResourceExemption(
         owner_engine="vendors",
         reason=(
