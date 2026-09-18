@@ -173,6 +173,10 @@ VENDOR_PLATFORMS: dict[str, str] = {
     "disruptive": "Disruptive Technologies REST API",
     # Added MLV16F Wave F-5: Ochno Operated USB-C switch/hub platform.
     "ochno": "Ochno Operated REST API",
+    # Added MLV16F Wave F-7: AIS vessel-position feed (BarentsWatch Live
+    # AIS API reference) — the last of the seven vendor telemetry
+    # adapters in this lane.
+    "ais": "AIS live vessel-position API",
 }
 
 _TRUTHY = {"1", "true", "yes", "on"}
@@ -406,6 +410,10 @@ def select_telemetry_adapter(platform: str) -> TelemetryAdapter:
             from nce.vertical_modules.assets.ochno import OchnoTelemetryAdapter
 
             return OchnoTelemetryAdapter()
+        if name == "ais":
+            from nce.vertical_modules.assets.ais import AisTelemetryAdapter
+
+            return AisTelemetryAdapter()
         return UnimplementedVendorAdapter(name, vendor_api)
     return MockTelemetryAdapter()
 
