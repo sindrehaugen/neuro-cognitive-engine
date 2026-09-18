@@ -77,6 +77,12 @@ def _clear_mem_store() -> None:
         _clear_docs()
     except Exception:
         pass
+    try:
+        from nce.vertical_modules.legal_entities.service import _clear_mem_store as _clear_le
+
+        _clear_le()
+    except Exception:
+        pass
 
 
 def serialize_val(val: Any) -> Any:
@@ -474,6 +480,27 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                         updated_at=datetime.fromisoformat(now_iso),
                     )
                     _MEM_DOCUMENTS.setdefault(str(ns_uuid), {})[item_id] = doc_rec
+                except Exception:
+                    pass
+            elif spec.engine == "legal_entities" and spec.entity == "legal_entities":
+                try:
+                    from nce.vertical_modules.legal_entities.models import LegalEntityRecord
+                    from nce.vertical_modules.legal_entities.service import _MEM_LEGAL_ENTITIES
+
+                    le_rec = LegalEntityRecord(
+                        id=UUID(item_id),
+                        namespace_id=ns_uuid or UUID("00000000-0000-0000-0000-000000000000"),
+                        org_nr=str(data.get("org_nr", "")),
+                        name=str(data.get("name", "")),
+                        group_parent_org_nr=data.get("group_parent_org_nr"),
+                        roles=tuple(data.get("roles") or ()),
+                        country=str(data.get("country", "NO")),
+                        metadata=dict(data.get("metadata") or {}),
+                        archived=bool(data.get("archived", False)),
+                        created_at=datetime.fromisoformat(now_iso),
+                        updated_at=datetime.fromisoformat(now_iso),
+                    )
+                    _MEM_LEGAL_ENTITIES.setdefault(str(ns_uuid), {})[item_id] = le_rec
                 except Exception:
                     pass
 

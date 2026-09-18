@@ -23,7 +23,7 @@ def test_hr_tables_registered_in_expected_tenant_rls_tables():
 
 
 def test_expected_tenant_rls_tables_total_count():
-    """Verify total count of tenant RLS tables after C14 documents additions is 95."""
-    assert len(EXPECTED_TENANT_RLS_TABLES) == 95, (
-        f"Expected 95 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
+    """Verify total count of tenant RLS tables after C15 legal_entities additions is 96."""
+    assert len(EXPECTED_TENANT_RLS_TABLES) == 96, (
+        f"Expected 96 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
     )
