@@ -53,11 +53,9 @@ _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
 # --- MEASURED on branch mlv16a/a1-c12-resource-surface -------------------------
 # python -c "import nce.tool_registry as tr; print(len(tr.TOOL_REGISTRY))"
-_TOTAL_TOOLS = 311  # 283 + 16 C12 Inventory tools + 8 C13 Notifications tools + 4 C12 Procurement PO_LINE tools
-_MUTATION_TOOLS = 137  # 123 + 8 C12 Inventory mutations + 4 C13 Notifications mutations + 2 C12 Procurement mutations
-_CACHEABLE_TOOLS = (
-    129  # 115 + 8 C12 Inventory reads + 4 C13 Notifications reads + 2 C12 Procurement reads
-)
+_TOTAL_TOOLS = 315  # 283 + 16 C12 Inventory tools + 8 C13 Notifications tools + 4 C12 Procurement PO_LINE tools + 4 C14 Document Register tools
+_MUTATION_TOOLS = 139  # 123 + 8 C12 Inventory mutations + 4 C13 Notifications mutations + 2 C12 Procurement mutations + 2 C14 Document Register mutations
+_CACHEABLE_TOOLS = 131  # 115 + 8 C12 Inventory reads + 4 C13 Notifications reads + 2 C12 Procurement reads + 2 C14 Document Register reads
 _ADMIN_ONLY_TOOLS = (
     93  # 90 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3)
 )
