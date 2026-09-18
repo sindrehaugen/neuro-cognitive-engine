@@ -221,15 +221,18 @@ def extract_routes(repo, baseline):
                                 }
                             )
 
-    # v1.6 C12 Resource Surface auto-mounted routes (Lane A-1/A-1b, Lane E).
+    # v1.6 C12 Resource Surface auto-mounted routes (Lane A-1/A-1b, Lane E, A-4).
     # build_admin_routes() splices `*build_all_resource_routes()` into its
     # return list (nce/admin_app.py) -- a Starred call, not a literal Route(...)
     # element, so the walk above never sees it. Found stale alongside the tool
-    # gap in janitor pass 6 (K-H3): every C12 resource's 13 REST routes
-    # (list/create/bulk/get/patch/archive/restore/events/comments x2/tags x2)
-    # were missing from every engine's row. Path shape is read directly from
-    # ResourceSpec.rest_collection_path/rest_item_path (spec.py): derived from
-    # (engine, entity) alone, not re-guessed here.
+    # gap in janitor pass 6 (K-H3): every C12 resource's REST routes were
+    # missing from every engine's row. Route count is 16 per spec as of Wave
+    # A-4 (13 original + 3 generic document-attachment routes A-4 added to
+    # make_resource_routes for every resource, not just `documents` itself --
+    # found only by reading rest.py's actual Route(...) list directly, not
+    # assumed from the count this fix originally shipped with. Path shape is
+    # read directly from ResourceSpec.rest_collection_path/rest_item_path
+    # (spec.py): derived from (engine, entity) alone, not re-guessed here.
     for eng in VERTICAL_ENGINES:
         resources_path = f"nce/vertical_modules/{eng}/resources.py"
         if resources_path not in git_ls_tree(repo, baseline, f"nce/vertical_modules/{eng}/"):
@@ -262,6 +265,9 @@ def extract_routes(repo, baseline):
                     (f"{prefix}/{{id}}/tags", "handle_list_tags"),
                     (f"{prefix}/{{id}}/tags", "handle_add_tag"),
                     (f"{prefix}/{{id}}/tags/{{tag}}", "handle_remove_tag"),
+                    (f"{prefix}/{{id}}/documents", "handle_list_documents"),
+                    (f"{prefix}/{{id}}/documents", "handle_attach_document"),
+                    (f"{prefix}/{{id}}/documents/{{doc_id}}", "handle_detach_document"),
                 ):
                     routes.append(
                         {

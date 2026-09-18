@@ -18,10 +18,20 @@ tool *counts* (added after Wave A-1, predating this fix) and was unaffected.
 routes -- this file locks in the fix so the per-engine table cannot regress
 back to silently dropping C12 rows.
 
-This generator has no ``--check`` mode (unlike the other three of Lane H's
-four generated docs), so there is no CI gate on its output short of this test
-suite exercising its extraction functions directly against live registry
-state.
+This generator has no dedicated ``--check`` mode of its own, but
+``tests/test_docs_engine_guides_ratchet.py`` (Lane D, DL-Orch D-3, predates
+this fix) already re-derives its expected output and diffs it against the
+committed ``docs/_generated/surface.md`` -- the actual CI gate on this file.
+This test suite exercises the extraction functions directly against live
+registry state, including a second real bug found while fixing the first:
+the initial version of this fix hardcoded "13 routes per ResourceSpec" from a
+single read of ``rest.py`` on a commit that predated Wave A-4, which added 3
+more (generic document-attachment) routes to every spec, not just
+``documents`` itself -- undercounting was caught only by re-reading the
+current route list rather than trusting the earlier count. The route-count
+assertions below derive the per-spec count from the real
+``make_resource_routes`` function instead of a literal, so a third such drift
+cannot happen silently again.
 """
 
 from __future__ import annotations
@@ -86,14 +96,31 @@ def test_every_registered_spec_contributes_exactly_four_tools(registered_specs, 
     assert len(resource_surface_tools) == len(registered_specs) * 4
 
 
-def test_every_registered_spec_contributes_exactly_thirteen_routes(registered_specs, routes):
-    """Each ResourceSpec mounts 13 REST routes -- see
-    nce/resource_surface/rest.py::make_resource_routes. The generator's
-    simulation must find exactly len(specs) * 13 of them."""
+def test_every_registered_spec_contributes_the_real_route_count(registered_specs, routes):
+    """Cross-check against the real function, not a hardcoded literal: the
+    routes-per-spec count is read fresh from make_resource_routes itself (16
+    as of Wave A-4; was 13 before A-4 added generic document-attachment
+    routes to every spec). A hardcoded number here would repeat the exact
+    drift this fix was written to catch."""
+    from nce.resource_surface.rest import make_resource_routes
+
+    routes_per_spec = len(make_resource_routes(registered_specs[0]))
     resource_surface_routes = [
         r for r in routes if r["resolved_mod"] == "nce.resource_surface.rest"
     ]
-    assert len(resource_surface_routes) == len(registered_specs) * 13
+    assert len(resource_surface_routes) == len(registered_specs) * routes_per_spec
+
+
+def test_derived_route_total_matches_live_registry(registered_specs, routes):
+    """Cross-check against the real object graph: derived total must equal
+    build_all_resource_routes()'s live length, the same treatment already
+    given to the tool count below."""
+    from nce.resource_surface import build_all_resource_routes
+
+    resource_surface_routes = [
+        r for r in routes if r["resolved_mod"] == "nce.resource_surface.rest"
+    ]
+    assert len(resource_surface_routes) == len(build_all_resource_routes())
 
 
 def test_notifications_row_is_no_longer_silently_empty(tools, routes):
