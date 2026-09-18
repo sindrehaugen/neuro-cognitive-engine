@@ -284,7 +284,9 @@ class _FixedAdapter(TelemetryAdapter):
     def platform(self) -> str:
         return "fixture"
 
-    async def fetch_samples(self, asset_id: uuid.UUID) -> Sequence[TelemetrySample]:
+    async def fetch_samples(
+        self, asset_id: uuid.UUID, *, serial: str | None = None
+    ) -> Sequence[TelemetrySample]:
         return self._samples
 
 
