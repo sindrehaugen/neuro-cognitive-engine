@@ -361,6 +361,22 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/replay/status/{run_id}` | `api_replay_status` |
 | GET | `/api/resources` | `api_resources_list` |
 | POST | `/api/resources` | `api_resources_create` |
+| GET | `/api/resources/allocations` | `handle_list` |
+| POST | `/api/resources/allocations` | `handle_create` |
+| POST | `/api/resources/allocations/bulk` | `handle_bulk` |
+| GET | `/api/resources/allocations/{id}` | `handle_get` |
+| PATCH | `/api/resources/allocations/{id}` | `handle_patch` |
+| POST | `/api/resources/allocations/{id}/archive` | `handle_archive` |
+| GET | `/api/resources/allocations/{id}/comments` | `handle_list_comments` |
+| POST | `/api/resources/allocations/{id}/comments` | `handle_add_comment` |
+| GET | `/api/resources/allocations/{id}/documents` | `handle_list_documents` |
+| POST | `/api/resources/allocations/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/resources/allocations/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/resources/allocations/{id}/events` | `handle_events` |
+| POST | `/api/resources/allocations/{id}/restore` | `handle_restore` |
+| GET | `/api/resources/allocations/{id}/tags` | `handle_list_tags` |
+| POST | `/api/resources/allocations/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/resources/allocations/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/resources/capacity` | `api_resources_resolve_capacity` |
 | GET | `/api/resources/conflicts` | `api_resources_detect_conflicts` |
 | GET | `/api/resources/field-schedule` | `api_resources_field_schedule` |
@@ -371,6 +387,22 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/resources/release` | `api_resources_release` |
 | POST | `/api/resources/reserve` | `api_resources_reserve` |
 | POST | `/api/resources/travel` | `api_resources_plan_travel` |
+| GET | `/api/resources/travel-legs` | `handle_list` |
+| POST | `/api/resources/travel-legs` | `handle_create` |
+| POST | `/api/resources/travel-legs/bulk` | `handle_bulk` |
+| GET | `/api/resources/travel-legs/{id}` | `handle_get` |
+| PATCH | `/api/resources/travel-legs/{id}` | `handle_patch` |
+| POST | `/api/resources/travel-legs/{id}/archive` | `handle_archive` |
+| GET | `/api/resources/travel-legs/{id}/comments` | `handle_list_comments` |
+| POST | `/api/resources/travel-legs/{id}/comments` | `handle_add_comment` |
+| GET | `/api/resources/travel-legs/{id}/documents` | `handle_list_documents` |
+| POST | `/api/resources/travel-legs/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/resources/travel-legs/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/resources/travel-legs/{id}/events` | `handle_events` |
+| POST | `/api/resources/travel-legs/{id}/restore` | `handle_restore` |
+| GET | `/api/resources/travel-legs/{id}/tags` | `handle_list_tags` |
+| POST | `/api/resources/travel-legs/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/resources/travel-legs/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/resources/{id}` | `api_resources_get` |
 | PATCH,POST | `/api/resources/{id}` | `api_resources_update` |
 | GET | `/api/sales/agreements` | `api_admin_sales_agreements` |
@@ -672,12 +704,18 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `replay_status` | yes |  |  |  |
 | `resolve` |  |  | yes |  |
 | `resolve_contradiction` |  | yes |  |  |
+| `resources_archive_allocations` |  | yes |  |  |
+| `resources_archive_travel_legs` |  | yes |  |  |
 | `resources_create` | yes | yes |  |  |
 | `resources_detect_conflicts` |  |  | yes |  |
 | `resources_field_schedule` |  |  | yes |  |
 | `resources_forecast_demand` |  |  | yes |  |
+| `resources_get_allocations` |  |  | yes |  |
 | `resources_get_resource` |  |  | yes |  |
+| `resources_get_travel_legs` |  |  | yes |  |
+| `resources_list_allocations` |  |  | yes |  |
 | `resources_list_resources` |  |  | yes |  |
+| `resources_list_travel_legs` |  |  | yes |  |
 | `resources_plan_allocation` |  |  |  |  |
 | `resources_plan_material_flow` | yes | yes |  |  |
 | `resources_plan_travel` |  | yes |  |  |
@@ -686,6 +724,8 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `resources_reserve` |  | yes |  |  |
 | `resources_resolve_capacity` |  |  | yes |  |
 | `resources_update` | yes | yes |  |  |
+| `resources_upsert_allocations` |  | yes |  |  |
+| `resources_upsert_travel_legs` |  | yes |  |  |
 | `rotate_signing_key` |  | yes |  |  |
 | `sales_add_quote_line` |  | yes |  |  |
 | `sales_calculate_commission` |  |  | yes |  |
@@ -760,4 +800,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 427 REST endpoints, 315 MCP tools._
+_Totals: 459 REST endpoints, 323 MCP tools._

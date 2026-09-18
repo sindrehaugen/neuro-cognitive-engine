@@ -596,8 +596,10 @@ class TestProjectAdvancePhaseToolRegistry:
         +1 Wave C-5 system_design_sync_device_capabilities;
         +8 Wave A-1 inventory resource surface mutations;
         +4 Wave A-3 notifications/reminders resource surface mutations;
-        +2 Wave A-4 documents resource surface mutations."""
-        assert len(MUTATION_TOOLS) == 139
+        +2 Wave A-4 documents resource surface mutations;
+        +2 Lane E Wave E-3 procurement PO_LINE resource surface mutations;
+        +4 Lane E Wave E-6 resources ALLOCATION/TRAVEL_LEG resource surface mutations."""
+        assert len(MUTATION_TOOLS) == 143
 
     def test_admin_only_count(self) -> None:
         """Admin-only tools must total 32 (unified realignment registry;

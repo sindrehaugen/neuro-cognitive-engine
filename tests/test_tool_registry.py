@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 315  # 311 + 4 C14 Document Register tools (Lane A Wave A-4)
+_EXPECTED_TOTAL = 323  # 315 + 8 C12 Resources ALLOCATION/TRAVEL_LEG tools (Lane E Wave E-6)
 
 
 def test_registry_has_expected_entries():
@@ -286,6 +286,11 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # Lane A Wave A-4 -- C14 Document Register resource surface mutations (upsert + archive)
         "documents_upsert_documents",
         "documents_archive_documents",
+        # Lane E Wave E-6 -- C12 Resources ALLOCATION/TRAVEL_LEG resource surface mutations
+        "resources_upsert_allocations",
+        "resources_archive_allocations",
+        "resources_upsert_travel_legs",
+        "resources_archive_travel_legs",
     }
 )
 
@@ -299,8 +304,8 @@ def test_mutation_tools_exact_match():
 
 def test_mutation_tools_count():
     assert (
-        len(MUTATION_TOOLS) == 139
-    )  # 131 baseline + 4 C12 Notifications & Reminders mutations (Wave A-3) + 2 C12 Procurement mutations (Lane E Wave E-3) + 2 C14 Document mutations (Lane A Wave A-4)
+        len(MUTATION_TOOLS) == 143
+    )  # 131 baseline + 4 C12 Notifications & Reminders mutations (Wave A-3) + 2 C12 Procurement mutations (Lane E Wave E-3) + 2 C14 Document mutations (Lane A Wave A-4) + 4 C12 Resources mutations (Lane E Wave E-6)
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -504,6 +509,11 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         # Lane A Wave A-4 -- C14 Document Register resource surface cacheable reads (list + get)
         "documents_list_documents",
         "documents_get_documents",
+        # Lane E Wave E-6 -- C12 Resources ALLOCATION/TRAVEL_LEG resource surface cacheable reads
+        "resources_list_allocations",
+        "resources_get_allocations",
+        "resources_list_travel_legs",
+        "resources_get_travel_legs",
     }
 )
 
@@ -517,8 +527,8 @@ def test_cacheable_tools_exact_match():
 
 def test_cacheable_tools_count():
     assert (
-        len(CACHEABLE_TOOLS) == 131
-    )  # 123 baseline + 4 C12 Notifications & Reminders cacheable reads (Wave A-3) + 2 C12 Procurement cacheable reads (Lane E Wave E-3) + 2 C14 Document cacheable reads (Lane A Wave A-4)
+        len(CACHEABLE_TOOLS) == 135
+    )  # 123 baseline + 4 C12 Notifications & Reminders cacheable reads (Wave A-3) + 2 C12 Procurement cacheable reads (Lane E Wave E-3) + 2 C14 Document cacheable reads (Lane A Wave A-4) + 4 C12 Resources cacheable reads (Lane E Wave E-6)
 
 
 # ---------------------------------------------------------------------------
