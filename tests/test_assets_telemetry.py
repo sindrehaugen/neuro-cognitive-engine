@@ -133,8 +133,9 @@ async def test_unknown_platform_is_refused_before_any_db_call() -> None:
 def test_the_documented_vendor_platforms_are_exactly_the_declared_set() -> None:
     """``09-assets-engine.md`` names the core AV cloud platforms; MLV16F
     Wave F-3 added ``neowit`` (a smart-building aggregator, not an AV
-    vendor, so counted separately from "the five"). Pinning the whole set
-    — not a sample of it — so a dropped or renamed platform is caught
+    vendor) and Wave F-4 added ``disruptive`` (a sensor vendor read
+    directly, not only through Neowit's aggregation). Pinning the whole
+    set — not a sample of it — so a dropped or renamed platform is caught
     rather than discovered by an operator whose env key stops working.
     """
     assert set(VENDOR_PLATFORMS) == {
@@ -148,6 +149,7 @@ def test_the_documented_vendor_platforms_are_exactly_the_declared_set() -> None:
         "yealink",
         "ymcs",
         "neowit",
+        "disruptive",
     }
     assert MOCK_PLATFORM not in VENDOR_PLATFORMS
 
@@ -205,6 +207,10 @@ def test_vendor_platform_swaps_to_its_real_adapter_when_the_flag_is_set(
         from nce.vertical_modules.assets.neowit import NeowitTelemetryAdapter
 
         assert isinstance(adapter, NeowitTelemetryAdapter)
+    elif platform == "disruptive":
+        from nce.vertical_modules.assets.disruptive import DisruptiveTelemetryAdapter
+
+        assert isinstance(adapter, DisruptiveTelemetryAdapter)
     else:
         assert isinstance(adapter, UnimplementedVendorAdapter)
         assert adapter.platform == platform
@@ -1605,3 +1611,210 @@ class TestNeowitAdapter:
             transport=httpx.MockTransport(handler),
         )
         assert await adapter.fetch_samples(uuid.uuid4(), serial="disruptive-0042") == []
+
+
+# ---------------------------------------------------------------------------
+# Disruptive Technologies: a sensor vendor read directly, not only through
+# Neowit's aggregation (new platform, MLV16F Wave F-4).
+# ---------------------------------------------------------------------------
+
+
+def _disruptive_adapter(handler: Any) -> Any:
+    from nce.vertical_modules.assets.disruptive import DisruptiveTelemetryAdapter
+
+    return DisruptiveTelemetryAdapter(
+        endpoint_url="https://api.disruptive-technologies.com/v2",
+        token_url="https://identity.disruptive-technologies.com/oauth2/token",
+        project_id="proj-1",
+        service_account_email="svc@example.iam.d17-serviceaccount.com",
+        key_id="key-1",
+        secret="dt-hs256-test-secret-at-least-32-bytes-long",
+        transport=httpx.MockTransport(handler),
+    )
+
+
+class TestDisruptiveAdapter:
+    @pytest.mark.asyncio
+    async def test_disruptive_adapter_unconfigured_raises(self) -> None:
+        from nce.vertical_modules.assets.disruptive import DisruptiveTelemetryAdapter
+
+        adapter = DisruptiveTelemetryAdapter(
+            endpoint_url=None,
+            token_url=None,
+            project_id=None,
+            service_account_email=None,
+            key_id=None,
+            secret=None,
+            timeout=10.0,
+        )
+        assert adapter.platform == "disruptive"
+        assert adapter._timeout <= 4.9
+
+        with pytest.raises(NotImplementedError, match="disruptive") as excinfo:
+            await adapter.fetch_samples(uuid.uuid4(), serial="bjehn6sdm92g00c1nvo0")
+        message = str(excinfo.value)
+        assert "NCE_ASSETS_DISRUPTIVE_ENDPOINT_URL" in message
+        assert "NCE_ASSETS_DISRUPTIVE_TOKEN_URL" in message
+        assert "NCE_ASSETS_DISRUPTIVE_PROJECT_ID" in message
+        assert "NCE_ASSETS_DISRUPTIVE_SERVICE_ACCOUNT_EMAIL" in message
+        assert "NCE_ASSETS_DISRUPTIVE_KEY_ID" in message
+        assert "NCE_ASSETS_DISRUPTIVE_SECRET" in message
+
+    @pytest.mark.asyncio
+    async def test_disruptive_adapter_without_a_serial_is_skipped_before_any_http_call(
+        self,
+    ) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("no HTTP call should be made when serial is missing")
+
+        adapter = _disruptive_adapter(handler)
+        assert await adapter.fetch_samples(uuid.uuid4(), serial=None) == []
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="  ") == []
+
+    @pytest.mark.asyncio
+    async def test_disruptive_adapter_refuses_a_path_outside_its_allow_list(self) -> None:
+        """Gate item 1+2 (MLV16 charter, Lane F): a call outside the
+        explicit allow-list literal is refused before any HTTP request."""
+        from nce.vertical_modules.assets.disruptive import (
+            _ALLOWED_READS,
+            DisruptiveAllowListRefusal,
+        )
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("a refused call must never reach the transport")
+
+        adapter = _disruptive_adapter(handler)
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            with pytest.raises(DisruptiveAllowListRefusal, match="DELETE /devices"):
+                await adapter._gated_request(
+                    client, "DELETE", "/devices", headers={"Authorization": "Bearer x"}
+                )
+            with pytest.raises(DisruptiveAllowListRefusal):
+                await adapter._gated_request(
+                    client, "GET", "/dataconnectors", headers={"Authorization": "Bearer x"}
+                )
+        assert ("GET", "/devices") in _ALLOWED_READS
+
+    @pytest.mark.asyncio
+    async def test_disruptive_adapter_live_http(self) -> None:
+        """A recorded-fixture-shaped round trip: HS256 JWT-bearer token
+        exchange at a DIFFERENT host from the data API, device resolution
+        by matching the asset's serial against DT's own device id (the
+        last path segment of ``name`` — there is no serial field in this
+        vendor's device shape, verified against the host's own test
+        fixtures), then per-event-type metrics from the SAME ``/devices``
+        call's ``reported`` object — never a second per-device round trip,
+        and never the fabricated single-endpoint shape earlier waves
+        replaced."""
+        seen: list[tuple[str, str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            seen.append((request.method, request.url.path))
+            if url == "https://identity.disruptive-technologies.com/oauth2/token":
+                assert request.headers.get("Content-Type") == "application/x-www-form-urlencoded"
+                return httpx.Response(200, json={"access_token": "dt-tok", "expires_in": 3600})
+            assert request.headers.get("Authorization") == "Bearer dt-tok"
+            if request.url.path == "/v2/projects/proj-1/devices":
+                return httpx.Response(
+                    200,
+                    json={
+                        "devices": [
+                            {
+                                "name": "projects/proj-1/devices/other-device",
+                                "type": "temperature",
+                                "reported": {
+                                    "temperature": {
+                                        "value": 19.0,
+                                        "updateTime": "2026-09-18T09:00:00Z",
+                                    }
+                                },
+                            },
+                            {
+                                "name": "projects/proj-1/devices/bjehn6sdm92g00c1nvo0",
+                                "type": "humidity",
+                                "labels": {"name": "Møterom 3"},
+                                "reported": {
+                                    "humidity": {
+                                        "relativeHumidity": 41,
+                                        "updateTime": "2026-09-18T07:00:00Z",
+                                    },
+                                    "batteryStatus": {"percentage": 8},
+                                    "networkStatus": {
+                                        "signalStrength": 62,
+                                        "updateTime": "2026-09-18T08:30:00Z",
+                                    },
+                                    "deskOccupancy": {
+                                        "state": "NOT_OCCUPIED",
+                                        "updateTime": "2026-09-18T08:30:00Z",
+                                    },
+                                },
+                            },
+                        ],
+                        "nextPageToken": "",
+                    },
+                )
+            raise AssertionError(f"unexpected call: {request.method} {url}")
+
+        adapter = _disruptive_adapter(handler)
+        samples = await adapter.fetch_samples(uuid.uuid4(), serial="bjehn6sdm92g00c1nvo0")
+        metrics = {s.metric: s.value for s in samples}
+        assert metrics["humidity.relativeHumidity"] == 41.0
+        assert metrics["batteryStatus.percentage"] == 8.0
+        assert metrics["networkStatus.signalStrength"] == 62.0
+        # deskOccupancy.state is a string ("NOT_OCCUPIED") — skipped, never
+        # coerced into a fabricated number.
+        assert not any(m.startswith("deskOccupancy") for m in metrics)
+        assert ("POST", "/oauth2/token") in seen
+        assert ("GET", "/v2/projects/proj-1/devices") in seen
+
+    @pytest.mark.asyncio
+    async def test_disruptive_adapter_matches_a_labelled_serial_too(self) -> None:
+        """Honesty-flagged fallback: some installs may record a serial in
+        a device's free-form ``labels`` rather than relying on DT's own
+        opaque device id."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if "oauth2/token" in str(request.url):
+                return httpx.Response(200, json={"access_token": "dt-tok"})
+            if request.url.path == "/v2/projects/proj-1/devices":
+                return httpx.Response(
+                    200,
+                    json={
+                        "devices": [
+                            {
+                                "name": "projects/proj-1/devices/abc123",
+                                "type": "co2",
+                                "labels": {"serial": "ASSET-SN-9"},
+                                "reported": {
+                                    "co2": {"ppm": 600, "updateTime": "2026-09-18T09:00:00Z"}
+                                },
+                            }
+                        ],
+                        "nextPageToken": "",
+                    },
+                )
+            raise AssertionError(f"unexpected call: {request.url}")
+
+        adapter = _disruptive_adapter(handler)
+        samples = await adapter.fetch_samples(uuid.uuid4(), serial="asset-sn-9")
+        metrics = {s.metric: s.value for s in samples}
+        assert metrics["co2.ppm"] == 600.0
+
+    @pytest.mark.asyncio
+    async def test_disruptive_adapter_unmatched_serial_returns_empty_without_error(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if "oauth2/token" in str(request.url):
+                return httpx.Response(200, json={"access_token": "dt-tok"})
+            return httpx.Response(200, json={"devices": [], "nextPageToken": ""})
+
+        adapter = _disruptive_adapter(handler)
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="no-such-device") == []
+
+    @pytest.mark.asyncio
+    async def test_disruptive_adapter_http_failure_degrades_gracefully(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, text="Service Unavailable")
+
+        adapter = _disruptive_adapter(handler)
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="bjehn6sdm92g00c1nvo0") == []
