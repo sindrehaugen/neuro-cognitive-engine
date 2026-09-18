@@ -401,6 +401,8 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "documents": "namespace_id",
     "document_links": "namespace_id",
     "document_shares": "namespace_id",
+    # C15 Legal-Entity Register (Shared Core, Wave A-5): legal entities.
+    "legal_entities": "namespace_id",
 }
 
 

@@ -1988,3 +1988,20 @@ BEGIN
         GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE document_shares TO nce_app;
     END IF;
 END $$;
+
+ALTER TABLE legal_entities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE legal_entities FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON legal_entities;
+CREATE POLICY tenant_isolation_policy ON legal_entities
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE legal_entities FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE legal_entities TO nce_app;
+    END IF;
+END $$;

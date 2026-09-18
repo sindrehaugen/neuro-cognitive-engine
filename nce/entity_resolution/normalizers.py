@@ -5,10 +5,40 @@ and provides a single entry point to normalize values by namespace.
 """
 
 import json
+import re
 from pathlib import Path
 
 # In-process cache: {normalizer_name: alias_map}
 _NORMALIZER_CACHE: dict[str, dict[str, str]] = {}
+
+
+def normalize_org_nr(value: str) -> str:
+    """Normalize an organization number (pure function, no DB/HTTP access).
+
+    Strips whitespace, punctuation (dots, hyphens, slashes), spaces,
+    leading 'NO' country code prefix, and trailing 'MVA' VAT suffixes.
+    For standard Norwegian business registration numbers, produces a
+    clean 9-digit string. For international/alphanumeric org numbers,
+    produces a clean alphanumeric string.
+
+    Args:
+        value: Raw organization number (e.g. 'NO 987 654 321 MVA', '987-654-321', '987654321').
+
+    Returns:
+        str: Normalized organization number string.
+    """
+    if not value:
+        return ""
+
+    raw = value.strip()
+    # Strip optional leading 'NO' (case-insensitive) if followed by digits/whitespace
+    cleaned = re.sub(r"^(?:NO\s*|\bNO\b)", "", raw, flags=re.IGNORECASE).strip()
+    # Strip optional trailing 'MVA' (case-insensitive)
+    cleaned = re.sub(r"(?:\s*MVA|\bMVA\b)$", "", cleaned, flags=re.IGNORECASE).strip()
+    # Remove all whitespace, hyphens, periods, slashes
+    cleaned = re.sub(r"[\s\-\.\/]", "", cleaned)
+
+    return cleaned
 
 
 def load_normalizer(name: str) -> dict[str, str]:
@@ -58,14 +88,18 @@ def normalize(value: str, name: str) -> str:
     No DB or HTTP access.
 
     Args:
-        value: The value to normalize (e.g. 'Cisco Systems', 'CISCO')
-        name: The normalizer name (e.g. 'manufacturer')
+        value: The value to normalize (e.g. 'Cisco Systems', 'CISCO', '987 654 321')
+        name: The normalizer name (e.g. 'manufacturer', 'org_nr', 'orgnr')
 
     Returns:
         str: The normalized value (casefolded + stripped, then aliased if found).
              If the value is not in the alias map, returns the casefolded + stripped
              form (no error on unknown value).
     """
+    # Special-case org_nr / orgnr normalization
+    if name in ("org_nr", "orgnr", "organization_number"):
+        return normalize_org_nr(value)
+
     # Casefold and strip
     normalized = value.strip().casefold()
 

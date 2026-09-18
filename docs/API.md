@@ -273,6 +273,22 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | DELETE | `/api/inventory/stock-locations/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/inventory/transfer-stock` | `api_inventory_transfer_stock` |
 | GET | `/api/inventory/valuation` | `api_inventory_valuation` |
+| GET | `/api/legal_entities/legal-entities` | `handle_list` |
+| POST | `/api/legal_entities/legal-entities` | `handle_create` |
+| POST | `/api/legal_entities/legal-entities/bulk` | `handle_bulk` |
+| GET | `/api/legal_entities/legal-entities/{id}` | `handle_get` |
+| PATCH | `/api/legal_entities/legal-entities/{id}` | `handle_patch` |
+| POST | `/api/legal_entities/legal-entities/{id}/archive` | `handle_archive` |
+| GET | `/api/legal_entities/legal-entities/{id}/comments` | `handle_list_comments` |
+| POST | `/api/legal_entities/legal-entities/{id}/comments` | `handle_add_comment` |
+| GET | `/api/legal_entities/legal-entities/{id}/documents` | `handle_list_documents` |
+| POST | `/api/legal_entities/legal-entities/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/legal_entities/legal-entities/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/legal_entities/legal-entities/{id}/events` | `handle_events` |
+| POST | `/api/legal_entities/legal-entities/{id}/restore` | `handle_restore` |
+| GET | `/api/legal_entities/legal-entities/{id}/tags` | `handle_list_tags` |
+| POST | `/api/legal_entities/legal-entities/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/legal_entities/legal-entities/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/marketing/approve` | `api_marketing_approve_content` |
 | GET | `/api/marketing/assets` | `api_marketing_assets` |
 | POST | `/api/marketing/audit-seo` | `api_marketing_audit_seo` |
@@ -650,6 +666,10 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `inventory_upsert_inventory_rma` |  | yes |  |  |
 | `inventory_upsert_stock_locations` |  | yes |  |  |
 | `inventory_valuation` | yes |  |  |  |
+| `legal_entities_archive_legal_entities` |  | yes |  |  |
+| `legal_entities_get_legal_entities` |  |  | yes |  |
+| `legal_entities_list_legal_entities` |  |  | yes |  |
+| `legal_entities_upsert_legal_entities` |  | yes |  |  |
 | `list_bridges` |  |  |  |  |
 | `list_contradictions` |  |  |  |  |
 | `list_dlq` |  |  |  |  |
@@ -820,4 +840,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 475 REST endpoints, 327 MCP tools._
+_Totals: 491 REST endpoints, 331 MCP tools._

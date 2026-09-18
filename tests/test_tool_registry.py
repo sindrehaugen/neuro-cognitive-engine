@@ -26,7 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = 327  # 323 + 4 C12 Product resource tools (Lane E Wave E-2)
+_EXPECTED_TOTAL = 331  # 327 + 4 C15 Legal-Entity Register tools (Lane A Wave A-5)
 
 
 def test_registry_has_expected_entries():
@@ -294,6 +294,9 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # Lane E Wave E-2 -- C12 Product resource surface mutations (upsert + archive)
         "product_upsert_product_skus",
         "product_archive_product_skus",
+        # Lane A Wave A-5 -- C15 Legal-Entity Register resource surface mutations (upsert + archive)
+        "legal_entities_upsert_legal_entities",
+        "legal_entities_archive_legal_entities",
     }
 )
 
@@ -307,8 +310,8 @@ def test_mutation_tools_exact_match():
 
 def test_mutation_tools_count():
     assert (
-        len(MUTATION_TOOLS) == 145
-    )  # 131 baseline + 4 C12 Notifications & Reminders mutations (Wave A-3) + 2 C12 Procurement mutations (Lane E Wave E-3) + 2 C14 Document mutations (Lane A Wave A-4) + 4 C12 Resources mutations (Lane E Wave E-6) + 2 C12 Product mutations (Lane E Wave E-2)
+        len(MUTATION_TOOLS) == 147
+    )  # 131 baseline + 4 C12 Notifications & Reminders mutations (Wave A-3) + 2 C12 Procurement mutations (Lane E Wave E-3) + 2 C14 Document mutations (Lane A Wave A-4) + 4 C12 Resources mutations (Lane E Wave E-6) + 2 C12 Product mutations (Lane E Wave E-2) + 2 C15 Legal Entity mutations (Lane A Wave A-5)
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -520,6 +523,9 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         # Lane E Wave E-2 -- C12 Product resource surface cacheable reads (list + get)
         "product_list_product_skus",
         "product_get_product_skus",
+        # Lane A Wave A-5 -- C15 Legal-Entity Register resource surface cacheable reads (list + get)
+        "legal_entities_list_legal_entities",
+        "legal_entities_get_legal_entities",
     }
 )
 
@@ -533,8 +539,8 @@ def test_cacheable_tools_exact_match():
 
 def test_cacheable_tools_count():
     assert (
-        len(CACHEABLE_TOOLS) == 137
-    )  # 123 baseline + 4 C12 Notifications & Reminders cacheable reads (Wave A-3) + 2 C12 Procurement cacheable reads (Lane E Wave E-3) + 2 C14 Document cacheable reads (Lane A Wave A-4) + 4 C12 Resources cacheable reads (Lane E Wave E-6) + 2 C12 Product cacheable reads (Lane E Wave E-2)
+        len(CACHEABLE_TOOLS) == 139
+    )  # 123 baseline + 4 C12 Notifications & Reminders cacheable reads (Wave A-3) + 2 C12 Procurement cacheable reads (Lane E Wave E-3) + 2 C14 Document cacheable reads (Lane A Wave A-4) + 4 C12 Resources cacheable reads (Lane E Wave E-6) + 2 C12 Product cacheable reads (Lane E Wave E-2) + 2 C15 Legal Entity cacheable reads (Lane A Wave A-5)
 
 
 # ---------------------------------------------------------------------------
