@@ -40,6 +40,22 @@ from nce.tool_registry import (
 # live C12 contribution (derived from the real registry, via the same
 # production function TOOL_REGISTRY itself is built from, not a
 # reimplementation of its naming rules).
+#
+# What this fix does NOT catch (K-H5, filed after ML-orch asked whether it
+# needed extending): every assertion below, and the three engine-scoped
+# siblings in test_{agreements,economy,product}_hardening.py, checks set
+# MEMBERSHIP of tool NAMES -- it has no way to notice that
+# TOOL_REGISTRY.update(build_all_resource_tool_specs()) silently replaced
+# the VALUE (ToolSpec/handler) at an EXISTING key with a same-named C12 one.
+# A collision doesn't change the key set at all, so a name-set-equality
+# check is structurally blind to it -- this was already true of the raw
+# pins these assertions replaced, not a regression introduced here.
+# tests/test_generated_tool_collision_ratchet.py is the check for that
+# failure mode, and it has to work differently: it reads hand-written names
+# from nce/tool_registry.py's literal source via AST rather than from the
+# live (already-mutated) TOOL_REGISTRY object, because by the time any test
+# here runs, a real collision would already have silently happened and the
+# losing entry would simply be gone from the object these tests inspect.
 
 _C12_TOOL_SPECS = build_all_resource_tool_specs()
 _C12_TOOL_NAMES = frozenset(_C12_TOOL_SPECS)
