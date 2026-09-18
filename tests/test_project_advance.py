@@ -595,8 +595,9 @@ class TestProjectAdvancePhaseToolRegistry:
         +1 Wave IN-3 inventory restock PO: inventory_create_restock_po;
         +1 Wave C-5 system_design_sync_device_capabilities;
         +8 Wave A-1 inventory resource surface mutations;
-        +4 Wave A-3 notifications/reminders resource surface mutations."""
-        assert len(MUTATION_TOOLS) == 137
+        +4 Wave A-3 notifications/reminders resource surface mutations;
+        +2 Wave A-4 documents resource surface mutations."""
+        assert len(MUTATION_TOOLS) == 139
 
     def test_admin_only_count(self) -> None:
         """Admin-only tools must total 32 (unified realignment registry;
