@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `5d09c9d` (public `main`) · **Last-audited:** generated
+> **Status:** shipped · **Verified-against:** `f9c5666` (public `main`) · **Last-audited:** generated
 
 # NCE Engine Figures — Inventory & Counters
 
@@ -14,10 +14,10 @@
 
 | Counter | Value | Source of Truth |
 |---|---|---|
-| `TOOL_REGISTRY` entries | **356** MCP tools (69 shared + 287 across 24 engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = 356` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |
+| `TOOL_REGISTRY` entries | **368** MCP tools (69 shared + 299 across 24 engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = 368` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |
 | SQL migrations | 83 files (+1 optional), `001` → `089` — gaps at `002`, `009`, `010`, `059`, `087`, `088` | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |
 | Golden Thread seam burndown | **0 of 28** lifecycle steps broken (0 distinct seams) | Generated in [`docs/_generated/golden_thread_seams.md`](golden_thread_seams.md) from [`tests/integration/test_golden_thread.py`](../../tests/integration/test_golden_thread.py) |
-| v1.6 C12 resource-surface registrations | **10 of 24** engines have `resources.py` | AST of `nce/vertical_modules/<engine>/resources.py` per engine — see the v1.6 section below |
+| v1.6 C12 resource-surface registrations | **11 of 24** engines have `resources.py` | AST of `nce/vertical_modules/<engine>/resources.py` per engine — see the v1.6 section below |
 | `EXPECTED_TENANT_RLS_TABLES` | **96** | AST of [`nce/event_log.py`](../../nce/event_log.py) |
 
 ## v1.6 — C12 Resource Surface Registration (Lane E)
@@ -37,7 +37,7 @@
 | `documents` | ✅ | 1 |
 | `dynamics365` | ⬜ | 0 |
 | `economy` | ✅ | 1 |
-| `field_tech` | ⬜ | 0 |
+| `field_tech` | ✅ | 3 |
 | `geodata` | ⬜ | 0 |
 | `hr` | ⬜ | 0 |
 | `inventory` | ✅ | 4 |
@@ -56,9 +56,9 @@
 
 ## Tool Registry Breakdown
 
-- **Total Registered Tools:** 356
+- **Total Registered Tools:** 368
 - **Shared Core Tools:** 69
-- **Vertical Engine Tools:** 287 across 24 engine packages
+- **Vertical Engine Tools:** 299 across 24 engine packages
 
 | Engine Package | Tool Count |
 |---|---:|
@@ -70,7 +70,7 @@
 | `documents` | 4 |
 | `dynamics365` | 6 |
 | `economy` | 19 |
-| `field_tech` | 10 |
+| `field_tech` | 22 |
 | `geodata` | 4 |
 | `hr` | 13 |
 | `inventory` | 33 |

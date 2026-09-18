@@ -187,6 +187,54 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/field-tech/work-orders` | `api_field_tech_create_work_order` |
 | GET | `/api/field-tech/work-orders/{id}` | `api_field_tech_work_order` |
 | POST | `/api/field-tech/work-orders/{id}/assign` | `api_field_tech_assign` |
+| GET | `/api/field_tech/checklists` | `handle_list` |
+| POST | `/api/field_tech/checklists` | `handle_create` |
+| POST | `/api/field_tech/checklists/bulk` | `handle_bulk` |
+| GET | `/api/field_tech/checklists/{id}` | `handle_get` |
+| PATCH | `/api/field_tech/checklists/{id}` | `handle_patch` |
+| POST | `/api/field_tech/checklists/{id}/archive` | `handle_archive` |
+| GET | `/api/field_tech/checklists/{id}/comments` | `handle_list_comments` |
+| POST | `/api/field_tech/checklists/{id}/comments` | `handle_add_comment` |
+| GET | `/api/field_tech/checklists/{id}/documents` | `handle_list_documents` |
+| POST | `/api/field_tech/checklists/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/field_tech/checklists/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/field_tech/checklists/{id}/events` | `handle_events` |
+| POST | `/api/field_tech/checklists/{id}/restore` | `handle_restore` |
+| GET | `/api/field_tech/checklists/{id}/tags` | `handle_list_tags` |
+| POST | `/api/field_tech/checklists/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/field_tech/checklists/{id}/tags/{tag}` | `handle_remove_tag` |
+| GET | `/api/field_tech/time-entries` | `handle_list` |
+| POST | `/api/field_tech/time-entries` | `handle_create` |
+| POST | `/api/field_tech/time-entries/bulk` | `handle_bulk` |
+| GET | `/api/field_tech/time-entries/{id}` | `handle_get` |
+| PATCH | `/api/field_tech/time-entries/{id}` | `handle_patch` |
+| POST | `/api/field_tech/time-entries/{id}/archive` | `handle_archive` |
+| GET | `/api/field_tech/time-entries/{id}/comments` | `handle_list_comments` |
+| POST | `/api/field_tech/time-entries/{id}/comments` | `handle_add_comment` |
+| GET | `/api/field_tech/time-entries/{id}/documents` | `handle_list_documents` |
+| POST | `/api/field_tech/time-entries/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/field_tech/time-entries/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/field_tech/time-entries/{id}/events` | `handle_events` |
+| POST | `/api/field_tech/time-entries/{id}/restore` | `handle_restore` |
+| GET | `/api/field_tech/time-entries/{id}/tags` | `handle_list_tags` |
+| POST | `/api/field_tech/time-entries/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/field_tech/time-entries/{id}/tags/{tag}` | `handle_remove_tag` |
+| GET | `/api/field_tech/work-orders` | `handle_list` |
+| POST | `/api/field_tech/work-orders` | `handle_create` |
+| POST | `/api/field_tech/work-orders/bulk` | `handle_bulk` |
+| GET | `/api/field_tech/work-orders/{id}` | `handle_get` |
+| PATCH | `/api/field_tech/work-orders/{id}` | `handle_patch` |
+| POST | `/api/field_tech/work-orders/{id}/archive` | `handle_archive` |
+| GET | `/api/field_tech/work-orders/{id}/comments` | `handle_list_comments` |
+| POST | `/api/field_tech/work-orders/{id}/comments` | `handle_add_comment` |
+| GET | `/api/field_tech/work-orders/{id}/documents` | `handle_list_documents` |
+| POST | `/api/field_tech/work-orders/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/field_tech/work-orders/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/field_tech/work-orders/{id}/events` | `handle_events` |
+| POST | `/api/field_tech/work-orders/{id}/restore` | `handle_restore` |
+| GET | `/api/field_tech/work-orders/{id}/tags` | `handle_list_tags` |
+| POST | `/api/field_tech/work-orders/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/field_tech/work-orders/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/gc/trigger` | `trigger_gc` |
 | GET | `/api/health` | `get_health` |
 | GET | `/api/health/degradations` | `get_degradations` |
@@ -686,16 +734,28 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `explain_config_change` | yes |  |  |  |
 | `explain_memory` |  |  |  |  |
 | `explain_past_decision` | yes | yes |  |  |
+| `field_tech_archive_checklists` |  | yes |  |  |
+| `field_tech_archive_time_entries` |  | yes |  |  |
+| `field_tech_archive_work_orders` |  | yes |  |  |
 | `field_tech_assign` | yes | yes |  |  |
 | `field_tech_attach_photo` |  | yes |  |  |
 | `field_tech_complete_checklist` |  | yes |  |  |
 | `field_tech_create_work_order` | yes | yes |  |  |
 | `field_tech_dispatch` |  |  | yes |  |
+| `field_tech_get_checklists` |  |  | yes |  |
+| `field_tech_get_time_entries` |  |  | yes |  |
+| `field_tech_get_work_orders` |  |  | yes |  |
+| `field_tech_list_checklists` |  |  | yes |  |
+| `field_tech_list_time_entries` |  |  | yes |  |
+| `field_tech_list_work_orders` |  |  | yes |  |
 | `field_tech_log_time` |  | yes |  |  |
 | `field_tech_partner_view` |  |  | yes |  |
 | `field_tech_record_outcome` | yes | yes |  |  |
 | `field_tech_scan_serial` |  | yes |  |  |
 | `field_tech_sync` |  | yes |  |  |
+| `field_tech_upsert_checklists` |  | yes |  |  |
+| `field_tech_upsert_time_entries` |  | yes |  |  |
+| `field_tech_upsert_work_orders` |  | yes |  |  |
 | `force_resync_bridge` |  | yes |  |  |
 | `forget_memory` |  | yes |  |  |
 | `geodata_import_n50_land_cover` | yes | yes |  |  |
@@ -945,4 +1005,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 571 REST endpoints, 356 MCP tools._
+_Totals: 619 REST endpoints, 368 MCP tools._
