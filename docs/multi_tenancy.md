@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** 739e0ff (main) · **Last-audited:** 2026-09-17
+> **Status:** shipped · **Verified-against:** becc2ff (main) · **Last-audited:** 2026-09-18
 
 # Multi-Tenancy and Resource Quotas
 
