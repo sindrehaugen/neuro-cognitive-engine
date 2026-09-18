@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `761e8fe` (public `main`) · **Last-audited:** 2026-09-18
+> **Status:** shipped · **Verified-against:** `5fdd7f3` (public `main`) · **Last-audited:** 2026-09-18
 
 # NCE Vertical Engines — Build & Production Status
 
@@ -22,7 +22,7 @@
 > ```
 
 <<<<<<< HEAD
-## Measured inventory at `761e8fe`
+## Measured inventory at `5fdd7f3`
 =======
 ## Measured inventory at `4f07ce5`
 >>>>>>> 32bb34b (docs(instruments): regenerate figures and surface for Wave A-3; align gen_engine_figures.py with C12 resource tools)
@@ -31,7 +31,7 @@
 |---|---|
 | Module packages under `nce/vertical_modules/` | **20** (17 engines + `diagnostics`, `dynamics365`, `netbox`) |
 <<<<<<< HEAD
-| `TOOL_REGISTRY` entries | **315** MCP tools (69 shared + 246 engine) — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
+| `TOOL_REGISTRY` entries | **323** MCP tools (69 shared + 254 engine) — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 =======
 | `TOOL_REGISTRY` entries | **304** MCP tools (69 shared + 235 engine) — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 >>>>>>> 32bb34b (docs(instruments): regenerate figures and surface for Wave A-3; align gen_engine_figures.py with C12 resource tools)
@@ -41,7 +41,7 @@
 | `EXPECTED_TENANT_RLS_TABLES` | **95** |
 | Tests | **6,423** `def test_` across 528 files |
 | Golden Thread seam burndown | **0 of 28** lifecycle steps broken (0 distinct seams) — mirrored from [`docs/_generated/golden_thread_seams.md`](../_generated/golden_thread_seams.md); see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
-| v1.6 C12 resource-surface registrations | **4 of 22** engines have `resources.py` — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
+| v1.6 C12 resource-surface registrations | **5 of 22** engines have `resources.py` — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 
 **Status legend**
 
