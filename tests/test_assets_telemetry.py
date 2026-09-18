@@ -130,10 +130,12 @@ async def test_unknown_platform_is_refused_before_any_db_call() -> None:
         await do_pull_telemetry(_DummyEngine(), _base_params(platform="crestronn"))
 
 
-def test_the_five_vendor_platforms_are_exactly_the_documented_set() -> None:
-    """``09-assets-engine.md`` names the core AV cloud platforms. Pinning
-    the whole set — not a sample of it — so a dropped or renamed platform is
-    caught rather than discovered by an operator whose env key stops working.
+def test_the_documented_vendor_platforms_are_exactly_the_declared_set() -> None:
+    """``09-assets-engine.md`` names the core AV cloud platforms; MLV16F
+    Wave F-3 added ``neowit`` (a smart-building aggregator, not an AV
+    vendor, so counted separately from "the five"). Pinning the whole set
+    — not a sample of it — so a dropped or renamed platform is caught
+    rather than discovered by an operator whose env key stops working.
     """
     assert set(VENDOR_PLATFORMS) == {
         "crestron",
@@ -145,6 +147,7 @@ def test_the_five_vendor_platforms_are_exactly_the_documented_set() -> None:
         "shure",
         "yealink",
         "ymcs",
+        "neowit",
     }
     assert MOCK_PLATFORM not in VENDOR_PLATFORMS
 
@@ -198,6 +201,10 @@ def test_vendor_platform_swaps_to_its_real_adapter_when_the_flag_is_set(
         from nce.vertical_modules.assets.shure_cloud import ShureCloudTelemetryAdapter
 
         assert isinstance(adapter, ShureCloudTelemetryAdapter)
+    elif platform == "neowit":
+        from nce.vertical_modules.assets.neowit import NeowitTelemetryAdapter
+
+        assert isinstance(adapter, NeowitTelemetryAdapter)
     else:
         assert isinstance(adapter, UnimplementedVendorAdapter)
         assert adapter.platform == platform
@@ -1395,3 +1402,206 @@ class TestAVCloudAdapters:
             transport=httpx.MockTransport(handler),
         )
         assert await adapter.fetch_samples(uuid.uuid4(), serial="yl-a30-0007") == []
+
+
+# ---------------------------------------------------------------------------
+# Neowit: a smart-building aggregator (new platform, MLV16F Wave F-3) — not
+# an AV cloud vendor, so tested on its own rather than folded into
+# TestAVCloudAdapters.
+# ---------------------------------------------------------------------------
+
+# A throwaway RSA key generated for this test file only — never a real
+# credential, and never round-tripped through anything but PyJWT's local
+# signing (the adapter's own private key is never sent over the wire).
+_TEST_RSA_PRIVATE_KEY = """-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCStoM4XHI2dfyu
+M8yuSHHWb61AaH/vFdYHqxtn05GfAiojcWZGwtgK7OeriyHVROvXWqpIz2dr68Y2
+o0KnCheJv5tITcNecOykYOLvDktgVVnocGZUtFraPtJgu235iu1403ruy3zZkjeN
+br4W9MrNK50slOONQu6ghPnmrbN1FO6dbCaZPXml8/3bPW5jAlTYtGEnFPUbynvj
+0POw8HKfOkRabufjyXxcheeKHDKLZaCx4IzmA7QH6yamlmQiY4KwedwV0eVTsj0t
+o2NR6W8bW6ZN4v4xdbLv7K53A+wzAZtTmrzYAeUYTuCsP03daRygOR2fIUK2X3EZ
+nz0kYGplAgMBAAECggEAAUn0r6lSQIu7T015shtFUsCy6TKx0wgiU/lrGXeomxjC
+BYMwxpTeIIRxyZZEkxLSrpbnkZGu4yoUWPUIuB500/s4skMqoPkFfzExtS9vNpax
+XkMkhwB5ntq37u0em3devDXBafkkLOYlskqjhWCbqn9EV3isYhiRL5xTdLUYc0Ib
+KY5N79+fNTOOoPI+8h3S21rYDu+uZtUgbnfOMTynoXRmkkcOzqBQmzUcUY5457/M
+er0zfguN8xdQFmNT8sZW2xZt7Trwrx8IzkOUU2YBTVNn84r3T57syFLY/S1PZ9Ex
+l4496n1L/lJBttsgnnrJ3aUUkacvBwxP+iM8MxkDIQKBgQDGplh8Jc9rO76+DZ/E
+p6KbkrZWJJchDBKvEYWX1e5+l3tw8zj6N3zqqAjiy6fkeQMUa8+SfaIBym8heup1
+bXs/2/33lsNwCSBeC050Tu9Mis+tiDRQQjLixhF0r+qvfwuHxbQrijS7EDhl/pNW
+3pTzQ0lB6cTmopeXOMYZbHOs4QKBgQC9EaifXfMwZaTRTywbLPhbfJftGCwWTmYz
+72yGMDlCIGiqatJKviQ54RP2G5Zyp+or/i1VARf//KxLjmszBiXlfRjX3USFDHIc
+zlisU2umlgMfXgHkQL8+UrSDsBEV9oBmJV+h/HMFhM786DZCF2+hjlDOJ4UvnyJv
+THedLcVKBQKBgQCbqBLjzNjX5OvUjmZnuReAohiALZHCkmw9hBRTYo3L4jUWz28R
+GdOnJ942oHBBZdVU9hmjZxBAKPilmmQHea8+3coGbLtdmbkkF+X02zlFl+udxYGA
+di7bZWqeLY5Oz9UgIXnJODWTcuVOfonDYwwCBfJsVJo2QqdYFmOb3lBR4QKBgEpv
+y12DFZ22Rt+JNio02ErckMvtul3F3AMSfj2OetyH+e0uRUDb/1MyRDOexOq7JTzQ
+w3Q2DAbiqcrNdXMPNphVWhSSrslbDwo8Szj9VuKtKOmOj1wYCbM1yJAYH4HwHLka
+eb5Cr946XWvA2KvIolCOwU2IzazkECCVkHo3bPcpAoGAOiLVslkYhY6EMWRIKtVc
+9sBCrl1KbvJT/IJ+eOfnDbge+SbCxtkWNv1J4V8CxRhNNZsepzbc/EdrBw39dBcN
+XLdiT9Eyedd1IKP2tBCnarjtOgn1XwK1mgcJ+AuOQBPBeOBDY/vkpWn8bXUIM1hu
+u4XwLJNhU1uEx86MaiWc02A=
+-----END PRIVATE KEY-----"""
+
+
+def _neowit_adapter(handler: Any) -> Any:
+    from nce.vertical_modules.assets.neowit import NeowitTelemetryAdapter
+
+    return NeowitTelemetryAdapter(
+        endpoint_url="https://api.neowit.io",
+        account_id="acct-1",
+        key_id="key-1",
+        private_key=_TEST_RSA_PRIVATE_KEY,
+        transport=httpx.MockTransport(handler),
+    )
+
+
+class TestNeowitAdapter:
+    @pytest.mark.asyncio
+    async def test_neowit_adapter_unconfigured_raises(self) -> None:
+        from nce.vertical_modules.assets.neowit import NeowitTelemetryAdapter
+
+        adapter = NeowitTelemetryAdapter(
+            endpoint_url=None, account_id=None, key_id=None, private_key=None, timeout=10.0
+        )
+        assert adapter.platform == "neowit"
+        assert adapter._timeout <= 4.9
+
+        with pytest.raises(NotImplementedError, match="neowit") as excinfo:
+            await adapter.fetch_samples(uuid.uuid4(), serial="EXT-SN-1")
+        assert "NCE_ASSETS_NEOWIT_ENDPOINT_URL" in str(excinfo.value)
+        assert "NCE_ASSETS_NEOWIT_ACCOUNT_ID" in str(excinfo.value)
+        assert "NCE_ASSETS_NEOWIT_KEY_ID" in str(excinfo.value)
+        assert "NCE_ASSETS_NEOWIT_PRIVATE_KEY" in str(excinfo.value)
+
+    @pytest.mark.asyncio
+    async def test_neowit_adapter_without_a_serial_is_skipped_before_any_http_call(self) -> None:
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("no HTTP call should be made when serial is missing")
+
+        adapter = _neowit_adapter(handler)
+        assert await adapter.fetch_samples(uuid.uuid4(), serial=None) == []
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="  ") == []
+
+    @pytest.mark.asyncio
+    async def test_neowit_adapter_refuses_a_path_outside_its_allow_list(self) -> None:
+        """Gate item 1+2 (MLV16 charter, Lane F): a call outside the
+        explicit allow-list literal is refused before any HTTP request."""
+        from nce.vertical_modules.assets.neowit import (
+            _ALLOWED_AUTH,
+            _ALLOWED_READS,
+            NeowitAllowListRefusal,
+        )
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("a refused call must never reach the transport")
+
+        adapter = _neowit_adapter(handler)
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            with pytest.raises(NeowitAllowListRefusal, match=r"DELETE /device/v1/device"):
+                await adapter._gated_request(
+                    client, "DELETE", "/device/v1/device", allowed=_ALLOWED_READS
+                )
+            # Neowit's own service-account credential carries real write
+            # access to the customer's production environment (module
+            # docstring) — this adapter must refuse every write verb, not
+            # just the ones its own reads happen to shadow.
+            with pytest.raises(NeowitAllowListRefusal):
+                await adapter._gated_request(
+                    client, "POST", "/space/v1/space", allowed=_ALLOWED_READS | _ALLOWED_AUTH
+                )
+
+    @pytest.mark.asyncio
+    async def test_neowit_adapter_live_http(self) -> None:
+        """A recorded-fixture-shaped round trip: JWT-bearer token exchange,
+        device resolution by matching the asset's serial against Neowit's
+        ``externalId`` (the one identity bridge the host client documents
+        — see the module's honesty note on this), then a device-series
+        range query producing one sample per (sensor, row)."""
+        from nce.vertical_modules.assets.neowit import NeowitTelemetryAdapter
+
+        seen: list[tuple[str, str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            seen.append((request.method, path))
+            if path == "/auth/oauth/token":
+                assert request.headers.get("Content-Type") == "application/x-www-form-urlencoded"
+                return httpx.Response(200, json={"access_token": "neowit-tok", "expires_in": 600})
+            assert request.headers.get("Authorization") == "Bearer neowit-tok"
+            if path == "/device/v1/device":
+                return httpx.Response(
+                    200,
+                    json={
+                        "devices": [
+                            {"id": "dev-1", "externalId": "OTHER-EXT"},
+                            {"id": "dev-77", "externalId": "DISRUPTIVE-0042"},
+                        ]
+                    },
+                )
+            if path == "/series/v1/device/dev-77":
+                return httpx.Response(
+                    200,
+                    json={
+                        "sensors": ["temperature", "humidity"],
+                        "rows": [
+                            {"time": "2026-09-18T10:00:00Z", "values": [21.5, 38.0]},
+                            {"time": "2026-09-18T10:05:00Z", "values": [21.7, 37.5]},
+                        ],
+                    },
+                )
+            raise AssertionError(f"unexpected call: {request.method} {path}")
+
+        adapter = NeowitTelemetryAdapter(
+            endpoint_url="https://api.neowit.io",
+            account_id="acct-1",
+            key_id="key-1",
+            private_key=_TEST_RSA_PRIVATE_KEY,
+            transport=httpx.MockTransport(handler),
+        )
+        samples = await adapter.fetch_samples(uuid.uuid4(), serial="disruptive-0042")
+        assert len(samples) == 4  # 2 sensors x 2 rows
+        by_metric: dict[str, list[float]] = {}
+        for s in samples:
+            by_metric.setdefault(s.metric, []).append(s.value)
+        assert sorted(by_metric["temperature"]) == [21.5, 21.7]
+        assert sorted(by_metric["humidity"]) == [37.5, 38.0]
+        assert ("POST", "/auth/oauth/token") in seen
+        assert ("GET", "/device/v1/device") in seen
+        assert ("GET", "/series/v1/device/dev-77") in seen
+
+    @pytest.mark.asyncio
+    async def test_neowit_adapter_unmatched_serial_returns_empty_without_error(self) -> None:
+        from nce.vertical_modules.assets.neowit import NeowitTelemetryAdapter
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/auth/oauth/token":
+                return httpx.Response(200, json={"access_token": "tok"})
+            if request.url.path == "/device/v1/device":
+                return httpx.Response(200, json={"devices": []})
+            raise AssertionError(f"unexpected call: {request.url.path}")
+
+        adapter = NeowitTelemetryAdapter(
+            endpoint_url="https://api.neowit.io",
+            account_id="acct-1",
+            key_id="key-1",
+            private_key=_TEST_RSA_PRIVATE_KEY,
+            transport=httpx.MockTransport(handler),
+        )
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="no-such-ext-id") == []
+
+    @pytest.mark.asyncio
+    async def test_neowit_adapter_http_failure_degrades_gracefully(self) -> None:
+        from nce.vertical_modules.assets.neowit import NeowitTelemetryAdapter
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, text="Service Unavailable")
+
+        adapter = NeowitTelemetryAdapter(
+            endpoint_url="https://api.neowit.io",
+            account_id="acct-1",
+            key_id="key-1",
+            private_key=_TEST_RSA_PRIVATE_KEY,
+            transport=httpx.MockTransport(handler),
+        )
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="disruptive-0042") == []
