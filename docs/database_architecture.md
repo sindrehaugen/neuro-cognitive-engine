@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** f86e859 (main) · **Last-audited:** 2026-09-17
+> **Status:** shipped · **Verified-against:** becc2ff (main) · **Last-audited:** 2026-09-18
 
 # NCE Database Architecture
 
@@ -313,18 +313,20 @@ The table participates in the global tenant database boundary:
 
 ## 9. PostgreSQL Schema Source & Lifecycle Management
 
-> **Authoritative DDL Source:** The canonical DDL is maintained in [`nce/schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) and the sequential migration chain in [`nce/migrations/`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/) (`001_enable_rls.sql` through `080_worm_truncate_guard.sql`).
+> **Authoritative DDL Source:** The canonical DDL is maintained in [`nce/schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) and the sequential migration chain in [`nce/migrations/`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/) (`001_enable_rls.sql` through `082_schema_sql_only_rls_baseline.sql`).
 >
 > ⚠ **Important Provisioning Notice:** Do not copy or execute static embedded SQL snippets from documentation to provision database tables. Doing so bypasses the migration lifecycle and risks provisioning tenant tables without mandatory Row-Level Security (RLS) policies and security triggers. Always allow the engine to initialize its schema automatically via `NCEEngine._init_pg_schema()` or execute the versioned migrations in order.
 
-### 9a. Schema Boot Initialization
-At engine startup, `NCEEngine.connect()` ([`nce/orchestrator.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/orchestrator.py)) invokes `_init_pg_schema()`, executing [`nce/schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) inside an asyncpg connection. All DDL statements are strictly idempotent (`IF NOT EXISTS` / `CREATE OR REPLACE`), ensuring safe execution on existing and freshly provisioned databases alike.
+### 9a. Schema Boot Initialization & Split Execution
+At engine startup, `NCEEngine.connect()` ([`nce/orchestrator.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/orchestrator.py)) invokes `_init_pg_schema()`. To prevent unledgered structural mutations and eliminate repeated backfill side effects on established databases (Q-4 step 2), schema execution is partitioned into two deterministic halves generated from canonical [`nce/schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) via `scripts/split_schema.py`:
+* **`nce/schema_bootstrap.sql` (Bootstrap Execution):** Executes only when the migration ledger (`applied_migrations`) is uninitialized. Provisions baseline tables, columns, indexes, constraints, and baseline backfills on virgin databases.
+* **`nce/schema_runtime.sql` (Runtime Execution):** Executes on every connection. Applies idempotent functions, triggers, and Row-Level Security policies (including the tenant isolation loop) ensuring active security invariants remain self-healing across boots.
 
 > [!WARNING]
 > **Test Environment Setup (`schema.sql` is not enough)**
 > `nce/schema.sql` alone is not a usable database. A schema-only initialization will yield a false green on test runs by skipping hundreds of tests (e.g. missing `public.event_log.chain_hash`, missing `v3_cognitive_ledger`). All files in `nce/migrations/*.sql` **must be applied on top**, in filename order, to reach a full green test run.
 
-### 9b. Complete Versioned Migrations Catalog (001 through 080)
+### 9b. Complete Versioned Migrations Catalog (001 through 082)
 
 Schema evolution is governed by chronological migration scripts located in [`nce/migrations/`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/):
 
