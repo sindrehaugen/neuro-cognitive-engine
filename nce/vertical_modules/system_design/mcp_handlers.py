@@ -56,6 +56,7 @@ from nce.db_utils import scoped_pg_session
 from nce.event_log import append_event
 from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import McpError, mcp_handler
+from nce.vertical_modules.system_design.capability_sync import do_sync_device_capabilities
 from nce.vertical_modules.system_design.devices import do_author_device_topology
 from nce.vertical_modules.system_design.enrichment import do_enrich_design_lines
 from nce.vertical_modules.system_design.from_quote import do_design_from_quote
@@ -75,8 +76,10 @@ from nce.vertical_modules.system_design.retire import (
     RetireDeniedError,
     do_retire_planned,
 )
+from nce.vertical_modules.system_design.signal_distribution import do_get_signal_rules
 from nce.vertical_modules.system_design.signal_flow import do_inspect_signal_flow
 from nce.vertical_modules.system_design.sow import do_generate_sow
+from nce.vertical_modules.system_design.standards import do_get_standards
 from nce.vertical_modules.system_design.to_quote import do_design_to_quote
 from nce.vertical_modules.system_design.validate import do_validate_design
 from nce.vertical_modules.system_design.validation_queries import (
@@ -1194,4 +1197,32 @@ async def handle_system_design_propose_design(engine: NCEEngine, arguments: dict
     if not arguments.get("room_brief"):
         raise ValueError("room_brief is required")
     result = await do_propose_design(engine, arguments)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_system_design_get_standards(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: system_design_get_standards -- query curated AV cabling/mounting standards."""
+    result = do_get_standards(engine, arguments or {})
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_system_design_get_signal_rules(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_get_signal_rules -- query signal distribution rules or evaluate room inputs."""
+    result = do_get_signal_rules(engine, arguments or {})
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_system_design_sync_device_capabilities(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_sync_device_capabilities -- sync product ETIM features into device capabilities."""
+    require_namespace_id(arguments)
+    if not arguments.get("device_label"):
+        raise ValueError("device_label is required")
+    result = await do_sync_device_capabilities(engine, arguments)
     return json.dumps(result, default=str)

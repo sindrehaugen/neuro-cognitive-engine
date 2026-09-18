@@ -53,13 +53,9 @@ _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
 # --- MEASURED on branch mlv15b/close-the-loop --------------------------------
 # python -c "import nce.tool_registry as tr; print(len(tr.TOOL_REGISTRY))"
-_TOTAL_TOOLS = (
-    280  # 277 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3)
-)
-_MUTATION_TOOLS = (
-    122  # 119 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3)
-)
-_CACHEABLE_TOOLS = 113  # 112 baseline + 1 Assets QR generator (Wave A-4)
+_TOTAL_TOOLS = 283  # 280 baseline + 3 System Design standards/signals/capability sync (Wave C-5)
+_MUTATION_TOOLS = 123  # 122 baseline + 1 System Design sync_device_capabilities (Wave C-5)
+_CACHEABLE_TOOLS = 115  # 113 baseline + 2 System Design get_standards/get_signal_rules (Wave C-5)
 _ADMIN_ONLY_TOOLS = (
     93  # 90 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3)
 )

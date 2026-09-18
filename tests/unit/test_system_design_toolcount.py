@@ -138,11 +138,26 @@ _EXPECTED_TOOLS: dict[str, dict[str, bool]] = {
         "mutation": True,
     },
     # M6.W27 (Batch 230a2) -- propose-only, so mutation=False. Exposed separately
-    # because this core already has two internal callers.
     "system_design_propose_design": {
         "cacheable": False,
         "admin_only": False,
         "mutation": False,
+    },
+    # Wave C-5 — standards, signal-distribution rules, and capability sync
+    "system_design_get_standards": {
+        "cacheable": True,
+        "admin_only": False,
+        "mutation": False,
+    },
+    "system_design_get_signal_rules": {
+        "cacheable": True,
+        "admin_only": False,
+        "mutation": False,
+    },
+    "system_design_sync_device_capabilities": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": True,
     },
 }
 

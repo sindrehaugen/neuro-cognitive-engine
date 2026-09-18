@@ -721,6 +721,25 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=True,
         mutation=True,
     ),
+    # System Design vertical module tools (Wave C-5) — standards, signal-rules, and capability sync
+    "system_design_get_standards": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_get_standards"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "system_design_get_signal_rules": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_get_signal_rules"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "system_design_sync_device_capabilities": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_sync_device_capabilities"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
     # ------------------------------------------------------------------
     # Project vertical module tools (M7.W3) — phase-gate readiness check
     # ------------------------------------------------------------------

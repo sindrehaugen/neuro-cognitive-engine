@@ -4,11 +4,15 @@ nce/vertical_modules/system_design/__init__.py
 System Design Engine vertical module (Module 3).
 
 Exports public core functions for topology authoring, design proposals,
-geometry, Lucidchart publishing, SOW generation, and quote-design bidirectional sync.
+geometry, Lucidchart publishing, SOW generation, quote-design bidirectional sync,
+standards reference data, signal distribution rules, and device capability sync.
 """
 
 from __future__ import annotations
 
+from nce.vertical_modules.system_design.capability_sync import (
+    do_sync_device_capabilities,
+)
 from nce.vertical_modules.system_design.devices import (
     do_author_device_topology,
 )
@@ -40,8 +44,17 @@ from nce.vertical_modules.system_design.read import (
 from nce.vertical_modules.system_design.retire import (
     do_retire_planned,
 )
+from nce.vertical_modules.system_design.signal_distribution import (
+    do_get_signal_rules,
+)
+from nce.vertical_modules.system_design.signal_flow import (
+    do_inspect_signal_flow,
+)
 from nce.vertical_modules.system_design.sow import (
     do_generate_sow,
+)
+from nce.vertical_modules.system_design.standards import (
+    do_get_standards,
 )
 from nce.vertical_modules.system_design.to_quote import (
     do_design_to_quote,
@@ -60,10 +73,13 @@ __all__ = [
     "do_enrich_design_lines",
     "do_generate_sow",
     "do_get_procurement_view",
+    "do_get_signal_rules",
+    "do_get_standards",
     "do_get_topology",
     "do_inspect_signal_flow",
     "do_propose_design",
     "do_publish_design_docs",
     "do_retire_planned",
+    "do_sync_device_capabilities",
     "do_validate_design",
 ]

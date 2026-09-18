@@ -192,8 +192,8 @@ def test_tool_count_updated_for_assets_surface() -> None:
     assert "assets_sync_netbox" in TOOL_REGISTRY
     assert "assets_generate_qr" in TOOL_REGISTRY
     assert "assets_record_failure_pattern" in TOOL_REGISTRY
-    assert len(TOOL_REGISTRY) == 280, (
-        f"Expected 280 tools (repo-wide ratchet), "
+    assert len(TOOL_REGISTRY) == 283, (
+        f"Expected 283 tools (repo-wide ratchet), "
         f"from Batch 067b, M6.W13a + 2 system_design authoring tools from "
         f"Batch 067c, M6.W13b + 1 system_design validator from Batch 067d, M6.W13c "
         f"+ 1 system_design retire tool from Batch 067h, M6.W17 "
@@ -201,7 +201,7 @@ def test_tool_count_updated_for_assets_surface() -> None:
         f"surface-completion wave; this Assets test carries a repo-wide registry "
         f"ratchet, so it moves whenever ANY module registers a tool + 8 hr tools from Module 13 (HR engine) "
         f"+ 2 assets tools from Wave A-3 + 1 assets tool from Wave A-4 + 1 assets failure pattern tool from Wave A-5 "
-        f"+ 2 inventory tools from Wave IN-2 + 1 inventory restock PO from Wave IN-3), "
+        f"+ 2 inventory tools from Wave IN-2 + 1 inventory restock PO from Wave IN-3 + 3 system_design from Wave C-5), "
         f"got {len(TOOL_REGISTRY)}: {sorted(TOOL_REGISTRY)}"
     )
 

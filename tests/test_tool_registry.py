@@ -26,9 +26,7 @@ from nce.tool_registry import (
 # Cardinality
 # ---------------------------------------------------------------------------
 
-_EXPECTED_TOTAL = (
-    280  # 277 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3)
-)
+_EXPECTED_TOTAL = 283  # 280 baseline + 3 System Design standards/signals/capability sync (Wave C-5)
 
 
 def test_registry_has_expected_entries():
@@ -174,6 +172,8 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "system_design_from_quote",
         "system_design_to_quote",
         "system_design_enrich_design_lines",
+        # Wave C-5 (System Design capability sync from product ETIM specs)
+        "system_design_sync_device_capabilities",
         # M5.W15 (Batch 132d) -- manual-pick BOM_LINE origination
         "sales_add_quote_line",
         # ML10-B5 (M10.W5) -- Support Engine mutations (Actor, admin_only)
@@ -278,9 +278,7 @@ def test_mutation_tools_exact_match():
 
 
 def test_mutation_tools_count():
-    assert (
-        len(MUTATION_TOOLS) == 122
-    )  # 119 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3)
+    assert len(MUTATION_TOOLS) == 123  # 122 baseline + 1 System Design capability sync (Wave C-5)
     # system_design_author_functional_location) from Batch 067c, M6.W13b
     # + 1 system_design retire tool (system_design_delete_planned) from
     # Batch 067h, M6.W17
@@ -338,6 +336,9 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "system_design_ping",
         # System Design vertical module (M6.W13a) — topology read, cacheable
         "system_design_get_topology",
+        # Wave C-5 (System Design standards & signals)
+        "system_design_get_standards",
+        "system_design_get_signal_rules",
         # Sales vertical module (Batch 080) — skeleton ping, cacheable
         "sales_ping",
         # Project vertical module (M7.W3) — phase-gate readiness check, cacheable
@@ -473,7 +474,9 @@ def test_cacheable_tools_exact_match():
 
 
 def test_cacheable_tools_count():
-    assert len(CACHEABLE_TOOLS) == 113  # 112 baseline + 1 Assets QR generator (Wave A-4)
+    assert (
+        len(CACHEABLE_TOOLS) == 115
+    )  # 113 baseline + 2 System Design standards & signals (Wave C-5)
 
 
 # ---------------------------------------------------------------------------

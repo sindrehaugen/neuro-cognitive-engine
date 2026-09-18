@@ -882,6 +882,22 @@ def build_admin_routes() -> list[Route]:
             endpoint=system_design_handlers.api_system_design_enrich_design_lines,
             methods=["POST"],
         ),
+        # System Design vertical module endpoints (Wave C-5) — standards, signal-rules, and capability sync
+        Route(
+            "/api/system-design/standards",
+            endpoint=system_design_handlers.api_system_design_get_standards,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/system-design/signal-rules",
+            endpoint=system_design_handlers.api_system_design_get_signal_rules,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/system-design/capabilities/sync",
+            endpoint=system_design_handlers.api_system_design_sync_device_capabilities,
+            methods=["POST"],
+        ),
         # ------------------------------------------------------------------
         # Vendors vertical module endpoints (M4.W3)
         # ------------------------------------------------------------------
