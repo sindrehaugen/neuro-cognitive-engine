@@ -363,12 +363,31 @@ def extract_v16_resource_surface_stats(repo: str, baseline: str) -> dict[str, An
     }
 
 
+def extract_rls_table_stats(repo: str, baseline: str) -> dict[str, Any]:
+    """Count nce.event_log.EXPECTED_TENANT_RLS_TABLES via AST (never a line
+    grep -- K-0). This count site has drifted before without every doc
+    catching it (89 -> 92 when C13's notifications/reminders/subscriptions
+    tables landed alongside A-1): re-pinning it here, in the one place that
+    regenerates on every janitor pass, is the fix."""
+    code = git_show(repo, baseline, "nce/event_log.py")
+    tree = ast.parse(code, filename="nce/event_log.py")
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.AnnAssign)
+            and getattr(node.target, "id", "") == "EXPECTED_TENANT_RLS_TABLES"
+        ):
+            if isinstance(node.value, ast.Dict):
+                return {"count": len(node.value.keys)}
+    raise ValueError("Could not find EXPECTED_TENANT_RLS_TABLES in nce/event_log.py")
+
+
 def generate_markdown(
     baseline_sha: str,
     tool_stats: dict[str, Any],
     mig_stats: dict[str, Any],
     gt_stats: dict[str, Any],
     v16_stats: dict[str, Any],
+    rls_stats: dict[str, Any],
 ) -> str:
     """Generate docs/_generated/engine_figures.md content."""
     lines: list[str] = [
@@ -392,6 +411,7 @@ def generate_markdown(
         f"| SQL migrations | {mig_stats['base_count']} files (+{mig_stats['optional_count']} optional), `{mig_stats['min_prefix']}` → `{mig_stats['max_prefix']}` — gaps at {mig_stats['gaps_str']} | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |",
         f"| Golden Thread seam burndown | **{gt_stats['broken']} of {gt_stats['total_steps']}** lifecycle steps broken ({gt_stats['distinct_seams']} distinct seams) | Generated in [`docs/_generated/golden_thread_seams.md`](golden_thread_seams.md) from [`tests/integration/test_golden_thread.py`](../../tests/integration/test_golden_thread.py) |",
         f"| v1.6 C12 resource-surface registrations | **{v16_stats['registered']} of {v16_stats['num_engines']}** engines have `resources.py` | AST of `nce/vertical_modules/<engine>/resources.py` per engine — see the v1.6 section below |",
+        f"| `EXPECTED_TENANT_RLS_TABLES` | **{rls_stats['count']}** | AST of [`nce/event_log.py`](../../nce/event_log.py) |",
         "",
         "## v1.6 — C12 Resource Surface Registration (Lane E)",
         "",
@@ -456,6 +476,7 @@ def update_engine_status(
     mig_stats: dict[str, Any],
     gt_stats: dict[str, Any],
     v16_stats: dict[str, Any],
+    rls_stats: dict[str, Any],
 ) -> str:
     """Return updated text for docs/vertical_engines/ENGINE_STATUS.md."""
     text = status_text
@@ -534,6 +555,14 @@ def update_engine_status(
             count=1,
         )
 
+    rls_row = f"| `EXPECTED_TENANT_RLS_TABLES` | **{rls_stats['count']}** |"
+    text = re.sub(
+        r"\|\s*`EXPECTED_TENANT_RLS_TABLES`\s*\|[^\n]*",
+        rls_row,
+        text,
+        count=1,
+    )
+
     return text
 
 
@@ -588,6 +617,7 @@ def main() -> int:
     mig_stats = extract_migration_stats(repo, baseline)
     gt_stats = extract_golden_thread_stats(repo, baseline)
     v16_stats = extract_v16_resource_surface_stats(repo, baseline)
+    rls_stats = extract_rls_table_stats(repo, baseline)
 
     if (
         tool_stats["expected_total"] is not None
@@ -606,6 +636,7 @@ def main() -> int:
         mig_stats=mig_stats,
         gt_stats=gt_stats,
         v16_stats=v16_stats,
+        rls_stats=rls_stats,
     )
 
     out_path = pathlib.Path(repo) / args.out
@@ -644,6 +675,7 @@ def main() -> int:
                 mig_stats=mig_stats,
                 gt_stats=gt_stats,
                 v16_stats=v16_stats,
+                rls_stats=rls_stats,
             ).replace("\r\n", "\n")
             if normalize_volatile(current_status) != normalize_volatile(expected_status):
                 print(
@@ -671,6 +703,7 @@ def main() -> int:
             mig_stats=mig_stats,
             gt_stats=gt_stats,
             v16_stats=v16_stats,
+            rls_stats=rls_stats,
         )
         write_crlf(status_path, new_status)
         print(f"Updated {status_path} with verified-against `{baseline_sha}`")
