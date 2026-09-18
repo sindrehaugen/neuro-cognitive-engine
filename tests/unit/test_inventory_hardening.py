@@ -51,14 +51,14 @@ _NAMESPACE_ID = "00000000-0000-4000-8000-000000000001"
 _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
-# --- MEASURED post-rebase onto HEAD (Wave F-9 sites address enrichment) + Lane D Wave D-5 Support Ticket Action tools:
-# TOTAL: 385 from HEAD + 4 C12 Ticket Action tools + 2 Support Action/Timeline tools = 391.
-# MUTATION: 173 from HEAD + 2 C12 Ticket Action mutations + 1 support_log_ticket_action = 176.
-# CACHEABLE: 167 from HEAD + 2 C12 Ticket Action reads + 1 support_ticket_timeline = 170.
-# ADMIN_ONLY: 98 from HEAD + 1 support_log_ticket_action = 99.
-_TOTAL_TOOLS = 391
-_MUTATION_TOOLS = 176
-_CACHEABLE_TOOLS = 170
+# --- MEASURED post-rebase onto HEAD (Wave D-5 support ticket actions) + Lane D Wave D-1 Asset Resource tools:
+# TOTAL: 391 from HEAD + 4 C12 Asset Resource tools = 395.
+# MUTATION: 176 from HEAD + 2 C12 Asset mutations = 178.
+# CACHEABLE: 170 from HEAD + 2 C12 Asset cacheable reads = 172.
+# ADMIN_ONLY: 99 (unaffected).
+_TOTAL_TOOLS = 395
+_MUTATION_TOOLS = 178
+_CACHEABLE_TOOLS = 172
 _ADMIN_ONLY_TOOLS = 99
 _MIGRATION_TOOLS = 5
 

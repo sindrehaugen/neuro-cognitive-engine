@@ -53,7 +53,11 @@ from nce.vertical_modules.assets.mcp_handlers import (
     do_check_warranty_eol,
     do_compute_health,
     do_get_asset,
+    do_get_asset_merge_queue,
+    do_link_asset_product,
     do_list_assets,
+    do_merge_asset,
+    do_move_asset,
     do_pull_telemetry,
     do_seed_asset_from_bom,
     do_sync_netbox,
@@ -745,4 +749,192 @@ async def api_assets_record_failure_pattern(request: Any) -> JSONResponse:
         return JSONResponse(result, status_code=404)
 
     await bump_mcp_cache_generation(admin_state.engine, route="api_assets_record_failure_pattern")
+    return JSONResponse(result)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/assets/{id}/move
+# ---------------------------------------------------------------------------
+
+
+async def api_assets_move(request: Any) -> JSONResponse:
+    """POST /api/assets/{id}/move
+
+    Move an asset to a new functional location (room).
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    asset_id = request.path_params.get("id", "").strip()
+    if not asset_id:
+        return JSONResponse({"error": "Missing path parameter: id"}, status_code=422)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+
+    fl_id = str(body.get("functional_location_id") or "").strip()
+    if not fl_id:
+        return JSONResponse(
+            {"error": "Missing required field: functional_location_id"}, status_code=422
+        )
+
+    params = {
+        "namespace_id": namespace_id,
+        "asset_id": asset_id,
+        "functional_location_id": fl_id,
+    }
+
+    try:
+        result = await do_move_asset(admin_state.engine, params)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Assets move error",
+            exc,
+            status_code=500,
+            log_event="api_assets_move",
+        )
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_assets_move")
+    if result.get("not_found"):
+        return JSONResponse(result, status_code=404)
+    return JSONResponse(result)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/assets/merge
+# ---------------------------------------------------------------------------
+
+
+async def api_assets_merge_queue(request: Any) -> JSONResponse:
+    """GET /api/assets/merge
+
+    List pending merge queue items for ASSET nodes (C1 queue view).
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
+    if err is not None:
+        return err
+
+    try:
+        result = await do_get_asset_merge_queue(admin_state.engine, {"namespace_id": namespace_id})
+        return JSONResponse(result)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Assets merge queue error",
+            exc,
+            status_code=500,
+            log_event="api_assets_merge_queue",
+        )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/assets/{id}/merge
+# ---------------------------------------------------------------------------
+
+
+async def api_assets_merge(request: Any) -> JSONResponse:
+    """POST /api/assets/{id}/merge
+
+    Merge asset into target or confirm merge queue item.
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    asset_id = request.path_params.get("id", "").strip()
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+
+    params = {
+        "namespace_id": namespace_id,
+        "asset_id": asset_id or body.get("asset_id"),
+        "target_asset_id": body.get("target_asset_id"),
+        "queue_id": body.get("queue_id"),
+        "decided_by": body.get("decided_by") or "operator",
+    }
+
+    try:
+        result = await do_merge_asset(admin_state.engine, params)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except LookupError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except Exception as exc:
+        return admin_error_response(
+            "Assets merge error",
+            exc,
+            status_code=500,
+            log_event="api_assets_merge",
+        )
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_assets_merge")
+    return JSONResponse(result)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/assets/{id}/link-product
+# ---------------------------------------------------------------------------
+
+
+async def api_assets_link_product(request: Any) -> JSONResponse:
+    """POST /api/assets/{id}/link-product
+
+    Link asset to product catalog item (C1 confirm).
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    asset_id = request.path_params.get("id", "").strip()
+    if not asset_id:
+        return JSONResponse({"error": "Missing path parameter: id"}, status_code=422)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+
+    params = {
+        "namespace_id": namespace_id,
+        "asset_id": asset_id,
+        "product_id": body.get("product_id"),
+        "product_sku": body.get("product_sku"),
+    }
+
+    try:
+        result = await do_link_asset_product(admin_state.engine, params)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Assets link product error",
+            exc,
+            status_code=500,
+            log_event="api_assets_link_product",
+        )
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_assets_link_product")
+    if result.get("not_found"):
+        return JSONResponse(result, status_code=404)
     return JSONResponse(result)

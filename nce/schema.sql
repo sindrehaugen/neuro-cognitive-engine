@@ -2950,6 +2950,9 @@ CREATE TABLE IF NOT EXISTS assets (
     -- No enumerated CHECK -- see the file header.
     lifecycle_state        TEXT        NOT NULL,
     change_origin          TEXT        NOT NULL DEFAULT 'agent',
+    is_shell               BOOLEAN     NOT NULL DEFAULT FALSE,
+    product_id             UUID        REFERENCES product_catalog(id) ON DELETE SET NULL,
+    product_sku            TEXT,
     created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (id),
@@ -2982,6 +2985,10 @@ CREATE TABLE IF NOT EXISTS assets (
 -- the wave that does owns its own index.
 CREATE INDEX IF NOT EXISTS idx_assets_namespace_functional_location
     ON assets (namespace_id, functional_location_id);
+CREATE INDEX IF NOT EXISTS idx_assets_namespace_is_shell
+    ON assets (namespace_id, is_shell);
+CREATE INDEX IF NOT EXISTS idx_assets_namespace_product_id
+    ON assets (namespace_id, product_id);
 
 ALTER TABLE assets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE assets FORCE ROW LEVEL SECURITY;
