@@ -1,4 +1,4 @@
-"""nce.vertical_modules.field_tech.resources — Resource definitions for Field Tech.
+r"""nce.vertical_modules.field_tech.resources — Resource definitions for Field Tech.
 
 Lane E Wave E-10:
 Registers C12 ResourceSpecs for Field Tech's owned node types in
