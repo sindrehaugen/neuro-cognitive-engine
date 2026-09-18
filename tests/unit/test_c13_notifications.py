@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -211,6 +211,7 @@ async def test_create_reminder_helper():
 async def test_create_and_fire_pending_reminders():
     """Verify that elapsed reminders transition to 'fired' and publish REMINDER.fired."""
     conn = AsyncMock()
+    conn.transaction = MagicMock()
     now = datetime.now(timezone.utc)
     past_due = now - timedelta(minutes=10)
     rem_id = uuid4()
