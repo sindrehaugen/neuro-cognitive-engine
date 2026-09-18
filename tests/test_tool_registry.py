@@ -14,6 +14,7 @@ import inspect
 
 import pytest
 
+from nce.resource_surface import build_all_resource_tool_specs
 from nce.tool_registry import (
     ADMIN_ONLY_TOOLS,
     CACHEABLE_TOOLS,
@@ -25,14 +26,50 @@ from nce.tool_registry import (
 # ---------------------------------------------------------------------------
 # Cardinality
 # ---------------------------------------------------------------------------
+#
+# Since Wave A-1b, every C12 ResourceSpec registration mounts 4 tools (list,
+# get, upsert, archive) into TOOL_REGISTRY with no edit to any tool file --
+# TOOL_REGISTRY.update(build_all_resource_tool_specs()) in
+# nce/tool_registry.py. A raw pin on len(TOOL_REGISTRY) (or on MUTATION_TOOLS
+# / CACHEABLE_TOOLS, which each gain 2 of those 4 per spec) therefore breaks
+# on every future Lane A/E resource-surface registration -- it moved
+# 135->137->139->141 in one day before this fix (janitor pass 7, K-H4).
+#
+# Fix: split each pin into a hand-written baseline (changes only when a lane
+# adds/removes a hand-written tool -- same maintenance as before) plus the
+# live C12 contribution (derived from the real registry, via the same
+# production function TOOL_REGISTRY itself is built from, not a
+# reimplementation of its naming rules).
 
-_EXPECTED_TOTAL = 331  # 327 + 4 C15 Legal-Entity Register tools (Lane A Wave A-5)
+_C12_TOOL_SPECS = build_all_resource_tool_specs()
+_C12_TOOL_NAMES = frozenset(_C12_TOOL_SPECS)
+_C12_MUTATION_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.mutation)
+_C12_CACHEABLE_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.cacheable)
+
+_EXPECTED_STATIC_TOTAL = 283  # hand-written tools only; see _C12_TOOL_NAMES above
+
+# Re-exported for tests/unit/test_{assets,economy,inventory}_surface.py and
+# test_sales_skeleton.py, which each do `from tests.test_tool_registry import
+# _EXPECTED_TOTAL` as their own repo-wide cross-check against len(TOOL_REGISTRY).
+# Kept as the FULL live total (static + C12), not the static baseline alone,
+# so those four imports keep meaning exactly what their own assertions say
+# ("Expected N tools (repo-wide ratchet)") without needing four more edits
+# every time a C12 spec is registered -- the real regression protection is
+# _EXPECTED_STATIC_TOTAL above; this name exists only for backward compatibility.
+_EXPECTED_TOTAL = _EXPECTED_STATIC_TOTAL + len(_C12_TOOL_NAMES)
 
 
 def test_registry_has_expected_entries():
-    assert len(TOOL_REGISTRY) == _EXPECTED_TOTAL, (
-        f"Expected {_EXPECTED_TOTAL} tools, got {len(TOOL_REGISTRY)}. "
-        f"Tools: {sorted(TOOL_REGISTRY)}"
+    hand_written = TOOL_REGISTRY.keys() - _C12_TOOL_NAMES
+    assert len(TOOL_REGISTRY) >= _EXPECTED_STATIC_TOTAL, (
+        f"Sanity floor: expected at least {_EXPECTED_STATIC_TOTAL} tools, got {len(TOOL_REGISTRY)}."
+    )
+    assert len(hand_written) == _EXPECTED_STATIC_TOTAL, (
+        f"Hand-written (non-C12) tool count changed: expected "
+        f"{_EXPECTED_STATIC_TOTAL}, got {len(hand_written)}. If you "
+        f"added/removed a hand-written tool, update this pin by import. If "
+        f"you only registered a new C12 ResourceSpec, this number should "
+        f"not move -- investigate. Tools: {sorted(hand_written)}"
     )
 
 
@@ -302,25 +339,48 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
 
 
 def test_mutation_tools_exact_match():
-    assert MUTATION_TOOLS == _EXPECTED_MUTATION_TOOLS, (
-        f"Extra: {MUTATION_TOOLS - _EXPECTED_MUTATION_TOOLS}  "
-        f"Missing: {_EXPECTED_MUTATION_TOOLS - MUTATION_TOOLS}"
+    """_EXPECTED_MUTATION_TOOLS is the hand-written frozenset (its own history
+    of C12 additions predates this fix and is harmless to leave in -- union
+    is idempotent). The live C12 contribution is unioned in fresh each run,
+    so a newly registered ResourceSpec's tools appear on both sides
+    automatically and never require editing this frozenset again."""
+    expected = _EXPECTED_MUTATION_TOOLS | _C12_MUTATION_TOOLS
+    assert MUTATION_TOOLS == expected, (
+        f"Extra: {MUTATION_TOOLS - expected}  Missing: {expected - MUTATION_TOOLS}"
     )
 
 
 def test_mutation_tools_count():
-    assert (
-        len(MUTATION_TOOLS) == 147
-    )  # 131 baseline + 4 C12 Notifications & Reminders mutations (Wave A-3) + 2 C12 Procurement mutations (Lane E Wave E-3) + 2 C14 Document mutations (Lane A Wave A-4) + 4 C12 Resources mutations (Lane E Wave E-6) + 2 C12 Product mutations (Lane E Wave E-2) + 2 C15 Legal Entity mutations (Lane A Wave A-5)
-    # system_design_author_functional_location) from Batch 067c, M6.W13b
-    # + 1 system_design retire tool (system_design_delete_planned) from
-    # Batch 067h, M6.W17
-    # + 7 Inventory Actor tools from Batch 138a, M11.W10a (surface completion):
-    # inventory_record_goods_receipt, inventory_record_goods_receipt_and_match,
-    # inventory_reserve_stock, inventory_release_stock, inventory_record_rma,
-    # inventory_restock_from_rma, inventory_dispose_rma_weee. The same batch's
-    # inventory_valuation and inventory_reconcile_dead_stock are read-only and
-    # do NOT count here, which is why this moves by 7 and not by 11.
+    """Converted to a derived assertion (janitor pass 7, K-H4) -- see the
+    module-level comment above _EXPECTED_STATIC_TOTAL. Original docstring
+    history of every hand-written addition preserved below; it explains the
+    123 hand-written baseline and stops at Wave A-3, the last hand-written
+    addition before C12 registrations took over all further growth:
+
+    131 baseline (pre-C12) - 8 C12 tools already folded into that baseline by
+    earlier hand-edits (Wave A-3 Notifications & Reminders, +4) = 123 net
+    hand-written mutation tools; see inline history below for every wave
+    that landed a hand-written mutation tool.
+    ... Batch 067c system_design_author_topology/system_design_author_functional_location, M6.W13b
+    ... Batch 067h system_design_delete_planned, M6.W17
+    ... Batch 138a inventory Actor tools, M11.W10a (7 of 11 registered tools mutate)
+    ... ML12-B5 field_tech, ML13-B3 HR, ML14-B3 marketing, and every wave through
+    Wave A-4 documents (now derived, not counted here)."""
+    c12_mutation_tools = frozenset(
+        n for n, s in build_all_resource_tool_specs().items() if s.mutation
+    )
+    hand_written_mutation_tools = MUTATION_TOOLS - c12_mutation_tools
+
+    assert len(MUTATION_TOOLS) >= 123, (
+        f"Sanity floor: expected at least 123 mutation tools, got {len(MUTATION_TOOLS)}."
+    )
+    assert len(hand_written_mutation_tools) == 123, (
+        "Hand-written (non-C12) mutation tool count changed: expected 123, "
+        f"got {len(hand_written_mutation_tools)}. If you added/removed a "
+        "hand-written mutation tool, update this pin by import. If you only "
+        "registered a new C12 ResourceSpec, this number should not move -- "
+        f"investigate. Tools: {sorted(hand_written_mutation_tools)}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -531,16 +591,34 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
 
 
 def test_cacheable_tools_exact_match():
-    assert CACHEABLE_TOOLS == _EXPECTED_CACHEABLE, (
-        f"Extra: {CACHEABLE_TOOLS - _EXPECTED_CACHEABLE}  "
-        f"Missing: {_EXPECTED_CACHEABLE - CACHEABLE_TOOLS}"
+    """Same treatment as test_mutation_tools_exact_match above: the live C12
+    contribution is unioned in fresh each run, so a newly registered
+    ResourceSpec's list/get tools never require editing this frozenset."""
+    expected = _EXPECTED_CACHEABLE | _C12_CACHEABLE_TOOLS
+    assert CACHEABLE_TOOLS == expected, (
+        f"Extra: {CACHEABLE_TOOLS - expected}  Missing: {expected - CACHEABLE_TOOLS}"
     )
 
 
 def test_cacheable_tools_count():
-    assert (
-        len(CACHEABLE_TOOLS) == 139
-    )  # 123 baseline + 4 C12 Notifications & Reminders cacheable reads (Wave A-3) + 2 C12 Procurement cacheable reads (Lane E Wave E-3) + 2 C14 Document cacheable reads (Lane A Wave A-4) + 4 C12 Resources cacheable reads (Lane E Wave E-6) + 2 C12 Product cacheable reads (Lane E Wave E-2) + 2 C15 Legal Entity cacheable reads (Lane A Wave A-5)
+    """Converted to a derived assertion (janitor pass 7, K-H4) -- same
+    treatment as test_mutation_tools_count above. 115 is the hand-written
+    baseline (131 old total - 16 current live C12 cacheable tools)."""
+    c12_cacheable_tools = frozenset(
+        n for n, s in build_all_resource_tool_specs().items() if s.cacheable
+    )
+    hand_written_cacheable_tools = CACHEABLE_TOOLS - c12_cacheable_tools
+
+    assert len(CACHEABLE_TOOLS) >= 115, (
+        f"Sanity floor: expected at least 115 cacheable tools, got {len(CACHEABLE_TOOLS)}."
+    )
+    assert len(hand_written_cacheable_tools) == 115, (
+        "Hand-written (non-C12) cacheable tool count changed: expected 115, "
+        f"got {len(hand_written_cacheable_tools)}. If you added/removed a "
+        "hand-written cacheable tool, update this pin by import. If you "
+        "only registered a new C12 ResourceSpec, this number should not "
+        f"move -- investigate. Tools: {sorted(hand_written_cacheable_tools)}"
+    )
 
 
 # ---------------------------------------------------------------------------

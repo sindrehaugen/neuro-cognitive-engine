@@ -176,6 +176,8 @@ def extract_tool_registry_stats(repo: str, baseline: str) -> dict[str, Any]:
                             }
                         )
 
+    static_tool_count = len(tools)
+
     # v1.6 C12 Resource Surface auto-mounted tools (Lane A-1 / Lane E)
     # Each ResourceSpec registered in nce/vertical_modules/<engine>/resources.py
     # dynamically mounts 4 MCP tools (list, get, upsert, archive) into TOOL_REGISTRY.
@@ -234,13 +236,13 @@ def extract_tool_registry_stats(repo: str, baseline: str) -> dict[str, Any]:
 
     test_code = git_show(repo, baseline, "tests/test_tool_registry.py")
     test_tree = ast.parse(test_code)
-    expected_total: int | None = None
+    expected_static_total: int | None = None
     for node in ast.walk(test_tree):
         if isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "_EXPECTED_TOTAL":
+                if isinstance(target, ast.Name) and target.id == "_EXPECTED_STATIC_TOTAL":
                     if isinstance(node.value, ast.Constant) and isinstance(node.value.value, int):
-                        expected_total = node.value.value
+                        expected_static_total = node.value.value
 
     shared_tools = [t for t in tools if t["engine"] == "shared"]
     engine_tools = [t for t in tools if t["engine"] != "shared"]
@@ -250,7 +252,21 @@ def extract_tool_registry_stats(repo: str, baseline: str) -> dict[str, Any]:
 
     return {
         "total_tools": len(tools),
-        "expected_total": expected_total,
+        # Cross-checked against tests/test_tool_registry.py's hand-written
+        # baseline (_EXPECTED_STATIC_TOTAL), not the grand total: since Wave
+        # A-1b that file's _EXPECTED_TOTAL is itself a derived expression
+        # (static + live C12 count), not an AST-constant-foldable literal, so
+        # it can no longer be read this way (janitor pass 7, K-H4 follow-up --
+        # this broke silently to "None" the first time, caught by reading the
+        # regenerated doc's own "pinned by _EXPECTED_TOTAL = None" text before
+        # committing it).
+        "expected_total": (
+            expected_static_total + (len(tools) - static_tool_count)
+            if expected_static_total is not None
+            else None
+        ),
+        "expected_static_total": expected_static_total,
+        "static_tool_count": static_tool_count,
         "shared_count": len(shared_tools),
         "engine_count": len(engine_tools),
         "num_engines": len(per_engine),

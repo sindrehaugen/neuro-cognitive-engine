@@ -142,13 +142,27 @@ def test_no_forbidden_column_in_public_shape(shape: dict[str, Any]) -> None:
 
 
 def test_exact_product_tool_count() -> None:
-    """Product tools registered in TOOL_REGISTRY must be exactly the 8 listed tools."""
+    """Product tools registered in TOOL_REGISTRY must be exactly the 8 listed
+    tools, plus any C12 resource-surface tools this engine has registered.
+
+    Since Wave A-1b, a C12 ResourceSpec registered for this engine would add
+    4 tools (list/get/upsert/archive) to TOOL_REGISTRY with no edit to any
+    tool file (janitor pass 7, K-H4 -- same exposure MUTATION_TOOLS had).
+    None is registered for "product" today, but this union means a future
+    one won't turn this exact-match assertion red.
+    """
+    from nce.resource_surface import build_all_resource_tool_specs
     from nce.tool_registry import TOOL_REGISTRY
 
+    c12_product_tools = {
+        name for name in build_all_resource_tool_specs() if name.startswith("product_")
+    }
+    expected = _PRODUCT_TOOLS | c12_product_tools
+
     registered_product = {name for name in TOOL_REGISTRY if name.startswith("product_")}
-    assert registered_product == _PRODUCT_TOOLS, (
+    assert registered_product == expected, (
         f"Product tool set mismatch.\n"
-        f"  Expected:   {sorted(_PRODUCT_TOOLS)}\n"
+        f"  Expected:   {sorted(expected)}\n"
         f"  Got:        {sorted(registered_product)}"
     )
 
