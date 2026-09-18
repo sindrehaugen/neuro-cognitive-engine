@@ -47,6 +47,11 @@ _PRODUCT_TOOLS: frozenset[str] = frozenset(
         "product_enrich",
         "product_ingest_spec",
         "product_golden_record",
+        # Lane E Wave E-2 -- C12 PRODUCT_SKU resource surface (list/get/upsert/archive)
+        "product_list_product_skus",
+        "product_get_product_skus",
+        "product_upsert_product_skus",
+        "product_archive_product_skus",
     }
 )
 

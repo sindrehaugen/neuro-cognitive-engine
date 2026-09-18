@@ -342,6 +342,22 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/procurement/sync/status` | `api_procurement_sync_status` |
 | POST | `/api/procurement/tco` | `api_procurement_calculate_tco` |
 | GET | `/api/product/enrichment/review` | `api_product_enrichment_review` |
+| GET | `/api/product/product-skus` | `handle_list` |
+| POST | `/api/product/product-skus` | `handle_create` |
+| POST | `/api/product/product-skus/bulk` | `handle_bulk` |
+| GET | `/api/product/product-skus/{id}` | `handle_get` |
+| PATCH | `/api/product/product-skus/{id}` | `handle_patch` |
+| POST | `/api/product/product-skus/{id}/archive` | `handle_archive` |
+| GET | `/api/product/product-skus/{id}/comments` | `handle_list_comments` |
+| POST | `/api/product/product-skus/{id}/comments` | `handle_add_comment` |
+| GET | `/api/product/product-skus/{id}/documents` | `handle_list_documents` |
+| POST | `/api/product/product-skus/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/product/product-skus/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/product/product-skus/{id}/events` | `handle_events` |
+| POST | `/api/product/product-skus/{id}/restore` | `handle_restore` |
+| GET | `/api/product/product-skus/{id}/tags` | `handle_list_tags` |
+| POST | `/api/product/product-skus/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/product/product-skus/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/product/quality` | `api_product_quality` |
 | GET | `/api/product/search` | `api_product_search` |
 | GET | `/api/product/{id}` | `api_product_get` |
@@ -677,14 +693,18 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `procurement_submit_po` | yes | yes |  |  |
 | `procurement_upsert_po_lines` |  | yes |  |  |
 | `procurement_whatif_spend` |  |  | yes |  |
+| `product_archive_product_skus` |  | yes |  |  |
 | `product_enrich` |  | yes |  |  |
 | `product_get` |  |  | yes |  |
+| `product_get_product_skus` |  |  | yes |  |
 | `product_golden_record` |  |  | yes |  |
 | `product_ingest_spec` |  | yes |  |  |
+| `product_list_product_skus` |  |  | yes |  |
 | `product_match_bom_line` |  |  |  |  |
 | `product_price` |  |  | yes |  |
 | `product_related` |  |  | yes |  |
 | `product_search` |  |  | yes |  |
+| `product_upsert_product_skus` |  | yes |  |  |
 | `project_advance_phase` | yes | yes |  |  |
 | `project_can_enter_phase` |  |  | yes |  |
 | `project_capacity` |  |  | yes |  |
@@ -800,4 +820,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 459 REST endpoints, 323 MCP tools._
+_Totals: 475 REST endpoints, 327 MCP tools._
