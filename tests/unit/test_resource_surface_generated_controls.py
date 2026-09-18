@@ -246,22 +246,6 @@ def test_generated_negative_rls_tenant_scoped(spec: ResourceSpec) -> None:
         )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "REAL GAP (H-4, found reading rest.py, not assumed): tenant_scope == "
-        "'global' is derived correctly on the spec (see spec.py's __post_init__, "
-        "which checks EXPECTED_GLOBAL_TABLES), but nce/resource_surface/rest.py "
-        "never reads spec.tenant_scope anywhere -- every handler filters "
-        "unconditionally by namespace_id regardless of scope. A global-scoped "
-        "resource registered today would be silently, incorrectly tenant-siloed. "
-        "No spec with tenant_scope=='global' is registered yet (this uses a "
-        "synthetic, uninverted ResourceSpec against the real product_catalog "
-        "table name to prove it), so this is RED by design until rest.py grows "
-        "scope-aware handling -- XPASSes and fails CI the day it does, forcing a "
-        "deliberate removal of this marker instead of a silent behaviour change."
-    ),
-)
 def test_generated_negative_rls_global_scoped_cross_namespace_read_should_succeed() -> None:
     global_spec = ResourceSpec(
         engine="product",

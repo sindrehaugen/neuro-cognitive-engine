@@ -178,10 +178,11 @@ TOOLS_DEFINED_BUT_CONFIG_GATED: frozenset[str] = frozenset(
 
 
 def _defined_in_file() -> set[str]:
-    """Every ``Tool(name=...)`` literal in ``mcp_stdio_tools.py``.
+    """Every ``Tool(name=...)`` literal in ``mcp_stdio_tools.py`` plus dynamic C12 tools.
 
     Parsed from source, so it does not depend on which feature flags happen to
-    be set in the environment running the tests.
+    be set in the environment running the tests. Dynamic C12 resource tools are
+    generated via build_all_resource_tool_definitions().
     """
     path = Path(inspect.getsourcefile(mcp_stdio_tools) or "")
     tree = ast.parse(path.read_bytes().decode("utf-8"))
@@ -191,6 +192,10 @@ def _defined_in_file() -> set[str]:
             for kw in node.keywords:
                 if kw.arg == "name" and isinstance(kw.value, ast.Constant):
                     names.add(kw.value.value)
+    from nce.resource_surface import build_all_resource_tool_definitions
+
+    for tool in build_all_resource_tool_definitions():
+        names.add(tool.name)
     return names
 
 
