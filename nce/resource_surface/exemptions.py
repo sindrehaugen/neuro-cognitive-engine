@@ -154,6 +154,24 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
         ),
     ),
     # ---------------------------------------------------------------------------
+    # Staff & Resources Engine (Lane E / Resources wave)
+    # ---------------------------------------------------------------------------
+    "RESOURCE": ResourceExemption(
+        owner_engine="resources",
+        reason=(
+            "Real attribute table (resources, tenant-scoped) but node_type name "
+            "equals the engine name: entity='resources' generates MCP tool "
+            "resources_list_resources, which collides with and silently overwrites "
+            "(via TOOL_REGISTRY.update()) the existing hand-written tool of that "
+            "exact name (handle_resources_list_resources). get/upsert/archive do "
+            "not collide (hand-written tools use singular resources_get_resource "
+            "etc.), only list does. Needs a naming decision (rename the entity, "
+            "which also changes the REST path, or fix collision detection in "
+            "resource_surface/__init__.py) before declaring; Lane E Wave E-6 found "
+            "this by diffing the exact TOOL_REGISTRY key set before/after."
+        ),
+    ),
+    # ---------------------------------------------------------------------------
     # Sales Engine (Lane B Waves B-1, B-4 / Lane E)
     # ---------------------------------------------------------------------------
     "CUSTOMER": ResourceExemption(
@@ -361,30 +379,6 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
         reason=(
             "Photographic installation proof attachments linked to work orders; "
             "scheduled for C14 document integration."
-        ),
-    ),
-    # ---------------------------------------------------------------------------
-    # Staff & Resources Engine (Lane E / Resources wave)
-    # ---------------------------------------------------------------------------
-    "RESOURCE": ResourceExemption(
-        owner_engine="resources",
-        reason=(
-            "Schedulable personnel and vehicle master data; scheduled for Resources "
-            "resource surface wave."
-        ),
-    ),
-    "ALLOCATION": ResourceExemption(
-        owner_engine="resources",
-        reason=(
-            "Time-window personnel and equipment booking allocation; scheduled for "
-            "Resources resource surface wave."
-        ),
-    ),
-    "TRAVEL_LEG": ResourceExemption(
-        owner_engine="resources",
-        reason=(
-            "Technician travel route leg and Norwegian diet allowance segment; "
-            "scheduled for Resources resource surface wave."
         ),
     ),
 }
