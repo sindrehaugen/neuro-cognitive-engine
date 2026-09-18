@@ -860,4 +860,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 491 REST endpoints, 331 MCP tools._
+_Totals: 507 REST endpoints, 335 MCP tools._
