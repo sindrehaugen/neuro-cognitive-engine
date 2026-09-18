@@ -4267,3 +4267,36 @@ BEGIN
         GRANT USAGE, SELECT ON SEQUENCE geodata_n50_land_cover_id_seq TO nce_app;
     END IF;
 END $$;
+
+-- Geodata FEED module, place-name nearest-point lookup (Wave F-13,
+-- migration 090). GLOBAL, not tenant-scoped — see that migration's header
+-- for the full reasoning.
+CREATE TABLE IF NOT EXISTS geodata_place_names (
+    id          BIGSERIAL   NOT NULL,
+    external_id TEXT        NOT NULL,
+    navn        TEXT        NOT NULL,
+    kategori    TEXT,
+    sprak       TEXT,
+    point       POINT       NOT NULL,
+    source_file TEXT        NOT NULL,
+    imported_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    CONSTRAINT geodata_place_names_external_id_uq UNIQUE (external_id),
+    CONSTRAINT geodata_place_names_navn_not_blank CHECK (btrim(navn) <> ''),
+    CONSTRAINT geodata_place_names_source_file_not_blank CHECK (btrim(source_file) <> '')
+);
+
+CREATE INDEX IF NOT EXISTS idx_geodata_place_names_point
+    ON geodata_place_names USING gist (point);
+
+CREATE INDEX IF NOT EXISTS idx_geodata_place_names_kategori
+    ON geodata_place_names (kategori);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE geodata_place_names FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE geodata_place_names TO nce_app;
+        GRANT USAGE, SELECT ON SEQUENCE geodata_place_names_id_seq TO nce_app;
+    END IF;
+END $$;

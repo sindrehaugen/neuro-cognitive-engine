@@ -7581,6 +7581,56 @@ TOOLS = [
         },
     ),
     Tool(
+        name="geodata_import_place_names",
+        description=(
+            "Upsert a batch of already-resolved place names (one anchor point each) into "
+            "the local geodata store. Operator/batch job; mutation; no namespace_id (global "
+            "table)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "source_file": {
+                    "type": "string",
+                    "description": "Name of the source extract this batch came from.",
+                },
+                "places": {
+                    "type": "array",
+                    "description": (
+                        "[{external_id, navn, kategori?, sprak?, lon, lat}, ...] -- "
+                        "external_id is the source registry's own identifier for the place."
+                    ),
+                    "items": {"type": "object"},
+                },
+            },
+            "required": ["source_file", "places"],
+        },
+    ),
+    Tool(
+        name="geodata_query_nearest_place_name",
+        description=(
+            "Find the place name(s) nearest a given point, re-ranked by real great-circle "
+            "distance (not raw GiST degree-distance). Actor; read-only; no namespace_id "
+            "(global table)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "lon": {"type": "number", "description": "Query point longitude."},
+                "lat": {"type": "number", "description": "Query point latitude."},
+                "kategori": {
+                    "type": "string",
+                    "description": "Optional exact-match place-category filter.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum places to return (default 1, ceiling 20).",
+                },
+            },
+            "required": ["lon", "lat"],
+        },
+    ),
+    Tool(
         name="decision_feedback_record",
         description=(
             "Record ground-truth human decision or outcome feedback across vertical engines "
