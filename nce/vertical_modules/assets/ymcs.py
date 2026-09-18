@@ -37,9 +37,11 @@ The gate this file exists to satisfy (MLV16 charter, Lane F, all five)
    allow-list literal. ``_request`` refuses any pair outside their union
    BEFORE issuing the HTTP call — see ``YmcsAllowListRefusal``.
 2. ``tests/test_assets_telemetry.py`` proves that refusal.
-3. No write method exists anywhere in this file — there is no ``_skriv``
-   equivalent, and the allow-list contains only ``GET``/``POST`` reads plus
-   the one auth ``POST``.
+3. No write OPERATION exists anywhere in this file (ML-orch review of
+   Wave F-1, charter §13: two of the four read entries are POST — YMCS's
+   own convention for a search/list call — so this gate cannot be checked
+   by HTTP verb alone; each POST read entry below is commented against
+   the vendor's own API doc section instead).
 4. Credentials come from ``connectors/save``
    (``nce/admin_handlers/fleet.py:api_admin_connectors_save``) via
    ``live_env_str``, exactly like every sibling adapter in this module —
@@ -91,10 +93,23 @@ _ALLOWED_AUTH: frozenset[tuple[str, str]] = frozenset({("POST", "/v2/token")})
 #: for THIS adapter's needs (Q-25) — narrower than the host's own broader
 #: read allow-list, which also covers sites, firmware, accounts, groups,
 #: QoE and alarms that this adapter never touches.
+#:
+#: Two of these four are POST — YMCS's own convention for a search/list
+#: operation, not a write (ML-orch review of Wave F-1, charter §13): "no
+#: write operation anywhere" cannot be checked by HTTP verb alone here, so
+#: each POST entry below is named against the vendor's own API doc section
+#: to make that claim reviewable without knowing YMCS's conventions
+#: firsthand.
 _ALLOWED_READS: frozenset[tuple[str, str]] = frozenset(
     {
+        # 2.1 "Obtain Device List" — a filtered/paginated SEARCH, body-only
+        # because the filter is a JSON object; returns existing devices,
+        # creates nothing. Contrast the write-side 2.1.1 "Add a Device",
+        # also POST /v2/dm/devices (not devices/list*) — a different path.
         ("POST", "/v2/dm/listDevices"),
         ("GET", "/v2/dm/devices/{id}"),
+        # 2.5 "Obtain Device's List of Parts" — same shape as listDevices:
+        # a paginated read, POST only because the query body demands it.
         ("POST", "/v2/dm/devices/{id}/listParts"),
         ("GET", "/v2/dm/devices/{id}/parts/{id}"),
     }
