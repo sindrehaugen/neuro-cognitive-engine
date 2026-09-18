@@ -152,7 +152,7 @@ def _as_dead_stock_days(raw: Any, where: str) -> int:
     return raw
 
 
-class LedgerDivergenceError(BusinessRefusalError):
+class LedgerDivergenceError(BusinessRefusalError, Exception):
     """``inventory_items`` no longer agrees with the ``inventory_transactions``
     ledger for one or more dead ``(sku, location)`` pairs.
 

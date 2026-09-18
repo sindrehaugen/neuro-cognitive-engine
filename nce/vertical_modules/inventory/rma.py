@@ -473,7 +473,7 @@ _STATE_RESTOCKED = "restocked"
 _STATE_DISPOSED = "disposed"
 
 
-class RmaNotFoundError(BusinessRefusalError):
+class RmaNotFoundError(BusinessRefusalError, Exception):
     """No ``inventory_rma`` row exists for this ``(namespace_id, rma_ref)``."""
 
     def __init__(self, *, rma_ref: str) -> None:
@@ -481,7 +481,7 @@ class RmaNotFoundError(BusinessRefusalError):
         super().__init__(f"no inventory_rma row for rma_ref={rma_ref!r}")
 
 
-class RmaAlreadySettledError(BusinessRefusalError):
+class RmaAlreadySettledError(BusinessRefusalError, Exception):
     """The RMA's ``stock_movement_state`` is no longer ``'pending'`` — a
     stock leg (this call, or a concurrent one) already claimed it."""
 
@@ -494,7 +494,7 @@ class RmaAlreadySettledError(BusinessRefusalError):
         )
 
 
-class RmaNotWeeeScopeError(BusinessRefusalError):
+class RmaNotWeeeScopeError(BusinessRefusalError, Exception):
     """Disposal was attempted on an RMA whose ``weee_state`` is
     ``'not_applicable'`` — a contradiction: no WEEE take-back can be
     documented for an item that is not WEEE-scope."""

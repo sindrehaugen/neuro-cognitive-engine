@@ -16,7 +16,7 @@ from nce.mcp_errors import BusinessRefusalError
 log = logging.getLogger("nce.vertical_modules.resources.guard")
 
 
-class ResourcesError(BusinessRefusalError):
+class ResourcesError(ValueError):
     """Base exception for all Resources Engine operations."""
 
 
@@ -24,7 +24,7 @@ class ResourcesDisabledError(EngineDisabledError, ResourcesError):
     """Raised when Resources Engine is disabled globally or for a tenant."""
 
 
-class ResourceNotFoundError(ResourcesError):
+class ResourceNotFoundError(KeyError, ResourcesError):
     """Raised when a requested resource does not exist in the tenant scope."""
 
 
@@ -32,7 +32,7 @@ class ResourceValidationError(ResourcesError):
     """Raised when input parameters fail domain validation (e.g. invalid kind, RS-2)."""
 
 
-class ResourceConcurrencyError(ResourcesError):
+class ResourceConcurrencyError(BusinessRefusalError, ResourcesError):
     """Raised on concurrency/double-booking constraint violations (RS-3)."""
 
 

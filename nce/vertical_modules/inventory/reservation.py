@@ -341,7 +341,7 @@ def _inventory_item_label(sku: str, location_id: UUID) -> str:
 # ---------------------------------------------------------------------------
 
 
-class InsufficientAvailableError(BusinessRefusalError):
+class InsufficientAvailableError(BusinessRefusalError, Exception):
     """Raised when :func:`do_reserve_stock`'s ``WHERE qty_on_hand -
     qty_reserved - qty_blocked >= n`` guard affects zero rows — either the
     row exists but does not have enough AVAILABLE stock, or no
@@ -374,7 +374,7 @@ class InsufficientAvailableError(BusinessRefusalError):
         )
 
 
-class OverReleaseError(BusinessRefusalError):
+class OverReleaseError(BusinessRefusalError, Exception):
     """Raised when :func:`do_release_stock`'s ``WHERE qty_reserved >= n``
     guard affects zero rows — releasing more than is currently reserved at
     this ``(sku, location)`` (or no row exists at all, treated as

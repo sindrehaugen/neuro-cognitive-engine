@@ -134,7 +134,19 @@ class BusinessRefusalError(Exception):
         data: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
-        self.reason = reason
+        if reason is not None:
+            self.reason = reason
+        elif not hasattr(self, "reason") or self.reason is None:
+            if self.__class__ is BusinessRefusalError:
+                self.reason = "business_refused"
+            else:
+                name = self.__class__.__name__
+                if name.endswith("Error"):
+                    name = name[:-5]
+                import re
+
+                slug = re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+                self.reason = slug or "business_refused"
         self.data = data
 
 
@@ -383,12 +395,6 @@ def mcp_handler(handler_fn: F) -> F:
                 "Invalid parameters",
                 data={"reason": "missing_field"},
             )
-        except (ValueError, TypeError) as e:
-            raise McpError(
-                MCP_INVALID_PARAMS,
-                "Invalid parameters",
-                data=invalid_arguments_data(e),
-            )
         except BusinessRefusalError as e:
             # Domain-level business refusal across vertical modules.
             # Reports as -32005 (MCP_BUSINESS_REFUSED), never escaping to -32603.
@@ -396,6 +402,12 @@ def mcp_handler(handler_fn: F) -> F:
                 MCP_BUSINESS_REFUSED,
                 "Business refusal",
                 data=business_refusal_data(e),
+            )
+        except (ValueError, TypeError) as e:
+            raise McpError(
+                MCP_INVALID_PARAMS,
+                "Invalid parameters",
+                data=invalid_arguments_data(e),
             )
         except A2AAuthorizationError as e:
             raise McpError(

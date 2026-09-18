@@ -17,6 +17,8 @@ Invariant:
    and flagged as escaping by the ratchet scanner.
 6. T-4c Deferral Floor: REST error response return sites across admin handlers and customer
    portal are constrained by a shrink-only ceiling (<= 1090).
+7. Invariant 7: All mapped domain refusals must preserve their distinct ``data.reason``
+   across ``@mcp_handler`` and specialized error translators (no None flattening).
 """
 
 from __future__ import annotations
@@ -32,8 +34,10 @@ import pytest
 
 from nce.engine_registry import EngineDisabledError
 from nce.mcp_errors import (
+    MCP_BUSINESS_REFUSED,
     MCP_ENGINE_DISABLED,
     MCP_INTERNAL_ERROR,
+    BusinessRefusalError,
     McpError,
     mcp_handler,
 )
@@ -316,3 +320,113 @@ def test_rest_error_response_sites_shrink_only_floor() -> None:
         f"REST error response return sites ({measured_sites}) breached shrink-only floor "
         f"({MAX_REST_ERROR_RESPONSE_SITES_FLOOR}). T-4c deferral condition violated per Charter §13."
     )
+
+
+@pytest.mark.asyncio
+async def test_domain_refusals_preserve_data_reason_through_mcp_handler() -> None:
+    """Invariant 7: Assert every domain refusal preserves its data.reason.
+
+    Guards against data.reason flattening (e.g. subclass __init__ wiping class-level reason
+    attribute with None) across the shared @mcp_handler decorator and specialized translators.
+    """
+    import uuid
+    from decimal import Decimal
+
+    from nce.vertical_modules.inventory.reconcile import LedgerDivergenceError
+    from nce.vertical_modules.inventory.reservation import (
+        InsufficientAvailableError,
+        OverReleaseError,
+    )
+    from nce.vertical_modules.inventory.rma import (
+        RmaAlreadySettledError,
+        RmaNotFoundError,
+        RmaNotWeeeScopeError,
+    )
+    from nce.vertical_modules.resources._guard import ResourceConcurrencyError
+    from nce.vertical_modules.system_design.geometry import VersionConflictError
+    from nce.vertical_modules.system_design.mcp_handlers import (
+        retire_denied_mcp_error,
+        version_conflict_mcp_error,
+    )
+    from nce.vertical_modules.system_design.retire import RetireDeniedError
+
+    sample_uuid = uuid.uuid4()
+
+    cases: list[tuple[Exception, str]] = [
+        (VersionConflictError("DES-1", expected=1, actual=2), "version_conflict"),
+        (RetireDeniedError([{"node_label": "DEV-1", "reason": "in_use"}]), "retire_denied"),
+        (
+            InsufficientAvailableError(
+                sku="SKU-1",
+                location_id=sample_uuid,
+                project_id="P1",
+                requested=Decimal(5),
+                on_hand=Decimal(2),
+                reserved=Decimal(0),
+                blocked=Decimal(0),
+            ),
+            "insufficient_available",
+        ),
+        (
+            OverReleaseError(
+                sku="SKU-1",
+                location_id=sample_uuid,
+                project_id="P1",
+                requested=Decimal(5),
+                currently_reserved=Decimal(2),
+            ),
+            "over_release",
+        ),
+        (RmaNotFoundError(rma_ref="RMA-1"), "rma_not_found"),
+        (
+            RmaAlreadySettledError(rma_ref="RMA-1", stock_movement_state="restocked"),
+            "rma_already_settled",
+        ),
+        (RmaNotWeeeScopeError(rma_ref="RMA-1"), "rma_not_weee_scope"),
+        (
+            LedgerDivergenceError(
+                [
+                    {
+                        "sku": "SKU-1",
+                        "location_id": sample_uuid,
+                        "on_hand": 1,
+                        "ledger_sum": 0,
+                        "difference": 1,
+                    }
+                ]
+            ),
+            "ledger_divergence",
+        ),
+        (ResourceConcurrencyError("Resource locked"), "resource_concurrency"),
+        (BusinessRefusalError("Custom refused", reason="custom_slug"), "custom_slug"),
+        (BusinessRefusalError("Default refused"), "business_refused"),
+    ]
+
+    for exc_instance, expected_reason in cases:
+        assert getattr(exc_instance, "reason", None) == expected_reason, (
+            f"Exception {exc_instance.__class__.__name__} lost its reason attribute: "
+            f"expected {expected_reason!r}, got {getattr(exc_instance, 'reason', None)!r}"
+        )
+
+        @mcp_handler
+        async def failing_tool(engine: Any, args: dict[str, Any]) -> str:
+            raise exc_instance
+
+        with pytest.raises(McpError) as exc_info:
+            await failing_tool(None, {})
+
+        assert exc_info.value.code == MCP_BUSINESS_REFUSED
+        assert exc_info.value.data is not None
+        assert exc_info.value.data.get("reason") == expected_reason, (
+            f"Handler data.reason for {exc_instance.__class__.__name__} was flattened or incorrect: "
+            f"expected {expected_reason!r}, got {exc_info.value.data.get('reason')!r}"
+        )
+
+    # Specialized translators in system_design
+    v_exc = VersionConflictError("DES-1", expected=1, actual=2)
+    v_err = version_conflict_mcp_error(v_exc)
+    assert v_err.data.get("reason") == "version_conflict"
+
+    r_exc = RetireDeniedError([{"node_label": "DEV-1", "reason": "in_use"}])
+    r_err = retire_denied_mcp_error(r_exc)
+    assert r_err.data.get("reason") == "retire_denied"
