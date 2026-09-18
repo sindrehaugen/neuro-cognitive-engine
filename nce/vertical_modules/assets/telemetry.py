@@ -171,6 +171,8 @@ VENDOR_PLATFORMS: dict[str, str] = {
     # figures Neowit does not carry — battery, signal strength, which Data
     # Connector a sensor speaks through.
     "disruptive": "Disruptive Technologies REST API",
+    # Added MLV16F Wave F-5: Ochno Operated USB-C switch/hub platform.
+    "ochno": "Ochno Operated REST API",
 }
 
 _TRUTHY = {"1", "true", "yes", "on"}
@@ -400,6 +402,10 @@ def select_telemetry_adapter(platform: str) -> TelemetryAdapter:
             from nce.vertical_modules.assets.disruptive import DisruptiveTelemetryAdapter
 
             return DisruptiveTelemetryAdapter()
+        if name == "ochno":
+            from nce.vertical_modules.assets.ochno import OchnoTelemetryAdapter
+
+            return OchnoTelemetryAdapter()
         return UnimplementedVendorAdapter(name, vendor_api)
     return MockTelemetryAdapter()
 
