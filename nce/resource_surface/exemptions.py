@@ -327,33 +327,6 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     # ---------------------------------------------------------------------------
     # Field Tech Engine (Lane C Waves C-7, C-9 / Lane E)
     # ---------------------------------------------------------------------------
-    "WORK_ORDER": ResourceExemption(
-        owner_engine="field_tech",
-        reason=(
-            "Real attribute table -- named work_orders, not field_tech_work_orders as "
-            "the prior exemption text claimed (grep -c \"CREATE TABLE IF NOT EXISTS "
-            "field_tech_work_orders\" nce/schema.sql -> 0; \"...work_orders\" -> 1, "
-            "line 4069). Corrected by Lane E's exemptions sweep. Scheduled for Wave "
-            "C-9 WORK_ORDER resource declaration."
-        ),
-    ),
-    "FIELD_TECH_CHECKLIST": ResourceExemption(
-        owner_engine="field_tech",
-        reason=(
-            "ISO9001 compliance checklist entries; scheduled for Field Tech "
-            "work order sub-resources."
-        ),
-    ),
-    "FIELD_TECH_TIME_ENTRY": ResourceExemption(
-        owner_engine="field_tech",
-        reason=(
-            "Real attribute table -- named time_entries, not field_tech_time_entries "
-            "as the prior exemption text claimed (grep -c \"CREATE TABLE IF NOT "
-            "EXISTS field_tech_time_entries\" nce/schema.sql -> 0; \"...time_entries\" "
-            "-> 1, line 4167). Corrected by Lane E's exemptions sweep. Scheduled for "
-            "Wave C-7 TIME_ENTRY spec and approval workflow."
-        ),
-    ),
     "FIELD_TECH_SCAN": ResourceExemption(
         owner_engine="field_tech",
         reason=(

@@ -369,6 +369,13 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # Lane E Wave E-7 -- C12 Economy POSTING resource surface mutations (upsert + archive)
         "economy_upsert_postings",
         "economy_archive_postings",
+        # Lane E Wave E-10 -- C12 Field Tech WORK_ORDER/TIME_ENTRY/CHECKLIST resource surface mutations
+        "field_tech_upsert_work_orders",
+        "field_tech_archive_work_orders",
+        "field_tech_upsert_time_entries",
+        "field_tech_archive_time_entries",
+        "field_tech_upsert_checklists",
+        "field_tech_archive_checklists",
     }
 )
 
@@ -641,6 +648,13 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         # Lane E Wave E-7 -- C12 Economy POSTING resource surface cacheable reads (list + get)
         "economy_list_postings",
         "economy_get_postings",
+        # Lane E Wave E-10 -- C12 Field Tech WORK_ORDER/TIME_ENTRY/CHECKLIST resource surface cacheable reads
+        "field_tech_list_work_orders",
+        "field_tech_get_work_orders",
+        "field_tech_list_time_entries",
+        "field_tech_get_time_entries",
+        "field_tech_list_checklists",
+        "field_tech_get_checklists",
     }
 )
 
