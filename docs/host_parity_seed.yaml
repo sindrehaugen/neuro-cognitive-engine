@@ -1,0 +1,424 @@
+# Host-parity seed (H-2, charter MLV16_ORCH_CHARTER_2026-09-18.md §9 "Lane H").
+#
+# Hand-authored, checked-in source of record for scripts/gen_portal_parity.py,
+# which renders docs/_generated/host_parity.md from this file. Do not hand-edit
+# the generated file; edit this seed and regenerate.
+#
+# GENERIC NAMES ONLY. No host product, company, or module/schema name may appear
+# in this file, its generator, or the file it generates -- every family below is
+# named and described purely by the business capability it covers, translated
+# from the (private, external-to-this-tree) v1.6 analysis's own disposition
+# table. NCE's own existing identifiers (tool names, routes) ARE named, since
+# those belong to this tree already.
+#
+# disposition is one of:
+#   MOVE   - an NCE engine already owns the concept; port the capability
+#   MOVE+  - an NCE engine owns the concept but the capability itself is new
+#   NEW    - no engine covers it; a new shared-core or capability
+#   HOST   - stays outside NCE (identity, per-user UI state)
+#   RETIRE - a mirrored/duplicated store that an NCE-owned store replaces after backfill
+#   FEED   - becomes a read-only data-feed adapter module, not engine business logic
+#
+# A family with no disposition is a RED finding (see the generator's validation).
+# replacing_route is required for MOVE/MOVE+ rows (an existing or planned NCE
+# route/tool identifier); optional and typically empty for the other dispositions.
+
+families:
+  - id: F01
+    category: "Revenue — Sales"
+    family: deal_pipeline
+    description: "Deal/opportunity pipeline with parties, participants, product groups, dual pricing, and a two-layer (signature + lifecycle) state model"
+    disposition: MOVE+
+    replacing_route: "DEAL/QUOTE resource layer via C12 (A-1) + DEAL_PARTICIPANT/DEAL_TAG nodes; dealroom via do_open_dealroom"
+    notes: "Existing NCE coverage: sales_create_deal, edit_deal, POST /api/sales/deals"
+
+  - id: F02
+    category: "Revenue — Sales"
+    family: quote_authoring_and_lifecycle
+    description: "Quote authoring, cloning, light quotes, line import, AI-assisted drafting, billing method, certificates"
+    disposition: MOVE
+    replacing_route: "QUOTE resource layer via C12; sales_clone_quote, sales_import_lines"
+    notes: "Existing: add/get_quote_line, draft_quote, freeze_baseline, signed_baseline, request_signature, project_convert_signed_quote"
+
+  - id: F03
+    category: "Revenue — Sales"
+    family: public_facing_quote_actions
+    description: "Customer-facing quote view with accept/decline/comment actions via a signed public token"
+    disposition: MOVE+
+    replacing_route: "POST /public-api/sales/quotes/{id}/{action} -> do_on_signed_callback / do_on_declined_callback"
+    notes: "Existing: GET /public-api/sales/quotes/{id} (signed, rate-limited)"
+
+  - id: F04
+    category: "Revenue — Sales"
+    family: quote_templates_and_personal_drafts
+    description: "Quote templates (tenant data) plus per-user spreadsheet drafts and ranking answers (personal UI state)"
+    disposition: MOVE
+    replacing_route: "QUOTE_TEMPLATE node via C12"
+    notes: "Templates MOVE; per-user drafts are HOST for v1.6 (Q-33) or a future C12 owner_principal scope"
+
+  - id: F05
+    category: "Revenue — Sales"
+    family: package_templates_and_favorites
+    description: "Reusable equipment package templates, plus per-user favorites"
+    disposition: MOVE
+    replacing_route: "PACKAGE node (Product engine) via C12"
+    notes: "Existing: inventory_reserve_kit/release_kit. Favorites are HOST (personal UI state)"
+
+  - id: F06
+    category: "Revenue — Sales"
+    family: customer_and_contact_master
+    description: "Customer and contact master data, customer sites, touchpoints, supplier deal registration"
+    disposition: MOVE+
+    replacing_route: "CONTACT node (C1-resolved) + customer PATCH via C12; DEAL_REGISTRATION (Procurement/Agreements)"
+    notes: "Existing: sales_create_customer, GET /api/sales/customers[/id], support_record_touchpoint"
+
+  - id: F07
+    category: "Revenue — Sales"
+    family: handover_and_design_request_queues
+    description: "Sales-to-delivery handover queue and sales-to-design-request queue, plus milestone markers"
+    disposition: MOVE+
+    replacing_route: "HANDOVER (Project-owned intake) and DESIGN_REQUEST (System Design-owned)"
+    notes: "Existing: project_convert_signed_quote, system-design from_quote"
+
+  - id: F08
+    category: "Revenue — Sales"
+    family: sales_analytics_read_model
+    description: "Sales dashboards, overview, per-seller and per-manager statistics, targets"
+    disposition: RETIRE
+    replacing_route: "existing 22-route Sales read model; feed via native writers, not the mirrored source"
+    notes: "The read model itself already MOVEd; only its current single writer (a mirrored feed) retires"
+
+  - id: F09
+    category: "Revenue — Agreements/Economy"
+    family: contract_register
+    description: "Contract register mirrored from an external e-signature/CLM source: list/detail, import, verification, status"
+    disposition: MOVE+
+    replacing_route: "AGREEMENT resource layer via C12 + AGREEMENT_PARTY, AGREEMENT_TEMPLATE"
+    notes: "Existing: agreements_create/extract/review/upsert, GET /api/agreements[/id]; the external import path becomes a read-only FEED"
+
+  - id: F10
+    category: "Revenue — Agreements/Economy"
+    family: contract_ux_parity
+    description: "Contract address-book, archive, settings, renewal/notice calendar, templates"
+    disposition: MOVE
+    replacing_route: "AGREEMENT resource layer; calendar via a renewal-timeline read (planned)"
+
+  - id: F11
+    category: "Revenue — Agreements/Economy"
+    family: recurring_revenue_portfolio_management
+    description: "MRR portfolio views: leakage/health scoring, price rules, index-linked price adjustment, upsell actions, cleanup actions"
+    disposition: MOVE+
+    replacing_route: "Economy contract-vs-ledger reconciliation (a third divergence pairing); PRICE_RULE + INDEX_SERIES (Agreements-owned)"
+    notes: "Existing: Economy snapshot_mrr_arr_churn, compute_recognition_schedule, contract CPI-cap validation; Support health_score"
+
+  - id: F12
+    category: "Revenue — Agreements/Economy"
+    family: recurring_billing_run
+    description: "Ledger-first recurring billing: coverage lines per location, per-period billing candidates, generation runs, waivers"
+    disposition: MOVE+
+    replacing_route: "Economy BILLING_RUN / BILLING_CANDIDATE (governed, confirm-first); SLA coverage line; WAIVER"
+    notes: "Existing: economy_recognize_recurring (cron), compute_recognition_schedule, approve_invoice, generate_ehf"
+
+  - id: F13
+    category: "Revenue — Agreements/Economy"
+    family: customer_invoice_lifecycle
+    description: "Outbound customer invoice proposals, approval gate, export batch, receipt, VAT handling"
+    disposition: MOVE+
+    replacing_route: "CUSTOMER_INVOICE resource (proposal -> approved -> exported -> paid); accounting system stays the legal system of record"
+    notes: "Existing (supplier-side): economy_approve_invoice, match_invoice, generate_ehf, generate_kid"
+
+  - id: F14
+    category: "Revenue — Agreements/Economy"
+    family: accounting_read_model
+    description: "Accounting reads: profit & loss, KPI, trend, segment, product-margin, customer-from-ledger, group structure"
+    disposition: MOVE
+    replacing_route: "Economy read model (ECONOMY_PERIOD_BALANCE, ECONOMY_POSTING_LINE) over the existing ledger reader"
+    notes: "Existing: economy_gl_sync_status, get_gl_records, forecast_cashflow, close_narrative"
+
+  - id: F15
+    category: "Revenue — Agreements/Economy"
+    family: national_business_registry_lookup
+    description: "National business-registry lookup: legal entity, group structure, roles"
+    disposition: NEW
+    replacing_route: "LEGAL_ENTITY register (shared core C15); national registry as a read-only FEED"
+    notes: "C1 uses this identity as the strongest customer/vendor match key"
+
+  - id: F16
+    category: "Revenue/Delivery — Product & Design"
+    family: product_catalog_crud
+    description: "Product catalog CRUD, search, categories, manufacturers, source list, manual capture, duplicate handling"
+    disposition: MOVE
+    replacing_route: "PRODUCT resource layer via C12 + category/manufacturer reads + governed manual-capture endpoint"
+    notes: "Existing: product_search/get/quality/golden_record/ingest_spec/enrich, C1 merge queue"
+
+  - id: F17
+    category: "Revenue/Delivery — Product & Design"
+    family: product_enrichment_workflow
+    description: "Enrichment coverage/gap analysis and accept/reject review queue"
+    disposition: MOVE
+    replacing_route: "review queue surfaced as a resource (accept/reject PATCH)"
+    notes: "Existing: product_enrich, GET /api/product/enrichment/review, product_quality"
+
+  - id: F18
+    category: "Revenue/Delivery — Product & Design"
+    family: product_and_brand_media
+    description: "Product images, brand and manufacturer logos, image cache"
+    disposition: MOVE+
+    replacing_route: "media links via the shared document register (C14); logo fetch as a FEED"
+    notes: "Existing shared primitive: store_media"
+
+  - id: F19
+    category: "Revenue/Delivery — Product & Design"
+    family: pricing_supplier_and_fx
+    description: "Supplier prices, bid prices, price locks, foreign-exchange rates"
+    disposition: MOVE
+    replacing_route: "pricing reads via C6; PRICE_LOCK on QUOTE; FX as a FEED into pricing"
+    notes: "Existing: pricing_resolve (C6), procurement bid-price resolution"
+
+  - id: F20
+    category: "Revenue/Delivery — Product & Design"
+    family: signal_and_standards_library
+    description: "Port/connector data, signal-distribution rules, cabling standards, certification and license catalog"
+    disposition: MOVE
+    replacing_route: "port data as a Product attribute consumed by System Design; standards/rules as config-as-IP read routes; licenses as a Product kind"
+    notes: "Existing: system_design_device_capabilities, inspect_signal_flow, validate_design_graph"
+
+  - id: F21
+    category: "Revenue/Delivery — Product & Design"
+    family: functional_location_tree
+    description: "The functional-location hierarchy: address to building to floor to room to desk (and vessel), with duplicate folding, coordinates, per-node documents — the single most-used family in the whole estate"
+    disposition: MOVE+
+    replacing_route: "FUNCTIONAL_LOCATION resource layer with children/ancestors/move/merge tree operations; ROOM_CATEGORY config; documents via C14"
+    notes: "Existing: functional-location authoring endpoint, per-design topology read"
+
+  - id: F22
+    category: "Revenue/Delivery — Product & Design"
+    family: design_versions_and_room_specs
+    description: "Per-location design/drawing versions with an active-version flag, saved solutions, room specification metadata"
+    disposition: MOVE
+    replacing_route: "DESIGN resource layer (list per location, versions, set-active); ROOM_SPEC as design metadata"
+    notes: "Existing: topology + geometry + design-node-state revisions"
+
+  - id: F23
+    category: "Delivery — Project/Procurement/Field/Resources"
+    family: project_register_and_bom_lines
+    description: "Project register, bill-of-materials lines per project, project events, and building-project orders"
+    disposition: MOVE
+    replacing_route: "PROJECT resource layer; GET /api/project/{id}/bom-lines; events via C12"
+    notes: "Existing: convert_signed_quote, phase gates, my-day, capacity; building-project 'orders' route to Sales or Procurement decided per row"
+
+  - id: F24
+    category: "Delivery — Project/Procurement/Field/Resources"
+    family: time_entry_tracking
+    description: "Time entries per project/employee and milestone markers"
+    disposition: MOVE
+    replacing_route: "GET /api/field-tech/time-entries?project=... + approval, feeding Economy labour cost"
+    notes: "Existing: field_tech_log_time (POST), time_entries table"
+
+  - id: F25
+    category: "Delivery — Project/Procurement/Field/Resources"
+    family: purchase_orders_and_distributor_status
+    description: "Purchase orders (list/detail/lines) and distributor order-status import"
+    disposition: MOVE+
+    replacing_route: "PURCHASE_ORDER resource layer; distributor order status as a Procurement FEED"
+    notes: "Existing: procurement_generate_po/submit_po, PO_LINE model, bid resolution"
+
+  - id: F26
+    category: "Delivery — Project/Procurement/Field/Resources"
+    family: work_order_lines
+    description: "Work-order update, close, and line-item reads"
+    disposition: MOVE
+    replacing_route: "WORK_ORDER resource layer"
+    notes: "Existing: 10 tools / 12 routes with dual RLS"
+
+  - id: F27
+    category: "Delivery — Project/Procurement/Field/Resources"
+    family: responsible_person_assignment
+    description: "Responsible-person-per-location and employee-link edges"
+    disposition: MOVE
+    replacing_route: "RESPONSIBLE_FOR edge (HR/Sales) with a read route"
+    notes: "Existing: HR employees, Resources allocations"
+
+  - id: F28
+    category: "Operations — Assets/Support/Inventory"
+    family: installed_asset_register
+    description: "Installed-equipment register: per-location assets, duplicate merge, catalog linking, move/dismantle, lifecycle, service history, sub-components, placeholder ('shell') assets, person-assigned equipment"
+    disposition: MOVE+
+    replacing_route: "ASSET resource layer + assets_move, assets_merge (C1 queue), assets_link_product (C1 confirm); EMPLOYEE-uses->ASSET; ASSET-part_of->ASSET; GET /api/assets/{id}/service-history"
+    notes: "Existing: assets_get/list/advance_lifecycle/seed_from_bom/compute_health/check_warranty_eol/sync/generate_qr/record_failure_pattern/attach_sla, 14-state lifecycle"
+
+  - id: F29
+    category: "Operations — Assets/Support/Inventory"
+    family: asset_catalog_match_queue
+    description: "Asset-to-catalog matching bridge: candidates, proposals, auto-link, confirm, rebuild"
+    disposition: MOVE
+    replacing_route: "existing merge-queue machinery (C1), filtered by node type"
+    notes: "No new logic required, only a filtered queue view"
+
+  - id: F30
+    category: "Operations — Assets/Support/Inventory"
+    family: device_telemetry_and_space_links
+    description: "Read-only hardware-vendor fleet telemetry (multiple vendors), plus external-space-to-location confirmed links"
+    disposition: MOVE
+    replacing_route: "per-vendor read-only telemetry adapters (Lane F) on the existing telemetry contract and cron; EXTERNAL_SPACE confirmed-link node"
+    notes: "The external systems have working read-only clients today; NCE has the adapter socket and cron already"
+
+  - id: F31
+    category: "Operations — Assets/Support/Inventory"
+    family: support_case_management
+    description: "Support case handling, operations tickets, case-to-agreement/location links, on-call routing, per-step action log with outcomes"
+    disposition: MOVE+
+    replacing_route: "TICKET_ACTION (append-only outcome log); support_summarise_ticket; on-call as a Resources allocation with role=on_call"
+    notes: "Existing: Support engine, 13 tools / 15 routes"
+
+  - id: F32
+    category: "Operations — Assets/Support/Inventory"
+    family: notifications_and_reminders
+    description: "Cross-engine notifications and user-set reminders for events such as renewals, SLA breaches, and expirations"
+    disposition: NEW
+    replacing_route: "NOTIFICATION + REMINDER (shared core C13), produced by existing event selectors"
+    notes: "No engine currently notifies a person of its own emitted events"
+
+  - id: F33
+    category: "Operations — Assets/Support/Inventory"
+    family: inventory_stock_reads
+    description: "Stock item list/detail reads"
+    disposition: MOVE
+    replacing_route: "resource-layer reads via C12 over the existing complete Inventory engine"
+    notes: "Inventory engine itself is already complete (17/17)"
+
+  - id: F34
+    category: "Platform"
+    family: hr_employee_lifecycle
+    description: "Employee profile, onboarding, absence, compliance, skills, and coaching functions"
+    disposition: MOVE
+    replacing_route: "existing HR engine (13 tools / 17 routes) absorbs these; identity/auth stays outside NCE"
+    notes: "Pairs with the new principal-mapping capability (F35) for 'mine' reads"
+
+  - id: F35
+    category: "Platform"
+    family: principal_identity_mapping
+    description: "Resolving an authenticated caller to their employee/customer/contractor identity once, for every engine's 'mine' reads"
+    disposition: NEW
+    replacing_route: "GET /api/me/context (shared core C16), backed by a principal-bindings table"
+    notes: "Identity/authentication itself remains outside NCE by design"
+
+  - id: F36
+    category: "Platform"
+    family: business_intelligence_composition
+    description: "Profitability, results, customer-analytics, and sales-overview dashboards"
+    disposition: MOVE
+    replacing_route: "composed in the Business Insights engine once the Economy read model (F14) exists"
+    notes: "Existing: Business Insights engine, 6 tools / 7 routes"
+
+  - id: F37
+    category: "Platform"
+    family: marketing_case_studies
+    description: "Case studies and testimonials"
+    disposition: MOVE
+    replacing_route: "already covered by the Marketing engine"
+    notes: "No gap"
+
+  - id: F38
+    category: "Platform"
+    family: customer_facing_portal_reads
+    description: "External customer-portal pages: documents, invoices, SLA status"
+    disposition: MOVE
+    replacing_route: "REST twins of the existing MCP-tool-only customer-portal reads"
+    notes: "Existing: Customer Portal engine, 9 tools, plus a principal-context endpoint"
+
+  - id: F39
+    category: "Platform — documents"
+    family: document_register
+    description: "Per-location/asset/project/agreement document register backed by external cloud file storage, with tags and page regions"
+    disposition: NEW
+    replacing_route: "DOCUMENT node (shared core C14) + about-edges to FL/ASSET/PROJECT/AGREEMENT/TICKET, tags, expiring share tokens"
+    notes: "Content stays in the existing external file-storage bridge; NCE owns only the register. Invariant: no code path deletes at the source"
+
+  - id: F40
+    category: "Platform — site & geodata"
+    family: address_and_cadastre_identity
+    description: "Address validation and official building/cadastre identity resolution"
+    disposition: NEW
+    replacing_route: "SITE gains a cadastre id, validated address, coordinates (shared core C17); national address registry as a FEED"
+    notes: "C1 uses the cadastre id as the functional-location building match key"
+
+  - id: F41
+    category: "Platform — site & geodata"
+    family: building_geometry_feed
+    description: "Building footprint, height, roof shape, solar exposure, and 3D rendering inputs"
+    disposition: FEED
+    replacing_route: "SITE geometry attributes fed by an external dataset; rendering derives from them"
+
+  - id: F42
+    category: "Platform — site & geodata"
+    family: local_gis_datasets
+    description: "Local geographic datasets: land cover, coastline, road network, place names, freshwater"
+    disposition: FEED
+    replacing_route: "a dedicated geodata FEED module: ingest scripts + bounding-box query routes (not tenant-scoped, public data)"
+
+  - id: F43
+    category: "Platform — site & geodata"
+    family: vessel_locations
+    description: "Vessels as a moving kind of location, tracked by a live position feed"
+    disposition: MOVE+
+    replacing_route: "FUNCTIONAL_LOCATION of kind vessel, with position from a telemetry-adapter FEED"
+
+  - id: F44
+    category: "Platform — site & geodata"
+    family: weather_and_fx_feeds
+    description: "Weather conditions and foreign-exchange rates"
+    disposition: FEED
+    replacing_route: "a weather read route and an FX feed into pricing (F19)"
+
+  - id: F45
+    category: "Platform — host-retained state"
+    family: personal_ui_state
+    description: "Per-user favorites, drafts, spreadsheet drafts, and UI settings"
+    disposition: HOST
+    notes: "Stays outside NCE for v1.6 (Q-33); revisit once principal mapping (F35) has run for a month"
+
+  - id: F46
+    category: "Platform — host-retained state"
+    family: operational_telemetry_and_spend_metering
+    description: "Internal repository/operations analytics and AI-usage spend metering"
+    disposition: HOST
+    notes: "NCE already exposes usage quotas; the metering UX stays outside NCE, feeding NCE's own numbers"
+
+  - id: F47
+    category: "Platform — host-retained state"
+    family: credential_vault
+    description: "Stored credentials for external data-feed integrations"
+    disposition: MOVE
+    replacing_route: "the existing connector credential-save capability"
+    notes: "Credentials for a FEED belong with the feed, not with the identity layer"
+
+  - id: F48
+    category: "Platform — host-retained state"
+    family: identity_provider_mapping
+    description: "Mapping between the external identity provider and application accounts"
+    disposition: HOST
+    notes: "Identity and authentication remain outside NCE by design"
+
+  - id: F49
+    category: "Platform — CRM mirror"
+    family: crm_system_of_record_mirror
+    description: "A large (100+ route) mirrored copy of company, opportunity, case, location, employee, and account records from an external CRM system, plus its own dashboards and sync status"
+    disposition: RETIRE
+    replacing_route: "every capability already has an NCE-owned home per families F01-F38; the mirror's tables become the one-time backfill source and are then dropped"
+    notes: "Two exceptions stay and MOVE natively rather than retire: sales targets and account-knowledge data, which are authored in the mirror layer, not itself mirrored"
+
+  - id: F50
+    category: "Platform — integration proxy"
+    family: backend_for_frontend_proxy
+    description: "A thin backend-for-frontend layer: HR stand-ins, an empty agreements stand-in, product/distributor passthroughs, search, identity context, and a module-library listing"
+    disposition: MOVE+
+    replacing_route: "HR stand-ins -> HR engine; passthroughs -> Product search + Procurement order feed; search -> NCE search extended to entities; identity context -> F35"
+    notes: "After v1.6 this layer is authentication and identity-mapping only, nothing else"
+
+  - id: F51
+    category: "Platform — decision item"
+    family: floor_plan_digitisation
+    description: "Reading floor plans from raster/vector/document sources into rooms, desks, doors, zones, and fixtures, with training data and human correction"
+    disposition: HOST
+    notes: "Recommended to remain outside NCE for v1.6, writing into the functional-location and design resource layers once they exist; revisit as a possible dedicated engine once those layers are stable. Must stop writing to any private schema either way"
