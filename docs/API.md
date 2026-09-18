@@ -492,8 +492,24 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/system-design/topology` | `api_system_design_author_topology` |
 | POST | `/api/system-design/validate` | `api_system_design_validate_design_graph` |
 | POST | `/api/vendors/certs/upsert` | `api_vendors_upsert_cert` |
+| GET | `/api/vendors/contractors` | `handle_list` |
+| POST | `/api/vendors/contractors` | `handle_create` |
+| POST | `/api/vendors/contractors/bulk` | `handle_bulk` |
 | POST | `/api/vendors/contractors/upsert` | `api_vendors_upsert_contractor` |
 | GET | `/api/vendors/contractors/{id}` | `api_vendors_get_contractor` |
+| GET | `/api/vendors/contractors/{id}` | `handle_get` |
+| PATCH | `/api/vendors/contractors/{id}` | `handle_patch` |
+| POST | `/api/vendors/contractors/{id}/archive` | `handle_archive` |
+| GET | `/api/vendors/contractors/{id}/comments` | `handle_list_comments` |
+| POST | `/api/vendors/contractors/{id}/comments` | `handle_add_comment` |
+| GET | `/api/vendors/contractors/{id}/documents` | `handle_list_documents` |
+| POST | `/api/vendors/contractors/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/vendors/contractors/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/vendors/contractors/{id}/events` | `handle_events` |
+| POST | `/api/vendors/contractors/{id}/restore` | `handle_restore` |
+| GET | `/api/vendors/contractors/{id}/tags` | `handle_list_tags` |
+| POST | `/api/vendors/contractors/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/vendors/contractors/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/vendors/scorecard` | `api_vendors_scorecard` |
 | POST | `/api/vendors/seed` | `api_vendors_seed` |
 | POST | `/api/vendors/upsert` | `api_vendors_upsert` |
@@ -824,19 +840,23 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `trust_dial_set_tier` | yes | yes |  |  |
 | `unredact_memory` | yes | yes |  |  |
 | `validate_migration` |  |  |  | yes |
+| `vendors_archive_contractors` |  | yes |  |  |
 | `vendors_calibrate_weights` |  |  | yes |  |
 | `vendors_check_tier_at_risk` |  |  | yes |  |
 | `vendors_compute_performance` |  |  | yes |  |
 | `vendors_compute_scorecard` |  |  | yes |  |
 | `vendors_detect_reliability_degradation` |  |  | yes |  |
 | `vendors_get_contractor` |  |  | yes |  |
+| `vendors_get_contractors` |  |  | yes |  |
 | `vendors_get_tier_status` |  |  | yes |  |
 | `vendors_get_vendor` |  |  | yes |  |
+| `vendors_list_contractors` |  |  | yes |  |
 | `vendors_match_contractor` |  |  | yes |  |
 | `vendors_recall_similar_jobs` |  |  | yes |  |
 | `vendors_reliability_radar` |  |  | yes |  |
 | `vendors_upsert_cert` | yes | yes |  |  |
 | `vendors_upsert_contractor` | yes | yes |  |  |
+| `vendors_upsert_contractors` |  | yes |  |  |
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
