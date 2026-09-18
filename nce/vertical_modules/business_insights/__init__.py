@@ -20,12 +20,22 @@ from nce.vertical_modules.business_insights.brief import do_morning_brief
 from nce.vertical_modules.business_insights.kpi import do_kpi_dashboard
 from nce.vertical_modules.business_insights.radar import do_risk_radar
 from nce.vertical_modules.business_insights.scenario import do_run_scenario
+from nce.vertical_modules.business_insights.slices import (
+    COMPOSED_SLICES,
+    ComposedSliceSpec,
+    get_composed_slice_spec,
+    resolve_slice,
+)
 
 __all__ = [
+    "COMPOSED_SLICES",
+    "ComposedSliceSpec",
     "do_ask_business",
     "do_generate_board_pack",
     "do_kpi_dashboard",
     "do_morning_brief",
     "do_risk_radar",
     "do_run_scenario",
+    "get_composed_slice_spec",
+    "resolve_slice",
 ]

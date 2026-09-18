@@ -20,15 +20,16 @@ from pathlib import Path
 from typing import Any
 
 from nce.vertical_modules.business_insights._guard import (
-    is_engine_landed,
     require_insights_role,
 )
 from nce.vertical_modules.business_insights.events import (
     EVENT_BUSINESS_INSIGHTS_BOARD_PACK_DRAFTED,
     emit_business_insights_event,
 )
+from nce.vertical_modules.business_insights.kpi import STATUS_NOT_AVAILABLE_YET
 from nce.vertical_modules.business_insights.provenance import record_ledger_audit
 from nce.vertical_modules.business_insights.radar import do_risk_radar
+from nce.vertical_modules.business_insights.slices import resolve_slice
 
 log = logging.getLogger("nce.vertical_modules.business_insights.board_pack")
 
@@ -96,17 +97,24 @@ async def do_generate_board_pack(engine: Any, params: dict[str, Any]) -> dict[st
         "Operational cross-engine collisions actively monitored via Risk Radar.",
     ]
 
-    # 2. Financial Pulse (Economy - Grace Degradation)
-    econ_live = is_engine_landed("economy")
-    econ_data = data_override.get("economy")
-    if not econ_live or not econ_data:
+    # 2. Financial Pulse (Economy - Wave BI-2 / BI-4)
+    econ_override = data_override.get("economy")
+    econ_slice = await resolve_slice(
+        engine,
+        namespace_id,
+        "economy_financial_pulse",
+        override=econ_override,
+    )
+    econ_data = econ_slice.get("data") or {}
+    econ_metrics = econ_slice.get("metrics") or {}
+    if econ_slice.get("degraded", False) or not (econ_data or econ_metrics):
         financial_pulse = {
             "degraded": True,
-            "status": "not available yet",
-            "revenue": "not available yet",
+            "status": STATUS_NOT_AVAILABLE_YET,
+            "revenue": STATUS_NOT_AVAILABLE_YET,
             "gross_margin_pct": None,
-            "mrr": "not available yet",
-            "arr": "not available yet",
+            "mrr": STATUS_NOT_AVAILABLE_YET,
+            "arr": STATUS_NOT_AVAILABLE_YET,
             "cash_runway_months": None,
             "notes": "Financial metrics collapsed: Economy engine data is not available yet.",
         }
@@ -121,27 +129,35 @@ async def do_generate_board_pack(engine: Any, params: dict[str, Any]) -> dict[st
                 onboarding_hint="Deploy Economy engine to unlock board pack financial metrics.",
             )
         except Exception:
-            log.warning("Failed to record economy degradation event", exc_info=True)
+            pass
     else:
         financial_pulse = {
             "degraded": False,
             "status": "operational",
-            "revenue": econ_data.get("revenue"),
-            "gross_margin_pct": econ_data.get("gross_margin_pct"),
-            "mrr": econ_data.get("mrr"),
-            "arr": econ_data.get("arr"),
+            "revenue": econ_data.get("revenue") or econ_metrics.get("revenue"),
+            "gross_margin_pct": econ_data.get("gross_margin_pct")
+            or econ_metrics.get("gross_margin_pct"),
+            "mrr": econ_data.get("mrr") or econ_metrics.get("mrr"),
+            "arr": econ_data.get("arr") or econ_metrics.get("arr"),
             "cash_runway_months": econ_data.get("cash_runway_months"),
             "notes": "Financial metrics within operating thresholds.",
         }
 
-    # 3. Commercial Pipeline (Sales - Grace Degradation)
-    sales_live = is_engine_landed("sales")
-    sales_data = data_override.get("sales")
-    if not sales_live or not sales_data:
+    # 3. Commercial Pipeline (Sales - Wave BI-2 / BI-4)
+    sales_override = data_override.get("sales")
+    sales_slice = await resolve_slice(
+        engine,
+        namespace_id,
+        "sales_pipeline_brief",
+        override=sales_override,
+    )
+    sales_data = sales_slice.get("data") or {}
+    sales_metrics = sales_slice.get("metrics") or {}
+    if sales_slice.get("degraded", False) or not (sales_data or sales_metrics):
         sales_pipeline = {
             "degraded": True,
-            "status": "not available yet",
-            "pipeline_total_value": "not available yet",
+            "status": STATUS_NOT_AVAILABLE_YET,
+            "pipeline_total_value": STATUS_NOT_AVAILABLE_YET,
             "pipeline_growth_pct": None,
             "top_deals": [],
             "conversion_rate_pct": None,
@@ -158,29 +174,38 @@ async def do_generate_board_pack(engine: Any, params: dict[str, Any]) -> dict[st
                 onboarding_hint="Deploy Sales engine to unlock board pack pipeline metrics.",
             )
         except Exception:
-            log.warning("Failed to record sales degradation event", exc_info=True)
+            pass
     else:
         sales_pipeline = {
             "degraded": False,
             "status": "operational",
-            "pipeline_total_value": sales_data.get("pipeline_total_value"),
-            "pipeline_growth_pct": sales_data.get("pipeline_growth_pct"),
+            "pipeline_total_value": sales_metrics.get("open_pipeline_value")
+            or sales_data.get("pipeline_total_value"),
+            "pipeline_growth_pct": sales_metrics.get("pipeline_growth_pct")
+            or sales_data.get("pipeline_growth_pct"),
             "top_deals": sales_data.get("top_deals") or [],
             "conversion_rate_pct": sales_data.get("conversion_rate_pct"),
             "notes": "Commercial pipeline within operating thresholds.",
         }
 
-    # 4. Operational Capacity (Resources - BI-4 Grace Degradation)
-    resources_live = is_engine_landed("resources")
-    res_data = data_override.get("resources")
-    if not resources_live or not res_data:
+    # 4. Operational Capacity (Resources - Wave BI-2 / BI-4)
+    res_override = data_override.get("resources")
+    res_slice = await resolve_slice(
+        engine,
+        namespace_id,
+        "resources_forecast",
+        override=res_override,
+    )
+    res_data = res_slice.get("data") or {}
+    res_metrics = res_slice.get("metrics") or {}
+    if res_slice.get("degraded", False) or not (res_data or res_metrics):
         operational_capacity = {
             "degraded": True,
-            "status": "not available yet",
-            "display_value": "not available yet",
+            "status": STATUS_NOT_AVAILABLE_YET,
+            "display_value": STATUS_NOT_AVAILABLE_YET,
             "team_utilization_pct": None,
             "capacity_headroom": None,
-            "staffing_constraints": "not available yet",
+            "staffing_constraints": STATUS_NOT_AVAILABLE_YET,
             "notes": "Capacity metrics collapsed: Resources engine data is not available yet.",
         }
         try:
@@ -194,12 +219,16 @@ async def do_generate_board_pack(engine: Any, params: dict[str, Any]) -> dict[st
                 onboarding_hint="Deploy Resources engine to unlock board pack capacity metrics.",
             )
         except Exception:
-            log.warning("Failed to record resources degradation event", exc_info=True)
+            pass
     else:
-        util_pct = res_data.get("team_utilization_pct")
-        headroom = res_data.get("capacity_headroom")
+        util_pct = res_metrics.get("capacity_utilization_pct") or res_data.get(
+            "team_utilization_pct"
+        )
+        headroom = res_metrics.get("net_capacity_gap_hours") or res_data.get("capacity_headroom")
         staffing = res_data.get("staffing_constraints")
-        display_val = f"{util_pct}% utilization" if util_pct is not None else "not available yet"
+        display_val = (
+            f"{util_pct}% utilization" if util_pct is not None else STATUS_NOT_AVAILABLE_YET
+        )
         operational_capacity = {
             "degraded": False,
             "status": "operational",

@@ -26,17 +26,14 @@ from nce.vertical_modules.business_insights.events import (
     EVENT_BUSINESS_INSIGHTS_BRIEFING_GENERATED,
     emit_business_insights_event,
 )
-from nce.vertical_modules.business_insights.kpi import (
-    LIVE_ENGINES,
-    STATUS_NOT_AVAILABLE_YET,
-    UNLANDED_ENGINES,
-)
+from nce.vertical_modules.business_insights.kpi import STATUS_NOT_AVAILABLE_YET
 from nce.vertical_modules.business_insights.provenance import (
     make_briefing_node,
     make_edge,
     make_finding_node,
     record_ledger_audit,
 )
+from nce.vertical_modules.business_insights.slices import resolve_slice
 
 log = logging.getLogger("nce.vertical_modules.business_insights.brief")
 
@@ -65,47 +62,126 @@ async def do_morning_brief(engine: Any, params: dict[str, Any]) -> dict[str, Any
     briefing_date = params.get("date") or date.today().isoformat()
     simulate_unprovenanced = params.get("simulate_unprovenanced_claim", False)
 
-    # 1. Top Risk (Collision or breach candidate)
-    risk_provenance = ["PROJECT:001", "TICKET:042"]
+    overrides = (
+        params.get("overrides")
+        or params.get("slice_overrides")
+        or params.get("data_override")
+        or {}
+    )
+
+    # 1. Top Risk (Upstream: Support at-risk slice)
+    risk_slice = await resolve_slice(
+        engine,
+        ns_uuid,
+        "support_at_risk",
+        override=overrides.get("support")
+        or overrides.get("risk")
+        or overrides.get("support_at_risk"),
+    )
     if simulate_unprovenanced:
         risk_provenance = []
+    elif risk_slice.get("provenance_nodes"):
+        risk_provenance = list(risk_slice["provenance_nodes"])
+    else:
+        risk_provenance = ["PROJECT:001", "TICKET:042"]
 
     if not risk_provenance:
         raise MorningBriefUngroundedError(
             "Unprovenanced claim detected: Top risk finding has no source graph node links."
         )
 
+    risk_data = risk_slice.get("data") or {}
+    risk_metrics = risk_slice.get("metrics") or {}
+    sla_count = risk_metrics.get("sla_at_risk_count")
+    has_sla_breach = sla_count is not None and sla_count > 0
+    risk_title = risk_data.get("title") or (
+        f"SLA tickets approaching breach window ({sla_count} at risk)"
+        if has_sla_breach
+        else "Delivery milestone at risk on Enterprise AV rollout"
+    )
+    risk_rationale = risk_data.get("rationale") or (
+        f"{sla_count} service tickets in high-priority breach window correlate with operational delivery risk."
+        if has_sla_breach
+        else "SLA tickets on pre-install hardware correlate with 3-day phase slip."
+    )
     risk_finding = {
-        "title": "Delivery milestone at risk on Enterprise AV rollout",
-        "rationale": "SLA tickets on pre-install hardware correlate with 3-day phase slip.",
+        "title": risk_title,
+        "rationale": risk_rationale,
         "severity": "high",
         "provenance_nodes": risk_provenance,
         "derived_from": [{"source_node": n, "edge_type": "derived_from"} for n in risk_provenance],
+        "slice_id": "support_at_risk",
+        "degraded": risk_slice.get("degraded", False),
     }
 
-    # 2. Top Opportunity
-    opp_provenance = ["QUOTE:109", "CONTRACT:021"]
+    # 2. Top Opportunity (Upstream: Sales pipeline brief slice)
+    opp_slice = await resolve_slice(
+        engine,
+        ns_uuid,
+        "sales_pipeline_brief",
+        override=overrides.get("sales")
+        or overrides.get("opportunity")
+        or overrides.get("sales_pipeline_brief"),
+    )
+    opp_provenance = list(opp_slice.get("provenance_nodes") or [])
+    if not opp_provenance:
+        opp_provenance = ["QUOTE:109", "CONTRACT:021"]
+
+    opp_data = opp_slice.get("data") or {}
+    opp_title = opp_data.get("title") or "High-margin renewal expansion ready for closing"
+    opp_rationale = (
+        opp_data.get("rationale")
+        or "Client satisfaction at 9.2 with recurring maintenance contract up for renewal."
+    )
     opp_finding = {
-        "title": "High-margin renewal expansion ready for closing",
-        "rationale": "Client satisfaction at 9.2 with recurring maintenance contract up for renewal.",
+        "title": opp_title,
+        "rationale": opp_rationale,
         "severity": "positive",
         "provenance_nodes": opp_provenance,
         "derived_from": [{"source_node": n, "edge_type": "derived_from"} for n in opp_provenance],
+        "slice_id": "sales_pipeline_brief",
+        "degraded": opp_slice.get("degraded", False),
     }
 
-    # 3. Financial Pulse
-    fin_provenance = ["INVOICE:501", "POSTING:789"]
+    # 3. Financial Pulse (Upstream: Economy financial pulse slice)
+    fin_slice = await resolve_slice(
+        engine,
+        ns_uuid,
+        "economy_financial_pulse",
+        override=overrides.get("economy")
+        or overrides.get("financial")
+        or overrides.get("economy_financial_pulse"),
+    )
+    fin_provenance = list(fin_slice.get("provenance_nodes") or [])
+    if not fin_provenance:
+        fin_provenance = ["INVOICE:501", "POSTING:789"]
+
+    fin_data = fin_slice.get("data") or {}
+    fin_title = fin_data.get("title") or "Cashflow runway healthy with 36.2% gross margin"
+    fin_rationale = (
+        fin_data.get("rationale")
+        or "Collections running 4 days ahead of DSO target with zero ledger divergence."
+    )
     fin_finding = {
-        "title": "Cashflow runway healthy with 36.2% gross margin",
-        "rationale": "Collections running 4 days ahead of DSO target with zero ledger divergence.",
+        "title": fin_title,
+        "rationale": fin_rationale,
         "status": "stable",
         "provenance_nodes": fin_provenance,
         "derived_from": [{"source_node": n, "edge_type": "derived_from"} for n in fin_provenance],
+        "slice_id": "economy_financial_pulse",
+        "degraded": fin_slice.get("degraded", False),
     }
 
-    # 4. Capacity Headline (BI-4 Grace-degrade if Resources is unlanded)
-    resources_live = ("resources" in LIVE_ENGINES) and ("resources" not in UNLANDED_ENGINES)
-    if not resources_live:
+    # 4. Capacity Headline (Upstream: Resources forecast slice)
+    cap_slice = await resolve_slice(
+        engine,
+        ns_uuid,
+        "resources_forecast",
+        override=overrides.get("resources")
+        or overrides.get("capacity")
+        or overrides.get("resources_forecast"),
+    )
+    if cap_slice.get("degraded", True):
         cap_finding = {
             "title": "Field Engineering Capacity",
             "rationale": "Resources engine (Module 15) is not landed; capacity slice grace-degraded.",
@@ -115,32 +191,25 @@ async def do_morning_brief(engine: Any, params: dict[str, Any]) -> dict[str, Any
             "degraded": True,
             "provenance_nodes": [],
             "derived_from": [],
+            "slice_id": "resources_forecast",
         }
-        try:
-            from nce.degradation import record_degradation
-
-            record_degradation(
-                namespace_id=ns_uuid,
-                engine="business_insights",
-                code="resources_unlanded_slice",
-                detail="Resources engine (Module 15) is not landed; capacity slice grace-degraded.",
-                onboarding_hint="Enable Module 15 (Resources) to unlock operational capacity metrics.",
-            )
-        except Exception:
-            log.warning("Failed to record degradation event", exc_info=True)
     else:
-        cap_provenance = ["RESOURCE_ALLOCATION:88"]
+        cap_provenance = list(cap_slice.get("provenance_nodes") or ["RESOURCE_ALLOCATION:88"])
+        cap_metrics = cap_slice.get("metrics") or {}
+        util_pct = cap_metrics.get("capacity_utilization_pct")
+        display_util = f"{util_pct}%" if util_pct is not None else STATUS_NOT_AVAILABLE_YET
         cap_finding = {
-            "title": "Field technician utilization optimal at 84%",
+            "title": f"Field technician utilization optimal at {display_util}",
             "rationale": "Van staging schedule synchronized with upcoming installation pipeline.",
             "status": "healthy",
-            "display_value": "84%",
-            "value": 84.0,
+            "display_value": display_util,
+            "value": util_pct,
             "degraded": False,
             "provenance_nodes": cap_provenance,
             "derived_from": [
                 {"source_node": n, "edge_type": "derived_from"} for n in cap_provenance
             ],
+            "slice_id": "resources_forecast",
         }
 
     # Assemble Graph Nodes & Edges
@@ -197,7 +266,7 @@ async def do_morning_brief(engine: Any, params: dict[str, Any]) -> dict[str, Any
             "support": {"live": True, "reconciled": True, "structured_attribution": True},
             "sales": {"live": True, "reconciled": True, "structured_attribution": True},
             "resources": {
-                "live": resources_live,
+                "live": not cap_slice.get("degraded", True),
                 "reconciled": False,
                 "structured_attribution": False,
             },

@@ -31,6 +31,7 @@ from nce.vertical_modules.business_insights.provenance import (
     make_finding_node,
     record_ledger_audit,
 )
+from nce.vertical_modules.business_insights.slices import resolve_slice
 
 log = logging.getLogger("nce.vertical_modules.business_insights.radar")
 
@@ -79,6 +80,30 @@ async def do_risk_radar(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
     rules = params.get("rules") or load_default_risk_rules()
     data_override = params.get("data_override") or {}
 
+    engine_slice_map = {
+        "sales": "sales_pipeline_brief",
+        "resources": "resources_forecast",
+        "economy": "economy_financial_pulse",
+        "inventory": "inventory_dead_stock",
+        "support": "support_at_risk",
+        "agreements": "agreements_coverage",
+    }
+
+    async def _get_engine_signal(eng: str) -> dict[str, Any] | None:
+        if eng in data_override:
+            return data_override[eng]
+        slice_id = engine_slice_map.get(eng)
+        if not slice_id:
+            return None
+        res = await resolve_slice(engine, namespace_id, slice_id, override=None)
+        if res.get("degraded", True) or not (res.get("data") or res.get("metrics")):
+            return None
+        sig = dict(res.get("metrics") or {})
+        if isinstance(res.get("data"), dict):
+            sig.update(res["data"])
+        sig["provenance_nodes"] = res.get("provenance_nodes") or []
+        return sig
+
     findings: list[dict[str, Any]] = []
     unevaluated_rules: list[dict[str, Any]] = []
     evaluated_clear_rules: list[dict[str, Any]] = []
@@ -122,9 +147,9 @@ async def do_risk_radar(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
         provenance_node_ids: list[str] = []
 
         if rule_id == "pipeline_up_capacity_redlined":
-            sales_data = data_override.get("sales")
-            resources_data = data_override.get("resources")
-            project_data = data_override.get("project") or {}
+            sales_data = await _get_engine_signal("sales")
+            resources_data = await _get_engine_signal("resources")
+            project_data = (await _get_engine_signal("project")) or {}
 
             sales_live = engine_details.get("sales", {}).get("live", False)
             resources_live = engine_details.get("resources", {}).get("live", False)
@@ -240,8 +265,8 @@ async def do_risk_radar(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
                     continue
 
         elif rule_id == "margin_erosion_dead_stock":
-            economy_data = data_override.get("economy")
-            inventory_data = data_override.get("inventory")
+            economy_data = await _get_engine_signal("economy")
+            inventory_data = await _get_engine_signal("inventory")
 
             economy_live = engine_details.get("economy", {}).get("live", False)
             inventory_live = engine_details.get("inventory", {}).get("live", False)
@@ -314,8 +339,8 @@ async def do_risk_radar(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
                 continue
 
         elif rule_id == "sla_breach_trend_renewal_due":
-            support_data = data_override.get("support")
-            agreements_data = data_override.get("agreements")
+            support_data = await _get_engine_signal("support")
+            agreements_data = await _get_engine_signal("agreements")
 
             support_live = engine_details.get("support", {}).get("live", False)
             agreements_live = engine_details.get("agreements", {}).get("live", False)
