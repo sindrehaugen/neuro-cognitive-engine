@@ -27,23 +27,32 @@ code before writing a single generated test (not assumed from the brief):**
    would be vacuous for two of the three. This file branches by scope.
 
 2. **A real gap, found by reading ``nce/resource_surface/rest.py`` rather
-   than trusting that ``tenant_scope`` changes behaviour: it does not.**
-   Every REST handler (list/get/create/patch) calls
-   ``extract_namespace_id`` and filters unconditionally by that namespace --
-   there is no branch anywhere in ``rest.py`` that reads ``spec.tenant_scope``
-   or treats a ``"global"`` resource differently from a ``"tenant"`` one.
-   ``EXPECTED_GLOBAL_TABLES`` genuinely marks a table as cross-tenant (that
-   is what makes ``product_catalog`` resolve to ``tenant_scope == "global"``
-   at all), but nothing downstream of that derivation currently HONOURS it.
-   A global-scoped resource registered today would be silently, incorrectly
-   tenant-siloed. No spec with ``tenant_scope == "global"`` is registered
-   yet, so this is proven with a synthetic (but real, uninverted)
-   ``ResourceSpec`` instance run through the actual ``make_resource_routes``
-   -- not asserted from reading the code, executed. Marked
-   ``xfail(strict=True)``, the same pattern as H-1's verb-mix floor: RED by
-   design, documents a real gap rather than a broken assertion, and XPASSes
-   (fails CI) the day someone wires scope-aware behaviour into ``rest.py``,
-   forcing a deliberate removal of the marker.
+   than trusting that ``tenant_scope`` changes behaviour: at the time this
+   file was written, it did not.** Every REST handler (list/get/create/patch)
+   called ``extract_namespace_id`` and filtered unconditionally by that
+   namespace -- there was no branch anywhere in ``rest.py`` that read
+   ``spec.tenant_scope`` or treated a ``"global"`` resource differently from
+   a ``"tenant"`` one. ``EXPECTED_GLOBAL_TABLES`` genuinely marked a table as
+   cross-tenant (that is what makes ``product_catalog`` resolve to
+   ``tenant_scope == "global"`` at all), but nothing downstream of that
+   derivation honoured it, so a global-scoped resource registered then would
+   have been silently, incorrectly tenant-siloed. No spec with
+   ``tenant_scope == "global"`` was registered at the time, so this was
+   proven with a synthetic (but real, uninverted) ``ResourceSpec`` instance
+   run through the actual ``make_resource_routes`` -- not asserted from
+   reading the code, executed. Marked ``xfail(strict=True)``, the same
+   pattern as H-1's verb-mix floor: RED by design, documenting a real gap
+   rather than a broken assertion, meant to XPASS (fail CI) the day someone
+   wired scope-aware behaviour into ``rest.py``, forcing a deliberate removal
+   of the marker.
+
+   **That day came in Wave A-1b (`da265ac`).** `rest.py` now branches on
+   `tenant_scope` and the cross-namespace read genuinely returns 200 for a
+   global-scoped resource. The `xfail` marker below was removed as the
+   deliberate, visible act it was designed to force -- this is the second
+   instrument in this programme to close exactly the way it was built to
+   (the first was H-1's verb-mix floor). The test that follows is no longer
+   a documented gap; it is a passing assertion that A-1b made true.
 
 3. ``storage_kind`` (``postgres`` / ``mongo`` / ``kg_nodes``) matters less to
    this file than expected, and that itself is worth recording: the test
