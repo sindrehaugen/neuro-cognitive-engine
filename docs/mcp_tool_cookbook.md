@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 91a04e2 (main) · **Last-audited:** 2026-09-18
 
 # MCP Tool Cookbook
 
-Comprehensive integration guide and operational recipes for all **112 registered Model Context Protocol (MCP) tools** in the Neuro-Cognitive Engine (NCE v1.0).
+Comprehensive integration guide and operational recipes for registered Model Context Protocol (MCP) tools in the Neuro-Cognitive Engine (NCE v3.0.0). For authoritative registered tool counts and gating flags, see [Surface of Truth Table](_generated/surface.md).
 
 This cookbook details required and optional parameters, four-column dispatch gating flags (`admin_only`, `mutation`, `cacheable`, `migration`), JSON-RPC 2.0 request/response wire formats, error code handling, and representative recipes across all Shared Core subsystems and 12 Vertical Engines.
 
@@ -26,9 +26,9 @@ Every tool entry in `TOOL_REGISTRY` (`nce/tool_registry.py`) is defined by a `To
 
 ---
 
-## 2. Complete 112-Tool Gating Summary Table
+## 2. Tool Gating Summary Table (Historical Baseline)
 
-Derived directly from `TOOL_REGISTRY` in `nce/tool_registry.py` on baseline `7304330`:
+Derived directly from `TOOL_REGISTRY` in `nce/tool_registry.py` on baseline `7304330` (for live registered tool and route inventories generated directly from AST inspection, see [Surface of Truth Table](_generated/surface.md)):
 
 ### 2.1 Shared Core Platform (66 Tools)
 
@@ -635,7 +635,7 @@ register_tool(
 
 ## 7. Related References & Architecture Links
 
-- [Surface of Truth Table](_generated/surface.md) — Canonical 112-tool / 128-route AST verification
+- [Surface of Truth Table](_generated/surface.md) — Authoritative MCP tool and REST route inventory generated directly from source AST verification
 - [API Reference](api_reference.md) — Comprehensive schema specifications
 - [Enterprise Security](enterprise_security.md) — Three-header HMAC protocol and mTLS boot guards
 - [Database Architecture](database_architecture.md) — 57-table Row-Level Security (RLS) policies

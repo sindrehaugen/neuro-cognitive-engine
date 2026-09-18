@@ -19,7 +19,7 @@
   - [Frontend Integration Guide](frontend_integration_guide.md)
 
 - Architecture & System Design
-  - [Architecture v1.0 Spec](architecture-v1.md)
+  - [Architecture Spec v1.0](architecture-v1.md)
   - [Database Architecture](database_architecture.md)
   - [Recursive Indexing Flow](recursive_indexing_flow.md)
   - [Push Architecture](push_architecture.md)
