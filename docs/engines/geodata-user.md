@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** 7f45587 (mlv16f/f11-geodata-osm) · **Last-audited:** 2026-09-18
+> **Status:** shipped · **Verified-against:** 1d77b13 (mlv16f/f11-geodata-osm) · **Last-audited:** 2026-09-19
 
 # Geodata FEED Module User Guide
 
-> **Status:** shipped · **Verified-against:** 7f45587 (mlv16f/f11-geodata-osm) · **Last-audited:** 2026-09-18
+> **Status:** shipped · **Verified-against:** 1d77b13 (mlv16f/f11-geodata-osm) · **Last-audited:** 2026-09-19
 
 The **Geodata FEED module** (`nce/vertical_modules/geodata/`) provides local, queryable stores for public geospatial reference data that describes the physical world rather than a tenant's own business data. It is a **feed module, not a tenant vertical engine**: every table it owns is GLOBAL (no `namespace_id`, RLS disabled) and every tool it mounts carries no `engine=` opt-in gate, the same reasoning already applied to `product_catalog` (migration 064).
 
@@ -15,7 +15,7 @@ This guide covers the **OpenStreetMap element local store** (Lane F Wave F-11) �
 
 ## 1. Surface of Truth & Network Exposure
 
-The Geodata module operates strictly through **2 MCP Tools** and **0 REST Routes** at commit `7f45587`:
+The Geodata module operates strictly through **2 MCP Tools** and **0 REST Routes** at commit `1d77b13`:
 
 ### 1.1 Mounted MCP Tools (2 Tools)
 | MCP Tool | Cacheable | Mutation | Admin Only | AI-Role | Description |
@@ -120,4 +120,4 @@ OpenStreetMap data is public and licensed **ODbL**. A caller that displays this 
 
 ---
 
-> **Verified-against: 7f45587**
+> **Verified-against: 1d77b13**
