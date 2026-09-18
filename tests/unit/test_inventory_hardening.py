@@ -51,26 +51,27 @@ _NAMESPACE_ID = "00000000-0000-4000-8000-000000000001"
 _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
-# --- MEASURED post-rebase onto a725678 (#243/#251/#237/#249/#250/#255/#256/
-# #257/#254/#239) plus this branch's own support TICKET/SLA/SUPPORT_HEALTH_
-# SCORE C12 registration (Lane E Wave E-8):
+# --- MEASURED post-rebase onto 3115552 (#243/#251/#237/#249/#250/#255/#256/
+# #257/#254/#239/#248) plus this branch's own support TICKET/SLA/SUPPORT_
+# HEALTH_SCORE C12 registration (Lane E Wave E-8):
 #   NCE_MASTER_KEY="x"*32 python -c "
 #     import nce.tool_registry as tr
 #     print(len(tr.TOOL_REGISTRY), len(tr.MUTATION_TOOLS), len(tr.CACHEABLE_TOOLS), len(tr.ADMIN_ONLY_TOOLS))"
 # TOTAL: 283 hand-written baseline + 1 BRREG registry-feed (Lane F Wave F-8)
-# + 2 geodata OSM (Lane F Wave F-11) hand-written + 64 live C12 tools
-# (16 Inventory + 8 Notifications + 4 Procurement PO_LINE + 4 Document
-# Register + 8 Resources ALLOCATION/TRAVEL_LEG + 4 Product + 4 Legal-Entity
-# Register + 4 Vendors CONTRACTOR + 12 Support TICKET/SLA/SUPPORT_HEALTH_
-# SCORE, Lane E Wave E-8) = 350. See tests/test_tool_registry.py for the
-# equivalent derived hand-written/C12 split for MUTATION (125 hand-written
-# incl. BRREG+geodata + 32 live C12 = 157) and CACHEABLE (116 hand-written
-# incl. geodata + 32 live C12 = 148); ADMIN_ONLY (95) is unaffected by
+# + 2 geodata OSM (Lane F Wave F-11) + 2 geodata N50 land-cover (Lane F
+# Wave F-12) hand-written + 64 live C12 tools (16 Inventory + 8
+# Notifications + 4 Procurement PO_LINE + 4 Document Register + 8 Resources
+# ALLOCATION/TRAVEL_LEG + 4 Product + 4 Legal-Entity Register + 4 Vendors
+# CONTRACTOR + 12 Support TICKET/SLA/SUPPORT_HEALTH_SCORE, Lane E Wave E-8)
+# = 352. See tests/test_tool_registry.py for the equivalent derived
+# hand-written/C12 split for MUTATION (126 hand-written incl. BRREG+both
+# geodata waves + 32 live C12 = 158) and CACHEABLE (117 hand-written incl.
+# both geodata waves + 32 live C12 = 149); ADMIN_ONLY (96) is unaffected by
 # support -- E-8 registered no admin_only tools.
-_TOTAL_TOOLS = 350
-_MUTATION_TOOLS = 157
-_CACHEABLE_TOOLS = 148
-_ADMIN_ONLY_TOOLS = 95
+_TOTAL_TOOLS = 352
+_MUTATION_TOOLS = 158
+_CACHEABLE_TOOLS = 149
+_ADMIN_ONLY_TOOLS = 96
 _MIGRATION_TOOLS = 5
 
 
