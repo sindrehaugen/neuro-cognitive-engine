@@ -25,11 +25,12 @@ Exception             Code     Message
 ``McpError``          (as-is)  (as-is)
 ``ScopeError``        -32005   Scope forbidden
 ``OwnershipError``    -32005   Not permitted to write this node type
+``EngineDisabledError`` -32005 Engine disabled
+``BusinessRefusalError`` -32005 Business refusal
 ``PermissionError``   -32600   Permission denied (IDOR / security refusal)
 ``DeploymentConfigurationError`` -32603  Internal error (deployment not configured)
 ``RateLimitError``    -32029   Rate limit exceeded
 ``ValidationError``   -32602   Invalid parameters
-``ResourcesError``    -32602   Invalid parameters (domain validation)
 ``QuotaExceededError``  -32013   Resource quota exceeded
 ``ValueError``          -32602   Invalid parameters
 ``TypeError``           -32602   Invalid parameters
@@ -53,20 +54,9 @@ from pydantic import ValidationError
 from nce.a2a import A2AAuthorizationError, A2AScopeViolationError
 from nce.auth import RateLimitError, ScopeError
 from nce.config import DeploymentConfigurationError, cfg
+from nce.engine_registry import EngineDisabledError
 from nce.entity_resolution.ownership import OwnershipError
 from nce.quotas import QuotaExceededError
-
-
-def _get_resources_errors() -> tuple[type[BaseException], ...]:
-    try:
-        from nce.vertical_modules.resources._guard import ResourcesError
-
-        if isinstance(ResourcesError, type):
-            return (ResourcesError,)
-    except Exception:
-        pass
-    return ()
-
 
 log = logging.getLogger(__name__)
 
@@ -85,6 +75,8 @@ MCP_INTERNAL_ERROR: int = -32603
 MCP_AUTH_FAILED: int = -32001
 MCP_REPLAY_DETECTED: int = -32002
 MCP_SCOPE_FORBIDDEN: int = -32005
+MCP_ENGINE_DISABLED: int = MCP_SCOPE_FORBIDDEN
+MCP_BUSINESS_REFUSED: int = MCP_SCOPE_FORBIDDEN
 MCP_A2A_AUTH_FAILED: int = -32010
 MCP_A2A_SCOPE_VIOLATION: int = -32011
 MCP_QUOTA_EXCEEDED: int = -32013
@@ -123,6 +115,27 @@ class UnknownToolError(McpError):
 
     def __init__(self, tool_name: str) -> None:
         super().__init__(MCP_METHOD_NOT_FOUND, f"Unknown tool: {tool_name}")
+
+
+class BusinessRefusalError(Exception):
+    """Base exception for domain-level business refusals across vertical modules.
+
+    Raised when a business rule or invariant prevents an operation from proceeding
+    (e.g. insufficient available stock, ungrounded claims, unauthorized egress).
+    When caught by ``@mcp_handler``, maps to ``MCP_BUSINESS_REFUSED`` (-32005)
+    with a structured ``data`` payload, never escaping to ``MCP_INTERNAL_ERROR`` (-32603).
+    """
+
+    def __init__(
+        self,
+        message: str = "Business operation refused",
+        *,
+        reason: str | None = None,
+        data: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.reason = reason
+        self.data = data
 
 
 def client_visible_detail(message: str | None) -> str | None:
@@ -224,6 +237,40 @@ def merge_client_error_data(
     return merged
 
 
+def engine_disabled_data(exc: EngineDisabledError) -> dict[str, Any]:
+    """Build ``error.data`` for an ``EngineDisabledError`` refusal."""
+    data: dict[str, Any] = {"reason": "engine_disabled"}
+    detail = client_visible_detail(str(exc))
+    if detail is not None:
+        data["detail"] = detail
+    return data
+
+
+def business_refusal_data(exc: Exception) -> dict[str, Any]:
+    """Build ``error.data`` for a ``BusinessRefusalError`` without leaking in prod."""
+    reason = getattr(exc, "reason", None)
+    if not reason:
+        name = exc.__class__.__name__
+        if name.endswith("Error"):
+            name = name[:-5]
+        import re
+
+        reason = re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+        if not reason:
+            reason = "business_refused"
+
+    data: dict[str, Any] = {"reason": reason}
+    extra = getattr(exc, "data", None)
+    if isinstance(extra, dict):
+        for k, v in extra.items():
+            if k != "reason" and isinstance(v, (str, int, float, bool, type(None), list, dict)):
+                data[k] = v
+    detail = client_visible_detail(str(exc))
+    if detail is not None:
+        data["detail"] = detail
+    return data
+
+
 # ---------------------------------------------------------------------------
 # @mcp_handler decorator
 # ---------------------------------------------------------------------------
@@ -320,6 +367,15 @@ def mcp_handler(handler_fn: F) -> F:
                 "Resource quota exceeded",
                 data={"reason": "quota_exceeded"},
             )
+        except EngineDisabledError as e:
+            # Must precede KeyError — EngineDisabledError inherits from EngineUnavailableError,
+            # which subclasses KeyError. If placed after KeyError, disabled engines would be
+            # misreported as -32602 missing_field instead of -32005 engine_disabled.
+            raise McpError(
+                MCP_ENGINE_DISABLED,
+                "Engine disabled",
+                data=engine_disabled_data(e),
+            )
         except KeyError:
             # Separate handler: str(KeyError) echoes field names ('secret_key').
             raise McpError(
@@ -333,11 +389,13 @@ def mcp_handler(handler_fn: F) -> F:
                 "Invalid parameters",
                 data=invalid_arguments_data(e),
             )
-        except _get_resources_errors() as e:
+        except BusinessRefusalError as e:
+            # Domain-level business refusal across vertical modules.
+            # Reports as -32005 (MCP_BUSINESS_REFUSED), never escaping to -32603.
             raise McpError(
-                MCP_INVALID_PARAMS,
-                "Invalid parameters",
-                data=invalid_arguments_data(e),
+                MCP_BUSINESS_REFUSED,
+                "Business refusal",
+                data=business_refusal_data(e),
             )
         except A2AAuthorizationError as e:
             raise McpError(

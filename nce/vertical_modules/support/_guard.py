@@ -22,10 +22,12 @@ from typing import Any
 
 from asyncpg.exceptions import DataError
 
+from nce.engine_registry import EngineDisabledError
+
 log = logging.getLogger("nce.vertical_modules.support._guard")
 
 
-class SupportDisabledError(Exception):
+class SupportDisabledError(EngineDisabledError):
     """Raised when a namespace has not opted in to the Support vertical."""
 
 

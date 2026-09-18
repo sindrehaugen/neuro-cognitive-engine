@@ -208,6 +208,7 @@ from uuid import UUID
 import asyncpg  # type: ignore[import-untyped]
 
 from nce.db_utils import scoped_pg_session
+from nce.mcp_errors import BusinessRefusalError
 
 if TYPE_CHECKING:
     from nce.orchestrator import NCEEngine
@@ -340,7 +341,7 @@ def _inventory_item_label(sku: str, location_id: UUID) -> str:
 # ---------------------------------------------------------------------------
 
 
-class InsufficientAvailableError(Exception):
+class InsufficientAvailableError(BusinessRefusalError):
     """Raised when :func:`do_reserve_stock`'s ``WHERE qty_on_hand -
     qty_reserved - qty_blocked >= n`` guard affects zero rows — either the
     row exists but does not have enough AVAILABLE stock, or no
@@ -373,7 +374,7 @@ class InsufficientAvailableError(Exception):
         )
 
 
-class OverReleaseError(Exception):
+class OverReleaseError(BusinessRefusalError):
     """Raised when :func:`do_release_stock`'s ``WHERE qty_reserved >= n``
     guard affects zero rows — releasing more than is currently reserved at
     this ``(sku, location)`` (or no row exists at all, treated as

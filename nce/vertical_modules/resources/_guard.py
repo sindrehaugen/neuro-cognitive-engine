@@ -10,15 +10,17 @@ import logging
 from typing import Any
 
 from nce.config import cfg
+from nce.engine_registry import EngineDisabledError
+from nce.mcp_errors import BusinessRefusalError
 
 log = logging.getLogger("nce.vertical_modules.resources.guard")
 
 
-class ResourcesError(Exception):
+class ResourcesError(BusinessRefusalError):
     """Base exception for all Resources Engine operations."""
 
 
-class ResourcesDisabledError(ResourcesError):
+class ResourcesDisabledError(EngineDisabledError, ResourcesError):
     """Raised when Resources Engine is disabled globally or for a tenant."""
 
 

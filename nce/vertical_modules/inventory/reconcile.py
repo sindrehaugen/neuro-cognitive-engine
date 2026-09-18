@@ -94,6 +94,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 from uuid import UUID
 
 from nce.db_utils import scoped_pg_session
+from nce.mcp_errors import BusinessRefusalError
 
 if TYPE_CHECKING:
     from nce.orchestrator import NCEEngine
@@ -151,7 +152,7 @@ def _as_dead_stock_days(raw: Any, where: str) -> int:
     return raw
 
 
-class LedgerDivergenceError(Exception):
+class LedgerDivergenceError(BusinessRefusalError):
     """``inventory_items`` no longer agrees with the ``inventory_transactions``
     ledger for one or more dead ``(sku, location)`` pairs.
 

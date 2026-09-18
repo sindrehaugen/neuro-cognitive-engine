@@ -16,26 +16,29 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from nce.engine_registry import EngineDisabledError
+from nce.mcp_errors import BusinessRefusalError
+
 log = logging.getLogger("nce.vertical_modules.business_insights._guard")
 
 
-class BusinessInsightsDisabledError(Exception):
+class BusinessInsightsDisabledError(EngineDisabledError):
     """Raised when a namespace has not opted into the Business Insights vertical."""
 
 
-class PersonRankingProhibitedError(Exception):
+class PersonRankingProhibitedError(BusinessRefusalError):
     """Raised when an attempt to rank, compare, or score individual employees/people is detected (BI-1)."""
 
 
-class ThirdPartyEgressUnauthorizedError(Exception):
+class ThirdPartyEgressUnauthorizedError(BusinessRefusalError):
     """Raised when an unapproved external AI or unauthorized principal attempts financial data query (BI-3)."""
 
 
-class LowCoverageAssertionError(Exception):
+class LowCoverageAssertionError(BusinessRefusalError):
     """Raised when a finding lacks required upstream engine reconciliation or structured attribution (BI-2)."""
 
 
-class BusinessInsightsDataUnavailableError(Exception):
+class BusinessInsightsDataUnavailableError(BusinessRefusalError):
     """Raised when required KPI snapshots or graph data are unavailable for a query."""
 
 

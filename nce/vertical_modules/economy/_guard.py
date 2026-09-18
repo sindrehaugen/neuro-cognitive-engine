@@ -24,13 +24,15 @@ from typing import TYPE_CHECKING, Any
 
 from asyncpg.exceptions import DataError
 
+from nce.engine_registry import EngineDisabledError
+
 if TYPE_CHECKING:
     pass
 
 log = logging.getLogger("nce.vertical_modules.economy._guard")
 
 
-class EconomyDisabledError(Exception):
+class EconomyDisabledError(EngineDisabledError):
     """Raised when a namespace has not opted in to the Economy vertical."""
 
 

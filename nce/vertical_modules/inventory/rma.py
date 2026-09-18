@@ -122,6 +122,7 @@ import asyncpg  # type: ignore[import-untyped]
 from nce.db_utils import scoped_pg_session
 from nce.entity_resolution.ownership import assert_owner
 from nce.events.emit import emit_graph_write
+from nce.mcp_errors import BusinessRefusalError
 from nce.vertical_modules.inventory.stock import (
     decrement_on_hand,
     increment_on_hand,
@@ -472,7 +473,7 @@ _STATE_RESTOCKED = "restocked"
 _STATE_DISPOSED = "disposed"
 
 
-class RmaNotFoundError(Exception):
+class RmaNotFoundError(BusinessRefusalError):
     """No ``inventory_rma`` row exists for this ``(namespace_id, rma_ref)``."""
 
     def __init__(self, *, rma_ref: str) -> None:
@@ -480,7 +481,7 @@ class RmaNotFoundError(Exception):
         super().__init__(f"no inventory_rma row for rma_ref={rma_ref!r}")
 
 
-class RmaAlreadySettledError(Exception):
+class RmaAlreadySettledError(BusinessRefusalError):
     """The RMA's ``stock_movement_state`` is no longer ``'pending'`` — a
     stock leg (this call, or a concurrent one) already claimed it."""
 
@@ -493,7 +494,7 @@ class RmaAlreadySettledError(Exception):
         )
 
 
-class RmaNotWeeeScopeError(Exception):
+class RmaNotWeeeScopeError(BusinessRefusalError):
     """Disposal was attempted on an RMA whose ``weee_state`` is
     ``'not_applicable'`` — a contradiction: no WEEE take-back can be
     documented for an item that is not WEEE-scope."""

@@ -128,6 +128,7 @@ import asyncpg
 from nce import config as _config
 from nce.config import cfg
 from nce.event_log import append_event
+from nce.mcp_errors import BusinessRefusalError
 from nce.vertical_modules.system_design.retire import (
     _delete_permanently,
     _port_labels_of,
@@ -175,7 +176,7 @@ ARCHIVE_OP = "archived"
 ARCHIVE_AGENT_ID = "system_design_archive_sweep"
 
 
-class ArchiveNotReadableError(RuntimeError):
+class ArchiveNotReadableError(BusinessRefusalError, RuntimeError):
     """The stored object could not be read back, or read back different bytes.
 
     Raised between the store and the drop.  It is not a failure of the sweep so

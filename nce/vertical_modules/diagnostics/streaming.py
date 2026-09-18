@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from nce.config import cfg
+from nce.mcp_errors import BusinessRefusalError
 from nce.vertical_modules.diagnostics.profiles import LogProfile
 
 # ── Constants ───────────────────────────────────────────────────────────────────
@@ -60,7 +61,7 @@ _TAR_USTAR_MAGIC = b"ustar"
 # ── Errors ──────────────────────────────────────────────────────────────────────
 
 
-class PoisonBundleError(Exception):
+class PoisonBundleError(BusinessRefusalError):
     """Raised when a bundle breaches a streaming safety guard.
 
     The diagnostics worker classifies this as *non-retryable*: a bundle that

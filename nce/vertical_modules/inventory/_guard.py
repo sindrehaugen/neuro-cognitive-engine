@@ -25,13 +25,15 @@ from typing import TYPE_CHECKING, Any
 
 from asyncpg.exceptions import DataError
 
+from nce.engine_registry import EngineDisabledError
+
 if TYPE_CHECKING:
     pass
 
 log = logging.getLogger("nce.vertical_modules.inventory._guard")
 
 
-class InventoryDisabledError(Exception):
+class InventoryDisabledError(EngineDisabledError):
     """Raised when a namespace has not opted in to the Inventory vertical."""
 
 

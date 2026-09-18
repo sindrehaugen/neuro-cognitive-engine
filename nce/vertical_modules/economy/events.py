@@ -168,6 +168,8 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, DecimalException, Inexact, localcontext
 from typing import Any
 
+from nce.mcp_errors import BusinessRefusalError
+
 # Working precision for the balance sum. Generous enough that any realistic journal adds
 # exactly; anything beyond it trips the armed ``Inexact`` trap and raises rather than
 # comparing a rounded sum against the tolerance.
@@ -184,7 +186,7 @@ _STRING_TAG = "s:"
 _TIME_TAG = "t:"
 
 
-class UnbalancedPostingsError(Exception):
+class UnbalancedPostingsError(BusinessRefusalError):
     """An event's postings do not sum to zero within the tolerance — the event is rejected.
 
     Ported from ``emit.ts``. Attribute names are snake_cased to repo convention
