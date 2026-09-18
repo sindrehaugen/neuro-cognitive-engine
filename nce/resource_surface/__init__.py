@@ -76,7 +76,7 @@ def load_all_engine_resources() -> None:
             try:
                 importlib.import_module(full_mod_name)
             except ModuleNotFoundError:
-                # Engine has not declared resources yet (e.g. before Wave E lands)
+                # Engine has not declared resources yet (e.g. before lane E registers it)
                 pass
             except Exception as exc:
                 log.warning("Failed importing resource module %s: %s", full_mod_name, exc)

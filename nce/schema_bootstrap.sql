@@ -3983,7 +3983,7 @@ END $$;
 
 CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    namespace_id UUID NOT NULL,
+    namespace_id UUID NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
     principal_id TEXT NOT NULL,
     title VARCHAR(256) NOT NULL,
     body TEXT NOT NULL DEFAULT '',
@@ -4016,7 +4016,7 @@ END $$;
 
 CREATE TABLE IF NOT EXISTS reminders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    namespace_id UUID NOT NULL,
+    namespace_id UUID NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
     principal_id TEXT NOT NULL,
     node_type VARCHAR(64) NOT NULL,
     node_id VARCHAR(256) NOT NULL,
@@ -4047,7 +4047,7 @@ END $$;
 
 CREATE TABLE IF NOT EXISTS notification_subscriptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    namespace_id UUID NOT NULL,
+    namespace_id UUID NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
     principal_id TEXT NOT NULL,
     selector VARCHAR(128) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

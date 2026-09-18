@@ -24,6 +24,7 @@ from mcp.types import Tool
 
 from nce.auth import NamespaceContext, set_namespace_context
 from nce.db_utils import scoped_pg_session
+from nce.mcp_errors import mcp_handler
 from nce.resource_surface.rest import _get_mem_bucket, row_to_dict
 from nce.resource_surface.spec import ResourceSpec
 
@@ -365,15 +366,15 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
 
         return json.dumps({"status": "ok", "id": item_id, "archived": True})
 
-    # Wrap names
+    # Wrap names and decorate with @mcp_handler
     handle_list.__name__ = f"handle_{list_tool_name}"
     handle_get.__name__ = f"handle_{get_tool_name}"
     handle_upsert.__name__ = f"handle_{upsert_tool_name}"
     handle_archive.__name__ = f"handle_{archive_tool_name}"
 
     return {
-        list_tool_name: ToolSpec(handle_list, cacheable=True, engine=spec.engine),
-        get_tool_name: ToolSpec(handle_get, cacheable=True, engine=spec.engine),
-        upsert_tool_name: ToolSpec(handle_upsert, mutation=True, engine=spec.engine),
-        archive_tool_name: ToolSpec(handle_archive, mutation=True, engine=spec.engine),
+        list_tool_name: ToolSpec(mcp_handler(handle_list), cacheable=True, engine=spec.engine),
+        get_tool_name: ToolSpec(mcp_handler(handle_get), cacheable=True, engine=spec.engine),
+        upsert_tool_name: ToolSpec(mcp_handler(handle_upsert), mutation=True, engine=spec.engine),
+        archive_tool_name: ToolSpec(mcp_handler(handle_archive), mutation=True, engine=spec.engine),
     }

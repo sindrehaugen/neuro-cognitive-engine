@@ -42,14 +42,14 @@ async def fetch_entity_events(
     selectors = get_selectors_for_node_type(spec.node_type)
 
     query = """
-        SELECT id, event_type, payload, occurred_at, event_seq
+        SELECT id, event_type, params AS payload, occurred_at, event_seq
         FROM event_log
         WHERE namespace_id = $1
           AND (
-            payload->>'id' = $2
-            OR payload->>'entity_id' = $2
-            OR payload->>'node_id' = $2
-            OR ($3::text[] IS NOT NULL AND event_type = ANY($3::text[]) AND (payload->>'id' = $2 OR payload->>'entity_id' = $2))
+            params->>'id' = $2
+            OR params->>'entity_id' = $2
+            OR params->>'node_id' = $2
+            OR ($3::text[] IS NOT NULL AND event_type = ANY($3::text[]) AND (params->>'id' = $2 OR params->>'entity_id' = $2))
           )
         ORDER BY occurred_at DESC, event_seq DESC
         LIMIT $4

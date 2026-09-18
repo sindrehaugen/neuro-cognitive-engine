@@ -477,7 +477,7 @@ def test_event_catalogue_and_audited_sites_registration() -> None:
     assert contract.node_type == "TICKET"
     assert contract.op == "sla_breached"
     assert "nce/vertical_modules/support/sla.py" in contract.declared_producers
-    assert contract.status == "UNCONSUMED"
+    assert contract.status == "ACTIVE"  # Subscribed by C13 notifications service (Wave A-3)
 
     assert "cron.support_sla_watcher.namespace_scan" in UNMANAGED_PG_AUDITED_SITES
 

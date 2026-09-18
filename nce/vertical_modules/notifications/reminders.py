@@ -106,39 +106,40 @@ async def fire_pending_reminders(
     for r in rows:
         rem_id = r["id"]
         r_ns = r["namespace_id"]
-        await conn.execute(
-            """
-            UPDATE reminders
-            SET status = 'fired',
-                fired_at = $1,
-                updated_at = $1
-            WHERE id = $2 AND namespace_id = $3
-            """,
-            effective_now,
-            rem_id,
-            r_ns,
-        )
+        async with conn.transaction():
+            await conn.execute(
+                """
+                UPDATE reminders
+                SET status = 'fired',
+                    fired_at = $1,
+                    updated_at = $1
+                WHERE id = $2 AND namespace_id = $3
+                """,
+                effective_now,
+                rem_id,
+                r_ns,
+            )
 
-        payload = {
-            "reminder_id": str(rem_id),
-            "namespace_id": str(r_ns),
-            "principal_id": r["principal_id"],
-            "node_type": r["node_type"],
-            "node_id": r["node_id"],
-            "title": r["title"],
-            "note": r["note"] or "",
-            "remind_at": r["remind_at"].isoformat() if r["remind_at"] else None,
-            "fired_at": effective_now.isoformat(),
-        }
+            payload = {
+                "reminder_id": str(rem_id),
+                "namespace_id": str(r_ns),
+                "principal_id": r["principal_id"],
+                "node_type": r["node_type"],
+                "node_id": r["node_id"],
+                "title": r["title"],
+                "note": r["note"] or "",
+                "remind_at": r["remind_at"].isoformat() if r["remind_at"] else None,
+                "fired_at": effective_now.isoformat(),
+            }
 
-        await publish(
-            conn,
-            namespace_id=r_ns,
-            node_type="REMINDER",
-            op="fired",
-            aggregate_id=f"REMINDER:{rem_id}",
-            payload=payload,
-        )
+            await publish(
+                conn,
+                namespace_id=r_ns,
+                node_type="REMINDER",
+                op="fired",
+                aggregate_id=f"REMINDER:{rem_id}",
+                payload=payload,
+            )
 
         record = dict(r)
         record["status"] = "fired"

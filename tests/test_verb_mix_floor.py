@@ -172,6 +172,7 @@ def _route_mount_files() -> list[Path]:
         p
         for p in sorted(_NCE_DIR.rglob("*.py"))
         if "Route(" in p.read_text(encoding="utf-8", errors="replace")
+        and p.resolve() != (_NCE_DIR / "resource_surface" / "rest.py").resolve()
     ]
 
 
@@ -286,6 +287,51 @@ def _extract_route_methods() -> tuple[
                         resolved_slug,
                     )
                 )
+
+    # C12: Resource surface routes generated dynamically per ResourceSpec
+    from nce.resource_surface import get_all_resource_specs, load_all_engine_resources
+
+    load_all_engine_resources()
+    specs = sorted(get_all_resource_specs(), key=lambda s: (s.engine, s.rest_slug))
+    _resource_templates = (
+        ("", "GET", 832),
+        ("", "POST", 833),
+        ("/bulk", "POST", 834),
+        ("/{id}", "GET", 835),
+        ("/{id}", "PATCH", 836),
+        ("/{id}/archive", "POST", 837),
+        ("/{id}/restore", "POST", 838),
+        ("/{id}/events", "GET", 839),
+        ("/{id}/comments", "GET", 840),
+        ("/{id}/comments", "POST", 841),
+        ("/{id}/tags", "GET", 842),
+        ("/{id}/tags", "POST", 843),
+        ("/{id}/tags/{tag}", "DELETE", 844),
+    )
+    for spec in specs:
+        prefix = spec.rest_collection_path
+        defining_mod = f"nce.vertical_modules.{spec.engine}.resources"
+        mod_slug = _module_owner_slug(defining_mod)
+        for subpath, method, lineno in _resource_templates:
+            p_val = f"{prefix}{subpath}"
+            p_slug = _path_slug(p_val)
+            pub_slug = _public_path_slug(p_val)
+            is_eng = bool(mod_slug) or bool(p_slug) or bool(pub_slug)
+            res_slug = mod_slug or p_slug or pub_slug
+            route_methods.append(
+                RouteMethod(
+                    "nce/resource_surface/rest.py",
+                    p_val,
+                    method,
+                    lineno,
+                    defining_mod,
+                    mod_slug,
+                    p_slug,
+                    pub_slug,
+                    is_eng,
+                    res_slug,
+                )
+            )
 
     return route_methods, unresolved_paths, unresolved_methods
 
@@ -451,8 +497,14 @@ def test_positive_control_verb_mix_floor_is_not_vacuous() -> None:
         "the metric is vacuous."
     )
 
-    # A synthetic all-GET route list must read exactly 0%, never a silent pass.
-    all_get = [rm._replace(method="GET") for rm in engine_routes]
+    # A synthetic all-GET, non-archive route list must read exactly 0%, never a silent pass.
+    all_get = [
+        rm._replace(
+            method="GET",
+            path=rm.path[:-8] + "/detail" if rm.path.rstrip("/").endswith("/archive") else rm.path,
+        )
+        for rm in engine_routes
+    ]
     all_get_numerator = sum(1 for rm in all_get if _is_verb_or_archive(rm))
     assert all_get_numerator == 0
     assert (100.0 * all_get_numerator / len(all_get)) == 0.0

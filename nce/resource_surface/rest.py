@@ -804,17 +804,14 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                 and getattr(admin_state.engine, "pg_pool", None)
                 and spec.table_name
             ):
-                try:
-                    async with scoped_pg_session(admin_state.engine.pg_pool, ns_uuid) as conn:
-                        cols = list(data.keys())
-                        vals = [data[c] for c in cols]
-                        placeholders = [f"${i + 1}" for i in range(len(cols))]
-                        await conn.execute(
-                            f"INSERT INTO {spec.table_name} ({', '.join(cols)}) VALUES ({', '.join(placeholders)})",
-                            *vals,
-                        )
-                except Exception as exc:
-                    log.warning("Bulk item insert error: %s", exc)
+                async with scoped_pg_session(admin_state.engine.pg_pool, ns_uuid) as conn:
+                    cols = list(data.keys())
+                    vals = [data[c] for c in cols]
+                    placeholders = [f"${i + 1}" for i in range(len(cols))]
+                    await conn.execute(
+                        f"INSERT INTO {spec.table_name} ({', '.join(cols)}) VALUES ({', '.join(placeholders)})",
+                        *vals,
+                    )
             else:
                 mem = _get_mem_bucket(spec, str(ns_uuid))
                 mem[item_id] = dict(data)
