@@ -73,6 +73,7 @@ from nce.admin_handlers._shared import (
     bump_mcp_cache_generation,
 )
 from nce.entity_resolution.ownership import OwnershipError
+from nce.vertical_modules.system_design.capability_sync import do_sync_device_capabilities
 from nce.vertical_modules.system_design.enrichment import do_enrich_design_lines
 from nce.vertical_modules.system_design.from_quote import do_design_from_quote
 from nce.vertical_modules.system_design.geometry import VersionConflictError
@@ -85,8 +86,10 @@ from nce.vertical_modules.system_design.mcp_handlers import (
 from nce.vertical_modules.system_design.procurement_view import do_get_procurement_view
 from nce.vertical_modules.system_design.read import do_get_topology
 from nce.vertical_modules.system_design.retire import RetireDeniedError
+from nce.vertical_modules.system_design.signal_distribution import do_get_signal_rules
 from nce.vertical_modules.system_design.signal_flow import do_inspect_signal_flow
 from nce.vertical_modules.system_design.sow import do_generate_sow
+from nce.vertical_modules.system_design.standards import do_get_standards
 from nce.vertical_modules.system_design.to_quote import do_design_to_quote
 from nce.vertical_modules.system_design.validate import do_validate_design
 from nce.vertical_modules.system_design.validation_queries import (
@@ -928,5 +931,94 @@ async def api_system_design_enrich_design_lines(request) -> JSONResponse:
         return admin_error_response("Failed to enrich the design lines", exc)
     await bump_mcp_cache_generation(
         admin_state.engine, route="api_system_design_enrich_design_lines"
+    )
+    return JSONResponse(result)
+
+
+async def api_system_design_get_standards(request) -> JSONResponse:
+    """GET /api/system-design/standards
+
+    Query parameters:
+        category    (str, optional): Standard category key.
+        standard_id (str, optional): Standard ID.
+        search      (str, optional): Text search query.
+
+    Response (JSON):
+        {"categories": [...], "standards": [...], "total": int}
+    """
+    category = request.query_params.get("category")
+    standard_id = request.query_params.get("standard_id")
+    search = request.query_params.get("search")
+    result = do_get_standards(
+        admin_state.engine,
+        {"category": category, "standard_id": standard_id, "search": search},
+    )
+    return JSONResponse(result)
+
+
+async def api_system_design_get_signal_rules(request) -> JSONResponse:
+    """GET /api/system-design/signal-rules
+
+    Query parameters:
+        containment      (str, optional): in_wall, surface, floor_box, none.
+        distance_m       (float, optional): Cable distance in meters.
+        altmode          (bool, optional): USB-C DisplayPort Alt-Mode supported.
+        allow_usbc       (bool, optional): USB-C cabling permitted.
+        wants_wireless   (bool, optional): Wireless screen presentation requested.
+        wants_charging   (bool, optional): Laptop power delivery required.
+        laptop_watt      (float, optional): Required charging wattage.
+        vendor_ecosystem (str, optional): Room vendor ecosystem.
+
+    Response (JSON):
+        {"roles": [...], "rules": [...]} or evaluated recommendation dict.
+    """
+    params = dict(request.query_params)
+    result = do_get_signal_rules(admin_state.engine, params)
+    return JSONResponse(result)
+
+
+async def api_system_design_sync_device_capabilities(request) -> JSONResponse:
+    """POST /api/system-design/capabilities/sync
+
+    JSON body:
+        namespace_id (str, required): Active namespace UUID.
+        device_label (str, required): Target DEVICE node label.
+        product_id   (str, optional): Catalog product UUID.
+        mfr_part_no  (str, optional): Manufacturer part number.
+        manufacturer (str, optional): Manufacturer name.
+        port_specs   (list[dict], optional): Explicit port overrides.
+        extra        (dict, optional): Additional metadata.
+
+    Response (JSON):
+        {"status": "synced", "device_label": str, ...}
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
+
+    device_label = str(body.get("device_label") or "").strip()
+    if not device_label:
+        return JSONResponse({"error": "device_label is required"}, status_code=422)
+
+    arguments = dict(body)
+    arguments["namespace_id"] = namespace_id
+    try:
+        result = await do_sync_device_capabilities(admin_state.engine, arguments)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        log.exception("api_system_design_sync_device_capabilities: unexpected error")
+        return admin_error_response("Failed to sync device capabilities", exc)
+
+    await bump_mcp_cache_generation(
+        admin_state.engine, route="api_system_design_sync_device_capabilities"
     )
     return JSONResponse(result)

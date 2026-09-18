@@ -284,6 +284,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/support/tickets/{id}/upsell-signal` | `api_support_tickets_upsell_signal` |
 | POST | `/api/support/touchpoints` | `api_support_touchpoints_record` |
 | POST | `/api/support/troubleshoot` | `api_support_troubleshoot` |
+| POST | `/api/system-design/capabilities/sync` | `api_system_design_sync_device_capabilities` |
 | POST | `/api/system-design/enrich-design-lines` | `api_system_design_enrich_design_lines` |
 | POST | `/api/system-design/from-quote` | `api_system_design_from_quote` |
 | POST | `/api/system-design/functional-location` | `api_system_design_author_functional_location` |
@@ -291,7 +292,9 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/system-design/procurement-view` | `api_system_design_procurement_view` |
 | POST | `/api/system-design/publish-design-docs` | `api_system_design_publish_design_docs` |
 | GET | `/api/system-design/signal-flow` | `api_system_design_inspect_signal_flow` |
+| GET | `/api/system-design/signal-rules` | `api_system_design_get_signal_rules` |
 | POST | `/api/system-design/sow` | `api_system_design_generate_sow` |
+| GET | `/api/system-design/standards` | `api_system_design_get_standards` |
 | POST | `/api/system-design/to-quote` | `api_system_design_to_quote` |
 | GET | `/api/system-design/topology` | `api_system_design_get_topology` |
 | POST | `/api/system-design/topology` | `api_system_design_author_topology` |
@@ -565,12 +568,15 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `system_design_enrich_design_lines` |  | yes |  |  |
 | `system_design_from_quote` |  | yes |  |  |
 | `system_design_generate_sow` |  |  |  |  |
+| `system_design_get_signal_rules` |  |  | yes |  |
+| `system_design_get_standards` |  |  | yes |  |
 | `system_design_get_topology` |  |  | yes |  |
 | `system_design_inspect_signal_flow` |  |  |  |  |
 | `system_design_ping` |  |  | yes |  |
 | `system_design_procurement_view` |  |  | yes |  |
 | `system_design_propose_design` |  |  |  |  |
 | `system_design_publish_design_docs` |  | yes |  |  |
+| `system_design_sync_device_capabilities` |  | yes |  |  |
 | `system_design_to_quote` |  | yes |  |  |
 | `system_design_validate_design_graph` |  |  |  |  |
 | `trigger_consolidation` |  | yes |  |  |
@@ -594,4 +600,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 296 REST endpoints, 280 MCP tools._
+_Totals: 299 REST endpoints, 283 MCP tools._

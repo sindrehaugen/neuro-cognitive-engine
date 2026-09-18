@@ -5357,6 +5357,107 @@ TOOLS = [
             "required": ["namespace_id", "room_brief"],
         },
     ),
+    Tool(
+        name="system_design_get_standards",
+        description=(
+            "Inspect curated AV industry standards (HDMI, USB-C, Category cabling, Audio, Mounting/ADA, PoE)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "description": "Category filter (e.g. cabling_hdmi, cabling_usbc, cabling_category, cabling_audio, mounting_display, power_poe).",
+                },
+                "standard_id": {
+                    "type": "string",
+                    "description": "Specific standard identifier (e.g. HDMI-2.1, USBC-DP-ALTMODE, CAT6A-STP-HDBASET).",
+                },
+                "search": {
+                    "type": "string",
+                    "description": "Text search query across names, IDs, and usage rules.",
+                },
+            },
+        },
+    ),
+    Tool(
+        name="system_design_get_signal_rules",
+        description=(
+            "Inspect curated signal distribution rules and roles, or evaluate recommended signal pathways for meeting room parameters."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "containment": {
+                    "type": "string",
+                    "description": "Cable containment type: in_wall, surface, floor_box, or none.",
+                },
+                "distance_m": {
+                    "type": "number",
+                    "description": "Estimated cable distance between source and display/codec in meters.",
+                },
+                "altmode": {
+                    "type": "boolean",
+                    "description": "Whether user laptops support USB-C DisplayPort Alt-Mode (default true).",
+                },
+                "allow_usbc": {
+                    "type": "boolean",
+                    "description": "Whether USB-C cabling is permitted along the route (default true).",
+                },
+                "wants_wireless": {
+                    "type": "boolean",
+                    "description": "Whether wireless screen presentation is desired.",
+                },
+                "wants_charging": {
+                    "type": "boolean",
+                    "description": "Whether laptop power delivery / charging is required at the table.",
+                },
+                "laptop_watt": {
+                    "type": "number",
+                    "description": "Required laptop charging wattage (e.g. 65, 85, 100).",
+                },
+                "vendor_ecosystem": {
+                    "type": "string",
+                    "description": "Target room ecosystem (e.g. yealink, cisco, poly, generic).",
+                },
+            },
+        },
+    ),
+    Tool(
+        name="system_design_sync_device_capabilities",
+        description=(
+            "Sync device capabilities and port attributes from product catalog ETIM features into system_design_device_capabilities."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "device_label": {
+                    "type": "string",
+                    "description": "Target DEVICE node label (e.g. device:display-1).",
+                },
+                "product_id": {
+                    "type": "string",
+                    "description": "UUID of the product in product_catalog (optional).",
+                },
+                "mfr_part_no": {
+                    "type": "string",
+                    "description": "Manufacturer part number to resolve in product_catalog (optional).",
+                },
+                "manufacturer": {"type": "string", "description": "Manufacturer name (optional)."},
+                "port_specs": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": "Explicit port specifications augmenting or overriding catalog specifications.",
+                },
+                "extra": {
+                    "type": "object",
+                    "description": "Additional JSON metadata to store on the capability record.",
+                },
+            },
+            "required": ["namespace_id", "device_label"],
+        },
+    ),
     # -----------------------------------------------------------------
     # Support vertical module tools (Module 10, Wave 5, ML10-B5)
     # -----------------------------------------------------------------
