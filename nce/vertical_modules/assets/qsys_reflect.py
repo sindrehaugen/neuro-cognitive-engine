@@ -52,7 +52,9 @@ class QSysReflectTelemetryAdapter(TelemetryAdapter):
     def platform(self) -> str:
         return "qsys"
 
-    async def fetch_samples(self, asset_id: UUID) -> Sequence[TelemetrySample]:
+    async def fetch_samples(
+        self, asset_id: UUID, *, serial: str | None = None
+    ) -> Sequence[TelemetrySample]:
         """Fetch telemetry readings for the Q-SYS Core or peripheral."""
         if not self._endpoint_url or not self._api_key:
             missing: list[str] = []

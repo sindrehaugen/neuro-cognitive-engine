@@ -1112,44 +1112,186 @@ class TestAVCloudAdapters:
 
         assert YealinkTelemetryAdapter is YMCSTelemetryAdapter
         adapter = YealinkTelemetryAdapter(
-            endpoint_url=None, api_key=None, platform_name="yealink", timeout=10.0
+            endpoint_url=None,
+            client_id=None,
+            client_secret=None,
+            platform_name="yealink",
+            timeout=10.0,
         )
         assert adapter.platform == "yealink"
         assert adapter._timeout <= 4.9
 
         with pytest.raises(NotImplementedError, match="yealink") as excinfo:
-            await adapter.fetch_samples(uuid.uuid4())
+            await adapter.fetch_samples(uuid.uuid4(), serial="SN-1")
         assert "NCE_ASSETS_YMCS_ENDPOINT_URL" in str(excinfo.value)
-        assert "NCE_ASSETS_YMCS_API_KEY" in str(excinfo.value)
+        assert "NCE_ASSETS_YMCS_CLIENT_ID" in str(excinfo.value)
+        assert "NCE_ASSETS_YMCS_CLIENT_SECRET" in str(excinfo.value)
 
     @pytest.mark.asyncio
-    async def test_yealink_adapter_live_http(self) -> None:
+    async def test_yealink_adapter_without_a_serial_is_skipped_before_any_http_call(self) -> None:
+        """An asset with no captured serial cannot be resolved against YMCS
+        (device resolution note, module docstring) — it must be skipped, not
+        guessed at, and skipped BEFORE any network call is attempted."""
         from nce.vertical_modules.assets.ymcs import YealinkTelemetryAdapter
 
         def handler(request: httpx.Request) -> httpx.Response:
-            assert request.headers.get("Authorization") == "Bearer ymcs-token"
-            return httpx.Response(
-                200,
-                json={
-                    "metrics": {
-                        "uptime_seconds": 12345.0,
-                        "temperature_celsius": 38.2,
-                        "link_status": 1.0,
-                    },
-                    "raw": {"source": "ymcs", "device": "Yealink-MeetingBar-A30"},
-                },
-            )
+            raise AssertionError("no HTTP call should be made when serial is missing")
 
         adapter = YealinkTelemetryAdapter(
             endpoint_url="https://ymcs.yealink.com",
-            api_key="ymcs-token",
+            client_id="ymcs-id",
+            client_secret="ymcs-secret",
             platform_name="yealink",
             transport=httpx.MockTransport(handler),
         )
-        test_id = uuid.uuid4()
-        samples = await adapter.fetch_samples(test_id)
-        assert len(samples) == 3
+        assert await adapter.fetch_samples(uuid.uuid4(), serial=None) == []
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="  ") == []
+
+    @pytest.mark.asyncio
+    async def test_yealink_adapter_refuses_a_path_outside_its_allow_list(self) -> None:
+        """Gate item 1+2 (MLV16 charter, Lane F): a call outside the explicit
+        allow-list literal is refused before any HTTP request is issued —
+        proved here by a transport that fails the test if it is ever reached.
+        """
+        from nce.vertical_modules.assets.ymcs import (
+            _ALLOWED_AUTH,
+            _ALLOWED_READS,
+            YealinkTelemetryAdapter,
+            YmcsAllowListRefusal,
+        )
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("a refused call must never reach the transport")
+
+        adapter = YealinkTelemetryAdapter(
+            endpoint_url="https://ymcs.yealink.com",
+            client_id="ymcs-id",
+            client_secret="ymcs-secret",
+            platform_name="yealink",
+            transport=httpx.MockTransport(handler),
+        )
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            with pytest.raises(YmcsAllowListRefusal, match=r"DELETE /v2/dm/devices/\{id\}"):
+                await adapter._gated_request(
+                    client,
+                    "DELETE",
+                    "/v2/dm/devices/abc123",
+                    allowed=_ALLOWED_READS,
+                    concrete_ids=["abc123"],
+                )
+            # The device-reset write path some vendors DO expose is not in
+            # this adapter's allow-list either, and never will be (rule 3:
+            # no write method anywhere).
+            with pytest.raises(YmcsAllowListRefusal):
+                await adapter._gated_request(
+                    client,
+                    "POST",
+                    "/v2/dm/device/reset",
+                    allowed=_ALLOWED_READS | _ALLOWED_AUTH,
+                )
+
+    @pytest.mark.asyncio
+    async def test_yealink_adapter_live_http(self) -> None:
+        """A recorded-fixture-shaped round trip: token exchange, device
+        resolution by serial via ``listDevices``, then the device's
+        ``sensor``/``wifi`` detail and its one bound part's ``extraInfo`` —
+        the real YMCS v2 shapes (verified against the host's own test
+        fixtures for the ``sn``/``wifi.signalStrength``/``extraInfo`` field
+        names, Q-25 shape-only reading), never the fabricated
+        ``/api/v1/devices/{id}/telemetry`` this replaced."""
+        from nce.vertical_modules.assets.ymcs import YealinkTelemetryAdapter
+
+        seen: list[tuple[str, str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            seen.append((request.method, path))
+            if path == "/v2/token":
+                assert request.headers.get("Authorization", "").startswith("Basic ")
+                return httpx.Response(200, json={"accessToken": "ymcs-live-token"})
+            assert request.headers.get("Authorization") == "Bearer ymcs-live-token"
+            if path == "/v2/dm/listDevices":
+                return httpx.Response(
+                    200,
+                    json={
+                        "data": [
+                            {"id": "dev-1", "sn": "OTHER-SN", "name": "Room A"},
+                            {"id": "dev-42", "sn": "YL-A30-0007", "name": "Room B"},
+                        ],
+                        "total": 2,
+                    },
+                )
+            if path == "/v2/dm/devices/dev-42":
+                assert request.url.params.get("select") == "sensor,wifi"
+                return httpx.Response(
+                    200,
+                    json={"data": {"wifi": {"signalStrength": 10}, "sensor": {}}},
+                )
+            if path == "/v2/dm/devices/dev-42/listParts":
+                return httpx.Response(200, json={"data": [{"id": "part-9", "name": "Room Sensor"}]})
+            if path == "/v2/dm/devices/dev-42/parts/part-9":
+                return httpx.Response(
+                    200,
+                    json={
+                        "data": {
+                            "extraInfo": {"batteryLevel": 100, "irradiance": 0, "motionState": 1}
+                        }
+                    },
+                )
+            raise AssertionError(f"unexpected call: {request.method} {path}")
+
+        adapter = YealinkTelemetryAdapter(
+            endpoint_url="https://ymcs.yealink.com",
+            client_id="ymcs-id",
+            client_secret="ymcs-secret",
+            platform_name="yealink",
+            transport=httpx.MockTransport(handler),
+        )
+        samples = await adapter.fetch_samples(uuid.uuid4(), serial="yl-a30-0007")
         metrics = {s.metric: s.value for s in samples}
-        assert metrics["uptime_seconds"] == 12345.0
-        assert metrics["temperature_celsius"] == 38.2
-        assert metrics["link_status"] == 1.0
+        assert metrics["signalStrength"] == 10.0
+        assert metrics["batteryLevel"] == 100.0
+        assert metrics["irradiance"] == 0.0
+        assert metrics["motionState"] == 1.0
+        # Resolution matched case-insensitively against the SECOND page row,
+        # not the first — proves the scan does not stop at row 1.
+        assert ("POST", "/v2/dm/listDevices") in seen
+        assert ("GET", "/v2/dm/devices/dev-42") in seen
+        assert ("POST", "/v2/dm/devices/dev-42/listParts") in seen
+        assert ("GET", "/v2/dm/devices/dev-42/parts/part-9") in seen
+
+    @pytest.mark.asyncio
+    async def test_yealink_adapter_unmatched_serial_returns_empty_without_error(self) -> None:
+        from nce.vertical_modules.assets.ymcs import YealinkTelemetryAdapter
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v2/token":
+                return httpx.Response(200, json={"accessToken": "tok"})
+            if request.url.path == "/v2/dm/listDevices":
+                return httpx.Response(200, json={"data": [], "total": 0})
+            raise AssertionError(f"unexpected call: {request.url.path}")
+
+        adapter = YealinkTelemetryAdapter(
+            endpoint_url="https://ymcs.yealink.com",
+            client_id="ymcs-id",
+            client_secret="ymcs-secret",
+            platform_name="yealink",
+            transport=httpx.MockTransport(handler),
+        )
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="no-such-sn") == []
+
+    @pytest.mark.asyncio
+    async def test_yealink_adapter_http_failure_degrades_gracefully(self) -> None:
+        from nce.vertical_modules.assets.ymcs import YealinkTelemetryAdapter
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, text="Service Unavailable")
+
+        adapter = YealinkTelemetryAdapter(
+            endpoint_url="https://ymcs.yealink.com",
+            client_id="ymcs-id",
+            client_secret="ymcs-secret",
+            platform_name="yealink",
+            transport=httpx.MockTransport(handler),
+        )
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="yl-a30-0007") == []

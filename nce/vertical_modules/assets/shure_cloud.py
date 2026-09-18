@@ -55,7 +55,9 @@ class ShureCloudTelemetryAdapter(TelemetryAdapter):
     def platform(self) -> str:
         return "shure"
 
-    async def fetch_samples(self, asset_id: UUID) -> Sequence[TelemetrySample]:
+    async def fetch_samples(
+        self, asset_id: UUID, *, serial: str | None = None
+    ) -> Sequence[TelemetrySample]:
         """Fetch telemetry and array microphone health metrics for the Shure asset."""
         if not self._endpoint_url or not self._api_key:
             missing: list[str] = []
