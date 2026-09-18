@@ -1,5 +1,5 @@
 <<<<<<< HEAD
-> **Status:** shipped · **Verified-against:** `25b7282` (public `main`) · **Last-audited:** 2026-09-18
+> **Status:** shipped · **Verified-against:** `51044aa` (public `main`) · **Last-audited:** 2026-09-18
 =======
 > **Status:** shipped · **Verified-against:** `4f07ce5` (public `main`) · **Last-audited:** 2026-09-18
 >>>>>>> 32bb34b (docs(instruments): regenerate figures and surface for Wave A-3; align gen_engine_figures.py with C12 resource tools)
@@ -26,7 +26,7 @@
 > ```
 
 <<<<<<< HEAD
-## Measured inventory at `25b7282`
+## Measured inventory at `51044aa`
 =======
 ## Measured inventory at `4f07ce5`
 >>>>>>> 32bb34b (docs(instruments): regenerate figures and surface for Wave A-3; align gen_engine_figures.py with C12 resource tools)
@@ -35,7 +35,7 @@
 |---|---|
 | Module packages under `nce/vertical_modules/` | **20** (17 engines + `diagnostics`, `dynamics365`, `netbox`) |
 <<<<<<< HEAD
-| `TOOL_REGISTRY` entries | **307** MCP tools (69 shared + 238 engine) — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
+| `TOOL_REGISTRY` entries | **311** MCP tools (69 shared + 242 engine) — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 =======
 | `TOOL_REGISTRY` entries | **304** MCP tools (69 shared + 235 engine) — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 >>>>>>> 32bb34b (docs(instruments): regenerate figures and surface for Wave A-3; align gen_engine_figures.py with C12 resource tools)
@@ -45,7 +45,7 @@
 | `EXPECTED_TENANT_RLS_TABLES` | **92** |
 | Tests | **6,423** `def test_` across 528 files |
 | Golden Thread seam burndown | **0 of 28** lifecycle steps broken (0 distinct seams) — mirrored from [`docs/_generated/golden_thread_seams.md`](../_generated/golden_thread_seams.md); see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
-| v1.6 C12 resource-surface registrations | **2 of 21** engines have `resources.py` — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
+| v1.6 C12 resource-surface registrations | **3 of 21** engines have `resources.py` — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 
 **Status legend**
 
