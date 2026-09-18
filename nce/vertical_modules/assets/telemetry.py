@@ -161,6 +161,11 @@ VENDOR_PLATFORMS: dict[str, str] = {
     "shure": "Shure SystemOn / Cloud API",
     "yealink": "Yealink Management Cloud Service (YMCS) API",
     "ymcs": "Yealink Management Cloud Service (YMCS) API",
+    # Added MLV16F Wave F-3: Neowit is a smart-building aggregator, not an AV
+    # vendor — it re-exposes devices from Disruptive/Neat/Airthings under its
+    # own space tree. Named here (not just wired) so an unknown-platform typo
+    # is refused the same way the AV vendors already are.
+    "neowit": "Neowit smartbygg platform API",
 }
 
 _TRUTHY = {"1", "true", "yes", "on"}
@@ -382,6 +387,10 @@ def select_telemetry_adapter(platform: str) -> TelemetryAdapter:
             from nce.vertical_modules.assets.shure_cloud import ShureCloudTelemetryAdapter
 
             return ShureCloudTelemetryAdapter()
+        if name == "neowit":
+            from nce.vertical_modules.assets.neowit import NeowitTelemetryAdapter
+
+            return NeowitTelemetryAdapter()
         return UnimplementedVendorAdapter(name, vendor_api)
     return MockTelemetryAdapter()
 
