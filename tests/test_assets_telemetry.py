@@ -936,33 +936,26 @@ class TestAVCloudAdapters:
     async def test_neat_pulse_adapter_unconfigured_raises(self) -> None:
         from nce.vertical_modules.assets.neat_pulse import NeatPulseTelemetryAdapter
 
-        adapter = NeatPulseTelemetryAdapter(endpoint_url=None, api_key=None, timeout=10.0)
+        adapter = NeatPulseTelemetryAdapter(
+            endpoint_url=None, api_key=None, org_id=None, timeout=10.0
+        )
         assert adapter.platform == "neat"
         assert adapter._timeout <= 4.9
 
         with pytest.raises(NotImplementedError, match="neat") as excinfo:
-            await adapter.fetch_samples(uuid.uuid4())
+            await adapter.fetch_samples(uuid.uuid4(), serial="NEAT-SN-1")
         assert "NCE_ASSETS_NEAT_ENDPOINT_URL" in str(excinfo.value)
         assert "NCE_ASSETS_NEAT_API_KEY" in str(excinfo.value)
+        assert "NCE_ASSETS_NEAT_ORG_ID" in str(excinfo.value)
 
     @pytest.mark.asyncio
-    async def test_neat_pulse_adapter_live_http(self) -> None:
+    async def test_neat_pulse_adapter_without_a_serial_is_skipped_before_any_http_call(
+        self,
+    ) -> None:
         from nce.vertical_modules.assets.neat_pulse import NeatPulseTelemetryAdapter
 
         def handler(request: httpx.Request) -> httpx.Response:
-            assert request.headers.get("Authorization") == "Bearer neat-token"
-            return httpx.Response(
-                200,
-                json={
-                    "metrics": {
-                        "status_online": 1.0,
-                        "air_quality_co2_ppm": 620.0,
-                        "people_count": 4.0,
-                        "temperature_celsius": 22.1,
-                    },
-                    "raw": {"source": "neat_pulse", "device_model": "Neat-Bar-Pro"},
-                },
-            )
+            raise AssertionError("no HTTP call should be made when serial is missing")
 
         adapter = NeatPulseTelemetryAdapter(
             endpoint_url="https://api.neat.no",
@@ -970,13 +963,118 @@ class TestAVCloudAdapters:
             org_id="org-123",
             transport=httpx.MockTransport(handler),
         )
-        test_id = uuid.uuid4()
-        samples = await adapter.fetch_samples(test_id)
-        assert len(samples) == 4
+        assert await adapter.fetch_samples(uuid.uuid4(), serial=None) == []
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="  ") == []
+
+    @pytest.mark.asyncio
+    async def test_neat_pulse_adapter_refuses_a_path_outside_its_allow_list(self) -> None:
+        """Gate item 1+2 (MLV16 charter, Lane F): a call outside the explicit
+        allow-list literal is refused before any HTTP request is issued."""
+        from nce.vertical_modules.assets.neat_pulse import (
+            NeatAllowListRefusal,
+            NeatPulseTelemetryAdapter,
+        )
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("a refused call must never reach the transport")
+
+        adapter = NeatPulseTelemetryAdapter(
+            endpoint_url="https://api.neat.no",
+            api_key="neat-token",
+            org_id="org-123",
+            transport=httpx.MockTransport(handler),
+        )
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            with pytest.raises(NeatAllowListRefusal, match=r"DELETE /rooms/\{id\}"):
+                await adapter._gated_request(
+                    client, "DELETE", "/rooms/abc123", concrete_ids=["abc123"]
+                )
+            # /users is the one path the HOST's own client may write to — this
+            # adapter has no business with it at all, read or write.
+            with pytest.raises(NeatAllowListRefusal):
+                await adapter._gated_request(client, "GET", "/users")
+
+    @pytest.mark.asyncio
+    async def test_neat_pulse_adapter_live_http(self) -> None:
+        """A recorded-fixture-shaped round trip: resolve the endpoint by its
+        ``serial`` field on ``GET /endpoints`` (Pulse's own bridge from a
+        device to its room, per the host client's docstring), then its
+        ``connected`` status and its latest ``GET /endpoints/{id}/sensor``
+        reading — never the fabricated
+        ``/v1/{org}/devices/{id}/telemetry`` this replaced."""
+        from nce.vertical_modules.assets.neat_pulse import NeatPulseTelemetryAdapter
+
+        seen: list[tuple[str, str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            seen.append((request.method, path))
+            assert path.startswith("/v1/orgs/org-123/")
+            assert request.headers.get("Authorization") == "Bearer neat-token"
+            rel = path[len("/v1/orgs/org-123") :]
+            if rel == "/endpoints":
+                return httpx.Response(
+                    200,
+                    json={
+                        "endpoints": [
+                            {"id": "ep-1", "serial": "OTHER-SN", "connected": True},
+                            {"id": "ep-42", "serial": "NEAT-BAR-0099", "connected": True},
+                        ]
+                    },
+                )
+            if rel == "/endpoints/ep-42/sensor":
+                return httpx.Response(
+                    200,
+                    json={"temperature": 22.1, "humidity": 41.5, "peopleCount": 4},
+                )
+            raise AssertionError(f"unexpected call: {request.method} {path}")
+
+        adapter = NeatPulseTelemetryAdapter(
+            endpoint_url="https://api.neat.no",
+            api_key="neat-token",
+            org_id="org-123",
+            transport=httpx.MockTransport(handler),
+        )
+        samples = await adapter.fetch_samples(uuid.uuid4(), serial="neat-bar-0099")
         metrics = {s.metric: s.value for s in samples}
-        assert metrics["status_online"] == 1.0
-        assert metrics["air_quality_co2_ppm"] == 620.0
-        assert metrics["people_count"] == 4.0
+        assert metrics["connected"] == 1.0
+        assert metrics["temperature"] == 22.1
+        assert metrics["humidity"] == 41.5
+        assert metrics["peopleCount"] == 4.0
+        # Resolution matched the SECOND row, not the first — proves the scan
+        # does not stop early.
+        assert ("GET", "/v1/orgs/org-123/endpoints") in seen
+        assert ("GET", "/v1/orgs/org-123/endpoints/ep-42/sensor") in seen
+
+    @pytest.mark.asyncio
+    async def test_neat_pulse_adapter_unmatched_serial_returns_empty_without_error(self) -> None:
+        from nce.vertical_modules.assets.neat_pulse import NeatPulseTelemetryAdapter
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"endpoints": []})
+
+        adapter = NeatPulseTelemetryAdapter(
+            endpoint_url="https://api.neat.no",
+            api_key="neat-token",
+            org_id="org-123",
+            transport=httpx.MockTransport(handler),
+        )
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="no-such-sn") == []
+
+    @pytest.mark.asyncio
+    async def test_neat_pulse_adapter_http_failure_degrades_gracefully(self) -> None:
+        from nce.vertical_modules.assets.neat_pulse import NeatPulseTelemetryAdapter
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, text="Service Unavailable")
+
+        adapter = NeatPulseTelemetryAdapter(
+            endpoint_url="https://api.neat.no",
+            api_key="neat-token",
+            org_id="org-123",
+            transport=httpx.MockTransport(handler),
+        )
+        assert await adapter.fetch_samples(uuid.uuid4(), serial="neat-bar-0099") == []
 
     @pytest.mark.asyncio
     async def test_sennheiser_adapter_unconfigured_raises(self) -> None:
