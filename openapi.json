@@ -1,6 +1,553 @@
 {
   "components": {
     "schemas": {
+      "Agreements_agreements": {
+        "description": "C12 authoritative contract register with Oneflow mirror linkage, lifecycle state, and principal tier redaction.",
+        "properties": {
+          "agreement_number": {
+            "description": "Field agreement_number",
+            "type": "string"
+          },
+          "agreement_type": {
+            "description": "Field agreement_type",
+            "type": "string"
+          },
+          "annual_value": {
+            "description": "Field annual_value",
+            "type": "string"
+          },
+          "auto_renewal": {
+            "description": "Field auto_renewal",
+            "type": "string"
+          },
+          "billing_frequency": {
+            "description": "Field billing_frequency",
+            "type": "string"
+          },
+          "currency": {
+            "description": "Field currency",
+            "type": "string"
+          },
+          "customer_id": {
+            "description": "Field customer_id",
+            "type": "string"
+          },
+          "deal_id": {
+            "description": "Field deal_id",
+            "type": "string"
+          },
+          "end_date": {
+            "description": "Field end_date",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "is_archived": {
+            "type": "boolean"
+          },
+          "metadata": {
+            "description": "Field metadata",
+            "type": "string"
+          },
+          "monthly_value": {
+            "description": "Field monthly_value",
+            "type": "string"
+          },
+          "notice_period_days": {
+            "description": "Field notice_period_days",
+            "type": "string"
+          },
+          "oneflow_contract_id": {
+            "description": "Field oneflow_contract_id",
+            "type": "string"
+          },
+          "payment_terms_days": {
+            "description": "Field payment_terms_days",
+            "type": "string"
+          },
+          "start_date": {
+            "description": "Field start_date",
+            "type": "string"
+          },
+          "status": {
+            "description": "Field status",
+            "type": "string"
+          },
+          "title": {
+            "description": "Field title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "Agreements_agreements_Create": {
+        "description": "Payload for creating a agreements agreements",
+        "properties": {
+          "agreement_number": {
+            "type": "string"
+          },
+          "agreement_type": {
+            "type": "string"
+          },
+          "annual_value": {
+            "type": "string"
+          },
+          "auto_renewal": {
+            "type": "string"
+          },
+          "billing_frequency": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "customer_id": {
+            "type": "string"
+          },
+          "deal_id": {
+            "type": "string"
+          },
+          "end_date": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "string"
+          },
+          "monthly_value": {
+            "type": "string"
+          },
+          "notice_period_days": {
+            "type": "string"
+          },
+          "oneflow_contract_id": {
+            "type": "string"
+          },
+          "payment_terms_days": {
+            "type": "string"
+          },
+          "start_date": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Agreements_agreements_List": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Agreements_agreements"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Cursor token for fetching the next page",
+            "nullable": true,
+            "type": "string"
+          },
+          "total": {
+            "description": "Total matching count if requested",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "Agreements_agreements_Update": {
+        "description": "Payload for updating a agreements agreements",
+        "properties": {
+          "agreement_number": {
+            "type": "string"
+          },
+          "agreement_type": {
+            "type": "string"
+          },
+          "annual_value": {
+            "type": "string"
+          },
+          "auto_renewal": {
+            "type": "string"
+          },
+          "billing_frequency": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "customer_id": {
+            "type": "string"
+          },
+          "deal_id": {
+            "type": "string"
+          },
+          "end_date": {
+            "type": "string"
+          },
+          "expected_version": {
+            "description": "Optimistic concurrency lock version",
+            "type": "string"
+          },
+          "metadata": {
+            "type": "string"
+          },
+          "monthly_value": {
+            "type": "string"
+          },
+          "notice_period_days": {
+            "type": "string"
+          },
+          "oneflow_contract_id": {
+            "type": "string"
+          },
+          "payment_terms_days": {
+            "type": "string"
+          },
+          "start_date": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Agreements_parties": {
+        "description": "C12 agreement parties and signatories linking counterparty identities to contract lifecycle.",
+        "properties": {
+          "agreement_id": {
+            "description": "Field agreement_id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "is_archived": {
+            "type": "boolean"
+          },
+          "metadata": {
+            "description": "Field metadata",
+            "type": "string"
+          },
+          "org_number": {
+            "description": "Field org_number",
+            "type": "string"
+          },
+          "party_name": {
+            "description": "Field party_name",
+            "type": "string"
+          },
+          "party_type": {
+            "description": "Field party_type",
+            "type": "string"
+          },
+          "role": {
+            "description": "Field role",
+            "type": "string"
+          },
+          "signatory_email": {
+            "description": "Field signatory_email",
+            "type": "string"
+          },
+          "signatory_name": {
+            "description": "Field signatory_name",
+            "type": "string"
+          },
+          "signature_source": {
+            "description": "Field signature_source",
+            "type": "string"
+          },
+          "signature_status": {
+            "description": "Field signature_status",
+            "type": "string"
+          },
+          "signed_at": {
+            "description": "Field signed_at",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "Agreements_parties_Create": {
+        "description": "Payload for creating a agreements parties",
+        "properties": {
+          "agreement_id": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "string"
+          },
+          "org_number": {
+            "type": "string"
+          },
+          "party_name": {
+            "type": "string"
+          },
+          "party_type": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "signatory_email": {
+            "type": "string"
+          },
+          "signatory_name": {
+            "type": "string"
+          },
+          "signature_source": {
+            "type": "string"
+          },
+          "signature_status": {
+            "type": "string"
+          },
+          "signed_at": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Agreements_parties_List": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Agreements_parties"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Cursor token for fetching the next page",
+            "nullable": true,
+            "type": "string"
+          },
+          "total": {
+            "description": "Total matching count if requested",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "Agreements_parties_Update": {
+        "description": "Payload for updating a agreements parties",
+        "properties": {
+          "agreement_id": {
+            "type": "string"
+          },
+          "expected_version": {
+            "description": "Optimistic concurrency lock version",
+            "type": "string"
+          },
+          "metadata": {
+            "type": "string"
+          },
+          "org_number": {
+            "type": "string"
+          },
+          "party_name": {
+            "type": "string"
+          },
+          "party_type": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "signatory_email": {
+            "type": "string"
+          },
+          "signatory_name": {
+            "type": "string"
+          },
+          "signature_source": {
+            "type": "string"
+          },
+          "signature_status": {
+            "type": "string"
+          },
+          "signed_at": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Agreements_templates": {
+        "description": "C12 standardized agreement clause packages, SLA profiles, and contract templates.",
+        "properties": {
+          "body_template": {
+            "description": "Field body_template",
+            "type": "string"
+          },
+          "category": {
+            "description": "Field category",
+            "type": "string"
+          },
+          "code": {
+            "description": "Field code",
+            "type": "string"
+          },
+          "default_terms": {
+            "description": "Field default_terms",
+            "type": "string"
+          },
+          "description": {
+            "description": "Field description",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "is_active": {
+            "description": "Field is_active",
+            "type": "string"
+          },
+          "is_archived": {
+            "type": "boolean"
+          },
+          "metadata": {
+            "description": "Field metadata",
+            "type": "string"
+          },
+          "name": {
+            "description": "Field name",
+            "type": "string"
+          },
+          "sla_profile": {
+            "description": "Field sla_profile",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "Agreements_templates_Create": {
+        "description": "Payload for creating a agreements templates",
+        "properties": {
+          "body_template": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "default_terms": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "is_active": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sla_profile": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Agreements_templates_List": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Agreements_templates"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Cursor token for fetching the next page",
+            "nullable": true,
+            "type": "string"
+          },
+          "total": {
+            "description": "Total matching count if requested",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "Agreements_templates_Update": {
+        "description": "Payload for updating a agreements templates",
+        "properties": {
+          "body_template": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "default_terms": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "expected_version": {
+            "description": "Optimistic concurrency lock version",
+            "type": "string"
+          },
+          "is_active": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sla_profile": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "Assets_assets": {
         "description": "Physical installed equipment register with lifecycle state, serials, and room locations.",
         "properties": {
@@ -4094,6 +4641,69 @@
         ],
         "type": "object"
       },
+      "Tool_agreements_archive_agreements_Input": {
+        "properties": {
+          "id": {
+            "description": "ID of Agreement to archive.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Audit reason for archiving.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "id"
+        ],
+        "type": "object"
+      },
+      "Tool_agreements_archive_parties_Input": {
+        "properties": {
+          "id": {
+            "description": "ID of Agreement Signature to archive.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Audit reason for archiving.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "id"
+        ],
+        "type": "object"
+      },
+      "Tool_agreements_archive_templates_Input": {
+        "properties": {
+          "id": {
+            "description": "ID of Agreement Template to archive.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Audit reason for archiving.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "id"
+        ],
+        "type": "object"
+      },
       "Tool_agreements_coverage_matrix_Input": {
         "properties": {
           "namespace_id": {
@@ -4152,6 +4762,187 @@
         "required": [
           "namespace_id",
           "source_doc_ref"
+        ],
+        "type": "object"
+      },
+      "Tool_agreements_get_agreements_Input": {
+        "properties": {
+          "id": {
+            "description": "Unique identifier of the Agreement.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "id"
+        ],
+        "type": "object"
+      },
+      "Tool_agreements_get_parties_Input": {
+        "properties": {
+          "id": {
+            "description": "Unique identifier of the Agreement Signature.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "id"
+        ],
+        "type": "object"
+      },
+      "Tool_agreements_get_templates_Input": {
+        "properties": {
+          "id": {
+            "description": "Unique identifier of the Agreement Template.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "id"
+        ],
+        "type": "object"
+      },
+      "Tool_agreements_list_agreements_Input": {
+        "properties": {
+          "agreement_type": {
+            "description": "Filter by agreement_type.",
+            "type": "string"
+          },
+          "auto_renewal": {
+            "description": "Filter by auto_renewal.",
+            "type": "string"
+          },
+          "cursor": {
+            "description": "Pagination cursor from previous response.",
+            "type": "string"
+          },
+          "customer_id": {
+            "description": "Filter by customer_id.",
+            "type": "string"
+          },
+          "deal_id": {
+            "description": "Filter by deal_id.",
+            "type": "string"
+          },
+          "is_archived": {
+            "description": "Filter by is_archived.",
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 500,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "q": {
+            "description": "Full-text search term.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Filter by status.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id"
+        ],
+        "type": "object"
+      },
+      "Tool_agreements_list_parties_Input": {
+        "properties": {
+          "agreement_id": {
+            "description": "Filter by agreement_id.",
+            "type": "string"
+          },
+          "cursor": {
+            "description": "Pagination cursor from previous response.",
+            "type": "string"
+          },
+          "is_archived": {
+            "description": "Filter by is_archived.",
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 500,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "party_type": {
+            "description": "Filter by party_type.",
+            "type": "string"
+          },
+          "q": {
+            "description": "Full-text search term.",
+            "type": "string"
+          },
+          "signature_status": {
+            "description": "Filter by signature_status.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id"
+        ],
+        "type": "object"
+      },
+      "Tool_agreements_list_templates_Input": {
+        "properties": {
+          "category": {
+            "description": "Filter by category.",
+            "type": "string"
+          },
+          "cursor": {
+            "description": "Pagination cursor from previous response.",
+            "type": "string"
+          },
+          "is_active": {
+            "description": "Filter by is_active.",
+            "type": "string"
+          },
+          "is_archived": {
+            "description": "Filter by is_archived.",
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 500,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "q": {
+            "description": "Full-text search term.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id"
         ],
         "type": "object"
       },
@@ -4360,6 +5151,177 @@
           "agreement_id",
           "field",
           "proposed_value"
+        ],
+        "type": "object"
+      },
+      "Tool_agreements_upsert_agreements_Input": {
+        "properties": {
+          "agreement_number": {
+            "description": "Value for agreement_number."
+          },
+          "agreement_type": {
+            "description": "Value for agreement_type."
+          },
+          "annual_value": {
+            "description": "Value for annual_value."
+          },
+          "auto_renewal": {
+            "description": "Value for auto_renewal."
+          },
+          "billing_frequency": {
+            "description": "Value for billing_frequency."
+          },
+          "currency": {
+            "description": "Value for currency."
+          },
+          "customer_id": {
+            "description": "Value for customer_id."
+          },
+          "deal_id": {
+            "description": "Value for deal_id."
+          },
+          "end_date": {
+            "description": "Value for end_date."
+          },
+          "expected_version": {
+            "description": "Concurrency check version.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Optional ID of existing Agreement to update.",
+            "type": "string"
+          },
+          "metadata": {
+            "description": "Value for metadata."
+          },
+          "monthly_value": {
+            "description": "Value for monthly_value."
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "notice_period_days": {
+            "description": "Value for notice_period_days."
+          },
+          "oneflow_contract_id": {
+            "description": "Value for oneflow_contract_id."
+          },
+          "payment_terms_days": {
+            "description": "Value for payment_terms_days."
+          },
+          "start_date": {
+            "description": "Value for start_date."
+          },
+          "status": {
+            "description": "Value for status."
+          },
+          "title": {
+            "description": "Value for title."
+          }
+        },
+        "required": [
+          "namespace_id"
+        ],
+        "type": "object"
+      },
+      "Tool_agreements_upsert_parties_Input": {
+        "properties": {
+          "agreement_id": {
+            "description": "Value for agreement_id."
+          },
+          "expected_version": {
+            "description": "Concurrency check version.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Optional ID of existing Agreement Signature to update.",
+            "type": "string"
+          },
+          "metadata": {
+            "description": "Value for metadata."
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "org_number": {
+            "description": "Value for org_number."
+          },
+          "party_name": {
+            "description": "Value for party_name."
+          },
+          "party_type": {
+            "description": "Value for party_type."
+          },
+          "role": {
+            "description": "Value for role."
+          },
+          "signatory_email": {
+            "description": "Value for signatory_email."
+          },
+          "signatory_name": {
+            "description": "Value for signatory_name."
+          },
+          "signature_source": {
+            "description": "Value for signature_source."
+          },
+          "signature_status": {
+            "description": "Value for signature_status."
+          },
+          "signed_at": {
+            "description": "Value for signed_at."
+          }
+        },
+        "required": [
+          "namespace_id"
+        ],
+        "type": "object"
+      },
+      "Tool_agreements_upsert_templates_Input": {
+        "properties": {
+          "body_template": {
+            "description": "Value for body_template."
+          },
+          "category": {
+            "description": "Value for category."
+          },
+          "code": {
+            "description": "Value for code."
+          },
+          "default_terms": {
+            "description": "Value for default_terms."
+          },
+          "description": {
+            "description": "Value for description."
+          },
+          "expected_version": {
+            "description": "Concurrency check version.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Optional ID of existing Agreement Template to update.",
+            "type": "string"
+          },
+          "is_active": {
+            "description": "Value for is_active."
+          },
+          "metadata": {
+            "description": "Value for metadata."
+          },
+          "name": {
+            "description": "Value for name."
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "sla_profile": {
+            "description": "Value for sla_profile."
+          }
+        },
+        "required": [
+          "namespace_id"
         ],
         "type": "object"
       },
@@ -15848,6 +16810,39 @@
         "mutation": true,
         "name": "abort_migration"
       },
+      "agreements_archive_agreements": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Soft-archive a Agreement resource.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_agreements_archive_agreements_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "agreements_archive_agreements"
+      },
+      "agreements_archive_parties": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Soft-archive a Agreement Signature resource.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_agreements_archive_parties_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "agreements_archive_parties"
+      },
+      "agreements_archive_templates": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Soft-archive a Agreement Template resource.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_agreements_archive_templates_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "agreements_archive_templates"
+      },
       "agreements_coverage_matrix": {
         "admin_only": false,
         "cacheable": true,
@@ -15880,6 +16875,72 @@
         "migration": false,
         "mutation": true,
         "name": "agreements_extract"
+      },
+      "agreements_get_agreements": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Fetch a single Agreement resource by ID.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_agreements_get_agreements_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "agreements_get_agreements"
+      },
+      "agreements_get_parties": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Fetch a single Agreement Signature resource by ID.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_agreements_get_parties_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "agreements_get_parties"
+      },
+      "agreements_get_templates": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Fetch a single Agreement Template resource by ID.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_agreements_get_templates_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "agreements_get_templates"
+      },
+      "agreements_list_agreements": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "List and query Agreement resources for agreements.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_agreements_list_agreements_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "agreements_list_agreements"
+      },
+      "agreements_list_parties": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "List and query Agreement Signature resources for agreements.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_agreements_list_parties_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "agreements_list_parties"
+      },
+      "agreements_list_templates": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "List and query Agreement Template resources for agreements.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_agreements_list_templates_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "agreements_list_templates"
       },
       "agreements_lookup_terms": {
         "admin_only": false,
@@ -15957,6 +17018,39 @@
         "migration": false,
         "mutation": true,
         "name": "agreements_suggest_revision"
+      },
+      "agreements_upsert_agreements": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Create or update a Agreement resource.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_agreements_upsert_agreements_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "agreements_upsert_agreements"
+      },
+      "agreements_upsert_parties": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Create or update a Agreement Signature resource.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_agreements_upsert_parties_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "agreements_upsert_parties"
+      },
+      "agreements_upsert_templates": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Create or update a Agreement Template resource.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_agreements_upsert_templates_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "agreements_upsert_templates"
       },
       "assets_advance_lifecycle": {
         "admin_only": false,
@@ -26695,6 +27789,1470 @@
         ]
       }
     },
+    "/api/agreements/agreements": {
+      "get": {
+        "description": "handle_list (/api/agreements/agreements)",
+        "operationId": "get_api_agreements_agreements",
+        "parameters": [
+          {
+            "description": "Maximum number of records to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque pagination cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort column with optional +/- prefix",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated list of projected fields",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Full-text search query across: agreement_number, title, oneflow_contract_id",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on status",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on agreement_type",
+            "in": "query",
+            "name": "agreement_type",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on customer_id",
+            "in": "query",
+            "name": "customer_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on deal_id",
+            "in": "query",
+            "name": "deal_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on auto_renewal",
+            "in": "query",
+            "name": "auto_renewal",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on is_archived",
+            "in": "query",
+            "name": "is_archived",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_agreements_List"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list (/api/agreements/agreements)",
+        "tags": [
+          "agreements"
+        ]
+      },
+      "post": {
+        "description": "handle_create (/api/agreements/agreements)",
+        "operationId": "post_api_agreements_agreements",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Agreements_agreements_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_agreements"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_create (/api/agreements/agreements)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/agreements/bulk": {
+      "post": {
+        "description": "handle_bulk (/api/agreements/agreements/bulk)",
+        "operationId": "post_api_agreements_agreements_bulk",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "items": {
+                    "items": {
+                      "$ref": "#/components/schemas/Agreements_agreements_Create"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_agreements"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_bulk (/api/agreements/agreements/bulk)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/agreements/{id}": {
+      "get": {
+        "description": "handle_get (/api/agreements/agreements/{id})",
+        "operationId": "get_api_agreements_agreements_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_agreements"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_get (/api/agreements/agreements/{id})",
+        "tags": [
+          "agreements"
+        ]
+      },
+      "patch": {
+        "description": "handle_patch (/api/agreements/agreements/{id})",
+        "operationId": "patch_api_agreements_agreements_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Agreements_agreements_Update"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_agreements"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_patch (/api/agreements/agreements/{id})",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/agreements/{id}/archive": {
+      "post": {
+        "description": "handle_archive (/api/agreements/agreements/{id}/archive)",
+        "operationId": "post_api_agreements_agreements_id_archive",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Agreements_agreements_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_agreements"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_archive (/api/agreements/agreements/{id}/archive)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/agreements/{id}/comments": {
+      "get": {
+        "description": "handle_list_comments (/api/agreements/agreements/{id}/comments)",
+        "operationId": "get_api_agreements_agreements_id_comments",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EntityComment"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_comments (/api/agreements/agreements/{id}/comments)",
+        "tags": [
+          "agreements"
+        ]
+      },
+      "post": {
+        "description": "handle_add_comment (/api/agreements/agreements/{id}/comments)",
+        "operationId": "post_api_agreements_agreements_id_comments",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityCommentInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_agreements"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_add_comment (/api/agreements/agreements/{id}/comments)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/agreements/{id}/documents": {
+      "get": {
+        "description": "handle_list_documents (/api/agreements/agreements/{id}/documents)",
+        "operationId": "get_api_agreements_agreements_id_documents",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum number of records to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque pagination cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort column with optional +/- prefix",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated list of projected fields",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Full-text search query across: agreement_number, title, oneflow_contract_id",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on status",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on agreement_type",
+            "in": "query",
+            "name": "agreement_type",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on customer_id",
+            "in": "query",
+            "name": "customer_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on deal_id",
+            "in": "query",
+            "name": "deal_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on auto_renewal",
+            "in": "query",
+            "name": "auto_renewal",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on is_archived",
+            "in": "query",
+            "name": "is_archived",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_agreements_List"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_documents (/api/agreements/agreements/{id}/documents)",
+        "tags": [
+          "agreements"
+        ]
+      },
+      "post": {
+        "description": "handle_attach_document (/api/agreements/agreements/{id}/documents)",
+        "operationId": "post_api_agreements_agreements_id_documents",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Agreements_agreements_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_agreements"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_attach_document (/api/agreements/agreements/{id}/documents)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/agreements/{id}/documents/{doc_id}": {
+      "delete": {
+        "description": "handle_detach_document (/api/agreements/agreements/{id}/documents/{doc_id})",
+        "operationId": "delete_api_agreements_agreements_id_documents_doc_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL path parameter doc_id",
+            "in": "path",
+            "name": "doc_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_agreements"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_detach_document (/api/agreements/agreements/{id}/documents/{doc_id})",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/agreements/{id}/events": {
+      "get": {
+        "description": "handle_events (/api/agreements/agreements/{id}/events)",
+        "operationId": "get_api_agreements_agreements_id_events",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EntityTimelineEvent"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_events (/api/agreements/agreements/{id}/events)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/agreements/{id}/restore": {
+      "post": {
+        "description": "handle_restore (/api/agreements/agreements/{id}/restore)",
+        "operationId": "post_api_agreements_agreements_id_restore",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Agreements_agreements_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_agreements"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_restore (/api/agreements/agreements/{id}/restore)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/agreements/{id}/tags": {
+      "get": {
+        "description": "handle_list_tags (/api/agreements/agreements/{id}/tags)",
+        "operationId": "get_api_agreements_agreements_id_tags",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_tags (/api/agreements/agreements/{id}/tags)",
+        "tags": [
+          "agreements"
+        ]
+      },
+      "post": {
+        "description": "handle_add_tag (/api/agreements/agreements/{id}/tags)",
+        "operationId": "post_api_agreements_agreements_id_tags",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityTagInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_agreements"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_add_tag (/api/agreements/agreements/{id}/tags)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/agreements/{id}/tags/{tag}": {
+      "delete": {
+        "description": "handle_remove_tag (/api/agreements/agreements/{id}/tags/{tag})",
+        "operationId": "delete_api_agreements_agreements_id_tags_tag",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL path parameter tag",
+            "in": "path",
+            "name": "tag",
+            "required": true,
+            "schema": {
+              "format": "string",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_agreements"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_remove_tag (/api/agreements/agreements/{id}/tags/{tag})",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
     "/api/agreements/comment": {
       "post": {
         "description": "POST /api/agreements/comment \u2014 record negotiation comment.",
@@ -27058,6 +29616,1434 @@
           }
         },
         "summary": "POST /api/agreements/extract",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/parties": {
+      "get": {
+        "description": "handle_list (/api/agreements/parties)",
+        "operationId": "get_api_agreements_parties",
+        "parameters": [
+          {
+            "description": "Maximum number of records to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque pagination cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort column with optional +/- prefix",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated list of projected fields",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Full-text search query across: party_name, org_number, signatory_name, signatory_email",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on agreement_id",
+            "in": "query",
+            "name": "agreement_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on party_type",
+            "in": "query",
+            "name": "party_type",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on signature_status",
+            "in": "query",
+            "name": "signature_status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on is_archived",
+            "in": "query",
+            "name": "is_archived",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_parties_List"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list (/api/agreements/parties)",
+        "tags": [
+          "agreements"
+        ]
+      },
+      "post": {
+        "description": "handle_create (/api/agreements/parties)",
+        "operationId": "post_api_agreements_parties",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Agreements_parties_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_parties"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_create (/api/agreements/parties)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/parties/bulk": {
+      "post": {
+        "description": "handle_bulk (/api/agreements/parties/bulk)",
+        "operationId": "post_api_agreements_parties_bulk",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "items": {
+                    "items": {
+                      "$ref": "#/components/schemas/Agreements_parties_Create"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_parties"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_bulk (/api/agreements/parties/bulk)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/parties/{id}": {
+      "get": {
+        "description": "handle_get (/api/agreements/parties/{id})",
+        "operationId": "get_api_agreements_parties_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_parties"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_get (/api/agreements/parties/{id})",
+        "tags": [
+          "agreements"
+        ]
+      },
+      "patch": {
+        "description": "handle_patch (/api/agreements/parties/{id})",
+        "operationId": "patch_api_agreements_parties_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Agreements_parties_Update"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_parties"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_patch (/api/agreements/parties/{id})",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/parties/{id}/archive": {
+      "post": {
+        "description": "handle_archive (/api/agreements/parties/{id}/archive)",
+        "operationId": "post_api_agreements_parties_id_archive",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Agreements_parties_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_parties"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_archive (/api/agreements/parties/{id}/archive)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/parties/{id}/comments": {
+      "get": {
+        "description": "handle_list_comments (/api/agreements/parties/{id}/comments)",
+        "operationId": "get_api_agreements_parties_id_comments",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EntityComment"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_comments (/api/agreements/parties/{id}/comments)",
+        "tags": [
+          "agreements"
+        ]
+      },
+      "post": {
+        "description": "handle_add_comment (/api/agreements/parties/{id}/comments)",
+        "operationId": "post_api_agreements_parties_id_comments",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityCommentInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_parties"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_add_comment (/api/agreements/parties/{id}/comments)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/parties/{id}/documents": {
+      "get": {
+        "description": "handle_list_documents (/api/agreements/parties/{id}/documents)",
+        "operationId": "get_api_agreements_parties_id_documents",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum number of records to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque pagination cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort column with optional +/- prefix",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated list of projected fields",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Full-text search query across: party_name, org_number, signatory_name, signatory_email",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on agreement_id",
+            "in": "query",
+            "name": "agreement_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on party_type",
+            "in": "query",
+            "name": "party_type",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on signature_status",
+            "in": "query",
+            "name": "signature_status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on is_archived",
+            "in": "query",
+            "name": "is_archived",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_parties_List"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_documents (/api/agreements/parties/{id}/documents)",
+        "tags": [
+          "agreements"
+        ]
+      },
+      "post": {
+        "description": "handle_attach_document (/api/agreements/parties/{id}/documents)",
+        "operationId": "post_api_agreements_parties_id_documents",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Agreements_parties_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_parties"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_attach_document (/api/agreements/parties/{id}/documents)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/parties/{id}/documents/{doc_id}": {
+      "delete": {
+        "description": "handle_detach_document (/api/agreements/parties/{id}/documents/{doc_id})",
+        "operationId": "delete_api_agreements_parties_id_documents_doc_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL path parameter doc_id",
+            "in": "path",
+            "name": "doc_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_parties"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_detach_document (/api/agreements/parties/{id}/documents/{doc_id})",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/parties/{id}/events": {
+      "get": {
+        "description": "handle_events (/api/agreements/parties/{id}/events)",
+        "operationId": "get_api_agreements_parties_id_events",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EntityTimelineEvent"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_events (/api/agreements/parties/{id}/events)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/parties/{id}/restore": {
+      "post": {
+        "description": "handle_restore (/api/agreements/parties/{id}/restore)",
+        "operationId": "post_api_agreements_parties_id_restore",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Agreements_parties_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_parties"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_restore (/api/agreements/parties/{id}/restore)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/parties/{id}/tags": {
+      "get": {
+        "description": "handle_list_tags (/api/agreements/parties/{id}/tags)",
+        "operationId": "get_api_agreements_parties_id_tags",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_tags (/api/agreements/parties/{id}/tags)",
+        "tags": [
+          "agreements"
+        ]
+      },
+      "post": {
+        "description": "handle_add_tag (/api/agreements/parties/{id}/tags)",
+        "operationId": "post_api_agreements_parties_id_tags",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityTagInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_parties"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_add_tag (/api/agreements/parties/{id}/tags)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/parties/{id}/tags/{tag}": {
+      "delete": {
+        "description": "handle_remove_tag (/api/agreements/parties/{id}/tags/{tag})",
+        "operationId": "delete_api_agreements_parties_id_tags_tag",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL path parameter tag",
+            "in": "path",
+            "name": "tag",
+            "required": true,
+            "schema": {
+              "format": "string",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_parties"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_remove_tag (/api/agreements/parties/{id}/tags/{tag})",
         "tags": [
           "agreements"
         ]
@@ -27590,6 +31576,1416 @@
           }
         },
         "summary": "POST /api/agreements/suggest-terms \u2014 suggest term adjustments versus benchmark.",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/templates": {
+      "get": {
+        "description": "handle_list (/api/agreements/templates)",
+        "operationId": "get_api_agreements_templates",
+        "parameters": [
+          {
+            "description": "Maximum number of records to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque pagination cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort column with optional +/- prefix",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated list of projected fields",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Full-text search query across: name, code, description",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on category",
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on is_active",
+            "in": "query",
+            "name": "is_active",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on is_archived",
+            "in": "query",
+            "name": "is_archived",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_templates_List"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list (/api/agreements/templates)",
+        "tags": [
+          "agreements"
+        ]
+      },
+      "post": {
+        "description": "handle_create (/api/agreements/templates)",
+        "operationId": "post_api_agreements_templates",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Agreements_templates_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_templates"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_create (/api/agreements/templates)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/templates/bulk": {
+      "post": {
+        "description": "handle_bulk (/api/agreements/templates/bulk)",
+        "operationId": "post_api_agreements_templates_bulk",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "items": {
+                    "items": {
+                      "$ref": "#/components/schemas/Agreements_templates_Create"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_templates"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_bulk (/api/agreements/templates/bulk)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/templates/{id}": {
+      "get": {
+        "description": "handle_get (/api/agreements/templates/{id})",
+        "operationId": "get_api_agreements_templates_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_templates"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_get (/api/agreements/templates/{id})",
+        "tags": [
+          "agreements"
+        ]
+      },
+      "patch": {
+        "description": "handle_patch (/api/agreements/templates/{id})",
+        "operationId": "patch_api_agreements_templates_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Agreements_templates_Update"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_templates"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_patch (/api/agreements/templates/{id})",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/templates/{id}/archive": {
+      "post": {
+        "description": "handle_archive (/api/agreements/templates/{id}/archive)",
+        "operationId": "post_api_agreements_templates_id_archive",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Agreements_templates_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_templates"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_archive (/api/agreements/templates/{id}/archive)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/templates/{id}/comments": {
+      "get": {
+        "description": "handle_list_comments (/api/agreements/templates/{id}/comments)",
+        "operationId": "get_api_agreements_templates_id_comments",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EntityComment"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_comments (/api/agreements/templates/{id}/comments)",
+        "tags": [
+          "agreements"
+        ]
+      },
+      "post": {
+        "description": "handle_add_comment (/api/agreements/templates/{id}/comments)",
+        "operationId": "post_api_agreements_templates_id_comments",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityCommentInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_templates"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_add_comment (/api/agreements/templates/{id}/comments)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/templates/{id}/documents": {
+      "get": {
+        "description": "handle_list_documents (/api/agreements/templates/{id}/documents)",
+        "operationId": "get_api_agreements_templates_id_documents",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum number of records to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque pagination cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort column with optional +/- prefix",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated list of projected fields",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Full-text search query across: name, code, description",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on category",
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on is_active",
+            "in": "query",
+            "name": "is_active",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on is_archived",
+            "in": "query",
+            "name": "is_archived",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_templates_List"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_documents (/api/agreements/templates/{id}/documents)",
+        "tags": [
+          "agreements"
+        ]
+      },
+      "post": {
+        "description": "handle_attach_document (/api/agreements/templates/{id}/documents)",
+        "operationId": "post_api_agreements_templates_id_documents",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Agreements_templates_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_templates"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_attach_document (/api/agreements/templates/{id}/documents)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/templates/{id}/documents/{doc_id}": {
+      "delete": {
+        "description": "handle_detach_document (/api/agreements/templates/{id}/documents/{doc_id})",
+        "operationId": "delete_api_agreements_templates_id_documents_doc_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL path parameter doc_id",
+            "in": "path",
+            "name": "doc_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_templates"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_detach_document (/api/agreements/templates/{id}/documents/{doc_id})",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/templates/{id}/events": {
+      "get": {
+        "description": "handle_events (/api/agreements/templates/{id}/events)",
+        "operationId": "get_api_agreements_templates_id_events",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EntityTimelineEvent"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_events (/api/agreements/templates/{id}/events)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/templates/{id}/restore": {
+      "post": {
+        "description": "handle_restore (/api/agreements/templates/{id}/restore)",
+        "operationId": "post_api_agreements_templates_id_restore",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Agreements_templates_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_templates"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_restore (/api/agreements/templates/{id}/restore)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/templates/{id}/tags": {
+      "get": {
+        "description": "handle_list_tags (/api/agreements/templates/{id}/tags)",
+        "operationId": "get_api_agreements_templates_id_tags",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_tags (/api/agreements/templates/{id}/tags)",
+        "tags": [
+          "agreements"
+        ]
+      },
+      "post": {
+        "description": "handle_add_tag (/api/agreements/templates/{id}/tags)",
+        "operationId": "post_api_agreements_templates_id_tags",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityTagInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_templates"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_add_tag (/api/agreements/templates/{id}/tags)",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/templates/{id}/tags/{tag}": {
+      "delete": {
+        "description": "handle_remove_tag (/api/agreements/templates/{id}/tags/{tag})",
+        "operationId": "delete_api_agreements_templates_id_tags_tag",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL path parameter tag",
+            "in": "path",
+            "name": "tag",
+            "required": true,
+            "schema": {
+              "format": "string",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agreements_templates"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_remove_tag (/api/agreements/templates/{id}/tags/{tag})",
         "tags": [
           "agreements"
         ]

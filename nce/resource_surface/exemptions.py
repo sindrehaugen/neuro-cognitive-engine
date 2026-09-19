@@ -206,33 +206,13 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
         ),
     ),
     # ---------------------------------------------------------------------------
-    # Agreements Engine (Lane B Wave B-9 / Lane E)
+    # Agreements Engine (Lane B Wave B-10 / Lane E)
     # ---------------------------------------------------------------------------
-    "AGREEMENT": ResourceExemption(
-        owner_engine="agreements",
-        reason=(
-            "kg_nodes-only stub, not a real table -- no agreements table exists "
-            "(grep -c \"CREATE TABLE IF NOT EXISTS agreements\" nce/schema.sql -> 0; "
-            "the string 'agreements' appears only as the agreements_source_id column "
-            "and in comments). nce/vertical_modules/agreements/graph.py inserts only "
-            "into kg_nodes (label, entity_type, namespace_id, agreements_source_id, "
-            "change_origin) -- no dedicated attribute row. Corrected by Lane E's "
-            "exemptions sweep. Scheduled for Wave B-9 AGREEMENT resource declaration "
-            "once a backing table exists."
-        ),
-    ),
     "AGREEMENT_TERM": ResourceExemption(
         owner_engine="agreements",
         reason=(
             "Sub-resource for contract terms, index series, and SLA parameters; "
-            "scheduled for Wave B-9 / B-10 agreement term surfaces."
-        ),
-    ),
-    "AGREEMENT_SIGNATURE": ResourceExemption(
-        owner_engine="agreements",
-        reason=(
-            "Signature audit and Oneflow integration mirror state; scheduled for "
-            "Wave B-9 agreement party and signature surfaces."
+            "scheduled for Wave B-10 agreement price rules and terms surfaces."
         ),
     ),
     # ---------------------------------------------------------------------------

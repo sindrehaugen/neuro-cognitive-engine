@@ -51,14 +51,14 @@ _NAMESPACE_ID = "00000000-0000-4000-8000-000000000001"
 _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
-# --- MEASURED post-rebase onto main (post Wave D-1, D-5, D-7, D-3, Wave B-1 sales resource surface: +16 total, +8 mutation, +8 cacheable) plus Lane C Wave C-2 (room categories & FL metadata: +8 total, +3 mutation, +5 cacheable):
-# TOTAL: 413 from main + 8 C-2 tools = 421.
-# MUTATION: 186 from main + 3 C-2 mutation tools = 189.
-# CACHEABLE: 182 from main + 5 C-2 cacheable tools = 187.
+# --- MEASURED post-rebase onto main (incorporating Wave D-1, D-5, D-7, D-3, Wave B-1, Wave C-2: 421 tools) plus Wave B-9 agreements resource surface (+12 total, +6 mutation, +6 cacheable):
+# TOTAL: 421 from main + 12 B-9 tools = 433.
+# MUTATION: 189 from main + 6 B-9 mutation tools = 195.
+# CACHEABLE: 187 from main + 6 B-9 cacheable tools = 193.
 # ADMIN_ONLY: 99 (unaffected).
-_TOTAL_TOOLS = 421
-_MUTATION_TOOLS = 189
-_CACHEABLE_TOOLS = 187
+_TOTAL_TOOLS = 433
+_MUTATION_TOOLS = 195
+_CACHEABLE_TOOLS = 193
 _ADMIN_ONLY_TOOLS = 99
 _MIGRATION_TOOLS = 5
 

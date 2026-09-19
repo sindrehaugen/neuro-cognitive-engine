@@ -415,6 +415,10 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "sales_leads": "namespace_id",
     "sales_deals": "namespace_id",
     "sales_quotes": "namespace_id",
+    # C12 Agreements Resource Surface (Agreements Engine, Wave B-9): agreements, parties, templates.
+    "agreements": "namespace_id",
+    "agreement_parties": "namespace_id",
+    "agreement_templates": "namespace_id",
 }
 
 
