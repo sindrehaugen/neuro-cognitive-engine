@@ -674,54 +674,12 @@ class TestProjectAdvancePhaseToolRegistry:
         finally:
             unregister_resource("h4_probe", "k-h4-synthetic")
 
-    def test_admin_only_count(self) -> None:
-        """Admin-only tools must total 32 (unified realignment registry;
-        +2 Batch 131 inventory_transfer_stock/inventory_record_consumption;
-        +1 Batch 067h system_design_delete_planned, M6.W17 -- admin_only is the
-        one flag that separates it from the two authoring tools, which are
-        not);
-        +9 Batch 138a inventory tools, M11.W10a -- the 7 Actor mutations plus
-        inventory_valuation and inventory_reconcile_dead_stock, which are
-        read-only but admin_only for the cost/position data they return. The
-        wave's other two tools, inventory_recommend_restock and
-        inventory_forecast_demand, are Watcher reads and are not admin_only;
-        +2 ML10-B5 support tools, M10.W5 -- support_open_ticket, support_resolve_ticket;
-        +3 ML12-B5 field_tech tools, M12.W5 -- field_tech_create_work_order, field_tech_assign, field_tech_record_outcome;
-        +2 ML13-B3 HR tools, M13.W3 -- hr_build_onboarding_quest, hr_log_one_on_one;
-        +5 ML14-B3 marketing tools, M14.W3;
-        +2 ML10b-P2/P3 support tools -- support_dispatch_work_order, support_sync_now;
-        +1 ML15-B7 resources tool -- resources_plan_material_flow;
-        +6 ML16 business insights tools, M16 -- every BI tool is admin_only:
-        the engine composes cross-engine financial and personnel roll-ups, so
-        no non-admin principal may reach any of them;
-        +1 ML9b Assets tool -- assets_pull_telemetry, admin_only because it
-        drives an operator/cron pull against a vendor telemetry adapter;
-        +1 MLV15B-S2a sales tool -- sales_request_signature;
-        +2 Wave PR-1 procurement tools -- procurement_generate_po, procurement_submit_po;
-        +6 MLV15D-AG2 agreements tools;
-        +3 MLV15D-V1 vendors tools;
-        +2 MLV15D-HR2 HR tools;
-        +1 Wave C10 decision_feedback_record tool;
-        +1 Wave PJ-1 project_record_outcome tool;
-        +1 Wave RS-3 resources_record_allocation_outcome tool;
-        +1 Wave T-1 trust_dial_set_tier tool;
-        +2 MLV15D-RS1 resources tools;
-        +1 MLV15B-E3 economy tool;
-        +1 MLV15D-MK2 marketing tool;
-        +4 MLV15D-S1 sales write tools;
-        +1 Wave C-PJ2 project_generate_case_study_edge tool;
-        +1 Wave E-2 economy_generate_ehf tool;
-        +9 Wave T-6 customer_portal tools;
-        +2 Wave SU-3 support tools: support_failure_pattern, support_upsell_signal;
-        +1 Wave A-3 assets_sync_netbox tool;
-        +1 Wave A-5 assets_record_failure_pattern tool;
-        +2 Wave IN-2 inventory kitting tools: inventory_reserve_kit, inventory_release_kit;
-        +1 Wave IN-3 inventory restock PO: inventory_create_restock_po;
-        +1 Wave F-8 legal_entities_enrich_from_registry, admin_only;
-        +1 Wave F-11 geodata_import_osm_elements, admin_only;
-        +1 Wave F-12 geodata_import_n50_land_cover, admin_only;
-        +1 Wave F-13 geodata_import_place_names, admin_only;
-        +1 Wave F-9 sites_enrich_address_from_registry, admin_only;
-        +1 Lane D Wave D-5 support_log_ticket_action)."""
-
-    assert len(ADMIN_ONLY_TOOLS) == 99
+    # A global ADMIN_ONLY_TOOLS count once lived here as a bare `assert`, duplicating
+    # tests/test_tool_registry.py's own canonical `test_admin_only_tools_count`. It
+    # carried a ~50-line docstring changelog of every unrelated wave that ever bumped
+    # the number (K-0 finding, 2026-09-19): the assert itself was accidentally
+    # dedented to class-body scope, so it ran once at import time as a side effect,
+    # not as a real pytest test -- `test_admin_only_count` had been a silent no-op
+    # (PASSED trivially, empty body) for as long as that indentation bug existed.
+    # Removed rather than fixed-in-place: this file has nothing to do with the
+    # estate-wide admin-only count, and test_tool_registry.py already owns it.
