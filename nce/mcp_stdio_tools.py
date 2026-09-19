@@ -2874,6 +2874,34 @@ TOOLS = [
         },
     ),
     Tool(
+        name="assets_service_history",
+        description=(
+            "Retrieve full composite service history for an asset (Wave D-3). "
+            "Aggregates support tickets, action logs with outcomes, field tech work orders, "
+            "and knowledge graph failure pattern / boundary edges into a unified chronological timeline. Watcher; read-only."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "asset_id": {
+                    "type": "string",
+                    "description": "Target asset UUID to retrieve service history for.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max timeline entries to return (default 50, max 200).",
+                },
+                "order": {
+                    "type": "string",
+                    "enum": ["desc", "asc"],
+                    "description": "Timeline sorting order: 'desc' (newest first, default) or 'asc'.",
+                },
+            },
+            "required": ["namespace_id", "asset_id"],
+        },
+    ),
+    Tool(
         name="vendors_get_vendor",
         description="Fetch a single vendor. Watcher; read-only, cacheable.",
         inputSchema={

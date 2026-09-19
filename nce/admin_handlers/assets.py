@@ -66,6 +66,7 @@ from nce.vertical_modules.assets.qr import (
     do_generate_asset_qr,
     do_get_room_register,
 )
+from nce.vertical_modules.assets.service_history import do_get_asset_service_history
 
 log = logging.getLogger("nce.admin_handlers.assets")
 
@@ -935,6 +936,74 @@ async def api_assets_link_product(request: Any) -> JSONResponse:
         )
 
     await bump_mcp_cache_generation(admin_state.engine, route="api_assets_link_product")
+    if result.get("not_found"):
+        return JSONResponse(result, status_code=404)
+    return JSONResponse(result)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/assets/{id}/service-history
+# ---------------------------------------------------------------------------
+
+
+async def api_assets_service_history(request: Any) -> JSONResponse:
+    """GET /api/assets/{id}/service-history
+
+    Path parameter:
+        id (str): the asset's UUID (``assets.id``).
+
+    Query parameters:
+        namespace_id (str, required): Active namespace UUID.
+        limit (int, optional): Max timeline items to return (default 50).
+        order (str, optional): 'desc' (newest first, default) or 'asc'.
+
+    Response (JSON):
+        {
+            "ok": True,
+            "asset_id": "...",
+            "asset": {...},
+            "timeline": [...],
+            "tickets": [...],
+            "work_orders": [...],
+            "actions": [...],
+            "outcome_edges": [...],
+            "summary": {...}
+        }
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    asset_id = request.path_params.get("id", "").strip()
+    if not asset_id:
+        return JSONResponse({"error": "Missing path parameter: id"}, status_code=422)
+
+    namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
+    if err is not None:
+        return err
+
+    limit_raw = request.query_params.get("limit")
+    limit = int(limit_raw) if limit_raw and limit_raw.isdigit() else 50
+    order = request.query_params.get("order", "desc")
+
+    params = {
+        "namespace_id": namespace_id,
+        "asset_id": asset_id,
+        "limit": limit,
+        "order": order,
+    }
+
+    try:
+        result = await do_get_asset_service_history(admin_state.engine, params)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Assets service history error",
+            exc,
+            status_code=500,
+            log_event="api_assets_service_history",
+        )
+
     if result.get("not_found"):
         return JSONResponse(result, status_code=404)
     return JSONResponse(result)

@@ -49,11 +49,13 @@ from nce.vertical_modules.assets.failure_pattern import (
 )
 from nce.vertical_modules.assets.netbox_bridge import do_sync_netbox
 from nce.vertical_modules.assets.qr import do_generate_asset_qr, do_get_room_register
+from nce.vertical_modules.assets.service_history import do_get_asset_service_history
 from nce.vertical_modules.assets.warranty import do_check_warranty_eol
 
 __all__ = [
     "do_check_warranty_eol",
     "do_generate_asset_qr",
+    "do_get_asset_service_history",
     "do_get_room_register",
     "do_record_failure_pattern",
     "do_sync_netbox",

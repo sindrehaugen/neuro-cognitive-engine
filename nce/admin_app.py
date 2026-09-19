@@ -1392,6 +1392,11 @@ def build_admin_routes() -> list[Route]:
             methods=["POST"],
         ),
         Route(
+            "/api/assets/{id}/service-history",
+            endpoint=assets_handlers.api_assets_service_history,
+            methods=["GET"],
+        ),
+        Route(
             "/api/assets/{id}/qr",
             endpoint=assets_handlers.api_assets_generate_qr,
             methods=["GET"],

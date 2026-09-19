@@ -76,6 +76,7 @@ from nce.vertical_modules.assets.lifecycle import advance
 from nce.vertical_modules.assets.netbox_bridge import do_sync_netbox
 from nce.vertical_modules.assets.qr import do_generate_asset_qr
 from nce.vertical_modules.assets.seed import do_seed_asset_from_bom
+from nce.vertical_modules.assets.service_history import do_get_asset_service_history
 from nce.vertical_modules.assets.sla import do_attach_sla
 from nce.vertical_modules.assets.telemetry import do_pull_telemetry
 from nce.vertical_modules.assets.warranty import do_check_warranty_eol
@@ -729,4 +730,12 @@ async def handle_assets_link_product(engine: NCEEngine, arguments: dict[str, Any
     """MCP tool: assets_link_product — link an asset to a product catalog item."""
     require_namespace_id(arguments)
     result = await do_link_asset_product(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_assets_service_history(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: assets_service_history — fetch composite service history for an asset."""
+    require_namespace_id(arguments)
+    result = await do_get_asset_service_history(engine, dict(arguments))
     return json.dumps(result, default=str)
