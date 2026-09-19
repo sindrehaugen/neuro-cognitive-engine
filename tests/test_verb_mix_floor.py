@@ -368,7 +368,9 @@ _KNOWN_HANDWRITTEN_VERB_ROUTES: frozenset[tuple[str, str, str]] = frozenset(
 # into engine scope, dropping this from 108 to 107). A change in either direction must
 # be explained — growth means a real engine route just got misclassified as platform
 # (the K-H1 failure mode) and shrinkage means a platform route was retired or reclassified.
-_RESIDUAL_COUNT_PIN = 107
+# Wave A-6 (C16 Principal Mapping) added GET /api/me/context and PUT /api/me/context to
+# nce/me_app.py (+2 platform route-methods, 107 -> 109).
+_RESIDUAL_COUNT_PIN = 109
 
 
 def test_route_extraction_has_no_unresolved_call_sites() -> None:
