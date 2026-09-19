@@ -1184,9 +1184,7 @@ async def api_assets_link_subcomponent(request: Any) -> JSONResponse:
 
     sub_asset_id = body.get("sub_asset_id") or body.get("child_asset_id")
     if not sub_asset_id:
-        return JSONResponse(
-            {"error": "Missing required field: sub_asset_id"}, status_code=422
-        )
+        return JSONResponse({"error": "Missing required field: sub_asset_id"}, status_code=422)
 
     params = {
         "namespace_id": namespace_id,
@@ -1229,9 +1227,7 @@ async def api_assets_unlink_subcomponent(request: Any) -> JSONResponse:
     parent_asset_id = request.path_params.get("id", "").strip()
     sub_asset_id = request.path_params.get("sub_id", "").strip()
     if not parent_asset_id or not sub_asset_id:
-        return JSONResponse(
-            {"error": "Missing path parameter: id and/or sub_id"}, status_code=422
-        )
+        return JSONResponse({"error": "Missing path parameter: id and/or sub_id"}, status_code=422)
 
     namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
     if err is not None:

@@ -456,7 +456,9 @@ async def do_get_person_assets(
                             "summary": tr["summary"],
                             "description": tr["description"],
                             "room_id": tr["room_id"],
-                            "created_at": tr["created_at"].isoformat() if tr["created_at"] else None,
+                            "created_at": tr["created_at"].isoformat()
+                            if tr["created_at"]
+                            else None,
                         }
                     )
 

@@ -2885,7 +2885,10 @@ TOOLS = [
             "properties": {
                 "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
                 "asset_id": {"type": "string", "description": "Target asset UUID to assign."},
-                "employee_id": {"type": "string", "description": "Employee ID or person identifier."},
+                "employee_id": {
+                    "type": "string",
+                    "description": "Employee ID or person identifier.",
+                },
                 "principal_id": {
                     "type": "string",
                     "description": "Optional principal ID resolved via C16 principal_bindings.",
@@ -2924,7 +2927,10 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
-                "employee_id": {"type": "string", "description": "Employee ID or person identifier."},
+                "employee_id": {
+                    "type": "string",
+                    "description": "Employee ID or person identifier.",
+                },
                 "principal_id": {
                     "type": "string",
                     "description": "Optional principal ID resolved via C16 principal_bindings.",
@@ -2948,7 +2954,10 @@ TOOLS = [
             "properties": {
                 "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
                 "parent_asset_id": {"type": "string", "description": "Parent asset UUID."},
-                "sub_asset_id": {"type": "string", "description": "Child sub-component asset UUID."},
+                "sub_asset_id": {
+                    "type": "string",
+                    "description": "Child sub-component asset UUID.",
+                },
                 "relation": {
                     "type": "string",
                     "description": "Boundary edge predicate (defaults to 'part_of').",
@@ -2968,7 +2977,10 @@ TOOLS = [
             "properties": {
                 "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
                 "parent_asset_id": {"type": "string", "description": "Parent asset UUID."},
-                "sub_asset_id": {"type": "string", "description": "Child sub-component asset UUID."},
+                "sub_asset_id": {
+                    "type": "string",
+                    "description": "Child sub-component asset UUID.",
+                },
             },
             "required": ["namespace_id", "parent_asset_id", "sub_asset_id"],
         },

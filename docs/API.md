@@ -535,20 +535,84 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/sales/agreements/{id}` | `api_admin_sales_agreement_detail` |
 | GET | `/api/sales/commission` | `api_admin_sales_calculate_commission` |
 | GET | `/api/sales/customers` | `api_admin_sales_customers` |
+| GET | `/api/sales/customers` | `handle_list` |
 | POST | `/api/sales/customers` | `api_admin_sales_create_customer` |
+| POST | `/api/sales/customers` | `handle_create` |
+| POST | `/api/sales/customers/bulk` | `handle_bulk` |
 | GET | `/api/sales/customers/{id}` | `api_admin_sales_customer_profile` |
+| GET | `/api/sales/customers/{id}` | `handle_get` |
+| PATCH | `/api/sales/customers/{id}` | `handle_patch` |
+| POST | `/api/sales/customers/{id}/archive` | `handle_archive` |
+| GET | `/api/sales/customers/{id}/comments` | `handle_list_comments` |
+| POST | `/api/sales/customers/{id}/comments` | `handle_add_comment` |
+| GET | `/api/sales/customers/{id}/documents` | `handle_list_documents` |
+| POST | `/api/sales/customers/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/sales/customers/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/sales/customers/{id}/events` | `handle_events` |
+| POST | `/api/sales/customers/{id}/restore` | `handle_restore` |
+| GET | `/api/sales/customers/{id}/tags` | `handle_list_tags` |
+| POST | `/api/sales/customers/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/sales/customers/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/sales/dashboard` | `api_admin_sales_dashboard` |
 | POST | `/api/sales/dealroom` | `api_admin_sales_dealroom` |
+| GET | `/api/sales/deals` | `handle_list` |
 | POST | `/api/sales/deals` | `api_admin_sales_create_deal` |
+| POST | `/api/sales/deals` | `handle_create` |
+| POST | `/api/sales/deals/bulk` | `handle_bulk` |
 | POST | `/api/sales/deals/edit` | `api_admin_sales_edit_deal` |
+| GET | `/api/sales/deals/{id}` | `handle_get` |
+| PATCH | `/api/sales/deals/{id}` | `handle_patch` |
+| POST | `/api/sales/deals/{id}/archive` | `handle_archive` |
+| GET | `/api/sales/deals/{id}/comments` | `handle_list_comments` |
+| POST | `/api/sales/deals/{id}/comments` | `handle_add_comment` |
+| GET | `/api/sales/deals/{id}/documents` | `handle_list_documents` |
+| POST | `/api/sales/deals/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/sales/deals/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/sales/deals/{id}/events` | `handle_events` |
+| POST | `/api/sales/deals/{id}/restore` | `handle_restore` |
+| GET | `/api/sales/deals/{id}/tags` | `handle_list_tags` |
+| POST | `/api/sales/deals/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/sales/deals/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/sales/divergences` | `api_admin_sales_divergences` |
 | POST | `/api/sales/lead-score` | `api_admin_sales_lead_score` |
+| GET | `/api/sales/leads` | `handle_list` |
 | POST | `/api/sales/leads` | `api_admin_sales_create_lead` |
+| POST | `/api/sales/leads` | `handle_create` |
+| POST | `/api/sales/leads/bulk` | `handle_bulk` |
+| GET | `/api/sales/leads/{id}` | `handle_get` |
+| PATCH | `/api/sales/leads/{id}` | `handle_patch` |
+| POST | `/api/sales/leads/{id}/archive` | `handle_archive` |
+| GET | `/api/sales/leads/{id}/comments` | `handle_list_comments` |
+| POST | `/api/sales/leads/{id}/comments` | `handle_add_comment` |
+| GET | `/api/sales/leads/{id}/documents` | `handle_list_documents` |
+| POST | `/api/sales/leads/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/sales/leads/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/sales/leads/{id}/events` | `handle_events` |
+| POST | `/api/sales/leads/{id}/restore` | `handle_restore` |
+| GET | `/api/sales/leads/{id}/tags` | `handle_list_tags` |
+| POST | `/api/sales/leads/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/sales/leads/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/sales/manager` | `api_admin_sales_manager` |
 | GET | `/api/sales/morning-brief` | `api_admin_sales_morning_brief_slice` |
 | GET | `/api/sales/overview` | `api_admin_sales_overview` |
 | POST | `/api/sales/quote-draft` | `api_admin_sales_quote_draft` |
+| GET | `/api/sales/quotes` | `handle_list` |
+| POST | `/api/sales/quotes` | `handle_create` |
+| POST | `/api/sales/quotes/bulk` | `handle_bulk` |
 | GET | `/api/sales/quotes/{id}` | `api_admin_sales_quote_detail` |
+| GET | `/api/sales/quotes/{id}` | `handle_get` |
+| PATCH | `/api/sales/quotes/{id}` | `handle_patch` |
+| POST | `/api/sales/quotes/{id}/archive` | `handle_archive` |
+| GET | `/api/sales/quotes/{id}/comments` | `handle_list_comments` |
+| POST | `/api/sales/quotes/{id}/comments` | `handle_add_comment` |
+| GET | `/api/sales/quotes/{id}/documents` | `handle_list_documents` |
+| POST | `/api/sales/quotes/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/sales/quotes/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/sales/quotes/{id}/events` | `handle_events` |
+| POST | `/api/sales/quotes/{id}/restore` | `handle_restore` |
+| GET | `/api/sales/quotes/{id}/tags` | `handle_list_tags` |
+| POST | `/api/sales/quotes/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/sales/quotes/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/sales/seller-detail/{user}` | `api_admin_sales_seller_detail` |
 | GET | `/api/sales/stats` | `api_admin_sales_stats` |
 | GET | `/api/sales/targets` | `api_admin_sales_targets_get` |
@@ -658,6 +722,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/system-design/from-quote` | `api_system_design_from_quote` |
 | POST | `/api/system-design/functional-location` | `api_system_design_author_functional_location` |
 | GET | `/api/system-design/functional-locations` | `api_system_design_list_functional_locations` |
+| GET | `/api/system-design/functional-locations/my-responsible` | `api_system_design_my_responsible_fls` |
 | GET | `/api/system-design/functional-locations/{id}` | `api_system_design_get_functional_location` |
 | GET | `/api/system-design/functional-locations/{id}/ancestors` | `api_system_design_get_fl_ancestors` |
 | GET | `/api/system-design/functional-locations/{id}/children` | `api_system_design_get_fl_children` |
@@ -665,9 +730,16 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/system-design/functional-locations/{id}/move` | `api_system_design_move_functional_location` |
 | GET | `/api/system-design/functional-locations/{id}/path` | `api_system_design_get_fl_path` |
 | POST | `/api/system-design/functional-locations/{id}/promote` | `api_system_design_promote_functional_location` |
+| GET | `/api/system-design/functional-locations/{id}/responsible` | `api_system_design_list_fl_responsible` |
+| POST | `/api/system-design/functional-locations/{id}/responsible` | `api_system_design_assign_fl_responsible` |
+| DELETE | `/api/system-design/functional-locations/{id}/responsible/{employee_id}` | `api_system_design_unassign_fl_responsible` |
+| GET | `/api/system-design/functional-locations/{id}/room-category` | `api_system_design_get_fl_room_category` |
+| POST | `/api/system-design/functional-locations/{id}/room-category` | `api_system_design_set_fl_room_category` |
 | DELETE | `/api/system-design/planned` | `api_system_design_delete_planned` |
 | GET | `/api/system-design/procurement-view` | `api_system_design_procurement_view` |
 | POST | `/api/system-design/publish-design-docs` | `api_system_design_publish_design_docs` |
+| GET | `/api/system-design/room-categories` | `api_system_design_list_room_categories` |
+| GET | `/api/system-design/room-categories/{id}` | `api_system_design_get_room_category` |
 | GET | `/api/system-design/signal-flow` | `api_system_design_inspect_signal_flow` |
 | GET | `/api/system-design/signal-rules` | `api_system_design_get_signal_rules` |
 | POST | `/api/system-design/sow` | `api_system_design_generate_sow` |
@@ -1005,6 +1077,10 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `resources_upsert_travel_legs` |  | yes |  |  |
 | `rotate_signing_key` |  | yes |  |  |
 | `sales_add_quote_line` |  | yes |  |  |
+| `sales_archive_customers` |  | yes |  |  |
+| `sales_archive_deals` |  | yes |  |  |
+| `sales_archive_leads` |  | yes |  |  |
+| `sales_archive_quotes` |  | yes |  |  |
 | `sales_calculate_commission` |  |  | yes |  |
 | `sales_create_customer` | yes | yes |  |  |
 | `sales_create_deal` | yes | yes |  |  |
@@ -1012,12 +1088,24 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_divergence_log` |  |  | yes |  |
 | `sales_draft_quote` |  |  | yes |  |
 | `sales_edit_deal` | yes | yes |  |  |
+| `sales_get_customers` |  |  | yes |  |
+| `sales_get_deals` |  |  | yes |  |
+| `sales_get_leads` |  |  | yes |  |
 | `sales_get_quote_lines` |  |  |  |  |
+| `sales_get_quotes` |  |  | yes |  |
 | `sales_get_signed_baseline` |  |  |  |  |
+| `sales_list_customers` |  |  | yes |  |
+| `sales_list_deals` |  |  | yes |  |
+| `sales_list_leads` |  |  | yes |  |
+| `sales_list_quotes` |  |  | yes |  |
 | `sales_morning_brief_slice` |  |  | yes |  |
 | `sales_ping` |  |  | yes |  |
 | `sales_request_signature` | yes | yes |  |  |
 | `sales_score_lead` |  |  | yes |  |
+| `sales_upsert_customers` |  | yes |  |  |
+| `sales_upsert_deals` |  | yes |  |  |
+| `sales_upsert_leads` |  | yes |  |  |
+| `sales_upsert_quotes` |  | yes |  |  |
 | `search_codebase` |  |  | yes |  |
 | `semantic_search` |  |  | yes |  |
 | `shred_memory` | yes | yes |  |  |
@@ -1063,6 +1151,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `support_upsert_sla_clocks` |  | yes |  |  |
 | `support_upsert_ticket_actions` |  | yes |  |  |
 | `support_upsert_tickets` |  | yes |  |  |
+| `system_design_assign_fl_responsible` |  | yes |  |  |
 | `system_design_author_functional_location` |  | yes |  |  |
 | `system_design_author_topology` |  | yes |  |  |
 | `system_design_delete_planned` | yes | yes |  |  |
@@ -1072,12 +1161,17 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `system_design_get_fl_ancestors` |  |  | yes |  |
 | `system_design_get_fl_children` |  |  | yes |  |
 | `system_design_get_fl_path` |  |  | yes |  |
+| `system_design_get_fl_room_category` |  |  | yes |  |
 | `system_design_get_functional_location` |  |  | yes |  |
+| `system_design_get_room_category` |  |  | yes |  |
 | `system_design_get_signal_rules` |  |  | yes |  |
 | `system_design_get_standards` |  |  | yes |  |
 | `system_design_get_topology` |  |  | yes |  |
 | `system_design_inspect_signal_flow` |  |  |  |  |
+| `system_design_list_fl_responsible` |  |  | yes |  |
 | `system_design_list_functional_locations` |  |  | yes |  |
+| `system_design_list_my_responsible_fls` |  |  | yes |  |
+| `system_design_list_room_categories` |  |  | yes |  |
 | `system_design_merge_functional_locations` |  | yes |  |  |
 | `system_design_move_functional_location` |  | yes |  |  |
 | `system_design_ping` |  |  | yes |  |
@@ -1085,8 +1179,10 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `system_design_promote_functional_location` |  | yes |  |  |
 | `system_design_propose_design` |  |  |  |  |
 | `system_design_publish_design_docs` |  | yes |  |  |
+| `system_design_set_fl_room_category` |  | yes |  |  |
 | `system_design_sync_device_capabilities` |  | yes |  |  |
 | `system_design_to_quote` |  | yes |  |  |
+| `system_design_unassign_fl_responsible` |  | yes |  |  |
 | `system_design_validate_design_graph` |  |  |  |  |
 | `trigger_consolidation` |  | yes |  |  |
 | `trust_dial_get_status` |  |  | yes |  |
@@ -1113,4 +1209,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 692 REST endpoints, 403 MCP tools._
+_Totals: 764 REST endpoints, 427 MCP tools._

@@ -136,19 +136,25 @@ def test_exception_hierarchy():
 @pytest.mark.asyncio
 async def test_assign_person_missing_namespace():
     with pytest.raises(ValueError, match="namespace_id is required"):
-        await do_assign_asset_person(MagicMock(), {"asset_id": str(_ASSET_1), "employee_id": _EMPLOYEE_ID})
+        await do_assign_asset_person(
+            MagicMock(), {"asset_id": str(_ASSET_1), "employee_id": _EMPLOYEE_ID}
+        )
 
 
 @pytest.mark.asyncio
 async def test_assign_person_missing_asset_id():
     with pytest.raises(ValueError, match="asset_id is required"):
-        await do_assign_asset_person(MagicMock(), {"namespace_id": str(_NS_ID), "employee_id": _EMPLOYEE_ID})
+        await do_assign_asset_person(
+            MagicMock(), {"namespace_id": str(_NS_ID), "employee_id": _EMPLOYEE_ID}
+        )
 
 
 @pytest.mark.asyncio
 async def test_assign_person_missing_employee_and_principal():
     with pytest.raises(ValueError, match="Either 'employee_id' or 'principal_id' must be provided"):
-        await do_assign_asset_person(MagicMock(), {"namespace_id": str(_NS_ID), "asset_id": str(_ASSET_1)})
+        await do_assign_asset_person(
+            MagicMock(), {"namespace_id": str(_NS_ID), "asset_id": str(_ASSET_1)}
+        )
 
 
 @pytest.mark.asyncio
@@ -162,15 +168,21 @@ async def test_unassign_person_missing_params():
 @pytest.mark.asyncio
 async def test_link_subcomponent_missing_params():
     with pytest.raises(ValueError, match="parent_asset_id is required"):
-        await do_link_subcomponent(MagicMock(), {"namespace_id": str(_NS_ID), "sub_asset_id": str(_ASSET_2)})
+        await do_link_subcomponent(
+            MagicMock(), {"namespace_id": str(_NS_ID), "sub_asset_id": str(_ASSET_2)}
+        )
     with pytest.raises(ValueError, match="sub_asset_id is required"):
-        await do_link_subcomponent(MagicMock(), {"namespace_id": str(_NS_ID), "parent_asset_id": str(_ASSET_1)})
+        await do_link_subcomponent(
+            MagicMock(), {"namespace_id": str(_NS_ID), "parent_asset_id": str(_ASSET_1)}
+        )
 
 
 @pytest.mark.asyncio
 async def test_unlink_subcomponent_missing_params():
     with pytest.raises(ValueError, match="parent_asset_id is required"):
-        await do_unlink_subcomponent(MagicMock(), {"namespace_id": str(_NS_ID), "sub_asset_id": str(_ASSET_2)})
+        await do_unlink_subcomponent(
+            MagicMock(), {"namespace_id": str(_NS_ID), "sub_asset_id": str(_ASSET_2)}
+        )
 
 
 # ===========================================================================
@@ -183,7 +195,9 @@ async def test_assign_person_success():
     engine, conn = _make_mock_engine()
     conn.fetchrow = AsyncMock(return_value={"id": _ASSET_1})
 
-    with patch("nce.vertical_modules.assets.assignment.assert_owner", new_callable=AsyncMock) as mock_owner:
+    with patch(
+        "nce.vertical_modules.assets.assignment.assert_owner", new_callable=AsyncMock
+    ) as mock_owner:
         res = await do_assign_asset_person(
             engine,
             {
@@ -264,7 +278,9 @@ async def test_unassign_person_success():
     engine, conn = _make_mock_engine()
     conn.fetchrow = AsyncMock(return_value={"id": _ASSET_1})
 
-    with patch("nce.vertical_modules.assets.assignment.assert_owner", new_callable=AsyncMock) as mock_owner:
+    with patch(
+        "nce.vertical_modules.assets.assignment.assert_owner", new_callable=AsyncMock
+    ) as mock_owner:
         res = await do_unassign_asset_person(
             engine,
             {
@@ -341,7 +357,9 @@ async def test_get_person_assets_with_and_without_faults():
 @pytest.mark.asyncio
 async def test_link_subcomponent_self_cycle():
     engine, _ = _make_mock_engine()
-    with pytest.raises(SubcomponentCycleError, match="cannot be linked as a sub-component of itself"):
+    with pytest.raises(
+        SubcomponentCycleError, match="cannot be linked as a sub-component of itself"
+    ):
         await do_link_subcomponent(
             engine,
             {
@@ -413,7 +431,9 @@ async def test_link_subcomponent_success():
     conn.fetchval = AsyncMock(return_value=None)
     conn.fetch = AsyncMock(return_value=[])
 
-    with patch("nce.vertical_modules.assets.assignment.assert_owner", new_callable=AsyncMock) as mock_owner:
+    with patch(
+        "nce.vertical_modules.assets.assignment.assert_owner", new_callable=AsyncMock
+    ) as mock_owner:
         res = await do_link_subcomponent(
             engine,
             {
@@ -434,7 +454,9 @@ async def test_link_subcomponent_success():
 async def test_unlink_subcomponent_success():
     engine, conn = _make_mock_engine()
 
-    with patch("nce.vertical_modules.assets.assignment.assert_owner", new_callable=AsyncMock) as mock_owner:
+    with patch(
+        "nce.vertical_modules.assets.assignment.assert_owner", new_callable=AsyncMock
+    ) as mock_owner:
         res = await do_unlink_subcomponent(
             engine,
             {
@@ -583,12 +605,36 @@ async def test_mcp_handlers():
 
 def _build_test_app() -> Starlette:
     routes = [
-        Route("/api/assets/{id}/assign", endpoint=admin_assets.api_assets_assign_person, methods=["POST"]),
-        Route("/api/assets/{id}/unassign", endpoint=admin_assets.api_assets_unassign_person, methods=["POST"]),
-        Route("/api/assets/by-person/{employee_id}", endpoint=admin_assets.api_assets_list_person_assets, methods=["GET"]),
-        Route("/api/assets/{id}/sub-components", endpoint=admin_assets.api_assets_link_subcomponent, methods=["POST"]),
-        Route("/api/assets/{id}/sub-components/{sub_id}", endpoint=admin_assets.api_assets_unlink_subcomponent, methods=["DELETE"]),
-        Route("/api/assets/{id}/sub-components", endpoint=admin_assets.api_assets_list_subcomponents, methods=["GET"]),
+        Route(
+            "/api/assets/{id}/assign",
+            endpoint=admin_assets.api_assets_assign_person,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/assets/{id}/unassign",
+            endpoint=admin_assets.api_assets_unassign_person,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/assets/by-person/{employee_id}",
+            endpoint=admin_assets.api_assets_list_person_assets,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/assets/{id}/sub-components",
+            endpoint=admin_assets.api_assets_link_subcomponent,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/assets/{id}/sub-components/{sub_id}",
+            endpoint=admin_assets.api_assets_unlink_subcomponent,
+            methods=["DELETE"],
+        ),
+        Route(
+            "/api/assets/{id}/sub-components",
+            endpoint=admin_assets.api_assets_list_subcomponents,
+            methods=["GET"],
+        ),
     ]
     return Starlette(routes=routes)
 
