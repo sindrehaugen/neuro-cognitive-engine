@@ -51,14 +51,14 @@ _NAMESPACE_ID = "00000000-0000-4000-8000-000000000001"
 _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
-# --- MEASURED post-rebase onto main (Wave D-5 Support Ticket Action + Wave D-1 Asset Resource + Wave D-7 on-call rota) + Lane D Wave D-3 assets service history:
-# TOTAL: 396 from main + 1 assets_service_history = 397.
-# MUTATION: 178 (unaffected -- assets_service_history is read-only).
-# CACHEABLE: 173 from main + 1 assets_service_history = 174.
-# ADMIN_ONLY: 99 (unaffected -- assets_service_history is not admin-only).
-_TOTAL_TOOLS = 397
-_MUTATION_TOOLS = 178
-_CACHEABLE_TOOLS = 174
+# --- MEASURED post-rebase onto main (Wave D-5 Support Ticket Action + Wave D-1 Asset Resource + Wave D-7 on-call rota + Wave D-3 assets service history) + Lane C Wave C-2 room categories & FL metadata (8 tools: 3 mutation, 5 cacheable):
+# TOTAL: 397 from main + 8 C-2 tools = 405.
+# MUTATION: 178 from main + 3 C-2 mutation tools = 181.
+# CACHEABLE: 174 from main + 5 C-2 cacheable tools = 179.
+# ADMIN_ONLY: 99 (unaffected -- C-2 tools are not admin-only).
+_TOTAL_TOOLS = 405
+_MUTATION_TOOLS = 181
+_CACHEABLE_TOOLS = 179
 _ADMIN_ONLY_TOOLS = 99
 _MIGRATION_TOOLS = 5
 
