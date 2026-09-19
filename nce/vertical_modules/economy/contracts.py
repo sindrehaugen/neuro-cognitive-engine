@@ -631,6 +631,9 @@ async def do_validate_contract(engine: NCEEngine, params: dict[str, Any]) -> dic
     ns_uuid = _as_ns_uuid(params.get("namespace_id"), "namespace_id")
     contract_id = _as_contract_id(params.get("contract_id"), "contract_id")
 
+    cpi_cap: Decimal
+    current_annual_amount: Decimal
+
     async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
         row = await conn.fetchrow(
             """
@@ -641,19 +644,78 @@ async def do_validate_contract(engine: NCEEngine, params: dict[str, Any]) -> dic
             str(ns_uuid),
             contract_id,
         )
-    if row is None:
+        if row is not None:
+            cpi_cap = row["cpi_cap"]
+            current_annual_amount = row["annual_amount"]
+        else:
+            # Fallback: check C12 agreements table (Wave B-9)
+            agr_row = await conn.fetchrow(
+                """
+                SELECT annual_value, metadata
+                FROM agreements
+                WHERE namespace_id = $1::uuid
+                  AND (id::text = $2 OR agreement_number = $2)
+                  AND is_archived = FALSE
+                """,
+                str(ns_uuid),
+                contract_id,
+            )
+            if agr_row is None:
+                raise ValueError(
+                    f"do_validate_contract: no contract {contract_id!r} found in namespace {ns_uuid}"
+                )
+            current_annual_amount = agr_row["annual_value"] or Decimal("0.00")
+            raw_cap = (agr_row["metadata"] or {}).get("cpi_cap", _CPI_CAP_CEILING)
+            cpi_cap = _quantise_cpi_cap(_as_fraction(raw_cap, "cpi_cap"), "cpi_cap")
+
+    # Resolve proposed uplift from direct percentage, price rule, or index series
+    proposed_val = params.get("proposed_cpi_pct")
+    index_series_id = params.get("index_series_id")
+    price_rule_id = params.get("price_rule_id")
+
+    if proposed_val is None and not index_series_id and not price_rule_id:
         raise ValueError(
-            f"do_validate_contract: no contract {contract_id!r} found in namespace {ns_uuid}"
+            "do_validate_contract: 'proposed_cpi_pct', 'index_series_id', or 'price_rule_id' is required"
         )
 
-    cpi_cap: Decimal = row["cpi_cap"]
-    current_annual_amount: Decimal = row["annual_amount"]
-    validated_uplift = _validate_cpi_uplift(cpi_cap, params.get("proposed_cpi_pct"))
+    if proposed_val is not None:
+        raw_uplift = proposed_val
+    elif price_rule_id:
+        from nce.vertical_modules.agreements.price_rules import evaluate_price_rule
+
+        rule_eval = evaluate_price_rule(
+            str(price_rule_id),
+            {
+                "cpi_cap": cpi_cap,
+                "base_period": params.get("base_period"),
+                "target_period": params.get("target_period"),
+                "base_index": params.get("base_index"),
+                "target_index": params.get("target_index"),
+                "index_series_id": index_series_id,
+                "current_annual_amount": current_annual_amount,
+            },
+        )
+        raw_uplift = rule_eval.get("effective_uplift_pct", Decimal("0.0"))
+    else:
+        from nce.vertical_modules.agreements.index_series import calculate_index_uplift
+
+        index_calc = calculate_index_uplift(
+            series_id=str(index_series_id),
+            base_period=params.get("base_period"),
+            target_period=params.get("target_period"),
+            base_index=params.get("base_index"),
+            target_index=params.get("target_index"),
+            regulation_ratio=params.get("regulation_ratio", Decimal("1.0")),
+            cap_pct=cpi_cap,
+        )
+        raw_uplift = index_calc.get("effective_uplift_pct", Decimal("0.0"))
+
+    validated_uplift = _validate_cpi_uplift(cpi_cap, raw_uplift)
     renewal_annual_amount = _quantise(
         current_annual_amount * (Decimal(1) + validated_uplift), "renewal_annual_amount"
     )
 
-    return {
+    out: dict[str, Any] = {
         "ok": True,
         "contract_id": contract_id,
         "cpi_cap": cpi_cap,
@@ -661,6 +723,12 @@ async def do_validate_contract(engine: NCEEngine, params: dict[str, Any]) -> dic
         "current_annual_amount": current_annual_amount,
         "renewal_annual_amount": renewal_annual_amount,
     }
+    if price_rule_id:
+        out["price_rule_id"] = price_rule_id
+    if index_series_id:
+        out["index_series_id"] = index_series_id
+
+    return out
 
 
 async def do_scan_renewals(engine: NCEEngine, params: dict[str, Any]) -> dict[str, Any]:

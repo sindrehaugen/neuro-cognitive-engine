@@ -39,7 +39,15 @@ from nce.vertical_modules.agreements.compliance import do_run_compliance_audit
 from nce.vertical_modules.agreements.coverage import do_coverage_matrix
 from nce.vertical_modules.agreements.extract import do_extract_agreement
 from nce.vertical_modules.agreements.graph import write_agreement_to_graph_and_memories
+from nce.vertical_modules.agreements.index_series import (
+    do_calculate_index_adjustment,
+    do_get_index_series,
+)
 from nce.vertical_modules.agreements.kickback import do_reconcile_kickback
+from nce.vertical_modules.agreements.price_rules import (
+    do_evaluate_price_rule,
+    do_get_price_rules,
+)
 from nce.vertical_modules.agreements.review import do_review_extraction
 from nce.vertical_modules.agreements.signing import (
     do_record_signature,
@@ -588,3 +596,79 @@ async def handle_agreements_review_extraction(engine: NCEEngine, arguments: dict
         {"status": "ok", "agreement": review_res},
         default=str,
     )
+
+
+# ---------------------------------------------------------------------------
+# Wave B-10: Price Rules & Index Series (Config-as-IP) MCP Handlers
+# ---------------------------------------------------------------------------
+
+
+@mcp_handler
+async def handle_agreements_get_index_series(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: agreements_get_index_series — query economic index series (KPI, CPI, ICT).
+
+    Optional arguments:
+        namespace_id    (str, UUID)
+        series_id       (str) — e.g. 'SSB_KPI', 'SSB_KPI_JAE', 'SSB_IKT_TJENESTER'.
+        search          (str) — text search filter.
+        frequency       (str) — 'monthly', 'quarterly', 'annual'.
+    """
+    await _check_agreements_enabled(engine, arguments)
+    res = do_get_index_series(engine, arguments)
+    return json.dumps(res, default=str)
+
+
+@mcp_handler
+async def handle_agreements_calculate_index_adjustment(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: agreements_calculate_index_adjustment — calculate inflation adjustment and renewal uplift.
+
+    Required arguments:
+        namespace_id           (str, UUID)
+        series_id              (str) — e.g. 'SSB_KPI'.
+    Optional arguments:
+        base_period            (str) — e.g. '2023' or '2023-01'.
+        target_period          (str) — e.g. '2024' or '2024-01'.
+        base_index             (float) — explicit base index point.
+        target_index           (float) — explicit target index point.
+        regulation_ratio       (float) — e.g. 1.0 (100% KPI) or 0.8 (80% KPI). Default 1.0.
+        cap_pct                (float) — maximum regulation cap ceiling (e.g. 0.05).
+        floor_pct              (float) — minimum regulation floor (default 0.0).
+        current_annual_amount  (float) — current contract annual/monthly amount to adjust.
+    """
+    await _check_agreements_enabled(engine, arguments)
+    res = do_calculate_index_adjustment(engine, arguments)
+    return json.dumps(res, default=str)
+
+
+@mcp_handler
+async def handle_agreements_get_price_rules(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: agreements_get_price_rules — query agreement pricing rules (prisregel).
+
+    Optional arguments:
+        namespace_id    (str, UUID)
+        rule_id         (str) — e.g. 'RULE_KPI_STANDARD', 'RULE_SLA_ROOM_CATEGORY'.
+        rule_type       (str) — 'cpi_index_regulation', 'sla_room_pricing', 'volume_tier_discount', etc.
+        search          (str) — text search filter.
+    """
+    await _check_agreements_enabled(engine, arguments)
+    res = do_get_price_rules(engine, arguments)
+    return json.dumps(res, default=str)
+
+
+@mcp_handler
+async def handle_agreements_evaluate_price_rule(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: agreements_evaluate_price_rule — evaluate a pricing rule against contract or room context.
+
+    Required arguments:
+        namespace_id    (str, UUID)
+        rule_id         (str) — e.g. 'RULE_KPI_STANDARD', 'RULE_SLA_ROOM_CATEGORY'.
+    Optional arguments / context:
+        context         (dict) — evaluation parameters (room_counts, current_annual_amount, base_period, target_period, etc.)
+    """
+    await _check_agreements_enabled(engine, arguments)
+    res = do_evaluate_price_rule(engine, arguments)
+    return json.dumps(res, default=str)

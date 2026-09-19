@@ -1,0 +1,93 @@
+{
+  "rules": [
+    {
+      "rule_id": "RULE_KPI_STANDARD",
+      "name": "Standard Konsumprisindeks Regulering (100% KPI)",
+      "rule_type": "cpi_index_regulation",
+      "description": "Standard annual price regulation according to 100% of the Norwegian CPI index change, bounded by a 5% cap ceiling and a 0% floor.",
+      "is_active": true,
+      "parameters": {
+        "index_series_id": "SSB_KPI",
+        "regulation_ratio": 1.0,
+        "cap_pct": 0.05,
+        "floor_pct": 0.0,
+        "notice_period_days": 30,
+        "default_frequency": "annual"
+      }
+    },
+    {
+      "rule_id": "RULE_KPI_80_PCT",
+      "name": "Begrenset IKT-indeksregulering (80% KPI)",
+      "rule_type": "cpi_index_regulation",
+      "description": "Annual price regulation applying 80% of the Norwegian CPI index change, common in enterprise managed service agreements.",
+      "is_active": true,
+      "parameters": {
+        "index_series_id": "SSB_KPI",
+        "regulation_ratio": 0.8,
+        "cap_pct": 0.04,
+        "floor_pct": 0.0,
+        "notice_period_days": 30,
+        "default_frequency": "annual"
+      }
+    },
+    {
+      "rule_id": "RULE_SLA_ROOM_CATEGORY",
+      "name": "Standard Rom-kategori SLA Prisregel",
+      "rule_type": "sla_room_pricing",
+      "description": "Base monthly SLA service agreement pricing per functional location room category.",
+      "is_active": true,
+      "parameters": {
+        "currency": "NOK",
+        "rates_per_month": {
+          "huddle_space": 250.0,
+          "standard_meeting_room": 450.0,
+          "large_boardroom": 950.0,
+          "auditorium": 2500.0,
+          "training_room": 750.0,
+          "collaboration_space": 350.0
+        },
+        "on_site_sla_multiplier": 1.5,
+        "remote_only_discount": 0.2
+      }
+    },
+    {
+      "rule_id": "RULE_VOLUME_ROOMS",
+      "name": "Volumrabatt Rom og Lokasjoner",
+      "rule_type": "volume_tier_discount",
+      "description": "Progressive discount tiers based on total managed AV rooms in agreement.",
+      "is_active": true,
+      "parameters": {
+        "tiers": [
+          {"min_rooms": 1, "max_rooms": 10, "discount_pct": 0.0},
+          {"min_rooms": 11, "max_rooms": 25, "discount_pct": 0.05},
+          {"min_rooms": 26, "max_rooms": 50, "discount_pct": 0.10},
+          {"min_rooms": 51, "max_rooms": null, "discount_pct": 0.15}
+        ]
+      }
+    },
+    {
+      "rule_id": "RULE_COMMITMENT_3YR",
+      "name": "Flerarig Bindingsrabatt (3 ar)",
+      "rule_type": "multi_year_commitment",
+      "description": "36-month multi-year commitment with 8% discount and restricted 3% CPI cap ceiling.",
+      "is_active": true,
+      "parameters": {
+        "commitment_months": 36,
+        "discount_pct": 0.08,
+        "cpi_cap_ceiling": 0.03,
+        "break_fee_months": 6
+      }
+    },
+    {
+      "rule_id": "RULE_MINIMUM_FEE_FLOOR",
+      "name": "Minstepris Prisgulv per Avtale",
+      "rule_type": "minimum_fee_floor",
+      "description": "Minimum monthly service fee floor enforced across all service contract tiers.",
+      "is_active": true,
+      "parameters": {
+        "minimum_monthly_fee": 1500.0,
+        "currency": "NOK"
+      }
+    }
+  ]
+}
