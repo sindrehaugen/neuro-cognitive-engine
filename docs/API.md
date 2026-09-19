@@ -758,6 +758,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `field_tech_upsert_work_orders` |  | yes |  |  |
 | `force_resync_bridge` |  | yes |  |  |
 | `forget_memory` |  | yes |  |  |
+| `geodata_get_weather` |  |  | yes |  |
 | `geodata_import_n50_land_cover` | yes | yes |  |  |
 | `geodata_import_osm_elements` | yes | yes |  |  |
 | `geodata_import_place_names` | yes | yes |  |  |
@@ -849,6 +850,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `notifications_list_reminders` |  |  | yes |  |
 | `notifications_upsert_notifications` |  | yes |  |  |
 | `notifications_upsert_reminders` |  | yes |  |  |
+| `pricing_get_fx_rates` |  |  | yes |  |
 | `pricing_resolve` |  |  | yes |  |
 | `procurement_aggregate_savings` |  |  | yes |  |
 | `procurement_archive_po_lines` |  | yes |  |  |
@@ -1007,4 +1009,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 619 REST endpoints, 370 MCP tools._
+_Totals: 619 REST endpoints, 372 MCP tools._

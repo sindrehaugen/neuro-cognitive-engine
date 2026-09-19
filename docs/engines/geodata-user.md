@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** 03d2e13 (mlv16f/f15-fx-weather) · **Last-audited:** 2026-09-19
+> **Status:** shipped · **Verified-against:** 6dbe622 (mlv16f/f15-fx-weather) · **Last-audited:** 2026-09-19
 
 # Geodata FEED Module User Guide
 
-> **Status:** shipped · **Verified-against:** 03d2e13 (mlv16f/f15-fx-weather) · **Last-audited:** 2026-09-19
+> **Status:** shipped · **Verified-against:** 6dbe622 (mlv16f/f15-fx-weather) · **Last-audited:** 2026-09-19
 
 The **Geodata FEED module** (`nce/vertical_modules/geodata/`) provides local, queryable stores for public geospatial reference data that describes the physical world rather than a tenant's own business data. It is a **feed module, not a tenant vertical engine**: every table it owns is GLOBAL (no `namespace_id`, RLS disabled) and every tool it mounts carries no `engine=` opt-in gate, the same reasoning already applied to `product_catalog` (migration 064).
 
@@ -320,4 +320,4 @@ A caller that displays any of this data to end users must show the corresponding
 
 ---
 
-> **Verified-against: PLACEHOLDER_SHA**
+> **Verified-against: 6dbe622**
