@@ -19,12 +19,20 @@ Guarded engine: business_insights has an unusually involved guard
 (business_insights/_guard.py) enforcing BI-1..BI-4 (EU AI Act Article 5
 person-ranking barrier, confidence/coverage verification, third-party AI
 egress boundary, and namespace opt-in via metadata.business_insights.enabled)
--- resource_surface has no hook for any of it (the systemic gap ML-orch
-quantified: 18 of 30 declared C12 specs are on guarded engines, none
-enforced; routed to H as a follow-on to #284). This wave's single spec is
-read-mostly (a cached snapshot; no PATCH-worthy business logic sits behind
-it), which narrows but does not eliminate the exposure once #284 opens the
-generic write path.
+-- and the namespace opt-in half of that IS now enforced: #294 added
+``ResourceSpec.enabled_guard``, called at the top of every generated REST route
+and MCP handler (reads included) before any DB access, and #296 makes a missing
+one a hard CI failure for any engine carrying a ``_guard.py``. This spec wires
+``require_business_insights_enabled`` accordingly.
+
+An earlier revision of this docstring said resource_surface had "no hook for any
+of it" -- true when written, false since #294; corrected rather than left, since
+the next reader would act on it. What genuinely has no hook is the rest of
+BI-1..BI-3: the EU AI Act Article 5 person-ranking barrier, confidence/coverage
+verification, and the third-party AI egress boundary are enforced only at this
+engine's hand-written boundaries, NOT on the generated C12 surface. This wave's
+single spec is read-mostly (a cached point-in-time snapshot), which narrows that
+residue but does not eliminate it.
 
 No REST route collision: the existing business-insights routes
 (/morning-brief, /risk-radar, /run-scenario, /board-pack, /kpi-dashboard,
@@ -36,6 +44,9 @@ from __future__ import annotations
 
 from nce.resource_surface import register_resource
 from nce.resource_surface.spec import ResourceSpec
+from nce.vertical_modules.business_insights._guard import (
+    require_business_insights_enabled,
+)
 
 # ---------------------------------------------------------------------------
 # 1. BUSINESS_INSIGHTS_KPI_SNAPSHOT
@@ -48,6 +59,11 @@ BUSINESS_INSIGHTS_KPI_SNAPSHOT_SPEC = ResourceSpec(
     id_field="id",
     version_field=None,
     soft_delete_field=None,
+    # C12 opt-in enforcement (#294/#296): the generated surface calls this at
+    # every route and handler boundary before touching the DB. Must be the
+    # namespace opt-in check -- NOT require_insights_role, which is an
+    # authorisation decision the generated surface has no principal to make.
+    enabled_guard=require_business_insights_enabled,
     filterable_fields=("kpi_key", "period", "source_engine"),
     searchable_fields=("kpi_key",),
     writable_fields=(
