@@ -3945,6 +3945,23 @@ TOOLS = [
         },
     ),
     Tool(
+        name="pricing_get_fx_rates",
+        description=(
+            "Today's EUR/USD-to-NOK exchange rates from Norges Bank. Actor; read-only; no "
+            "namespace_id (not tenant data)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "force": {
+                    "type": "boolean",
+                    "description": "Bypass the in-process TTL cache and fetch fresh.",
+                },
+            },
+            "required": [],
+        },
+    ),
+    Tool(
         name="project_can_enter_phase",
         description=(
             "Phase-gate readiness check. A pure read: no DB, no HTTP, no side effects. "
@@ -7628,6 +7645,25 @@ TOOLS = [
                 },
             },
             "required": ["lon", "lat"],
+        },
+    ),
+    Tool(
+        name="geodata_get_weather",
+        description=(
+            "Current cloud cover, fog, and precipitation for a point, live-read from MET "
+            "Norway (no local store). Actor; read-only; no namespace_id (not tenant data)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "lat": {"type": "number", "description": "Latitude, -90 to 90."},
+                "lon": {"type": "number", "description": "Longitude, -180 to 180."},
+                "force": {
+                    "type": "boolean",
+                    "description": "Bypass the in-process TTL cache for this coordinate.",
+                },
+            },
+            "required": ["lat", "lon"],
         },
     ),
     Tool(

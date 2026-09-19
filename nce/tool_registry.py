@@ -321,6 +321,16 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         _h(pricing_mcp_handlers, "handle_pricing_resolve"),
         cacheable=True,
     ),
+    # FX rate feed (MLV16 Lane F, Wave F-15) — GLOBAL (migration 092), not
+    # tenant data, so no `engine=` opt-in gate applies. Its internal
+    # cache-warming write to `pricing_fx_rates` is not a "mutation" in the
+    # cache-generation sense (see geodata_get_weather's sibling note).
+    "pricing_get_fx_rates": ToolSpec(
+        _h(pricing_mcp_handlers, "handle_pricing_get_fx_rates"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # ------------------------------------------------------------------
     # Entity resolution tools (C1 dual surface)
     # ------------------------------------------------------------------
@@ -1933,6 +1943,18 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
     ),
     "geodata_query_nearest_place_name": ToolSpec(
         _h(geodata_mcp_handlers, "handle_geodata_query_nearest_place_name"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    # Geodata FEED module (Wave F-15) — live read-through to MET Norway, no
+    # local table, no `engine=` opt-in gate (same reasoning as its siblings
+    # above). An internal cache-warming write to `pricing_fx_rates` (its
+    # sibling below) does not make either tool a "mutation" in the
+    # cache-generation sense: nothing else's cached response depends on
+    # either table.
+    "geodata_get_weather": ToolSpec(
+        _h(geodata_mcp_handlers, "handle_geodata_get_weather"),
         cacheable=True,
         admin_only=False,
         mutation=False,

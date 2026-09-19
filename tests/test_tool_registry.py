@@ -62,7 +62,7 @@ _C12_TOOL_NAMES = frozenset(_C12_TOOL_SPECS)
 _C12_MUTATION_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.mutation)
 _C12_CACHEABLE_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.cacheable)
 
-_EXPECTED_STATIC_TOTAL = 290  # hand-written tools only; see _C12_TOOL_NAMES above; +1 BRREG registry-feed tool (Lane F Wave F-8); +2 geodata OSM tools (Lane F Wave F-11); +2 geodata N50 land-cover tools (Lane F Wave F-12); +2 geodata place-name tools (Lane F Wave F-13)
+_EXPECTED_STATIC_TOTAL = 292  # hand-written tools only; see _C12_TOOL_NAMES above; +1 BRREG registry-feed tool (Lane F Wave F-8); +2 geodata OSM tools (Lane F Wave F-11); +2 geodata N50 land-cover tools (Lane F Wave F-12); +2 geodata place-name tools (Lane F Wave F-13); +2 FX/weather feed tools (Lane F Wave F-15: pricing_get_fx_rates, geodata_get_weather)
 
 # Re-exported for tests/unit/test_{assets,economy,inventory}_surface.py and
 # test_sales_skeleton.py, which each do `from tests.test_tool_registry import
@@ -660,6 +660,9 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "field_tech_get_time_entries",
         "field_tech_list_checklists",
         "field_tech_get_checklists",
+        # Lane F Wave F-15 -- FX rate feed + weather live-read (global, no namespace_id)
+        "pricing_get_fx_rates",
+        "geodata_get_weather",
     }
 )
 
@@ -686,8 +689,8 @@ def test_cacheable_tools_count():
     assert len(CACHEABLE_TOOLS) >= 115, (
         f"Sanity floor: expected at least 115 cacheable tools, got {len(CACHEABLE_TOOLS)}."
     )
-    assert len(hand_written_cacheable_tools) == 118, (
-        "Hand-written (non-C12) cacheable tool count changed: expected 118, "
+    assert len(hand_written_cacheable_tools) == 120, (
+        "Hand-written (non-C12) cacheable tool count changed: expected 120, "
         f"got {len(hand_written_cacheable_tools)}. If you added/removed a "
         "hand-written cacheable tool, update this pin by import. If you "
         "only registered a new C12 ResourceSpec, this number should not "

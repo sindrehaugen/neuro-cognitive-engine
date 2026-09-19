@@ -92,6 +92,12 @@ UNMANAGED_PG_AUDITED_SITES: Final[frozenset[str]] = frozenset(
         # both read/write it with no namespace_id to scope against.
         "geodata.place_names.import",
         "geodata.place_names.nearest",
+        # Wave F-15: pricing_fx_rates is a GLOBAL table (migration 092,
+        # same reasoning as product_catalog) -- an exchange rate is not
+        # tenant data. Persist and load both read/write it with no
+        # namespace_id to scope against.
+        "pricing.fx.persist",
+        "pricing.fx.load",
     }
 )
 

@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 6dbe622 (mlv16f/f15-fx-weather) · **Last-audited:** 2026-09-19
 # Shared Core Pricing, Signing, and Grounding Guide (Doc 64)
 
 This guide details the design, configuration, implementation, and security models of the Neuro-Cognitive Engine (NCE) shared-core components for **Pricing (C6)**, **Signing (C7)**, and **Structural-Enforcement Grounding (C9a/C9b)**. These services are implemented in the `nce/` core and are shared by all downstream vertical engines.
@@ -79,6 +79,16 @@ The pricing service is exposed via the MCP stdio handler `handle_pricing_resolve
 - **Input parameters:** `namespace_id` (UUID string), `product` (dict containing `supplier_list_price`, `supplier_list_as_of`, `base_price`, `base_as_of`), and `customer` (dict containing `bid_price`, `bid_as_of`).
 - **Internal execution:** Executes inside a transaction context via `scoped_pg_session(engine.pg_pool, namespace_id)`.
 - **Output:** Returns a JSON response containing `status`, `cost`, `source`, `as_of` (ISO 8601), and the `stale` flag.
+
+### 1.6. FX Rate Feed (Lane F Wave F-15)
+A geodata/platform FEED sibling to C6 rather than part of the resolver itself: `nce/pricing/fx.py` fetches EUR/USD-to-NOK exchange rates from Norges Bank's public, no-auth EXR dataset, so an offer that carries a foreign-currency line can be converted to NOK against a live rate rather than a hardcoded one.
+
+- **MCP tool:** `pricing_get_fx_rates` (`handle_pricing_get_fx_rates` in [mcp_handlers.py](https://github.com/sindrehaugen/NCE/blob/main/nce/pricing/mcp_handlers.py)). No `namespace_id` — an exchange rate is not tenant data.
+- **Contract:** `{"base": "NOK", "rates": {"EUR": 11.834, "USD": 10.021}, "date": "2026-09-18", "fetchedAt": <iso>, "stale": bool, "source": "Norges Bank"}`.
+- **Degrade chain, never a guessed rate:** in-process TTL cache (`NCE_FX_TTL_SECONDS`, default 6h — Norges Bank republishes once per business day) → fresh fetch → the last successful in-process rate (`stale: true`) → the last-good rate persisted in `pricing_fx_rates` (migration 092, a GLOBAL table) so a process restart is not a cold start → an empty `stale: true` contract if none of the above ever succeeded.
+- **`convert_to_nok(amount, currency, rates)`:** a pure helper for callers that already hold a fetched `rates` mapping; returns `None` for a currency with no rate rather than a silently wrong 1:1 conversion.
+- **Allow-list gate:** exactly one `GET` on Norges Bank's EXR path for the module's fixed `CURRENCIES` tuple — widening the tracked currency set means widening both the tuple and the allow-list literal in the same change.
+- **Freezing a rate into a specific quote line remains a caller decision** — the same boundary `resolve_price` already draws for cost tiers; this feed only answers "what is today's rate."
 
 ---
 

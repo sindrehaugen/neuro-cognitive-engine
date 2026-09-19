@@ -2,13 +2,15 @@
 nce/vertical_modules/geodata/mcp_handlers.py
 ===============================================
 MCP tool wrappers for the geodata local stores: the OSM element store
-(Wave F-11), the N50 land-cover store (Wave F-12), and the place-name
-nearest-point lookup (Wave F-13).
+(Wave F-11), the N50 land-cover store (Wave F-12), the place-name
+nearest-point lookup (Wave F-13), and the weather live-read (Wave F-15).
 
 No ``require_namespace_id`` anywhere in this file, unlike every tenant
 engine's handlers: every geodata table is GLOBAL (no ``namespace_id``
 column at all) — the same reasoning as ``product_catalog``. A caller that
-sends one is not refused for it; it is simply not read.
+sends one is not refused for it; it is simply not read. Weather carries
+no table at all (see ``weather.py``), but the same reasoning applies: a
+forecast is not tenant data either.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from nce.vertical_modules.geodata.place_names import (
     do_import_place_names,
     do_query_nearest_place_name,
 )
+from nce.vertical_modules.geodata.weather import do_get_weather
 
 if TYPE_CHECKING:
     from nce.orchestrator import NCEEngine
@@ -102,4 +105,17 @@ async def handle_geodata_query_nearest_place_name(
     :func:`do_query_nearest_place_name`.
     """
     result = await do_query_nearest_place_name(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_geodata_get_weather(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: geodata_get_weather — current cloud cover, fog, and
+    precipitation for a point, from MET Norway (Actor).
+
+    Requires ``lat`` and ``lon``. Optional ``force`` bypasses the
+    in-process TTL cache. Thin adapter — all logic lives in
+    :func:`do_get_weather`.
+    """
+    result = await do_get_weather(engine, dict(arguments))
     return json.dumps(result, default=str)

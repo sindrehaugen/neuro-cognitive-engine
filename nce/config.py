@@ -1337,6 +1337,17 @@ class _Config:
     # Default: 86 400 s = 24 h.  Set minimum=1 to reject zero-second windows.
     NCE_PRICING_MAX_AGE: int = _int_env("NCE_PRICING_MAX_AGE", 86_400, minimum=1)
 
+    # --- Geodata FEED module, FX + weather (Lane F Wave F-15) ---
+    # Norges Bank publishes one EXR rate per business day (~16:00 CET); a
+    # shorter TTL buys no fresher data, only more traffic. Same reasoning as
+    # the host's own fx.py.
+    NCE_FX_TTL_SECONDS: int = _int_env("NCE_FX_TTL_SECONDS", 6 * 3600, minimum=60)
+    NCE_FX_TIMEOUT_SECONDS: float = _float_env("NCE_FX_TIMEOUT_SECONDS", 10.0, minimum=1.0)
+    # MET's forecast updates a few times an hour; polling faster than that
+    # only spends the request budget their ToS asks callers to respect.
+    NCE_WEATHER_TTL_SECONDS: int = _int_env("NCE_WEATHER_TTL_SECONDS", 30 * 60, minimum=60)
+    NCE_WEATHER_TIMEOUT_SECONDS: float = _float_env("NCE_WEATHER_TIMEOUT_SECONDS", 8.0, minimum=1.0)
+
     # --- Procurement Module 1 Wave 8 — per-supplier recalibration ---
     # Rolling window size (number of recorded match decisions per supplier) that
     # gates a recalibration recompute.  Recompute is skipped while a supplier has

@@ -1,24 +1,25 @@
-> **Status:** shipped · **Verified-against:** 887727e (mlv16f/f13-place-names-v4) · **Last-audited:** 2026-09-19
+> **Status:** shipped · **Verified-against:** 6dbe622 (mlv16f/f15-fx-weather) · **Last-audited:** 2026-09-19
 
 # Geodata FEED Module User Guide
 
-> **Status:** shipped · **Verified-against:** 887727e (mlv16f/f13-place-names-v4) · **Last-audited:** 2026-09-19
+> **Status:** shipped · **Verified-against:** 6dbe622 (mlv16f/f15-fx-weather) · **Last-audited:** 2026-09-19
 
 The **Geodata FEED module** (`nce/vertical_modules/geodata/`) provides local, queryable stores for public geospatial reference data that describes the physical world rather than a tenant's own business data. It is a **feed module, not a tenant vertical engine**: every table it owns is GLOBAL (no `namespace_id`, RLS disabled) and every tool it mounts carries no `engine=` opt-in gate, the same reasoning already applied to `product_catalog` (migration 064).
 
-This module currently owns **three** local stores:
+This module currently owns **three** local stores plus **one** live-read feed:
 
 * **OpenStreetMap elements** (Lane F Wave F-11) — OSM nodes/ways/relations for Norway; a bounding-box read. §§2–4.
 * **N50 land-cover** (Lane F Wave F-12) — Kartverket's land-cover classification for Norway (forest, bog, water, etc.); a bounding-box read, same box+GiST shape as OSM. §§5–7.
-* **Place names** (Lane F Wave F-13) — Kartverket's place-name register; a nearest-*point* lookup, a genuinely different read shape from the two bounding-box stores above. §§9–11.
+* **Place names** (Lane F Wave F-13) — Kartverket's place-name register; a nearest-*point* lookup, a genuinely different read shape from the two bounding-box stores above. §§8–10.
+* **Weather** (Lane F Wave F-15) — live cloud cover / fog / precipitation from MET Norway, no local store. §11.
 
 ---
 
 ## 1. Surface of Truth & Network Exposure
 
-The Geodata module operates strictly through **6 MCP Tools** and **0 REST Routes**:
+The Geodata module operates strictly through **7 MCP Tools** and **0 REST Routes**:
 
-### 1.1 Mounted MCP Tools (6 Tools)
+### 1.1 Mounted MCP Tools (7 Tools)
 | MCP Tool | Cacheable | Mutation | Admin Only | AI-Role | Description |
 |---|:---:|:---:|:---:|---|---|
 | `geodata_import_osm_elements` | ✘ (`False`) | ✔ (`True`) | ✔ (`True`) | Operator | Upsert a batch of already-parsed OSM elements (nodes/ways/relations) into the local store. |
@@ -27,6 +28,7 @@ The Geodata module operates strictly through **6 MCP Tools** and **0 REST Routes
 | `geodata_query_n50_land_cover` | ✔ (`True`) | ✘ (`False`) | ✘ (`False`) | Actor | Read every N50 land-cover feature whose stored bounding box intersects a requested viewport. |
 | `geodata_import_place_names` | ✘ (`False`) | ✔ (`True`) | ✔ (`True`) | Operator | Upsert a batch of already-resolved place names (one anchor point each) into the local store. |
 | `geodata_query_nearest_place_name` | ✔ (`True`) | ✘ (`False`) | ✘ (`False`) | Actor | Find the place name(s) nearest a given point. |
+| `geodata_get_weather` | ✔ (`True`) | ✘ (`False`) | ✘ (`False`) | Actor | Current cloud cover, fog, and precipitation for a point, live-read from MET Norway (no local store). |
 
 > [!NOTE]
 > There are currently **0 REST routes** mounted for Geodata in `nce/admin_app.py`. All interactions take place via the MCP tools above.
@@ -109,7 +111,7 @@ Re-importing the same `(osm_type, osm_id)` pair **updates** the existing row (`O
 * `limit` defaults to and is capped at **500**. `truncated: true` means more elements intersected the viewport than were returned.
 * Returned `elements` are in Overpass's own shape — a caller already speaking that shape needs no translation.
 
-`geodata_osm_elements` (migration `086_geodata_osm_elements.sql`) is keyed on `(osm_type, osm_id)`; see §7 for storage/indexing shared by both stores.
+`geodata_osm_elements` (migration `086_geodata_osm_elements.sql`) is keyed on `(osm_type, osm_id)`; see §7 for storage/indexing shared by both bounding-box stores.
 
 ---
 
@@ -186,7 +188,7 @@ Re-importing the same `(klasse, objid)` pair **updates** the existing row (`ON C
 
 ---
 
-## 7. Storage & Indexing (both stores)
+## 7. Storage & Indexing (OSM and N50)
 
 Both `geodata_osm_elements` and `geodata_n50_land_cover` store a Postgres-native `box` column for their bounding box, read with the `&&` intersection operator against a **GiST** index — no PostGIS extension is present in this deployment's Postgres image, and none is needed for a bounding-box read.
 
@@ -270,14 +272,52 @@ Being a GLOBAL table, it is read and written through `nce.db_utils.unmanaged_pg_
 
 ---
 
-## 11. Attribution
+## 11. Weather (`geodata_get_weather`)
+
+Unlike the three stores above, this tool has **no local table and no import step**. Every call is a live read-through to MET Norway's public `locationforecast` API, cached in-process for `NCE_WEATHER_TTL_SECONDS` (default 30 minutes) keyed on a **rounded** coordinate (2 decimals, ~1 km — MET's own guidance, since every distinct coordinate is a separate cache key on their side).
+
+```json
+{"lat": 59.9139, "lon": 10.7522}
+```
+**Response:**
+```json
+{
+  "ok": true,
+  "cloud_cover_pct": 62.5,
+  "fog_pct": 0.0,
+  "precipitation_mm": 0.1,
+  "symbol": "cloudy",
+  "location": {"lat": 59.91, "lon": 10.75},
+  "time": "2026-09-19T00:00:00Z",
+  "fetchedAt": "2026-09-19T00:03:12+00:00",
+  "stale": false,
+  "source": "MET Norway"
+}
+```
+
+* `force` (optional bool) bypasses the in-process TTL cache for this coordinate.
+* An invalid coordinate (out of range, non-numeric, or the `(0, 0)` "null island" many languages produce for an unset value) is **not an error**: it returns `cloud_cover_pct: null, stale: true` rather than raising.
+* On a MET outage, the tool degrades to the last successful reading for that coordinate with `stale: true` — never a guessed cloud cover. With no successful reading yet for that coordinate, it returns `cloud_cover_pct: null, stale: true`.
+* MET's Terms of Service require an identifying `User-Agent` with a real contact, which a browser's own `fetch` cannot set (a forbidden header name) — this is why the read goes through NCE rather than a caller hitting MET directly.
+
+### 11.1 What This Module Deliberately Does NOT Build
+
+The charter's original wave list named "coastline" and "roads" as siblings of OSM/N50/place names in this module. Both were investigated and **not built** — filed as Q-42 rather than guessed past:
+
+* **Coastline's raw data is already covered by N50 land-cover** (§5–7): the host's own source-of-truth ADR names N50's `havflate` (sea-surface) class as its source, which the generic `klasse`-keyed store above already imports. What the host builds beyond that — a pre-simplified, multi-zoom-level (Douglas-Peucker) tile pyramid for its own world-map rendering layers — is a rendering-pipeline optimisation with no consumer on the NCE side, not an additional FEED-shaped local store.
+* **Roads are not an OpenStreetMap `highway=*` question.** The host's real road-network source is a third vendor (NVDB, Norway's national road database), chosen specifically because Kartverket's own road geometry is restricted-license, filtered to a rendering-specific zoom band that deliberately excludes pedestrian paths, private roads, and municipal roads for that product's chosen visual density — a map-UI product decision, not a data shape this module can adopt unilaterally.
+
+---
+
+## 12. Attribution
 
 * **OpenStreetMap** data is public and licensed **ODbL**.
 * **Kartverket's N50** data is public and licensed **CC BY 4.0**.
 * **Kartverket's place-name register** is public and licensed **NLOD/CC BY 4.0**.
+* **MET Norway** forecast data is public sector information, **NLOD**-licensed.
 
 A caller that displays any of this data to end users must show the corresponding attribution — this module stores and serves the data but does not own or enforce that attribution on any particular display.
 
 ---
 
-> **Verified-against: 887727e**
+> **Verified-against: 6dbe622**
