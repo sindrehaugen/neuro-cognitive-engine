@@ -1362,6 +1362,11 @@ def build_admin_routes() -> list[Route]:
             methods=["GET"],
         ),
         Route(
+            "/api/assets/merge",
+            endpoint=assets_handlers.api_assets_merge_queue,
+            methods=["GET"],
+        ),
+        Route(
             "/api/assets",
             endpoint=assets_handlers.api_assets_list,
             methods=["GET"],
@@ -1370,6 +1375,21 @@ def build_admin_routes() -> list[Route]:
             "/api/assets/{id}",
             endpoint=assets_handlers.api_assets_get,
             methods=["GET"],
+        ),
+        Route(
+            "/api/assets/{id}/move",
+            endpoint=assets_handlers.api_assets_move,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/assets/{id}/merge",
+            endpoint=assets_handlers.api_assets_merge,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/assets/{id}/link-product",
+            endpoint=assets_handlers.api_assets_link_product,
+            methods=["POST"],
         ),
         Route(
             "/api/assets/{id}/qr",
@@ -1479,6 +1499,22 @@ def build_admin_routes() -> list[Route]:
         Route(
             "/api/support/at-risk-aggregate",
             endpoint=support_handlers.api_support_at_risk_aggregate,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/support/tickets/{id}/actions",
+            endpoint=support_handlers.api_support_tickets_log_action,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/support/tickets/{id}/timeline",
+            endpoint=support_handlers.api_support_tickets_timeline,
+            methods=["GET"],
+        ),
+        # Support vertical module on-call rota and active responder routing (Wave D-7)
+        Route(
+            "/api/support/on-call",
+            endpoint=support_handlers.api_support_on_call,
             methods=["GET"],
         ),
         # Field Tech vertical module routes (ML12-B6, M12.W6)

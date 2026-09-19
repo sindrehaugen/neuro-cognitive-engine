@@ -6,9 +6,9 @@ charter, Lane F, Wave F-8): on-demand, single-`org_nr` enrichment from
 Norway's Brønnøysundregistrene (BRREG) Enhetsregisteret — public, free,
 no authentication.
 
-Read for shape only (Q-25): the host's own integration lives at
-``backend/steps_finago/brreg*.py``. This module's schema, functions and
-tests are its own, not a port of the host's.
+Read for shape only (Q-25): the host's own BRREG integration. This
+module's schema, functions and tests are its own, not a port of the
+host's.
 
 Two decisions made and documented rather than guessed past
 --------------------------------------------------------------

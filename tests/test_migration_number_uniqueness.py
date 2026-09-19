@@ -55,15 +55,8 @@ _KNOWN_GAPS: dict[int, str] = {
     # its own tree shows them as gaps rather than filled numbers. Owners
     # per ML-orch's collision ruling: 87 -> Lane D (PR #242,
     # assets_shell_product), 88 -> Lane B (PR #245, sales_resource_tables).
-    # Shrink this entry (not remove the whole block) as each one merges.
-    87: "reserved for PR #242 (Lane D), not yet merged on this branch's base",
+    # 87 was merged by Wave D-1 (PR #242); shrunk off per shrink-only rule.
     88: "reserved for PR #245 (Lane B), not yet merged on this branch's base",
-    # 90 (Lane F Wave F-13, PR #258) merged as 99b7519 -- shrunk off this
-    # list, per the shrink-only rule, now that it's a filled number rather
-    # than a gap. 91 is ML-orch's own post-push ruling on #258: reserved
-    # for Lane D's #252 once D wakes (D's own #252 currently collides with
-    # #242 at 87 and is stopped, per the amended ascending-PR-number rule).
-    91: "reserved for PR #252 (Lane D), per ML-orch ruling once Lane D resumes",
 }
 
 

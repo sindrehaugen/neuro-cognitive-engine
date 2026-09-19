@@ -51,20 +51,15 @@ _NAMESPACE_ID = "00000000-0000-4000-8000-000000000001"
 _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
-# --- MEASURED post-rebase onto 8ed821a (#243/#251/#237/#249/#250/#255/#256/
-# #257/#239/#248/#246/#244/#253) plus Lane F Wave F-13 / F-15,
-# Wave C-1 FUNCTIONAL_LOCATION tree tools, and Wave A-9 C17 Site Master Data tools (+4 total, +2 mutation, +2 cacheable):
-#   NCE_MASTER_KEY="x"*32 python -c "
-#     import nce.tool_registry as tr
-#     print(len(tr.TOOL_REGISTRY), len(tr.MUTATION_TOOLS), len(tr.CACHEABLE_TOOLS), len(tr.ADMIN_ONLY_TOOLS))"
-# TOTAL: 380 + 4 C17 site master tools = 384.
-# MUTATION: 170 + 2 C17 site master mutations = 172.
-# CACHEABLE: 165 + 2 C17 site master cacheable reads = 167.
-# ADMIN_ONLY: 97 (unaffected).
-_TOTAL_TOOLS = 384
-_MUTATION_TOOLS = 172
-_CACHEABLE_TOOLS = 167
-_ADMIN_ONLY_TOOLS = 97
+# --- MEASURED post-rebase onto main (Wave D-5 Support Ticket Action + Wave D-1 Asset Resource) + Lane D Wave D-7 Support on-call rota tool:
+# TOTAL: 395 from main + 1 support_get_on_call = 396.
+# MUTATION: 178 (unaffected -- support_get_on_call is read-only).
+# CACHEABLE: 172 from main + 1 support_get_on_call = 173.
+# ADMIN_ONLY: 99 (unaffected -- support_get_on_call is not admin-only).
+_TOTAL_TOOLS = 396
+_MUTATION_TOOLS = 178
+_CACHEABLE_TOOLS = 173
+_ADMIN_ONLY_TOOLS = 99
 _MIGRATION_TOOLS = 5
 
 

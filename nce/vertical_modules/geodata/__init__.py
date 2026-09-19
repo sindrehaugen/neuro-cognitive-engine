@@ -18,7 +18,7 @@ the local-store shape of this package's other three modules.
 
 The charter's original wave list also named "coastline" and "roads" as
 siblings here — filed as Q-42 instead of built: the host's own ADR 0048
-and ``vegnett.py`` show both are map-rendering-pipeline concerns (a
+and its road-network module show both are map-rendering-pipeline concerns (a
 Douglas-Peucker LOD tile pyramid, and a third vendor NVDB chosen for a
 zoom-band rendering rule) with no NCE-side consumer, not additional
 FEED-shaped local stores like N50/OSM. See Q-42 and this lane's ledger

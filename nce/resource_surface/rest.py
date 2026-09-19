@@ -309,7 +309,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                         continue
                 match = True
                 for f_col, f_val in active_filters.items():
-                    if str(it.get(f_col)) != str(f_val):
+                    val_str = str(it.get(f_col, ""))
+                    query_str = str(f_val)
+                    if val_str.lower() != query_str.lower():
                         match = False
                         break
                 if match and q and spec.searchable_fields:

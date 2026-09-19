@@ -305,18 +305,9 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
         ),
     ),
     # ---------------------------------------------------------------------------
-    # Assets Engine (Lane D Wave D-1 / Lane E)
-    # ---------------------------------------------------------------------------
-    "ASSET": ResourceExemption(
-        owner_engine="assets",
-        reason=(
-            "Real attribute table (assets). Scheduled for Wave D-1 ASSET resource "
-            "declaration including move, merge, and product linking."
-        ),
-    ),
-    # ---------------------------------------------------------------------------
     # Support Engine (Lane D Waves D-5, D-6 / Lane E)
     # ---------------------------------------------------------------------------
+    # TICKET, SLA, and SUPPORT_HEALTH_SCORE registered via C12 support resources.
     "SUPPORT_DIAGNOSIS": ResourceExemption(
         owner_engine="support",
         reason=(

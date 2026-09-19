@@ -20,6 +20,18 @@
 #   FEED   - becomes a read-only data-feed adapter module, not engine business logic
 #
 # A family with no disposition is a RED finding (see the generator's validation).
+#
+# verified_live (optional, bool) + verified_asof (date) + verified_evidence (string):
+# a family's replacing_route is a claim, sometimes written before the capability it
+# names existed. verified_live: true records that someone re-checked the claim
+# against the live tree ON verified_asof and found it TRUE THEN, with
+# verified_evidence naming what was checked (a resource-spec entry, a migration
+# table, an exported function, a mounted route) -- never a restatement of the prose
+# in replacing_route. This is a dated, cited human judgement (K-H8's allowlist
+# pattern), not something the generator derives: setting verified_live: true with
+# no asof/evidence is RED. tests/test_host_parity_current.py additionally
+# re-executes each cited check today, so a verified_live claim that later stops
+# being true (a rename, a revert) is caught, not just trusted forever.
 # replacing_route is required for MOVE/MOVE+ rows (an existing or planned NCE
 # route/tool identifier); optional and typically empty for the other dispositions.
 
@@ -142,6 +154,9 @@ families:
     disposition: NEW
     replacing_route: "LEGAL_ENTITY register (shared core C15); national registry as a read-only FEED"
     notes: "C1 uses this identity as the strongest customer/vendor match key"
+    verified_live: true
+    verified_asof: "2026-09-19"
+    verified_evidence: "get_all_resource_specs() includes engine='legal_entities'; nce/migrations/085_legal_entity_register.sql present (Wave A-5, #240)"
 
   - id: F16
     category: "Revenue/Delivery — Product & Design"
@@ -190,6 +205,9 @@ families:
     disposition: MOVE+
     replacing_route: "FUNCTIONAL_LOCATION resource layer with children/ancestors/move/merge tree operations; ROOM_CATEGORY config; documents via C14"
     notes: "Existing: functional-location authoring endpoint, per-design topology read"
+    verified_live: true
+    verified_asof: "2026-09-19"
+    verified_evidence: "nce/vertical_modules/fl_tree.py exports get_fl_children, get_fl_ancestors, move_fl_node, merge_fl_nodes (Wave C-1, #241)"
 
   - id: F22
     category: "Revenue/Delivery — Product & Design"
@@ -278,6 +296,9 @@ families:
     disposition: NEW
     replacing_route: "NOTIFICATION + REMINDER (shared core C13), produced by existing event selectors"
     notes: "No engine currently notifies a person of its own emitted events"
+    verified_live: true
+    verified_asof: "2026-09-19"
+    verified_evidence: "get_all_resource_specs() includes engine='notifications' entities 'notifications' and 'reminders'; nce/migrations/083_notifications_reminders.sql present (Wave A-3, #228)"
 
   - id: F33
     category: "Operations — Assets/Support/Inventory"
@@ -302,6 +323,9 @@ families:
     disposition: NEW
     replacing_route: "GET /api/me/context (shared core C16), backed by a principal-bindings table"
     notes: "Identity/authentication itself remains outside NCE by design"
+    verified_live: true
+    verified_asof: "2026-09-19"
+    verified_evidence: "GET and PUT /api/me/context mounted in nce/me_app.py; nce/migrations/093_principal_bindings.sql present (Wave A-6, #262)"
 
   - id: F36
     category: "Platform"
@@ -334,6 +358,9 @@ families:
     disposition: NEW
     replacing_route: "DOCUMENT node (shared core C14) + about-edges to FL/ASSET/PROJECT/AGREEMENT/TICKET, tags, expiring share tokens"
     notes: "Content stays in the existing external file-storage bridge; NCE owns only the register. Invariant: no code path deletes at the source"
+    verified_live: true
+    verified_asof: "2026-09-19"
+    verified_evidence: "nce/migrations/084_document_register.sql creates documents (with tags column), document_links (polymorphic about-edges), and document_shares (expiring tokens) (Wave A-4)"
 
   - id: F40
     category: "Platform — site & geodata"
@@ -342,6 +369,9 @@ families:
     disposition: NEW
     replacing_route: "SITE gains a cadastre id, validated address, coordinates (shared core C17); national address registry as a FEED"
     notes: "C1 uses the cadastre id as the functional-location building match key"
+    verified_live: true
+    verified_asof: "2026-09-19"
+    verified_evidence: "get_all_resource_specs() includes engine='sites' entity 'sites'; nce/migrations/095_site_master_data.sql present (Wave A-9, #267)"
 
   - id: F41
     category: "Platform — site & geodata"

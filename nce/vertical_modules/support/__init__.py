@@ -24,6 +24,7 @@ from nce.vertical_modules.support.health import (
     load_health_weights,
 )
 from nce.vertical_modules.support.mcp_handlers import (
+    handle_support_get_on_call,
     handle_support_health_score,
     handle_support_open_ticket,
     handle_support_query_ticket,
@@ -31,6 +32,7 @@ from nce.vertical_modules.support.mcp_handlers import (
     handle_support_sla_clock,
     handle_support_troubleshoot,
 )
+from nce.vertical_modules.support.on_call import do_get_on_call
 from nce.vertical_modules.support.proactive import do_open_proactive_telemetry_ticket
 from nce.vertical_modules.support.sla import (
     calculate_sla_targets,
@@ -60,6 +62,7 @@ __all__ = [
     "calculate_sla_targets",
     "compute_health_score",
     "do_check_sla_breaches",
+    "do_get_on_call",
     "do_health_score",
     "do_open_proactive_telemetry_ticket",
     "do_open_ticket",
@@ -74,6 +77,7 @@ __all__ = [
     "do_troubleshoot",
     "evaluate_sla_status",
     "get_support_morning_brief_slice",
+    "handle_support_get_on_call",
     "handle_support_health_score",
     "handle_support_open_ticket",
     "handle_support_query_ticket",

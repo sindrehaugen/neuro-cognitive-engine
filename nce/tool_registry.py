@@ -65,6 +65,7 @@ from nce.vertical_modules.product import mcp_handlers as product_mcp_handlers
 from nce.vertical_modules.project import mcp_handlers as project_mcp_handlers
 from nce.vertical_modules.resources import mcp_handlers as resources_mcp_handlers
 from nce.vertical_modules.sales import mcp_handlers as sales_mcp_handlers
+from nce.vertical_modules.sites import mcp_handlers as sites_mcp_handlers
 from nce.vertical_modules.support import mcp_handlers as support_mcp_handlers
 from nce.vertical_modules.system_design import mcp_handlers as system_design_mcp_handlers
 from nce.vertical_modules.vendors import mcp_handlers as vendors_mcp_handlers
@@ -1590,6 +1591,25 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    "support_log_ticket_action": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_log_ticket_action"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "support_ticket_timeline": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_ticket_timeline"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    # Support vertical module on-call rota and active responder routing (Wave D-7)
+    "support_get_on_call": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_get_on_call"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # Field Tech vertical module tools (ML12-B5, M12.W5)
     "field_tech_dispatch": ToolSpec(
         _h(field_tech_mcp_handlers, "handle_field_tech_dispatch"),
@@ -1999,6 +2019,19 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
     # action.
     "legal_entities_enrich_from_registry": ToolSpec(
         _h(legal_entities_mcp_handlers, "handle_legal_entities_enrich_from_registry"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    # C17 Site Master Data address registry feed (Wave F-9) — same
+    # reasoning as legal_entities_enrich_from_registry above: an
+    # operator/cron pull against an external public registry, admin_only,
+    # not an ordinary Actor action. No `engine=` gate, matching that same
+    # precedent (sites' own C12 list/get/upsert/archive tools carry
+    # engine="sites" via their auto-mounted ResourceSpec; this hand-written
+    # enrichment tool does not, same as legal_entities' enrichment tool).
+    "sites_enrich_address_from_registry": ToolSpec(
+        _h(sites_mcp_handlers, "handle_sites_enrich_address_from_registry"),
         cacheable=False,
         admin_only=True,
         mutation=True,

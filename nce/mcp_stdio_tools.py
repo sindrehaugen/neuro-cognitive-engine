@@ -6243,6 +6243,139 @@ TOOLS = [
             "required": ["namespace_id"],
         },
     ),
+    Tool(
+        name="support_log_ticket_action",
+        description=(
+            "Append an action/intervention record (tiltak) and outcome (utfall) to a support ticket. "
+            "Actor; mutation, admin-only."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active namespace UUID."},
+                "ticket_id": {"type": "string", "description": "Support ticket UUID."},
+                "action_type": {
+                    "type": "string",
+                    "enum": [
+                        "diagnostic",
+                        "configuration",
+                        "restart",
+                        "firmware_update",
+                        "hardware_replacement",
+                        "cable_check",
+                        "vendor_escalation",
+                        "work_order",
+                        "user_instruction",
+                        "other",
+                    ],
+                    "description": "Category of action performed.",
+                },
+                "action_summary": {
+                    "type": "string",
+                    "description": "Brief summary of the action/tiltak taken.",
+                },
+                "action_details": {
+                    "type": "string",
+                    "description": "Optional detailed narrative or diagnostic data.",
+                },
+                "outcome": {
+                    "type": "string",
+                    "enum": [
+                        "resolved",
+                        "improved",
+                        "no_change",
+                        "worsened",
+                        "inconclusive",
+                        "failed",
+                        "pending_verification",
+                    ],
+                    "description": "Outcome/utfall of the intervention.",
+                },
+                "outcome_notes": {
+                    "type": "string",
+                    "description": "Optional notes or observations regarding the outcome.",
+                },
+                "performed_by": {
+                    "type": "string",
+                    "description": "Name or ID of technician, engineer, or agent who performed the action.",
+                },
+                "performed_at": {
+                    "type": "string",
+                    "description": "Optional ISO 8601 timestamp when the action was performed (defaults to current time).",
+                },
+                "change_origin": {
+                    "type": "string",
+                    "enum": [
+                        "sync",
+                        "webhook",
+                        "agent",
+                        "operator",
+                        "consolidation",
+                        "replay",
+                        "unknown",
+                    ],
+                    "default": "agent",
+                    "description": "Origin of the action entry.",
+                },
+            },
+            "required": ["namespace_id", "ticket_id", "action_type", "action_summary", "outcome"],
+        },
+    ),
+    Tool(
+        name="support_ticket_timeline",
+        description=(
+            "Retrieve the chronological timeline of actions, interventions, and milestone events for a ticket. "
+            "Watcher; read-only, cacheable."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active namespace UUID."},
+                "ticket_id": {"type": "string", "description": "Support ticket UUID."},
+                "limit": {
+                    "type": "integer",
+                    "default": 100,
+                    "description": "Maximum number of action entries to return (1-500).",
+                },
+            },
+            "required": ["namespace_id", "ticket_id"],
+        },
+    ),
+    # Support vertical module on-call rota and active responder routing (Wave D-7)
+    Tool(
+        name="support_get_on_call",
+        description=(
+            "Retrieve active on-call responders from Staff & Resources Engine "
+            "for a tenant namespace. Watcher; read-only, cacheable."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active namespace UUID."},
+                "at": {
+                    "type": "string",
+                    "description": "Optional ISO datetime to query point-in-time on-call roster (defaults to now UTC).",
+                },
+                "starts_at": {
+                    "type": "string",
+                    "description": "Optional window start ISO datetime.",
+                },
+                "ends_at": {
+                    "type": "string",
+                    "description": "Optional window end ISO datetime.",
+                },
+                "include_released": {
+                    "type": "boolean",
+                    "description": "Whether to include released allocations (defaults to False).",
+                },
+                "contractor_view": {
+                    "type": "boolean",
+                    "description": "Whether to redact internal rates/margins (defaults to False).",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
     # Field Tech vertical module tools (ML12-B5, M12.W5)
     Tool(
         name="field_tech_dispatch",
@@ -7824,6 +7957,32 @@ TOOLS = [
                 },
             },
             "required": ["namespace_id", "entity_id"],
+        },
+    ),
+    Tool(
+        name="sites_enrich_address_from_registry",
+        description=(
+            "Validate/geocode a site's address against Kartverket's cadastre (Adresse API) and "
+            "merge the result into the site's own address/coordinate fields. Operator/cron pull; "
+            "mutation; fails soft (matched=false) when the address is not found in the registry."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Tenant namespace UUID.",
+                },
+                "site_id": {
+                    "type": "string",
+                    "description": "UUID of the sites row to enrich.",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Optional freetext address to look up instead of the site's own stored address.",
+                },
+            },
+            "required": ["namespace_id", "site_id"],
         },
     ),
     Tool(

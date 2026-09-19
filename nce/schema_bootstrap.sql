@@ -2439,6 +2439,9 @@ CREATE TABLE IF NOT EXISTS assets (
     -- No enumerated CHECK -- see the file header.
     lifecycle_state        TEXT        NOT NULL,
     change_origin          TEXT        NOT NULL DEFAULT 'agent',
+    is_shell               BOOLEAN     NOT NULL DEFAULT FALSE,
+    product_id             UUID        REFERENCES product_catalog(id) ON DELETE SET NULL,
+    product_sku            TEXT,
     created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (id),
@@ -2471,6 +2474,10 @@ CREATE TABLE IF NOT EXISTS assets (
 -- the wave that does owns its own index.
 CREATE INDEX IF NOT EXISTS idx_assets_namespace_functional_location
     ON assets (namespace_id, functional_location_id);
+CREATE INDEX IF NOT EXISTS idx_assets_namespace_is_shell
+    ON assets (namespace_id, is_shell);
+CREATE INDEX IF NOT EXISTS idx_assets_namespace_product_id
+    ON assets (namespace_id, product_id);
 
 DO $$
 BEGIN
@@ -3158,6 +3165,73 @@ BEGIN
     END IF;
 END $$;
 
+
+-- ============================================================================
+-- Support Engine: support_ticket_actions (Wave D-5)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS support_ticket_actions (
+    id                     UUID        NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id           UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    ticket_id              UUID        NOT NULL REFERENCES service_tickets(id) ON DELETE CASCADE,
+    action_type            TEXT        NOT NULL,
+    action_summary         TEXT        NOT NULL,
+    action_details         TEXT,
+    outcome                TEXT        NOT NULL,
+    outcome_notes          TEXT,
+    performed_by           TEXT        NOT NULL,
+    performed_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    change_origin          TEXT        NOT NULL DEFAULT 'agent',
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    CONSTRAINT support_ticket_actions_action_summary_not_blank
+        CHECK (btrim(action_summary) <> ''),
+    CONSTRAINT support_ticket_actions_performed_by_not_blank
+        CHECK (btrim(performed_by) <> ''),
+    CONSTRAINT support_ticket_actions_action_type_check
+        CHECK (action_type IN (
+            'diagnostic',
+            'configuration',
+            'restart',
+            'firmware_update',
+            'hardware_replacement',
+            'cable_check',
+            'vendor_escalation',
+            'work_order',
+            'user_instruction',
+            'other'
+        )),
+    CONSTRAINT support_ticket_actions_outcome_check
+        CHECK (outcome IN (
+            'resolved',
+            'improved',
+            'no_change',
+            'worsened',
+            'inconclusive',
+            'failed',
+            'pending_verification'
+        )),
+    CONSTRAINT support_ticket_actions_change_origin_check
+        CHECK (change_origin IN ('sync','webhook','agent','operator','consolidation','replay','unknown'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_support_ticket_actions_ns_ticket
+    ON support_ticket_actions (namespace_id, ticket_id, performed_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_support_ticket_actions_ns_type
+    ON support_ticket_actions (namespace_id, action_type);
+
+CREATE INDEX IF NOT EXISTS idx_support_ticket_actions_ns_outcome
+    ON support_ticket_actions (namespace_id, outcome);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE support_ticket_actions FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE support_ticket_actions TO nce_app;
+    END IF;
+END $$;
 
 
 -- ============================================================================

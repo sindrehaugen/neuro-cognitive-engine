@@ -112,6 +112,9 @@ _ASSET_COLUMNS: tuple[str, ...] = (
     "functional_location_id",
     "lifecycle_state",
     "change_origin",
+    "is_shell",
+    "product_id",
+    "product_sku",
     "created_at",
     "updated_at",
 )
@@ -149,7 +152,7 @@ def _row_to_asset_dict(row: Any) -> dict[str, Any]:
     neither the MCP surface (``json.dumps(..., default=str)``) nor the REST
     surface (a bare ``JSONResponse``) needs its own UUID/datetime handling.
     """
-    return {
+    d: dict[str, Any] = {
         "asset_id": str(row["id"]),
         "bom_line_id": row["bom_line_id"],
         "serial": row["serial"],
@@ -159,6 +162,19 @@ def _row_to_asset_dict(row: Any) -> dict[str, Any]:
         "created_at": row["created_at"].isoformat() if row["created_at"] else None,
         "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
     }
+    try:
+        d["is_shell"] = bool(row["is_shell"]) if row["is_shell"] is not None else False
+    except (KeyError, IndexError, TypeError):
+        d["is_shell"] = False
+    try:
+        d["product_id"] = str(row["product_id"]) if row["product_id"] else None
+    except (KeyError, IndexError, TypeError):
+        d["product_id"] = None
+    try:
+        d["product_sku"] = str(row["product_sku"]) if row["product_sku"] else None
+    except (KeyError, IndexError, TypeError):
+        d["product_sku"] = None
+    return d
 
 
 async def do_get_asset(engine: NCEEngine, params: dict[str, Any]) -> dict[str, Any]:
@@ -452,4 +468,265 @@ async def handle_assets_record_failure_pattern(engine: NCEEngine, arguments: dic
     """
     require_namespace_id(arguments)
     result = await do_record_failure_pattern(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+# ---------------------------------------------------------------------------
+# Wave D-1: move / merge / link-product
+# ---------------------------------------------------------------------------
+
+
+async def do_move_asset(engine: NCEEngine, params: dict[str, Any]) -> dict[str, Any]:
+    """Move an asset to a new functional location (room).
+
+    Parameters
+    ----------
+    params:
+        ``namespace_id`` (str, required)
+        ``asset_id`` (str, required)
+        ``functional_location_id`` (str, required)
+
+    Returns
+    -------
+    dict
+        ``{"ok": True, "asset_id": str, "functional_location_id": str, "previous_functional_location_id": str | None, "updated_at": str}``
+    """
+    namespace_id = require_namespace_id(params)
+    asset_id = _require_asset_id(params)
+    new_fl = str(params.get("functional_location_id") or "").strip()
+    if not new_fl:
+        raise ValueError("'functional_location_id' is required and cannot be blank")
+
+    async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+        existing = await conn.fetchrow(
+            """
+            SELECT functional_location_id
+            FROM assets
+            WHERE namespace_id = $1::uuid AND id = $2::uuid
+            """,
+            namespace_id,
+            asset_id,
+        )
+        if existing is None:
+            return {
+                "ok": False,
+                "not_found": True,
+                "asset_id": asset_id,
+                "error": f"Asset '{asset_id}' not found",
+            }
+
+        prev_fl = existing["functional_location_id"]
+        row = await conn.fetchrow(
+            """
+            UPDATE assets
+            SET functional_location_id = $3,
+                updated_at = now()
+            WHERE namespace_id = $1::uuid AND id = $2::uuid
+            RETURNING functional_location_id, updated_at
+            """,
+            namespace_id,
+            asset_id,
+            new_fl,
+        )
+
+    return {
+        "ok": True,
+        "asset_id": asset_id,
+        "functional_location_id": row["functional_location_id"],
+        "previous_functional_location_id": prev_fl,
+        "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+    }
+
+
+async def do_get_asset_merge_queue(engine: NCEEngine, params: dict[str, Any]) -> dict[str, Any]:
+    """Retrieve pending merge queue rows from entity_merge_queue for ASSET nodes."""
+    namespace_id = require_namespace_id(params)
+
+    async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, node_type, candidate_payload, target_node_id, score, status, created_at
+            FROM entity_merge_queue
+            WHERE namespace_id = $1::uuid
+              AND status = 'pending'
+              AND node_type = 'ASSET'
+            ORDER BY created_at ASC
+            """,
+            namespace_id,
+        )
+
+    pending_items = []
+    for r in rows:
+        payload = r["candidate_payload"]
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except Exception:
+                pass
+        pending_items.append(
+            {
+                "id": str(r["id"]),
+                "node_type": r["node_type"],
+                "candidate_payload": payload,
+                "target_node_id": str(r["target_node_id"]) if r["target_node_id"] else None,
+                "score": float(r["score"]) if r["score"] is not None else 1.0,
+                "status": r["status"],
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            }
+        )
+
+    return {
+        "ok": True,
+        "status": "ok",
+        "pending": pending_items,
+    }
+
+
+async def do_merge_asset(engine: NCEEngine, params: dict[str, Any]) -> dict[str, Any]:
+    """Merge an asset via C1 entity_merge_queue.
+
+    Can either:
+    1. Confirm an existing queue row (if ``queue_id`` is supplied), or
+    2. Enqueue an asset merge into another asset (if ``target_asset_id`` is supplied).
+    """
+    namespace_id = require_namespace_id(params)
+    asset_id = params.get("asset_id")
+    queue_id = params.get("queue_id")
+    target_asset_id = params.get("target_asset_id")
+    decided_by = str(params.get("decided_by") or "operator").strip()
+
+    from nce.entity_resolution.merge_queue import confirm as c1_confirm
+    from nce.entity_resolution.merge_queue import enqueue as c1_enqueue
+
+    async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+        if queue_id:
+            try:
+                q_uuid = UUID(str(queue_id))
+            except Exception as exc:
+                raise ValueError(f"invalid queue_id: {exc}") from exc
+            await c1_confirm(
+                conn, namespace_id=UUID(namespace_id), queue_id=q_uuid, decided_by=decided_by
+            )
+            return {
+                "ok": True,
+                "queue_id": str(queue_id),
+                "status": "confirmed",
+                "decided_by": decided_by,
+            }
+
+        if not asset_id:
+            raise ValueError("'asset_id' is required when 'queue_id' is not provided")
+        asset_uuid = UUID(str(asset_id))
+
+        if not target_asset_id:
+            raise ValueError(
+                "Either 'queue_id' or 'target_asset_id' must be provided to merge an asset"
+            )
+
+        target_uuid = UUID(str(target_asset_id))
+        enqueued_id = await c1_enqueue(
+            conn,
+            namespace_id=UUID(namespace_id),
+            node_type="ASSET",
+            candidate={"asset_id": str(asset_uuid)},
+            target=target_uuid,
+            score=1.0,
+        )
+
+    return {
+        "ok": True,
+        "queue_id": str(enqueued_id),
+        "asset_id": str(asset_uuid),
+        "target_asset_id": str(target_uuid),
+        "status": "enqueued",
+    }
+
+
+async def do_link_asset_product(engine: NCEEngine, params: dict[str, Any]) -> dict[str, Any]:
+    """Link an asset to a product catalog item (C1 confirm).
+
+    Parameters
+    ----------
+    params:
+        ``namespace_id`` (str, required)
+        ``asset_id`` (str, required)
+        ``product_id`` (str, optional UUID)
+        ``product_sku`` (str, optional text)
+    """
+    namespace_id = require_namespace_id(params)
+    asset_id = _require_asset_id(params)
+    product_id_raw = params.get("product_id")
+    product_id = str(UUID(str(product_id_raw))) if product_id_raw else None
+    product_sku = str(params.get("product_sku") or "").strip() or None
+
+    if not product_id and not product_sku:
+        raise ValueError("At least one of 'product_id' or 'product_sku' must be provided")
+
+    async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE assets
+            SET product_id = $3::uuid,
+                product_sku = $4,
+                updated_at = now()
+            WHERE namespace_id = $1::uuid AND id = $2::uuid
+            RETURNING id, bom_line_id, product_id, product_sku, updated_at
+            """,
+            namespace_id,
+            asset_id,
+            product_id,
+            product_sku,
+        )
+        if row is None:
+            return {
+                "ok": False,
+                "not_found": True,
+                "asset_id": asset_id,
+                "error": f"Asset '{asset_id}' not found",
+            }
+
+        # Record C1 learning feedback if product_sku is supplied
+        if product_sku:
+            bom_line = row["bom_line_id"] or ""
+            await conn.execute(
+                """
+                INSERT INTO product_match_feedback
+                    (namespace_id, bom_line, chosen_sku, decision, matched_score)
+                VALUES ($1::uuid, $2, $3, 'accept', 1.0)
+                """,
+                namespace_id,
+                bom_line,
+                product_sku,
+            )
+
+    return {
+        "ok": True,
+        "asset_id": asset_id,
+        "product_id": str(row["product_id"]) if row["product_id"] else None,
+        "product_sku": row["product_sku"],
+        "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+    }
+
+
+@mcp_handler
+async def handle_assets_move(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: assets_move — move an asset to a new functional location (room)."""
+    require_namespace_id(arguments)
+    result = await do_move_asset(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_assets_merge(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: assets_merge — merge an asset via C1 entity merge queue."""
+    require_namespace_id(arguments)
+    result = await do_merge_asset(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_assets_link_product(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: assets_link_product — link an asset to a product catalog item."""
+    require_namespace_id(arguments)
+    result = await do_link_asset_product(engine, dict(arguments))
     return json.dumps(result, default=str)

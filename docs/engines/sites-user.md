@@ -79,3 +79,36 @@ the C1 entity resolution hook (`nce/entity_resolution/site_hook.py::reconcile_fl
 verifies cadastre matches. In accordance with safety policies, when two buildings share the same
 cadastre ID, they are enqueued into `entity_merge_queue` with status `'pending'` for human review
 and are never automatically merged.
+
+## 4. Address Registry Feed (MLV16 Lane F, Wave F-9)
+
+`sites_enrich_address_from_registry` (`nce/vertical_modules/sites/address_registry.py`) validates/geocodes an existing site's address against Kartverket's public Adresse API (Geonorge, against the cadastre — free, no authentication) and merges the structured result into that same site's own `address`/`latitude`/`longitude` fields. **No new table** — this feed writes into `sites` (migration 095, Wave A-9), the same shape as the C15 BRREG feed (Wave F-8) writing into `legal_entities.metadata` rather than owning a store of its own.
+
+```json
+{"namespace_id": "...", "site_id": "..."}
+```
+**Response (matched):**
+```json
+{
+  "ok": true,
+  "site_id": "...",
+  "matched": true,
+  "reason": null,
+  "address": {
+    "address_key": "0301-12345-1",
+    "formatted_address": "Storgata 1",
+    "postal_code": "0155",
+    "city": "OSLO",
+    "municipality": "OSLO",
+    "municipality_number": "0301",
+    "lat": 59.913,
+    "lon": 10.752
+  }
+}
+```
+
+* By default the lookup query is built from the site's own stored `address` fields (`formatted_address`, or `street`/`postal_code`/`city` assembled together). An optional `query` argument overrides this — useful when registering a brand-new site whose address has never been validated yet.
+* On a match, the site's `address` is merged (not replaced) with the validated `formatted_address`/`postal_code`/`city` and `is_validated: true`, and `latitude`/`longitude` are set from Kartverket's own coordinate for that address.
+* **Fails soft, never fabricates:** a 0-hit search or a Kartverket outage returns `{"matched": false, "reason": "not_found_in_registry"}` and leaves the site's row untouched — never a guessed address or coordinate.
+* `admin_only` mutation (operator/cron pull against an external registry), mirroring `legal_entities_enrich_from_registry`'s own reasoning — not an ordinary Actor action, and not gated behind an `engine=` opt-in (same as that tool).
+* This module deliberately does not re-implement the host's own freetext-matching complexity (street-abbreviation expansion, house-number-range collapsing, transposed-letter tolerance): that solves matching a messy, decades-old CRM location name against the cadastre, which a `sites` row's own caller-supplied address does not need.
