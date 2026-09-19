@@ -102,6 +102,20 @@ def serialize_val(val: Any) -> Any:
     return val
 
 
+def _version_str(value: Any) -> str:
+    """Normalise a stored version_field value to the isoformat() shape the
+    client is actually handed back. Duplicated from
+    ``nce.resource_surface.mcp`` (which imports FROM this module, so the
+    reverse import would be circular) -- see that module's copy for the full
+    reasoning: a real Postgres row round-trips version_field as a
+    ``datetime``, and ``str(a_datetime)`` uses a space separator where
+    ``isoformat()`` uses "T", so comparing the two forms directly makes every
+    expected_version check on a real Postgres-backed resource fail with a
+    spurious conflict.
+    """
+    return value.isoformat() if isinstance(value, datetime) else str(value)
+
+
 def row_to_dict(row: Any) -> dict[str, Any]:
     """Convert an asyncpg Record or mapping to a JSON-serializable dict."""
     if hasattr(row, "keys"):
@@ -418,10 +432,19 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         if not is_global or "namespace_id" in spec.writable_fields:
             if ns_uuid:
                 data["namespace_id"] = str(ns_uuid)
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
         if spec.version_field:
+            # Kept as the isoformat() string in `data` itself -- `data` also
+            # becomes the in-memory-fallback row below, and every OTHER
+            # handler reading that shared bucket (handle_get, handle_list,
+            # handle_archive, ...) returns it via a bare JSONResponse with no
+            # datetime fallback (unlike mcp.py, which wraps every response in
+            # json.dumps(..., default=str)). Storing a real datetime here
+            # would fix this handler and break all of those. The real
+            # datetime is bound only at the actual SQL parameter list below,
+            # which is the only place that needs one.
             data[spec.version_field] = now_iso
-        data["version"] = now_iso
         if spec.soft_delete_field and spec.soft_delete_field not in data:
             data[spec.soft_delete_field] = False
 
@@ -440,7 +463,7 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                     session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                     async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
                         cols = list(data.keys())
-                        vals = [data[c] for c in cols]
+                        vals = [now if c == spec.version_field else data[c] for c in cols]
                         val_placeholders = [f"${i + 1}" for i in range(len(cols))]
                         query = f"""
                             INSERT INTO {spec.table_name} ({', '.join(cols)})
@@ -514,7 +537,10 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             )
 
         return JSONResponse(
-            {"status": "ok", "id": item_id, "item": created, **created}, status_code=201
+            serialize_val(
+                {"status": "ok", "id": item_id, "version": now_iso, "item": created, **created}
+            ),
+            status_code=201,
         )
 
     async def handle_patch(request: Request) -> Response:
@@ -584,7 +610,7 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             )
 
         if expected_version and spec.version_field:
-            actual_version = str(existing.get(spec.version_field, ""))
+            actual_version = _version_str(existing.get(spec.version_field, ""))
             if actual_version != expected_version:
                 exc = ValueError(
                     f"Version conflict: expected {expected_version}, got {actual_version}"
@@ -608,15 +634,20 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             if f in body:
                 updates[f] = body[f]
 
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
         if spec.version_field:
-            updates[spec.version_field] = now_iso
+            # String in `updates` for the same reason as handle_create above:
+            # `updates` also becomes (via {**existing, **updates}) the
+            # in-memory-fallback row, read back by other handlers with no
+            # datetime-safe JSON fallback. Real datetime bound only in `vals`
+            # below, for the actual SQL parameter list.
+            updates[spec.version_field] = now.isoformat()
 
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None) and spec.table_name:
             try:
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
-                    vals = list(updates.values())
+                    vals = [now if k == spec.version_field else v for k, v in updates.items()]
                     if is_global:
                         set_items = [f"{k} = ${i + 2}" for i, k in enumerate(updates.keys())]
                         query = f"""
@@ -652,7 +683,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                 route=f"api_{spec.engine}_{spec.mcp_slug}_patch",
             )
 
-        return JSONResponse({"status": "ok", "id": item_id, "item": updated, **updated})
+        return JSONResponse(
+            serialize_val({"status": "ok", "id": item_id, "item": updated, **updated})
+        )
 
     async def handle_archive(request: Request) -> Response:
         body: dict[str, Any] = {}
