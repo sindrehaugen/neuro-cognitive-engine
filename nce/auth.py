@@ -59,6 +59,8 @@ from starlette.responses import JSONResponse, Response
 
 from nce.config import cfg
 from nce.db_utils import POOL_ACQUIRE_TIMEOUT
+from nce.principal_bindings.models import PrincipalContext as PrincipalContext
+from nce.principal_bindings.service import current_principal as current_principal
 
 log = logging.getLogger("nce.auth")
 
@@ -755,6 +757,10 @@ class NamespaceContext(BaseModel):
             "Sourced exclusively from the verified JWT claim 'external_scope_id'. "
             "None for employee principals (deny-when-unset preserved)."
         ),
+    )
+    principal_id: str | None = Field(
+        default=None,
+        description="Optional principal ID from token claims or request headers.",
     )
 
     @field_validator("agent_id", mode="before")

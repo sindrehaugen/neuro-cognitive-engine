@@ -2040,3 +2040,20 @@ BEGIN
         GRANT SELECT, INSERT, UPDATE ON TABLE pricing_fx_rates TO nce_app;
     END IF;
 END $$;
+
+ALTER TABLE principal_bindings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE principal_bindings FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON principal_bindings;
+CREATE POLICY tenant_isolation_policy ON principal_bindings
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE principal_bindings FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE principal_bindings TO nce_app;
+    END IF;
+END $$;
