@@ -25,6 +25,7 @@ from nce.db_utils import scoped_pg_session
 from nce.event_log import append_event
 from nce.jwt_auth import JWTAuthMiddleware
 from nce.orchestrator import NCEEngine
+from nce.principal_bindings import PrincipalContext, current_principal, upsert_principal_binding
 
 log = logging.getLogger("nce.me_app")
 
@@ -1116,6 +1117,139 @@ async def post_me_dsar_erase(request: Request) -> JSONResponse:
     )
 
 
+async def get_me_context(request: Request) -> JSONResponse:
+    """GET /api/me/context
+
+    Wave A-6 (C16 Principal Mapping):
+    Resolve authenticated caller's principal mapping context:
+    {
+        "principal_id": "...",
+        "tier": "employee" | "customer" | "contractor",
+        "employee_id": "..." | null,
+        "customer_id": "..." | null,
+        "contractor_id": "..." | null,
+        "roles": [...]
+    }
+    """
+    ns_ctx: NamespaceContext | None = getattr(request.state, "namespace_ctx", None)
+    if not ns_ctx or ns_ctx.namespace_id is None:
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32005,
+                    "message": "Unauthorized",
+                    "data": {"reason": "missing_namespace_context"},
+                },
+                "id": None,
+            },
+            status_code=401,
+        )
+
+    principal = await current_principal(request)
+    payload = {
+        "principal_id": principal.principal_id,
+        "tier": principal.tier,
+        "employee_id": principal.employee_id,
+        "customer_id": principal.customer_id,
+        "contractor_id": principal.contractor_id,
+        "roles": list(principal.roles),
+    }
+    return JSONResponse(payload, status_code=200)
+
+
+async def put_me_context(request: Request) -> JSONResponse:
+    """PUT /api/me/context
+
+    BFF binding endpoint: upsert principal_bindings for the authenticated caller.
+    """
+    ns_ctx: NamespaceContext | None = getattr(request.state, "namespace_ctx", None)
+    if not ns_ctx or ns_ctx.namespace_id is None:
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32005,
+                    "message": "Unauthorized",
+                    "data": {"reason": "missing_namespace_context"},
+                },
+                "id": None,
+            },
+            status_code=401,
+        )
+
+    ns_id = ns_ctx.namespace_id
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    principal_id = (
+        body.get("principal_id")
+        or getattr(ns_ctx, "principal_id", None)
+        or getattr(ns_ctx, "agent_id", None)
+    )
+    if not principal_id:
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32602,
+                    "message": "Invalid params",
+                    "data": {"reason": "missing_principal_id"},
+                },
+                "id": None,
+            },
+            status_code=400,
+        )
+
+    tier = body.get("tier", getattr(ns_ctx, "principal_kind", "employee"))
+    employee_id = body.get("employee_id")
+    customer_id = body.get("customer_id")
+    contractor_id = body.get("contractor_id")
+    roles = body.get("roles", [])
+    metadata = body.get("metadata", {})
+
+    engine = getattr(request.app.state, "engine", None)
+    pool = getattr(engine, "pg_pool", None) if engine else None
+
+    binding = await upsert_principal_binding(
+        pool,
+        ns_id,
+        principal_id,
+        tier=tier,
+        employee_id=employee_id,
+        customer_id=customer_id,
+        contractor_id=contractor_id,
+        roles=roles,
+        metadata=metadata,
+    )
+
+    ctx = PrincipalContext(
+        principal_id=binding.principal_id,
+        tier=binding.tier,
+        employee_id=binding.employee_id,
+        customer_id=binding.customer_id,
+        contractor_id=binding.contractor_id,
+        roles=binding.roles,
+        metadata=binding.metadata,
+        namespace_id=ns_id,
+        is_bound=True,
+    )
+    request.state.principal_ctx = ctx
+
+    payload = {
+        "principal_id": binding.principal_id,
+        "tier": binding.tier,
+        "employee_id": binding.employee_id,
+        "customer_id": binding.customer_id,
+        "contractor_id": binding.contractor_id,
+        "roles": list(binding.roles),
+        "updated_at": binding.updated_at,
+    }
+    return JSONResponse(payload, status_code=200)
+
+
 app = Starlette(
     debug=False,
     lifespan=me_lifespan,
@@ -1127,6 +1261,8 @@ app = Starlette(
         ),
     ],
     routes=[
+        Route("/api/me/context", endpoint=get_me_context, methods=["GET"]),
+        Route("/api/me/context", endpoint=put_me_context, methods=["PUT"]),
         Route("/api/me/memories", endpoint=get_me_memories, methods=["GET"]),
         Route("/api/me/profile", endpoint=get_me_profile, methods=["GET"]),
         Route("/api/me/govern", endpoint=post_me_govern, methods=["POST"]),

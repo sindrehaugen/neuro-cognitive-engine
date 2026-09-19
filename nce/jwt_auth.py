@@ -397,12 +397,16 @@ def decode_agent_token(
             except (ValueError, AttributeError):
                 log.debug("JWT external_scope_id %r is not a valid UUID — ignoring", raw_scope)
 
+    raw_principal = payload.get("principal_id") or payload.get("sub")
+    principal_id_claim = str(raw_principal).strip() if raw_principal else None
+
     try:
         return NamespaceContext(
             namespace_id=namespace_id,
             agent_id=agent_id,
             principal_kind=principal_kind,
             external_scope_id=external_scope_id,
+            principal_id=principal_id_claim,
         )
     except ValidationError as exc:
         log.error("NamespaceContext construction failed (unexpected): %s", exc)

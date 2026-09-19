@@ -24,9 +24,9 @@ def test_business_insights_tables_registered_in_expected_tenant_rls_tables():
 
 
 def test_expected_tenant_rls_tables_total_count():
-    """Verify total count of tenant RLS tables after C15 legal_entities additions is 96 (95 baseline + 1 legal_entities)."""
-    assert len(EXPECTED_TENANT_RLS_TABLES) == 96, (
-        f"Expected 96 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
+    """Verify total count of tenant RLS tables after C16 principal_bindings additions is 97 (96 baseline + 1 principal_bindings)."""
+    assert len(EXPECTED_TENANT_RLS_TABLES) == 97, (
+        f"Expected 97 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
     )
 
 

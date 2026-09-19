@@ -42,9 +42,9 @@ def test_customer_portal_tables_registered_in_expected_tenant_rls_tables():
 
 
 def test_expected_tenant_rls_tables_total_count():
-    """Total count of tenant RLS tables after C15 Legal-Entities additions must be 96."""
-    assert len(EXPECTED_TENANT_RLS_TABLES) == 96, (
-        f"Expected 96 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
+    """Total count of tenant RLS tables after C16 Principal Mapping additions must be 97."""
+    assert len(EXPECTED_TENANT_RLS_TABLES) == 97, (
+        f"Expected 97 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
     )
 
 
