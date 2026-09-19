@@ -51,18 +51,6 @@ _NAMESPACE_ID = "00000000-0000-4000-8000-000000000001"
 _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
-# --- MEASURED post-rebase onto main (incorporating Wave D-1, D-5, D-7, D-3, Wave B-1, Wave C-2, Wave B-9: 433 tools) + Lane D Wave D-2 assets person assignment & subcomponents (6 tools: 4 mutating/admin-only, 2 cacheable reads):
-# TOTAL: 433 from main + 6 = 439.
-# MUTATION: 195 + 4 = 199.
-# CACHEABLE: 193 + 2 = 195.
-# ADMIN_ONLY: 99 + 4 = 103.
-_TOTAL_TOOLS = 439
-_MUTATION_TOOLS = 199
-_CACHEABLE_TOOLS = 195
-_ADMIN_ONLY_TOOLS = 103
-_MIGRATION_TOOLS = 5
-
-
 # The Inventory vertical's tools, read from ``TOOL_REGISTRY`` itself:
 # 17 legacy tools + 16 C12 resource surface tools (4 resources x 4 tools) = 33 tools.
 _INVENTORY_TOOLS = frozenset(
@@ -170,12 +158,17 @@ def _registered_inventory_tools() -> frozenset[str]:
 
 
 # ---------------------------------------------------------------------------
-# 1. Exact tool-count certification
+# 1. Inventory's own slice of the tool registry
+#
+# Global registry totals (len(TOOL_REGISTRY), MUTATION_TOOLS/CACHEABLE_TOOLS/
+# ADMIN_ONLY_TOOLS/MIGRATION_TOOLS sizes) are certified in
+# tests/test_tool_registry.py, not here -- every wave that registers a new
+# C12 resource anywhere in the estate changes those totals, and duplicating
+# an exact pin on them in an inventory-specific file meant every such wave
+# also had to find and update this file, despite it having nothing to do
+# with inventory. Four unrelated lanes hit exactly that in one afternoon
+# (2026-09-19) before this was noticed and removed.
 # ---------------------------------------------------------------------------
-
-
-def test_tool_registry_holds_the_measured_total() -> None:
-    assert len(tr.TOOL_REGISTRY) == _TOTAL_TOOLS
 
 
 def test_inventory_tool_names_are_exactly_the_measured_set() -> None:
@@ -193,13 +186,6 @@ def test_derived_counters_match_the_registry_they_summarise() -> None:
     assert tr.CACHEABLE_TOOLS == {n for n, s in tr.TOOL_REGISTRY.items() if s.cacheable}
     assert tr.ADMIN_ONLY_TOOLS == {n for n, s in tr.TOOL_REGISTRY.items() if s.admin_only}
     assert tr.MIGRATION_TOOLS == {n for n, s in tr.TOOL_REGISTRY.items() if s.migration}
-
-
-def test_derived_counter_sizes_are_the_measured_ones() -> None:
-    assert len(tr.MUTATION_TOOLS) == _MUTATION_TOOLS
-    assert len(tr.CACHEABLE_TOOLS) == _CACHEABLE_TOOLS
-    assert len(tr.ADMIN_ONLY_TOOLS) == _ADMIN_ONLY_TOOLS
-    assert len(tr.MIGRATION_TOOLS) == _MIGRATION_TOOLS
 
 
 def test_inventory_flag_partition_is_exact() -> None:
