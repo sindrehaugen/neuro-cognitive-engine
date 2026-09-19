@@ -87,7 +87,15 @@
     { "node_type": "PORTAL_DOCUMENT_SHARE",  "owner_engine": "customer_portal", "transition": null,
       "_note": "Module 17 (Customer Portal Engine) FDV/as-built/drawing share granted to an external customer (portal_document_shares table). Same RLS gap as PORTAL_USER." },
     { "node_type": "PORTAL_SERVICE_REQUEST", "owner_engine": "customer_portal", "transition": null,
-      "_note": "Module 17 (Customer Portal Engine) customer-submitted service request, handed off to a support TICKET (portal_service_requests table). Same RLS gap as PORTAL_USER." }
+      "_note": "Module 17 (Customer Portal Engine) customer-submitted service request, handed off to a support TICKET (portal_service_requests table). Same RLS gap as PORTAL_USER." },
+    { "node_type": "EMPLOYEE",              "owner_engine": "hr",            "transition": null,
+      "_note": "Module 13 (HR Engine) employee profile card (employees table). Q-32 exemption to Q-5's config_data freeze, granted 2026-09-19: adding owner_engine rows for hr/marketing/customer_portal/business_insights only, nothing else in this file." },
+    { "node_type": "SKILL",                 "owner_engine": "hr",            "transition": null,
+      "_note": "Module 13 (HR Engine) employee skill assessment (skills table, FK to employees)." },
+    { "node_type": "CERTIFICATION",         "owner_engine": "hr",            "transition": null,
+      "_note": "Module 13 (HR Engine) employee certification record (certifications table, FK to employees)." },
+    { "node_type": "ABSENCE",               "owner_engine": "hr",            "transition": null,
+      "_note": "Module 13 (HR Engine) employee absence/leave record (absences table, FK to employees)." }
   ]
 }
 
