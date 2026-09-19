@@ -3770,6 +3770,35 @@
         ],
         "type": "object"
       },
+      "Tool_assets_assign_person_Input": {
+        "properties": {
+          "asset_id": {
+            "description": "Target asset UUID to assign.",
+            "type": "string"
+          },
+          "employee_id": {
+            "description": "Employee ID or person identifier.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Active tenant namespace UUID.",
+            "type": "string"
+          },
+          "notes": {
+            "description": "Optional assignment notes.",
+            "type": "string"
+          },
+          "principal_id": {
+            "description": "Optional principal ID resolved via C16 principal_bindings.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "asset_id"
+        ],
+        "type": "object"
+      },
       "Tool_assets_attach_sla_Input": {
         "properties": {
           "agreement_id": {
@@ -3908,6 +3937,32 @@
         ],
         "type": "object"
       },
+      "Tool_assets_link_subcomponent_Input": {
+        "properties": {
+          "namespace_id": {
+            "description": "Active tenant namespace UUID.",
+            "type": "string"
+          },
+          "parent_asset_id": {
+            "description": "Parent asset UUID.",
+            "type": "string"
+          },
+          "relation": {
+            "description": "Boundary edge predicate (defaults to 'part_of').",
+            "type": "string"
+          },
+          "sub_asset_id": {
+            "description": "Child sub-component asset UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "parent_asset_id",
+          "sub_asset_id"
+        ],
+        "type": "object"
+      },
       "Tool_assets_list_Input": {
         "properties": {
           "functional_location_id": {
@@ -3975,6 +4030,47 @@
         },
         "required": [
           "namespace_id"
+        ],
+        "type": "object"
+      },
+      "Tool_assets_list_person_assets_Input": {
+        "properties": {
+          "employee_id": {
+            "description": "Employee ID or person identifier.",
+            "type": "string"
+          },
+          "include_faults": {
+            "description": "Whether to include open service tickets (faults) for assigned assets (default true).",
+            "type": "boolean"
+          },
+          "namespace_id": {
+            "description": "Active tenant namespace UUID.",
+            "type": "string"
+          },
+          "principal_id": {
+            "description": "Optional principal ID resolved via C16 principal_bindings.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id"
+        ],
+        "type": "object"
+      },
+      "Tool_assets_list_subcomponents_Input": {
+        "properties": {
+          "asset_id": {
+            "description": "Asset UUID to inspect.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Active tenant namespace UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "asset_id"
         ],
         "type": "object"
       },
@@ -4108,6 +4204,49 @@
         },
         "required": [
           "namespace_id"
+        ],
+        "type": "object"
+      },
+      "Tool_assets_unassign_person_Input": {
+        "properties": {
+          "asset_id": {
+            "description": "Target asset UUID to unassign.",
+            "type": "string"
+          },
+          "employee_id": {
+            "description": "Optional specific employee ID to unassign.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Active tenant namespace UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "asset_id"
+        ],
+        "type": "object"
+      },
+      "Tool_assets_unlink_subcomponent_Input": {
+        "properties": {
+          "namespace_id": {
+            "description": "Active tenant namespace UUID.",
+            "type": "string"
+          },
+          "parent_asset_id": {
+            "description": "Parent asset UUID.",
+            "type": "string"
+          },
+          "sub_asset_id": {
+            "description": "Child sub-component asset UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "parent_asset_id",
+          "sub_asset_id"
         ],
         "type": "object"
       },
@@ -14663,6 +14802,17 @@
         "mutation": true,
         "name": "assets_archive_assets"
       },
+      "assets_assign_person": {
+        "admin_only": true,
+        "cacheable": false,
+        "description": "Assign an asset to a person/employee via KG 'uses' edge and C16 principal mapping (Wave D-2). Enforces Contract-A single-writer ownership for ASSET. Actor; mutation, admin-only.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_assets_assign_person_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "assets_assign_person"
+      },
       "assets_attach_sla": {
         "admin_only": false,
         "cacheable": false,
@@ -14729,6 +14879,17 @@
         "mutation": false,
         "name": "assets_get_assets"
       },
+      "assets_link_subcomponent": {
+        "admin_only": true,
+        "cacheable": false,
+        "description": "Link a child sub-component asset to a parent asset via KG 'part_of' edge (Wave D-2). Enforces Contract-A single-writer ownership for ASSET and validates against circular hierarchy cycles. Actor; mutation, admin-only.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_assets_link_subcomponent_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "assets_link_subcomponent"
+      },
       "assets_list": {
         "admin_only": false,
         "cacheable": true,
@@ -14750,6 +14911,28 @@
         "migration": false,
         "mutation": false,
         "name": "assets_list_assets"
+      },
+      "assets_list_person_assets": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "List all assets assigned to a person/employee via KG 'uses' edge, optionally including open fault tickets (Wave D-2). Watcher; read-only, cacheable.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_assets_list_person_assets_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "assets_list_person_assets"
+      },
+      "assets_list_subcomponents": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "List sub-components (children) and parent asset hierarchy for an asset via KG 'part_of' edges (Wave D-2). Watcher; read-only, cacheable.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_assets_list_subcomponents_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "assets_list_subcomponents"
       },
       "assets_pull_telemetry": {
         "admin_only": true,
@@ -14805,6 +14988,28 @@
         "migration": false,
         "mutation": true,
         "name": "assets_sync_netbox"
+      },
+      "assets_unassign_person": {
+        "admin_only": true,
+        "cacheable": false,
+        "description": "Unassign an asset from its assigned person by removing the KG 'uses' edge (Wave D-2). Enforces Contract-A single-writer ownership for ASSET. Actor; mutation, admin-only.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_assets_unassign_person_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "assets_unassign_person"
+      },
+      "assets_unlink_subcomponent": {
+        "admin_only": true,
+        "cacheable": false,
+        "description": "Unlink a child sub-component asset from its parent asset by removing the KG 'part_of' edge (Wave D-2). Enforces Contract-A single-writer ownership for ASSET. Actor; mutation, admin-only.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_assets_unlink_subcomponent_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "assets_unlink_subcomponent"
       },
       "assets_upsert_assets": {
         "admin_only": false,
@@ -27693,6 +27898,81 @@
         ]
       }
     },
+    "/api/assets/by-person/{employee_id}": {
+      "get": {
+        "description": "GET /api/assets/by-person/{employee_id} \u2014 list assets assigned to employee.",
+        "operationId": "get_api_assets_by_person_employee_id",
+        "parameters": [
+          {
+            "description": "URL path parameter employee_id",
+            "in": "path",
+            "name": "employee_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "GET /api/assets/by-person/{employee_id} \u2014 list assets assigned to employee.",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
     "/api/assets/failure-pattern": {
       "post": {
         "description": "Record a failure pattern edge from ASSET to PRODUCT_SKU (Wave A-5).\nPath parameter:\nid (str, optional): Asset UUID.\nRequest body (JSON):\nnamespace_id (str, required): Active namespace UUID.\nasset_id     (str, optional): Asset UUID (if id not in path).\nproduct_sku  (str, required): Product SKU.\nconfidence   (float, optional): Confidence between 0.0 and 1.0 (default 1.0).\nfailure_mode (str, optional): Description of failure mode.\nseverity     (str, optional): Failure severity.\nnotes        (str, optional): Contextual notes.\nResponse (JSON):\n{\"ok\": True, \"asset_id\": str, \"product_sku\": str, \"edge\": str, ...} HTTP 200",
@@ -28392,6 +28672,93 @@
         ]
       }
     },
+    "/api/assets/{id}/assign": {
+      "post": {
+        "description": "POST /api/assets/{id}/assign \u2014 assign asset to person (EMPLOYEE -[uses]-> ASSET).",
+        "operationId": "post_api_assets_id_assign",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "POST /api/assets/{id}/assign \u2014 assign asset to person (EMPLOYEE -[uses]-> ASSET).",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
     "/api/assets/{id}/failure-pattern": {
       "post": {
         "description": "Record a failure pattern edge from ASSET to PRODUCT_SKU (Wave A-5).\nPath parameter:\nid (str, optional): Asset UUID.\nRequest body (JSON):\nnamespace_id (str, required): Active namespace UUID.\nasset_id     (str, optional): Asset UUID (if id not in path).\nproduct_sku  (str, required): Product SKU.\nconfidence   (float, optional): Confidence between 0.0 and 1.0 (default 1.0).\nfailure_mode (str, optional): Description of failure mode.\nseverity     (str, optional): Failure severity.\nnotes        (str, optional): Contextual notes.\nResponse (JSON):\n{\"ok\": True, \"asset_id\": str, \"product_sku\": str, \"edge\": str, ...} HTTP 200",
@@ -29052,6 +29419,251 @@
         ]
       }
     },
+    "/api/assets/{id}/sub-components": {
+      "get": {
+        "description": "GET /api/assets/{id}/sub-components \u2014 list sub-components and parent asset.",
+        "operationId": "get_api_assets_id_sub_components",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "GET /api/assets/{id}/sub-components \u2014 list sub-components and parent asset.",
+        "tags": [
+          "assets"
+        ]
+      },
+      "post": {
+        "description": "POST /api/assets/{id}/sub-components \u2014 link sub-component to parent asset.",
+        "operationId": "post_api_assets_id_sub_components",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "POST /api/assets/{id}/sub-components \u2014 link sub-component to parent asset.",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/api/assets/{id}/sub-components/{sub_id}": {
+      "delete": {
+        "description": "DELETE /api/assets/{id}/sub-components/{sub_id} \u2014 unlink sub-component.",
+        "operationId": "delete_api_assets_id_sub_components_sub_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL path parameter sub_id",
+            "in": "path",
+            "name": "sub_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "DELETE /api/assets/{id}/sub-components/{sub_id} \u2014 unlink sub-component.",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
     "/api/assets/{id}/telemetry": {
       "post": {
         "description": "Pull telemetry samples for an asset via its configured platform adapter.\nPath parameter:\nid (str): the asset's UUID.\nRequest body (JSON):\nnamespace_id (str, required): Active namespace UUID.\nplatform     (str, optional): Telemetry platform (defaults to mock).\nResponse (JSON):\n{\"ok\": True, \"asset_id\": str, \"platform\": str, \"pulled\": int, ...} HTTP 200",
@@ -29134,6 +29746,93 @@
           }
         },
         "summary": "POST /api/assets/{id}/telemetry",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/api/assets/{id}/unassign": {
+      "post": {
+        "description": "POST /api/assets/{id}/unassign \u2014 unassign asset from person.",
+        "operationId": "post_api_assets_id_unassign",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "POST /api/assets/{id}/unassign \u2014 unassign asset from person.",
         "tags": [
           "assets"
         ]
