@@ -3,9 +3,13 @@ nce/vertical_modules/product/sources/nettailer.py
 ==================================================
 Nettailer/Netset CSV feed adapter for the Product Engine.
 
-Lifted from the Portal sidecar's product-feed client (alias map +
-quote-safe CSV parse) and the Portal product sidecar's sync module
-(streaming, idempotent row generator).
+Independently implemented for the Product Engine.  An earlier revision of this
+docstring claimed the alias map and CSV parse were "lifted from" a sidecar
+product-feed client.  That claim was measured and is false (Q-44, 2026-09-19):
+a line-level comparison against the referenced client found 1.1% overlap on
+substantive lines, and both matching lines are boilerplate
+(``from __future__ import annotations`` and the standard httpx
+``aiter_bytes`` streaming idiom).  See the field-alias note below.
 
 Key invariants
 --------------
@@ -59,7 +63,11 @@ log = logging.getLogger("nce.vertical_modules.product.sources.nettailer")
 # Field-alias map
 # ---------------------------------------------------------------------------
 # Maps Nettailer/Netset CSV column headers → canonical field names used by the
-# Product Engine.  Lifted from Portal ``integrations/nettailer_client.py``.
+# Product Engine.  Written for this engine, not derived from another codebase:
+# the key set describes the vendor's published CSV header names (facts about the
+# feed format), and the canonical targets are this engine's own field names.
+# Measured 2026-09-19 for Q-44 — zero of these 52 header→field pairs appear in
+# the client an earlier comment credited, which defines only two pairs in total.
 # All keys are lower-cased and stripped before lookup (see ``_normalise_row``).
 #
 # Columns marked ``_INTERNAL`` carry cost/margin data.  They are parsed into the
