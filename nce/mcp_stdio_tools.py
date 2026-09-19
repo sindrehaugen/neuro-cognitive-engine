@@ -6809,6 +6809,88 @@ TOOLS = [
             "required": ["namespace_id"],
         },
     ),
+    # Support vertical module ticket summary and links (Wave D-6)
+    Tool(
+        name="support_summarise_ticket",
+        description=(
+            "Generate a C9a retrieval-grounded summary of a support ticket. "
+            "Synthesizes verified ticket narrative strictly from DB facts in the Knowledge Graph. "
+            "Watcher; read-only, cacheable."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active namespace UUID."},
+                "ticket_id": {"type": "string", "description": "Support ticket UUID."},
+            },
+            "required": ["namespace_id", "ticket_id"],
+        },
+    ),
+    Tool(
+        name="support_get_ticket_links",
+        description=(
+            "Retrieve all linked entities for a support ticket (functional locations, agreements, assets, work orders). "
+            "Watcher; read-only, cacheable."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active namespace UUID."},
+                "ticket_id": {"type": "string", "description": "Support ticket UUID."},
+            },
+            "required": ["namespace_id", "ticket_id"],
+        },
+    ),
+    Tool(
+        name="support_link_ticket",
+        description=(
+            "Link a support ticket to an entity (functional location, agreement, asset, external space, or work order). "
+            "Establishes a boundary edge in the Knowledge Graph and logs an audit event. "
+            "Actor; mutation, admin-only."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active namespace UUID."},
+                "ticket_id": {"type": "string", "description": "Support ticket UUID."},
+                "target_type": {
+                    "type": "string",
+                    "enum": [
+                        "functional_location",
+                        "agreement",
+                        "asset",
+                        "external_space",
+                        "work_order",
+                    ],
+                    "description": "Category of target entity to link to.",
+                },
+                "target_id": {
+                    "type": "string",
+                    "description": "Target entity identifier or UUID.",
+                },
+                "relation": {
+                    "type": "string",
+                    "default": "about",
+                    "description": "Predicate/relation label for the boundary edge (defaults to 'about').",
+                },
+                "change_origin": {
+                    "type": "string",
+                    "enum": [
+                        "sync",
+                        "webhook",
+                        "agent",
+                        "operator",
+                        "consolidation",
+                        "replay",
+                        "unknown",
+                    ],
+                    "default": "agent",
+                    "description": "Origin of the link action.",
+                },
+            },
+            "required": ["namespace_id", "ticket_id", "target_type", "target_id"],
+        },
+    ),
     # Field Tech vertical module tools (ML12-B5, M12.W5)
     Tool(
         name="field_tech_dispatch",

@@ -1630,6 +1630,22 @@ def build_admin_routes() -> list[Route]:
             endpoint=support_handlers.api_support_on_call,
             methods=["GET"],
         ),
+        # Support vertical module ticket summary and links (Wave D-6)
+        Route(
+            "/api/support/tickets/{id}/summary",
+            endpoint=support_handlers.api_support_ticket_summary,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/support/tickets/{id}/links",
+            endpoint=support_handlers.api_support_tickets_links,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/support/tickets/{id}/links",
+            endpoint=support_handlers.api_support_tickets_link,
+            methods=["POST"],
+        ),
         # Field Tech vertical module routes (ML12-B6, M12.W6)
         Route(
             "/api/field-tech/dispatch",

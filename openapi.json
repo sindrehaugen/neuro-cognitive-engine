@@ -15910,6 +15910,23 @@
         ],
         "type": "object"
       },
+      "Tool_support_get_ticket_links_Input": {
+        "properties": {
+          "namespace_id": {
+            "description": "Active namespace UUID.",
+            "type": "string"
+          },
+          "ticket_id": {
+            "description": "Support ticket UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "ticket_id"
+        ],
+        "type": "object"
+      },
       "Tool_support_get_tickets_Input": {
         "properties": {
           "id": {
@@ -15947,6 +15964,59 @@
         "required": [
           "namespace_id",
           "customer_id"
+        ],
+        "type": "object"
+      },
+      "Tool_support_link_ticket_Input": {
+        "properties": {
+          "change_origin": {
+            "default": "agent",
+            "description": "Origin of the link action.",
+            "enum": [
+              "sync",
+              "webhook",
+              "agent",
+              "operator",
+              "consolidation",
+              "replay",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Active namespace UUID.",
+            "type": "string"
+          },
+          "relation": {
+            "default": "about",
+            "description": "Predicate/relation label for the boundary edge (defaults to 'about').",
+            "type": "string"
+          },
+          "target_id": {
+            "description": "Target entity identifier or UUID.",
+            "type": "string"
+          },
+          "target_type": {
+            "description": "Category of target entity to link to.",
+            "enum": [
+              "functional_location",
+              "agreement",
+              "asset",
+              "external_space",
+              "work_order"
+            ],
+            "type": "string"
+          },
+          "ticket_id": {
+            "description": "Support ticket UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "ticket_id",
+          "target_type",
+          "target_id"
         ],
         "type": "object"
       },
@@ -16411,6 +16481,23 @@
           },
           "ticket_id": {
             "description": "Ticket UUID to inspect SLA clock for.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "ticket_id"
+        ],
+        "type": "object"
+      },
+      "Tool_support_summarise_ticket_Input": {
+        "properties": {
+          "namespace_id": {
+            "description": "Active namespace UUID.",
+            "type": "string"
+          },
+          "ticket_id": {
+            "description": "Support ticket UUID.",
             "type": "string"
           }
         },
@@ -22364,6 +22451,17 @@
         "mutation": false,
         "name": "support_get_ticket_actions"
       },
+      "support_get_ticket_links": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Retrieve all linked entities for a support ticket (functional locations, agreements, assets, work orders). Watcher; read-only, cacheable.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_support_get_ticket_links_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "support_get_ticket_links"
+      },
       "support_get_tickets": {
         "admin_only": false,
         "cacheable": true,
@@ -22385,6 +22483,17 @@
         "migration": false,
         "mutation": false,
         "name": "support_health_score"
+      },
+      "support_link_ticket": {
+        "admin_only": true,
+        "cacheable": false,
+        "description": "Link a support ticket to an entity (functional location, agreement, asset, external space, or work order). Establishes a boundary edge in the Knowledge Graph and logs an audit event. Actor; mutation, admin-only.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_support_link_ticket_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "support_link_ticket"
       },
       "support_list_customer_health": {
         "admin_only": false,
@@ -22495,6 +22604,17 @@
         "migration": false,
         "mutation": false,
         "name": "support_sla_clock"
+      },
+      "support_summarise_ticket": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Generate a C9a retrieval-grounded summary of a support ticket. Synthesizes verified ticket narrative strictly from DB facts in the Knowledge Graph. Watcher; read-only, cacheable.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_support_summarise_ticket_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "support_summarise_ticket"
       },
       "support_sync_now": {
         "admin_only": true,
@@ -93451,6 +93571,272 @@
         ]
       }
     },
+    "/api/support/tickets/{id}/links": {
+      "get": {
+        "description": "Path parameter:\nid (str): Ticket UUID.\nQuery parameter:\nnamespace_id (str, required): Active namespace UUID.\nResponse (JSON):\n{\"ok\": True, \"ticket_id\": str, \"functional_locations\": [...], \"agreements\": [...], ...}",
+        "operationId": "get_api_support_tickets_id_links",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum number of records to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque pagination cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort column with optional +/- prefix",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated list of projected fields",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Full-text search query across: summary, description, customer_id, room_id, source_id",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on source",
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on status",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on priority",
+            "in": "query",
+            "name": "priority",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on asset_id",
+            "in": "query",
+            "name": "asset_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on room_id",
+            "in": "query",
+            "name": "room_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on customer_id",
+            "in": "query",
+            "name": "customer_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on sla_profile",
+            "in": "query",
+            "name": "sla_profile",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Support_tickets_List"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "GET /api/support/tickets/{id}/links \u2014 retrieve all linked entities for a ticket.",
+        "tags": [
+          "support"
+        ]
+      },
+      "post": {
+        "description": "Path parameter:\nid (str): Ticket UUID.\nRequest body (JSON):\nnamespace_id (str, required): Active namespace UUID.\ntarget_type (str, required): Entity kind ('functional_location', 'agreement', 'asset', etc.).\ntarget_id (str, required): Target entity identifier.\nrelation (str, optional): Predicate label (default 'about').\nchange_origin (str, optional): Origin enum.\nResponse (JSON):\n{\"ok\": True, \"ticket_id\": str, \"target_type\": str, \"target_id\": str, ...}",
+        "operationId": "post_api_support_tickets_id_links",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Support_tickets_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Support_tickets"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "POST /api/support/tickets/{id}/links \u2014 link ticket to an entity (FL, agreement, asset).",
+        "tags": [
+          "support"
+        ]
+      }
+    },
     "/api/support/tickets/{id}/resolve": {
       "post": {
         "description": "Path parameter:\nid (str): Ticket UUID.\nRequest body (JSON):\nnamespace_id (str, required): Active namespace UUID.\nresolution_text (str, required): detailed resolution description.\nwas_fix (bool, optional): whether action fixed underlying cause (default True).\nresolution_category (str, optional): category slug (default 'other').\nfixed_asset_id (str, optional): asset UUID.\nfixed_product_id (str, optional): product ID.\nresolved_by (str, optional): resolving agent / operator ID.\nResponse (JSON):\n{\"ok\": True, \"ticket\": {...}, \"sla_clock\": {...}, \"resolution_id\": str}",
@@ -93798,6 +94184,190 @@
           }
         },
         "summary": "GET /api/support/tickets/{id}/sla-clock \u2014 get SLA clock countdowns & status.",
+        "tags": [
+          "support"
+        ]
+      }
+    },
+    "/api/support/tickets/{id}/summary": {
+      "get": {
+        "description": "Path parameter:\nid (str): Ticket UUID.\nQuery parameter:\nnamespace_id (str, required): Active namespace UUID.\nResponse (JSON):\n{\"ok\": True, \"ticket_id\": str, \"prose\": str, \"citations\": [...], \"dropped\": [...], ...}",
+        "operationId": "get_api_support_tickets_id_summary",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum number of records to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque pagination cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort column with optional +/- prefix",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated list of projected fields",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Full-text search query across: summary, description, customer_id, room_id, source_id",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on source",
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on status",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on priority",
+            "in": "query",
+            "name": "priority",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on asset_id",
+            "in": "query",
+            "name": "asset_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on room_id",
+            "in": "query",
+            "name": "room_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on customer_id",
+            "in": "query",
+            "name": "customer_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on sla_profile",
+            "in": "query",
+            "name": "sla_profile",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Support_tickets_List"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "GET /api/support/tickets/{id}/summary \u2014 C9a retrieval-grounded ticket summary.",
         "tags": [
           "support"
         ]

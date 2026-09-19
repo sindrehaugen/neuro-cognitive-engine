@@ -1733,6 +1733,25 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # Support vertical module ticket summary and links (Wave D-6)
+    "support_summarise_ticket": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_summarise_ticket"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "support_get_ticket_links": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_get_ticket_links"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "support_link_ticket": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_link_ticket"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
     # Field Tech vertical module tools (ML12-B5, M12.W5)
     "field_tech_dispatch": ToolSpec(
         _h(field_tech_mcp_handlers, "handle_field_tech_dispatch"),

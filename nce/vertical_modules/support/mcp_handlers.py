@@ -12,6 +12,9 @@ MCP tool handlers for Module 10 (Support Engine):
   - handle_support_upsell_signal: Actor; mutation, admin_only.
   - handle_support_at_risk_aggregate: Watcher; read-only, cacheable.
   - handle_support_get_on_call: Watcher; read-only, cacheable.
+  - handle_support_summarise_ticket: Watcher; read-only, cacheable.
+  - handle_support_get_ticket_links: Watcher; read-only, cacheable.
+  - handle_support_link_ticket: Actor; mutation, admin_only.
 
 Flags mirror the Support Engine contract:
 | Tool                     | cacheable | admin_only | mutation |
@@ -26,6 +29,9 @@ Flags mirror the Support Engine contract:
 | support_upsell_signal    | N         | Y          | Y        |
 | support_at_risk_aggregate| Y         | N          | N        |
 | support_get_on_call      | Y         | N          | N        |
+| support_summarise_ticket | Y         | N          | N        |
+| support_get_ticket_links | Y         | N          | N        |
+| support_link_ticket      | N         | Y          | Y        |
 
 Opt-In Guard (Charter §5.5 & Pattern)
 --------------------------------------
@@ -62,6 +68,11 @@ from nce.vertical_modules.support.ecosystem import (
 from nce.vertical_modules.support.health import do_health_score, do_record_touchpoint
 from nce.vertical_modules.support.on_call import do_get_on_call
 from nce.vertical_modules.support.sla import do_sla_clock
+from nce.vertical_modules.support.summary import (
+    do_get_ticket_links,
+    do_link_ticket,
+    do_summarise_ticket,
+)
 from nce.vertical_modules.support.sync import do_sync_now
 from nce.vertical_modules.support.tickets import (
     AutocloseConfidenceRefusalError,
@@ -426,6 +437,66 @@ async def handle_support_get_on_call(engine: Any, arguments: dict[str, Any]) -> 
     await _check_support_enabled(engine, arguments)
     try:
         result = await do_get_on_call(engine, dict(arguments))
+    except ValueError as exc:
+        raise McpError(-32602, str(exc)) from exc
+    return json.dumps({"ok": True, **result}, default=str)
+
+
+@mcp_handler
+async def handle_support_summarise_ticket(engine: Any, arguments: dict[str, Any]) -> str:
+    """MCP tool: support_summarise_ticket — C9a retrieval-grounded summary of a ticket.
+
+    Watcher; read-only, cacheable. Requires ``namespace_id`` and ``ticket_id``.
+    """
+    await _check_support_enabled(engine, arguments)
+    try:
+        result = await do_summarise_ticket(engine, dict(arguments))
+    except TicketNotFoundError as exc:
+        raise McpError(
+            _MCP_BUSINESS_REFUSED_CODE,
+            str(exc),
+            data={"reason": "ticket_not_found", "ticket_id": exc.ticket_id},
+        ) from exc
+    except ValueError as exc:
+        raise McpError(-32602, str(exc)) from exc
+    return json.dumps({"ok": True, **result}, default=str)
+
+
+@mcp_handler
+async def handle_support_get_ticket_links(engine: Any, arguments: dict[str, Any]) -> str:
+    """MCP tool: support_get_ticket_links — retrieve all linked entities for a ticket.
+
+    Watcher; read-only, cacheable. Requires ``namespace_id`` and ``ticket_id``.
+    """
+    await _check_support_enabled(engine, arguments)
+    try:
+        result = await do_get_ticket_links(engine, dict(arguments))
+    except TicketNotFoundError as exc:
+        raise McpError(
+            _MCP_BUSINESS_REFUSED_CODE,
+            str(exc),
+            data={"reason": "ticket_not_found", "ticket_id": exc.ticket_id},
+        ) from exc
+    except ValueError as exc:
+        raise McpError(-32602, str(exc)) from exc
+    return json.dumps({"ok": True, **result}, default=str)
+
+
+@mcp_handler
+async def handle_support_link_ticket(engine: Any, arguments: dict[str, Any]) -> str:
+    """MCP tool: support_link_ticket — link a ticket to a functional location, agreement, or asset.
+
+    Actor; mutation, admin_only. Requires ``namespace_id``, ``ticket_id``, ``target_type``, and ``target_id``.
+    """
+    await _check_support_enabled(engine, arguments)
+    try:
+        result = await do_link_ticket(engine, dict(arguments))
+    except TicketNotFoundError as exc:
+        raise McpError(
+            _MCP_BUSINESS_REFUSED_CODE,
+            str(exc),
+            data={"reason": "ticket_not_found", "ticket_id": exc.ticket_id},
+        ) from exc
     except ValueError as exc:
         raise McpError(-32602, str(exc)) from exc
     return json.dumps({"ok": True, **result}, default=str)
