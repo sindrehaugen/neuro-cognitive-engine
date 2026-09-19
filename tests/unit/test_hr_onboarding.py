@@ -19,10 +19,10 @@ Unit tests for Module 13 (HR Engine) Phase 5:
 from __future__ import annotations
 
 import json
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import date, timedelta
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -56,6 +56,37 @@ def _make_engine(fetchrow_val: Any = None, fetch_val: Any = None) -> MagicMock:
     pool.acquire.return_value = _AsyncCtx(conn)
     engine.pg_pool = pool
     return engine
+
+
+@contextmanager
+def _frozen_today(fixed_date: date):
+    """Freeze nce.vertical_modules.hr.compliance's date.today() to fixed_date.
+
+    Time-bomb fix (2026-09-19): tests below used to hardcode a scenario date
+    (e.g. "35 days into a sick leave that started 2026-08-01") and rely on
+    the real wall clock landing inside the intended milestone window. Once
+    the clock crossed 2026-09-19 -- 2026-08-01 + 49 days, exactly the
+    statutory 7-week dialogmote threshold -- do_update_absence_compliance's
+    internal `date.today()` call started computing 49+ elapsed days instead
+    of the intended 35, and compliance_state correctly (per the real
+    statutory logic) advanced past plan_4w into dialogmote_7w_pending. The
+    test was never wrong about what the code does; it was comparing the
+    code's real-time-dependent output against an expectation that was only
+    true for a six-week window that has since closed. This freezes the
+    clock instead of re-encoding a new expiry date, so the test is
+    deterministic rather than merely longer-lived. compliance.py does
+    `from datetime import date`, so the patch target is the module-local
+    name, not the datetime module itself.
+    """
+    fixed = fixed_date
+
+    class _FrozenDate(date):
+        @classmethod
+        def today(cls) -> date:  # type: ignore[override]
+            return fixed
+
+    with patch("nce.vertical_modules.hr.compliance.date", _FrozenDate):
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -330,18 +361,22 @@ async def test_do_update_absence_compliance():
     }
     engine = _make_engine(fetchrow_val=mock_absence)
 
-    res = await compliance.do_update_absence_compliance(
-        engine,
-        {
-            "namespace_id": _NS_A,
-            "absence_id": "ABS-ALPHA",
-            "milestone": "plan_4w",
-            "completed": True,
-            "completed_at": "2026-08-25",
-            "participants": ["Manager", "Employee", "Verneombud"],
-            "notes": "Follow-up plan agreed with adjusted desk duties",
-        },
-    )
+    # Scenario is "35 days into a sick leave that started 2026-08-01" --
+    # freeze the clock there rather than let the real date drift the
+    # elapsed-days computation past the 49-day dialogmote_1 threshold.
+    with _frozen_today(date(2026, 8, 1) + timedelta(days=35)):
+        res = await compliance.do_update_absence_compliance(
+            engine,
+            {
+                "namespace_id": _NS_A,
+                "absence_id": "ABS-ALPHA",
+                "milestone": "plan_4w",
+                "completed": True,
+                "completed_at": "2026-08-25",
+                "participants": ["Manager", "Employee", "Verneombud"],
+                "notes": "Follow-up plan agreed with adjusted desk duties",
+            },
+        )
 
     assert res["absence_id"] == "ABS-ALPHA"
     assert res["milestone"] == "plan_4w"
@@ -368,13 +403,18 @@ async def test_do_query_compliance_deadlines():
     ]
     engine = _make_engine(fetch_val=mock_rows)
 
-    res = await compliance.do_query_compliance_deadlines(
-        engine,
-        {
-            "namespace_id": _NS_A,
-            "only_alerts": False,
-        },
-    )
+    # Same "35 days into a sick leave started 2026-08-01" scenario as
+    # test_do_update_absence_compliance above -- freeze the clock there so
+    # the overdue-alert assertion below doesn't depend on when this suite
+    # happens to run.
+    with _frozen_today(date(2026, 8, 1) + timedelta(days=35)):
+        res = await compliance.do_query_compliance_deadlines(
+            engine,
+            {
+                "namespace_id": _NS_A,
+                "only_alerts": False,
+            },
+        )
 
     assert res["total_active_sick_leaves"] == 1
     assert len(res["records"]) == 1
