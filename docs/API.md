@@ -146,6 +146,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/assets/{id}/merge` | `api_assets_merge` |
 | POST | `/api/assets/{id}/move` | `api_assets_move` |
 | GET | `/api/assets/{id}/qr` | `api_assets_generate_qr` |
+| GET | `/api/assets/{id}/service-history` | `api_assets_service_history` |
 | POST | `/api/assets/{id}/telemetry` | `api_assets_pull_telemetry` |
 | POST | `/api/business-insights/ask` | `api_business_insights_ask` |
 | GET,POST | `/api/business-insights/board-pack` | `api_business_insights_board_pack` |
@@ -734,6 +735,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `assets_pull_telemetry` | yes | yes |  |  |
 | `assets_record_failure_pattern` | yes | yes |  |  |
 | `assets_seed_from_bom` |  | yes |  |  |
+| `assets_service_history` |  |  | yes |  |
 | `assets_sync_netbox` | yes | yes |  |  |
 | `assets_upsert_assets` |  | yes |  |  |
 | `boost_memory` |  | yes |  |  |
@@ -1099,4 +1101,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 685 REST endpoints, 396 MCP tools._
+_Totals: 686 REST endpoints, 397 MCP tools._
