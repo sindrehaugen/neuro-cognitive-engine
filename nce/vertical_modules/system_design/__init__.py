@@ -50,6 +50,9 @@ from nce.vertical_modules.system_design.geometry import (
 )
 from nce.vertical_modules.system_design.graph import (
     do_author_functional_location,
+    fl_label,
+    upsert_fl_edge,
+    upsert_fl_path,
 )
 from nce.vertical_modules.system_design.lucid import (
     do_publish_design_docs,
@@ -65,6 +68,29 @@ from nce.vertical_modules.system_design.read import (
 )
 from nce.vertical_modules.system_design.retire import (
     do_retire_planned,
+)
+from nce.vertical_modules.system_design.room_categories import (
+    ROOM_CATEGORIES,
+    VALID_RESPONSIBLE_ROLES,
+    InvalidResponsibleRoleError,
+    RoomCategoryError,
+    RoomCategoryNotFoundError,
+    assign_fl_responsible,
+    do_assign_fl_responsible,
+    do_get_fl_room_category,
+    do_get_room_categories,
+    do_get_room_category,
+    do_list_fl_responsible,
+    do_list_my_responsible_fls,
+    do_set_fl_room_category,
+    do_unassign_fl_responsible,
+    get_fl_room_category,
+    get_room_category,
+    list_fl_responsible,
+    list_my_responsible_fls,
+    list_room_categories,
+    set_fl_room_category,
+    unassign_fl_responsible,
 )
 from nce.vertical_modules.system_design.signal_distribution import (
     do_get_signal_rules,
@@ -122,4 +148,28 @@ __all__ = [
     "CycleDetectedError",
     "InvalidMoveError",
     "MergeConflictError",
+    "upsert_fl_path",
+    "upsert_fl_edge",
+    "fl_label",
+    "ROOM_CATEGORIES",
+    "VALID_RESPONSIBLE_ROLES",
+    "RoomCategoryError",
+    "RoomCategoryNotFoundError",
+    "InvalidResponsibleRoleError",
+    "list_room_categories",
+    "get_room_category",
+    "set_fl_room_category",
+    "get_fl_room_category",
+    "assign_fl_responsible",
+    "unassign_fl_responsible",
+    "list_fl_responsible",
+    "list_my_responsible_fls",
+    "do_get_room_categories",
+    "do_get_room_category",
+    "do_set_fl_room_category",
+    "do_get_fl_room_category",
+    "do_assign_fl_responsible",
+    "do_unassign_fl_responsible",
+    "do_list_fl_responsible",
+    "do_list_my_responsible_fls",
 ]

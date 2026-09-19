@@ -44,7 +44,8 @@ Design invariants (uncle-bob-craft):
 from __future__ import annotations
 
 import logging
-from uuid import UUID
+from typing import Any
+from uuid import UUID, uuid4
 
 import asyncpg  # type: ignore[import-untyped]
 
@@ -66,6 +67,8 @@ _PRED_CONTAINS: str = "contains"
 _PRED_PARENT_OF: str = "parent_of"
 _PRED_NEEDS: str = "needs"
 _PRED_REFERENCES: str = "references"
+_PRED_RESPONSIBLE_FOR: str = "responsible_for"
+_PRED_HAS_CATEGORY: str = "has_category"
 
 # Default edge confidence when the relationship is structural (certain).
 _STRUCTURAL_CONFIDENCE: float = 1.0
@@ -76,14 +79,17 @@ _STRUCTURAL_CONFIDENCE: float = 1.0
 # ---------------------------------------------------------------------------
 
 
-def _fl_label(namespace_slug: str, *path_parts: str) -> str:
+def fl_label(namespace_slug: str, *path_parts: str) -> str:
     """Deterministic FUNCTIONAL_LOCATION label.
 
     ``FL:<namespace_slug>:<part1>:<part2>:...`` — upper-cased so the same
     site path always maps to the same node regardless of input casing.
     """
-    parts = ":".join(p.upper() for p in path_parts)
+    parts = ":".join(p.upper() for p in path_parts if p)
     return f"FL:{namespace_slug.upper()}:{parts}"
+
+
+_fl_label = fl_label
 
 
 def _design_label(design_id: str) -> str:
@@ -110,39 +116,55 @@ def _product_label(manufacturer: str, mfr_part_no: str) -> str:
 
 
 async def _upsert_fl_node(
-    conn: asyncpg.Connection,  # type: ignore[type-arg]
+    conn: asyncpg.Connection | None,  # type: ignore[type-arg]
     ns_uuid: UUID,
     label: str,
     source_id: str | None,
 ) -> None:
     """Upsert one FUNCTIONAL_LOCATION node, ownership-guarded."""
-    await assert_owner(conn, ns_uuid, _NODE_TYPE_FL, _SYSTEM_DESIGN_ENGINE)
-    await conn.execute(
-        """
-        INSERT INTO kg_nodes
-            (label, entity_type, namespace_id, change_origin, system_design_source_id)
-        VALUES ($1, $2, $3::uuid, 'sync', $4)
-        ON CONFLICT (label, namespace_id) DO UPDATE
-            SET entity_type               = EXCLUDED.entity_type,
-                change_origin             = 'sync',
-                system_design_source_id   = COALESCE(
-                    EXCLUDED.system_design_source_id,
-                    kg_nodes.system_design_source_id
-                ),
-                updated_at                = NOW()
-        """,
-        label,
-        _NODE_TYPE_FL,
-        str(ns_uuid),
-        source_id,
-    )
-    await emit_graph_write(
-        conn,
-        namespace_id=ns_uuid,
-        node_type=_NODE_TYPE_FL,
-        op="upserted",
-        node_id=label,
-    )
+    if conn is not None and hasattr(conn, "execute"):
+        await assert_owner(conn, ns_uuid, _NODE_TYPE_FL, _SYSTEM_DESIGN_ENGINE)
+        await conn.execute(
+            """
+            INSERT INTO kg_nodes
+                (label, entity_type, namespace_id, change_origin, system_design_source_id)
+            VALUES ($1, $2, $3::uuid, 'sync', $4)
+            ON CONFLICT (label, namespace_id) DO UPDATE
+                SET entity_type               = EXCLUDED.entity_type,
+                    change_origin             = 'sync',
+                    system_design_source_id   = COALESCE(
+                        EXCLUDED.system_design_source_id,
+                        kg_nodes.system_design_source_id
+                    ),
+                    updated_at                = NOW()
+            """,
+            label,
+            _NODE_TYPE_FL,
+            str(ns_uuid),
+            source_id,
+        )
+        await emit_graph_write(
+            conn,
+            namespace_id=ns_uuid,
+            node_type=_NODE_TYPE_FL,
+            op="upserted",
+            node_id=label,
+        )
+    else:
+        from nce.vertical_modules.system_design.fl_tree import _MEM_NODES
+
+        bucket = _MEM_NODES.setdefault(str(ns_uuid), {})
+        existing = bucket.get(label, {})
+        bucket[label] = {
+            "id": existing.get("id") or str(uuid4()),
+            "label": label,
+            "entity_type": _NODE_TYPE_FL,
+            "namespace_id": str(ns_uuid),
+            "change_origin": "sync",
+            "system_design_source_id": source_id or existing.get("system_design_source_id"),
+            "created_at": existing.get("created_at", "2026-09-19T12:00:00Z"),
+            "updated_at": "2026-09-19T12:00:00Z",
+        }
 
 
 async def _upsert_design_node(
@@ -223,7 +245,7 @@ async def _upsert_design_line_node(
 
 
 async def _upsert_edge(
-    conn: asyncpg.Connection,  # type: ignore[type-arg]
+    conn: asyncpg.Connection | None,  # type: ignore[type-arg]
     ns_uuid: UUID,
     subject: str,
     predicate: str,
@@ -232,28 +254,384 @@ async def _upsert_edge(
     source_id: str | None,
 ) -> None:
     """Upsert a single kg_edge.  confidence (0–1) on edges only (rule 7)."""
-    await conn.execute(
-        """
-        INSERT INTO kg_edges
-            (subject_label, predicate, object_label, confidence,
-             namespace_id, change_origin, system_design_source_id)
-        VALUES ($1, $2, $3, $4, $5::uuid, 'sync', $6)
-        ON CONFLICT (subject_label, predicate, object_label, namespace_id) DO UPDATE
-            SET confidence                = EXCLUDED.confidence,
-                change_origin             = 'sync',
-                system_design_source_id   = COALESCE(
-                    EXCLUDED.system_design_source_id,
-                    kg_edges.system_design_source_id
-                ),
-                updated_at                = NOW()
-        """,
-        subject,
-        predicate,
-        obj,
-        float(confidence),
-        str(ns_uuid),
-        source_id,
+    if conn is not None and hasattr(conn, "execute"):
+        await conn.execute(
+            """
+            INSERT INTO kg_edges
+                (subject_label, predicate, object_label, confidence,
+                 namespace_id, change_origin, system_design_source_id)
+            VALUES ($1, $2, $3, $4, $5::uuid, 'sync', $6)
+            ON CONFLICT (subject_label, predicate, object_label, namespace_id) DO UPDATE
+                SET confidence                = EXCLUDED.confidence,
+                    change_origin             = 'sync',
+                    system_design_source_id   = COALESCE(
+                        EXCLUDED.system_design_source_id,
+                        kg_edges.system_design_source_id
+                    ),
+                    updated_at                = NOW()
+            """,
+            subject,
+            predicate,
+            obj,
+            float(confidence),
+            str(ns_uuid),
+            source_id,
+        )
+    else:
+        from nce.vertical_modules.system_design.fl_tree import _MEM_EDGES
+
+        edges = _MEM_EDGES.setdefault(str(ns_uuid), [])
+        for e in edges:
+            if (
+                e.get("subject_label") == subject
+                and e.get("predicate") == predicate
+                and e.get("object_label") == obj
+            ):
+                e["confidence"] = float(confidence)
+                e["system_design_source_id"] = source_id or e.get("system_design_source_id")
+                e["updated_at"] = "2026-09-19T12:00:00Z"
+                return
+        edges.append(
+            {
+                "subject_label": subject,
+                "predicate": predicate,
+                "object_label": obj,
+                "confidence": float(confidence),
+                "namespace_id": str(ns_uuid),
+                "change_origin": "sync",
+                "system_design_source_id": source_id,
+                "created_at": "2026-09-19T12:00:00Z",
+                "updated_at": "2026-09-19T12:00:00Z",
+            }
+        )
+
+
+# ---------------------------------------------------------------------------
+# Public Graph Primitives: upsert_fl_path & upsert_fl_edge
+# ---------------------------------------------------------------------------
+
+
+async def upsert_fl_path(
+    conn: asyncpg.Connection | None,  # type: ignore[type-arg]
+    namespace_id: str | UUID,
+    *,
+    namespace_slug: str,
+    path_parts: list[str] | tuple[str, ...],
+    source_id: str | None = None,
+) -> str:
+    """Upsert one FUNCTIONAL_LOCATION node identified by a path hierarchy.
+
+    Generates deterministic label ``FL:<namespace_slug>:<part1>:<part2>:...``
+    and performs an ownership-guarded upsert into ``kg_nodes`` with
+    ``entity_type='FUNCTIONAL_LOCATION'`` and ``change_origin='sync'``.
+
+    Returns the authored node's canonical label.
+    """
+    ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
+    label = fl_label(namespace_slug, *path_parts)
+    await _upsert_fl_node(conn, ns_uuid, label, source_id)
+    return label
+
+
+async def upsert_fl_edge(
+    conn: asyncpg.Connection | None,  # type: ignore[type-arg]
+    namespace_id: str | UUID,
+    *,
+    subject: str,
+    predicate: str,
+    obj: str,
+    confidence: float = _STRUCTURAL_CONFIDENCE,
+    source_id: str | None = None,
+) -> None:
+    """Upsert a single kg_edge for functional-location topology or metadata."""
+    ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
+    await _upsert_edge(conn, ns_uuid, subject, predicate, obj, confidence, source_id)
+
+
+# ---------------------------------------------------------------------------
+# Room Category & Responsible Graph Edge Operations (Wave C-2)
+# ---------------------------------------------------------------------------
+
+
+async def set_fl_category_edge(
+    conn: asyncpg.Connection | None,  # type: ignore[type-arg]
+    namespace_id: str | UUID,
+    *,
+    fl_label: str,
+    category_id: str,
+) -> None:
+    """Set the room category for a functional location via a has_category kg_edge.
+
+    Replaces any previous has_category edge for this functional location.
+    """
+    ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
+    category_label = f"ROOM_CATEGORY:{category_id.upper()}"
+
+    if conn is not None and hasattr(conn, "execute"):
+        await conn.execute(
+            """
+            DELETE FROM kg_edges
+            WHERE namespace_id = $1::uuid
+              AND subject_label = $2
+              AND predicate = $3
+            """,
+            str(ns_uuid),
+            fl_label,
+            _PRED_HAS_CATEGORY,
+        )
+    else:
+        from nce.vertical_modules.system_design.fl_tree import _MEM_EDGES
+
+        edges = _MEM_EDGES.setdefault(str(ns_uuid), [])
+        _MEM_EDGES[str(ns_uuid)] = [
+            e
+            for e in edges
+            if not (e.get("subject_label") == fl_label and e.get("predicate") == _PRED_HAS_CATEGORY)
+        ]
+
+    await _upsert_edge(
+        conn,
+        ns_uuid,
+        subject=fl_label,
+        predicate=_PRED_HAS_CATEGORY,
+        obj=category_label,
+        confidence=_STRUCTURAL_CONFIDENCE,
+        source_id=None,
     )
+
+
+async def get_fl_category_edge(
+    conn: asyncpg.Connection | None,  # type: ignore[type-arg]
+    namespace_id: str | UUID,
+    *,
+    fl_label: str,
+) -> str | None:
+    """Retrieve the room category ID assigned to a functional location, or None."""
+    ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
+
+    if conn is not None and hasattr(conn, "fetchrow"):
+        row = await conn.fetchrow(
+            """
+            SELECT object_label
+            FROM kg_edges
+            WHERE namespace_id = $1::uuid
+              AND subject_label = $2
+              AND predicate = $3
+            LIMIT 1
+            """,
+            str(ns_uuid),
+            fl_label,
+            _PRED_HAS_CATEGORY,
+        )
+        if row is not None:
+            obj_label = str(row["object_label"])
+            return obj_label.removeprefix("ROOM_CATEGORY:")
+        return None
+
+    from nce.vertical_modules.system_design.fl_tree import _MEM_EDGES
+
+    edges = _MEM_EDGES.get(str(ns_uuid), [])
+    for e in edges:
+        if e.get("subject_label") == fl_label and e.get("predicate") == _PRED_HAS_CATEGORY:
+            obj_label = str(e.get("object_label", ""))
+            return obj_label.removeprefix("ROOM_CATEGORY:")
+    return None
+
+
+async def assign_fl_responsible_edge(
+    conn: asyncpg.Connection | None,  # type: ignore[type-arg]
+    namespace_id: str | UUID,
+    *,
+    fl_label: str,
+    employee_id: str,
+    role: str = "primary",
+) -> None:
+    """Link an employee to a functional location via a responsible_for edge."""
+    ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
+    subject_label = f"EMPLOYEE:{employee_id}"
+    source_id = f"role:{role}"
+
+    await _upsert_edge(
+        conn,
+        ns_uuid,
+        subject=subject_label,
+        predicate=_PRED_RESPONSIBLE_FOR,
+        obj=fl_label,
+        confidence=_STRUCTURAL_CONFIDENCE,
+        source_id=source_id,
+    )
+
+
+async def unassign_fl_responsible_edge(
+    conn: asyncpg.Connection | None,  # type: ignore[type-arg]
+    namespace_id: str | UUID,
+    *,
+    fl_label: str,
+    employee_id: str,
+) -> bool:
+    """Remove a responsible_for edge between employee and functional location.
+
+    Returns True if an edge was found and removed, False otherwise.
+    """
+    ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
+    subject_label = f"EMPLOYEE:{employee_id}"
+
+    if conn is not None and hasattr(conn, "execute"):
+        status = await conn.execute(
+            """
+            DELETE FROM kg_edges
+            WHERE namespace_id = $1::uuid
+              AND subject_label = $2
+              AND predicate = $3
+              AND object_label = $4
+            """,
+            str(ns_uuid),
+            subject_label,
+            _PRED_RESPONSIBLE_FOR,
+            fl_label,
+        )
+        # asyncpg returns status string e.g. "DELETE 1"
+        return status != "DELETE 0"
+
+    from nce.vertical_modules.system_design.fl_tree import _MEM_EDGES
+
+    edges = _MEM_EDGES.get(str(ns_uuid), [])
+    initial_len = len(edges)
+    _MEM_EDGES[str(ns_uuid)] = [
+        e
+        for e in edges
+        if not (
+            e.get("subject_label") == subject_label
+            and e.get("predicate") == _PRED_RESPONSIBLE_FOR
+            and e.get("object_label") == fl_label
+        )
+    ]
+    return len(_MEM_EDGES[str(ns_uuid)]) < initial_len
+
+
+async def list_fl_responsible_edges(
+    conn: asyncpg.Connection | None,  # type: ignore[type-arg]
+    namespace_id: str | UUID,
+    *,
+    fl_label: str,
+) -> list[dict[str, Any]]:
+    """List all employees responsible for a given functional location."""
+    ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
+
+    if conn is not None and hasattr(conn, "fetch"):
+        rows = await conn.fetch(
+            """
+            SELECT subject_label, system_design_source_id, created_at, updated_at
+            FROM kg_edges
+            WHERE namespace_id = $1::uuid
+              AND predicate = $2
+              AND object_label = $3
+            ORDER BY subject_label ASC
+            """,
+            str(ns_uuid),
+            _PRED_RESPONSIBLE_FOR,
+            fl_label,
+        )
+        results = []
+        for r in rows:
+            subj = str(r["subject_label"])
+            emp_id = subj.removeprefix("EMPLOYEE:")
+            source_id = str(r["system_design_source_id"] or "")
+            role = source_id.removeprefix("role:") if source_id.startswith("role:") else "primary"
+            results.append(
+                {
+                    "employee_id": emp_id,
+                    "role": role,
+                    "fl_label": fl_label,
+                    "created_at": str(r["created_at"]),
+                    "updated_at": str(r["updated_at"]),
+                }
+            )
+        return results
+
+    from nce.vertical_modules.system_design.fl_tree import _MEM_EDGES
+
+    edges = _MEM_EDGES.get(str(ns_uuid), [])
+    results = []
+    for e in edges:
+        if e.get("predicate") == _PRED_RESPONSIBLE_FOR and e.get("object_label") == fl_label:
+            subj = str(e.get("subject_label", ""))
+            emp_id = subj.removeprefix("EMPLOYEE:")
+            source_id = str(e.get("system_design_source_id") or "")
+            role = source_id.removeprefix("role:") if source_id.startswith("role:") else "primary"
+            results.append(
+                {
+                    "employee_id": emp_id,
+                    "role": role,
+                    "fl_label": fl_label,
+                    "created_at": str(e.get("created_at", "")),
+                    "updated_at": str(e.get("updated_at", "")),
+                }
+            )
+    results.sort(key=lambda x: x["employee_id"])
+    return results
+
+
+async def list_responsible_fl_edges_for_employee(
+    conn: asyncpg.Connection | None,  # type: ignore[type-arg]
+    namespace_id: str | UUID,
+    *,
+    employee_id: str,
+) -> list[dict[str, Any]]:
+    """List all functional locations assigned to a given employee."""
+    ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
+    subject_label = f"EMPLOYEE:{employee_id}"
+
+    if conn is not None and hasattr(conn, "fetch"):
+        rows = await conn.fetch(
+            """
+            SELECT object_label, system_design_source_id, created_at, updated_at
+            FROM kg_edges
+            WHERE namespace_id = $1::uuid
+              AND predicate = $2
+              AND subject_label = $3
+            ORDER BY object_label ASC
+            """,
+            str(ns_uuid),
+            _PRED_RESPONSIBLE_FOR,
+            subject_label,
+        )
+        results = []
+        for r in rows:
+            obj_lbl = str(r["object_label"])
+            source_id = str(r["system_design_source_id"] or "")
+            role = source_id.removeprefix("role:") if source_id.startswith("role:") else "primary"
+            results.append(
+                {
+                    "fl_label": obj_lbl,
+                    "role": role,
+                    "employee_id": employee_id,
+                    "created_at": str(r["created_at"]),
+                    "updated_at": str(r["updated_at"]),
+                }
+            )
+        return results
+
+    from nce.vertical_modules.system_design.fl_tree import _MEM_EDGES
+
+    edges = _MEM_EDGES.get(str(ns_uuid), [])
+    results = []
+    for e in edges:
+        if e.get("predicate") == _PRED_RESPONSIBLE_FOR and e.get("subject_label") == subject_label:
+            obj_lbl = str(e.get("object_label", ""))
+            source_id = str(e.get("system_design_source_id") or "")
+            role = source_id.removeprefix("role:") if source_id.startswith("role:") else "primary"
+            results.append(
+                {
+                    "fl_label": obj_lbl,
+                    "role": role,
+                    "employee_id": employee_id,
+                    "created_at": str(e.get("created_at", "")),
+                    "updated_at": str(e.get("updated_at", "")),
+                }
+            )
+    results.sort(key=lambda x: x["fl_label"])
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -360,13 +738,20 @@ async def do_author_functional_location(
     # ------------------------------------------------------------------
     # 2. SITE node (root of the functional-location tree)
     # ------------------------------------------------------------------
-    site_lbl = _fl_label(namespace_slug, site_name)
-    await _upsert_fl_node(conn, ns_uuid, site_lbl, source_id)
+    site_lbl = await upsert_fl_path(
+        conn, ns_uuid, namespace_slug=namespace_slug, path_parts=[site_name], source_id=source_id
+    )
     node_count += 1
 
     # DESIGN -[contains]-> SITE
-    await _upsert_edge(
-        conn, ns_uuid, design_lbl, _PRED_CONTAINS, site_lbl, _STRUCTURAL_CONFIDENCE, source_id
+    await upsert_fl_edge(
+        conn,
+        ns_uuid,
+        subject=design_lbl,
+        predicate=_PRED_CONTAINS,
+        obj=site_lbl,
+        confidence=_STRUCTURAL_CONFIDENCE,
+        source_id=source_id,
     )
     edge_count += 1
 
@@ -375,68 +760,92 @@ async def do_author_functional_location(
     # ------------------------------------------------------------------
     for building in buildings:
         bld_name: str = building["name"]
-        bld_lbl = _fl_label(namespace_slug, site_name, bld_name)
-        await _upsert_fl_node(conn, ns_uuid, bld_lbl, source_id)
+        bld_lbl = await upsert_fl_path(
+            conn,
+            ns_uuid,
+            namespace_slug=namespace_slug,
+            path_parts=[site_name, bld_name],
+            source_id=source_id,
+        )
         node_count += 1
 
         # SITE -[parent_of]-> BUILDING
-        await _upsert_edge(
-            conn, ns_uuid, site_lbl, _PRED_PARENT_OF, bld_lbl, _STRUCTURAL_CONFIDENCE, source_id
+        await upsert_fl_edge(
+            conn,
+            ns_uuid,
+            subject=site_lbl,
+            predicate=_PRED_PARENT_OF,
+            obj=bld_lbl,
+            confidence=_STRUCTURAL_CONFIDENCE,
+            source_id=source_id,
         )
         edge_count += 1
 
         for floor in building.get("floors", []):
             flr_name: str = floor["name"]
-            flr_lbl = _fl_label(namespace_slug, site_name, bld_name, flr_name)
-            await _upsert_fl_node(conn, ns_uuid, flr_lbl, source_id)
+            flr_lbl = await upsert_fl_path(
+                conn,
+                ns_uuid,
+                namespace_slug=namespace_slug,
+                path_parts=[site_name, bld_name, flr_name],
+                source_id=source_id,
+            )
             node_count += 1
 
             # BUILDING -[parent_of]-> FLOOR
-            await _upsert_edge(
+            await upsert_fl_edge(
                 conn,
                 ns_uuid,
-                bld_lbl,
-                _PRED_PARENT_OF,
-                flr_lbl,
-                _STRUCTURAL_CONFIDENCE,
-                source_id,
+                subject=bld_lbl,
+                predicate=_PRED_PARENT_OF,
+                obj=flr_lbl,
+                confidence=_STRUCTURAL_CONFIDENCE,
+                source_id=source_id,
             )
             edge_count += 1
 
             for room in floor.get("rooms", []):
                 room_name: str = room["name"]
-                room_lbl = _fl_label(namespace_slug, site_name, bld_name, flr_name, room_name)
-                await _upsert_fl_node(conn, ns_uuid, room_lbl, source_id)
+                room_lbl = await upsert_fl_path(
+                    conn,
+                    ns_uuid,
+                    namespace_slug=namespace_slug,
+                    path_parts=[site_name, bld_name, flr_name, room_name],
+                    source_id=source_id,
+                )
                 node_count += 1
 
                 # FLOOR -[parent_of]-> ROOM
-                await _upsert_edge(
+                await upsert_fl_edge(
                     conn,
                     ns_uuid,
-                    flr_lbl,
-                    _PRED_PARENT_OF,
-                    room_lbl,
-                    _STRUCTURAL_CONFIDENCE,
-                    source_id,
+                    subject=flr_lbl,
+                    predicate=_PRED_PARENT_OF,
+                    obj=room_lbl,
+                    confidence=_STRUCTURAL_CONFIDENCE,
+                    source_id=source_id,
                 )
                 edge_count += 1
 
                 for pos_name in room.get("positions", []):
-                    pos_lbl = _fl_label(
-                        namespace_slug, site_name, bld_name, flr_name, room_name, pos_name
+                    pos_lbl = await upsert_fl_path(
+                        conn,
+                        ns_uuid,
+                        namespace_slug=namespace_slug,
+                        path_parts=[site_name, bld_name, flr_name, room_name, pos_name],
+                        source_id=source_id,
                     )
-                    await _upsert_fl_node(conn, ns_uuid, pos_lbl, source_id)
                     node_count += 1
 
                     # ROOM -[parent_of]-> POSITION
-                    await _upsert_edge(
+                    await upsert_fl_edge(
                         conn,
                         ns_uuid,
-                        room_lbl,
-                        _PRED_PARENT_OF,
-                        pos_lbl,
-                        _STRUCTURAL_CONFIDENCE,
-                        source_id,
+                        subject=room_lbl,
+                        predicate=_PRED_PARENT_OF,
+                        obj=pos_lbl,
+                        confidence=_STRUCTURAL_CONFIDENCE,
+                        source_id=source_id,
                     )
                     edge_count += 1
 
