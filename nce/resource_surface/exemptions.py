@@ -164,30 +164,6 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     # ---------------------------------------------------------------------------
     # Sales Engine (Lane B Waves B-1, B-4 / Lane E)
     # ---------------------------------------------------------------------------
-    "CUSTOMER": ResourceExemption(
-        owner_engine="sales",
-        reason=(
-            "No sales_customers table exists (grep -c \"CREATE TABLE IF NOT EXISTS "
-            "sales_customers\" nce/schema.sql -> 0, and the string appears nowhere "
-            "else in the file). CUSTOMER rows are multiplexed into the polymorphic "
-            "sales_read_model table (entity discriminator column, natural key "
-            "(namespace_id, entity, source_id), line 1644) alongside LEAD/DEAL/"
-            "QUOTE/OPPORTUNITY -- a single ResourceSpec.table_name cannot represent "
-            "one node type out of a shared multi-entity table without an "
-            "entity-filter capability the spec shape does not have today. Corrected "
-            "by Lane E's exemptions sweep (matches Lane B's independent K-B1 "
-            "finding). Scheduled for Wave B-1 CUSTOMER resource declaration."
-        ),
-    ),
-    "LEAD": ResourceExemption(
-        owner_engine="sales",
-        reason=(
-            "No sales_leads table exists (grep -c \"CREATE TABLE IF NOT EXISTS "
-            "sales_leads\" nce/schema.sql -> 0). Same polymorphic sales_read_model "
-            "shape as CUSTOMER (see that entry). Corrected by Lane E's exemptions "
-            "sweep. Scheduled for Wave B-1 LEAD resource declaration."
-        ),
-    ),
     "OPPORTUNITY": ResourceExemption(
         owner_engine="sales",
         reason=(
@@ -196,24 +172,6 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
             "OPPORTUNITY maps onto it does not hold either. Same polymorphic "
             "sales_read_model shape as CUSTOMER. Corrected by Lane E's exemptions "
             "sweep. Scheduled for Wave B-1 / B-3 deal lifecycle restructuring."
-        ),
-    ),
-    "DEAL": ResourceExemption(
-        owner_engine="sales",
-        reason=(
-            "No sales_deals table exists (grep -c \"CREATE TABLE IF NOT EXISTS "
-            "sales_deals\" nce/schema.sql -> 0). Same polymorphic sales_read_model "
-            "shape as CUSTOMER. Corrected by Lane E's exemptions sweep. Scheduled "
-            "for Wave B-1 DEAL resource declaration."
-        ),
-    ),
-    "QUOTE": ResourceExemption(
-        owner_engine="sales",
-        reason=(
-            "No sales_quotes table exists (grep -c \"CREATE TABLE IF NOT EXISTS "
-            "sales_quotes\" nce/schema.sql -> 0). Same polymorphic sales_read_model "
-            "shape as CUSTOMER. Corrected by Lane E's exemptions sweep. Scheduled "
-            "for Wave B-1 QUOTE resource declaration."
         ),
     ),
     "SIGNED_BASELINE": ResourceExemption(
@@ -248,33 +206,13 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
         ),
     ),
     # ---------------------------------------------------------------------------
-    # Agreements Engine (Lane B Wave B-9 / Lane E)
+    # Agreements Engine (Lane B Wave B-10 / Lane E)
     # ---------------------------------------------------------------------------
-    "AGREEMENT": ResourceExemption(
-        owner_engine="agreements",
-        reason=(
-            "kg_nodes-only stub, not a real table -- no agreements table exists "
-            "(grep -c \"CREATE TABLE IF NOT EXISTS agreements\" nce/schema.sql -> 0; "
-            "the string 'agreements' appears only as the agreements_source_id column "
-            "and in comments). nce/vertical_modules/agreements/graph.py inserts only "
-            "into kg_nodes (label, entity_type, namespace_id, agreements_source_id, "
-            "change_origin) -- no dedicated attribute row. Corrected by Lane E's "
-            "exemptions sweep. Scheduled for Wave B-9 AGREEMENT resource declaration "
-            "once a backing table exists."
-        ),
-    ),
     "AGREEMENT_TERM": ResourceExemption(
         owner_engine="agreements",
         reason=(
             "Sub-resource for contract terms, index series, and SLA parameters; "
-            "scheduled for Wave B-9 / B-10 agreement term surfaces."
-        ),
-    ),
-    "AGREEMENT_SIGNATURE": ResourceExemption(
-        owner_engine="agreements",
-        reason=(
-            "Signature audit and Oneflow integration mirror state; scheduled for "
-            "Wave B-9 agreement party and signature surfaces."
+            "scheduled for Wave B-10 agreement price rules and terms surfaces."
         ),
     ),
     # ---------------------------------------------------------------------------

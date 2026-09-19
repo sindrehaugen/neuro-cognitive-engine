@@ -51,14 +51,14 @@ _NAMESPACE_ID = "00000000-0000-4000-8000-000000000001"
 _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
-# --- MEASURED post-rebase onto main (Wave D-5 + Wave D-1 + Wave D-7) + Lane D Wave D-6 Support Ticket summary & links tools:
-# TOTAL: 396 from main + 3 support summary/links tools = 399.
-# MUTATION: 178 from main + 1 support_link_ticket = 179.
-# CACHEABLE: 173 from main + 2 support summary/links reads = 175.
-# ADMIN_ONLY: 99 from main + 1 support_link_ticket = 100.
-_TOTAL_TOOLS = 399
-_MUTATION_TOOLS = 179
-_CACHEABLE_TOOLS = 175
+# --- MEASURED post-rebase onto main (incorporating Wave D-1, D-5, D-7, D-3, Wave B-1, Wave C-2, Wave B-9: 433 tools) + Lane D Wave D-6 Support Ticket summary & links tools (3 tools: 1 mutating/admin-only, 2 cacheable reads):
+# TOTAL: 433 from main + 3 = 436.
+# MUTATION: 195 + 1 = 196.
+# CACHEABLE: 193 + 2 = 195.
+# ADMIN_ONLY: 99 + 1 = 100.
+_TOTAL_TOOLS = 436
+_MUTATION_TOOLS = 196
+_CACHEABLE_TOOLS = 195
 _ADMIN_ONLY_TOOLS = 100
 _MIGRATION_TOOLS = 5
 

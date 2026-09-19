@@ -2874,6 +2874,34 @@ TOOLS = [
         },
     ),
     Tool(
+        name="assets_service_history",
+        description=(
+            "Retrieve full composite service history for an asset (Wave D-3). "
+            "Aggregates support tickets, action logs with outcomes, field tech work orders, "
+            "and knowledge graph failure pattern / boundary edges into a unified chronological timeline. Watcher; read-only."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "asset_id": {
+                    "type": "string",
+                    "description": "Target asset UUID to retrieve service history for.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max timeline entries to return (default 50, max 200).",
+                },
+                "order": {
+                    "type": "string",
+                    "enum": ["desc", "asc"],
+                    "description": "Timeline sorting order: 'desc' (newest first, default) or 'asc'.",
+                },
+            },
+            "required": ["namespace_id", "asset_id"],
+        },
+    ),
+    Tool(
         name="vendors_get_vendor",
         description="Fetch a single vendor. Watcher; read-only, cacheable.",
         inputSchema={
@@ -5638,6 +5666,170 @@ TOOLS = [
                 },
             },
             "required": ["namespace_id", "node_id"],
+        },
+    ),
+    # -----------------------------------------------------------------
+    # System Design vertical module tools (Wave C-2) — Room Categories & FL Metadata
+    # -----------------------------------------------------------------
+    Tool(
+        name="system_design_list_room_categories",
+        description=(
+            "List standardized AV and engineering room categories with capacity and keyword filters."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "q": {
+                    "type": "string",
+                    "description": "Search keyword matching category ID, name, or description.",
+                },
+                "min_capacity": {
+                    "type": "integer",
+                    "description": "Minimum seat capacity filter.",
+                },
+                "max_capacity": {
+                    "type": "integer",
+                    "description": "Maximum seat capacity filter.",
+                },
+            },
+        },
+    ),
+    Tool(
+        name="system_design_get_room_category",
+        description=(
+            "Retrieve definition and acoustic/video/audio parameters for a single room category."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "category_id": {
+                    "type": "string",
+                    "description": "Room category identifier (e.g. BOARDROOM, HUDDLE).",
+                },
+            },
+            "required": ["category_id"],
+        },
+    ),
+    Tool(
+        name="system_design_set_fl_room_category",
+        description=("Associate a room category with a functional location node via a kg_edge."),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "fl_id": {
+                    "type": "string",
+                    "description": "Target functional location UUID or label.",
+                },
+                "category_id": {
+                    "type": "string",
+                    "description": "Room category identifier (e.g. BOARDROOM).",
+                },
+                "actor": {
+                    "type": "string",
+                    "description": "Actor identity initiating the change.",
+                },
+            },
+            "required": ["namespace_id", "fl_id", "category_id"],
+        },
+    ),
+    Tool(
+        name="system_design_get_fl_room_category",
+        description=("Retrieve the assigned room category for a functional location."),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "fl_id": {
+                    "type": "string",
+                    "description": "Target functional location UUID or label.",
+                },
+            },
+            "required": ["namespace_id", "fl_id"],
+        },
+    ),
+    Tool(
+        name="system_design_assign_fl_responsible",
+        description=(
+            "Assign a responsible employee to a functional location with a specific role."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "fl_id": {
+                    "type": "string",
+                    "description": "Target functional location UUID or label.",
+                },
+                "employee_id": {
+                    "type": "string",
+                    "description": "Employee identifier.",
+                },
+                "role": {
+                    "type": "string",
+                    "description": "Role designation (primary, backup, lead_technician, commissioning_lead, account_manager).",
+                },
+                "actor": {
+                    "type": "string",
+                    "description": "Actor identity initiating assignment.",
+                },
+            },
+            "required": ["namespace_id", "fl_id", "employee_id"],
+        },
+    ),
+    Tool(
+        name="system_design_unassign_fl_responsible",
+        description=("Remove a responsible employee assignment from a functional location."),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "fl_id": {
+                    "type": "string",
+                    "description": "Target functional location UUID or label.",
+                },
+                "employee_id": {
+                    "type": "string",
+                    "description": "Employee identifier to unassign.",
+                },
+                "actor": {
+                    "type": "string",
+                    "description": "Actor identity initiating removal.",
+                },
+            },
+            "required": ["namespace_id", "fl_id", "employee_id"],
+        },
+    ),
+    Tool(
+        name="system_design_list_fl_responsible",
+        description=("List all responsible employees assigned to a functional location."),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "fl_id": {
+                    "type": "string",
+                    "description": "Target functional location UUID or label.",
+                },
+            },
+            "required": ["namespace_id", "fl_id"],
+        },
+    ),
+    Tool(
+        name="system_design_list_my_responsible_fls",
+        description=(
+            "List functional locations assigned to the calling employee (C16 Principal Mapping)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "employee_id": {
+                    "type": "string",
+                    "description": "Optional explicit employee identifier.",
+                },
+            },
+            "required": ["namespace_id"],
         },
     ),
     # -----------------------------------------------------------------

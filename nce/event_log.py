@@ -410,6 +410,15 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "outbound_webhooks": "namespace_id",
     # C17 Site Master Data (Shared Core, Wave A-9): sites and building master data.
     "sites": "namespace_id",
+    # C12 Sales Resource Surface (Sales Engine, Wave B-1): customers, leads, deals, quotes.
+    "sales_customers": "namespace_id",
+    "sales_leads": "namespace_id",
+    "sales_deals": "namespace_id",
+    "sales_quotes": "namespace_id",
+    # C12 Agreements Resource Surface (Agreements Engine, Wave B-9): agreements, parties, templates.
+    "agreements": "namespace_id",
+    "agreement_parties": "namespace_id",
+    "agreement_templates": "namespace_id",
 }
 
 
