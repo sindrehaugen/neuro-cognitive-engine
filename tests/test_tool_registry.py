@@ -61,7 +61,7 @@ _C12_TOOL_SPECS = build_all_resource_tool_specs()
 _C12_TOOL_NAMES = frozenset(_C12_TOOL_SPECS)
 _C12_MUTATION_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.mutation)
 _C12_CACHEABLE_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.cacheable)
-_EXPECTED_STATIC_TOTAL = 304  # 292 hand-written tools + 8 FUNCTIONAL_LOCATION tree tools (Lane C Wave C-1) + 1 C17 site master data address-registry feed (Lane F Wave F-9) + 2 support action/timeline tools (Lane D Wave D-5) + 1 support on-call rota (Lane D Wave D-7); see _C12_TOOL_NAMES above
+_EXPECTED_STATIC_TOTAL = 305  # 292 hand-written tools + 8 FUNCTIONAL_LOCATION tree tools (Lane C Wave C-1) + 1 C17 site master data address-registry feed (Lane F Wave F-9) + 2 support action/timeline tools (Lane D Wave D-5) + 1 support on-call rota (Lane D Wave D-7) + 1 assets service history (Lane D Wave D-3); see _C12_TOOL_NAMES above
 
 # Re-exported for tests/unit/test_{assets,economy,inventory}_surface.py and
 # test_sales_skeleton.py, which each do `from tests.test_tool_registry import
@@ -625,6 +625,8 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "assets_check_warranty_eol",
         # Wave A-4 -- Assets QR generator (cacheable read)
         "assets_generate_qr",
+        # Wave D-3 -- Assets service history reader (cacheable read)
+        "assets_service_history",
         # Wave A-1 -- C12 Inventory resource surface cacheable reads (list + get)
         "inventory_list_stock_locations",
         "inventory_get_stock_locations",
@@ -718,11 +720,11 @@ def test_cacheable_tools_count():
     )
     hand_written_cacheable_tools = CACHEABLE_TOOLS - c12_cacheable_tools
 
-    assert len(CACHEABLE_TOOLS) >= 127, (
-        f"Sanity floor: expected at least 127 cacheable tools, got {len(CACHEABLE_TOOLS)}."
+    assert len(CACHEABLE_TOOLS) >= 128, (
+        f"Sanity floor: expected at least 128 cacheable tools, got {len(CACHEABLE_TOOLS)}."
     )
-    assert len(hand_written_cacheable_tools) == 127, (
-        "Hand-written (non-C12) cacheable tool count changed: expected 127, "
+    assert len(hand_written_cacheable_tools) == 128, (
+        "Hand-written (non-C12) cacheable tool count changed: expected 128, "
         f"got {len(hand_written_cacheable_tools)}. If you added/removed a "
         "hand-written cacheable tool, update this pin by import. If you "
         "only registered a new C12 ResourceSpec, this number should not "
