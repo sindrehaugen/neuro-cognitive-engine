@@ -180,6 +180,7 @@ async def test_handle_project_assignment_query_match_and_assign() -> None:
             "nce.vertical_modules.hr.a2a.do_capacity",
             new_callable=AsyncMock,
         ) as mock_cap,
+        patch("nce.vertical_modules.hr.a2a.assert_owner", new_callable=AsyncMock),
     ):
         mock_match.return_value = {
             "candidates": [

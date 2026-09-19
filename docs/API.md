@@ -318,20 +318,84 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/health/degradations` | `get_degradations` |
 | GET | `/api/health/v1` | `get_health_v1` |
 | GET | `/api/hr/absences` | `api_hr_absences` |
+| GET | `/api/hr/absences` | `handle_list` |
 | POST | `/api/hr/absences` | `api_hr_register_absence` |
+| POST | `/api/hr/absences` | `handle_create` |
+| POST | `/api/hr/absences/bulk` | `handle_bulk` |
+| GET | `/api/hr/absences/{id}` | `handle_get` |
+| PATCH | `/api/hr/absences/{id}` | `handle_patch` |
+| POST | `/api/hr/absences/{id}/archive` | `handle_archive` |
+| GET | `/api/hr/absences/{id}/comments` | `handle_list_comments` |
+| POST | `/api/hr/absences/{id}/comments` | `handle_add_comment` |
+| GET | `/api/hr/absences/{id}/documents` | `handle_list_documents` |
+| POST | `/api/hr/absences/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/hr/absences/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/hr/absences/{id}/events` | `handle_events` |
+| POST | `/api/hr/absences/{id}/restore` | `handle_restore` |
+| GET | `/api/hr/absences/{id}/tags` | `handle_list_tags` |
+| POST | `/api/hr/absences/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/hr/absences/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/hr/capacity` | `api_hr_capacity` |
 | GET | `/api/hr/cert-status` | `api_hr_cert_status` |
+| GET | `/api/hr/certifications` | `handle_list` |
+| POST | `/api/hr/certifications` | `handle_create` |
+| POST | `/api/hr/certifications/bulk` | `handle_bulk` |
+| GET | `/api/hr/certifications/{id}` | `handle_get` |
+| PATCH | `/api/hr/certifications/{id}` | `handle_patch` |
+| POST | `/api/hr/certifications/{id}/archive` | `handle_archive` |
+| GET | `/api/hr/certifications/{id}/comments` | `handle_list_comments` |
+| POST | `/api/hr/certifications/{id}/comments` | `handle_add_comment` |
+| GET | `/api/hr/certifications/{id}/documents` | `handle_list_documents` |
+| POST | `/api/hr/certifications/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/hr/certifications/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/hr/certifications/{id}/events` | `handle_events` |
+| POST | `/api/hr/certifications/{id}/restore` | `handle_restore` |
+| GET | `/api/hr/certifications/{id}/tags` | `handle_list_tags` |
+| POST | `/api/hr/certifications/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/hr/certifications/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/hr/coach` | `api_hr_coach` |
 | GET | `/api/hr/compliance/deadlines` | `api_hr_compliance_deadlines` |
 | POST | `/api/hr/compliance/milestones` | `api_hr_update_absence_compliance` |
 | GET | `/api/hr/employees` | `api_hr_employees` |
+| GET | `/api/hr/employees` | `handle_list` |
 | POST | `/api/hr/employees` | `api_hr_create_employee` |
+| POST | `/api/hr/employees` | `handle_create` |
+| POST | `/api/hr/employees/bulk` | `handle_bulk` |
 | GET | `/api/hr/employees/{id}` | `api_hr_employee` |
+| GET | `/api/hr/employees/{id}` | `handle_get` |
+| PATCH | `/api/hr/employees/{id}` | `handle_patch` |
+| POST | `/api/hr/employees/{id}/archive` | `handle_archive` |
+| GET | `/api/hr/employees/{id}/comments` | `handle_list_comments` |
+| POST | `/api/hr/employees/{id}/comments` | `handle_add_comment` |
+| GET | `/api/hr/employees/{id}/documents` | `handle_list_documents` |
+| POST | `/api/hr/employees/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/hr/employees/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/hr/employees/{id}/events` | `handle_events` |
+| POST | `/api/hr/employees/{id}/restore` | `handle_restore` |
+| GET | `/api/hr/employees/{id}/tags` | `handle_list_tags` |
+| POST | `/api/hr/employees/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/hr/employees/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/hr/match-skills` | `api_hr_match_skills` |
 | GET | `/api/hr/onboarding/{id}` | `api_hr_onboarding_get` |
 | POST | `/api/hr/onboarding/{id}` | `api_hr_onboarding_build` |
 | GET | `/api/hr/onboarding/{id}/progress` | `api_hr_onboarding_progress` |
+| GET | `/api/hr/skills` | `handle_list` |
 | POST | `/api/hr/skills` | `api_hr_record_skill` |
+| POST | `/api/hr/skills` | `handle_create` |
+| POST | `/api/hr/skills/bulk` | `handle_bulk` |
+| GET | `/api/hr/skills/{id}` | `handle_get` |
+| PATCH | `/api/hr/skills/{id}` | `handle_patch` |
+| POST | `/api/hr/skills/{id}/archive` | `handle_archive` |
+| GET | `/api/hr/skills/{id}/comments` | `handle_list_comments` |
+| POST | `/api/hr/skills/{id}/comments` | `handle_add_comment` |
+| GET | `/api/hr/skills/{id}/documents` | `handle_list_documents` |
+| POST | `/api/hr/skills/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/hr/skills/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/hr/skills/{id}/events` | `handle_events` |
+| POST | `/api/hr/skills/{id}/restore` | `handle_restore` |
+| GET | `/api/hr/skills/{id}/tags` | `handle_list_tags` |
+| POST | `/api/hr/skills/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/hr/skills/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/hr/sync/now` | `api_hr_sync_now` |
 | GET | `/api/hr/sync/status` | `api_hr_sync_status` |
 | POST | `/api/inventory/create-restock-po` | `api_inventory_create_restock_po` |
@@ -770,12 +834,9 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | DELETE | `/api/support/tickets/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/support/tickets/{id}/events` | `handle_events` |
 | POST | `/api/support/tickets/{id}/failure-pattern` | `api_support_tickets_failure_pattern` |
-| GET | `/api/support/tickets/{id}/links` | `api_support_tickets_links` |
-| POST | `/api/support/tickets/{id}/links` | `api_support_tickets_link` |
 | POST | `/api/support/tickets/{id}/resolve` | `api_support_tickets_resolve` |
 | POST | `/api/support/tickets/{id}/restore` | `handle_restore` |
 | GET | `/api/support/tickets/{id}/sla-clock` | `api_support_ticket_sla_clock` |
-| GET | `/api/support/tickets/{id}/summary` | `api_support_ticket_summary` |
 | GET | `/api/support/tickets/{id}/tags` | `handle_list_tags` |
 | POST | `/api/support/tickets/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/support/tickets/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -988,19 +1049,35 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `get_health` |  |  |  |  |
 | `get_recent_context` |  |  |  |  |
 | `graph_search` |  |  | yes |  |
+| `hr_archive_absences` |  | yes |  |  |
+| `hr_archive_certifications` |  | yes |  |  |
+| `hr_archive_employees` |  | yes |  |  |
+| `hr_archive_skills` |  | yes |  |  |
 | `hr_build_onboarding_quest` | yes | yes |  |  |
 | `hr_capacity` |  |  | yes |  |
 | `hr_cert_status` |  |  | yes |  |
 | `hr_coach` |  |  | yes |  |
 | `hr_compliance_deadlines` |  |  | yes |  |
+| `hr_get_absences` |  |  | yes |  |
+| `hr_get_certifications` |  |  | yes |  |
 | `hr_get_employee` |  |  | yes |  |
+| `hr_get_employees` |  |  | yes |  |
 | `hr_get_onboarding_progress` |  |  | yes |  |
+| `hr_get_skills` |  |  | yes |  |
+| `hr_list_absences` |  |  | yes |  |
+| `hr_list_certifications` |  |  | yes |  |
+| `hr_list_employees` |  |  | yes |  |
+| `hr_list_skills` |  |  | yes |  |
 | `hr_log_one_on_one` | yes | yes |  |  |
 | `hr_match_skills` |  |  | yes |  |
 | `hr_query_absences` |  |  | yes |  |
 | `hr_record_skill` | yes | yes |  |  |
 | `hr_register_absence` |  | yes |  |  |
 | `hr_update_absence_compliance` | yes | yes |  |  |
+| `hr_upsert_absences` |  | yes |  |  |
+| `hr_upsert_certifications` |  | yes |  |  |
+| `hr_upsert_employees` |  | yes |  |  |
+| `hr_upsert_skills` |  | yes |  |  |
 | `import_snapshot` |  | yes |  |  |
 | `index_code_file` |  | yes |  |  |
 | `inventory_archive_goods_receipts` |  | yes |  |  |
@@ -1197,10 +1274,8 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `support_get_on_call` |  |  | yes |  |
 | `support_get_sla_clocks` |  |  | yes |  |
 | `support_get_ticket_actions` |  |  | yes |  |
-| `support_get_ticket_links` |  |  | yes |  |
 | `support_get_tickets` |  |  | yes |  |
 | `support_health_score` |  |  | yes |  |
-| `support_link_ticket` | yes | yes |  |  |
 | `support_list_customer_health` |  |  | yes |  |
 | `support_list_sla_clocks` |  |  | yes |  |
 | `support_list_ticket_actions` |  |  | yes |  |
@@ -1211,7 +1286,6 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `support_record_touchpoint` |  | yes |  |  |
 | `support_resolve_ticket` | yes | yes |  |  |
 | `support_sla_clock` |  |  | yes |  |
-| `support_summarise_ticket` |  |  | yes |  |
 | `support_sync_now` | yes | yes |  |  |
 | `support_ticket_timeline` |  |  | yes |  |
 | `support_triage_ticket` |  |  | yes |  |
@@ -1275,4 +1349,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 815 REST endpoints, 442 MCP tools._
+_Totals: 876 REST endpoints, 455 MCP tools._
