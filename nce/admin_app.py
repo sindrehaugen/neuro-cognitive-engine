@@ -1032,6 +1032,47 @@ def build_admin_routes() -> list[Route]:
             endpoint=system_design_handlers.api_system_design_get_fl_active_design,
             methods=["GET"],
         ),
+        # System Design vertical module endpoints (Wave C-4) — Solution Design Intake Queue (losningsdesign-ko)
+        Route(
+            "/api/system-design/requests",
+            endpoint=system_design_handlers.api_system_design_list_requests,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/system-design/requests",
+            endpoint=system_design_handlers.api_system_design_create_request,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/system-design/requests/{id}",
+            endpoint=system_design_handlers.api_system_design_get_request,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/system-design/requests/{id}",
+            endpoint=system_design_handlers.api_system_design_update_request,
+            methods=["PATCH"],
+        ),
+        Route(
+            "/api/system-design/requests/{id}/assign",
+            endpoint=system_design_handlers.api_system_design_assign_request,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/system-design/requests/{id}/complete",
+            endpoint=system_design_handlers.api_system_design_complete_request,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/system-design/requests/{id}/fulfill",
+            endpoint=system_design_handlers.api_system_design_fulfill_request,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/system-design/requests/{id}/cancel",
+            endpoint=system_design_handlers.api_system_design_cancel_request,
+            methods=["POST"],
+        ),
         # ------------------------------------------------------------------
         # Vendors vertical module endpoints (M4.W3)
         # ------------------------------------------------------------------

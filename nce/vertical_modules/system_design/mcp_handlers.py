@@ -1801,3 +1801,257 @@ async def handle_system_design_set_room_spec(engine: NCEEngine, arguments: dict[
     else:
         updated_spec = await set_room_spec(None, namespace_id, design_id, room_spec)
     return json.dumps(updated_spec, default=str)
+
+
+# ---------------------------------------------------------------------------
+# Wave C-4: DESIGN_REQUEST intake queue handlers
+# ---------------------------------------------------------------------------
+
+
+@mcp_handler
+async def handle_system_design_create_design_request(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_create_design_request -- create a solution design request in the intake queue."""
+    from nce.vertical_modules.system_design.design_requests import create_design_request
+
+    namespace_id = require_namespace_id(arguments)
+    title = str(arguments.get("title") or "").strip()
+    quote_id = arguments.get("quote_id")
+    functional_location_id = arguments.get("functional_location_id") or arguments.get("fl_id")
+    description = arguments.get("description")
+    priority = arguments.get("priority", "normal")
+    owner_id = arguments.get("owner_id")
+    room_spec = arguments.get("room_spec")
+    metadata = arguments.get("metadata")
+    request_id = arguments.get("request_id") or arguments.get("id")
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            created = await create_design_request(
+                conn,
+                namespace_id,
+                title=title,
+                quote_id=str(quote_id) if quote_id else None,
+                functional_location_id=(
+                    str(functional_location_id) if functional_location_id else None
+                ),
+                description=str(description) if description else None,
+                priority=str(priority) if priority else "normal",
+                owner_id=str(owner_id) if owner_id else None,
+                room_spec=room_spec,
+                metadata=metadata,
+                request_id=str(request_id) if request_id else None,
+            )
+    else:
+        created = await create_design_request(
+            None,
+            namespace_id,
+            title=title,
+            quote_id=str(quote_id) if quote_id else None,
+            functional_location_id=(
+                str(functional_location_id) if functional_location_id else None
+            ),
+            description=str(description) if description else None,
+            priority=str(priority) if priority else "normal",
+            owner_id=str(owner_id) if owner_id else None,
+            room_spec=room_spec,
+            metadata=metadata,
+            request_id=str(request_id) if request_id else None,
+        )
+    return json.dumps(created, default=str)
+
+
+@mcp_handler
+async def handle_system_design_get_design_request(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_get_design_request -- fetch a design request by ID."""
+    from nce.vertical_modules.system_design.design_requests import get_design_request
+
+    namespace_id = require_namespace_id(arguments)
+    request_id = str(arguments.get("request_id") or arguments.get("id") or "").strip()
+    if not request_id:
+        raise ValueError("request_id is required")
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            req = await get_design_request(conn, namespace_id, request_id)
+    else:
+        req = await get_design_request(None, namespace_id, request_id)
+    return json.dumps(req, default=str)
+
+
+@mcp_handler
+async def handle_system_design_list_design_requests(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_list_design_requests -- list design requests in the intake queue."""
+    from nce.vertical_modules.system_design.design_requests import list_design_requests
+
+    namespace_id = require_namespace_id(arguments)
+    status = arguments.get("status")
+    owner_id = arguments.get("owner_id")
+    quote_id = arguments.get("quote_id")
+    functional_location_id = arguments.get("functional_location_id") or arguments.get("fl_id")
+    priority = arguments.get("priority")
+    query = arguments.get("query")
+    limit = int(arguments.get("limit", 50))
+    offset = int(arguments.get("offset", 0))
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            requests = await list_design_requests(
+                conn,
+                namespace_id,
+                status=str(status) if status else None,
+                owner_id=str(owner_id) if owner_id else None,
+                quote_id=str(quote_id) if quote_id else None,
+                functional_location_id=(
+                    str(functional_location_id) if functional_location_id else None
+                ),
+                priority=str(priority) if priority else None,
+                query=str(query) if query else None,
+                limit=limit,
+                offset=offset,
+            )
+    else:
+        requests = await list_design_requests(
+            None,
+            namespace_id,
+            status=str(status) if status else None,
+            owner_id=str(owner_id) if owner_id else None,
+            quote_id=str(quote_id) if quote_id else None,
+            functional_location_id=(
+                str(functional_location_id) if functional_location_id else None
+            ),
+            priority=str(priority) if priority else None,
+            query=str(query) if query else None,
+            limit=limit,
+            offset=offset,
+        )
+    return json.dumps(requests, default=str)
+
+
+@mcp_handler
+async def handle_system_design_update_design_request(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_update_design_request -- update fields on a design request."""
+    from nce.vertical_modules.system_design.design_requests import update_design_request
+
+    namespace_id = require_namespace_id(arguments)
+    request_id = str(arguments.get("request_id") or arguments.get("id") or "").strip()
+    if not request_id:
+        raise ValueError("request_id is required")
+
+    title = arguments.get("title")
+    description = arguments.get("description")
+    status = arguments.get("status")
+    priority = arguments.get("priority")
+    owner_id = arguments.get("owner_id")
+    room_spec = arguments.get("room_spec")
+    metadata = arguments.get("metadata")
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            updated = await update_design_request(
+                conn,
+                namespace_id,
+                request_id,
+                title=str(title) if title is not None else None,
+                description=str(description) if description is not None else None,
+                status=str(status) if status is not None else None,
+                priority=str(priority) if priority is not None else None,
+                owner_id=str(owner_id) if owner_id is not None else None,
+                room_spec=room_spec,
+                metadata=metadata,
+            )
+    else:
+        updated = await update_design_request(
+            None,
+            namespace_id,
+            request_id,
+            title=str(title) if title is not None else None,
+            description=str(description) if description is not None else None,
+            status=str(status) if status is not None else None,
+            priority=str(priority) if priority is not None else None,
+            owner_id=str(owner_id) if owner_id is not None else None,
+            room_spec=room_spec,
+            metadata=metadata,
+        )
+    return json.dumps(updated, default=str)
+
+
+@mcp_handler
+async def handle_system_design_assign_design_request(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_assign_design_request -- assign a design request to an owner."""
+    from nce.vertical_modules.system_design.design_requests import assign_design_request
+
+    namespace_id = require_namespace_id(arguments)
+    request_id = str(arguments.get("request_id") or arguments.get("id") or "").strip()
+    if not request_id:
+        raise ValueError("request_id is required")
+    owner_id = str(arguments.get("owner_id") or "").strip()
+    if not owner_id:
+        raise ValueError("owner_id is required")
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            assigned = await assign_design_request(conn, namespace_id, request_id, owner_id)
+    else:
+        assigned = await assign_design_request(None, namespace_id, request_id, owner_id)
+    return json.dumps(assigned, default=str)
+
+
+@mcp_handler
+async def handle_system_design_complete_design_request(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_complete_design_request -- complete a request and link resulting design."""
+    from nce.vertical_modules.system_design.design_requests import complete_design_request
+
+    namespace_id = require_namespace_id(arguments)
+    request_id = str(arguments.get("request_id") or arguments.get("id") or "").strip()
+    if not request_id:
+        raise ValueError("request_id is required")
+    design_id = str(arguments.get("design_id") or "").strip()
+    if not design_id:
+        raise ValueError("design_id is required")
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            completed = await complete_design_request(conn, namespace_id, request_id, design_id)
+    else:
+        completed = await complete_design_request(None, namespace_id, request_id, design_id)
+    return json.dumps(completed, default=str)
+
+
+@mcp_handler
+async def handle_system_design_fulfill_request_from_quote(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_fulfill_request_from_quote -- fulfill design request from its linked quote."""
+    from nce.vertical_modules.system_design.design_requests import (
+        fulfill_design_request_from_quote,
+    )
+
+    namespace_id = require_namespace_id(arguments)
+    request_id = str(arguments.get("request_id") or arguments.get("id") or "").strip()
+    if not request_id:
+        raise ValueError("request_id is required")
+    design_id = arguments.get("design_id")
+    namespace_slug = arguments.get("namespace_slug")
+    source_id = arguments.get("source_id")
+
+    result = await fulfill_design_request_from_quote(
+        engine,
+        namespace_id,
+        request_id,
+        design_id=str(design_id) if design_id else None,
+        namespace_slug=str(namespace_slug) if namespace_slug else None,
+        source_id=str(source_id) if source_id else None,
+    )
+    return json.dumps(result, default=str)

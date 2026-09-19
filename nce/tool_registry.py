@@ -904,6 +904,49 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=True,
     ),
+    # Wave C-4 (DESIGN_REQUEST intake queue / losningsdesign-ko)
+    "system_design_create_design_request": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_create_design_request"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    "system_design_get_design_request": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_get_design_request"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "system_design_list_design_requests": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_list_design_requests"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "system_design_update_design_request": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_update_design_request"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    "system_design_assign_design_request": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_assign_design_request"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    "system_design_complete_design_request": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_complete_design_request"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    "system_design_fulfill_request_from_quote": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_fulfill_request_from_quote"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
     # ------------------------------------------------------------------
     # Project vertical module tools (M7.W3) — phase-gate readiness check
     # ------------------------------------------------------------------

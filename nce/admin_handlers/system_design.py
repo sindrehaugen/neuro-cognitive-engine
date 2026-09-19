@@ -2308,3 +2308,449 @@ async def api_system_design_get_fl_active_design(request) -> JSONResponse:
         return admin_error_response("Failed to get active design for functional location", exc)
 
     return JSONResponse({"status": "ok", "active_design": active})
+
+
+# ---------------------------------------------------------------------------
+# Wave C-4: Solution Design Intake Queue (DESIGN_REQUEST / losningsdesign-ko)
+# ---------------------------------------------------------------------------
+
+
+async def api_system_design_list_requests(request) -> JSONResponse:
+    """GET /api/system-design/requests"""
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.design_requests import list_design_requests
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    status = request.query_params.get("status")
+    owner_id = request.query_params.get("owner_id")
+    quote_id = request.query_params.get("quote_id")
+    functional_location_id = request.query_params.get(
+        "functional_location_id"
+    ) or request.query_params.get("fl_id")
+    priority = request.query_params.get("priority")
+    query = request.query_params.get("query")
+
+    try:
+        limit = int(request.query_params.get("limit", 50))
+    except (ValueError, TypeError):
+        limit = 50
+    try:
+        offset = int(request.query_params.get("offset", 0))
+    except (ValueError, TypeError):
+        offset = 0
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                requests = await list_design_requests(
+                    conn,
+                    namespace_id,
+                    status=status,
+                    owner_id=owner_id,
+                    quote_id=quote_id,
+                    functional_location_id=functional_location_id,
+                    priority=priority,
+                    query=query,
+                    limit=limit,
+                    offset=offset,
+                )
+        else:
+            requests = await list_design_requests(
+                None,
+                namespace_id,
+                status=status,
+                owner_id=owner_id,
+                quote_id=quote_id,
+                functional_location_id=functional_location_id,
+                priority=priority,
+                query=query,
+                limit=limit,
+                offset=offset,
+            )
+    except Exception as exc:
+        log.exception("api_system_design_list_requests: unexpected error")
+        return admin_error_response("Failed to list design requests", exc)
+
+    return JSONResponse({"status": "ok", "requests": requests, "count": len(requests)})
+
+
+async def api_system_design_create_request(request) -> JSONResponse:
+    """POST /api/system-design/requests"""
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.design_requests import (
+        InvalidDesignRequestPayloadError,
+        create_design_request,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    namespace_id, ns_err = _require_namespace_id(
+        body.get("namespace_id") or request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    title = str(body.get("title") or "").strip()
+    if not title:
+        return JSONResponse({"error": "Missing required field: title"}, status_code=422)
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                created = await create_design_request(
+                    conn,
+                    namespace_id,
+                    title=title,
+                    quote_id=body.get("quote_id"),
+                    functional_location_id=body.get("functional_location_id") or body.get("fl_id"),
+                    description=body.get("description"),
+                    priority=body.get("priority", "normal"),
+                    owner_id=body.get("owner_id"),
+                    room_spec=body.get("room_spec"),
+                    metadata=body.get("metadata"),
+                    request_id=body.get("request_id") or body.get("id"),
+                )
+        else:
+            created = await create_design_request(
+                None,
+                namespace_id,
+                title=title,
+                quote_id=body.get("quote_id"),
+                functional_location_id=body.get("functional_location_id") or body.get("fl_id"),
+                description=body.get("description"),
+                priority=body.get("priority", "normal"),
+                owner_id=body.get("owner_id"),
+                room_spec=body.get("room_spec"),
+                metadata=body.get("metadata"),
+                request_id=body.get("request_id") or body.get("id"),
+            )
+    except InvalidDesignRequestPayloadError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        log.exception("api_system_design_create_request: unexpected error")
+        return admin_error_response("Failed to create design request", exc)
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_system_design_create_request")
+    return JSONResponse({"status": "ok", "request": created}, status_code=201)
+
+
+async def api_system_design_get_request(request) -> JSONResponse:
+    """GET /api/system-design/requests/{id}"""
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.design_requests import (
+        DesignRequestNotFoundError,
+        get_design_request,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    request_id = str(request.path_params.get("id") or "").strip()
+    if not request_id:
+        return JSONResponse({"error": "Missing design request id"}, status_code=422)
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                req = await get_design_request(conn, namespace_id, request_id)
+        else:
+            req = await get_design_request(None, namespace_id, request_id)
+    except DesignRequestNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except Exception as exc:
+        log.exception("api_system_design_get_request: unexpected error")
+        return admin_error_response("Failed to get design request", exc)
+
+    return JSONResponse({"status": "ok", "request": req})
+
+
+async def api_system_design_update_request(request) -> JSONResponse:
+    """PATCH /api/system-design/requests/{id}"""
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.design_requests import (
+        DesignRequestNotFoundError,
+        InvalidDesignRequestPayloadError,
+        InvalidDesignRequestStatusError,
+        update_design_request,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    namespace_id, ns_err = _require_namespace_id(
+        body.get("namespace_id") or request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    request_id = str(request.path_params.get("id") or "").strip()
+    if not request_id:
+        return JSONResponse({"error": "Missing design request id"}, status_code=422)
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                updated = await update_design_request(
+                    conn,
+                    namespace_id,
+                    request_id,
+                    title=body.get("title"),
+                    description=body.get("description"),
+                    status=body.get("status"),
+                    priority=body.get("priority"),
+                    owner_id=body.get("owner_id"),
+                    room_spec=body.get("room_spec"),
+                    metadata=body.get("metadata"),
+                )
+        else:
+            updated = await update_design_request(
+                None,
+                namespace_id,
+                request_id,
+                title=body.get("title"),
+                description=body.get("description"),
+                status=body.get("status"),
+                priority=body.get("priority"),
+                owner_id=body.get("owner_id"),
+                room_spec=body.get("room_spec"),
+                metadata=body.get("metadata"),
+            )
+    except DesignRequestNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except (InvalidDesignRequestStatusError, InvalidDesignRequestPayloadError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        log.exception("api_system_design_update_request: unexpected error")
+        return admin_error_response("Failed to update design request", exc)
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_system_design_update_request")
+    return JSONResponse({"status": "ok", "request": updated})
+
+
+async def api_system_design_assign_request(request) -> JSONResponse:
+    """POST /api/system-design/requests/{id}/assign"""
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.design_requests import (
+        DesignRequestNotFoundError,
+        InvalidDesignRequestPayloadError,
+        assign_design_request,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    namespace_id, ns_err = _require_namespace_id(
+        body.get("namespace_id") or request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    request_id = str(request.path_params.get("id") or "").strip()
+    if not request_id:
+        return JSONResponse({"error": "Missing design request id"}, status_code=422)
+
+    owner_id = str(body.get("owner_id") or "").strip()
+    if not owner_id:
+        return JSONResponse({"error": "Missing required field: owner_id"}, status_code=422)
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                assigned = await assign_design_request(conn, namespace_id, request_id, owner_id)
+        else:
+            assigned = await assign_design_request(None, namespace_id, request_id, owner_id)
+    except DesignRequestNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except InvalidDesignRequestPayloadError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        log.exception("api_system_design_assign_request: unexpected error")
+        return admin_error_response("Failed to assign design request", exc)
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_system_design_assign_request")
+    return JSONResponse({"status": "ok", "request": assigned})
+
+
+async def api_system_design_complete_request(request) -> JSONResponse:
+    """POST /api/system-design/requests/{id}/complete"""
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.design_requests import (
+        DesignRequestNotFoundError,
+        InvalidDesignRequestPayloadError,
+        complete_design_request,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    namespace_id, ns_err = _require_namespace_id(
+        body.get("namespace_id") or request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    request_id = str(request.path_params.get("id") or "").strip()
+    if not request_id:
+        return JSONResponse({"error": "Missing design request id"}, status_code=422)
+
+    design_id = str(body.get("design_id") or "").strip()
+    if not design_id:
+        return JSONResponse({"error": "Missing required field: design_id"}, status_code=422)
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                completed = await complete_design_request(conn, namespace_id, request_id, design_id)
+        else:
+            completed = await complete_design_request(None, namespace_id, request_id, design_id)
+    except DesignRequestNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except InvalidDesignRequestPayloadError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        log.exception("api_system_design_complete_request: unexpected error")
+        return admin_error_response("Failed to complete design request", exc)
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_system_design_complete_request")
+    return JSONResponse({"status": "ok", "request": completed})
+
+
+async def api_system_design_fulfill_request(request) -> JSONResponse:
+    """POST /api/system-design/requests/{id}/fulfill"""
+    from nce.vertical_modules.system_design.design_requests import (
+        DesignRequestNotFoundError,
+        InvalidDesignRequestPayloadError,
+        InvalidDesignRequestStatusError,
+        fulfill_design_request_from_quote,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    namespace_id, ns_err = _require_namespace_id(
+        body.get("namespace_id") or request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    request_id = str(request.path_params.get("id") or "").strip()
+    if not request_id:
+        return JSONResponse({"error": "Missing design request id"}, status_code=422)
+
+    try:
+        result = await fulfill_design_request_from_quote(
+            admin_state.engine,
+            namespace_id,
+            request_id,
+            design_id=body.get("design_id"),
+            namespace_slug=body.get("namespace_slug"),
+            source_id=body.get("source_id"),
+        )
+    except DesignRequestNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except (
+        InvalidDesignRequestStatusError,
+        InvalidDesignRequestPayloadError,
+        ValueError,
+    ) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        log.exception("api_system_design_fulfill_request: unexpected error")
+        return admin_error_response("Failed to fulfill design request", exc)
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_system_design_fulfill_request")
+    return JSONResponse({"status": "ok", "result": result})
+
+
+async def api_system_design_cancel_request(request) -> JSONResponse:
+    """POST /api/system-design/requests/{id}/cancel"""
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.design_requests import (
+        DesignRequestNotFoundError,
+        cancel_design_request,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    namespace_id, ns_err = _require_namespace_id(
+        body.get("namespace_id") or request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    request_id = str(request.path_params.get("id") or "").strip()
+    if not request_id:
+        return JSONResponse({"error": "Missing design request id"}, status_code=422)
+
+    reason = body.get("reason")
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                cancelled = await cancel_design_request(
+                    conn, namespace_id, request_id, reason=reason
+                )
+        else:
+            cancelled = await cancel_design_request(None, namespace_id, request_id, reason=reason)
+    except DesignRequestNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except Exception as exc:
+        log.exception("api_system_design_cancel_request: unexpected error")
+        return admin_error_response("Failed to cancel design request", exc)
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_system_design_cancel_request")
+    return JSONResponse({"status": "ok", "request": cancelled})

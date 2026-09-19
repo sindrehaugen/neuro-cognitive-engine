@@ -56,6 +56,10 @@ from uuid import UUID
 
 from nce.db_utils import scoped_pg_session
 from nce.events.emit import emit_graph_write
+from nce.vertical_modules.system_design.design_requests import (
+    complete_design_request,
+    find_active_request_for_quote,
+)
 from nce.vertical_modules.system_design.graph import (
     _design_label,
     _upsert_edge,
@@ -399,6 +403,27 @@ async def do_design_from_quote(
             node_id=quote_lbl,
         )
 
+        # 8. Complete DESIGN_REQUEST if requested or found for quote_id
+        design_request_id = params.get("design_request_id")
+        if not design_request_id:
+            active_req = await find_active_request_for_quote(conn, ns_uuid, quote_id)
+            if active_req:
+                design_request_id = active_req["id"]
+
+        completed_request = None
+        if design_request_id:
+            try:
+                completed_request = await complete_design_request(
+                    conn, ns_uuid, design_request_id, design_id
+                )
+            except Exception as e:
+                log.warning(
+                    "do_design_from_quote: failed to complete design_request %s: %s",
+                    design_request_id,
+                    e,
+                    exc_info=True,
+                )
+
     realized_as_desc = f"{quote_lbl} -[{_PRED_REALIZED_AS}]-> {design_lbl}"
     log.info(
         "do_design_from_quote: ns=%s quote=%s design=%s lines=%d gap_fill=%d edge=%s",
@@ -410,7 +435,7 @@ async def do_design_from_quote(
         realized_as_desc,
     )
 
-    return {
+    response = {
         "design_id": design_id,
         "quote_label": quote_lbl,
         "design_label": design_lbl,
@@ -419,3 +444,10 @@ async def do_design_from_quote(
         "gap_fill_lines": len(gap_fill_dl),
         "realized_as_edge": realized_as_desc,
     }
+    if design_request_id:
+        response["design_request_id"] = design_request_id
+        response["design_request_status"] = (
+            completed_request["status"] if completed_request else "completed"
+        )
+
+    return response

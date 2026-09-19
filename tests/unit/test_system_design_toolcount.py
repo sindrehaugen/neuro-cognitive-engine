@@ -282,6 +282,42 @@ _EXPECTED_TOOLS: dict[str, dict[str, bool]] = {
         "admin_only": False,
         "mutation": True,
     },
+    # Wave C-4 — Solution Design Intake Queue (losningsdesign-ko / DESIGN_REQUEST)
+    "system_design_create_design_request": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": True,
+    },
+    "system_design_get_design_request": {
+        "cacheable": True,
+        "admin_only": False,
+        "mutation": False,
+    },
+    "system_design_list_design_requests": {
+        "cacheable": True,
+        "admin_only": False,
+        "mutation": False,
+    },
+    "system_design_update_design_request": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": True,
+    },
+    "system_design_assign_design_request": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": True,
+    },
+    "system_design_complete_design_request": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": True,
+    },
+    "system_design_fulfill_request_from_quote": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": True,
+    },
 }
 
 
