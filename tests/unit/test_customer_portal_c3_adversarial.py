@@ -40,6 +40,27 @@ _TENANT_C_EMAIL = "clara@tenant-c.no"
 
 _NIL_UUID = "00000000-0000-0000-0000-000000000000"
 
+# The 10 customer-scope-protected routes (every /api/portal/* route except
+# /health and /login, which need no scope). Charter H-6 target: "for each
+# of the [ten] /api/me routes, a negative case proving another customer's
+# scope returns empty-or-403." Extracted once (K-H-portal, 2026-09-19) so
+# every per-route negative test below is provably checking the SAME route
+# list, rather than four independently hand-copied lists that could drift
+# apart from each other or from nce/vertical_modules/customer_portal/app.py's
+# real route table without anyone noticing.
+_ALL_PROTECTED_ROUTES: list[tuple[str, str, dict[str, Any] | None]] = [
+    ("GET", "/api/portal/rooms/overview", None),
+    ("GET", "/api/portal/rooms/room-alpha-1/tracker", None),
+    ("GET", "/api/portal/rooms/room-alpha-1/assets", None),
+    ("GET", "/api/portal/documents", None),
+    ("GET", "/api/portal/documents/share-fdv-1", None),
+    ("GET", "/api/portal/sla", None),
+    ("GET", "/api/portal/invoices", None),
+    ("POST", "/api/portal/service-requests", {"summary": "help"}),
+    ("POST", "/api/portal/expansion-interest", {"summary": "expand"}),
+    ("POST", "/api/portal/advisor", {"query": "how are my rooms?"}),
+]
+
 
 class TwinTenantEngine:
     """Mock engine holding twin tenants with identical resource labels but strict scope boundaries."""
@@ -320,20 +341,7 @@ def test_cross_tenant_namespace_header_tampering_refused(
     client: TestClient, tenant_a_session: str
 ) -> None:
     """Tenant A session sending Tenant B's namespace in header must refuse with 403."""
-    routes_to_probe = [
-        ("GET", "/api/portal/rooms/overview", None),
-        ("GET", "/api/portal/rooms/room-alpha-1/tracker", None),
-        ("GET", "/api/portal/rooms/room-alpha-1/assets", None),
-        ("GET", "/api/portal/documents", None),
-        ("GET", "/api/portal/documents/share-fdv-1", None),
-        ("GET", "/api/portal/sla", None),
-        ("GET", "/api/portal/invoices", None),
-        ("POST", "/api/portal/service-requests", {"summary": "help"}),
-        ("POST", "/api/portal/expansion-interest", {"summary": "expand"}),
-        ("POST", "/api/portal/advisor", {"query": "how are my rooms?"}),
-    ]
-
-    for method, path, body in routes_to_probe:
+    for method, path, body in _ALL_PROTECTED_ROUTES:
         headers = {
             "Authorization": f"Bearer {tenant_a_session}",
             "X-Namespace-ID": str(_TENANT_B_NS),  # Mismatched namespace!
@@ -349,20 +357,36 @@ def test_cross_tenant_namespace_header_tampering_refused(
         assert "cross-tenant access denied" in r.json()["error"]
 
 
+@pytest.mark.parametrize(("method", "path", "body"), _ALL_PROTECTED_ROUTES)
 def test_cross_tenant_namespace_query_tampering_refused(
-    client: TestClient, tenant_a_session: str
+    client: TestClient,
+    tenant_a_session: str,
+    method: str,
+    path: str,
+    body: dict[str, Any] | None,
 ) -> None:
-    """Tenant A session sending Tenant B's namespace in query string must refuse with 403."""
+    """Tenant A session sending Tenant B's namespace_id via the route's own
+    input channel (query string for GET, JSON body for POST) must refuse
+    with 403.
+
+    H-6 (2026-09-19): CP-4 proved this on two GET routes only (rooms/overview,
+    documents); this closes the remaining eight, including the three POST
+    routes, which take namespace_id via body rather than query string --
+    the same GET-vs-POST channel split already established by
+    test_cross_customer_target_scope_param_tampering_refused below, mirrored
+    here rather than invented fresh."""
     headers = {"Authorization": f"Bearer {tenant_a_session}"}
-    params = {"namespace_id": str(_TENANT_B_NS)}
+    if method == "GET":
+        r = client.get(path, headers=headers, params={"namespace_id": str(_TENANT_B_NS)})
+    else:
+        req_body = {**(body or {}), "namespace_id": str(_TENANT_B_NS)}
+        r = client.post(path, headers=headers, json=req_body)
 
-    r = client.get("/api/portal/rooms/overview", headers=headers, params=params)
-    assert r.status_code == 403
+    assert r.status_code == 403, (
+        f"Route {path} allowed cross-tenant namespace_id tampering via "
+        f"{'query string' if method == 'GET' else 'body'}! Got {r.status_code}: {r.text}"
+    )
     assert "cross-tenant access denied" in r.json()["error"]
-
-    r2 = client.get("/api/portal/documents", headers=headers, params=params)
-    assert r2.status_code == 403
-    assert "cross-tenant access denied" in r2.json()["error"]
 
 
 def test_cross_tenant_resource_id_probes_refused_with_403_or_404(
@@ -436,20 +460,7 @@ def test_omitted_scope_refused_with_401_across_all_protected_routes(
     client: TestClient,
 ) -> None:
     """Every protected route must refuse with 401 when customer scope / session is omitted."""
-    endpoints = [
-        ("GET", "/api/portal/rooms/overview", None),
-        ("GET", "/api/portal/rooms/room-alpha-1/tracker", None),
-        ("GET", "/api/portal/rooms/room-alpha-1/assets", None),
-        ("GET", "/api/portal/documents", None),
-        ("GET", "/api/portal/documents/share-fdv-1", None),
-        ("GET", "/api/portal/sla", None),
-        ("GET", "/api/portal/invoices", None),
-        ("POST", "/api/portal/service-requests", {"summary": "help"}),
-        ("POST", "/api/portal/expansion-interest", {"summary": "expansion"}),
-        ("POST", "/api/portal/advisor", {"query": "help"}),
-    ]
-
-    for method, path, body in endpoints:
+    for method, path, body in _ALL_PROTECTED_ROUTES:
         if method == "GET":
             r = client.get(path)
         else:
@@ -468,25 +479,12 @@ def test_omitted_scope_refused_with_401_across_all_protected_routes(
 
 def test_nil_uuid_scope_sentinel_refused_with_403(client: TestClient) -> None:
     """Every protected route must refuse nil-UUID customer scope sentinel with 403."""
-    endpoints = [
-        ("GET", "/api/portal/rooms/overview", None),
-        ("GET", "/api/portal/rooms/room-alpha-1/tracker", None),
-        ("GET", "/api/portal/rooms/room-alpha-1/assets", None),
-        ("GET", "/api/portal/documents", None),
-        ("GET", "/api/portal/documents/share-fdv-1", None),
-        ("GET", "/api/portal/sla", None),
-        ("GET", "/api/portal/invoices", None),
-        ("POST", "/api/portal/service-requests", {"summary": "help"}),
-        ("POST", "/api/portal/expansion-interest", {"summary": "expansion"}),
-        ("POST", "/api/portal/advisor", {"query": "help"}),
-    ]
-
     headers = {
         "X-Customer-Scope-ID": _NIL_UUID,
         "X-Namespace-ID": str(_TENANT_A_NS),
     }
 
-    for method, path, body in endpoints:
+    for method, path, body in _ALL_PROTECTED_ROUTES:
         if method == "GET":
             r = client.get(path, headers=headers)
         else:
@@ -499,14 +497,32 @@ def test_nil_uuid_scope_sentinel_refused_with_403(client: TestClient) -> None:
 
 
 def test_nil_uuid_namespace_sentinel_refused_with_403(client: TestClient) -> None:
-    """Protected routes must refuse nil-UUID namespace sentinel with 403."""
+    """Every protected route must refuse nil-UUID namespace sentinel with 403.
+
+    H-6 (2026-09-19): CP-4 proved this on one route only
+    (/api/portal/rooms/overview); this closes the remaining nine. The nil-
+    namespace check lives in CustomerPortalAuthMiddleware's header-only
+    fallback path (nce/vertical_modules/customer_portal/app.py) -- it runs
+    before any route dispatch and does not branch on path or method, so this
+    is the same shared chokepoint the sibling nil-customer-scope test above
+    already proves across all ten; extending here closes the one sentinel
+    this file left un-parametrized rather than assuming the middleware's
+    uniformity without checking every route."""
     headers = {
         "X-Customer-Scope-ID": str(_TENANT_A_SCOPE),
         "X-Namespace-ID": _NIL_UUID,
     }
-    r = client.get("/api/portal/rooms/overview", headers=headers)
-    assert r.status_code == 403
-    assert "nil namespace sentinel rejected" in r.json()["error"]
+    for method, path, body in _ALL_PROTECTED_ROUTES:
+        if method == "GET":
+            r = client.get(path, headers=headers)
+        else:
+            r = client.post(path, headers=headers, json=body)
+
+        assert r.status_code == 403, (
+            f"Route {path} did not reject nil-UUID namespace sentinel with 403! "
+            f"Got {r.status_code}: {r.text}"
+        )
+        assert "nil namespace sentinel rejected" in r.json()["error"]
 
 
 # ============================================================================
@@ -619,21 +635,7 @@ def test_twin_tenants_receive_isolated_resources_with_identical_labels(
 # ============================================================================
 
 
-@pytest.mark.parametrize(
-    ("method", "path", "body"),
-    [
-        ("GET", "/api/portal/rooms/overview", None),
-        ("GET", "/api/portal/rooms/room-alpha-1/tracker", None),
-        ("GET", "/api/portal/rooms/room-alpha-1/assets", None),
-        ("GET", "/api/portal/documents", None),
-        ("GET", "/api/portal/documents/share-fdv-1", None),
-        ("GET", "/api/portal/sla", None),
-        ("GET", "/api/portal/invoices", None),
-        ("POST", "/api/portal/service-requests", {"summary": "help"}),
-        ("POST", "/api/portal/expansion-interest", {"summary": "expand"}),
-        ("POST", "/api/portal/advisor", {"query": "how are my rooms?"}),
-    ],
-)
+@pytest.mark.parametrize(("method", "path", "body"), _ALL_PROTECTED_ROUTES)
 def test_cross_customer_scope_header_tampering_refused(
     client: TestClient,
     tenant_a_session: str,
@@ -662,21 +664,7 @@ def test_cross_customer_scope_header_tampering_refused(
 # ============================================================================
 
 
-@pytest.mark.parametrize(
-    ("method", "path", "body"),
-    [
-        ("GET", "/api/portal/rooms/overview", None),
-        ("GET", "/api/portal/rooms/room-alpha-1/tracker", None),
-        ("GET", "/api/portal/rooms/room-alpha-1/assets", None),
-        ("GET", "/api/portal/documents", None),
-        ("GET", "/api/portal/documents/share-fdv-1", None),
-        ("GET", "/api/portal/sla", None),
-        ("GET", "/api/portal/invoices", None),
-        ("POST", "/api/portal/service-requests", {"summary": "help"}),
-        ("POST", "/api/portal/expansion-interest", {"summary": "expand"}),
-        ("POST", "/api/portal/advisor", {"query": "how are my rooms?"}),
-    ],
-)
+@pytest.mark.parametrize(("method", "path", "body"), _ALL_PROTECTED_ROUTES)
 def test_cross_customer_target_scope_param_tampering_refused(
     client: TestClient,
     tenant_a_session: str,
