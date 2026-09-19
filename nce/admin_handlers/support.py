@@ -17,12 +17,13 @@ Exports:
   ``api_support_tickets_dispatch`` — POST /api/support/tickets/{id}/dispatch
   ``api_support_sync_now``         — POST /api/support/sync/now
   ``api_support_sync_status``      — GET  /api/support/sync/status
+  ``api_support_on_call``          — GET  /api/support/on-call
 
 All handlers are thin REST wrappers over the vertical module cores in
 ``nce/vertical_modules/support/**`` (``do_open_ticket``, ``do_query_ticket``,
 ``do_sla_clock``, ``do_health_score``, ``do_troubleshoot``, ``do_resolve_ticket``,
 ``do_triage_ticket``, ``do_record_touchpoint``, ``do_dispatch_work_order``,
-``do_sync_now``, ``do_sync_status``)
+``do_sync_now``, ``do_sync_status``, ``do_get_on_call``)
 — adhering to the "one core function, two surfaces" pattern.
 
 Mutating routes invalidate the MCP response cache via ``bump_mcp_cache_generation``.
@@ -68,6 +69,7 @@ from nce.vertical_modules.support.ecosystem import (
     do_support_at_risk_aggregate,
 )
 from nce.vertical_modules.support.health import do_health_score, do_record_touchpoint
+from nce.vertical_modules.support.on_call import do_get_on_call
 from nce.vertical_modules.support.sla import do_sla_clock
 from nce.vertical_modules.support.sync import do_sync_now, do_sync_status
 from nce.vertical_modules.support.tickets import (
@@ -1209,6 +1211,64 @@ async def api_support_tickets_timeline(request: Any) -> JSONResponse:
             exc,
             status_code=500,
             log_event="api_support_tickets_timeline",
+        )
+
+    return JSONResponse({"ok": True, **result})
+
+
+# ---------------------------------------------------------------------------
+# GET /api/support/on-call
+# ---------------------------------------------------------------------------
+
+
+async def api_support_on_call(request: Any) -> JSONResponse:
+    """GET /api/support/on-call — retrieve active on-call responders.
+
+    Query parameters:
+        namespace_id (str, required): Active namespace UUID.
+        at (str, optional): Point-in-time ISO timestamp.
+        starts_at (str, optional): Window start ISO timestamp.
+        ends_at (str, optional): Window end ISO timestamp.
+        include_released (bool, optional): Include released allocations.
+        contractor_view (bool, optional): Redact internal rates/margins.
+
+    Response (JSON):
+        {"ok": True, "namespace_id": str, "on_call": [...], "count": int, "query_time": str, "resources_available": bool}
+    """
+    if (e := engine_unavailable()) is not None:
+        return e
+
+    namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
+    if err is not None:
+        return err
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_support_enabled(pool, namespace_id)
+    except SupportDisabledError as exc:
+        return admin_client_error(str(exc), status_code=409, extra={"reason": "support_disabled"})
+
+    params: dict[str, Any] = {"namespace_id": namespace_id}
+    for key in ("at", "starts_at", "ends_at"):
+        val = request.query_params.get(key)
+        if val is not None:
+            params[key] = val
+
+    for bool_key in ("include_released", "contractor_view"):
+        if bool_key in request.query_params:
+            val = str(request.query_params.get(bool_key)).lower()
+            params[bool_key] = val in ("1", "true", "yes")
+
+    try:
+        result = await do_get_on_call(admin_state.engine, params)
+    except ValueError as exc:
+        return admin_validation_error(exc, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Support on-call query error",
+            exc,
+            status_code=500,
+            log_event="api_support_on_call",
         )
 
     return JSONResponse({"ok": True, **result})

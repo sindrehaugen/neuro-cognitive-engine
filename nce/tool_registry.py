@@ -1554,6 +1554,13 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # Support vertical module on-call rota and active responder routing (Wave D-7)
+    "support_get_on_call": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_get_on_call"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # Field Tech vertical module tools (ML12-B5, M12.W5)
     "field_tech_dispatch": ToolSpec(
         _h(field_tech_mcp_handlers, "handle_field_tech_dispatch"),
