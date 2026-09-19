@@ -113,8 +113,25 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/agreements/upsert` | `api_agreements_upsert` |
 | GET | `/api/agreements/{id}` | `api_agreements_detail` |
 | GET | `/api/assets` | `api_assets_list` |
+| GET | `/api/assets/assets` | `handle_list` |
+| POST | `/api/assets/assets` | `handle_create` |
+| POST | `/api/assets/assets/bulk` | `handle_bulk` |
+| GET | `/api/assets/assets/{id}` | `handle_get` |
+| PATCH | `/api/assets/assets/{id}` | `handle_patch` |
+| POST | `/api/assets/assets/{id}/archive` | `handle_archive` |
+| GET | `/api/assets/assets/{id}/comments` | `handle_list_comments` |
+| POST | `/api/assets/assets/{id}/comments` | `handle_add_comment` |
+| GET | `/api/assets/assets/{id}/documents` | `handle_list_documents` |
+| POST | `/api/assets/assets/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/assets/assets/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/assets/assets/{id}/events` | `handle_events` |
+| POST | `/api/assets/assets/{id}/restore` | `handle_restore` |
+| GET | `/api/assets/assets/{id}/tags` | `handle_list_tags` |
+| POST | `/api/assets/assets/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/assets/assets/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/assets/failure-pattern` | `api_assets_record_failure_pattern` |
 | GET | `/api/assets/health` | `api_assets_health` |
+| GET | `/api/assets/merge` | `api_assets_merge_queue` |
 | GET | `/api/assets/qr` | `api_assets_generate_qr` |
 | GET | `/api/assets/register` | `api_assets_register` |
 | POST | `/api/assets/seed-from-bom` | `api_assets_seed_from_bom` |
@@ -125,6 +142,9 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/assets/{id}/failure-pattern` | `api_assets_record_failure_pattern` |
 | GET | `/api/assets/{id}/health` | `api_assets_health` |
 | POST | `/api/assets/{id}/lifecycle` | `api_assets_advance_lifecycle` |
+| POST | `/api/assets/{id}/link-product` | `api_assets_link_product` |
+| POST | `/api/assets/{id}/merge` | `api_assets_merge` |
+| POST | `/api/assets/{id}/move` | `api_assets_move` |
 | GET | `/api/assets/{id}/qr` | `api_assets_generate_qr` |
 | POST | `/api/assets/{id}/telemetry` | `api_assets_pull_telemetry` |
 | POST | `/api/business-insights/ask` | `api_business_insights_ask` |
@@ -562,6 +582,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/support/customer-health/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/support/customer-health/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/support/customers/{id}/health` | `api_support_customer_health` |
+| GET | `/api/support/on-call` | `api_support_on_call` |
 | GET | `/api/support/sla-clocks` | `handle_list` |
 | POST | `/api/support/sla-clocks` | `handle_create` |
 | POST | `/api/support/sla-clocks/bulk` | `handle_bulk` |
@@ -580,6 +601,22 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | DELETE | `/api/support/sla-clocks/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/support/sync/now` | `api_support_sync_now` |
 | GET | `/api/support/sync/status` | `api_support_sync_status` |
+| GET | `/api/support/ticket-actions` | `handle_list` |
+| POST | `/api/support/ticket-actions` | `handle_create` |
+| POST | `/api/support/ticket-actions/bulk` | `handle_bulk` |
+| GET | `/api/support/ticket-actions/{id}` | `handle_get` |
+| PATCH | `/api/support/ticket-actions/{id}` | `handle_patch` |
+| POST | `/api/support/ticket-actions/{id}/archive` | `handle_archive` |
+| GET | `/api/support/ticket-actions/{id}/comments` | `handle_list_comments` |
+| POST | `/api/support/ticket-actions/{id}/comments` | `handle_add_comment` |
+| GET | `/api/support/ticket-actions/{id}/documents` | `handle_list_documents` |
+| POST | `/api/support/ticket-actions/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/support/ticket-actions/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/support/ticket-actions/{id}/events` | `handle_events` |
+| POST | `/api/support/ticket-actions/{id}/restore` | `handle_restore` |
+| GET | `/api/support/ticket-actions/{id}/tags` | `handle_list_tags` |
+| POST | `/api/support/ticket-actions/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/support/ticket-actions/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/support/tickets` | `api_support_tickets_list` |
 | GET | `/api/support/tickets` | `handle_list` |
 | POST | `/api/support/tickets` | `api_support_tickets_open` |
@@ -588,6 +625,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/support/tickets/{id}` | `api_support_tickets_get` |
 | GET | `/api/support/tickets/{id}` | `handle_get` |
 | PATCH | `/api/support/tickets/{id}` | `handle_patch` |
+| POST | `/api/support/tickets/{id}/actions` | `api_support_tickets_log_action` |
 | POST | `/api/support/tickets/{id}/archive` | `handle_archive` |
 | GET | `/api/support/tickets/{id}/comments` | `handle_list_comments` |
 | POST | `/api/support/tickets/{id}/comments` | `handle_add_comment` |
@@ -603,6 +641,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/support/tickets/{id}/tags` | `handle_list_tags` |
 | POST | `/api/support/tickets/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/support/tickets/{id}/tags/{tag}` | `handle_remove_tag` |
+| GET | `/api/support/tickets/{id}/timeline` | `api_support_tickets_timeline` |
 | POST | `/api/support/tickets/{id}/triage` | `api_support_tickets_triage` |
 | POST | `/api/support/tickets/{id}/upsell-signal` | `api_support_tickets_upsell_signal` |
 | POST | `/api/support/touchpoints` | `api_support_touchpoints_record` |
@@ -690,17 +729,21 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `agreements_run_compliance_audit` |  |  | yes |  |
 | `agreements_suggest_revision` | yes | yes |  |  |
 | `assets_advance_lifecycle` |  | yes |  |  |
+| `assets_archive_assets` |  | yes |  |  |
 | `assets_attach_sla` |  | yes |  |  |
 | `assets_check_warranty_eol` |  |  | yes |  |
 | `assets_compute_health` |  | yes |  |  |
 | `assets_generate_qr` |  |  | yes |  |
 | `assets_get` |  |  | yes |  |
+| `assets_get_assets` |  |  | yes |  |
 | `assets_list` |  |  | yes |  |
+| `assets_list_assets` |  |  | yes |  |
 | `assets_ping` |  |  | yes |  |
 | `assets_pull_telemetry` | yes | yes |  |  |
 | `assets_record_failure_pattern` | yes | yes |  |  |
 | `assets_seed_from_bom` |  | yes |  |  |
 | `assets_sync_netbox` | yes | yes |  |  |
+| `assets_upsert_assets` |  | yes |  |  |
 | `boost_memory` |  | yes |  |  |
 | `bridge_status` |  |  |  |  |
 | `business_insights_ask_business` | yes |  |  |  |
@@ -973,6 +1016,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `semantic_search` |  |  | yes |  |
 | `shred_memory` | yes | yes |  |  |
 | `sites_archive_sites` |  | yes |  |  |
+| `sites_enrich_address_from_registry` | yes | yes |  |  |
 | `sites_get_sites` |  |  | yes |  |
 | `sites_list_sites` |  |  | yes |  |
 | `sites_upsert_sites` |  | yes |  |  |
@@ -983,28 +1027,35 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `suggest_queries` |  |  |  |  |
 | `support_archive_customer_health` |  | yes |  |  |
 | `support_archive_sla_clocks` |  | yes |  |  |
+| `support_archive_ticket_actions` |  | yes |  |  |
 | `support_archive_tickets` |  | yes |  |  |
 | `support_at_risk_aggregate` |  |  | yes |  |
 | `support_dispatch_work_order` | yes | yes |  |  |
 | `support_failure_pattern` | yes | yes |  |  |
 | `support_get_customer_health` |  |  | yes |  |
+| `support_get_on_call` |  |  | yes |  |
 | `support_get_sla_clocks` |  |  | yes |  |
+| `support_get_ticket_actions` |  |  | yes |  |
 | `support_get_tickets` |  |  | yes |  |
 | `support_health_score` |  |  | yes |  |
 | `support_list_customer_health` |  |  | yes |  |
 | `support_list_sla_clocks` |  |  | yes |  |
+| `support_list_ticket_actions` |  |  | yes |  |
 | `support_list_tickets` |  |  | yes |  |
+| `support_log_ticket_action` | yes | yes |  |  |
 | `support_open_ticket` | yes | yes |  |  |
 | `support_query_ticket` |  |  | yes |  |
 | `support_record_touchpoint` |  | yes |  |  |
 | `support_resolve_ticket` | yes | yes |  |  |
 | `support_sla_clock` |  |  | yes |  |
 | `support_sync_now` | yes | yes |  |  |
+| `support_ticket_timeline` |  |  | yes |  |
 | `support_triage_ticket` |  |  | yes |  |
 | `support_troubleshoot` |  |  | yes |  |
 | `support_upsell_signal` | yes | yes |  |  |
 | `support_upsert_customer_health` |  | yes |  |  |
 | `support_upsert_sla_clocks` |  | yes |  |  |
+| `support_upsert_ticket_actions` |  | yes |  |  |
 | `support_upsert_tickets` |  | yes |  |  |
 | `system_design_assign_fl_responsible` |  | yes |  |  |
 | `system_design_author_functional_location` |  | yes |  |  |
@@ -1064,4 +1115,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 654 REST endpoints, 392 MCP tools._
+_Totals: 693 REST endpoints, 404 MCP tools._
