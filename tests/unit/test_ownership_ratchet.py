@@ -40,14 +40,6 @@ _FILE_DYNAMIC_MAP: dict[str, list[str]] = {
 # Shrink-only allowlist: Vertical module files writing kg_nodes without assert_owner
 # Once a wave (e.g. FT-2 or HR-1) wraps graph writes in assert_owner, the file MUST be removed.
 KNOWN_UNGUARDED_GRAPH_WRITERS: dict[str, dict[str, str]] = {
-    "nce/vertical_modules/hr/a2a.py": {
-        "engine": "hr",
-        "owner": "MLV15B",
-        "reason": (
-            "HR A2A project assignment handler writes PROJECT and EMPLOYEE nodes without assert_owner; "
-            "scheduled for remediation in v1.5 Phase 1 Wave HR-1."
-        ),
-    },
     "nce/vertical_modules/dynamics365/sync.py": {
         "engine": "dynamics365",
         "owner": "Core",
@@ -60,14 +52,6 @@ KNOWN_UNGUARDED_GRAPH_WRITERS: dict[str, dict[str, str]] = {
 
 # Shrink-only allowlist: Entity types written by code lacking rows in node-ownership.json
 KNOWN_UNREGISTERED_ENTITY_TYPES: dict[str, dict[str, str]] = {
-    "EMPLOYEE": {
-        "engine": "hr",
-        "owner": "MLV15B",
-        "reason": (
-            "HR employee entity type authored in hr/a2a.py lacks registration in node-ownership.json; "
-            "scheduled to be registered in v1.5 Phase 1 Wave HR-1."
-        ),
-    },
     "PROJECT": {
         "engine": "hr",
         "owner": "MLV15B",
@@ -337,7 +321,14 @@ def test_unregistered_entity_types_allowlist_is_shrink_only() -> None:
 
 
 def test_starting_baseline_matches_charter() -> None:
-    """Charter §6 verification: After FT-2, field_tech is fully guarded (0 unguarded files); hr (1 file) remains."""
+    """Charter §6 verification: after FT-2 and Lane E's HR wave (Wave E-14, #287), every
+    vertical engine's kg_nodes writers are fully guarded by this scan's own (function-level,
+    not per-node-type) has_assert check -- hr/a2a.py's handle_project_assignment_query gained
+    an assert_owner(..., "EMPLOYEE", "hr") call when EMPLOYEE was registered in
+    node-ownership.json, which also satisfies this coarse per-function metric for the
+    function's separate, unrelated, still-open PROJECT write (see KNOWN_UNREGISTERED_ENTITY_TYPES
+    -- that bug, writing an unnamespaced "PROJECT" instead of the registered "PROJECT_PROJECT",
+    is explicitly out of scope for this wave and remains scheduled for its own remediation)."""
     writers, _, _ = _scan_kg_nodes_writers(_REPO_ROOT)
     unguarded_files_by_engine: dict[str, list[str]] = {}
 
@@ -350,14 +341,11 @@ def test_starting_baseline_matches_charter() -> None:
         eng: files for eng, files in unguarded_files_by_engine.items() if eng != "dynamics365"
     }
 
-    assert set(vertical_unguarded.keys()) == {"hr"}, (
-        f"Charter §6 violation: Expected only hr to be unguarded, got: {list(vertical_unguarded.keys())}"
+    assert set(vertical_unguarded.keys()) == set(), (
+        f"Charter §6 violation: Expected every vertical engine guarded, got: {list(vertical_unguarded.keys())}"
     )
     assert len(vertical_unguarded.get("field_tech", [])) == 0, (
         f"Charter §6 violation: Expected 0 unguarded field_tech files, found {len(vertical_unguarded.get('field_tech', []))}"
-    )
-    assert len(vertical_unguarded["hr"]) == 1, (
-        f"Charter §6 violation: Expected exactly 1 unguarded hr file, found {len(vertical_unguarded['hr'])}"
     )
 
 

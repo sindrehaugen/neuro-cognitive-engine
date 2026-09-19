@@ -23,6 +23,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from nce.db_utils import scoped_pg_session
+from nce.entity_resolution.ownership import assert_owner
 from nce.vertical_modules.hr._guard import assert_ranking_prohibited
 from nce.vertical_modules.hr.capacity import do_capacity
 from nce.vertical_modules.hr.certs import do_cert_status
@@ -44,6 +45,7 @@ log = logging.getLogger("nce.vertical_modules.hr.a2a")
 _NODE_TYPE_PROJECT = "PROJECT"
 _NODE_TYPE_EMPLOYEE = "EMPLOYEE"
 _PREDICATE_LED_BY = "led_by"
+_HR_ENGINE = "hr"
 
 
 async def handle_project_assignment_query(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
@@ -151,6 +153,7 @@ async def handle_project_assignment_query(engine: Any, params: dict[str, Any]) -
             )
 
             # Write EMPLOYEE node
+            await assert_owner(conn, ns_uuid, _NODE_TYPE_EMPLOYEE, _HR_ENGINE)
             emp_label = f"EMPLOYEE:{assign_lead_id}"
             await conn.execute(
                 """
