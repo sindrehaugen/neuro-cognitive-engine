@@ -71,6 +71,11 @@ from nce.vertical_modules.support.ecosystem import (
 from nce.vertical_modules.support.health import do_health_score, do_record_touchpoint
 from nce.vertical_modules.support.on_call import do_get_on_call
 from nce.vertical_modules.support.sla import do_sla_clock
+from nce.vertical_modules.support.summary import (
+    do_get_ticket_links,
+    do_link_ticket,
+    do_summarise_ticket,
+)
 from nce.vertical_modules.support.sync import do_sync_now, do_sync_status
 from nce.vertical_modules.support.tickets import (
     AutocloseConfidenceRefusalError,
@@ -1217,6 +1222,7 @@ async def api_support_tickets_timeline(request: Any) -> JSONResponse:
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # GET /api/support/on-call
 # ---------------------------------------------------------------------------
 
@@ -1271,4 +1277,193 @@ async def api_support_on_call(request: Any) -> JSONResponse:
             log_event="api_support_on_call",
         )
 
+    return JSONResponse({"ok": True, **result})
+
+
+# ---------------------------------------------------------------------------
+# GET /api/support/tickets/{id}/summary
+# ---------------------------------------------------------------------------
+
+
+async def api_support_ticket_summary(request: Any) -> JSONResponse:
+    """GET /api/support/tickets/{id}/summary — C9a retrieval-grounded ticket summary.
+
+    Path parameter:
+        id (str): Ticket UUID.
+
+    Query parameter:
+        namespace_id (str, required): Active namespace UUID.
+
+    Response (JSON):
+        {"ok": True, "ticket_id": str, "prose": str, "citations": [...], "dropped": [...], ...}
+    """
+    if (e := engine_unavailable()) is not None:
+        return e
+
+    ticket_id = (request.path_params.get("id") or "").strip()
+    if not ticket_id:
+        return admin_client_error("Missing path parameter: id", status_code=422)
+
+    namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
+    if err is not None:
+        return err
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_support_enabled(pool, namespace_id)
+    except SupportDisabledError as exc:
+        return admin_client_error(str(exc), status_code=409, extra={"reason": "support_disabled"})
+
+    params = {
+        "namespace_id": namespace_id,
+        "ticket_id": ticket_id,
+    }
+
+    try:
+        result = await do_summarise_ticket(admin_state.engine, params)
+    except TicketNotFoundError as exc:
+        return admin_client_error(
+            str(exc),
+            status_code=404,
+            extra={"not_found": True, "ticket_id": exc.ticket_id},
+        )
+    except ValueError as exc:
+        return admin_validation_error(exc, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Support ticket summary error",
+            exc,
+            status_code=500,
+            log_event="api_support_ticket_summary",
+        )
+
+    return JSONResponse({"ok": True, **result})
+
+
+# ---------------------------------------------------------------------------
+# GET /api/support/tickets/{id}/links
+# ---------------------------------------------------------------------------
+
+
+async def api_support_tickets_links(request: Any) -> JSONResponse:
+    """GET /api/support/tickets/{id}/links — retrieve all linked entities for a ticket.
+
+    Path parameter:
+        id (str): Ticket UUID.
+
+    Query parameter:
+        namespace_id (str, required): Active namespace UUID.
+
+    Response (JSON):
+        {"ok": True, "ticket_id": str, "functional_locations": [...], "agreements": [...], ...}
+    """
+    if (e := engine_unavailable()) is not None:
+        return e
+
+    ticket_id = (request.path_params.get("id") or "").strip()
+    if not ticket_id:
+        return admin_client_error("Missing path parameter: id", status_code=422)
+
+    namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
+    if err is not None:
+        return err
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_support_enabled(pool, namespace_id)
+    except SupportDisabledError as exc:
+        return admin_client_error(str(exc), status_code=409, extra={"reason": "support_disabled"})
+
+    params = {
+        "namespace_id": namespace_id,
+        "ticket_id": ticket_id,
+    }
+
+    try:
+        result = await do_get_ticket_links(admin_state.engine, params)
+    except TicketNotFoundError as exc:
+        return admin_client_error(
+            str(exc),
+            status_code=404,
+            extra={"not_found": True, "ticket_id": exc.ticket_id},
+        )
+    except ValueError as exc:
+        return admin_validation_error(exc, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Support ticket links query error",
+            exc,
+            status_code=500,
+            log_event="api_support_tickets_links",
+        )
+
+    return JSONResponse({"ok": True, **result})
+
+
+# ---------------------------------------------------------------------------
+# POST /api/support/tickets/{id}/links
+# ---------------------------------------------------------------------------
+
+
+async def api_support_tickets_link(request: Any) -> JSONResponse:
+    """POST /api/support/tickets/{id}/links — link ticket to an entity (FL, agreement, asset).
+
+    Path parameter:
+        id (str): Ticket UUID.
+
+    Request body (JSON):
+        namespace_id (str, required): Active namespace UUID.
+        target_type (str, required): Entity kind ('functional_location', 'agreement', 'asset', etc.).
+        target_id (str, required): Target entity identifier.
+        relation (str, optional): Predicate label (default 'about').
+        change_origin (str, optional): Origin enum.
+
+    Response (JSON):
+        {"ok": True, "ticket_id": str, "target_type": str, "target_id": str, ...}
+    """
+    if (e := engine_unavailable()) is not None:
+        return e
+
+    ticket_id = (request.path_params.get("id") or "").strip()
+    if not ticket_id:
+        return admin_client_error("Missing path parameter: id", status_code=422)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    namespace_id, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_support_enabled(pool, namespace_id)
+    except SupportDisabledError as exc:
+        return admin_client_error(str(exc), status_code=409, extra={"reason": "support_disabled"})
+
+    params = dict(body)
+    params["namespace_id"] = namespace_id
+    params["ticket_id"] = ticket_id
+
+    try:
+        result = await do_link_ticket(admin_state.engine, params)
+    except TicketNotFoundError as exc:
+        return admin_client_error(
+            str(exc),
+            status_code=404,
+            extra={"not_found": True, "ticket_id": exc.ticket_id},
+        )
+    except ValueError as exc:
+        return admin_validation_error(exc, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Support ticket link error",
+            exc,
+            status_code=500,
+            log_event="api_support_tickets_link",
+        )
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_support_tickets_link")
     return JSONResponse({"ok": True, **result})

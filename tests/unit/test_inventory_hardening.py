@@ -51,15 +51,15 @@ _NAMESPACE_ID = "00000000-0000-4000-8000-000000000001"
 _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
-# --- MEASURED post-rebase onto main (Wave D-5 Support Ticket Action + Wave D-1 Asset Resource) + Lane D Wave D-7 Support on-call rota tool:
-# TOTAL: 395 from main + 1 support_get_on_call = 396.
-# MUTATION: 178 (unaffected -- support_get_on_call is read-only).
-# CACHEABLE: 172 from main + 1 support_get_on_call = 173.
-# ADMIN_ONLY: 99 (unaffected -- support_get_on_call is not admin-only).
-_TOTAL_TOOLS = 396
-_MUTATION_TOOLS = 178
-_CACHEABLE_TOOLS = 173
-_ADMIN_ONLY_TOOLS = 99
+# --- MEASURED post-rebase onto main (Wave D-5 + Wave D-1 + Wave D-7) + Lane D Wave D-6 Support Ticket summary & links tools:
+# TOTAL: 396 from main + 3 support summary/links tools = 399.
+# MUTATION: 178 from main + 1 support_link_ticket = 179.
+# CACHEABLE: 173 from main + 2 support summary/links reads = 175.
+# ADMIN_ONLY: 99 from main + 1 support_link_ticket = 100.
+_TOTAL_TOOLS = 399
+_MUTATION_TOOLS = 179
+_CACHEABLE_TOOLS = 175
+_ADMIN_ONLY_TOOLS = 100
 _MIGRATION_TOOLS = 5
 
 
