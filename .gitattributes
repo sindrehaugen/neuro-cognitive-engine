@@ -19,43 +19,24 @@ entrypoint.sh text eol=lf
 # them. Blobs are already LF; this only stops a Windows checkout corrupting them.
 debian/** text eol=lf
 
-# Janitor pass 7 (K-H7, 2026-09-18): generated-doc rebase tax. With per-tool
-# count pins gone (#243), docs/API.md, docs/_generated/**, and
-# docs/vertical_engines/ENGINE_STATUS.md are the files every lane's rebase
-# now collides on -- one lane's regeneration conflicts with the next lane's,
-# on every merge, across every open PR, even though there is no "both sides"
-# to reconcile: a generated file has no authorial content, only a
-# to-be-regenerated derivative of the source tree.
+# RETIRED (§10.5b, ORCH_PROTOCOL.md, 2026-09-19): this section used to pin
+# `merge=ours` on docs/API.md, docs/_generated/**, docs/vertical_engines/
+# ENGINE_STATUS.md, and openapi.json (K-H7, 2026-09-18) to lower the cost of
+# the rebase conflicts those generated files caused on every PR. K-H9
+# (2026-09-19) found the driver is worse than a stopgap: "ours" flips meaning
+# between `merge` and `rebase` (under rebase it means the branch being
+# rebased ONTO), so on a branch's SECOND rebase it silently replays a stale
+# copy over an already-correct regenerated one, with zero conflict markers --
+# the exact hazard this driver existed to hide the SIGNAL of, not the
+# problem. See ORCH_PROTOCOL.md §10.5a for the incident.
 #
-# `merge=ours` resolves the conflict by keeping "our" (the rebase target's)
-# copy and discarding "theirs" -- no conflict markers, ever. This is
-# deliberately NOT "the correct merge": neither side is guaranteed correct
-# after a rebase moves the underlying source tree, and the driver does not
-# attempt to regenerate live (git's mid-rebase state cannot reliably support
-# the generators' own `git show`/`git ls-tree --baseline HEAD` reads -- other
-# files this generator depends on may be mid-conflict in the very same
-# rebase). Regeneration remains a REQUIRED manual step after every rebase,
-# exactly as before this driver existed (charter §4.1: commit code changes,
-# THEN regenerate, THEN commit the regenerated file) -- this driver removes
-# only the tax of hand-editing conflict markers in a file whose content is
-# about to be thrown away and recomputed regardless. CI's existing --check
-# gates (gen_engine_figures.py --check, test_generated_surface_doc_matches_
-# the_generator, gen_api_docs.py --check, gen_portal_parity.py --check) are
-# UNCHANGED and remain the actual correctness enforcement -- this driver
-# only ever affects a lane's own local pre-push rebase, never what CI
-# verifies before merge.
-#
-# One known, accepted side effect: a commit whose ENTIRE diff is a doc
-# regeneration (no other changes) may be silently dropped by `git rebase`
-# when this driver makes its diff a no-op against the new base. This is
-# harmless given the mandatory post-rebase regeneration step above -- the
-# doc gets regenerated fresh regardless of whether the old regen-only commit
-# survived the rebase.
-#
-# Setup required once per clone (lives in .git/config, not tracked by this
-# file -- a driver nobody installs is a no-op that looks like a fix):
-#   git config merge.ours.driver true
-docs/API.md                            merge=ours
-docs/_generated/**                     merge=ours
-docs/vertical_engines/ENGINE_STATUS.md merge=ours
-openapi.json                           merge=ours
+# §10.5b removes the actual cause instead of dulling its edge: PRs no longer
+# carry these files at all (nor docs/_generated/host_parity.md, same class,
+# same glob, added to the same regeneration job for completeness). A
+# .github/workflows/regen-generated-docs.yml job regenerates and commits them
+# on `main` after every merge, only when the diff is non-empty. With no
+# generated file in a PR's diff, there is nothing left for a rebase to
+# corrupt -- this driver's failure mode cannot fire on a file that was never
+# there to conflict on. The old `git config merge.ours.driver true` one-time
+# setup is no longer needed for these paths; nothing else in this file used
+# it.

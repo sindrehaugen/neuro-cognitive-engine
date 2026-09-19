@@ -1,0 +1,148 @@
+name: Regenerate generated docs (post-merge)
+
+# §10.5b (ORCH_PROTOCOL.md, 2026-09-19): PRs stop carrying the generated
+# artefacts that collided on every merge (K-H7's original problem, then K-H9:
+# the merge=ours driver that lowered the per-rebase COST of those collisions
+# turned out to be actively dangerous across a second rebase -- it can silently
+# replay a stale copy over an already-correct one, with zero conflict markers).
+# §10.5b's fix is structural, not another driver: regenerate on `main` AFTER a
+# merge, not inside the PR. With no generated files in a PR's diff, there is
+# nothing for a rebase to corrupt -- K-H9's whole failure mode needs a
+# generated file in the branch to fire on.
+#
+# This job commits straight to `main` (no PR of its own) and only when the
+# regenerated content actually differs -- git diff --quiet decides that, the
+# same idempotency check used by .github/workflows/refresh-lock.yml. It is a
+# fixed point: a push whose ONLY change is one of these 6 files (i.e. this
+# job's own prior commit) regenerates to byte-identical content and finds no
+# diff, so it does not re-trigger itself in a loop.
+#
+# WHAT THIS DOES NOT CHANGE: every existing --check gate in ci.yml (the D-GEN
+# engine-figures check, gen_openapi.py --check via test_openapi_current.py,
+# gen_api_docs.py --check via test_api_docs_current.py, gen_portal_parity.py
+# --check via test_host_parity_current.py) is untouched and keeps running on
+# every push to `main`, including this job's own regen commit. That is the
+# actual correctness enforcement, unchanged per ML-orch's explicit
+# requirement -- this workflow only moves WHEN the regeneration happens, from
+# "inside every PR" to "once, after merge."
+#
+# WHAT HAPPENS IF THIS JOB FAILS OR NEVER RUNS: nothing is silent. The moment
+# a merge to `main` changes something one of these generators reads (a tool
+# registered, a migration added, a route mounted) without this job
+# successfully regenerating afterwards, ci.yml's own --check gates -- which
+# ALSO run on every push to `main`, completely independent of this workflow --
+# go red on that same push and stay red until a regeneration lands, exactly as
+# they do today for a human contributor who forgot to regenerate before this
+# change. A GitHub Actions job failing is visible on the Actions tab like any
+# other; this adds no new alerting beyond that, which is a real, stated limit
+# (see the PR body), not a solved problem.
+#
+# KNOWN, ACCEPTED COST: a doc on `main` is briefly stale between a merge
+# landing and this job's regen commit landing a few minutes later, and this
+# job can lose a race against a fast second merge (its `git push` is
+# rejected, non-fast-forward). Both resolve on their own: the job regenerates
+# from current HEAD every time and is idempotent, and a lost race just means
+# the NEXT push to `main` (the one that raced it) re-triggers this same job,
+# which then regenerates against the union of both merges' source changes.
+# Nothing is lost, no force-push, no rebase.
+
+on:
+  push:
+    branches: [main, master]
+
+# Only one regen commit in flight at a time; a second push while this job is
+# still running should wait its turn rather than race it pointlessly.
+concurrency:
+  group: regen-generated-docs-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  regen:
+    name: Regenerate docs/API.md, openapi.json, engine figures, golden thread seams, host parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # This job's own regen commit's message carries this marker so it does not
+    # re-trigger itself in a *second* run purely for log noise -- correctness
+    # does not depend on this skip (see the fixed-point note above: a re-run
+    # against a docs-only commit would just find zero diff and exit cleanly),
+    # this only saves a few CI minutes.
+    if: "!contains(github.event.head_commit.message, '[skip regen]')"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      # No torch install here (unlike the `test` job in ci.yml): none of these
+      # generators call the codepath that imports sentence_transformers/torch
+      # (nce/embeddings.py imports it lazily, inside a function none of these
+      # scripts reach) -- checked before writing this job, not assumed from
+      # ci.yml's own install list.
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Regenerate docs/API.md
+        env:
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+        run: python scripts/gen_api_docs.py
+
+      - name: Regenerate openapi.json (repo root and docs/_generated/)
+        run: python scripts/gen_openapi.py
+
+      - name: Regenerate docs/_generated/engine_figures.md and ENGINE_STATUS.md
+        run: |
+          python scripts/gen_engine_figures.py --repo . --baseline HEAD \
+            --out docs/_generated/engine_figures.md \
+            --update-status docs/vertical_engines/ENGINE_STATUS.md
+
+      - name: Regenerate docs/_generated/golden_thread_seams.md
+        run: |
+          python scripts/gen_golden_thread_seams.py --repo . --baseline HEAD \
+            --out docs/_generated/golden_thread_seams.md
+
+      # Not one of ML-orch's named 5, but the same class of hazard under the
+      # same docs/_generated/** merge=ours glob (now removed) -- included so
+      # this wave actually drains every generated artefact a PR could still
+      # collide on, not just the five that happened to be measured.
+      - name: Regenerate docs/_generated/host_parity.md
+        run: python scripts/gen_portal_parity.py
+
+      - name: Commit and push if the regenerated docs actually changed
+        run: |
+          set -e
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          TARGETS="docs/API.md openapi.json docs/_generated/openapi.json \
+            docs/_generated/engine_figures.md docs/vertical_engines/ENGINE_STATUS.md \
+            docs/_generated/golden_thread_seams.md docs/_generated/host_parity.md"
+
+          if git diff --quiet -- $TARGETS; then
+            echo "No drift -- generated docs already match ${{ github.ref_name }}."
+            exit 0
+          fi
+
+          git add $TARGETS
+          git commit -m "docs: regenerate generated artefacts [skip regen]
+
+          Auto-regenerated by .github/workflows/regen-generated-docs.yml
+          after a merge to ${{ github.ref_name }} changed something these
+          docs are derived from. See that workflow for the exact generator
+          invocations; see charter §10.5b for why this runs post-merge
+          instead of inside the PR that changed the source."
+
+          if ! git push origin HEAD:${{ github.ref_name }}; then
+            echo "Push rejected -- ${{ github.ref_name }} moved under this job (a fast second merge, the known/accepted race in this workflow's header comment). That push's own run of this workflow will regenerate against the current state and commit what's actually needed; nothing from this run is lost, nothing needs a retry here."
+            exit 0
+          fi
