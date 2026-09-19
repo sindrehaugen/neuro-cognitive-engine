@@ -27,6 +27,7 @@ from uuid import UUID
 
 from nce.db_utils import scoped_pg_session
 from nce.entity_resolution.ownership import assert_owner
+from nce.mcp_errors import BusinessRefusalError
 
 log = logging.getLogger("nce.vertical_modules.assets.assignment")
 
@@ -34,7 +35,7 @@ _ASSETS_ENGINE: str = "assets"
 _NODE_TYPE_ASSET: str = "ASSET"
 
 
-class AssetAssignmentError(Exception):
+class AssetAssignmentError(BusinessRefusalError):
     """Base exception for asset assignment operations."""
 
 
