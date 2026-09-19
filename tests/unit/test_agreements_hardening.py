@@ -264,6 +264,11 @@ _AGREEMENTS_TOOLS: frozenset[str] = frozenset(
         "agreements_request_signature",
         "agreements_record_signature",
         "agreements_review_extraction",
+        # Wave B-10: Price Rules & Index Series (Config-as-IP)
+        "agreements_get_index_series",
+        "agreements_calculate_index_adjustment",
+        "agreements_get_price_rules",
+        "agreements_evaluate_price_rule",
     }
 )
 
@@ -309,6 +314,25 @@ def test_agreements_lookup_terms_classification_pinned() -> None:
     assert spec.migration is False
     assert "agreements_lookup_terms" in CACHEABLE_TOOLS
     assert "agreements_lookup_terms" not in MUTATION_TOOLS
+
+
+def test_agreements_b10_tools_classification_pinned() -> None:
+    """Wave B-10 tools must stay read-only, non-admin, cacheable Advisor tools."""
+    from nce.tool_registry import CACHEABLE_TOOLS, MUTATION_TOOLS, TOOL_REGISTRY
+
+    for name in [
+        "agreements_get_index_series",
+        "agreements_calculate_index_adjustment",
+        "agreements_get_price_rules",
+        "agreements_evaluate_price_rule",
+    ]:
+        spec = TOOL_REGISTRY[name]
+        assert spec.cacheable is True
+        assert spec.admin_only is False
+        assert spec.mutation is False
+        assert spec.migration is False
+        assert name in CACHEABLE_TOOLS
+        assert name not in MUTATION_TOOLS
 
 
 # ---------------------------------------------------------------------------

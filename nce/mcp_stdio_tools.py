@@ -4534,6 +4534,120 @@ TOOLS = [
         },
     ),
     Tool(
+        name="agreements_get_index_series",
+        description=(
+            "Query economic index series (SSB KPI, KPI-JAE, ICT services producer price, EU HICP) "
+            "and historical measurement figures from Agreements Config-as-IP."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "series_id": {
+                    "type": "string",
+                    "description": "Optional; specific index series identifier (e.g. 'SSB_KPI').",
+                },
+                "search": {
+                    "type": "string",
+                    "description": "Optional; text query to filter series by name or description.",
+                },
+                "frequency": {
+                    "type": "string",
+                    "description": "Optional; measurement frequency ('monthly', 'quarterly', 'annual').",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="agreements_calculate_index_adjustment",
+        description=(
+            "Calculate index-linked price regulation uplift percentage and optional renewal amounts "
+            "between base and target periods using Config-as-IP index series."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "series_id": {
+                    "type": "string",
+                    "description": "Index series identifier (e.g. 'SSB_KPI').",
+                },
+                "base_period": {
+                    "type": "string",
+                    "description": "Base period (e.g. '2023' or '2023-01').",
+                },
+                "target_period": {
+                    "type": "string",
+                    "description": "Target period (e.g. '2024' or '2024-01').",
+                },
+                "base_index": {
+                    "type": "number",
+                    "description": "Optional explicit base index value.",
+                },
+                "target_index": {
+                    "type": "number",
+                    "description": "Optional explicit target index value.",
+                },
+                "regulation_ratio": {
+                    "type": "number",
+                    "description": "Optional regulation ratio (default 1.0).",
+                },
+                "cap_pct": {
+                    "type": "number",
+                    "description": "Optional regulation cap ceiling (e.g. 0.05).",
+                },
+                "floor_pct": {
+                    "type": "number",
+                    "description": "Optional regulation floor (default 0.0).",
+                },
+                "current_annual_amount": {
+                    "type": "number",
+                    "description": "Optional current amount to adjust.",
+                },
+            },
+            "required": ["namespace_id", "series_id"],
+        },
+    ),
+    Tool(
+        name="agreements_get_price_rules",
+        description=(
+            "Query agreement pricing rules (prisregel) covering index regulation, room SLA categories, "
+            "volume tier discounts, and commitment terms from Agreements Config-as-IP."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "rule_id": {
+                    "type": "string",
+                    "description": "Optional specific rule ID (e.g. 'RULE_KPI_STANDARD').",
+                },
+                "rule_type": {"type": "string", "description": "Optional rule type filter."},
+                "search": {"type": "string", "description": "Optional text query."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="agreements_evaluate_price_rule",
+        description=(
+            "Evaluate an agreement pricing rule (prisregel) against a contract, room count, or volume context."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "rule_id": {
+                    "type": "string",
+                    "description": "Rule identifier to evaluate (e.g. 'RULE_KPI_STANDARD').",
+                },
+                "context": {"type": "object", "description": "Evaluation context parameters."},
+            },
+            "required": ["namespace_id", "rule_id"],
+        },
+    ),
+    Tool(
         name="sales_get_signed_baseline",
         description=(
             "Read the Sales-frozen SIGNED_BASELINE for one quote. Read-only, and the "
@@ -5324,14 +5438,22 @@ TOOLS = [
                 },
                 "contract_id": {
                     "type": "string",
-                    "description": "Contract identifier in economy_contracts.",
+                    "description": "Contract identifier in economy_contracts or agreements.",
                 },
                 "proposed_cpi_pct": {
                     "type": ["number", "string"],
-                    "description": "Proposed CPI uplift fraction (e.g. 0.05 or '0.05' for 5%).",
+                    "description": "Optional; proposed CPI uplift fraction (e.g. 0.05 or '0.05' for 5%).",
+                },
+                "index_series_id": {
+                    "type": "string",
+                    "description": "Optional; Agreements Config-as-IP index series ID (e.g. 'SSB_KPI').",
+                },
+                "price_rule_id": {
+                    "type": "string",
+                    "description": "Optional; Agreements Config-as-IP price rule ID (e.g. 'RULE_KPI_STANDARD').",
                 },
             },
-            "required": ["namespace_id", "contract_id", "proposed_cpi_pct"],
+            "required": ["namespace_id", "contract_id"],
         },
     ),
     Tool(

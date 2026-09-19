@@ -1,0 +1,124 @@
+{
+  "series": [
+    {
+      "series_id": "SSB_KPI",
+      "code": "KPI",
+      "name": "Konsumprisindeks (SSB KPI totalindeks)",
+      "source": "Statistisk sentralbyra (SSB)",
+      "frequency": "monthly",
+      "base_year": 2015,
+      "base_value": 100.0,
+      "description": "Norwegian official Consumer Price Index for annual contract regulation and inflation indexing.",
+      "is_active": true,
+      "measurements": {
+        "2020": 112.5,
+        "2020-01": 111.8,
+        "2020-06": 112.4,
+        "2020-12": 113.1,
+        "2021": 116.4,
+        "2021-01": 114.6,
+        "2021-06": 116.2,
+        "2021-12": 118.0,
+        "2022": 123.2,
+        "2022-01": 118.3,
+        "2022-06": 123.5,
+        "2022-12": 124.9,
+        "2023": 130.0,
+        "2023-01": 126.6,
+        "2023-06": 130.7,
+        "2023-12": 130.9,
+        "2024": 134.7,
+        "2024-01": 132.6,
+        "2024-06": 134.1,
+        "2024-12": 135.5,
+        "2025": 138.8,
+        "2025-01": 136.7,
+        "2025-06": 138.9,
+        "2025-12": 139.8,
+        "2026": 143.2,
+        "2026-01": 141.0,
+        "2026-06": 143.5
+      }
+    },
+    {
+      "series_id": "SSB_KPI_JAE",
+      "code": "KPI-JAE",
+      "name": "Konsumprisindeks justert for avgiftsendringer og energivarer (KPI-JAE)",
+      "source": "Statistisk sentralbyra (SSB)",
+      "frequency": "monthly",
+      "base_year": 2015,
+      "base_value": 100.0,
+      "description": "Core inflation index excluding energy goods and direct tax changes.",
+      "is_active": true,
+      "measurements": {
+        "2020": 111.8,
+        "2021": 113.7,
+        "2022": 118.1,
+        "2023": 125.4,
+        "2024": 130.2,
+        "2025": 134.1,
+        "2026": 137.9
+      }
+    },
+    {
+      "series_id": "SSB_IKT_TJENESTER",
+      "code": "TPI-IKT",
+      "name": "Tjenesteprisindeks for IKT-tjenester for bedrifter",
+      "source": "Statistisk sentralbyra (SSB)",
+      "frequency": "quarterly",
+      "base_year": 2015,
+      "base_value": 100.0,
+      "description": "Services Producer Price Index for IT consultancy, hosting, and managed IT services.",
+      "is_active": true,
+      "measurements": {
+        "2020": 108.9,
+        "2021": 112.1,
+        "2022": 117.8,
+        "2023": 124.0,
+        "2024": 129.5,
+        "2025": 134.8,
+        "2026": 139.6
+      }
+    },
+    {
+      "series_id": "SSB_LONN_IKT",
+      "code": "LONN-IKT",
+      "name": "Lonnsindeks for IKT- og teknologisektoren",
+      "source": "Statistisk sentralbyra (SSB)",
+      "frequency": "annual",
+      "base_year": 2015,
+      "base_value": 100.0,
+      "description": "Wage index for information technology and systems engineering professionals.",
+      "is_active": true,
+      "measurements": {
+        "2020": 116.2,
+        "2021": 120.5,
+        "2022": 126.1,
+        "2023": 132.8,
+        "2024": 139.1,
+        "2025": 145.2,
+        "2026": 151.0
+      }
+    },
+    {
+      "series_id": "EU_HICP",
+      "code": "HICP",
+      "name": "Harmonised Index of Consumer Prices (Eurozone)",
+      "source": "Eurostat",
+      "frequency": "monthly",
+      "base_year": 2015,
+      "base_value": 100.0,
+      "description": "Harmonised European consumer price index for cross-border agreements.",
+      "is_active": true,
+      "measurements": {
+        "2020": 105.3,
+        "2021": 108.0,
+        "2022": 117.1,
+        "2023": 123.4,
+        "2024": 126.5,
+        "2025": 129.2,
+        "2026": 131.8
+      }
+    }
+  ]
+}

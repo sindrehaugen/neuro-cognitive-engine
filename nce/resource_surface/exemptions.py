@@ -330,4 +330,33 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
             "admin_app's connection pool never sets."
         ),
     ),
+    # Business Insights Engine (Module 16 / Lane E Wave E-16)
+    # ---------------------------------------------------------------------------
+    "BUSINESS_INSIGHTS_BRIEFING": ResourceExemption(
+        owner_engine="business_insights",
+        reason=(
+            "provenance.py documents this as a graph node type, but grep -rn "
+            "\"INSERT INTO kg_nodes\" nce/vertical_modules/business_insights/ has zero "
+            "matches. brief.py builds the briefing dict in memory and returns it "
+            "directly in the HTTP response payload; it is never persisted anywhere, "
+            "not even as a kg_nodes row -- worse than a kg_nodes-only stub. No "
+            "ResourceSpec is possible until a future wave adds real persistence."
+        ),
+    ),
+    "BUSINESS_INSIGHTS_FINDING": ResourceExemption(
+        owner_engine="business_insights",
+        reason=(
+            "Same gap as BUSINESS_INSIGHTS_BRIEFING: documented in provenance.py's "
+            "graph contract, never persisted (radar.py builds the finding dict in "
+            "memory only, zero kg_nodes writes anywhere in the module)."
+        ),
+    ),
+    "BUSINESS_INSIGHTS_SCENARIO": ResourceExemption(
+        owner_engine="business_insights",
+        reason=(
+            "Same gap as BUSINESS_INSIGHTS_BRIEFING: documented in provenance.py's "
+            "graph contract, never persisted (scenario.py builds the scenario dict "
+            "in memory only, zero kg_nodes writes anywhere in the module)."
+        ),
+    ),
 }

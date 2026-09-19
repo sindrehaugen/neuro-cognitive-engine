@@ -877,13 +877,15 @@ async def handle_economy_validate_contract(engine: NCEEngine, arguments: dict[st
         if not contract_id:
             raise ValueError("economy_validate_contract: 'contract_id' is required")
         proposed_cpi_pct = arguments.get("proposed_cpi_pct")
-        if proposed_cpi_pct is None:
-            raise ValueError("economy_validate_contract: 'proposed_cpi_pct' is required")
-        params = {
-            "namespace_id": ns_uuid,
-            "contract_id": str(contract_id),
-            "proposed_cpi_pct": proposed_cpi_pct,
-        }
+        index_series_id = arguments.get("index_series_id")
+        price_rule_id = arguments.get("price_rule_id")
+        if proposed_cpi_pct is None and not index_series_id and not price_rule_id:
+            raise ValueError(
+                "economy_validate_contract: 'proposed_cpi_pct', 'index_series_id', or 'price_rule_id' is required"
+            )
+        params = dict(arguments)
+        params["namespace_id"] = ns_uuid
+        params["contract_id"] = str(contract_id)
         result = await do_validate_contract(engine, params)
     except McpError:
         raise

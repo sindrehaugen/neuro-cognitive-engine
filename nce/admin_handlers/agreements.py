@@ -50,7 +50,15 @@ from nce.vertical_modules.agreements.graph import (
     do_upsert_agreement,
     write_agreement_to_graph_and_memories,
 )
+from nce.vertical_modules.agreements.index_series import (
+    do_calculate_index_adjustment,
+    do_get_index_series,
+)
 from nce.vertical_modules.agreements.kickback import do_reconcile_kickback
+from nce.vertical_modules.agreements.price_rules import (
+    do_evaluate_price_rule,
+    do_get_price_rules,
+)
 from nce.vertical_modules.agreements.review import do_review_extraction
 from nce.vertical_modules.agreements.signing import (
     do_record_signature,
@@ -76,6 +84,10 @@ __all__ = [
     "api_agreements_suggest_terms",
     "api_agreements_sla_coverage",
     "api_agreements_upsert",
+    "api_agreements_get_index_series",
+    "api_agreements_calculate_index_adjustment",
+    "api_agreements_get_price_rules",
+    "api_agreements_evaluate_price_rule",
 ]
 
 log = logging.getLogger("nce.admin_handlers.agreements")
@@ -741,4 +753,104 @@ async def api_agreements_upsert(request) -> JSONResponse:
     except Exception as exc:
         return admin_error_response(
             "Agreements upsert error", exc, status_code=500, log_event="api_agreements_upsert"
+        )
+
+
+async def api_agreements_get_index_series(request) -> JSONResponse:
+    """GET /api/agreements/index-series — query economic index series."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+    data, err = await _extract_request_data(request)
+    if err:
+        return err
+    namespace_id, err = await _resolve_namespace_id(data)
+    if err:
+        return err
+    data["namespace_id"] = namespace_id
+    if "series_id" not in data and "id" in request.path_params:
+        data["series_id"] = request.path_params["id"]
+    try:
+        res = do_get_index_series(admin_state.engine, data)
+        return JSONResponse({"status": "ok", **_json_safe(res)})
+    except Exception as exc:
+        return admin_error_response(
+            "Agreements index series error",
+            exc,
+            status_code=500,
+            log_event="api_agreements_get_index_series",
+        )
+
+
+async def api_agreements_calculate_index_adjustment(request) -> JSONResponse:
+    """POST /api/agreements/index-series/calculate — calculate index-linked price adjustment."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+    data, err = await _extract_request_data(request)
+    if err:
+        return err
+    namespace_id, err = await _resolve_namespace_id(data)
+    if err:
+        return err
+    data["namespace_id"] = namespace_id
+    try:
+        res = do_calculate_index_adjustment(admin_state.engine, data)
+        return JSONResponse({"status": "ok", **_json_safe(res)})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Agreements calculate index adjustment error",
+            exc,
+            status_code=500,
+            log_event="api_agreements_calculate_index_adjustment",
+        )
+
+
+async def api_agreements_get_price_rules(request) -> JSONResponse:
+    """GET /api/agreements/price-rules — query agreement pricing rules."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+    data, err = await _extract_request_data(request)
+    if err:
+        return err
+    namespace_id, err = await _resolve_namespace_id(data)
+    if err:
+        return err
+    data["namespace_id"] = namespace_id
+    if "rule_id" not in data and "id" in request.path_params:
+        data["rule_id"] = request.path_params["id"]
+    try:
+        res = do_get_price_rules(admin_state.engine, data)
+        return JSONResponse({"status": "ok", **_json_safe(res)})
+    except Exception as exc:
+        return admin_error_response(
+            "Agreements price rules error",
+            exc,
+            status_code=500,
+            log_event="api_agreements_get_price_rules",
+        )
+
+
+async def api_agreements_evaluate_price_rule(request) -> JSONResponse:
+    """POST /api/agreements/price-rules/evaluate — evaluate a pricing rule."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+    data, err = await _extract_request_data(request)
+    if err:
+        return err
+    namespace_id, err = await _resolve_namespace_id(data)
+    if err:
+        return err
+    data["namespace_id"] = namespace_id
+    try:
+        res = do_evaluate_price_rule(admin_state.engine, data)
+        return JSONResponse({"status": "ok", **_json_safe(res)})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Agreements evaluate price rule error",
+            exc,
+            status_code=500,
+            log_event="api_agreements_evaluate_price_rule",
         )

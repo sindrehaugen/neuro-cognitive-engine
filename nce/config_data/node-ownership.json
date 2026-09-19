@@ -95,7 +95,15 @@
     { "node_type": "CERTIFICATION",         "owner_engine": "hr",            "transition": null,
       "_note": "Module 13 (HR Engine) employee certification record (certifications table, FK to employees)." },
     { "node_type": "ABSENCE",               "owner_engine": "hr",            "transition": null,
-      "_note": "Module 13 (HR Engine) employee absence/leave record (absences table, FK to employees)." }
+      "_note": "Module 13 (HR Engine) employee absence/leave record (absences table, FK to employees)." },
+    { "node_type": "BUSINESS_INSIGHTS_KPI_SNAPSHOT", "owner_engine": "business_insights", "transition": null,
+      "_note": "Module 16 (Business Insights Engine) cached KPI roll-up/trend point (business_insights_kpi_snapshots table). Q-32 exemption to Q-5's config_data freeze, granted 2026-09-19: adding owner_engine rows for hr/marketing/customer_portal/business_insights only, nothing else in this file. Node type name matches provenance.py's own documented graph contract exactly, not shortened." },
+    { "node_type": "BUSINESS_INSIGHTS_BRIEFING",     "owner_engine": "business_insights", "transition": null,
+      "_note": "Module 16's provenance.py documents this as a graph node type, but grep -rn \"INSERT INTO kg_nodes\" nce/vertical_modules/business_insights/ has zero matches: brief.py builds the briefing dict in memory and returns it in the HTTP response, never persists it anywhere. No ResourceSpec possible; see the RESOURCE_SURFACE_EXEMPTIONS entry." },
+    { "node_type": "BUSINESS_INSIGHTS_FINDING",      "owner_engine": "business_insights", "transition": null,
+      "_note": "Same gap as BUSINESS_INSIGHTS_BRIEFING: documented in provenance.py's graph contract, never persisted (radar.py builds the finding dict in memory only)." },
+    { "node_type": "BUSINESS_INSIGHTS_SCENARIO",     "owner_engine": "business_insights", "transition": null,
+      "_note": "Same gap as BUSINESS_INSIGHTS_BRIEFING: documented in provenance.py's graph contract, never persisted (scenario.py builds the scenario dict in memory only)." }
   ]
 }
 

@@ -1202,6 +1202,37 @@ def build_admin_routes() -> list[Route]:
             endpoint=agreements_handlers.api_agreements_upsert,
             methods=["POST"],
         ),
+        # Agreements vertical module endpoints (Wave B-10) — price rules & index series (Config-as-IP)
+        Route(
+            "/api/agreements/index-series",
+            endpoint=agreements_handlers.api_agreements_get_index_series,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/agreements/index-series/calculate",
+            endpoint=agreements_handlers.api_agreements_calculate_index_adjustment,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/agreements/index-series/{id}",
+            endpoint=agreements_handlers.api_agreements_get_index_series,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/agreements/price-rules",
+            endpoint=agreements_handlers.api_agreements_get_price_rules,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/agreements/price-rules/evaluate",
+            endpoint=agreements_handlers.api_agreements_evaluate_price_rule,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/agreements/price-rules/{id}",
+            endpoint=agreements_handlers.api_agreements_get_price_rules,
+            methods=["GET"],
+        ),
         Route(
             "/api/agreements/{id}",
             endpoint=agreements_handlers.api_agreements_detail,
