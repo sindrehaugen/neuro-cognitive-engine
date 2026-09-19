@@ -1,4 +1,4 @@
-"""nce.vertical_modules.marketing.resources — Resource definitions for Marketing Engine.
+r"""nce.vertical_modules.marketing.resources — Resource definitions for Marketing Engine.
 
 Lane E Wave E-15 (Q-32 unblocked hr/marketing/customer_portal/business_insights):
 Registers C12 ResourceSpec instances for Marketing's three owned node types, all
