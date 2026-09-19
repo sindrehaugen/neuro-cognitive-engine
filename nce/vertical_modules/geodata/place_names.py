@@ -8,7 +8,7 @@ Grounded in the host's own ADR ("Kartverket's place names local in
 Postgres") for shape only (Q-25): a batch-imported local mirror instead of
 a live per-request call to the source registry, the same reasoning as
 Waves F-11/F-12. This module's schema, functions and tests are its own,
-not a port of the host's ``stedsnavn.py``.
+not a port of the host's place-name module.
 
 A genuinely different read shape from F-11/F-12, checked rather than
 assumed
