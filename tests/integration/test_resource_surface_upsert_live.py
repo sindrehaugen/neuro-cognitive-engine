@@ -29,23 +29,36 @@ a ``str``, every time, for every tenant-scoped C12 resource on the real
 ``upsert`` verb against a live Postgres-backed deployment was failing this
 way before this fix.
 
-THE SECOND DEFECT THE NAIVE FIX WOULD HAVE INTRODUCED
--------------------------------------------------------
-Binding a real ``datetime`` for the column write is necessary but not
-sufficient. ``handle_upsert`` also uses ``spec.version_field`` for optimistic
-concurrency (``expected_version``) and returns it to the caller as
-``now.isoformat()`` (a ``"T"``-separated string) so the client can echo it back
-next time. A naive fix that binds a real ``datetime`` but leaves the
-comparison as ``str(existing.get(spec.version_field, ""))`` compares
-``str(a_datetime)`` (space-separated: ``"2026-09-19 18:18:49+00:00"``)
-against the client's remembered ``isoformat()`` value (``"2026-09-19T18:18:
-49+00:00"``) -- they can never match, so a correct expected_version is
-rejected as a version conflict on every single upsert against a real
-Postgres-backed resource. That is worse than the crash it replaces: it looks
-like it works (the write succeeds) while silently breaking concurrency
-control. ``test_upsert_then_correct_expected_version_succeeds`` below is the
-test that catches exactly this -- a version-comparison bug a type-only test
-would miss.
+A SECOND DEFECT, REAL BUT NARROWER THAN FIRST BELIEVED
+--------------------------------------------------------
+``handle_upsert`` also uses ``spec.version_field`` for optimistic concurrency
+(``expected_version``) and returns it to the caller as ``now.isoformat()`` (a
+``"T"``-separated string). A first draft of this fix (and this docstring)
+claimed that binding a real ``datetime`` for the write, without also fixing
+the comparison, would make a correct ``expected_version`` fail as a spurious
+conflict on EVERY upsert against a real Postgres-backed resource. **That claim
+was wrong, caught by a peer review that then verified itself by literally
+removing the fix and re-running the test:** ``row_to_dict`` (imported from
+``nce.resource_surface.rest``) already renders every column -- including
+``version_field`` -- through ``serialize_val``, which calls ``.isoformat()``
+on a ``datetime``. So ``existing = row_to_dict(existing_row)`` on the
+real-Postgres path already hands the comparison a string, and a bare
+``str()`` on that string would have worked exactly as well;
+``test_upsert_then_correct_expected_version_succeeds`` below still passes
+with ``_version_str`` removed, which means it was never testing what its
+name claimed on the Postgres path.
+
+The mismatch is real, but only on the **in-memory fallback** path: this
+fix's ``data[spec.version_field] = now`` (a real ``datetime``, needed for the
+Postgres bind) also flows into ``mem[item_id] = dict(data)`` with no
+serialization step, so a resource never backed by a real Postgres pool would
+compare ``str(a_datetime)`` (space-separated) against the client's
+remembered ``isoformat()`` value ("T"-separated) and reject a correct
+``expected_version`` forever.
+``test_upsert_in_memory_path_correct_expected_version_succeeds`` below is the
+one that actually exercises this -- constructed with no ``pg_pool`` at all --
+and is the one that was mutation-checked (removing ``_version_str`` makes
+exactly this test fail, and no other).
 
 THE SAME DEFECT, TWICE MORE, IN THE OTHER GENERATED SURFACE
 --------------------------------------------------------------
@@ -141,9 +154,13 @@ async def test_upsert_then_correct_expected_version_succeeds(
     engine: NCEEngine, namespace_id: uuid.UUID
 ) -> None:
     """The version the client is handed back must be the version the next
-    upsert can successfully present as expected_version -- proving the two
-    comparison sites (real-Postgres row read, and the response payload) agree
-    on format. This is the check a type-only fix would still fail.
+    upsert can successfully present as expected_version, against a real
+    Postgres-backed resource. Passes with or without ``_version_str`` (see
+    the module docstring) -- ``row_to_dict`` already normalises the
+    comparison on this path. The mismatch ``_version_str`` actually guards
+    against is exercised by
+    ``test_upsert_in_memory_path_correct_expected_version_succeeds`` below,
+    not by this test.
     """
     r1 = json.loads(
         await TOOL_REGISTRY["sites_upsert_sites"].handler(
@@ -216,6 +233,52 @@ async def test_positive_control_stale_expected_version_is_still_rejected(
         "concurrency check is vacuous, not merely fixed."
     )
     assert r3.get("status_code") == 409
+
+
+@pytest.mark.asyncio
+async def test_upsert_in_memory_path_correct_expected_version_succeeds() -> None:
+    """The mismatch _version_str actually guards against, isolated to the ONE
+    path where it is real.
+
+    A peer review challenged (correctly) that the PG-backed round-trip test
+    above proves nothing about _version_str: `row_to_dict` already renders a
+    real-Postgres datetime through `.isoformat()` before the comparison ever
+    runs, so `str(existing.get(...))` alone would have passed that test too --
+    confirmed by literally removing `_version_str` and re-running it (it still
+    passed). The in-memory fallback is different: `mem[item_id] = dict(data)`
+    stores handle_upsert's real `datetime` object with no serialization step,
+    so `str(a_datetime)` (space-separated) really does diverge from the
+    isoformat() ("T"-separated) string the client was handed. This test uses
+    an engine with NO pg_pool -- the in-memory branch -- and needs no live
+    Postgres at all.
+    """
+    engine_no_pool = NCEEngine()
+    populate_engine_modules(engine_no_pool)
+    ns_id = str(uuid.uuid4())
+
+    r1 = json.loads(
+        await TOOL_REGISTRY["sites_upsert_sites"].handler(
+            engine_no_pool,
+            {"namespace_id": ns_id, "name": "InMemory Version Site", "site_type": "building"},
+        )
+    )
+    assert r1["status"] == "ok"
+
+    r2 = json.loads(
+        await TOOL_REGISTRY["sites_upsert_sites"].handler(
+            engine_no_pool,
+            {
+                "namespace_id": ns_id,
+                "id": r1["id"],
+                "name": "InMemory Version Site Renamed",
+                "expected_version": r1["version"],
+            },
+        )
+    )
+    assert r2["status"] == "ok", (
+        f"A correct expected_version was rejected on the in-memory path: {r2} -- "
+        "this is the real mismatch _version_str exists to prevent."
+    )
 
 
 def _sites_rest_app() -> Starlette:

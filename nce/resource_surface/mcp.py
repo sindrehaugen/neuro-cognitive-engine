@@ -36,15 +36,29 @@ def _version_str(value: Any) -> str:
     """Normalise a stored version_field value to the same string shape handle_upsert
     hands the client (see its ``now.isoformat()`` return).
 
-    A real Postgres row round-trips version_field as a ``datetime`` (asyncpg decodes
-    the timestamptz column natively); the in-memory fallback stores whatever
-    handle_upsert put there, which is the same ``datetime`` object since the fix
-    below. ``str(a_datetime)`` uses a space separator ("2026-09-19 18:00:59+00:00"),
-    not ``isoformat()``'s "T" ("2026-09-19T18:00:59+00:00") -- comparing the two
-    forms directly made every expected_version check on a real Postgres-backed
-    resource fail with a spurious 409, always, because the client's remembered
-    version (from the isoformat response) could never equal the bare str() of the
-    same instant read back from the row.
+    NOT needed on the real-Postgres path: ``row_to_dict`` (this module imports it
+    from ``nce.resource_surface.rest``) already maps every column through
+    ``serialize_val``, which renders a ``datetime`` as ``.isoformat()`` -- the
+    real-Postgres ``existing = row_to_dict(existing_row)`` above therefore already
+    hands this function a string, and a bare ``str()`` on that string would have
+    worked exactly as well. (An earlier version of this docstring claimed a real
+    Postgres row round-trips as a raw ``datetime`` and that comparing it directly
+    produced a spurious 409 on that path -- checked again after a peer review
+    challenged it, and that claim was wrong: the mismatch this function actually
+    guards against never existed on the real-Postgres path.)
+
+    This function IS load-bearing on the in-memory fallback path: this same
+    handler's fix stores a real ``datetime`` object in ``data[spec.version_field]``
+    (needed for the real-Postgres INSERT/UPDATE bind), and ``mem[item_id] =
+    dict(data)`` puts that same raw ``datetime`` straight into the in-memory
+    bucket with no serialization step. Without this function, ``str(a_datetime)``
+    on that path uses a space separator ("2026-09-19 18:00:59+00:00") where
+    ``isoformat()`` uses "T" ("2026-09-19T18:00:59+00:00") -- comparing them
+    directly would reject a correct expected_version as a spurious conflict, but
+    only for a resource never backed by a real Postgres pool. Verified by mutation
+    (tests/integration/test_resource_surface_upsert_live.py::
+    test_upsert_in_memory_path_correct_expected_version_succeeds): removing this
+    function makes exactly that test fail, and no other.
     """
     return value.isoformat() if isinstance(value, datetime) else str(value)
 
