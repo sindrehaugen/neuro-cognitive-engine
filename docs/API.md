@@ -662,6 +662,22 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/sales/quotes/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/sales/quotes/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/sales/seller-detail/{user}` | `api_admin_sales_seller_detail` |
+| GET | `/api/sales/signed-baselines` | `handle_list` |
+| POST | `/api/sales/signed-baselines` | `handle_create` |
+| POST | `/api/sales/signed-baselines/bulk` | `handle_bulk` |
+| GET | `/api/sales/signed-baselines/{id}` | `handle_get` |
+| PATCH | `/api/sales/signed-baselines/{id}` | `handle_patch` |
+| POST | `/api/sales/signed-baselines/{id}/archive` | `handle_archive` |
+| GET | `/api/sales/signed-baselines/{id}/comments` | `handle_list_comments` |
+| POST | `/api/sales/signed-baselines/{id}/comments` | `handle_add_comment` |
+| GET | `/api/sales/signed-baselines/{id}/documents` | `handle_list_documents` |
+| POST | `/api/sales/signed-baselines/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/sales/signed-baselines/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/sales/signed-baselines/{id}/events` | `handle_events` |
+| POST | `/api/sales/signed-baselines/{id}/restore` | `handle_restore` |
+| GET | `/api/sales/signed-baselines/{id}/tags` | `handle_list_tags` |
+| POST | `/api/sales/signed-baselines/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/sales/signed-baselines/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/sales/stats` | `api_admin_sales_stats` |
 | GET | `/api/sales/targets` | `api_admin_sales_targets_get` |
 | PUT | `/api/sales/targets` | `api_admin_sales_targets_put` |
@@ -1125,6 +1141,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_archive_deals` |  | yes |  |  |
 | `sales_archive_leads` |  | yes |  |  |
 | `sales_archive_quotes` |  | yes |  |  |
+| `sales_archive_signed_baselines` |  | yes |  |  |
 | `sales_calculate_commission` |  |  | yes |  |
 | `sales_create_customer` | yes | yes |  |  |
 | `sales_create_deal` | yes | yes |  |  |
@@ -1138,10 +1155,12 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_get_quote_lines` |  |  |  |  |
 | `sales_get_quotes` |  |  | yes |  |
 | `sales_get_signed_baseline` |  |  |  |  |
+| `sales_get_signed_baselines` |  |  | yes |  |
 | `sales_list_customers` |  |  | yes |  |
 | `sales_list_deals` |  |  | yes |  |
 | `sales_list_leads` |  |  | yes |  |
 | `sales_list_quotes` |  |  | yes |  |
+| `sales_list_signed_baselines` |  |  | yes |  |
 | `sales_morning_brief_slice` |  |  | yes |  |
 | `sales_ping` |  |  | yes |  |
 | `sales_request_signature` | yes | yes |  |  |
@@ -1150,6 +1169,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_upsert_deals` |  | yes |  |  |
 | `sales_upsert_leads` |  | yes |  |  |
 | `sales_upsert_quotes` |  | yes |  |  |
+| `sales_upsert_signed_baselines` |  | yes |  |  |
 | `search_codebase` |  |  | yes |  |
 | `semantic_search` |  |  | yes |  |
 | `shred_memory` | yes | yes |  |  |
@@ -1249,4 +1269,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 796 REST endpoints, 435 MCP tools._
+_Totals: 812 REST endpoints, 439 MCP tools._

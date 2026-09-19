@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `54d9bcd` (public `main`) · **Last-audited:** generated
+> **Status:** shipped · **Verified-against:** `8955e95` (public `main`) · **Last-audited:** generated
 
 # NCE Engine Figures — Inventory & Counters
 
@@ -14,7 +14,7 @@
 
 | Counter | Value | Source of Truth |
 |---|---|---|
-| `TOOL_REGISTRY` entries | **435** MCP tools (70 shared + 365 across 25 engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = 435` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |
+| `TOOL_REGISTRY` entries | **439** MCP tools (70 shared + 369 across 25 engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = 439` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |
 | SQL migrations | 92 files (+1 optional), `001` → `096` — gaps at `002`, `009`, `010`, `059` | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |
 | Golden Thread seam burndown | **5 of 37** lifecycle steps broken (5 distinct seams) | Generated in [`docs/_generated/golden_thread_seams.md`](golden_thread_seams.md) from [`tests/integration/test_golden_thread.py`](../../tests/integration/test_golden_thread.py) |
 | v1.6 C12 resource-surface registrations | **14 of 25** engines have `resources.py` | AST of `nce/vertical_modules/<engine>/resources.py` per engine — see the v1.6 section below |
@@ -49,7 +49,7 @@
 | `product` | ✅ | 1 |
 | `project` | ⬜ | 0 |
 | `resources` | ✅ | 2 |
-| `sales` | ✅ | 4 |
+| `sales` | ✅ | 5 |
 | `sites` | ✅ | 1 |
 | `support` | ✅ | 4 |
 | `system_design` | ⬜ | 0 |
@@ -57,9 +57,9 @@
 
 ## Tool Registry Breakdown
 
-- **Total Registered Tools:** 435
+- **Total Registered Tools:** 439
 - **Shared Core Tools:** 70
-- **Vertical Engine Tools:** 365 across 25 engine packages
+- **Vertical Engine Tools:** 369 across 25 engine packages
 
 | Engine Package | Tool Count |
 |---|---:|
@@ -83,7 +83,7 @@
 | `product` | 12 |
 | `project` | 11 |
 | `resources` | 22 |
-| `sales` | 30 |
+| `sales` | 34 |
 | `sites` | 5 |
 | `support` | 32 |
 | `system_design` | 33 |

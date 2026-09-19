@@ -3651,6 +3651,94 @@
         },
         "type": "object"
       },
+      "Sales_signed_baselines": {
+        "description": "Legally signed, immutable quote baseline (margin and total at signing time); append-only, no version/soft-delete field -- the database grants this table only SELECT and INSERT.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "quote_id": {
+            "description": "Field quote_id",
+            "type": "string"
+          },
+          "signed_at": {
+            "description": "Field signed_at",
+            "type": "string"
+          },
+          "signed_margin_pct": {
+            "description": "Field signed_margin_pct",
+            "type": "string"
+          },
+          "signed_total_nok": {
+            "description": "Field signed_total_nok",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "Sales_signed_baselines_Create": {
+        "description": "Payload for creating a sales signed_baselines",
+        "properties": {
+          "quote_id": {
+            "type": "string"
+          },
+          "signed_at": {
+            "type": "string"
+          },
+          "signed_margin_pct": {
+            "type": "string"
+          },
+          "signed_total_nok": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Sales_signed_baselines_List": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Sales_signed_baselines"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Cursor token for fetching the next page",
+            "nullable": true,
+            "type": "string"
+          },
+          "total": {
+            "description": "Total matching count if requested",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "Sales_signed_baselines_Update": {
+        "description": "Payload for updating a sales signed_baselines",
+        "properties": {
+          "quote_id": {
+            "type": "string"
+          },
+          "signed_at": {
+            "type": "string"
+          },
+          "signed_margin_pct": {
+            "type": "string"
+          },
+          "signed_total_nok": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "Sites_sites": {
         "description": "C17 master site and building register with cadastre identity, validated address, coordinates, and footprint geometry.",
         "properties": {
@@ -13080,6 +13168,27 @@
         ],
         "type": "object"
       },
+      "Tool_sales_archive_signed_baselines_Input": {
+        "properties": {
+          "id": {
+            "description": "ID of Signed Baseline to archive.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Audit reason for archiving.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "id"
+        ],
+        "type": "object"
+      },
       "Tool_sales_calculate_commission_Input": {
         "properties": {
           "deal_data": {
@@ -13388,6 +13497,23 @@
         ],
         "type": "object"
       },
+      "Tool_sales_get_signed_baselines_Input": {
+        "properties": {
+          "id": {
+            "description": "Unique identifier of the Signed Baseline.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "id"
+        ],
+        "type": "object"
+      },
       "Tool_sales_list_customers_Input": {
         "properties": {
           "cursor": {
@@ -13548,6 +13674,36 @@
           },
           "status": {
             "description": "Filter by status.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id"
+        ],
+        "type": "object"
+      },
+      "Tool_sales_list_signed_baselines_Input": {
+        "properties": {
+          "cursor": {
+            "description": "Pagination cursor from previous response.",
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 500,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "q": {
+            "description": "Full-text search term.",
+            "type": "string"
+          },
+          "quote_id": {
+            "description": "Filter by quote_id.",
             "type": "string"
           }
         },
@@ -13834,6 +13990,38 @@
           },
           "version": {
             "description": "Value for version."
+          }
+        },
+        "required": [
+          "namespace_id"
+        ],
+        "type": "object"
+      },
+      "Tool_sales_upsert_signed_baselines_Input": {
+        "properties": {
+          "expected_version": {
+            "description": "Concurrency check version.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Optional ID of existing Signed Baseline to update.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "quote_id": {
+            "description": "Value for quote_id."
+          },
+          "signed_at": {
+            "description": "Value for signed_at."
+          },
+          "signed_margin_pct": {
+            "description": "Value for signed_margin_pct."
+          },
+          "signed_total_nok": {
+            "description": "Value for signed_total_nok."
           }
         },
         "required": [
@@ -19928,6 +20116,17 @@
         "mutation": true,
         "name": "sales_archive_quotes"
       },
+      "sales_archive_signed_baselines": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Soft-archive a Signed Baseline resource.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_sales_archive_signed_baselines_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "sales_archive_signed_baselines"
+      },
       "sales_calculate_commission": {
         "admin_only": false,
         "cacheable": true,
@@ -20071,6 +20270,17 @@
         "mutation": false,
         "name": "sales_get_signed_baseline"
       },
+      "sales_get_signed_baselines": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Fetch a single Signed Baseline resource by ID.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_sales_get_signed_baselines_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "sales_get_signed_baselines"
+      },
       "sales_list_customers": {
         "admin_only": false,
         "cacheable": true,
@@ -20114,6 +20324,17 @@
         "migration": false,
         "mutation": false,
         "name": "sales_list_quotes"
+      },
+      "sales_list_signed_baselines": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "List and query Signed Baseline resources for sales.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_sales_list_signed_baselines_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "sales_list_signed_baselines"
       },
       "sales_morning_brief_slice": {
         "admin_only": false,
@@ -20202,6 +20423,17 @@
         "migration": false,
         "mutation": true,
         "name": "sales_upsert_quotes"
+      },
+      "sales_upsert_signed_baselines": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Create or update a Signed Baseline resource.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_sales_upsert_signed_baselines_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "sales_upsert_signed_baselines"
       },
       "search_codebase": {
         "admin_only": false,
@@ -76801,6 +77033,1279 @@
           }
         },
         "summary": "GET /api/sales/seller-detail/{user}",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/signed-baselines": {
+      "get": {
+        "description": "handle_list (/api/sales/signed-baselines)",
+        "operationId": "get_api_sales_signed_baselines",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list (/api/sales/signed-baselines)",
+        "tags": [
+          "sales"
+        ]
+      },
+      "post": {
+        "description": "handle_create (/api/sales/signed-baselines)",
+        "operationId": "post_api_sales_signed_baselines",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_create (/api/sales/signed-baselines)",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/signed-baselines/bulk": {
+      "post": {
+        "description": "handle_bulk (/api/sales/signed-baselines/bulk)",
+        "operationId": "post_api_sales_signed_baselines_bulk",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_bulk (/api/sales/signed-baselines/bulk)",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/signed-baselines/{id}": {
+      "get": {
+        "description": "handle_get (/api/sales/signed-baselines/{id})",
+        "operationId": "get_api_sales_signed_baselines_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_get (/api/sales/signed-baselines/{id})",
+        "tags": [
+          "sales"
+        ]
+      },
+      "patch": {
+        "description": "handle_patch (/api/sales/signed-baselines/{id})",
+        "operationId": "patch_api_sales_signed_baselines_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_patch (/api/sales/signed-baselines/{id})",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/signed-baselines/{id}/archive": {
+      "post": {
+        "description": "handle_archive (/api/sales/signed-baselines/{id}/archive)",
+        "operationId": "post_api_sales_signed_baselines_id_archive",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_archive (/api/sales/signed-baselines/{id}/archive)",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/signed-baselines/{id}/comments": {
+      "get": {
+        "description": "handle_list_comments (/api/sales/signed-baselines/{id}/comments)",
+        "operationId": "get_api_sales_signed_baselines_id_comments",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_comments (/api/sales/signed-baselines/{id}/comments)",
+        "tags": [
+          "sales"
+        ]
+      },
+      "post": {
+        "description": "handle_add_comment (/api/sales/signed-baselines/{id}/comments)",
+        "operationId": "post_api_sales_signed_baselines_id_comments",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_add_comment (/api/sales/signed-baselines/{id}/comments)",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/signed-baselines/{id}/documents": {
+      "get": {
+        "description": "handle_list_documents (/api/sales/signed-baselines/{id}/documents)",
+        "operationId": "get_api_sales_signed_baselines_id_documents",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_documents (/api/sales/signed-baselines/{id}/documents)",
+        "tags": [
+          "sales"
+        ]
+      },
+      "post": {
+        "description": "handle_attach_document (/api/sales/signed-baselines/{id}/documents)",
+        "operationId": "post_api_sales_signed_baselines_id_documents",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_attach_document (/api/sales/signed-baselines/{id}/documents)",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/signed-baselines/{id}/documents/{doc_id}": {
+      "delete": {
+        "description": "handle_detach_document (/api/sales/signed-baselines/{id}/documents/{doc_id})",
+        "operationId": "delete_api_sales_signed_baselines_id_documents_doc_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL path parameter doc_id",
+            "in": "path",
+            "name": "doc_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_detach_document (/api/sales/signed-baselines/{id}/documents/{doc_id})",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/signed-baselines/{id}/events": {
+      "get": {
+        "description": "handle_events (/api/sales/signed-baselines/{id}/events)",
+        "operationId": "get_api_sales_signed_baselines_id_events",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_events (/api/sales/signed-baselines/{id}/events)",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/signed-baselines/{id}/restore": {
+      "post": {
+        "description": "handle_restore (/api/sales/signed-baselines/{id}/restore)",
+        "operationId": "post_api_sales_signed_baselines_id_restore",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_restore (/api/sales/signed-baselines/{id}/restore)",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/signed-baselines/{id}/tags": {
+      "get": {
+        "description": "handle_list_tags (/api/sales/signed-baselines/{id}/tags)",
+        "operationId": "get_api_sales_signed_baselines_id_tags",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_tags (/api/sales/signed-baselines/{id}/tags)",
+        "tags": [
+          "sales"
+        ]
+      },
+      "post": {
+        "description": "handle_add_tag (/api/sales/signed-baselines/{id}/tags)",
+        "operationId": "post_api_sales_signed_baselines_id_tags",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_add_tag (/api/sales/signed-baselines/{id}/tags)",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/signed-baselines/{id}/tags/{tag}": {
+      "delete": {
+        "description": "handle_remove_tag (/api/sales/signed-baselines/{id}/tags/{tag})",
+        "operationId": "delete_api_sales_signed_baselines_id_tags_tag",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL path parameter tag",
+            "in": "path",
+            "name": "tag",
+            "required": true,
+            "schema": {
+              "format": "string",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_remove_tag (/api/sales/signed-baselines/{id}/tags/{tag})",
         "tags": [
           "sales"
         ]
