@@ -154,11 +154,16 @@ def _candidate_tokens(line: str) -> set[str]:
         "prose, never the private path. Lanes are rewriting their disclaimers to "
         "that shape; this stays xfail until that sweep lands, so the gate goes green "
         "by the sites being fixed, never by the rule being weakened. One occurrence "
-        "is separate, more serious, and NOT part of this sweep: a pre-charter file "
-        "admits code was 'lifted from' the private tree rather than read for shape "
-        "-- a possible real Q-25 violation, escalated to Sindre as Q-44, deliberately "
-        "left untouched (rewording it before the facts are established would look "
-        "like concealment) -- do not fix its wording as part of this xfail closing."
+        "was separate and more serious: a pre-charter file admitted code was "
+        "'lifted from' the private tree rather than read for shape. That was "
+        "escalated as Q-44 and is now RESOLVED (2026-09-19): the facts were "
+        "established by measurement before the wording was touched -- a line-level "
+        "comparison against the referenced client found 1.1% overlap on substantive "
+        "lines (both matches boilerplate) and zero of the 52 header-to-field alias "
+        "pairs in common. There was no copying; the comment was simply false, and "
+        "the file's provenance note now states what was measured. This is the only "
+        "site closed by correcting prose rather than by a lane's disclaimer sweep, "
+        "and it was closed on evidence, not on convenience."
     ),
 )
 def test_no_banned_host_token_reaches_the_public_tree() -> None:
