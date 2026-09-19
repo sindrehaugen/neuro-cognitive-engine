@@ -163,7 +163,7 @@ Mounted in `nce/admin_app.py:951-990`. Literal paths (`/api/assets/seed-from-bom
 
 `nce/vertical_modules/assets/telemetry.py` implements an abstract `TelemetryAdapter` (`platform` property + `fetch_samples(asset_id)`), selected exclusively through the factory function `select_telemetry_adapter` (`telemetry.py:315-343`).
 
-The advertised platform registry `VENDOR_PLATFORMS` (`telemetry.py:154-180`) defines 14 keys (13 distinct platforms). Implementation status is strictly verified and machine-gated by `tests/test_advertised_capability_ratchet.py` (Wave H-11, PR #219):
+The advertised platform registry `VENDOR_PLATFORMS` defines 12 keys (11 distinct platforms). Implementation status is strictly verified and machine-gated by `tests/test_advertised_capability_ratchet.py` (Wave H-11, PR #219; revised Q-38 part 1, 2026-09-19):
 
 | Platform key | Vendor API | Implementation Status | Adapter Module & Structure |
 |---|---|---|---|
@@ -175,19 +175,20 @@ The advertised platform registry `VENDOR_PLATFORMS` (`telemetry.py:154-180`) def
 | `ochno` | Ochno Operated REST API | **Verified Real** (Wave F-5, PR #220) | `OchnoTelemetryAdapter` (`ochno.py`, token auth, `_ALLOWED_READS`) |
 | `qsys` | Q-SYS Reflect Enterprise Manager API | **Verified Real** (Wave F-6, PR #221) | `QSysReflectTelemetryAdapter` (`qsys_reflect.py`, API-key bearer, `_ALLOWED_READS`) |
 | `ais` | AIS live vessel-position API | **Verified Real** (Wave F-7, PR #222) | `AISTelemetryAdapter` (`ais.py`, BarentsWatch auth, `_ALLOWED_READS`) |
-| `crestron` | Crestron XiO Cloud REST API | *Scaffolding* (Unverified, Q-38) | `CrestronXiOCloudTelemetryAdapter` (`xio_cloud.py`, no `_ALLOWED_READS` marker) |
-| `sennheiser` | Sennheiser Control Cockpit API | *Scaffolding* (Unverified, Q-38) | `SennheiserTelemetryAdapter` (`sennheiser.py`, no `_ALLOWED_READS` marker) |
-| `shure` | Shure SystemOn / Cloud API | *Scaffolding* (Unverified, Q-38) | `ShureCloudTelemetryAdapter` (`shure_cloud.py`, no `_ALLOWED_READS` marker) |
-| `poly` | Poly Lens API | *Absent* (Unimplemented, Q-38) | `UnimplementedVendorAdapter` (`telemetry.py:265-292`, raises `NotImplementedError`) |
-| `huddly` | Huddly device API | *Absent* (Unimplemented, Q-38) | `UnimplementedVendorAdapter` (`telemetry.py:265-292`, raises `NotImplementedError`) |
+| `crestron` | Crestron XiO Cloud REST API | *Absent* (Unimplemented, Q-38 part 1) | `UnimplementedVendorAdapter` (`telemetry.py`, raises `NotImplementedError`) |
+| `sennheiser` | Sennheiser Control Cockpit API | *Absent* (Unimplemented, Q-38 part 1) | `UnimplementedVendorAdapter` (`telemetry.py`, raises `NotImplementedError`) |
+| `shure` | Shure SystemOn / Cloud API | *Absent* (Unimplemented, Q-38 part 1) | `UnimplementedVendorAdapter` (`telemetry.py`, raises `NotImplementedError`) |
+
+`poly` and `huddly` are no longer platform keys at all — dropped from `VENDOR_PLATFORMS` in the same ruling (Q-38 part 1): neither ever had a dispatch branch or an NCE consumer behind it.
+
+**Q-38 part 1 (2026-09-19): `crestron`/`sennheiser`/`shure` previously resolved to dedicated classes (`xio_cloud.py`/`sennheiser.py`/`shure_cloud.py`) that called a single hardcoded, never-verified endpoint with no host client or vendor documentation behind it anywhere in either repository** — worse than unimplemented, because each looked built. Sindre's ruling authorized deleting all three files and routing all three platform keys to `UnimplementedVendorAdapter`, the same disposition `poly`/`huddly` always had. Q-38 part 2 (building any of the five from the vendor's own public API docs) remains deferred and unauthorized: no host client exists to derive from, and no NCE consumer is named.
 
 > [!IMPORTANT]
 > **Live-tenant verification caveat:** The 7 real telemetry adapters (`ymcs`, `neat`, `neowit`, `disruptive`, `ochno`, `qsys`, `ais`) landed in Waves F-1 through F-7 have verified HTTP request shapes, error handling, credentials ingestion via `connectors/save`, and strict `_ALLOWED_READS` (method, path) allowlist enforcement tested against recorded fixtures. **They have not been executed against live production vendor tenant accounts.** The flip to live production data requires staging smoke tests against real vendor credentials.
 
 **The swap flag is `NCE_ASSETS_TELEMETRY_<PLATFORM>_REAL`** (e.g. `NCE_ASSETS_TELEMETRY_YMCS_REAL` or `NCE_ASSETS_TELEMETRY_CRESTRON_REAL`), read live via `nce.config.live_env_str` (`telemetry.py:305-312`). When unset, `select_telemetry_adapter` returns `MockTelemetryAdapter`. When set:
 - For the 7 verified platforms, it instantiates the dedicated real adapter with credentials fetched from the secure store.
-- For scaffolding platforms (`crestron`, `sennheiser`, `shure`), it instantiates the unverified template adapter.
-- For absent platforms (`poly`, `huddly`), it returns `UnimplementedVendorAdapter`, which raises `NotImplementedError` rather than fabricating data.
+- For the remaining 4 platforms (`crestron`, `sennheiser`, `shure`, and any future addition with no adapter branch), it returns `UnimplementedVendorAdapter`, which raises `NotImplementedError` rather than fabricating data.
 
 **The adapter call runs outside any database transaction, on purpose.** `do_pull_telemetry` opens two short `scoped_pg_session` blocks — a namespace-scoped existence pre-check, then the insert — with the (potentially slow, real-world) adapter call in between (`telemetry.py:62-70`). The accepted cost: an asset could in principle be deleted between the two checks, but the `ON DELETE CASCADE` FK turns that into a lost sample, not a corrupt row.
 
@@ -264,7 +265,7 @@ A repository-wide search for `governed`/`@governed` inside `nce/vertical_modules
 |---|---|---|---|
 | **MCP: `assets_seed_from_bom`** | Actor | **Shipped** | §3, §4 |
 | **MCP: `assets_advance_lifecycle`** | Actor | **Shipped** | No ledger write (spec says "logs transition to ledger"; code doesn't). |
-| **MCP: `assets_pull_telemetry`** | — (operator/cron) | **Shipped** | Mock-only; 5 vendor adapters unbuilt (§6). |
+| **MCP: `assets_pull_telemetry`** | — (operator/cron) | **Shipped** | Mock-only for 3 platforms (`crestron`/`sennheiser`/`shure`, unbuilt — Q-38 part 1, §6); 7 other platforms have a verified real adapter behind the same swap flag. |
 | **MCP: `assets_compute_health`** | Watcher | **Shipped** | Health score not persisted; predictive-failure never fires on mock data (§7). |
 | **MCP: `assets_attach_sla`** | Actor | **Shipped** | §8. |
 | **MCP: `assets_check_warranty_eol`** | Watcher | *Does not exist* | No `do_check_warranty_eol` function anywhere in the repo. |

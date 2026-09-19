@@ -147,15 +147,25 @@ _IDEMPOTENCY_CONSTRAINT = "telemetry_samples_idempotency_uq"
 #: The one platform with real behaviour in this wave.
 MOCK_PLATFORM = "mock"
 
-#: The five manufacturer platforms named in ``09-assets-engine.md``, mapped to
+#: The manufacturer platforms named in ``09-assets-engine.md``, mapped to
 #: the vendor API a real adapter would call. The mapping is data, not a
-#: dispatch table of classes: all five share one stub implementation, so
-#: onboarding a sixth platform is a line here plus (later) its real adapter.
+#: dispatch table of classes: an unbuilt platform shares one stub
+#: implementation, so onboarding a new one is a line here plus (later) its
+#: real adapter.
+#:
+#: ``huddly``/``poly`` dropped per Q-38 part 1 (2026-09-19): neither ever
+#: had a dispatch branch below (both always resolved to
+#: ``UnimplementedVendorAdapter``), named from the original engine doc's
+#: platform list with no NCE asset or consumer behind either.
 VENDOR_PLATFORMS: dict[str, str] = {
+    # crestron/sennheiser/shure: real dispatch branches existed below until
+    # Q-38 part 1 (2026-09-19) found each called a hardcoded, never-verified
+    # endpoint with no host client or vendor doc behind it -- worse than
+    # unimplemented, because it looked implemented. Routed to
+    # UnimplementedVendorAdapter below; a real client returns when a wave
+    # exists to derive one from the vendor's own public API docs.
     "crestron": "Crestron XiO Cloud REST API",
-    "huddly": "Huddly device API",
     "neat": "Neat Pulse API",
-    "poly": "Poly Lens API",
     "qsys": "Q-SYS Reflect Enterprise Manager API",
     "sennheiser": "Sennheiser Control Cockpit API",
     "shure": "Shure SystemOn / Cloud API",
@@ -378,26 +388,14 @@ def select_telemetry_adapter(platform: str) -> TelemetryAdapter:
             from nce.vertical_modules.assets.ymcs import YMCSTelemetryAdapter
 
             return YMCSTelemetryAdapter(platform_name=name)
-        if name == "crestron":
-            from nce.vertical_modules.assets.xio_cloud import CrestronXiOCloudTelemetryAdapter
-
-            return CrestronXiOCloudTelemetryAdapter()
         if name == "neat":
             from nce.vertical_modules.assets.neat_pulse import NeatPulseTelemetryAdapter
 
             return NeatPulseTelemetryAdapter()
-        if name == "sennheiser":
-            from nce.vertical_modules.assets.sennheiser import SennheiserTelemetryAdapter
-
-            return SennheiserTelemetryAdapter()
         if name == "qsys":
             from nce.vertical_modules.assets.qsys_reflect import QSysReflectTelemetryAdapter
 
             return QSysReflectTelemetryAdapter()
-        if name == "shure":
-            from nce.vertical_modules.assets.shure_cloud import ShureCloudTelemetryAdapter
-
-            return ShureCloudTelemetryAdapter()
         if name == "neowit":
             from nce.vertical_modules.assets.neowit import NeowitTelemetryAdapter
 

@@ -88,6 +88,21 @@ to what this worktree can see, not the whole estate, unless it cites a survey
 (like Q-38's) that covered both — the ``qsys`` correction above is exactly a
 case where a worktree-scoped grep looked identical to a two-sided one and was
 wrong.
+
+**Second revision, 2026-09-19 (Q-38 part 1 ruling):** ``crestron``,
+``sennheiser`` and ``shure`` were "wired into ``select_telemetry_adapter``'s
+dispatch" when this file was written, above — that sentence, and the file
+paths ``xio_cloud.py``/``sennheiser.py``/``shure_cloud.py`` cited throughout,
+described the code AT THAT TIME. Sindre's ruling on Q-38 part 1 authorized
+routing all three to ``UnimplementedVendorAdapter`` and deleting the three
+fabricated files outright: "worse than unimplemented because they looked
+implemented" (ML-orch's words, upheld). All three now carry ``status:
+"absent"`` in ``_VENDOR_PLATFORM_EXEMPTIONS`` below, the same disposition as
+``huddly``/``poly`` — which are themselves now dropped from
+``VENDOR_PLATFORMS`` entirely rather than merely exempted, since neither ever
+had a dispatch branch or an NCE consumer. Q-38 part 2 (building any of the
+five from the vendor's own public API docs) remains deferred, unauthorized,
+and un-costed.
 """
 
 from __future__ import annotations
@@ -197,45 +212,40 @@ def _module_has_allow_list(dotted_module: str) -> bool:
 #                                to detect, and the entry must be removed.
 # ---------------------------------------------------------------------------
 _VENDOR_PLATFORM_EXEMPTIONS: dict[str, dict[str, str]] = {
-    "huddly": {
-        "owner": "Lane F",
-        "status": "absent",
-        "reason": "Advertised in VENDOR_PLATFORMS with no adapter branch in "
-        "select_telemetry_adapter at all -- always the Unimplemented stand-in.",
-        "ref": "Q-38",
-    },
-    "poly": {
-        "owner": "Lane F",
-        "status": "absent",
-        "reason": "Advertised in VENDOR_PLATFORMS with no adapter branch in "
-        "select_telemetry_adapter at all -- always the Unimplemented stand-in.",
-        "ref": "Q-38",
-    },
     "crestron": {
         "owner": "Lane F",
-        "status": "unverified_scaffolding",
-        "reason": "CrestronXiOCloudTelemetryAdapter (nce/vertical_modules/assets/"
-        "xio_cloud.py) has no _ALLOWED_READS marker -- never went through Lane "
-        "F's real-adapter review. Calls a single hardcoded GET with no reference "
-        "to a real Crestron XiO Cloud API found anywhere in either repo.",
+        "status": "absent",
+        "reason": "Q-38 part 1 (2026-09-19): CrestronXiOCloudTelemetryAdapter called a "
+        "single hardcoded GET with no reference to a real Crestron XiO Cloud API found "
+        "anywhere in either repo -- worse than unimplemented, since it looked built. "
+        "Sindre authorized deleting it (nce/vertical_modules/assets/xio_cloud.py, now "
+        "removed) and routing 'crestron' to UnimplementedVendorAdapter, same as "
+        "huddly/poly always were. A real client returns when a wave exists to derive "
+        "one from Crestron's own public API docs (Q-38 part 2, deferred).",
         "ref": "Q-38",
     },
     "sennheiser": {
         "owner": "Lane F",
-        "status": "unverified_scaffolding",
-        "reason": "SennheiserTelemetryAdapter (nce/vertical_modules/assets/"
-        "sennheiser.py) has no _ALLOWED_READS marker. Calls a single hardcoded "
-        "GET with no reference to a real Sennheiser Control Cockpit API found "
-        "anywhere in either repo.",
+        "status": "absent",
+        "reason": "Q-38 part 1 (2026-09-19): SennheiserTelemetryAdapter called a single "
+        "hardcoded GET with no reference to a real Sennheiser Control Cockpit API found "
+        "anywhere in either repo -- worse than unimplemented, since it looked built. "
+        "Sindre authorized deleting it (nce/vertical_modules/assets/sennheiser.py, now "
+        "removed) and routing 'sennheiser' to UnimplementedVendorAdapter, same as "
+        "huddly/poly always were. A real client returns when a wave exists to derive "
+        "one from Sennheiser's own public API docs (Q-38 part 2, deferred).",
         "ref": "Q-38",
     },
     "shure": {
         "owner": "Lane F",
-        "status": "unverified_scaffolding",
-        "reason": "ShureCloudTelemetryAdapter (nce/vertical_modules/assets/"
-        "shure_cloud.py) has no _ALLOWED_READS marker. Calls a single "
-        "hardcoded GET with no reference to a real Shure Cloud API found "
-        "anywhere in either repo.",
+        "status": "absent",
+        "reason": "Q-38 part 1 (2026-09-19): ShureCloudTelemetryAdapter called a single "
+        "hardcoded GET with no reference to a real Shure Cloud API found anywhere in "
+        "either repo -- worse than unimplemented, since it looked built. Sindre "
+        "authorized deleting it (nce/vertical_modules/assets/shure_cloud.py, now "
+        "removed) and routing 'shure' to UnimplementedVendorAdapter, same as "
+        "huddly/poly always were. A real client returns when a wave exists to derive "
+        "one from Shure's own public API docs (Q-38 part 2, deferred).",
         "ref": "Q-38",
     },
 }
@@ -266,11 +276,15 @@ def _is_verified_real(platform: str, monkeypatch: pytest.MonkeyPatch) -> bool:
 
 
 def test_vendor_platforms_discovery_floor() -> None:
-    """Guard-the-guard: the registry itself must not have silently collapsed."""
-    assert len(VENDOR_PLATFORMS) >= 12, (
+    """Guard-the-guard: the registry itself must not have silently collapsed.
+
+    Floor lowered 13 -> 11 on 2026-09-19 (Q-38 part 1, a DELIBERATE,
+    authorized removal, not a silent collapse): huddly/poly dropped
+    entirely (never had a dispatch branch or an NCE consumer)."""
+    assert len(VENDOR_PLATFORMS) >= 11, (
         f"Only {len(VENDOR_PLATFORMS)} entries in VENDOR_PLATFORMS -- expected at "
-        "least 12 based on the 2026-09-18 census (13, after F-3..F-7). Either a "
-        "real platform was removed, or the import is broken."
+        "least 11 based on the 2026-09-19 census (11, after Q-38 part 1 dropped "
+        "huddly/poly). Either a real platform was removed, or the import is broken."
     )
 
 
@@ -390,14 +404,22 @@ def test_positive_control_unclassified_platform_is_caught(
 
 def test_positive_control_allow_list_detection_is_not_vacuous() -> None:
     """U18 for _module_has_allow_list specifically: prove it distinguishes a
-    real module (has the marker) from a fabricated one (does not), using
-    today's concrete cases so a regression in the AST walk itself is caught."""
+    real module (has the marker) from one that does not.
+
+    No longer anchored to a real VENDOR_PLATFORMS entry for the negative
+    case (crestron/sennheiser/shure were the fabricated examples until
+    Q-38 part 1 deleted all three outright -- there is no longer a
+    dispatch-wired module anywhere in this registry that lacks
+    _ALLOWED_READS, which is the win that revision was for). A synthetic
+    dotted path that resolves to no file on disk exercises the same
+    False-returning code path (`if not path.exists(): return False`)
+    without depending on today's specific gaps.
+    """
     real_module = _adapter_module_map().get("neat")
-    fabricated_module = _adapter_module_map().get("crestron")
     assert real_module and _module_has_allow_list(real_module), (
         "neat's adapter module should carry _ALLOWED_READS -- detection may be broken."
     )
-    assert fabricated_module and not _module_has_allow_list(fabricated_module), (
-        "crestron's adapter module should NOT carry _ALLOWED_READS -- detection "
-        "may be matching too broadly."
+    assert not _module_has_allow_list("nce.vertical_modules.assets.does_not_exist"), (
+        "a dotted module with no file on disk should never report an allow-list marker "
+        "-- detection may be matching too broadly."
     )
