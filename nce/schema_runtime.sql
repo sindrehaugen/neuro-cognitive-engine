@@ -2176,3 +2176,54 @@ BEGIN
         GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE sites TO nce_app;
     END IF;
 END $$;
+
+ALTER TABLE agreements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE agreements FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON agreements;
+CREATE POLICY tenant_isolation_policy ON agreements
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE agreements FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE agreements TO nce_app;
+    END IF;
+END $$;
+
+ALTER TABLE agreement_parties ENABLE ROW LEVEL SECURITY;
+ALTER TABLE agreement_parties FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON agreement_parties;
+CREATE POLICY tenant_isolation_policy ON agreement_parties
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE agreement_parties FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE agreement_parties TO nce_app;
+    END IF;
+END $$;
+
+ALTER TABLE agreement_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE agreement_templates FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON agreement_templates;
+CREATE POLICY tenant_isolation_policy ON agreement_templates
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE agreement_templates FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE agreement_templates TO nce_app;
+    END IF;
+END $$;
