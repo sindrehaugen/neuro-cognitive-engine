@@ -612,6 +612,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/system-design/from-quote` | `api_system_design_from_quote` |
 | POST | `/api/system-design/functional-location` | `api_system_design_author_functional_location` |
 | GET | `/api/system-design/functional-locations` | `api_system_design_list_functional_locations` |
+| GET | `/api/system-design/functional-locations/my-responsible` | `api_system_design_my_responsible_fls` |
 | GET | `/api/system-design/functional-locations/{id}` | `api_system_design_get_functional_location` |
 | GET | `/api/system-design/functional-locations/{id}/ancestors` | `api_system_design_get_fl_ancestors` |
 | GET | `/api/system-design/functional-locations/{id}/children` | `api_system_design_get_fl_children` |
@@ -619,9 +620,16 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/system-design/functional-locations/{id}/move` | `api_system_design_move_functional_location` |
 | GET | `/api/system-design/functional-locations/{id}/path` | `api_system_design_get_fl_path` |
 | POST | `/api/system-design/functional-locations/{id}/promote` | `api_system_design_promote_functional_location` |
+| GET | `/api/system-design/functional-locations/{id}/responsible` | `api_system_design_list_fl_responsible` |
+| POST | `/api/system-design/functional-locations/{id}/responsible` | `api_system_design_assign_fl_responsible` |
+| DELETE | `/api/system-design/functional-locations/{id}/responsible/{employee_id}` | `api_system_design_unassign_fl_responsible` |
+| GET | `/api/system-design/functional-locations/{id}/room-category` | `api_system_design_get_fl_room_category` |
+| POST | `/api/system-design/functional-locations/{id}/room-category` | `api_system_design_set_fl_room_category` |
 | DELETE | `/api/system-design/planned` | `api_system_design_delete_planned` |
 | GET | `/api/system-design/procurement-view` | `api_system_design_procurement_view` |
 | POST | `/api/system-design/publish-design-docs` | `api_system_design_publish_design_docs` |
+| GET | `/api/system-design/room-categories` | `api_system_design_list_room_categories` |
+| GET | `/api/system-design/room-categories/{id}` | `api_system_design_get_room_category` |
 | GET | `/api/system-design/signal-flow` | `api_system_design_inspect_signal_flow` |
 | GET | `/api/system-design/signal-rules` | `api_system_design_get_signal_rules` |
 | POST | `/api/system-design/sow` | `api_system_design_generate_sow` |
@@ -998,6 +1006,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `support_upsert_customer_health` |  | yes |  |  |
 | `support_upsert_sla_clocks` |  | yes |  |  |
 | `support_upsert_tickets` |  | yes |  |  |
+| `system_design_assign_fl_responsible` |  | yes |  |  |
 | `system_design_author_functional_location` |  | yes |  |  |
 | `system_design_author_topology` |  | yes |  |  |
 | `system_design_delete_planned` | yes | yes |  |  |
@@ -1007,12 +1016,17 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `system_design_get_fl_ancestors` |  |  | yes |  |
 | `system_design_get_fl_children` |  |  | yes |  |
 | `system_design_get_fl_path` |  |  | yes |  |
+| `system_design_get_fl_room_category` |  |  | yes |  |
 | `system_design_get_functional_location` |  |  | yes |  |
+| `system_design_get_room_category` |  |  | yes |  |
 | `system_design_get_signal_rules` |  |  | yes |  |
 | `system_design_get_standards` |  |  | yes |  |
 | `system_design_get_topology` |  |  | yes |  |
 | `system_design_inspect_signal_flow` |  |  |  |  |
+| `system_design_list_fl_responsible` |  |  | yes |  |
 | `system_design_list_functional_locations` |  |  | yes |  |
+| `system_design_list_my_responsible_fls` |  |  | yes |  |
+| `system_design_list_room_categories` |  |  | yes |  |
 | `system_design_merge_functional_locations` |  | yes |  |  |
 | `system_design_move_functional_location` |  | yes |  |  |
 | `system_design_ping` |  |  | yes |  |
@@ -1020,8 +1034,10 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `system_design_promote_functional_location` |  | yes |  |  |
 | `system_design_propose_design` |  |  |  |  |
 | `system_design_publish_design_docs` |  | yes |  |  |
+| `system_design_set_fl_room_category` |  | yes |  |  |
 | `system_design_sync_device_capabilities` |  | yes |  |  |
 | `system_design_to_quote` |  | yes |  |  |
+| `system_design_unassign_fl_responsible` |  | yes |  |  |
 | `system_design_validate_design_graph` |  |  |  |  |
 | `trigger_consolidation` |  | yes |  |  |
 | `trust_dial_get_status` |  |  | yes |  |
@@ -1048,4 +1064,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 646 REST endpoints, 384 MCP tools._
+_Totals: 654 REST endpoints, 392 MCP tools._
