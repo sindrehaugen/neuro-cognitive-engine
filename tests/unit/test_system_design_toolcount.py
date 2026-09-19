@@ -200,6 +200,47 @@ _EXPECTED_TOOLS: dict[str, dict[str, bool]] = {
         "admin_only": False,
         "mutation": True,
     },
+    # Wave C-2 — Room Categories & FL Metadata
+    "system_design_list_room_categories": {
+        "cacheable": True,
+        "admin_only": False,
+        "mutation": False,
+    },
+    "system_design_get_room_category": {
+        "cacheable": True,
+        "admin_only": False,
+        "mutation": False,
+    },
+    "system_design_set_fl_room_category": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": True,
+    },
+    "system_design_get_fl_room_category": {
+        "cacheable": True,
+        "admin_only": False,
+        "mutation": False,
+    },
+    "system_design_assign_fl_responsible": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": True,
+    },
+    "system_design_unassign_fl_responsible": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": True,
+    },
+    "system_design_list_fl_responsible": {
+        "cacheable": True,
+        "admin_only": False,
+        "mutation": False,
+    },
+    "system_design_list_my_responsible_fls": {
+        "cacheable": True,
+        "admin_only": False,
+        "mutation": False,
+    },
 }
 
 
