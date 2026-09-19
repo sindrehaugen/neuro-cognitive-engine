@@ -1460,6 +1460,12 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=True,
         mutation=True,
     ),
+    "assets_service_history": ToolSpec(
+        _h(assets_mcp_handlers, "handle_assets_service_history"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # ------------------------------------------------------------------
     # Support vertical module tools (Module 10, Wave 5, ML10-B5)
     # ------------------------------------------------------------------
