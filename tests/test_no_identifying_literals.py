@@ -143,20 +143,22 @@ def _candidate_tokens(line: str) -> set[str]:
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "RED by design, not a bug in the check: running this for real found 13 "
-        "genuine occurrences, all shaped by the same real tension, not 13 unrelated "
-        "leaks. Most are Lane F's own Q-25 AGPL-compliance disclaimers ('not a port "
-        "of the host's <module>.py', 'read for shape only') -- the exact citation "
-        "that PROVES independent re-implementation is also a citation of the private "
-        "path. Banning it outright would break an ML-orch-endorsed, multi-PR-wide "
-        "compliance convention; allowing it silently would defeat H-10. One "
-        "occurrence is materially different and more serious: a pre-charter file "
-        "says code was 'lifted from' the private tree, not read for shape -- a "
-        "possible real Q-25 violation, not just a naming leak, flagged separately "
-        "and urgently to ML-orch/Sindre rather than folded into this count. "
-        "Left RED (not silently allowlisted) until that gets a ruling: XPASS "
-        "fails CI the day either the disclaimer convention gets a stated exception "
-        "shape or the tree is actually scrubbed -- whichever the ruling picks."
+        "RED by design, not a bug in the check (Q-45 ruling, 2026-09-19): running "
+        "this for real found genuine occurrences, not false positives -- almost all "
+        "are Lane F's own Q-25 AGPL-compliance disclaimers ('not a port of the "
+        "host's <module>.py', 'read for shape only'), the exact citation that PROVES "
+        "independent re-implementation also being a citation of the private path "
+        "this gate exists to keep out. Ruling: the path stays banned (this test), "
+        "and the disclaimer keeps its value without the path -- 'not a port of the "
+        "host's <component>, read for shape only (Q-25)' names what was checked in "
+        "prose, never the private path. Lanes are rewriting their disclaimers to "
+        "that shape; this stays xfail until that sweep lands, so the gate goes green "
+        "by the sites being fixed, never by the rule being weakened. One occurrence "
+        "is separate, more serious, and NOT part of this sweep: a pre-charter file "
+        "admits code was 'lifted from' the private tree rather than read for shape "
+        "-- a possible real Q-25 violation, escalated to Sindre as Q-44, deliberately "
+        "left untouched (rewording it before the facts are established would look "
+        "like concealment) -- do not fix its wording as part of this xfail closing."
     ),
 )
 def test_no_banned_host_token_reaches_the_public_tree() -> None:
