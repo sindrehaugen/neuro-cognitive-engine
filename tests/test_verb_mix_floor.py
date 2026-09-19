@@ -44,12 +44,18 @@ rejected). The path limb covers it cleanly instead.
 **The residual is load-bearing, not informational.** Every route matched by NO
 limb is "platform" (``/api/admin``, ``/api/me``, health, gc, search, replay, a2a,
 tasks, well-known, static assets, and the separate ``nce/webhook_receiver``
-FastAPI app). Its size is pinned below (``_RESIDUAL_COUNT_PIN``): a route that
+FastAPI app). Every residual route must fall under an explicitly-approved
+platform prefix below (``_KNOWN_PLATFORM_PREFIXES`` / ``_KNOWN_PLATFORM_EXACT_PATHS``,
+K-H8, replacing a bare pinned count after it fired on Wave A-6): a route that
 should be an engine route but is mounted under a prefix no limb recognises, with
-a handler defined somewhere no limb recognises, moves this pinned number and
-fails the ratchet instead of silently disappearing into "platform" forever. It
-has already done its job once — see above — which is the reason it exists as a
-hard pin rather than a comment.
+a handler defined somewhere no limb recognises, is not under any approved prefix
+either and fails the ratchet by name, instead of silently disappearing into
+"platform" forever. It has already done its job once this way — see above — which
+is why the check is a hard assertion rather than a comment. Growth of an
+*already-approved* prefix (e.g. an eleventh ``/api/me/*`` route) needs no further
+review — that decision was made once, when the prefix was added, with a reason;
+it does not need remaking on every wave that uses it, unlike a bare count, which
+demanded exactly that on every single change in either direction.
 
 **Why AST, never a line grep (K-0):** several ``Route(...)`` calls in this tree
 wrap their ``methods=`` keyword onto a following line. A single-line
@@ -363,14 +369,72 @@ _KNOWN_HANDWRITTEN_VERB_ROUTES: frozenset[tuple[str, str, str]] = frozenset(
     }
 )
 
-# Pinned residual size (K-H1): every route-method matched by NONE of the three union
-# limbs, measured 2026-09-18 @ e164415 (after limb 3 moved /public-api/sales/quotes/{id}
-# into engine scope, dropping this from 108 to 107). A change in either direction must
-# be explained — growth means a real engine route just got misclassified as platform
-# (the K-H1 failure mode) and shrinkage means a platform route was retired or reclassified.
-# Wave A-6 (C16 Principal Mapping) added GET /api/me/context and PUT /api/me/context to
-# nce/me_app.py (+2 platform route-methods, 107 -> 109).
-_RESIDUAL_COUNT_PIN = 109
+# Known platform surfaces (K-H1 -> K-H8, 2026-09-19): every route-method matched by
+# NONE of the three engine-scope limbs must fall under one of these explicitly-approved
+# prefixes, or the residual test below fails naming the exact route.
+#
+# This replaces a bare pinned count (_RESIDUAL_COUNT_PIN = 107) after it fired on Wave
+# A-6 (#262): A-6 added GET/PUT /api/me/context, correctly residual (me_app.py is
+# already one of this docstring's own platform examples, not vertical_modules-owned),
+# but the fix was "bump 107 to 109" -- arithmetic with no record of WHY 109 was right,
+# on a pin that three more shared-core waves (A-7 webhooks, A-8 OpenAPI, A-9 C17) were
+# about to bump again the same way. That is the exact shape MUTATION_TOOLS/
+# CACHEABLE_TOOLS broke in (charter K-H4) -- but the fix is NOT the same fix. Those
+# were always-correct-by-construction (every C12 tool the framework mounts IS a real
+# tool, verified elsewhere by the collision ratchet), so deriving them away lost
+# nothing. The residual bucket is NOT always-correct-by-construction -- a route landing
+# here can mean "genuinely shared platform surface" OR "a real engine route the limbs
+# failed to recognise" (this pin's own history: /public-api/sales/quotes/{id} sat here
+# until limb 3 was added). Auto-deriving the count away would delete the one thing this
+# instrument exists to force: a human decision on which case a NEW route is.
+#
+# So the arithmetic is now derived (this allowlist's total is never hand-counted) but
+# the judgement is not: a route under a prefix already approved here needs no review
+# (that decision was already made and stays made -- more /api/me/* routes are not a
+# new question), but a route under any OTHER, not-yet-seen prefix still fails loudly,
+# by name, exactly like the pin used to, and adding a new prefix here is still a
+# decision that must be stated, not a number bumped without one. This is strictly MORE
+# demanding of a first-time platform surface than the old pin (which only ever said
+# "107 -> 109, go look"), and strictly less demanding of the ninth /api/me/* route to
+# ever land, whenever that happens.
+# prefix -> owner+reason. A route matches a prefix if its path equals the prefix
+# or starts with "<prefix>/" (a real path-segment boundary, so "/health" cannot
+# accidentally swallow "/healthz").
+_KNOWN_PLATFORM_PREFIXES: dict[str, str] = {
+    "/api/admin": "Wave 0: internal admin/operator surface, hand-mounted in admin_app.py directly",
+    "/api/me": (
+        "Wave T-6/CP-4/H-6/A-6: subject-scoped self-service surface (me_app.py) -- "
+        "not engine-owned by design; A-6 (#262) added GET/PUT /api/me/context here, "
+        "correctly residual"
+    ),
+    "/api/replay": "Batch 77: diagnostic replay/reconstruction, shared cognitive-core capability with no owning engine",
+    "/api/health": "Wave 0: estate health/degradation surface",
+    "/api/a2a": "C1: agent-to-agent grant management, shared-core and cross-engine by definition",
+    "/api/gc": "Wave 0: garbage-collection trigger, shared cognitive-core maintenance",
+    "/api/search": "Wave 0: shared semantic search surface, not owned by any one engine",
+    "/api/snapshot": "Wave 0: shared state-snapshot export",
+    "/tasks": "A2A protocol task surface (send/status/cancel), shared cross-engine",
+}
+# path -> owner+reason, for single fixed paths where prefix semantics either make
+# no sense (there are no children) or would be actively wrong (matching "/" as a
+# prefix would swallow every route in the estate).
+_KNOWN_PLATFORM_EXACT_PATHS: dict[str, str] = {
+    "/": "root index page",
+    "/.well-known/agent-card": "A2A protocol discovery document, fixed well-known path",
+    "/health": "container/orchestrator liveness probe",
+    "/healthz": "Kubernetes-style liveness probe alias",
+    "/styles.css": "static asset served by the admin app shell",
+}
+
+
+def _platform_match_reason(rm: RouteMethod) -> str | None:
+    """Return the owner+reason this route is known platform surface, or None."""
+    if rm.path in _KNOWN_PLATFORM_EXACT_PATHS:
+        return _KNOWN_PLATFORM_EXACT_PATHS[rm.path]
+    for prefix, reason in _KNOWN_PLATFORM_PREFIXES.items():
+        if rm.path == prefix or rm.path.startswith(prefix.rstrip("/") + "/"):
+            return reason
+    return None
 
 
 def test_route_extraction_has_no_unresolved_call_sites() -> None:
@@ -411,25 +475,60 @@ def test_engine_route_discovery_floor() -> None:
     assert matched_slugs, "No engine slug matched any mounted route at all."
 
 
-def test_residual_size_is_pinned() -> None:
-    """The residual ("platform") bucket is a ratchet, not a silent catch-all (K-H1).
+def test_residual_routes_are_all_known_platform_surface() -> None:
+    """The residual ("platform") bucket is a ratchet, not a silent catch-all (K-H1, K-H8).
 
-    A route counted here that is actually a real engine capability under a
-    prefix or module none of the three limbs recognise moves this number and
-    must be looked at, not left to accumulate invisibly. It already caught one
-    this way: /public-api/sales/quotes/{id} sat here until limb 3 was added,
-    which is exactly why the pin exists as a hard assertion rather than a
-    comment.
+    Every route counted here must fall under an explicitly-approved platform
+    prefix or exact path above, with a stated owner+reason. A route that does
+    not is either a genuinely new platform surface (add it above, with a
+    reason -- a real decision, not a number bump) or a real engine capability
+    that landed under a prefix/module neither scope limb recognises (fix
+    VERTICAL_MODULE_NAMES/the handler's home instead). This already caught
+    one of the second kind once: /public-api/sales/quotes/{id} sat here until
+    limb 3 was added.
     """
     residual = _residual_route_methods()
-    assert len(residual) == _RESIDUAL_COUNT_PIN, (
-        f"Residual (non-engine) route-methods = {len(residual)}, expected "
-        f"{_RESIDUAL_COUNT_PIN}. If this grew, check whether a real engine route "
-        "was just added under a prefix or module neither union limb recognises "
-        "(update VERTICAL_MODULE_NAMES/the handler's home, not this pin). If it "
-        "shrank, a platform route was retired or reclassified — lower the pin.\n"
-        "Sample of current residual (first 15): "
-        + ", ".join(f"{rm.method} {rm.path}" for rm in residual[:15])
+    unexplained = [rm for rm in residual if _platform_match_reason(rm) is None]
+    assert not unexplained, (
+        f"{len(unexplained)} residual route-method(s) are not under any "
+        "approved platform prefix/path -- either add them to "
+        "_KNOWN_PLATFORM_PREFIXES/_KNOWN_PLATFORM_EXACT_PATHS with a reason "
+        "(genuinely new shared surface), or fix VERTICAL_MODULE_NAMES/the "
+        "handler's home (a real engine route hiding in platform):\n"
+        + "\n".join(f"  - {rm.method} {rm.path} ({rm.file}:{rm.lineno})" for rm in unexplained)
+    )
+
+
+def test_residual_discovery_floor_and_allowlist_is_not_vacuous() -> None:
+    """U18 positive control: prove the allowlist is doing real work, not passing
+    because the residual bucket or the allowlist both silently collapsed to
+    nothing (either of which would make the test above vacuous)."""
+    residual = _residual_route_methods()
+    assert len(residual) >= 90, (
+        f"Only {len(residual)} residual route-methods found — expected at least 90 "
+        "based on the 2026-09-19 census (107, dominated by /api/admin's 80). Either "
+        "a real regression removed most of the platform surface, or the engine-scope "
+        "limbs started over-matching and are silently swallowing platform routes."
+    )
+    matched = [rm for rm in residual if _platform_match_reason(rm) is not None]
+    assert matched, (
+        "No residual route matched any known-platform entry -- the allowlist matcher "
+        "itself is broken (e.g. a typo in every prefix), which would make the test "
+        "above pass vacuously by finding zero residual routes to check, not by "
+        "correctly explaining all of them."
+    )
+    # /api/admin alone accounts for the large majority of the residual bucket
+    # (80 of 107 at last count) -- if that single, highest-volume prefix ever
+    # stops matching anything, the allowlist is broken in a way "matched is
+    # non-empty" alone would not catch (e.g. only a rarely-hit prefix like
+    # /styles.css still matches).
+    admin_matched = [
+        rm for rm in residual if rm.path == "/api/admin" or rm.path.startswith("/api/admin/")
+    ]
+    assert len(admin_matched) >= 50, (
+        f"Only {len(admin_matched)} residual routes matched /api/admin — expected "
+        "at least 50. The single highest-volume platform prefix may have stopped "
+        "matching real routes."
     )
 
 
