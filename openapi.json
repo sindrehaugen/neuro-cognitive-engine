@@ -16754,6 +16754,57 @@
         ],
         "type": "object"
       },
+      "Tool_system_design_create_design_Input": {
+        "properties": {
+          "design_id": {
+            "description": "Unique design version identifier.",
+            "type": "string"
+          },
+          "functional_location_id": {
+            "description": "Target functional location UUID or label.",
+            "type": "string"
+          },
+          "is_active": {
+            "description": "Whether this design should be initially active.",
+            "type": "boolean"
+          },
+          "metadata": {
+            "description": "Arbitrary metadata dictionary.",
+            "type": "object"
+          },
+          "name": {
+            "description": "Design version name.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Active tenant namespace UUID.",
+            "type": "string"
+          },
+          "revision": {
+            "description": "Optional revision label (e.g. revA).",
+            "type": "string"
+          },
+          "room_spec": {
+            "description": "Room specification metadata dictionary.",
+            "type": "object"
+          },
+          "source_id": {
+            "description": "Optional external source reference.",
+            "type": "string"
+          },
+          "version": {
+            "description": "Version number (default 1).",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "design_id",
+          "name",
+          "functional_location_id"
+        ],
+        "type": "object"
+      },
       "Tool_system_design_delete_planned_Input": {
         "properties": {
           "actor": {
@@ -16871,6 +16922,40 @@
         ],
         "type": "object"
       },
+      "Tool_system_design_get_active_design_Input": {
+        "properties": {
+          "functional_location_id": {
+            "description": "Target functional location UUID or label.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Active tenant namespace UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "functional_location_id"
+        ],
+        "type": "object"
+      },
+      "Tool_system_design_get_design_Input": {
+        "properties": {
+          "design_id": {
+            "description": "Design version UUID or identifier.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Active tenant namespace UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "design_id"
+        ],
+        "type": "object"
+      },
       "Tool_system_design_get_fl_ancestors_Input": {
         "properties": {
           "namespace_id": {
@@ -16965,6 +17050,23 @@
         },
         "required": [
           "category_id"
+        ],
+        "type": "object"
+      },
+      "Tool_system_design_get_room_spec_Input": {
+        "properties": {
+          "design_id": {
+            "description": "Target design version identifier.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Active tenant namespace UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "design_id"
         ],
         "type": "object"
       },
@@ -17079,6 +17181,38 @@
         "required": [
           "namespace_id",
           "design_id"
+        ],
+        "type": "object"
+      },
+      "Tool_system_design_list_designs_Input": {
+        "properties": {
+          "functional_location_id": {
+            "description": "Optional functional location UUID or label filter.",
+            "type": "string"
+          },
+          "is_active": {
+            "description": "Optional filter for active design versions only.",
+            "type": "boolean"
+          },
+          "limit": {
+            "description": "Max designs to return (default 50).",
+            "type": "integer"
+          },
+          "namespace_id": {
+            "description": "Active tenant namespace UUID.",
+            "type": "string"
+          },
+          "offset": {
+            "description": "Pagination offset (default 0).",
+            "type": "integer"
+          },
+          "query": {
+            "description": "Optional keyword search query on design name, ID, or label.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id"
         ],
         "type": "object"
       },
@@ -17323,6 +17457,23 @@
         ],
         "type": "object"
       },
+      "Tool_system_design_set_active_design_Input": {
+        "properties": {
+          "design_id": {
+            "description": "Design version identifier to activate.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Active tenant namespace UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "design_id"
+        ],
+        "type": "object"
+      },
       "Tool_system_design_set_fl_room_category_Input": {
         "properties": {
           "actor": {
@@ -17346,6 +17497,28 @@
           "namespace_id",
           "fl_id",
           "category_id"
+        ],
+        "type": "object"
+      },
+      "Tool_system_design_set_room_spec_Input": {
+        "properties": {
+          "design_id": {
+            "description": "Target design version identifier.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Active tenant namespace UUID.",
+            "type": "string"
+          },
+          "room_spec": {
+            "description": "Room specification metadata dictionary.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "design_id",
+          "room_spec"
         ],
         "type": "object"
       },
@@ -17433,6 +17606,43 @@
           "namespace_id",
           "fl_id",
           "employee_id"
+        ],
+        "type": "object"
+      },
+      "Tool_system_design_update_design_Input": {
+        "properties": {
+          "design_id": {
+            "description": "Target design version identifier.",
+            "type": "string"
+          },
+          "is_active": {
+            "description": "Updated active status flag.",
+            "type": "boolean"
+          },
+          "metadata": {
+            "description": "Updated metadata dictionary.",
+            "type": "object"
+          },
+          "name": {
+            "description": "Updated design name.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Active tenant namespace UUID.",
+            "type": "string"
+          },
+          "revision": {
+            "description": "Updated revision label.",
+            "type": "string"
+          },
+          "room_spec": {
+            "description": "Updated room specification metadata.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "design_id"
         ],
         "type": "object"
       },
@@ -22249,6 +22459,17 @@
         "mutation": true,
         "name": "system_design_author_topology"
       },
+      "system_design_create_design": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Create a new design version for a functional location.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_system_design_create_design_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "system_design_create_design"
+      },
       "system_design_delete_planned": {
         "admin_only": true,
         "cacheable": false,
@@ -22292,6 +22513,28 @@
         "migration": false,
         "mutation": false,
         "name": "system_design_generate_sow"
+      },
+      "system_design_get_active_design": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Get the currently active design version for a functional location.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_system_design_get_active_design_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "system_design_get_active_design"
+      },
+      "system_design_get_design": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Get a specific design version by ID.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_system_design_get_design_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "system_design_get_design"
       },
       "system_design_get_fl_ancestors": {
         "admin_only": false,
@@ -22359,6 +22602,17 @@
         "mutation": false,
         "name": "system_design_get_room_category"
       },
+      "system_design_get_room_spec": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Get the room specification metadata associated with a design version.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_system_design_get_room_spec_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "system_design_get_room_spec"
+      },
       "system_design_get_signal_rules": {
         "admin_only": false,
         "cacheable": true,
@@ -22402,6 +22656,17 @@
         "migration": false,
         "mutation": false,
         "name": "system_design_inspect_signal_flow"
+      },
+      "system_design_list_designs": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "List all design versions for a namespace or specific functional location.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_system_design_list_designs_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "system_design_list_designs"
       },
       "system_design_list_fl_responsible": {
         "admin_only": false,
@@ -22524,6 +22789,17 @@
         "mutation": true,
         "name": "system_design_publish_design_docs"
       },
+      "system_design_set_active_design": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Atomically set a design version as the active design for its functional location.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_system_design_set_active_design_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "system_design_set_active_design"
+      },
       "system_design_set_fl_room_category": {
         "admin_only": false,
         "cacheable": false,
@@ -22534,6 +22810,17 @@
         "migration": false,
         "mutation": true,
         "name": "system_design_set_fl_room_category"
+      },
+      "system_design_set_room_spec": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Set or update the room specification metadata on a design version.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_system_design_set_room_spec_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "system_design_set_room_spec"
       },
       "system_design_sync_device_capabilities": {
         "admin_only": false,
@@ -22567,6 +22854,17 @@
         "migration": false,
         "mutation": true,
         "name": "system_design_unassign_fl_responsible"
+      },
+      "system_design_update_design": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Update fields, metadata, or active status of an existing design version.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_system_design_update_design_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "system_design_update_design"
       },
       "system_design_validate_design_graph": {
         "admin_only": false,
@@ -93729,6 +94027,551 @@
         ]
       }
     },
+    "/api/system-design/designs": {
+      "get": {
+        "description": "Query parameters:\nnamespace_id (str, required): Active tenant namespace UUID.\nfunctional_location_id (str, optional): FL UUID or label filter.\nfl_id (str, optional): Alias for functional_location_id.\nis_active (bool, optional): Active design filter.\nq / query (str, optional): Search keyword.\nlimit (int, optional): Max results (default 50).\noffset (int, optional): Pagination offset (default 0).",
+        "operationId": "get_api_system_design_designs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "GET /api/system-design/designs",
+        "tags": [
+          "system-design"
+        ]
+      },
+      "post": {
+        "description": "JSON body:\nnamespace_id (str, required)\ndesign_id / id (str, required)\nname (str, required)\nfunctional_location_id / fl_id (str, required)\nversion (int, optional)\nrevision (str, optional)\nroom_spec (dict, optional)\nis_active (bool, optional)\nmetadata (dict, optional)\nsource_id (str, optional)",
+        "operationId": "post_api_system_design_designs",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "POST /api/system-design/designs",
+        "tags": [
+          "system-design"
+        ]
+      }
+    },
+    "/api/system-design/designs/{id}": {
+      "get": {
+        "description": "GET /api/system-design/designs/{id}",
+        "operationId": "get_api_system_design_designs_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "GET /api/system-design/designs/{id}",
+        "tags": [
+          "system-design"
+        ]
+      },
+      "patch": {
+        "description": "PATCH /api/system-design/designs/{id}",
+        "operationId": "patch_api_system_design_designs_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "PATCH /api/system-design/designs/{id}",
+        "tags": [
+          "system-design"
+        ]
+      }
+    },
+    "/api/system-design/designs/{id}/room-spec": {
+      "get": {
+        "description": "GET /api/system-design/designs/{id}/room-spec",
+        "operationId": "get_api_system_design_designs_id_room_spec",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "GET /api/system-design/designs/{id}/room-spec",
+        "tags": [
+          "system-design"
+        ]
+      },
+      "put": {
+        "description": "PUT /api/system-design/designs/{id}/room-spec",
+        "operationId": "put_api_system_design_designs_id_room_spec",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "PUT /api/system-design/designs/{id}/room-spec",
+        "tags": [
+          "system-design"
+        ]
+      }
+    },
+    "/api/system-design/designs/{id}/set-active": {
+      "post": {
+        "description": "POST /api/system-design/designs/{id}/set-active",
+        "operationId": "post_api_system_design_designs_id_set_active",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "POST /api/system-design/designs/{id}/set-active",
+        "tags": [
+          "system-design"
+        ]
+      }
+    },
     "/api/system-design/enrich-design-lines": {
       "post": {
         "description": "JSON body (mirrors the ``system_design_enrich_design_lines`` MCP tool):\nnamespace_id (str, required), design_id (str, required),\nmissing_fields (list[str], optional -- defaults to ``[\"etim_specs\"]``).\nSIDE-EFFECTING: writes no graph row but QUEUES Product enrichment, once per\nunique referenced product. See the block comment above on why it bumps the\ncache generation anyway.\nResponse (JSON):\n200 the core's result, unchanged.\n422 on a missing/malformed argument.\n503 when the engine is not connected.",
@@ -94160,6 +95003,81 @@
         ]
       }
     },
+    "/api/system-design/functional-locations/{id}/active-design": {
+      "get": {
+        "description": "GET /api/system-design/functional-locations/{id}/active-design",
+        "operationId": "get_api_system_design_functional_locations_id_active_design",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "GET /api/system-design/functional-locations/{id}/active-design",
+        "tags": [
+          "system-design"
+        ]
+      }
+    },
     "/api/system-design/functional-locations/{id}/ancestors": {
       "get": {
         "description": "Path parameters:\nid (str, required): Target functional location UUID or label.\nQuery parameters:\nnamespace_id (str, required): Active namespace UUID.\nResponse (JSON):\n{\"status\": \"ok\", \"ancestors\": [...], \"count\": int}",
@@ -94305,6 +95223,81 @@
           }
         },
         "summary": "GET /api/system-design/functional-locations/{id}/children",
+        "tags": [
+          "system-design"
+        ]
+      }
+    },
+    "/api/system-design/functional-locations/{id}/designs": {
+      "get": {
+        "description": "GET /api/system-design/functional-locations/{id}/designs",
+        "operationId": "get_api_system_design_functional_locations_id_designs",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "GET /api/system-design/functional-locations/{id}/designs",
         "tags": [
           "system-design"
         ]

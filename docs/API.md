@@ -846,14 +846,23 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/support/touchpoints` | `api_support_touchpoints_record` |
 | POST | `/api/support/troubleshoot` | `api_support_troubleshoot` |
 | POST | `/api/system-design/capabilities/sync` | `api_system_design_sync_device_capabilities` |
+| GET | `/api/system-design/designs` | `api_system_design_list_designs` |
+| POST | `/api/system-design/designs` | `api_system_design_create_design` |
+| GET | `/api/system-design/designs/{id}` | `api_system_design_get_design` |
+| PATCH | `/api/system-design/designs/{id}` | `api_system_design_update_design` |
+| GET | `/api/system-design/designs/{id}/room-spec` | `api_system_design_get_room_spec` |
+| PUT | `/api/system-design/designs/{id}/room-spec` | `api_system_design_set_room_spec` |
+| POST | `/api/system-design/designs/{id}/set-active` | `api_system_design_set_active_design` |
 | POST | `/api/system-design/enrich-design-lines` | `api_system_design_enrich_design_lines` |
 | POST | `/api/system-design/from-quote` | `api_system_design_from_quote` |
 | POST | `/api/system-design/functional-location` | `api_system_design_author_functional_location` |
 | GET | `/api/system-design/functional-locations` | `api_system_design_list_functional_locations` |
 | GET | `/api/system-design/functional-locations/my-responsible` | `api_system_design_my_responsible_fls` |
 | GET | `/api/system-design/functional-locations/{id}` | `api_system_design_get_functional_location` |
+| GET | `/api/system-design/functional-locations/{id}/active-design` | `api_system_design_get_fl_active_design` |
 | GET | `/api/system-design/functional-locations/{id}/ancestors` | `api_system_design_get_fl_ancestors` |
 | GET | `/api/system-design/functional-locations/{id}/children` | `api_system_design_get_fl_children` |
+| GET | `/api/system-design/functional-locations/{id}/designs` | `api_system_design_list_fl_designs` |
 | POST | `/api/system-design/functional-locations/{id}/merge` | `api_system_design_merge_functional_locations` |
 | POST | `/api/system-design/functional-locations/{id}/move` | `api_system_design_move_functional_location` |
 | GET | `/api/system-design/functional-locations/{id}/path` | `api_system_design_get_fl_path` |
@@ -1298,20 +1307,25 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `system_design_assign_fl_responsible` |  | yes |  |  |
 | `system_design_author_functional_location` |  | yes |  |  |
 | `system_design_author_topology` |  | yes |  |  |
+| `system_design_create_design` |  | yes |  |  |
 | `system_design_delete_planned` | yes | yes |  |  |
 | `system_design_enrich_design_lines` |  | yes |  |  |
 | `system_design_from_quote` |  | yes |  |  |
 | `system_design_generate_sow` |  |  |  |  |
+| `system_design_get_active_design` |  |  | yes |  |
+| `system_design_get_design` |  |  | yes |  |
 | `system_design_get_fl_ancestors` |  |  | yes |  |
 | `system_design_get_fl_children` |  |  | yes |  |
 | `system_design_get_fl_path` |  |  | yes |  |
 | `system_design_get_fl_room_category` |  |  | yes |  |
 | `system_design_get_functional_location` |  |  | yes |  |
 | `system_design_get_room_category` |  |  | yes |  |
+| `system_design_get_room_spec` |  |  | yes |  |
 | `system_design_get_signal_rules` |  |  | yes |  |
 | `system_design_get_standards` |  |  | yes |  |
 | `system_design_get_topology` |  |  | yes |  |
 | `system_design_inspect_signal_flow` |  |  |  |  |
+| `system_design_list_designs` |  |  | yes |  |
 | `system_design_list_fl_responsible` |  |  | yes |  |
 | `system_design_list_functional_locations` |  |  | yes |  |
 | `system_design_list_my_responsible_fls` |  |  | yes |  |
@@ -1323,10 +1337,13 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `system_design_promote_functional_location` |  | yes |  |  |
 | `system_design_propose_design` |  |  |  |  |
 | `system_design_publish_design_docs` |  | yes |  |  |
+| `system_design_set_active_design` |  | yes |  |  |
 | `system_design_set_fl_room_category` |  | yes |  |  |
+| `system_design_set_room_spec` |  | yes |  |  |
 | `system_design_sync_device_capabilities` |  | yes |  |  |
 | `system_design_to_quote` |  | yes |  |  |
 | `system_design_unassign_fl_responsible` |  | yes |  |  |
+| `system_design_update_design` |  | yes |  |  |
 | `system_design_validate_design_graph` |  |  |  |  |
 | `trigger_consolidation` |  | yes |  |  |
 | `trust_dial_get_status` |  |  | yes |  |
@@ -1349,4 +1366,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 876 REST endpoints, 455 MCP tools._
+_Totals: 885 REST endpoints, 463 MCP tools._
