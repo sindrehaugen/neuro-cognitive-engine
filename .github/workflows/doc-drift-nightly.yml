@@ -1,5 +1,16 @@
 name: Nightly doc-drift check (does the post-merge regen job still work?)
 
+# 🔴 KEPT AFTER §10.5b'S REVERT, 2026-09-19 late night: ci.yml's PR/push doc
+# gates are back (regen-generated-docs.yml's GITHUB_TOKEN commits are
+# unconditionally rejected by branch protection -- see that workflow's own
+# header for the incident). This nightly check stays anyway: it is
+# independently valuable as a completely separate, read-only re-check of
+# `main`, it is what actually caught the drift going unfixed while ci.yml's
+# gates were off, and it costs nothing extra to leave running. It should now
+# almost always agree with ci.yml (both are checking the same 4 files against
+# the same source), which is fine -- redundant confirmation, not redundant
+# risk.
+#
 # §10.5b, second correction (ORCH_PROTOCOL.md, 2026-09-19): the four doc-drift
 # checks (docs/API.md, openapi.json, docs/_generated/surface.md,
 # docs/_generated/host_parity.md) plus the D-GEN engine-figures --check gate

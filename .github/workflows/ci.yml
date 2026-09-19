@@ -47,20 +47,27 @@ jobs:
       # nothing else. A gate that exists and is wired into no workflow is the same defect class
       # as TD-1 above, and as the healthchecks that returned 200 on a degraded payload.
       #
-      # §10.5b (ORCH_PROTOCOL.md, 2026-09-19): this gate no longer runs here at all -- moved to
-      # .github/workflows/doc-drift-nightly.yml. First cut (2026-09-19 evening) ran it on
-      # `push` only, reasoning that PRs no longer carry docs/_generated/engine_figures.md so
-      # the gate had nothing to check on a PR. That reasoning was correct but incomplete: EVERY
-      # ordinary merge to `main` leaves the file transiently stale for exactly one commit by
-      # design (the post-merge regen job hasn't run yet), so this step fired on that guaranteed
-      # staleness and went red -- and since the regen job's own fix commit uses GITHUB_TOKEN,
-      # it never re-triggers `on: push` (K-H9/K-H11), so nothing ever re-evaluated the
-      # corrected state. Every doc-affecting merge left a PERMANENTLY red run against the merge
-      # commit, for information that was never actionable. Removed from every event here;
-      # doc-drift-nightly.yml runs the same check on a schedule instead, far enough after any
-      # merge that the regen job has certainly already fixed things -- so a failure there means
-      # the regen job itself stopped working, which is the only case worth a human looking at.
-      #
+      # §10.5b REVERTED, 2026-09-19 late night: this gate is back on every event
+      # (pull_request and push alike), and PRs carry these files again. §10.5b's
+      # premise -- a post-merge job on `main` regenerates and commits, so PRs don't
+      # need to -- assumed a GITHUB_TOKEN commit could actually reach a
+      # branch-protected `main`. It cannot: `main` has `enforce_admins: true` with 9
+      # required status checks, and a brand-new bot commit has zero check runs
+      # against it, so every push from regen-generated-docs.yml is rejected with
+      # "9 of 9 required status checks are expected" -- discovered live when #289
+      # merged without its docs (the first real non-empty diff since §10.5b landed)
+      # and the push failed. No token fixes this; the only way a commit reaches a
+      # protected branch with required checks is a normal PR merge or a PAT-driven
+      # PR + human-triggered checks (refresh-lock.yml's own documented limitation).
+      # Reverted to requiring current docs at the PR gate instead of building that
+      # PAT flow under pressure. doc-drift-nightly.yml stays -- independently
+      # valuable (it is what caught this drift going unfixed), and regen-generated-
+      # docs.yml stays as a redundant, self-verifying safety net that now correctly
+      # fails loud instead of silently reporting success when its push is rejected.
+      - name: Engine figures are current (D-GEN gate)
+        run: |
+          python scripts/gen_engine_figures.py --repo . --baseline HEAD             --out docs/_generated/engine_figures.md --check
+
       # Q-4 step 2. `schema.sql` is now the reviewable source; `schema_bootstrap.sql` and
       # `schema_runtime.sql` are GENERATED from it and are what connect() actually executes.
       # If someone edits schema.sql and forgets to regenerate, the running system quietly
@@ -168,28 +175,22 @@ jobs:
         # Wave T-3: Exclude integration, perf, and live-tier scenarios.
         # Golden Thread multi-engine scenario runs nightly against the live stack.
         #
-        # §10.5b (ORCH_PROTOCOL.md, 2026-09-19): also exclude doc_gate, on every event,
-        # not just pull_request. doc_gate marks the byte-for-byte "committed file
-        # matches a fresh regen" checks for files PRs no longer carry (docs/API.md,
-        # openapi.json, docs/_generated/surface.md, docs/_generated/host_parity.md).
-        # First cut (2026-09-19 evening) excluded these on pull_request only, reasoning
-        # PRs have nothing current to check against. Correct but incomplete: every
-        # ordinary merge leaves these files transiently stale for exactly one commit
-        # by design (the post-merge regen job in regen-generated-docs.yml hasn't run
-        # yet), so keeping the check on `push` just caught that guaranteed, non-
-        # actionable staleness -- and since the regen job's own fix commit uses
-        # GITHUB_TOKEN, it never re-triggers `on: push` (K-H9/K-H11), so nothing ever
-        # re-evaluated the corrected state. Every doc-affecting merge left a
-        # PERMANENTLY red pytest run against the merge commit. Excluded here
-        # unconditionally; .github/workflows/doc-drift-nightly.yml runs the same 4
-        # tests on a schedule instead, far enough after any merge that a failure means
-        # the regen job itself stopped working, not "someone forgot to regenerate"
-        # (which cannot happen any more). Every OTHER test in those same files (schema
-        # coverage, RED-family floors, positive controls, the identity gate) is a real
-        # correctness check unrelated to file staleness and keeps running on every PR
-        # and push either way -- doc_gate marks only the drift check itself, never a
-        # whole file.
-        run: pytest tests/ -m "not integration and not perf and not live and not doc_gate" -q --tb=short
+        # §10.5b REVERTED, 2026-09-19 late night: doc_gate is no longer excluded here
+        # -- these 4 tests (docs/API.md, openapi.json, docs/_generated/surface.md,
+        # docs/_generated/host_parity.md currency) run on every PR and push again,
+        # same as before §10.5b. §10.5b's post-merge-regen-instead-of-PR-carries-docs
+        # design assumed a GITHUB_TOKEN commit could reach `main`; it cannot, because
+        # `main` requires 9 status checks even for direct pushes
+        # (`enforce_admins: true`) and a fresh bot commit has none. Discovered live
+        # when #289 merged without its docs and regen-generated-docs.yml's push was
+        # rejected -- worse, the job's own error handling treated the rejection as
+        # the documented benign race and reported success, so the drift went
+        # uncorrected AND unflagged until doc-drift-nightly.yml would have caught it
+        # at 04:30 UTC. Reverted PRs to carrying current docs rather than build a
+        # PAT-driven auto-merge flow under pressure (see ci.yml's D-GEN gate comment
+        # for the same reasoning). doc_gate marker itself is unchanged and still used
+        # by doc-drift-nightly.yml's own standalone `pytest -m doc_gate` invocation.
+        run: pytest tests/ -m "not integration and not perf and not live" -q --tb=short
 
       - name: Empty with-block gate
         run: python scripts/check_empty_with.py

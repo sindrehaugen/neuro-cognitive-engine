@@ -12,9 +12,9 @@
 
 | Metric | Count |
 |---|---|
-| **Total Waves Evaluated** | **160** |
+| **Total Waves Evaluated** | **162** |
 | **LANDED on `main` (3-way consensus)** | **49** |
-| **Disagreements / Open / Planned** | **111** |
+| **Disagreements / Open / Planned** | **113** |
 | **Skipped Legacy / Pre-v1.5 Tokens** | **56** |
 | **Unmatched Wave Tokens** | **0** |
 
@@ -102,12 +102,12 @@ These waves have partial signal (e.g. stamped in tree without PR or test, or pla
 | **A-W1** | Unspecified | `PR_ONLY` | #146 | - | None |  |
 | **AG-1** | Phase 1 | `STAMPED_UNLANDED` | - | `nce/config_data/internal-cores.json` | None | Wave AG-1 |
 | **B-1** | Unspecified | `STAMPED_UNLANDED` | - | `nce/event_log.py`<br>`nce/migrations/088_sales_resource_tables.sql`<br>`nce/resource_surface/exemptions.py`<br>`nce/schema.sql`<br>`nce/schema_bootstrap.sql`<br>`nce/vertical_modules/sales/customers.py`<br>`nce/vertical_modules/sales/resources.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_sales_resources.py` | None |  |
-| **B-10** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
+| **B-10** | Unspecified | `STAMPED_UNLANDED` | - | `nce/admin_app.py`<br>`nce/resource_surface/exemptions.py`<br>`nce/tool_registry.py`<br>`nce/vertical_modules/agreements/index_series.py`<br>`nce/vertical_modules/agreements/mcp_handlers.py`<br>`nce/vertical_modules/agreements/price_rules.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_agreements_hardening.py`<br>`tests/unit/test_agreements_price_rules.py` | None |  |
 | **B-12** | Unspecified | `STAMPED_UNLANDED` | - | `nce/events/catalogue.py`<br>`tests/integration/test_golden_thread.py` | None |  |
 | **B-13** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
 | **B-14** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
 | **B-4** | Unspecified | `STAMPED_UNLANDED` | - | `nce/vertical_modules/sales/resources.py` | None |  |
-| **B-9** | Unspecified | `STAMPED_UNLANDED` | - | `nce/event_log.py`<br>`nce/migrations/096_agreement_parties_and_resources.sql`<br>`nce/schema.sql`<br>`nce/schema_bootstrap.sql`<br>`nce/vertical_modules/agreements/resources.py`<br>`tests/unit/test_agreements_resources.py`<br>`tests/unit/test_business_insights_schema.py`<br>`tests/unit/test_customer_portal_spine.py`<br>`tests/unit/test_hr_schema.py`<br>`tests/unit/test_marketing_schema.py`<br>`tests/unit/test_resources_schema.py` | None |  |
+| **B-9** | Unspecified | `STAMPED_UNLANDED` | - | `nce/event_log.py`<br>`nce/migrations/096_agreement_parties_and_resources.sql`<br>`nce/schema.sql`<br>`nce/schema_bootstrap.sql`<br>`nce/vertical_modules/agreements/resources.py`<br>`nce/vertical_modules/economy/contracts.py`<br>`tests/unit/test_agreements_price_rules.py`<br>`tests/unit/test_agreements_resources.py`<br>`tests/unit/test_business_insights_schema.py`<br>`tests/unit/test_customer_portal_spine.py`<br>`tests/unit/test_hr_schema.py`<br>`tests/unit/test_marketing_schema.py`<br>`tests/unit/test_resources_schema.py` | None |  |
 | **B-B128** | Unspecified | `MISSING_MARKER_TEST` | #153 | `tests/test_producer_coverage.py`<br>`tests/unit/test_action_approval_queue.py` | None |  |
 | **B-BI1** | Phase 1 | `PR_AND_TEST_NO_STAMP` | #71 | - | `tests/unit/test_business_insights_aggregation.py` (COLLECTED) | Invert the person-grain barrier (EU AI Act Article 5 floor) |
 | **B-E2** | Phase 3 | `PR_AND_TEST_NO_STAMP` | #80 | - | `tests/unit/test_economy_gl_records.py` (COLLECTED) | feat(economy,agreements): query GL records with C8 projection and rewire coverage seam (Wave B-AG1 / B-E2) |
@@ -117,7 +117,7 @@ These waves have partial signal (e.g. stamped in tree without PR or test, or pla
 | **BI-2** | Unspecified | `MISSING_MARKER_TEST` | #209 | `nce/vertical_modules/business_insights/board_pack.py`<br>`nce/vertical_modules/business_insights/slices.py`<br>`tests/unit/test_business_insights_composed_slices_ratchet.py` | None |  |
 | **C-1** | Unspecified | `STAMPED_UNLANDED` | - | `nce/admin_app.py`<br>`nce/admin_handlers/system_design.py`<br>`nce/resource_surface/exemptions.py`<br>`nce/tool_registry.py`<br>`nce/vertical_modules/fl_tree.py`<br>`nce/vertical_modules/system_design/fl_tree.py`<br>`nce/vertical_modules/system_design/fold_rules.py`<br>`nce/vertical_modules/system_design/mcp_handlers.py`<br>`tests/test_project_advance.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_system_design_fl_tree.py`<br>`tests/unit/test_system_design_toolcount.py` | None |  |
 | **C-2** | Unspecified | `STAMPED_UNLANDED` | - | `nce/admin_app.py`<br>`nce/admin_handlers/system_design.py`<br>`nce/mcp_stdio_tools.py`<br>`nce/tool_registry.py`<br>`nce/vertical_modules/system_design/graph.py`<br>`nce/vertical_modules/system_design/mcp_handlers.py`<br>`nce/vertical_modules/system_design/room_categories.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_system_design_room_categories.py`<br>`tests/unit/test_system_design_toolcount.py` | None |  |
-| **C-3** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
+| **C-3** | Unspecified | `STAMPED_UNLANDED` | - | `nce/admin_app.py`<br>`nce/admin_handlers/system_design.py`<br>`nce/mcp_stdio_tools.py`<br>`nce/resource_surface/exemptions.py`<br>`nce/tool_registry.py`<br>`nce/vertical_modules/system_design/design_versions.py`<br>`nce/vertical_modules/system_design/mcp_handlers.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_system_design_design_versions.py`<br>`tests/unit/test_system_design_toolcount.py` | None |  |
 | **C-5** | Unspecified | `MISSING_MARKER_TEST` | #226 | `nce/admin_app.py`<br>`nce/tool_registry.py`<br>`nce/vertical_modules/system_design/capability_sync.py`<br>`nce/vertical_modules/system_design/signal_distribution.py`<br>`nce/vertical_modules/system_design/standards.py`<br>`tests/test_project_advance.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_system_design_standards_and_signals.py`<br>`tests/unit/test_system_design_toolcount.py` | None |  |
 | **C-6** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
 | **C-8** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
@@ -139,6 +139,8 @@ These waves have partial signal (e.g. stamped in tree without PR or test, or pla
 | **D-Q4** | Unspecified | `PR_ONLY` | #203 | - | None |  |
 | **E-10** | Unspecified | `STAMPED_UNLANDED` | - | `nce/vertical_modules/field_tech/resources.py`<br>`tests/test_tool_registry.py` | None |  |
 | **E-14** | Unspecified | `STAMPED_UNLANDED` | - | `nce/vertical_modules/hr/resources.py`<br>`tests/unit/test_ownership_ratchet.py` | None |  |
+| **E-15** | Unspecified | `STAMPED_UNLANDED` | - | `nce/vertical_modules/marketing/resources.py` | None |  |
+| **E-16** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py`<br>`nce/vertical_modules/business_insights/resources.py` | None |  |
 | **E-17** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
 | **E-5** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
 | **E-6** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py`<br>`nce/vertical_modules/resources/resources.py`<br>`tests/test_generated_tool_collision_ratchet.py`<br>`tests/test_tool_registry.py` | None |  |
