@@ -1,0 +1,74 @@
+name: Nightly doc-drift check (does the post-merge regen job still work?)
+
+# §10.5b, second correction (ORCH_PROTOCOL.md, 2026-09-19): the four doc-drift
+# checks (docs/API.md, openapi.json, docs/_generated/surface.md,
+# docs/_generated/host_parity.md) plus the D-GEN engine-figures --check gate
+# used to run on every push to `main`. That looked like ongoing enforcement but
+# was not: an ordinary merge always leaves `main` transiently stale for exactly
+# one commit (PRs no longer carry these files, by design), so that check ran,
+# found the EXPECTED staleness, and went red -- then the post-merge regen job's
+# own fix commit never re-triggers ci.yml (GITHUB_TOKEN pushes don't fire
+# `on: push`, per K-H9/K-H11), so nothing ever re-evaluates the corrected
+# state. Every doc-affecting merge left a PERMANENTLY red ci.yml run against
+# the merge commit -- not a window, a scar -- for information that was never
+# actionable (the staleness was expected and self-corrected within minutes).
+#
+# Removed those checks from ci.yml entirely (both events) rather than leaving
+# them on push. Reasoning: after #295, the committed docs on `main` are
+# current by construction -- the job regenerates after every merge. Those
+# checks existed to catch a human who forgot to regenerate; there is no human
+# in that path any more, so running them on every push reports zero new
+# information, permanently, for the one guaranteed case they can ever fire.
+#
+# WHAT THIS WORKFLOW COVERS THAT THE REMOVED CHECKS DID NOT:
+# regen-generated-docs.yml's own in-job "verify" step regenerates a file, then
+# runs --check against what it JUST wrote -- fresh output compared to fresh
+# output, which passes by construction unless the generate step and the check
+# step disagree (different flags, different paths, a non-deterministic
+# generator, a step that silently failed to write). It does NOT prove the
+# regen job actually ran, has current permissions, or is even enabled.
+#
+# This workflow is that check: an independent, scheduled, READ-ONLY run
+# (never writes, never commits) against whatever `main` currently holds, far
+# enough after any single merge that the post-merge job has certainly already
+# run. If this goes red, it means the regen job stopped working -- disabled,
+# broken permissions, GitHub Actions outage, a generator regression it failed
+# to catch itself -- not "someone forgot to regenerate," which cannot happen
+# any more. A scheduled workflow failing is a distinct, actionable signal from
+# a per-merge status flicker, and it does not accumulate a scar per merge.
+
+on:
+  schedule:
+    - cron: "30 4 * * *" # daily, offset from nightly-golden-thread.yml's 02:00 UTC
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Confirm docs/API.md, openapi.json, engine figures, surface.md, host_parity.md are current on main
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      # No torch: none of these checks import the lazy sentence_transformers
+      # codepath (same reasoning as regen-generated-docs.yml).
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Engine figures are current (D-GEN gate)
+        run: |
+          python scripts/gen_engine_figures.py --repo . --baseline HEAD \
+            --out docs/_generated/engine_figures.md --check
+
+      - name: docs/API.md, openapi.json, surface.md, host_parity.md are current
+        env:
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+        run: pytest -m doc_gate -q --tb=short

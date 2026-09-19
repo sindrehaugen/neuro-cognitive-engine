@@ -9,6 +9,14 @@ This suite ensures:
 3. Every registered C12 `ResourceSpec` has schemas defined in `components.schemas`.
 4. All MCP tools defined in `TOOLS` have valid schema representations.
 5. U18 Standing Positive Control: an unschematized or omitted route strictly fails validation.
+
+§10.5b (ORCH_PROTOCOL.md, 2026-09-19): only item 1 above (``test_openapi_document_is_current``,
+marked ``@pytest.mark.doc_gate``) is a pure byte-for-byte drift check against a file PRs no
+longer carry -- it's excluded on ``pull_request`` in ci.yml;
+``.github/workflows/regen-generated-docs.yml`` regenerates and self-verifies both openapi.json
+paths on `main` after every merge instead. Items 2-5 are real schema/coverage correctness
+checks, unrelated to file staleness, and are NOT marked ``doc_gate`` -- they keep running on
+every PR.
 """
 
 from __future__ import annotations
@@ -133,6 +141,7 @@ def validate_routes_in_spec(routes: list[Route], spec: dict[str, Any]) -> list[s
     return errors
 
 
+@pytest.mark.doc_gate
 def test_openapi_document_is_current():
     """Verify that committed openapi.json and docs/_generated/openapi.json match generator."""
     expected_content = gen_openapi.generate_json_string()

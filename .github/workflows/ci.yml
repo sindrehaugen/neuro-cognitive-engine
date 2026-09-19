@@ -47,16 +47,20 @@ jobs:
       # nothing else. A gate that exists and is wired into no workflow is the same defect class
       # as TD-1 above, and as the healthchecks that returned 200 on a degraded payload.
       #
-      # Cost of this gate, stated rather than inherited: a PR that adds a tool or a migration
-      # must regenerate. That is bounded - unlike the waves_landed byte-comparison (Q-17), which
-      # went red on EVERY commit because wave stamps move with unrelated merges. These counters
-      # move only when someone adds a counted thing, and that someone is exactly who should
-      # update the page. Fix: python scripts/gen_engine_figures.py --repo . --baseline HEAD
-      #   --out docs/_generated/engine_figures.md --update-status docs/vertical_engines/ENGINE_STATUS.md
-      - name: Engine figures are current (D-GEN gate)
-        run: |
-          python scripts/gen_engine_figures.py --repo . --baseline HEAD             --out docs/_generated/engine_figures.md --check
-
+      # §10.5b (ORCH_PROTOCOL.md, 2026-09-19): this gate no longer runs here at all -- moved to
+      # .github/workflows/doc-drift-nightly.yml. First cut (2026-09-19 evening) ran it on
+      # `push` only, reasoning that PRs no longer carry docs/_generated/engine_figures.md so
+      # the gate had nothing to check on a PR. That reasoning was correct but incomplete: EVERY
+      # ordinary merge to `main` leaves the file transiently stale for exactly one commit by
+      # design (the post-merge regen job hasn't run yet), so this step fired on that guaranteed
+      # staleness and went red -- and since the regen job's own fix commit uses GITHUB_TOKEN,
+      # it never re-triggers `on: push` (K-H9/K-H11), so nothing ever re-evaluated the
+      # corrected state. Every doc-affecting merge left a PERMANENTLY red run against the merge
+      # commit, for information that was never actionable. Removed from every event here;
+      # doc-drift-nightly.yml runs the same check on a schedule instead, far enough after any
+      # merge that the regen job has certainly already fixed things -- so a failure there means
+      # the regen job itself stopped working, which is the only case worth a human looking at.
+      #
       # Q-4 step 2. `schema.sql` is now the reviewable source; `schema_bootstrap.sql` and
       # `schema_runtime.sql` are GENERATED from it and are what connect() actually executes.
       # If someone edits schema.sql and forgets to regenerate, the running system quietly
@@ -163,7 +167,29 @@ jobs:
           MINIO_SECRET_KEY: test-minio-secret-key
         # Wave T-3: Exclude integration, perf, and live-tier scenarios.
         # Golden Thread multi-engine scenario runs nightly against the live stack.
-        run: pytest tests/ -m "not integration and not perf and not live" -q --tb=short
+        #
+        # §10.5b (ORCH_PROTOCOL.md, 2026-09-19): also exclude doc_gate, on every event,
+        # not just pull_request. doc_gate marks the byte-for-byte "committed file
+        # matches a fresh regen" checks for files PRs no longer carry (docs/API.md,
+        # openapi.json, docs/_generated/surface.md, docs/_generated/host_parity.md).
+        # First cut (2026-09-19 evening) excluded these on pull_request only, reasoning
+        # PRs have nothing current to check against. Correct but incomplete: every
+        # ordinary merge leaves these files transiently stale for exactly one commit
+        # by design (the post-merge regen job in regen-generated-docs.yml hasn't run
+        # yet), so keeping the check on `push` just caught that guaranteed, non-
+        # actionable staleness -- and since the regen job's own fix commit uses
+        # GITHUB_TOKEN, it never re-triggers `on: push` (K-H9/K-H11), so nothing ever
+        # re-evaluated the corrected state. Every doc-affecting merge left a
+        # PERMANENTLY red pytest run against the merge commit. Excluded here
+        # unconditionally; .github/workflows/doc-drift-nightly.yml runs the same 4
+        # tests on a schedule instead, far enough after any merge that a failure means
+        # the regen job itself stopped working, not "someone forgot to regenerate"
+        # (which cannot happen any more). Every OTHER test in those same files (schema
+        # coverage, RED-family floors, positive controls, the identity gate) is a real
+        # correctness check unrelated to file staleness and keeps running on every PR
+        # and push either way -- doc_gate marks only the drift check itself, never a
+        # whole file.
+        run: pytest tests/ -m "not integration and not perf and not live and not doc_gate" -q --tb=short
 
       - name: Empty with-block gate
         run: python scripts/check_empty_with.py
