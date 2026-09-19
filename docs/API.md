@@ -834,9 +834,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | DELETE | `/api/support/tickets/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/support/tickets/{id}/events` | `handle_events` |
 | POST | `/api/support/tickets/{id}/failure-pattern` | `api_support_tickets_failure_pattern` |
+| GET | `/api/support/tickets/{id}/links` | `api_support_tickets_links` |
+| POST | `/api/support/tickets/{id}/links` | `api_support_tickets_link` |
 | POST | `/api/support/tickets/{id}/resolve` | `api_support_tickets_resolve` |
 | POST | `/api/support/tickets/{id}/restore` | `handle_restore` |
 | GET | `/api/support/tickets/{id}/sla-clock` | `api_support_ticket_sla_clock` |
+| GET | `/api/support/tickets/{id}/summary` | `api_support_ticket_summary` |
 | GET | `/api/support/tickets/{id}/tags` | `handle_list_tags` |
 | POST | `/api/support/tickets/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/support/tickets/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -1274,8 +1277,10 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `support_get_on_call` |  |  | yes |  |
 | `support_get_sla_clocks` |  |  | yes |  |
 | `support_get_ticket_actions` |  |  | yes |  |
+| `support_get_ticket_links` |  |  | yes |  |
 | `support_get_tickets` |  |  | yes |  |
 | `support_health_score` |  |  | yes |  |
+| `support_link_ticket` | yes | yes |  |  |
 | `support_list_customer_health` |  |  | yes |  |
 | `support_list_sla_clocks` |  |  | yes |  |
 | `support_list_ticket_actions` |  |  | yes |  |
@@ -1286,6 +1291,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `support_record_touchpoint` |  | yes |  |  |
 | `support_resolve_ticket` | yes | yes |  |  |
 | `support_sla_clock` |  |  | yes |  |
+| `support_summarise_ticket` |  |  | yes |  |
 | `support_sync_now` | yes | yes |  |  |
 | `support_ticket_timeline` |  |  | yes |  |
 | `support_triage_ticket` |  |  | yes |  |
@@ -1349,4 +1355,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 876 REST endpoints, 455 MCP tools._
+_Totals: 879 REST endpoints, 458 MCP tools._
