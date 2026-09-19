@@ -36,6 +36,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+import asyncpg  # type: ignore[import-untyped]
 import httpx
 
 from nce.config import cfg
@@ -175,13 +176,19 @@ def _contract(
 
 async def _persist_last_good(
     engine: NCEEngine, rates: dict[str, float], rate_date: str | None
-) -> None:
+) -> bool:
     """Best-effort upsert of the fresh rates into ``pricing_fx_rates`` so a
     process restart still has a last-known-good rate before the source
-    answers again. Persistence failure never blocks returning a fresh
-    rate to the caller."""
+    answers again. A persistence failure never blocks returning the fresh
+    rate this call already fetched, but it is never swallowed silently
+    either -- only a genuine database-connectivity error is caught here
+    (logged at ``error``, since a failed write on a money-adjacent path
+    deserves visibility, not a ``warning``); anything else (a programming
+    bug in this function) propagates. Returns whether the write landed,
+    for callers/tests that want to distinguish the two.
+    """
     if not rates or not rate_date:
-        return
+        return False
     try:
         async with unmanaged_pg_connection(engine.pg_pool, site="pricing.fx.persist") as conn:
             await conn.executemany(
@@ -195,20 +202,26 @@ async def _persist_last_good(
                 """,
                 [(currency, value, rate_date) for currency, value in rates.items()],
             )
-    except Exception as exc:  # noqa: BLE001 — persistence is best-effort
-        log.warning("fx: could not persist last-good rates: %s", str(exc)[:200])
+    except (asyncpg.PostgresError, OSError, TimeoutError) as exc:
+        log.error("fx: could not persist last-good rates: %s", str(exc)[:200])
+        return False
+    return True
 
 
 async def _load_last_good(engine: NCEEngine) -> dict[str, Any] | None:
     """Read the persisted last-good rates, or ``None`` if the table is
-    empty (never seeded, or wiped)."""
+    empty (never seeded, or wiped) or unreachable.
+
+    Only a genuine database-connectivity error is caught (logged at
+    ``error``); anything else propagates rather than being swallowed.
+    """
     try:
         async with unmanaged_pg_connection(engine.pg_pool, site="pricing.fx.load") as conn:
             rows = await conn.fetch(
                 "SELECT currency, rate, rate_date, fetched_at FROM pricing_fx_rates"
             )
-    except Exception as exc:  # noqa: BLE001 — a DB outage should not raise on a read path
-        log.warning("fx: could not load last-good rates: %s", str(exc)[:200])
+    except (asyncpg.PostgresError, OSError, TimeoutError) as exc:
+        log.error("fx: could not load last-good rates: %s", str(exc)[:200])
         return None
     if not rows:
         return None

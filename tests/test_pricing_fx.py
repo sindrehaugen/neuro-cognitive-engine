@@ -12,6 +12,7 @@ from __future__ import annotations
 import types
 from unittest.mock import AsyncMock, MagicMock
 
+import asyncpg
 import httpx
 import pytest
 
@@ -21,6 +22,8 @@ from nce.pricing.fx import (
     CURRENCIES,
     FxAllowListRefusal,
     _gated_request,
+    _load_last_good,
+    _persist_last_good,
     convert_to_nok,
     do_get_fx_rates,
     fetch_rates,
@@ -157,6 +160,46 @@ def mock_pg_pool():
     pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
     pool.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
     return pool, conn
+
+
+class TestPersistAndLoadLastGoodExceptionHandling:
+    """A genuine DB-connectivity error degrades to ``False``/``None``; any
+    other exception (a bug in this function, not a DB outage) propagates
+    rather than being silently swallowed -- the swallowed-exception census
+    (``tests/unit/test_swallowed_exception_census.py``) objects to a bare
+    ``except Exception`` over a money-adjacent write, not to error
+    handling as such."""
+
+    @pytest.mark.asyncio
+    async def test_persist_degrades_to_false_on_postgres_error(self, mock_pg_pool):
+        pool, conn = mock_pg_pool
+        conn.executemany = AsyncMock(side_effect=asyncpg.PostgresError("boom"))
+        engine = types.SimpleNamespace(pg_pool=pool)
+        result = await _persist_last_good(engine, {"EUR": 11.5}, "2026-09-18")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_persist_propagates_a_non_db_exception(self, mock_pg_pool):
+        pool, conn = mock_pg_pool
+        conn.executemany = AsyncMock(side_effect=TypeError("not a db problem"))
+        engine = types.SimpleNamespace(pg_pool=pool)
+        with pytest.raises(TypeError):
+            await _persist_last_good(engine, {"EUR": 11.5}, "2026-09-18")
+
+    @pytest.mark.asyncio
+    async def test_load_degrades_to_none_on_postgres_error(self, mock_pg_pool):
+        pool, conn = mock_pg_pool
+        conn.fetch = AsyncMock(side_effect=asyncpg.PostgresError("boom"))
+        engine = types.SimpleNamespace(pg_pool=pool)
+        assert await _load_last_good(engine) is None
+
+    @pytest.mark.asyncio
+    async def test_load_propagates_a_non_db_exception(self, mock_pg_pool):
+        pool, conn = mock_pg_pool
+        conn.fetch = AsyncMock(side_effect=TypeError("not a db problem"))
+        engine = types.SimpleNamespace(pg_pool=pool)
+        with pytest.raises(TypeError):
+            await _load_last_good(engine)
 
 
 class TestGetRates:
