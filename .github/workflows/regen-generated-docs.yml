@@ -66,11 +66,28 @@ name: Regenerate generated docs (post-merge)
 #     would not add real protection (it cannot fail), so this job doesn't
 #     pretend to gate this file -- it only regenerates it, same as today's
 #     advisory-only status.
+# WHAT THIS SELF-CHECK ACTUALLY PROVES, STATED PRECISELY (ML-orch correction,
+# 2026-09-19): each --check/pytest call above compares the file THIS SAME RUN
+# just wrote against a fresh regeneration computed the same way -- fresh
+# output compared against fresh output. That passes BY CONSTRUCTION unless the
+# generate step and the check step actually disagree (wrong flags, wrong
+# paths, a non-deterministic generator, a step that silently failed to
+# write). It is real and worth having for exactly that failure class. It does
+# NOT prove the docs are semantically correct, and it does NOT prove this
+# workflow itself is still running at all -- an outage, a disabled workflow,
+# or a revoked permission produces no failed run to see, only silence. That
+# gap is closed by .github/workflows/doc-drift-nightly.yml: an independent,
+# scheduled, read-only re-check of whatever `main` currently holds, far
+# enough after any single merge that this job has certainly already run --
+# if IT goes red, this job has stopped working, which the six checks above
+# cannot tell you by themselves.
+#
 # A drift on any of the six gates that CAN fail red fails this job and
 # commits nothing -- self-contained, no PAT, no dependency on a workflow
 # trigger that cannot fire. This is strictly stronger than what a human
 # contributor gets today (a gate that can be forgotten), not a weaker
-# substitute for the external ones.
+# substitute for the external ones -- and narrower in scope than "this job's
+# output is correct," which is the nightly workflow's job, not this one's.
 #
 # WHAT HAPPENS IF THIS JOB FAILS: for the six self-checked artefacts (API.md,
 # openapi.json, engine_figures.md/ENGINE_STATUS.md, resource_surface.md,
@@ -81,6 +98,14 @@ name: Regenerate generated docs (post-merge)
 # only by the same manual/nightly discipline (or, for waves_landed.md, the
 # same advisory notice) that already applies today -- nothing regresses,
 # nothing new is added for those two either.
+#
+# WHAT HAPPENS IF THIS JOB NEVER RUNS AT ALL: nothing, by itself -- no failed
+# run appears anywhere, which is exactly why ci.yml no longer runs any of
+# these checks on `push` either (see that file's own history: it used to,
+# and every doc-affecting merge left a permanently red run against the merge
+# commit, because this job's own fix commit -- GITHUB_TOKEN-authored -- never
+# re-triggers `on: push` to re-evaluate the corrected state). The one thing
+# that DOES catch this job silently dying is doc-drift-nightly.yml.
 #
 # KNOWN, ACCEPTED COST: a doc on `main` is briefly stale between a merge
 # landing and this job's regen commit landing a few minutes later, and this
