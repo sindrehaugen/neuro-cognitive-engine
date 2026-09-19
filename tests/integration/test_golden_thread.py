@@ -9,6 +9,20 @@ customer → design → quote → sign → **baseline frozen** → project → P
 **actual_cost** → ticket → dispatch → **work order** → outcome → cert expiry → **allocation invalidated**
 → portal request → **ticket** → outcome recorded → design recall returns the project
 
+H-9 Golden Thread v2 extension (charter §9, 2026-09-19), steps 29-37: address →
+**SITE** → FL tree (children/ancestors/move real; **merge broken**, break-h9a) →
+room category + responsible employee → **deal with participants (not built,
+break-h9b)** → **agreement with parties (graph/relational customer-identity
+split, break-h9c)** → **billing run
+(not built, break-h9d)** → **customer invoice (not built, break-h9e)** →
+notification received by the responsible employee. A stated partial per S7: the
+thread has a genuine gap from steps 33-36 (participants/billing/invoice do not
+exist yet), not a scenario that quietly stops early. See each step's own
+docstring/xfail reason for the evidence. ``TestGoldenThreadPipeline``'s
+sequential full-run test still covers only the original 28 steps -- extending
+it to the same 9 was out of this wave's time budget and is noted here rather
+than left silently stale.
+
 Per ML-orch Charter §13:
 - Live database execution against PostgreSQL across one created & torn-down test namespace.
 - Real async business operations writing and reading actual database state.
@@ -36,6 +50,7 @@ from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
 import asyncpg
+import httpx
 import pytest
 import pytest_asyncio
 
@@ -46,12 +61,14 @@ from nce.degradation import get_degradation_register
 from nce.engine_registry import populate_engine_modules
 from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
 from nce.orchestrator import NCEEngine
+from nce.principal_bindings import upsert_principal_binding
 from nce.signing import (
     NoActiveSigningKeyError,
     SigningKeyDecryptionError,
     get_active_key,
     rotate_key,
 )
+from nce.tool_registry import TOOL_REGISTRY
 from nce.vertical_modules.agreements.sla import do_set_sla_coverage
 from nce.vertical_modules.assets.seed import do_seed_asset_from_bom
 from nce.vertical_modules.assets.sla import do_attach_sla
@@ -59,8 +76,15 @@ from nce.vertical_modules.customer_portal.actions import do_raise_service_reques
 from nce.vertical_modules.economy.cascade import do_cascade_on_approval
 from nce.vertical_modules.field_tech.outcome import do_record_outcome
 from nce.vertical_modules.field_tech.work_orders import do_create_work_order
+from nce.vertical_modules.fl_tree import (
+    get_fl_ancestors,
+    get_fl_children,
+    merge_fl_nodes,
+    move_fl_node,
+)
 from nce.vertical_modules.hr.certs import do_check_hr_cert_expiry
 from nce.vertical_modules.inventory.goods_receipt import do_record_goods_receipt
+from nce.vertical_modules.notifications.service import create_notification
 from nce.vertical_modules.procurement.po import _derive_po_idempotency_key, do_generate_po
 from nce.vertical_modules.procurement.three_way_match import do_evaluate_three_way_match
 from nce.vertical_modules.project.convert import do_convert_signed_quote
@@ -70,11 +94,21 @@ from nce.vertical_modules.sales.baseline import do_freeze_baseline, get_signed_b
 from nce.vertical_modules.sales.graph import do_create_deal
 from nce.vertical_modules.sales.lines import do_add_quote_line
 from nce.vertical_modules.sales.signing import do_on_signed_callback, do_request_signature
+from nce.vertical_modules.sites.address_registry import do_enrich_site_from_address_registry
 from nce.vertical_modules.support.dispatch import do_dispatch_work_order
 from nce.vertical_modules.support.tickets import do_open_ticket
 from nce.vertical_modules.system_design.devices import do_author_device_topology
-from nce.vertical_modules.system_design.graph import do_author_functional_location
+from nce.vertical_modules.system_design.graph import (
+    do_author_functional_location,
+    fl_label,
+    upsert_fl_path,
+)
 from nce.vertical_modules.system_design.propose import do_propose_design
+from nce.vertical_modules.system_design.room_categories import (
+    do_assign_fl_responsible,
+    do_list_fl_responsible,
+    do_set_fl_room_category,
+)
 from tests.conftest import _refresh_signing_when_decrypt_fails
 
 pytestmark = pytest.mark.live
@@ -350,6 +384,131 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         phase1_wave="I-5",
         description="GET /api/health/degradations mounted and reports zero active degradations",
     ),
+    # -----------------------------------------------------------------------
+    # H-9 Golden Thread v2 (charter §9): address -> SITE -> FL tree ->
+    # room-category/responsible employee -> deal participants -> agreement
+    # with parties -> billing run -> customer invoice -> notification
+    # received by the responsible employee. Built 2026-09-19 against what
+    # actually landed by then (A-6/A-9/B-9/C-1/C-2), not the charter's
+    # original description of the estate -- re-checked live, not assumed.
+    # -----------------------------------------------------------------------
+    BurndownStep(
+        index=29,
+        name="site_address_enriched",
+        canonical_label="address -> SITE",
+        is_broken=False,
+        review_break=None,
+        phase1_wave=None,
+        description="C17 SITE enriched with address/coordinates via the F-9 address-registry feed",
+    ),
+    BurndownStep(
+        index=30,
+        name="fl_tree_children_ancestors_move",
+        canonical_label="FL tree (children/ancestors/move)",
+        is_broken=False,
+        review_break=None,
+        phase1_wave=None,
+        description="C-1 FL tree: a room's children/ancestors read, then moved to a different floor",
+    ),
+    BurndownStep(
+        index=31,
+        name="fl_tree_merge",
+        canonical_label="FL tree (merge)",
+        is_broken=True,
+        review_break="break-h9a",
+        phase1_wave="C-1-fix",
+        description=(
+            "merge_fl_nodes sets change_origin='merged' on the absorbed node, but the real "
+            "kg_nodes_change_origin_chk constraint only allows "
+            "('sync','webhook','agent','operator','consolidation','replay','unknown') -- "
+            "every real-Postgres merge fails with CheckViolationError. The in-memory test "
+            "path has no such constraint, so nothing but a live write ever caught it."
+        ),
+    ),
+    BurndownStep(
+        index=32,
+        name="responsible_assigned",
+        canonical_label="room category + responsible employee",
+        is_broken=False,
+        review_break=None,
+        phase1_wave=None,
+        description="C-2 room category set on the FL room, an employee assigned as its responsible party",
+    ),
+    BurndownStep(
+        index=33,
+        name="deal_participants",
+        canonical_label="deal with participants",
+        is_broken=True,
+        review_break="break-h9b",
+        phase1_wave="B-1-followup",
+        description=(
+            "No DEAL_PARTICIPANT concept exists anywhere in nce.vertical_modules.sales "
+            "(confirmed by reading resources.py/graph.py and migration 088) -- do_create_deal "
+            "takes no participants/attendees argument at all. Aspirational per the original "
+            "charter text, not yet built by any landed wave."
+        ),
+    ),
+    BurndownStep(
+        index=34,
+        name="agreement_parties",
+        canonical_label="agreement with parties",
+        is_broken=True,
+        review_break="break-h9c",
+        phase1_wave="customer-graph-relational-split",
+        description=(
+            "AGREEMENT/AGREEMENT_PARTY (B-9, migration 096) exist only as C12 resource-surface "
+            "tools -- no hand-written creation path. The resource_surface datetime/version_field "
+            "bug this step was originally blocked on landed on main in #284; re-verified live and "
+            "it is fixed. Re-running this step against a real Postgres surfaces a second, distinct "
+            "blocker: 'agreements' hard-FKs customer_id to sales_customers.id "
+            "(agreements_customer_id_fkey), but the Golden Thread's CUSTOMER concept -- and every "
+            "customer in the sales engine's DEAL/QUOTE flow -- lives only as a kg_nodes graph node "
+            "(do_create_deal writes entity_type='CUSTOMER' to kg_nodes; step 1). Nothing anywhere "
+            "in the tree bridges a graph-modeled customer to a real sales_customers row. Not a test "
+            "bug and not fixed here -- an architecture question (graph vs. C12-relational customer "
+            "identity) outside this lane's charter to decide."
+        ),
+    ),
+    BurndownStep(
+        index=35,
+        name="billing_run",
+        canonical_label="billing run",
+        is_broken=True,
+        review_break="break-h9d",
+        phase1_wave="B-12",
+        description=(
+            "No billing-run capability exists anywhere in the tree: "
+            "git ls-tree origin/main -- nce/migrations/ has no billing_run migration, and no "
+            "vertical_modules package implements one. Tracked charter-wide as Wave B-12, not "
+            "yet started as of this wave."
+        ),
+    ),
+    BurndownStep(
+        index=36,
+        name="customer_invoice",
+        canonical_label="customer invoice",
+        is_broken=True,
+        review_break="break-h9e",
+        phase1_wave="B-12",
+        description=(
+            "No customer-invoice capability exists anywhere in the tree (distinct from the "
+            "existing supplier-invoice approval path economy_approve_invoice already covers). "
+            "Depends on billing_run (step 35) existing first; tracked under the same Wave B-12."
+        ),
+    ),
+    BurndownStep(
+        index=37,
+        name="notification_received",
+        canonical_label="notification received by the responsible employee",
+        is_broken=False,
+        review_break=None,
+        phase1_wave=None,
+        description=(
+            "C13 create_notification delivers a real notification row to the principal "
+            "bound to the employee assigned responsible in step 32 -- not about the invoice "
+            "chain (steps 34-36 are broken), an honest SLA-coverage notice instead"
+        ),
+    ),
 )
 
 
@@ -384,6 +543,11 @@ class GoldenThreadScenarioContext:
     resource_id: UUID | None = None
     allocation_id: UUID | None = None
     portal_ticket_id: UUID | None = None
+    site_id: UUID | None = None
+    fl_room_label: str = ""
+    fl_floor_label: str = ""
+    responsible_employee_id: str = ""
+    responsible_principal_id: str = ""
 
 
 async def _live_read_signed_baseline(eng: NCEEngine, nsu: UUID, qid: str) -> dict | None:
@@ -406,8 +570,11 @@ async def _live_read_signed_baseline(eng: NCEEngine, nsu: UUID, qid: str) -> dic
 
 _QUERY_METHODS = ("execute", "executemany", "fetch", "fetchrow", "fetchval")
 
-# 28 steps, each reading or writing at least once, plus fixture setup.
-MIN_DB_ROUND_TRIPS = 40
+# 37 steps (28 original + 9 from H-9, 2026-09-19), each reading or writing at
+# least once, plus fixture setup. Floor only, not re-derived exactly -- the 5
+# broken H-9 seams still touch the database before raising/asserting, so the
+# true count is higher than a bare step-for-step sum.
+MIN_DB_ROUND_TRIPS = 45
 
 
 class _QueryCounter:
@@ -596,11 +763,39 @@ class TestGoldenThreadSteps:
                 yield ctx
 
     async def _ensure_prereqs(self, ctx: GoldenThreadScenarioContext, up_to_step: int) -> None:
-        """Idempotently executes upstream prerequisites if running an isolated step."""
-        if up_to_step >= 1 and not ctx.deal_id:
-            await self.test_step_01_customer(ctx)
-        if up_to_step >= 2 and not ctx.design_id:
-            await self.test_step_02_design(ctx)
+        """Idempotently executes upstream prerequisites if running an isolated step.
+
+        H-9 finding (2026-09-19): the guards for steps 1 and 2 used to read
+        ``not ctx.deal_id`` / ``not ctx.design_id`` -- but ``_setup_live_context``
+        pre-populates both with a placeholder ID at context construction, before
+        any step runs, so those two conditions could never evaluate true. The
+        guards were not weak, they were inert: silently unable to ever fire, the
+        same shape as an assert accidentally dedented out of its test function
+        (K-H, 2026-09-19) or a scan pointed at a path that does not exist (T-4c).
+        Found only because the full 37-step sequential run (where execution order
+        happens to populate everything anyway) masked it, and an isolated-step
+        run of one of H-9's own new steps did not. Fixed to match the pattern
+        every OTHER step in this method already uses correctly: a live query for
+        the step's actual database side effect, not a Python attribute that is
+        never actually empty.
+        """
+        if up_to_step >= 1:
+            async with ctx.pool.acquire() as conn:
+                deal_cnt = await conn.fetchval(
+                    "SELECT count(*) FROM kg_nodes WHERE namespace_id = $1 AND label = $2",
+                    ctx.namespace_id,
+                    f"DEAL:{ctx.deal_id.upper()}",
+                )
+            if deal_cnt == 0:
+                await self.test_step_01_customer(ctx)
+        if up_to_step >= 2:
+            async with ctx.pool.acquire() as conn:
+                dev_cnt = await conn.fetchval(
+                    "SELECT count(*) FROM kg_nodes WHERE namespace_id = $1 AND entity_type = 'DEVICE'",
+                    ctx.namespace_id,
+                )
+            if dev_cnt == 0:
+                await self.test_step_02_design(ctx)
         if up_to_step >= 3 and ctx.bom_line_id is None:
             await self.test_step_03_quote(ctx)
         if up_to_step >= 4 and not ctx.session_id:
@@ -718,6 +913,12 @@ class TestGoldenThreadSteps:
                 )
                 if mcnt == 0:
                     await self.test_step_26_outcome_recorded(ctx)
+        if up_to_step >= 29 and ctx.site_id is None:
+            await self.test_step_29_site_address_enriched(ctx)
+        if up_to_step >= 30 and not ctx.fl_room_label:
+            await self.test_step_30_fl_tree_children_ancestors_move(ctx)
+        if up_to_step >= 32 and not ctx.responsible_employee_id:
+            await self.test_step_32_responsible_assigned(ctx)
 
     async def test_step_01_customer(self, scenario: GoldenThreadScenarioContext) -> None:
         """Step 1: customer account / deal model."""
@@ -1457,6 +1658,335 @@ class TestGoldenThreadSteps:
         degs = reg.get_degradations(str(ctx.namespace_id))
         assert total_deg == 0, f"Unexpected degradations in namespace: {total_deg} ({degs})"
 
+    # -----------------------------------------------------------------------
+    # H-9 Golden Thread v2 -- see the manifest comment above GOLDEN_THREAD_STEPS
+    # index 29 for the charter reference and what changed since it was written.
+    # -----------------------------------------------------------------------
+
+    async def test_step_29_site_address_enriched(
+        self, scenario: GoldenThreadScenarioContext
+    ) -> None:
+        """Step 29: C17 SITE enriched with address/coordinates (F-9).
+
+        The SITE row is seeded with a raw INSERT, not the generated C12
+        ``sites_upsert_sites`` tool -- that path is real NCE code, but
+        exercising the *enrichment* is this step's subject, not proving a
+        site can be created (a different, already-covered C12 concern).
+        ``do_enrich_site_from_address_registry`` is a hand-written function,
+        not the generic resource-surface upsert -- unaffected by the
+        resource_surface bug this same wave found and fixed elsewhere.
+        """
+        ctx = scenario
+        async with ctx.pool.acquire() as conn:
+            async with conn.transaction():
+                await set_namespace_context(conn, ctx.namespace_id)
+                site_id = await conn.fetchval(
+                    "INSERT INTO sites (namespace_id, name, site_type) VALUES ($1, $2, $3) "
+                    "RETURNING id",
+                    ctx.namespace_id,
+                    "HQ Site",
+                    "building",
+                )
+        ctx.site_id = site_id
+
+        hit = {
+            "adressetekst": "Storgata 1",
+            "postnummer": "0155",
+            "poststed": "OSLO",
+            "kommunenavn": "OSLO",
+            "kommunenummer": "0301",
+            "adressekode": 12345,
+            "nummer": 1,
+            "bokstav": "",
+            "representasjonspunkt": {"lat": 59.913, "lon": 10.752, "epsg": "4326"},
+        }
+
+        def _responder(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"adresser": [hit]}, request=request)
+
+        enrich_res = await do_enrich_site_from_address_registry(
+            ctx.engine,
+            {
+                "namespace_id": str(ctx.namespace_id),
+                "site_id": str(site_id),
+                "query": "Storgata 1, Oslo",
+            },
+            transport=httpx.MockTransport(_responder),
+        )
+        assert enrich_res["matched"] is True, f"Address lookup did not match: {enrich_res}"
+
+        async with ctx.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT latitude, longitude FROM sites WHERE id = $1", site_id
+            )
+        assert row is not None and row["latitude"] is not None, (
+            "SITE row was not enriched with coordinates"
+        )
+
+    async def test_step_30_fl_tree_children_ancestors_move(
+        self, scenario: GoldenThreadScenarioContext
+    ) -> None:
+        """Step 30: C-1 FL tree -- read children/ancestors, then move a node.
+
+        Builds on the FL hierarchy step 2 already authored. ``move_fl_node``
+        is verified live here after this wave found its sibling
+        ``merge_fl_nodes`` broken against a real Postgres (step 31) --
+        proving the surrounding machinery (lookup, cycle-detection, edge
+        rewrite) works, so that seam is one bad value, not a broken
+        subsystem.
+        """
+        ctx = scenario
+        await self._ensure_prereqs(ctx, 2)
+        floor_label = fl_label(ctx.namespace_slug, "HQ", "Main", "1")
+        room_label = fl_label(ctx.namespace_slug, "HQ", "Main", "1", "101")
+        ctx.fl_room_label = room_label
+        ctx.fl_floor_label = floor_label
+
+        async with ctx.pool.acquire() as conn:
+            async with conn.transaction():
+                await set_namespace_context(conn, ctx.namespace_id)
+                children = await get_fl_children(conn, ctx.namespace_id, floor_label)
+                assert any(c.get("label") == room_label for c in children), (
+                    f"Room not found as a child of the floor: {[c.get('label') for c in children]}"
+                )
+                ancestors = await get_fl_ancestors(conn, ctx.namespace_id, room_label)
+                assert any(a.get("label") == floor_label for a in ancestors), (
+                    f"Floor not found as an ancestor of the room: {[a.get('label') for a in ancestors]}"
+                )
+
+                # Move the room under the site root directly (still a real,
+                # ownership-guarded tree edit), then move it back so later
+                # steps (which key off room_label's original parent) are
+                # unaffected.
+                site_label = fl_label(ctx.namespace_slug, "HQ")
+                move_res = await move_fl_node(
+                    conn, ctx.namespace_id, room_label, site_label, actor="golden-thread-h9"
+                )
+                assert move_res["moved"] is True, f"Move did not report success: {move_res}"
+                back_res = await move_fl_node(
+                    conn, ctx.namespace_id, room_label, floor_label, actor="golden-thread-h9"
+                )
+                assert back_res["moved"] is True
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "break-h9a: merge_fl_nodes sets "
+            "change_origin='merged' on the absorbed node (fl_tree.py:608 real-Postgres path, "
+            ":635 in-memory), which is not in the real kg_nodes_change_origin_chk constraint "
+            "('sync','webhook','agent','operator','consolidation','replay','unknown'). Every "
+            "real-Postgres merge fails with CheckViolationError. Ruling (ML-orch, 2026-09-19): "
+            "the correct value is 'consolidation', not 'operator' -- 'operator' would silently "
+            "mark the absorbed node as_built (fl_tree.py:102), which is true for a human-moved "
+            "location but not for two duplicate records being consolidated. Fix dispatched to "
+            "Lane C; this seam stays xfail until it lands on main, not removed on the strength "
+            "of the ruling alone."
+        ),
+    )
+    async def test_step_31_fl_tree_merge(self, scenario: GoldenThreadScenarioContext) -> None:
+        """Step 31: C-1 FL tree -- merge two duplicate room records."""
+        ctx = scenario
+        await self._ensure_prereqs(ctx, 30)
+        async with ctx.pool.acquire() as conn:
+            async with conn.transaction():
+                await set_namespace_context(conn, ctx.namespace_id)
+                dup_label = await upsert_fl_path(
+                    conn,
+                    ctx.namespace_id,
+                    namespace_slug=ctx.namespace_slug,
+                    path_parts=("HQ", "Main", "1", "101-dup"),
+                )
+                merge_res = await merge_fl_nodes(
+                    conn,
+                    ctx.namespace_id,
+                    ctx.fl_room_label,
+                    dup_label,
+                    reversible=True,
+                    actor="golden-thread-h9",
+                )
+        assert merge_res["merged"] is True
+
+    async def test_step_32_responsible_assigned(
+        self, scenario: GoldenThreadScenarioContext
+    ) -> None:
+        """Step 32: C-2 room category set, an employee assigned responsible."""
+        ctx = scenario
+        await self._ensure_prereqs(ctx, 30)
+        employee_id = str(uuid.uuid4())
+        ctx.responsible_employee_id = employee_id
+
+        cat_res = await do_set_fl_room_category(
+            ctx.engine,
+            ctx.namespace_id,
+            {"fl_id_or_label": ctx.fl_room_label, "category_id": "OPERATIONS_CENTER"},
+        )
+        assert cat_res["status"] == "ok", f"Room category not set: {cat_res}"
+
+        resp_res = await do_assign_fl_responsible(
+            ctx.engine,
+            ctx.namespace_id,
+            {"fl_id_or_label": ctx.fl_room_label, "employee_id": employee_id, "role": "primary"},
+        )
+        assert resp_res["status"] == "ok", f"Responsible employee not assigned: {resp_res}"
+
+        listed = await do_list_fl_responsible(
+            ctx.engine, ctx.namespace_id, {"fl_id_or_label": ctx.fl_room_label}
+        )
+        assert any(r.get("employee_id") == employee_id for r in listed), (
+            f"Assigned employee not found in the responsible list: {listed}"
+        )
+
+        principal_id = f"user:{employee_id}"
+        ctx.responsible_principal_id = principal_id
+        async with ctx.pool.acquire() as conn:
+            async with conn.transaction():
+                await set_namespace_context(conn, ctx.namespace_id)
+                await upsert_principal_binding(
+                    conn,
+                    ctx.namespace_id,
+                    principal_id,
+                    tier="employee",
+                    employee_id=employee_id,
+                    roles=["technician"],
+                )
+            binding_row = await conn.fetchrow(
+                "SELECT employee_id FROM principal_bindings "
+                "WHERE namespace_id = $1 AND principal_id = $2",
+                ctx.namespace_id,
+                principal_id,
+            )
+        assert binding_row is not None and binding_row["employee_id"] == employee_id, (
+            "principal_bindings row not written for the responsible employee"
+        )
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "break-h9b: no DEAL_PARTICIPANT concept exists anywhere in "
+            "nce.vertical_modules.sales (confirmed by reading resources.py/graph.py and "
+            "migration 088_sales_resource_tables.sql) -- do_create_deal takes no "
+            "participants/attendees argument at all. Aspirational per the original H-9 "
+            "charter text, not yet built by any landed wave (tracked as B-1-followup)."
+        ),
+    )
+    async def test_step_33_deal_participants(self, scenario: GoldenThreadScenarioContext) -> None:
+        """Step 33: deal with participants (not built -- see xfail reason)."""
+        ctx = scenario
+        await self._ensure_prereqs(ctx, 1)
+        # There is no participants argument to pass; this call demonstrates
+        # the gap rather than working around it with an invented kwarg.
+        raise NotImplementedError(
+            "DEAL_PARTICIPANT does not exist -- do_create_deal has no participants concept"
+        )
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "break-h9c (re-diagnosed): the resource_surface datetime/version_field bug this "
+            "was originally blocked on merged to main in #284 -- confirmed fixed by live "
+            "re-run. That re-run surfaced the real, distinct blocker: asyncpg.exceptions."
+            "ForeignKeyViolationError on agreements_customer_id_fkey. ctx.customer_id is a "
+            "synthetic UUID that only ever exists as a kg_nodes graph node (entity_type="
+            "'CUSTOMER', written by do_create_deal in step 1) -- no step anywhere in this "
+            "file, and no code path anywhere in nce/, ever creates a matching row in the "
+            "C12-relational sales_customers table. 'agreements' hard-FKs to that table, so "
+            "any real customer_id must exist there first. This is an architecture split "
+            "(graph-modeled customer identity vs. C12-relational customer identity) with no "
+            "bridge between them, not a test bug and not fixed here."
+        ),
+    )
+    async def test_step_34_agreement_parties(self, scenario: GoldenThreadScenarioContext) -> None:
+        """Step 34: agreement with parties, via the C12 resource-surface tools."""
+        ctx = scenario
+        await self._ensure_prereqs(ctx, 1)
+        agr_res = json.loads(
+            await TOOL_REGISTRY["agreements_upsert_agreements"].handler(
+                ctx.engine,
+                {
+                    "namespace_id": str(ctx.namespace_id),
+                    "title": "Golden Thread Support Agreement",
+                    "agreement_type": "support",
+                    "status": "active",
+                    "customer_id": ctx.customer_id,
+                },
+            )
+        )
+        assert agr_res.get("status") == "ok", agr_res
+        party_res = json.loads(
+            await TOOL_REGISTRY["agreements_upsert_parties"].handler(
+                ctx.engine,
+                {
+                    "namespace_id": str(ctx.namespace_id),
+                    "agreement_id": agr_res["id"],
+                    "party_type": "customer",
+                    "party_name": "Acme Corp",
+                },
+            )
+        )
+        assert party_res.get("status") == "ok", party_res
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "break-h9d: no billing-run capability exists anywhere in the tree -- "
+            "git ls-tree origin/main -- nce/migrations/ has no billing_run migration, and "
+            "no vertical_modules package implements one. Tracked charter-wide as Wave "
+            "B-12, not yet started as of this wave."
+        ),
+    )
+    async def test_step_35_billing_run(self, scenario: GoldenThreadScenarioContext) -> None:
+        """Step 35: billing run (not built -- see xfail reason)."""
+        ctx = scenario
+        await self._ensure_prereqs(ctx, 1)
+        raise NotImplementedError("No billing-run capability exists anywhere in the tree")
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "break-h9e: no customer-invoice capability exists anywhere in the tree "
+            "(distinct from the existing supplier-invoice approval path "
+            "economy_approve_invoice already covers). Depends on billing_run (step 35) "
+            "existing first; tracked under the same Wave B-12."
+        ),
+    )
+    async def test_step_36_customer_invoice(self, scenario: GoldenThreadScenarioContext) -> None:
+        """Step 36: customer invoice (not built -- see xfail reason)."""
+        ctx = scenario
+        await self._ensure_prereqs(ctx, 1)
+        raise NotImplementedError("No customer-invoice capability exists anywhere in the tree")
+
+    async def test_step_37_notification_received(
+        self, scenario: GoldenThreadScenarioContext
+    ) -> None:
+        """Step 37: C13 notification delivered to the responsible employee.
+
+        Deliberately not about the invoice chain (steps 34-36 are broken
+        seams) -- an honest SLA-coverage notice to the employee assigned
+        responsible in step 32, using the real hand-written
+        ``create_notification`` (not the generic C12 upsert path).
+        """
+        ctx = scenario
+        await self._ensure_prereqs(ctx, 32)
+        async with ctx.pool.acquire() as conn:
+            async with conn.transaction():
+                await set_namespace_context(conn, ctx.namespace_id)
+                notif = await create_notification(
+                    conn,
+                    namespace_id=ctx.namespace_id,
+                    principal_id=ctx.responsible_principal_id,
+                    title=f"You are responsible for {ctx.fl_room_label}",
+                    body="SLA coverage is active for this location.",
+                    severity="info",
+                    category="sla",
+                )
+                assert notif["principal_id"] == ctx.responsible_principal_id
+            count = await conn.fetchval(
+                "SELECT count(*) FROM notifications WHERE namespace_id = $1 AND principal_id = $2",
+                ctx.namespace_id,
+                ctx.responsible_principal_id,
+            )
+        assert count >= 1, "Notification row not written for the responsible employee"
+
 
 # ---------------------------------------------------------------------------
 # End-to-End Pipeline Execution
@@ -2036,20 +2566,29 @@ class TestGoldenThreadPositiveControls:
         assert not missing, f"Burndown manifest missing breaks: {missing}"
 
     def test_burndown_manifest_step_sequence_continuity(self) -> None:
-        """Verify that steps are 1-indexed, contiguous, and exactly 28 steps."""
-        assert len(GOLDEN_THREAD_STEPS) == 28
+        """Verify that steps are 1-indexed, contiguous, and exactly 37 steps
+        (28 original + 9 from H-9's Golden Thread v2 extension, 2026-09-19).
+        """
+        assert len(GOLDEN_THREAD_STEPS) == 37
         indices = [s.index for s in GOLDEN_THREAD_STEPS]
-        assert indices == list(range(1, 29))
+        assert indices == list(range(1, 38))
 
     def test_burndown_manifest_broken_steps_count(self) -> None:
         """Verify broken steps count reflects honest live state.
 
-        All 28 steps now execute and assert real database state with zero broken steps.
+        The original 28 steps still execute with zero broken steps. H-9 (2026-09-19)
+        added 5 genuine breaks alongside 4 new working steps: break-h9a (fl_tree_merge,
+        a real bug in Lane C's merge_fl_nodes, fix dispatched), break-h9b
+        (deal_participants, not built), break-h9c (agreement_parties: resource_surface
+        fix landed in #284, but re-verification surfaced a distinct, unbridged
+        graph-vs-relational customer-identity gap), break-h9d/e (billing_run/
+        customer_invoice, Wave B-12, not started). A stated partial per S7, not a
+        silent one.
         """
         broken_steps = [s for s in GOLDEN_THREAD_STEPS if s.is_broken]
-        assert len(broken_steps) == 0, f"Expected 0 broken steps, found: {broken_steps}"
+        assert len(broken_steps) == 5, f"Expected 5 broken steps, found: {broken_steps}"
         broken_indices = {s.index for s in broken_steps}
-        assert broken_indices == set()
+        assert broken_indices == {31, 33, 34, 35, 36}
 
     def test_positive_control_broken_steps_have_remediation_waves(self) -> None:
         """Verify every broken step specifies a responsible Phase 1 remediation wave."""
