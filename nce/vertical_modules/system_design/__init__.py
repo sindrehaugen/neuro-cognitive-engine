@@ -19,6 +19,28 @@ from nce.vertical_modules.system_design.devices import (
 from nce.vertical_modules.system_design.enrichment import (
     do_enrich_design_lines,
 )
+from nce.vertical_modules.system_design.fl_tree import (
+    CycleDetectedError,
+    FLNodeNotFoundError,
+    FLTreeError,
+    InvalidMoveError,
+    MergeConflictError,
+    derive_fl_kind,
+    get_fl_ancestors,
+    get_fl_children,
+    get_fl_node,
+    get_fl_path,
+    merge_fl_nodes,
+    move_fl_node,
+    promote_fl_node,
+    search_fl_nodes,
+)
+from nce.vertical_modules.system_design.fold_rules import (
+    DEFAULT_FOLD_RULES,
+    FoldRules,
+    evaluate_fl_match,
+    normalize_name,
+)
 from nce.vertical_modules.system_design.from_quote import (
     do_design_from_quote,
 )
@@ -82,4 +104,22 @@ __all__ = [
     "do_retire_planned",
     "do_sync_device_capabilities",
     "do_validate_design",
+    "get_fl_node",
+    "search_fl_nodes",
+    "get_fl_children",
+    "get_fl_ancestors",
+    "get_fl_path",
+    "move_fl_node",
+    "merge_fl_nodes",
+    "promote_fl_node",
+    "derive_fl_kind",
+    "FoldRules",
+    "DEFAULT_FOLD_RULES",
+    "evaluate_fl_match",
+    "normalize_name",
+    "FLTreeError",
+    "FLNodeNotFoundError",
+    "CycleDetectedError",
+    "InvalidMoveError",
+    "MergeConflictError",
 ]

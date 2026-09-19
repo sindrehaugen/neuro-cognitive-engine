@@ -754,6 +754,55 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=True,
     ),
+    # System Design vertical module tools (Wave C-1) — FUNCTIONAL_LOCATION tree
+    "system_design_list_functional_locations": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_list_functional_locations"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "system_design_get_functional_location": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_get_functional_location"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "system_design_get_fl_children": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_get_fl_children"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "system_design_get_fl_ancestors": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_get_fl_ancestors"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "system_design_get_fl_path": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_get_fl_path"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "system_design_move_functional_location": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_move_functional_location"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    "system_design_merge_functional_locations": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_merge_functional_locations"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
+    "system_design_promote_functional_location": ToolSpec(
+        _h(system_design_mcp_handlers, "handle_system_design_promote_functional_location"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
     # ------------------------------------------------------------------
     # Project vertical module tools (M7.W3) — phase-gate readiness check
     # ------------------------------------------------------------------

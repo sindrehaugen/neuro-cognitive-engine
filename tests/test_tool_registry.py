@@ -62,7 +62,7 @@ _C12_TOOL_NAMES = frozenset(_C12_TOOL_SPECS)
 _C12_MUTATION_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.mutation)
 _C12_CACHEABLE_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.cacheable)
 
-_EXPECTED_STATIC_TOTAL = 292  # hand-written tools only; see _C12_TOOL_NAMES above; +1 BRREG registry-feed tool (Lane F Wave F-8); +2 geodata OSM tools (Lane F Wave F-11); +2 geodata N50 land-cover tools (Lane F Wave F-12); +2 geodata place-name tools (Lane F Wave F-13); +2 FX/weather feed tools (Lane F Wave F-15: pricing_get_fx_rates, geodata_get_weather)
+_EXPECTED_STATIC_TOTAL = 300  # 292 hand-written tools + 8 FUNCTIONAL_LOCATION tree tools (Lane C Wave C-1); see _C12_TOOL_NAMES above
 
 # Re-exported for tests/unit/test_{assets,economy,inventory}_surface.py and
 # test_sales_skeleton.py, which each do `from tests.test_tool_registry import
@@ -227,6 +227,10 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "system_design_enrich_design_lines",
         # Wave C-5 (System Design capability sync from product ETIM specs)
         "system_design_sync_device_capabilities",
+        # Wave C-1 (System Design FUNCTIONAL_LOCATION tree mutations)
+        "system_design_move_functional_location",
+        "system_design_merge_functional_locations",
+        "system_design_promote_functional_location",
         # M5.W15 (Batch 132d) -- manual-pick BOM_LINE origination
         "sales_add_quote_line",
         # ML10-B5 (M10.W5) -- Support Engine mutations (Actor, admin_only)
@@ -378,6 +382,10 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "field_tech_archive_time_entries",
         "field_tech_upsert_checklists",
         "field_tech_archive_checklists",
+        # Wave C-1 -- FUNCTIONAL_LOCATION tree mutations (3 tools)
+        "system_design_move_functional_location",
+        "system_design_merge_functional_locations",
+        "system_design_promote_functional_location",
     }
 )
 
@@ -413,17 +421,18 @@ def test_mutation_tools_count():
     +1 Lane F Wave F-8 legal_entities_enrich_from_registry -> 124.
     +1 Lane F Wave F-11 geodata_import_osm_elements -> 125.
     +1 Lane F Wave F-12 geodata_import_n50_land_cover -> 126.
-    +1 Lane F Wave F-13 geodata_import_place_names -> 127."""
+    +1 Lane F Wave F-13 geodata_import_place_names -> 127.
+    +3 Wave C-1 FL tree mutations -> 130."""
     c12_mutation_tools = frozenset(
         n for n, s in build_all_resource_tool_specs().items() if s.mutation
     )
     hand_written_mutation_tools = MUTATION_TOOLS - c12_mutation_tools
 
-    assert len(MUTATION_TOOLS) >= 123, (
-        f"Sanity floor: expected at least 123 mutation tools, got {len(MUTATION_TOOLS)}."
+    assert len(MUTATION_TOOLS) >= 130, (
+        f"Sanity floor: expected at least 130 mutation tools, got {len(MUTATION_TOOLS)}."
     )
-    assert len(hand_written_mutation_tools) == 127, (
-        "Hand-written (non-C12) mutation tool count changed: expected 127, "
+    assert len(hand_written_mutation_tools) == 130, (
+        "Hand-written (non-C12) mutation tool count changed: expected 130, "
         f"got {len(hand_written_mutation_tools)}. If you added/removed a "
         "hand-written mutation tool, update this pin by import. If you only "
         "registered a new C12 ResourceSpec, this number should not move -- "
@@ -480,6 +489,12 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         # Wave C-5 (System Design standards & signals)
         "system_design_get_standards",
         "system_design_get_signal_rules",
+        # Wave C-1 (System Design FUNCTIONAL_LOCATION tree reads)
+        "system_design_list_functional_locations",
+        "system_design_get_functional_location",
+        "system_design_get_fl_children",
+        "system_design_get_fl_ancestors",
+        "system_design_get_fl_path",
         # Sales vertical module (Batch 080) — skeleton ping, cacheable
         "sales_ping",
         # Project vertical module (M7.W3) — phase-gate readiness check, cacheable
@@ -663,6 +678,12 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         # Lane F Wave F-15 -- FX rate feed + weather live-read (global, no namespace_id)
         "pricing_get_fx_rates",
         "geodata_get_weather",
+        # Wave C-1 -- FUNCTIONAL_LOCATION tree cacheable reads (5 tools)
+        "system_design_list_functional_locations",
+        "system_design_get_functional_location",
+        "system_design_get_fl_children",
+        "system_design_get_fl_ancestors",
+        "system_design_get_fl_path",
     }
 )
 
@@ -680,17 +701,17 @@ def test_cacheable_tools_exact_match():
 def test_cacheable_tools_count():
     """Converted to a derived assertion (janitor pass 7, K-H4) -- same
     treatment as test_mutation_tools_count above. 115 is the hand-written
-    baseline (131 old total - 16 current live C12 cacheable tools)."""
+    baseline + 5 Lane F Wave F-11..F-15 tools + 5 Wave C-1 FL tree reads = 125."""
     c12_cacheable_tools = frozenset(
         n for n, s in build_all_resource_tool_specs().items() if s.cacheable
     )
     hand_written_cacheable_tools = CACHEABLE_TOOLS - c12_cacheable_tools
 
-    assert len(CACHEABLE_TOOLS) >= 115, (
-        f"Sanity floor: expected at least 115 cacheable tools, got {len(CACHEABLE_TOOLS)}."
+    assert len(CACHEABLE_TOOLS) >= 125, (
+        f"Sanity floor: expected at least 125 cacheable tools, got {len(CACHEABLE_TOOLS)}."
     )
-    assert len(hand_written_cacheable_tools) == 120, (
-        "Hand-written (non-C12) cacheable tool count changed: expected 120, "
+    assert len(hand_written_cacheable_tools) == 125, (
+        "Hand-written (non-C12) cacheable tool count changed: expected 125, "
         f"got {len(hand_written_cacheable_tools)}. If you added/removed a "
         "hand-written cacheable tool, update this pin by import. If you "
         "only registered a new C12 ResourceSpec, this number should not "

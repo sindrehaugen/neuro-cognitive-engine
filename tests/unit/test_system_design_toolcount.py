@@ -159,6 +159,47 @@ _EXPECTED_TOOLS: dict[str, dict[str, bool]] = {
         "admin_only": False,
         "mutation": True,
     },
+    # Wave C-1 — FUNCTIONAL_LOCATION tree operations
+    "system_design_list_functional_locations": {
+        "cacheable": True,
+        "admin_only": False,
+        "mutation": False,
+    },
+    "system_design_get_functional_location": {
+        "cacheable": True,
+        "admin_only": False,
+        "mutation": False,
+    },
+    "system_design_get_fl_children": {
+        "cacheable": True,
+        "admin_only": False,
+        "mutation": False,
+    },
+    "system_design_get_fl_ancestors": {
+        "cacheable": True,
+        "admin_only": False,
+        "mutation": False,
+    },
+    "system_design_get_fl_path": {
+        "cacheable": True,
+        "admin_only": False,
+        "mutation": False,
+    },
+    "system_design_move_functional_location": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": True,
+    },
+    "system_design_merge_functional_locations": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": True,
+    },
+    "system_design_promote_functional_location": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": True,
+    },
 }
 
 

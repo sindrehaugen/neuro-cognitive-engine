@@ -899,6 +899,47 @@ def build_admin_routes() -> list[Route]:
             endpoint=system_design_handlers.api_system_design_sync_device_capabilities,
             methods=["POST"],
         ),
+        # System Design vertical module endpoints (Wave C-1) — FUNCTIONAL_LOCATION tree
+        Route(
+            "/api/system-design/functional-locations",
+            endpoint=system_design_handlers.api_system_design_list_functional_locations,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/system-design/functional-locations/{id}",
+            endpoint=system_design_handlers.api_system_design_get_functional_location,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/system-design/functional-locations/{id}/children",
+            endpoint=system_design_handlers.api_system_design_get_fl_children,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/system-design/functional-locations/{id}/ancestors",
+            endpoint=system_design_handlers.api_system_design_get_fl_ancestors,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/system-design/functional-locations/{id}/path",
+            endpoint=system_design_handlers.api_system_design_get_fl_path,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/system-design/functional-locations/{id}/move",
+            endpoint=system_design_handlers.api_system_design_move_functional_location,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/system-design/functional-locations/{id}/merge",
+            endpoint=system_design_handlers.api_system_design_merge_functional_locations,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/system-design/functional-locations/{id}/promote",
+            endpoint=system_design_handlers.api_system_design_promote_functional_location,
+            methods=["POST"],
+        ),
         # ------------------------------------------------------------------
         # Vendors vertical module endpoints (M4.W3)
         # ------------------------------------------------------------------
