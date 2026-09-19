@@ -177,6 +177,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/assets/assets/{id}/tags` | `handle_list_tags` |
 | POST | `/api/assets/assets/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/assets/assets/{id}/tags/{tag}` | `handle_remove_tag` |
+| GET | `/api/assets/by-person/{employee_id}` | `api_assets_list_person_assets` |
 | POST | `/api/assets/failure-pattern` | `api_assets_record_failure_pattern` |
 | GET | `/api/assets/health` | `api_assets_health` |
 | GET | `/api/assets/merge` | `api_assets_merge_queue` |
@@ -187,6 +188,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/assets/sync-netbox` | `api_assets_sync_netbox` |
 | GET | `/api/assets/warranty-eol` | `api_assets_check_warranty_eol` |
 | GET | `/api/assets/{id}` | `api_assets_get` |
+| POST | `/api/assets/{id}/assign` | `api_assets_assign_person` |
 | POST | `/api/assets/{id}/failure-pattern` | `api_assets_record_failure_pattern` |
 | GET | `/api/assets/{id}/health` | `api_assets_health` |
 | POST | `/api/assets/{id}/lifecycle` | `api_assets_advance_lifecycle` |
@@ -195,7 +197,11 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/assets/{id}/move` | `api_assets_move` |
 | GET | `/api/assets/{id}/qr` | `api_assets_generate_qr` |
 | GET | `/api/assets/{id}/service-history` | `api_assets_service_history` |
+| GET | `/api/assets/{id}/sub-components` | `api_assets_list_subcomponents` |
+| POST | `/api/assets/{id}/sub-components` | `api_assets_link_subcomponent` |
+| DELETE | `/api/assets/{id}/sub-components/{sub_id}` | `api_assets_unlink_subcomponent` |
 | POST | `/api/assets/{id}/telemetry` | `api_assets_pull_telemetry` |
+| POST | `/api/assets/{id}/unassign` | `api_assets_unassign_person` |
 | POST | `/api/business-insights/ask` | `api_business_insights_ask` |
 | GET,POST | `/api/business-insights/board-pack` | `api_business_insights_board_pack` |
 | GET | `/api/business-insights/kpi-dashboard` | `api_business_insights_kpi_dashboard` |
@@ -855,20 +861,26 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `agreements_upsert_templates` |  | yes |  |  |
 | `assets_advance_lifecycle` |  | yes |  |  |
 | `assets_archive_assets` |  | yes |  |  |
+| `assets_assign_person` | yes | yes |  |  |
 | `assets_attach_sla` |  | yes |  |  |
 | `assets_check_warranty_eol` |  |  | yes |  |
 | `assets_compute_health` |  | yes |  |  |
 | `assets_generate_qr` |  |  | yes |  |
 | `assets_get` |  |  | yes |  |
 | `assets_get_assets` |  |  | yes |  |
+| `assets_link_subcomponent` | yes | yes |  |  |
 | `assets_list` |  |  | yes |  |
 | `assets_list_assets` |  |  | yes |  |
+| `assets_list_person_assets` |  |  | yes |  |
+| `assets_list_subcomponents` |  |  | yes |  |
 | `assets_ping` |  |  | yes |  |
 | `assets_pull_telemetry` | yes | yes |  |  |
 | `assets_record_failure_pattern` | yes | yes |  |  |
 | `assets_seed_from_bom` |  | yes |  |  |
 | `assets_service_history` |  |  | yes |  |
 | `assets_sync_netbox` | yes | yes |  |  |
+| `assets_unassign_person` | yes | yes |  |  |
+| `assets_unlink_subcomponent` | yes | yes |  |  |
 | `assets_upsert_assets` |  | yes |  |  |
 | `boost_memory` |  | yes |  |  |
 | `bridge_status` |  |  |  |  |
@@ -1257,4 +1269,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 806 REST endpoints, 433 MCP tools._
+_Totals: 812 REST endpoints, 439 MCP tools._

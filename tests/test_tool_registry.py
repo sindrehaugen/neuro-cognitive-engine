@@ -61,7 +61,7 @@ _C12_TOOL_SPECS = build_all_resource_tool_specs()
 _C12_TOOL_NAMES = frozenset(_C12_TOOL_SPECS)
 _C12_MUTATION_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.mutation)
 _C12_CACHEABLE_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.cacheable)
-_EXPECTED_STATIC_TOTAL = 313  # 292 hand-written tools + 8 FUNCTIONAL_LOCATION tree tools (Lane C Wave C-1) + 1 C17 site master data address-registry feed (Lane F Wave F-9) + 2 support action/timeline tools (Lane D Wave D-5) + 1 support on-call rota (Lane D Wave D-7) + 1 assets service history (Lane D Wave D-3) + 8 room cat & FL metadata tools (Lane C Wave C-2); see _C12_TOOL_NAMES above
+_EXPECTED_STATIC_TOTAL = 319  # 292 hand-written tools + 8 FUNCTIONAL_LOCATION tree tools (Lane C Wave C-1) + 1 C17 site master data address-registry feed (Lane F Wave F-9) + 2 support action/timeline tools (Lane D Wave D-5) + 1 support on-call rota (Lane D Wave D-7) + 1 assets service history (Lane D Wave D-3) + 8 room cat & FL metadata tools (Lane C Wave C-2) + 6 assets person/subcomponent tools (Lane D Wave D-2); see _C12_TOOL_NAMES above
 
 # Re-exported for tests/unit/test_{assets,economy,inventory}_surface.py and
 # test_sales_skeleton.py, which each do `from tests.test_tool_registry import
@@ -317,6 +317,11 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "assets_sync_netbox",
         # Wave A-5 -- Assets failure pattern recorder (Actor mutation)
         "assets_record_failure_pattern",
+        # Wave D-2 -- Assets person assignment & sub-components (Actor mutations)
+        "assets_assign_person",
+        "assets_unassign_person",
+        "assets_link_subcomponent",
+        "assets_unlink_subcomponent",
         # Wave IN-2 -- Inventory kitting & package reservation (Actor mutations)
         "inventory_reserve_kit",
         "inventory_release_kit",
@@ -441,17 +446,18 @@ def test_mutation_tools_count():
     +3 Wave C-1 FL tree mutations -> 130.
     +1 Lane F Wave F-9 sites_enrich_address_from_registry -> 131.
     +1 Lane D Wave D-5 support_log_ticket_action -> 132.
-    +3 Wave C-2 Room Categories & FL Metadata mutations -> 135."""
+    +3 Wave C-2 Room Categories & FL Metadata mutations -> 135.
+    +4 Lane D Wave D-2 assets person & subcomponents -> 139."""
     c12_mutation_tools = frozenset(
         n for n, s in build_all_resource_tool_specs().items() if s.mutation
     )
     hand_written_mutation_tools = MUTATION_TOOLS - c12_mutation_tools
 
-    assert len(MUTATION_TOOLS) >= 135, (
-        f"Sanity floor: expected at least 135 mutation tools, got {len(MUTATION_TOOLS)}."
+    assert len(MUTATION_TOOLS) >= 139, (
+        f"Sanity floor: expected at least 139 mutation tools, got {len(MUTATION_TOOLS)}."
     )
-    assert len(hand_written_mutation_tools) == 135, (
-        "Hand-written (non-C12) mutation tool count changed: expected 135, "
+    assert len(hand_written_mutation_tools) == 139, (
+        "Hand-written (non-C12) mutation tool count changed: expected 139, "
         f"got {len(hand_written_mutation_tools)}. If you added/removed a "
         "hand-written mutation tool, update this pin by import. If you only "
         "registered a new C12 ResourceSpec, this number should not move -- "
@@ -641,6 +647,9 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "assets_generate_qr",
         # Wave D-3 -- Assets service history reader (cacheable read)
         "assets_service_history",
+        # Wave D-2 -- Assets person assignment & sub-components (cacheable reads)
+        "assets_list_person_assets",
+        "assets_list_subcomponents",
         # Wave A-1 -- C12 Inventory resource surface cacheable reads (list + get)
         "inventory_list_stock_locations",
         "inventory_get_stock_locations",
@@ -743,17 +752,17 @@ def test_cacheable_tools_exact_match():
 def test_cacheable_tools_count():
     """Converted to a derived assertion (janitor pass 7, K-H4) -- same
     treatment as test_mutation_tools_count above. 115 is the hand-written
-    baseline + 5 Lane F Wave F-11..F-15 tools + 5 Wave C-1 FL tree reads + 1 Wave D-5 support timeline + 1 Wave D-7 on-call + 5 Wave C-2 room cat/FL metadata reads = 132."""
+    baseline + 5 Lane F Wave F-11..F-15 tools + 5 Wave C-1 FL tree reads + 1 Wave D-5 support timeline + 1 Wave D-7 on-call + 1 Wave D-3 service history + 5 Wave C-2 room cat/FL metadata reads + 2 Wave D-2 assets person & subcomponents = 135."""
     c12_cacheable_tools = frozenset(
         n for n, s in build_all_resource_tool_specs().items() if s.cacheable
     )
     hand_written_cacheable_tools = CACHEABLE_TOOLS - c12_cacheable_tools
 
-    assert len(CACHEABLE_TOOLS) >= 133, (
-        f"Sanity floor: expected at least 133 cacheable tools, got {len(CACHEABLE_TOOLS)}."
+    assert len(CACHEABLE_TOOLS) >= 135, (
+        f"Sanity floor: expected at least 135 cacheable tools, got {len(CACHEABLE_TOOLS)}."
     )
-    assert len(hand_written_cacheable_tools) == 133, (
-        "Hand-written (non-C12) cacheable tool count changed: expected 133, "
+    assert len(hand_written_cacheable_tools) == 135, (
+        "Hand-written (non-C12) cacheable tool count changed: expected 135, "
         f"got {len(hand_written_cacheable_tools)}. If you added/removed a "
         "hand-written cacheable tool, update this pin by import. If you "
         "only registered a new C12 ResourceSpec, this number should not "
@@ -906,6 +915,11 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "assets_sync_netbox",
         # Wave A-5 -- Assets failure pattern recorder (admin_only mutation)
         "assets_record_failure_pattern",
+        # Wave D-2 -- Assets person assignment & sub-components (admin_only mutations)
+        "assets_assign_person",
+        "assets_unassign_person",
+        "assets_link_subcomponent",
+        "assets_unlink_subcomponent",
         # Wave IN-2 -- Inventory kitting & package reservation (admin_only mutations)
         "inventory_reserve_kit",
         "inventory_release_kit",
@@ -938,8 +952,8 @@ def test_admin_only_tools_exact_match():
 
 def test_admin_only_tools_count():
     assert (
-        len(ADMIN_ONLY_TOOLS) == 99
-    )  # 90 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3) + 1 BRREG registry-feed enrichment (Lane F Wave F-8) + 1 geodata OSM import (Lane F Wave F-11) + 1 geodata N50 land-cover import (Lane F Wave F-12) + 1 geodata place-name import (Lane F Wave F-13) + 1 sites address-registry enrichment (Lane F Wave F-9) + 1 support_log_ticket_action (Lane D Wave D-5)
+        len(ADMIN_ONLY_TOOLS) == 103
+    )  # 90 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3) + 1 BRREG registry-feed enrichment (Lane F Wave F-8) + 1 geodata OSM import (Lane F Wave F-11) + 1 geodata N50 land-cover import (Lane F Wave F-12) + 1 geodata place-name import (Lane F Wave F-13) + 1 sites address-registry enrichment (Lane F Wave F-9) + 1 support_log_ticket_action (Lane D Wave D-5) + 4 assets person & sub-components (Lane D Wave D-2)
 
 
 # ---------------------------------------------------------------------------

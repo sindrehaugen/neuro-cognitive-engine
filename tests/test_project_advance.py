@@ -616,10 +616,10 @@ class TestProjectAdvancePhaseToolRegistry:
         }
         hand_written_mutation_tools = MUTATION_TOOLS - c12_mutation_tools
 
-        assert len(MUTATION_TOOLS) >= 135, (
-            f"Sanity floor: expected at least 135 mutation tools, got {len(MUTATION_TOOLS)}."
+        assert len(MUTATION_TOOLS) >= 139, (
+            f"Sanity floor: expected at least 139 mutation tools, got {len(MUTATION_TOOLS)}."
         )
-        assert len(hand_written_mutation_tools) == 135, (
+        assert len(hand_written_mutation_tools) == 139, (
             "Hand-written (non-C12) mutation tool count changed: expected "
             f"135, got {len(hand_written_mutation_tools)}. If you "
             "added/removed a hand-written mutation tool, update this pin by "
@@ -667,7 +667,7 @@ class TestProjectAdvancePhaseToolRegistry:
                 "h4_probe_archive_k_h4_synthetic",
             }
             assert after_total == before_total  # TOOL_REGISTRY snapshot doesn't re-scan; see below
-            assert len(hand_written_after) == 135, (
+            assert len(hand_written_after) == 139, (
                 "Registering a new C12 spec must not move the hand-written "
                 f"baseline: got {len(hand_written_after)}."
             )
