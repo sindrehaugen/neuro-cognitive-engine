@@ -119,6 +119,9 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/agreements/coverage` | `api_agreements_coverage` |
 | POST | `/api/agreements/create` | `api_agreements_create` |
 | POST | `/api/agreements/extract` | `api_agreements_extract` |
+| GET | `/api/agreements/index-series` | `api_agreements_get_index_series` |
+| POST | `/api/agreements/index-series/calculate` | `api_agreements_calculate_index_adjustment` |
+| GET | `/api/agreements/index-series/{id}` | `api_agreements_get_index_series` |
 | GET | `/api/agreements/parties` | `handle_list` |
 | POST | `/api/agreements/parties` | `handle_create` |
 | POST | `/api/agreements/parties/bulk` | `handle_bulk` |
@@ -135,6 +138,9 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/agreements/parties/{id}/tags` | `handle_list_tags` |
 | POST | `/api/agreements/parties/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/agreements/parties/{id}/tags/{tag}` | `handle_remove_tag` |
+| GET | `/api/agreements/price-rules` | `api_agreements_get_price_rules` |
+| POST | `/api/agreements/price-rules/evaluate` | `api_agreements_evaluate_price_rule` |
+| GET | `/api/agreements/price-rules/{id}` | `api_agreements_get_price_rules` |
 | POST | `/api/agreements/reconcile` | `api_agreements_reconcile` |
 | POST | `/api/agreements/record-signature` | `api_agreements_record_signature` |
 | POST | `/api/agreements/request-signature` | `api_agreements_request_signature` |
@@ -208,6 +214,22 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/business-insights/morning-brief` | `api_business_insights_morning_brief` |
 | GET | `/api/business-insights/risk-radar` | `api_business_insights_risk_radar` |
 | POST | `/api/business-insights/run-scenario` | `api_business_insights_run_scenario` |
+| GET | `/api/business_insights/kpi-snapshots` | `handle_list` |
+| POST | `/api/business_insights/kpi-snapshots` | `handle_create` |
+| POST | `/api/business_insights/kpi-snapshots/bulk` | `handle_bulk` |
+| GET | `/api/business_insights/kpi-snapshots/{id}` | `handle_get` |
+| PATCH | `/api/business_insights/kpi-snapshots/{id}` | `handle_patch` |
+| POST | `/api/business_insights/kpi-snapshots/{id}/archive` | `handle_archive` |
+| GET | `/api/business_insights/kpi-snapshots/{id}/comments` | `handle_list_comments` |
+| POST | `/api/business_insights/kpi-snapshots/{id}/comments` | `handle_add_comment` |
+| GET | `/api/business_insights/kpi-snapshots/{id}/documents` | `handle_list_documents` |
+| POST | `/api/business_insights/kpi-snapshots/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/business_insights/kpi-snapshots/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/business_insights/kpi-snapshots/{id}/events` | `handle_events` |
+| POST | `/api/business_insights/kpi-snapshots/{id}/restore` | `handle_restore` |
+| GET | `/api/business_insights/kpi-snapshots/{id}/tags` | `handle_list_tags` |
+| POST | `/api/business_insights/kpi-snapshots/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/business_insights/kpi-snapshots/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/documents/documents` | `handle_list` |
 | POST | `/api/documents/documents` | `handle_create` |
 | POST | `/api/documents/documents/bulk` | `handle_bulk` |
@@ -499,12 +521,60 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/marketing/assets` | `api_marketing_assets` |
 | POST | `/api/marketing/audit-seo` | `api_marketing_audit_seo` |
 | GET | `/api/marketing/candidates` | `api_marketing_candidates` |
+| GET | `/api/marketing/case-studies` | `handle_list` |
+| POST | `/api/marketing/case-studies` | `handle_create` |
+| POST | `/api/marketing/case-studies/bulk` | `handle_bulk` |
+| GET | `/api/marketing/case-studies/{id}` | `handle_get` |
+| PATCH | `/api/marketing/case-studies/{id}` | `handle_patch` |
+| POST | `/api/marketing/case-studies/{id}/archive` | `handle_archive` |
+| GET | `/api/marketing/case-studies/{id}/comments` | `handle_list_comments` |
+| POST | `/api/marketing/case-studies/{id}/comments` | `handle_add_comment` |
+| GET | `/api/marketing/case-studies/{id}/documents` | `handle_list_documents` |
+| POST | `/api/marketing/case-studies/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/marketing/case-studies/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/marketing/case-studies/{id}/events` | `handle_events` |
+| POST | `/api/marketing/case-studies/{id}/restore` | `handle_restore` |
+| GET | `/api/marketing/case-studies/{id}/tags` | `handle_list_tags` |
+| POST | `/api/marketing/case-studies/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/marketing/case-studies/{id}/tags/{tag}` | `handle_remove_tag` |
+| GET | `/api/marketing/content-assets` | `handle_list` |
+| POST | `/api/marketing/content-assets` | `handle_create` |
+| POST | `/api/marketing/content-assets/bulk` | `handle_bulk` |
+| GET | `/api/marketing/content-assets/{id}` | `handle_get` |
+| PATCH | `/api/marketing/content-assets/{id}` | `handle_patch` |
+| POST | `/api/marketing/content-assets/{id}/archive` | `handle_archive` |
+| GET | `/api/marketing/content-assets/{id}/comments` | `handle_list_comments` |
+| POST | `/api/marketing/content-assets/{id}/comments` | `handle_add_comment` |
+| GET | `/api/marketing/content-assets/{id}/documents` | `handle_list_documents` |
+| POST | `/api/marketing/content-assets/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/marketing/content-assets/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/marketing/content-assets/{id}/events` | `handle_events` |
+| POST | `/api/marketing/content-assets/{id}/restore` | `handle_restore` |
+| GET | `/api/marketing/content-assets/{id}/tags` | `handle_list_tags` |
+| POST | `/api/marketing/content-assets/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/marketing/content-assets/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/marketing/draft` | `api_marketing_draft_case_study` |
 | POST | `/api/marketing/publish` | `api_marketing_publish_content` |
 | POST | `/api/marketing/suggest-content` | `api_marketing_suggest_content` |
 | GET | `/api/marketing/testimonials` | `api_marketing_testimonials` |
+| GET | `/api/marketing/testimonials` | `handle_list` |
+| POST | `/api/marketing/testimonials` | `handle_create` |
+| POST | `/api/marketing/testimonials/bulk` | `handle_bulk` |
 | POST | `/api/marketing/testimonials/capture` | `api_marketing_capture_testimonial` |
 | POST | `/api/marketing/testimonials/retract` | `api_marketing_retract_testimonial` |
+| GET | `/api/marketing/testimonials/{id}` | `handle_get` |
+| PATCH | `/api/marketing/testimonials/{id}` | `handle_patch` |
+| POST | `/api/marketing/testimonials/{id}/archive` | `handle_archive` |
+| GET | `/api/marketing/testimonials/{id}/comments` | `handle_list_comments` |
+| POST | `/api/marketing/testimonials/{id}/comments` | `handle_add_comment` |
+| GET | `/api/marketing/testimonials/{id}/documents` | `handle_list_documents` |
+| POST | `/api/marketing/testimonials/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/marketing/testimonials/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/marketing/testimonials/{id}/events` | `handle_events` |
+| POST | `/api/marketing/testimonials/{id}/restore` | `handle_restore` |
+| GET | `/api/marketing/testimonials/{id}/tags` | `handle_list_tags` |
+| POST | `/api/marketing/testimonials/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/marketing/testimonials/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/notifications/notifications` | `handle_list` |
 | POST | `/api/notifications/notifications` | `handle_create` |
 | POST | `/api/notifications/notifications/bulk` | `handle_bulk` |
@@ -916,11 +986,15 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `agreements_archive_agreements` |  | yes |  |  |
 | `agreements_archive_parties` |  | yes |  |  |
 | `agreements_archive_templates` |  | yes |  |  |
+| `agreements_calculate_index_adjustment` |  |  | yes |  |
 | `agreements_coverage_matrix` |  |  | yes |  |
 | `agreements_create` | yes | yes |  |  |
+| `agreements_evaluate_price_rule` |  |  | yes |  |
 | `agreements_extract` | yes | yes |  |  |
 | `agreements_get_agreements` |  |  | yes |  |
+| `agreements_get_index_series` |  |  | yes |  |
 | `agreements_get_parties` |  |  | yes |  |
+| `agreements_get_price_rules` |  |  | yes |  |
 | `agreements_get_templates` |  |  | yes |  |
 | `agreements_list_agreements` |  |  | yes |  |
 | `agreements_list_parties` |  |  | yes |  |
@@ -960,12 +1034,16 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `assets_upsert_assets` |  | yes |  |  |
 | `boost_memory` |  | yes |  |  |
 | `bridge_status` |  |  |  |  |
+| `business_insights_archive_kpi_snapshots` |  | yes |  |  |
 | `business_insights_ask_business` | yes |  |  |  |
 | `business_insights_generate_board_pack` | yes |  |  |  |
+| `business_insights_get_kpi_snapshots` |  |  | yes |  |
 | `business_insights_kpi_dashboard` | yes |  | yes |  |
+| `business_insights_list_kpi_snapshots` |  |  | yes |  |
 | `business_insights_morning_brief` | yes |  | yes |  |
 | `business_insights_risk_radar` | yes |  | yes |  |
 | `business_insights_run_scenario` | yes |  |  |  |
+| `business_insights_upsert_kpi_snapshots` |  | yes |  |  |
 | `check_indexing_status` |  |  |  |  |
 | `commit_migration` |  | yes |  | yes |
 | `compare_states` |  |  |  |  |
@@ -1137,14 +1215,26 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `manage_namespace` |  | yes |  |  |
 | `manage_quotas` |  | yes |  |  |
 | `marketing_approve_content` | yes | yes |  |  |
+| `marketing_archive_case_studies` |  | yes |  |  |
+| `marketing_archive_content_assets` |  | yes |  |  |
+| `marketing_archive_testimonials` |  | yes |  |  |
 | `marketing_audit_seo` |  |  | yes |  |
 | `marketing_capture_testimonial` | yes | yes |  |  |
 | `marketing_draft_case_study` | yes | yes |  |  |
 | `marketing_find_case_study_candidates` |  |  | yes |  |
+| `marketing_get_case_studies` |  |  | yes |  |
+| `marketing_get_content_assets` |  |  | yes |  |
+| `marketing_get_testimonials` |  |  | yes |  |
+| `marketing_list_case_studies` |  |  | yes |  |
+| `marketing_list_content_assets` |  |  | yes |  |
+| `marketing_list_testimonials` |  |  | yes |  |
 | `marketing_publish_content` | yes | yes |  |  |
 | `marketing_request_testimonial` | yes | yes |  |  |
 | `marketing_retract_testimonial` | yes | yes |  |  |
 | `marketing_suggest_content` |  |  | yes |  |
+| `marketing_upsert_case_studies` |  | yes |  |  |
+| `marketing_upsert_content_assets` |  | yes |  |  |
+| `marketing_upsert_testimonials` |  | yes |  |  |
 | `merge_queue_confirm` | yes | yes |  |  |
 | `merge_queue_list` |  |  | yes |  |
 | `merge_queue_reject` | yes | yes |  |  |
@@ -1372,4 +1462,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 888 REST endpoints, 466 MCP tools._
+_Totals: 958 REST endpoints, 486 MCP tools._

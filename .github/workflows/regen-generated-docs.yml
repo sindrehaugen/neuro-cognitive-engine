@@ -1,5 +1,34 @@
 name: Regenerate generated docs (post-merge)
 
+# 🔴 §10.5b's PREMISE BELOW IS REVERTED, 2026-09-19 late night -- PRs carry
+# these files again (ci.yml's doc_gate checks are back, unconditionally).
+# This job's whole point was "PRs don't need to carry current docs because
+# this job fixes `main` after merge" -- that assumed a GITHUB_TOKEN commit
+# could reach `main`. It cannot: `main` requires 9 status checks even for a
+# direct push (`enforce_admins: true`), and a brand-new bot commit has none,
+# so `git push` here is unconditionally rejected with "9 of 9 required status
+# checks are expected." Confirmed live when #289 merged without its docs (the
+# first real non-empty diff since this job existed) -- and the ORIGINAL
+# "Commit and push" step treated the rejection as the documented benign race
+# and exited 0, so the job reported SUCCESS while `main` was left with 9
+# stale generated files and nothing correcting or flagging it. Only
+# doc-drift-nightly.yml (04:30 UTC) would eventually have caught it.
+#
+# This job is KEPT, not deleted, as a redundant, self-verifying safety net:
+# with PRs carrying current docs again, it should almost always find an empty
+# diff and no-op. If it ever finds a non-empty diff (an admin bypass, a gate
+# misconfiguration), it now fails LOUD instead of silently succeeding when
+# its push is rejected -- see the "Commit and push" step's own comment for
+# how a confirmed race is told apart from a hard rejection. Building a
+# mechanism that CAN land a bot commit on a protected branch (a PAT-driven PR
+# with something that actually triggers its required checks, unlike
+# GITHUB_TOKEN-authored PRs -- see refresh-lock.yml's own documented
+# limitation) is a real option for later, not built here under pressure.
+#
+# The rest of this file's history is left as a record of what was tried and
+# why, including the parts now reverted -- do not delete it to make the file
+# look consistent with current behaviour.
+#
 # §10.5b (ORCH_PROTOCOL.md, 2026-09-19): PRs stop carrying the generated
 # artefacts that collided on every merge (K-H7's original problem, then K-H9:
 # the merge=ours driver that lowered the per-rebase COST of those collisions
@@ -254,7 +283,28 @@ jobs:
           file list; see charter §10.5b for why this runs post-merge instead
           of inside the PR that changed the source."
 
-          if ! git push origin HEAD:${{ github.ref_name }}; then
-            echo "Push rejected -- ${{ github.ref_name }} moved under this job (a fast second merge, the known/accepted race in this workflow's header comment). That merge's own ordinary push triggers its own run of this workflow, which regenerates against the current state; nothing from this run is lost, nothing needs a retry here."
-            exit 0
+          # BEFORE_SHA lets a real push rejection be told apart from the one
+          # benign case (a second merge landing under this job): if push fails
+          # AND origin has not actually moved, the rejection was NOT a race --
+          # most likely branch protection (`main` requires 9 status checks
+          # even for a direct push, per `enforce_admins: true`, and a brand
+          # new bot commit has none). That happened for real on 2026-09-19: a
+          # prior version of this step treated every push failure as the
+          # benign race and exited 0, so the job reported SUCCESS while `main`
+          # silently kept stale docs with nothing correcting them -- a hard,
+          # permanent failure reported as a handled transient one. Never
+          # repeat that: only the confirmed-race case exits 0. Everything else
+          # fails the job loudly, on purpose -- if this job cannot land its
+          # commit, red is the honest state, not silence.
+          BEFORE_SHA="$(git rev-parse origin/${{ github.ref_name }})"
+          if ! git push origin HEAD:${{ github.ref_name }} 2>push_error.log; then
+            git fetch origin ${{ github.ref_name }}
+            AFTER_SHA="$(git rev-parse origin/${{ github.ref_name }})"
+            if [ "$AFTER_SHA" != "$BEFORE_SHA" ]; then
+              echo "Push rejected -- confirmed race: ${{ github.ref_name }} moved from $BEFORE_SHA to $AFTER_SHA under this job (an ordinary second merge). That merge's own push triggers its own run of this workflow, which regenerates against the current state; nothing from this run is lost, nothing needs a retry here."
+              exit 0
+            fi
+            echo "::error::Push to ${{ github.ref_name }} was rejected and the branch did NOT move ($BEFORE_SHA unchanged) -- this is NOT the benign race. Most likely branch protection (required status checks apply to direct pushes too when enforce_admins is set, and this commit has none). See the error below. Generated docs on ${{ github.ref_name }} are now STALE and this job cannot fix them by itself -- a human needs to land the regeneration through an ordinary PR."
+            cat push_error.log
+            exit 1
           fi
