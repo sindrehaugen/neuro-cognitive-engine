@@ -4386,3 +4386,46 @@ BEGIN
         GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE outbound_webhooks TO nce_app;
     END IF;
 END $$;
+
+-- ---------------------------------------------------------------------------
+-- C17 Site Master Data (Wave A-9, Migration 095)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sites (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    namespace_id UUID NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    name VARCHAR(256) NOT NULL,
+    cadastre_id VARCHAR(64),
+    site_type VARCHAR(64) NOT NULL DEFAULT 'building',
+    address JSONB NOT NULL DEFAULT '{}'::jsonb,
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
+    altitude DOUBLE PRECISION,
+    height DOUBLE PRECISION,
+    footprint_geometry JSONB NOT NULL DEFAULT '{}'::jsonb,
+    telemetry_stream JSONB,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    archived BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_sites_namespace_cadastre_id UNIQUE (namespace_id, cadastre_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sites_lookup
+    ON sites (namespace_id, archived, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_sites_cadastre_id
+    ON sites (namespace_id, cadastre_id);
+
+CREATE INDEX IF NOT EXISTS idx_sites_name
+    ON sites (namespace_id, name);
+
+CREATE INDEX IF NOT EXISTS idx_sites_type
+    ON sites (namespace_id, site_type);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE sites FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE sites TO nce_app;
+    END IF;
+END $$;

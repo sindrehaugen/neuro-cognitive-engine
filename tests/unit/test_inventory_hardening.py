@@ -52,18 +52,18 @@ _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
 # --- MEASURED post-rebase onto 8ed821a (#243/#251/#237/#249/#250/#255/#256/
-# #257/#239/#248/#246/#244/#253) plus Lane F Wave F-13 / F-15 and
-# Wave C-1 FUNCTIONAL_LOCATION tree tools (+8 total, +3 mutation, +5 cacheable):
+# #257/#239/#248/#246/#244/#253) plus Lane F Wave F-13 / F-15,
+# Wave C-1 FUNCTIONAL_LOCATION tree tools, and Wave A-9 C17 Site Master Data tools (+4 total, +2 mutation, +2 cacheable):
 #   NCE_MASTER_KEY="x"*32 python -c "
 #     import nce.tool_registry as tr
 #     print(len(tr.TOOL_REGISTRY), len(tr.MUTATION_TOOLS), len(tr.CACHEABLE_TOOLS), len(tr.ADMIN_ONLY_TOOLS))"
-# TOTAL: 372 + 8 C-1 FL tree tools = 380.
-# MUTATION: 167 + 3 C-1 FL tree mutations = 170.
-# CACHEABLE: 160 + 5 C-1 FL tree cacheable reads = 165.
+# TOTAL: 380 + 4 C17 site master tools = 384.
+# MUTATION: 170 + 2 C17 site master mutations = 172.
+# CACHEABLE: 165 + 2 C17 site master cacheable reads = 167.
 # ADMIN_ONLY: 97 (unaffected).
-_TOTAL_TOOLS = 380
-_MUTATION_TOOLS = 170
-_CACHEABLE_TOOLS = 165
+_TOTAL_TOOLS = 384
+_MUTATION_TOOLS = 172
+_CACHEABLE_TOOLS = 167
 _ADMIN_ONLY_TOOLS = 97
 _MIGRATION_TOOLS = 5
 

@@ -527,6 +527,22 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/sales/targets` | `api_admin_sales_targets_get` |
 | PUT | `/api/sales/targets` | `api_admin_sales_targets_put` |
 | POST | `/api/search` | `api_search` |
+| GET | `/api/sites/sites` | `handle_list` |
+| POST | `/api/sites/sites` | `handle_create` |
+| POST | `/api/sites/sites/bulk` | `handle_bulk` |
+| GET | `/api/sites/sites/{id}` | `handle_get` |
+| PATCH | `/api/sites/sites/{id}` | `handle_patch` |
+| POST | `/api/sites/sites/{id}/archive` | `handle_archive` |
+| GET | `/api/sites/sites/{id}/comments` | `handle_list_comments` |
+| POST | `/api/sites/sites/{id}/comments` | `handle_add_comment` |
+| GET | `/api/sites/sites/{id}/documents` | `handle_list_documents` |
+| POST | `/api/sites/sites/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/sites/sites/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/sites/sites/{id}/events` | `handle_events` |
+| POST | `/api/sites/sites/{id}/restore` | `handle_restore` |
+| GET | `/api/sites/sites/{id}/tags` | `handle_list_tags` |
+| POST | `/api/sites/sites/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/sites/sites/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/snapshot/export` | `api_snapshot_export` |
 | GET | `/api/support/at-risk-aggregate` | `api_support_at_risk_aggregate` |
 | GET | `/api/support/customer-health` | `handle_list` |
@@ -948,6 +964,10 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `search_codebase` |  |  | yes |  |
 | `semantic_search` |  |  | yes |  |
 | `shred_memory` | yes | yes |  |  |
+| `sites_archive_sites` |  | yes |  |  |
+| `sites_get_sites` |  |  | yes |  |
+| `sites_list_sites` |  |  | yes |  |
+| `sites_upsert_sites` |  | yes |  |  |
 | `start_migration` |  | yes |  | yes |
 | `store_artifact` |  | yes |  |  |
 | `store_media` |  | yes |  |  |
@@ -1028,4 +1048,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 630 REST endpoints, 380 MCP tools._
+_Totals: 646 REST endpoints, 384 MCP tools._

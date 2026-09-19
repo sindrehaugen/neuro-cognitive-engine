@@ -42,9 +42,9 @@ def test_customer_portal_tables_registered_in_expected_tenant_rls_tables():
 
 
 def test_expected_tenant_rls_tables_total_count():
-    """Total count of tenant RLS tables after C4 Outbound Webhooks additions must be 98."""
-    assert len(EXPECTED_TENANT_RLS_TABLES) == 98, (
-        f"Expected 98 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
+    """Total count of tenant RLS tables after C17 Sites additions must be 99."""
+    assert len(EXPECTED_TENANT_RLS_TABLES) == 99, (
+        f"Expected 99 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
     )
 
 

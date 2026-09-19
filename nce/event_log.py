@@ -407,6 +407,8 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "principal_bindings": "namespace_id",
     # C4 Outbound Webhooks (Shared Core, Wave A-7): outbound webhooks.
     "outbound_webhooks": "namespace_id",
+    # C17 Site Master Data (Shared Core, Wave A-9): sites and building master data.
+    "sites": "namespace_id",
 }
 
 
