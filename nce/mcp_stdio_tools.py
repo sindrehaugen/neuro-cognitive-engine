@@ -7663,6 +7663,32 @@ TOOLS = [
         },
     ),
     Tool(
+        name="sites_enrich_address_from_registry",
+        description=(
+            "Validate/geocode a site's address against Kartverket's cadastre (Adresse API) and "
+            "merge the result into the site's own address/coordinate fields. Operator/cron pull; "
+            "mutation; fails soft (matched=false) when the address is not found in the registry."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Tenant namespace UUID.",
+                },
+                "site_id": {
+                    "type": "string",
+                    "description": "UUID of the sites row to enrich.",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Optional freetext address to look up instead of the site's own stored address.",
+                },
+            },
+            "required": ["namespace_id", "site_id"],
+        },
+    ),
+    Tool(
         name="geodata_import_osm_elements",
         description=(
             "Upsert a batch of already-parsed OSM elements into the local geodata store. "

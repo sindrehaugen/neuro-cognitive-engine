@@ -53,18 +53,20 @@ _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
 # --- MEASURED post-rebase onto 8ed821a (#243/#251/#237/#249/#250/#255/#256/
 # #257/#239/#248/#246/#244/#253) plus Lane F Wave F-13 / F-15,
-# Wave C-1 FUNCTIONAL_LOCATION tree tools, and Wave A-9 C17 Site Master Data tools (+4 total, +2 mutation, +2 cacheable):
+# Wave C-1 FUNCTIONAL_LOCATION tree tools, Wave A-9 C17 Site Master Data
+# tools, and this lane's own Wave F-9 address-registry enrichment (+1
+# total, +1 mutation, +1 admin_only; not cacheable):
 #   NCE_MASTER_KEY="x"*32 python -c "
 #     import nce.tool_registry as tr
 #     print(len(tr.TOOL_REGISTRY), len(tr.MUTATION_TOOLS), len(tr.CACHEABLE_TOOLS), len(tr.ADMIN_ONLY_TOOLS))"
-# TOTAL: 380 + 4 C17 site master tools = 384.
-# MUTATION: 170 + 2 C17 site master mutations = 172.
-# CACHEABLE: 165 + 2 C17 site master cacheable reads = 167.
-# ADMIN_ONLY: 97 (unaffected).
-_TOTAL_TOOLS = 384
-_MUTATION_TOOLS = 172
+# TOTAL: 384 + 1 F-9 sites_enrich_address_from_registry = 385.
+# MUTATION: 172 + 1 F-9 mutation = 173.
+# CACHEABLE: 167 (unaffected -- F-9's tool is not cacheable).
+# ADMIN_ONLY: 97 + 1 F-9 admin_only = 98.
+_TOTAL_TOOLS = 385
+_MUTATION_TOOLS = 173
 _CACHEABLE_TOOLS = 167
-_ADMIN_ONLY_TOOLS = 97
+_ADMIN_ONLY_TOOLS = 98
 _MIGRATION_TOOLS = 5
 
 

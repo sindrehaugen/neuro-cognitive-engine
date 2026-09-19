@@ -965,6 +965,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `semantic_search` |  |  | yes |  |
 | `shred_memory` | yes | yes |  |  |
 | `sites_archive_sites` |  | yes |  |  |
+| `sites_enrich_address_from_registry` | yes | yes |  |  |
 | `sites_get_sites` |  |  | yes |  |
 | `sites_list_sites` |  |  | yes |  |
 | `sites_upsert_sites` |  | yes |  |  |
@@ -1048,4 +1049,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 646 REST endpoints, 384 MCP tools._
+_Totals: 646 REST endpoints, 385 MCP tools._
