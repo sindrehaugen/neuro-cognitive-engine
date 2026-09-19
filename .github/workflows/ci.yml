@@ -951,6 +951,22 @@ jobs:
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/integration/test_resource_surface_engine_guard_live.py -m integration -q --tb=short
 
+      # C12 resource-surface multi-table support (SecondaryTable): a spec whose
+      # primary identity spreads across two tables (e.g. system_design's DEVICE
+      # capability/state split). Found live building this: an undocumented FK
+      # (fk_sddc_kg_nodes) requiring the kg_nodes row to exist first, and
+      # INSERT...ON CONFLICT DO UPDATE validating the INSERT branch's NOT NULL
+      # columns even when it resolves to UPDATE -- would have shipped as a
+      # working PATCH that silently fails on partial updates of an existing
+      # secondary-table row. Fixed via shared upsert_secondary_tables()
+      # (nce/resource_surface/rest.py), used by both mcp.py and rest.py.
+      - name: Integration — C12 resource-surface multi-table (tests/integration/test_resource_surface_multi_table_live.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/integration/test_resource_surface_multi_table_live.py -m integration -q --tb=short
+
 
 
   # REST-surface mutations must invalidate the MCP response cache.
