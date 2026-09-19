@@ -103,7 +103,13 @@
     { "node_type": "BUSINESS_INSIGHTS_FINDING",      "owner_engine": "business_insights", "transition": null,
       "_note": "Same gap as BUSINESS_INSIGHTS_BRIEFING: documented in provenance.py's graph contract, never persisted (radar.py builds the finding dict in memory only)." },
     { "node_type": "BUSINESS_INSIGHTS_SCENARIO",     "owner_engine": "business_insights", "transition": null,
-      "_note": "Same gap as BUSINESS_INSIGHTS_BRIEFING: documented in provenance.py's graph contract, never persisted (scenario.py builds the scenario dict in memory only)." }
+      "_note": "Same gap as BUSINESS_INSIGHTS_BRIEFING: documented in provenance.py's graph contract, never persisted (scenario.py builds the scenario dict in memory only)." },
+    { "node_type": "CASE_STUDY",            "owner_engine": "marketing",     "transition": null,
+      "_note": "Module 14 (Marketing Engine) drafted/approved/published customer success story (case_studies table). Q-32 exemption to Q-5's config_data freeze, granted 2026-09-19: adding owner_engine rows for hr/marketing/customer_portal/business_insights only, nothing else in this file." },
+    { "node_type": "TESTIMONIAL",           "owner_engine": "marketing",     "transition": null,
+      "_note": "Module 14 (Marketing Engine) customer quote with structured consent tiers and NPS capture (testimonials table)." },
+    { "node_type": "CONTENT_ASSET",         "owner_engine": "marketing",     "transition": null,
+      "_note": "Module 14 (Marketing Engine) marketing content asset with AEO/GEO metadata (content_assets table)." }
   ]
 }
 
