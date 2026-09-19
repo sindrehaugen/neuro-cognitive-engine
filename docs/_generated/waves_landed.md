@@ -12,9 +12,9 @@
 
 | Metric | Count |
 |---|---|
-| **Total Waves Evaluated** | **162** |
+| **Total Waves Evaluated** | **163** |
 | **LANDED on `main` (3-way consensus)** | **49** |
-| **Disagreements / Open / Planned** | **113** |
+| **Disagreements / Open / Planned** | **114** |
 | **Skipped Legacy / Pre-v1.5 Tokens** | **56** |
 | **Unmatched Wave Tokens** | **0** |
 
@@ -118,6 +118,7 @@ These waves have partial signal (e.g. stamped in tree without PR or test, or pla
 | **C-1** | Unspecified | `STAMPED_UNLANDED` | - | `nce/admin_app.py`<br>`nce/admin_handlers/system_design.py`<br>`nce/resource_surface/exemptions.py`<br>`nce/tool_registry.py`<br>`nce/vertical_modules/fl_tree.py`<br>`nce/vertical_modules/system_design/fl_tree.py`<br>`nce/vertical_modules/system_design/fold_rules.py`<br>`nce/vertical_modules/system_design/mcp_handlers.py`<br>`tests/test_project_advance.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_system_design_fl_tree.py`<br>`tests/unit/test_system_design_toolcount.py` | None |  |
 | **C-2** | Unspecified | `STAMPED_UNLANDED` | - | `nce/admin_app.py`<br>`nce/admin_handlers/system_design.py`<br>`nce/mcp_stdio_tools.py`<br>`nce/tool_registry.py`<br>`nce/vertical_modules/system_design/graph.py`<br>`nce/vertical_modules/system_design/mcp_handlers.py`<br>`nce/vertical_modules/system_design/room_categories.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_system_design_room_categories.py`<br>`tests/unit/test_system_design_toolcount.py` | None |  |
 | **C-3** | Unspecified | `STAMPED_UNLANDED` | - | `nce/admin_app.py`<br>`nce/admin_handlers/system_design.py`<br>`nce/mcp_stdio_tools.py`<br>`nce/resource_surface/exemptions.py`<br>`nce/tool_registry.py`<br>`nce/vertical_modules/system_design/design_versions.py`<br>`nce/vertical_modules/system_design/mcp_handlers.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_system_design_design_versions.py`<br>`tests/unit/test_system_design_toolcount.py` | None |  |
+| **C-4** | Unspecified | `STAMPED_UNLANDED` | - | `nce/admin_app.py`<br>`nce/admin_handlers/system_design.py`<br>`nce/mcp_stdio_tools.py`<br>`nce/tool_registry.py`<br>`nce/vertical_modules/system_design/design_requests.py`<br>`nce/vertical_modules/system_design/mcp_handlers.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_system_design_design_requests.py`<br>`tests/unit/test_system_design_toolcount.py` | None |  |
 | **C-5** | Unspecified | `MISSING_MARKER_TEST` | #226 | `nce/admin_app.py`<br>`nce/tool_registry.py`<br>`nce/vertical_modules/system_design/capability_sync.py`<br>`nce/vertical_modules/system_design/signal_distribution.py`<br>`nce/vertical_modules/system_design/standards.py`<br>`tests/test_project_advance.py`<br>`tests/test_tool_registry.py`<br>`tests/unit/test_system_design_standards_and_signals.py`<br>`tests/unit/test_system_design_toolcount.py` | None |  |
 | **C-6** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
 | **C-8** | Unspecified | `STAMPED_UNLANDED` | - | `nce/resource_surface/exemptions.py` | None |  |
