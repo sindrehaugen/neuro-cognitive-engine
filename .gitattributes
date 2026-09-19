@@ -58,3 +58,4 @@ debian/** text eol=lf
 docs/API.md                            merge=ours
 docs/_generated/**                     merge=ours
 docs/vertical_engines/ENGINE_STATUS.md merge=ours
+openapi.json                           merge=ours
