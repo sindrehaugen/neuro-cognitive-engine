@@ -151,7 +151,9 @@ async def do_get_asset_service_history(
                     "subject_label": edge["subject_label"],
                     "predicate": edge["predicate"],
                     "object_label": edge["object_label"],
-                    "confidence": float(edge["confidence"]) if edge["confidence"] is not None else 1.0,
+                    "confidence": float(edge["confidence"])
+                    if edge["confidence"] is not None
+                    else 1.0,
                     "created_at": _iso(edge["created_at"]),
                     "updated_at": _iso(edge["updated_at"]),
                 }
@@ -270,7 +272,9 @@ async def do_get_asset_service_history(
                     "subject_label": edge["subject_label"],
                     "predicate": edge["predicate"],
                     "object_label": edge["object_label"],
-                    "confidence": float(edge["confidence"]) if edge["confidence"] is not None else 1.0,
+                    "confidence": float(edge["confidence"])
+                    if edge["confidence"] is not None
+                    else 1.0,
                     "created_at": _iso(edge["created_at"]),
                     "updated_at": _iso(edge["updated_at"]),
                 }
@@ -332,7 +336,10 @@ async def do_get_asset_service_history(
         outcome_edges: list[dict[str, Any]] = []
         for edge in boundary_edges:
             pred = edge["predicate"].lower()
-            if any(term in pred for term in ("outcome", "failure", "resolv", "result", "dispatched", "about", "for")):
+            if any(
+                term in pred
+                for term in ("outcome", "failure", "resolv", "result", "dispatched", "about", "for")
+            ):
                 outcome_edges.append(edge)
 
         # 8. Build Unified Chronological Service Timeline
@@ -401,7 +408,9 @@ async def do_get_asset_service_history(
 
         # 8c. Work Order events
         for wo in work_orders:
-            wo_outcome_meta = wo.get("raw", {}).get("outcome") if isinstance(wo.get("raw"), dict) else None
+            wo_outcome_meta = (
+                wo.get("raw", {}).get("outcome") if isinstance(wo.get("raw"), dict) else None
+            )
             timeline.append(
                 {
                     "event_type": "work_order",
@@ -464,7 +473,9 @@ async def do_get_asset_service_history(
 
         summary = {
             "total_tickets": len(tickets),
-            "open_tickets": sum(1 for t in tickets if t["status"] not in ("resolved", "closed", "cancelled")),
+            "open_tickets": sum(
+                1 for t in tickets if t["status"] not in ("resolved", "closed", "cancelled")
+            ),
             "resolved_tickets": sum(1 for t in tickets if t["status"] in ("resolved", "closed")),
             "total_actions": len(actions),
             "total_work_orders": len(work_orders),

@@ -61,4 +61,3 @@ __all__ = [
     "do_sync_netbox",
     "get_failure_patterns",
 ]
-

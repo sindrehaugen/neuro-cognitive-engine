@@ -1007,4 +1007,3 @@ async def api_assets_service_history(request: Any) -> JSONResponse:
     if result.get("not_found"):
         return JSONResponse(result, status_code=404)
     return JSONResponse(result)
-

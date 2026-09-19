@@ -143,7 +143,10 @@ async def test_service_history_invalid_uuid():
 @pytest.mark.asyncio
 async def test_service_history_asset_not_found():
     conn = MockDBConn(asset_row=None)
-    with patch("nce.vertical_modules.assets.service_history.scoped_pg_session", return_value=_async_ctx(conn)):
+    with patch(
+        "nce.vertical_modules.assets.service_history.scoped_pg_session",
+        return_value=_async_ctx(conn),
+    ):
         res = await do_get_asset_service_history(
             MagicMock(),
             {"namespace_id": str(_NS_ID), "asset_id": str(_ASSET_ID)},
@@ -156,7 +159,10 @@ async def test_service_history_asset_not_found():
 @pytest.mark.asyncio
 async def test_service_history_empty_asset():
     conn = MockDBConn(asset_row=_make_mock_asset())
-    with patch("nce.vertical_modules.assets.service_history.scoped_pg_session", return_value=_async_ctx(conn)):
+    with patch(
+        "nce.vertical_modules.assets.service_history.scoped_pg_session",
+        return_value=_async_ctx(conn),
+    ):
         res = await do_get_asset_service_history(
             MagicMock(),
             {"namespace_id": str(_NS_ID), "asset_id": str(_ASSET_ID)},
@@ -325,7 +331,10 @@ async def test_service_history_composite_aggregation():
         work_orders=work_orders,
     )
 
-    with patch("nce.vertical_modules.assets.service_history.scoped_pg_session", return_value=_async_ctx(conn)):
+    with patch(
+        "nce.vertical_modules.assets.service_history.scoped_pg_session",
+        return_value=_async_ctx(conn),
+    ):
         res = await do_get_asset_service_history(
             MagicMock(),
             {"namespace_id": str(_NS_ID), "asset_id": str(_ASSET_ID), "order": "asc"},
@@ -350,7 +359,9 @@ async def test_service_history_composite_aggregation():
 
     # Verify timeline ordering (asc)
     timeline = res["timeline"]
-    assert len(timeline) >= 6  # 2 tickets (one resolved), 2 actions, 1 work order, 1 failure pattern
+    assert (
+        len(timeline) >= 6
+    )  # 2 tickets (one resolved), 2 actions, 1 work order, 1 failure pattern
     timestamps = [e["timestamp"] for e in timeline]
     assert timestamps == sorted(timestamps)
 
@@ -408,7 +419,10 @@ async def test_service_history_desc_order_and_limit():
     ]
 
     conn = MockDBConn(asset_row=mock_asset, tickets=tickets)
-    with patch("nce.vertical_modules.assets.service_history.scoped_pg_session", return_value=_async_ctx(conn)):
+    with patch(
+        "nce.vertical_modules.assets.service_history.scoped_pg_session",
+        return_value=_async_ctx(conn),
+    ):
         res = await do_get_asset_service_history(
             MagicMock(),
             {"namespace_id": str(_NS_ID), "asset_id": str(_ASSET_ID), "order": "desc", "limit": 1},
@@ -423,7 +437,10 @@ async def test_service_history_desc_order_and_limit():
 async def test_service_history_multi_tenant_predicates():
     mock_asset = _make_mock_asset()
     conn = MockDBConn(asset_row=mock_asset)
-    with patch("nce.vertical_modules.assets.service_history.scoped_pg_session", return_value=_async_ctx(conn)):
+    with patch(
+        "nce.vertical_modules.assets.service_history.scoped_pg_session",
+        return_value=_async_ctx(conn),
+    ):
         await do_get_asset_service_history(
             MagicMock(),
             {"namespace_id": str(_NS_ID), "asset_id": str(_ASSET_ID)},
@@ -440,7 +457,10 @@ async def test_service_history_multi_tenant_predicates():
 async def test_handle_assets_service_history_mcp():
     engine = MagicMock()
     conn = MockDBConn(asset_row=_make_mock_asset())
-    with patch("nce.vertical_modules.assets.service_history.scoped_pg_session", return_value=_async_ctx(conn)):
+    with patch(
+        "nce.vertical_modules.assets.service_history.scoped_pg_session",
+        return_value=_async_ctx(conn),
+    ):
         raw_json = await handle_assets_service_history(
             engine,
             {"namespace_id": str(_NS_ID), "asset_id": str(_ASSET_ID)},
@@ -474,14 +494,20 @@ def test_api_assets_service_history_rest():
 
     # 3. Asset not found
     conn_not_found = MockDBConn(asset_row=None)
-    with patch("nce.vertical_modules.assets.service_history.scoped_pg_session", return_value=_async_ctx(conn_not_found)):
+    with patch(
+        "nce.vertical_modules.assets.service_history.scoped_pg_session",
+        return_value=_async_ctx(conn_not_found),
+    ):
         res = client.get(f"/api/assets/{_ASSET_ID}/service-history?namespace_id={_NS_ID}")
         assert res.status_code == 404
         assert res.json()["not_found"] is True
 
     # 4. Success 200
     conn_success = MockDBConn(asset_row=_make_mock_asset())
-    with patch("nce.vertical_modules.assets.service_history.scoped_pg_session", return_value=_async_ctx(conn_success)):
+    with patch(
+        "nce.vertical_modules.assets.service_history.scoped_pg_session",
+        return_value=_async_ctx(conn_success),
+    ):
         res = client.get(f"/api/assets/{_ASSET_ID}/service-history?namespace_id={_NS_ID}&limit=10")
         assert res.status_code == 200
         data = res.json()

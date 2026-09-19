@@ -739,4 +739,3 @@ async def handle_assets_service_history(engine: NCEEngine, arguments: dict[str, 
     require_namespace_id(arguments)
     result = await do_get_asset_service_history(engine, dict(arguments))
     return json.dumps(result, default=str)
-
