@@ -150,6 +150,84 @@ If your integration needs to register a new technician/van/tool, or feed back a 
 
 ---
 
+## 10. Resource Surface (C12, Wave E-6)
+
+2 declarative `ResourceSpec`s live in `nce/vertical_modules/resources/resources.py`,
+both under the `resources` engine slug. The `RESOURCE` node type itself
+(the schedulable technician/van/tool records from §9 above) stays deliberately
+**exempted** from C12: its node type name equals the engine name, so a spec
+for it would generate an MCP tool named `resources_list_resources` — colliding
+with, and silently overwriting via `TOOL_REGISTRY.update()`, the existing
+hand-written tool of that exact name. Found by diffing the exact
+`TOOL_REGISTRY` key set before/after registering a trial spec, not by assuming
+the usual +4 tool delta; reported rather than silently renaming the entity to
+dodge it.
+
+### ALLOCATION (`allocations` table)
+
+Time-window resource booking against a demand source, with
+exclusion-guarded double-booking.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `resource_id` | The resource being booked |
+| `demand_kind`, `demand_id` | What's driving the booking |
+| `functional_location_id` | Where the work is |
+| `starts_at`, `ends_at` | Booking window |
+| `status`, `confidence` | Booking state and planner confidence |
+| `attrs` | Tenant-defined arbitrary attributes |
+| `updated_at` | Concurrency version field |
+
+Filterable: `resource_id`, `demand_kind`, `demand_id`, `status`. Searchable
+(`?q=`): `demand_kind`. Double-booking is enforced at the database level via
+a PostgreSQL `btree_gist` exclusion constraint (RS-3), not by this generated
+surface — it INSERTs/UPDATEs like any C12 resource and lets the constraint
+raise on overlap.
+
+### TRAVEL_LEG (`travel_legs` table)
+
+Travel route legs (flight/train/car) associated with an allocation.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `allocation_id` | Parent allocation |
+| `origin`, `destination` | Route |
+| `departure_at`, `arrival_at` | Schedule |
+| `mode` | Transport mode |
+| `cost_nok` | Cost in NOK |
+| `booking_ref` | Booking reference |
+| `status` | Booking state |
+| `attrs` | Tenant-defined arbitrary attributes |
+| `updated_at` | Concurrency version field |
+
+Filterable: `allocation_id`, `status`, `mode`. Searchable (`?q=`): `origin`,
+`destination`, `booking_ref`.
+
+### MCP Tools (8) and REST Routes (32)
+
+Each of the 2 specs above generates the standard 4 MCP tools and 16 REST
+routes:
+
+| Base path | Entity |
+|---|---|
+| `/api/resources/allocations` | ALLOCATION |
+| `/api/resources/travel-legs` | TRAVEL_LEG |
+
+### Storage and Tenancy
+
+Both tables are tenant-scoped (`namespace_id` row-level security).
+`enabled_guard` is **enforced on both specs**, via a small adapter
+(`_require_resources_enabled_via_pool` in this engine's own `resources.py`)
+that bridges the generated surface's uniform `(pool, namespace_id)` guard
+signature to this engine's differently-shaped hand-written guard
+(`require_resources_enabled`, which takes an already-fetched
+`namespace_metadata` dict rather than a pool) — fetching metadata itself and
+delegating to the existing, unmodified guard rather than re-implementing it.
+
+---
+
 ## Worked example: plan and reserve a crew, then book travel
 
 ```python

@@ -398,6 +398,59 @@ periodisering = do_compute_bucket_targets(chart, mapping, params)
 
 ---
 
+## 7. Resource Surface (C12, Wave E-7)
+
+`POSTING` is declared via `ResourceSpec` (`nce/vertical_modules/economy/resources.py`)
+and mounted under the shared C12 REST and MCP framework (`nce/resource_surface/`).
+It exposes the balanced general-ledger posting lines behind the `economy_postings`
+table. Append-only by design: no `version_field` and no `soft_delete_field` —
+postings are never mutated or archived in place.
+
+### Fields
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `event_id` | The financial event this posting line belongs to |
+| `event_type` | Classification of the originating event |
+| `line_no` | Line ordinal within the event |
+| `account` | GL account code |
+| `amount` | Posting amount |
+| `period_id` | Accounting period the posting lands in |
+| `economy_source_id` | Cross-reference to the source record |
+| `change_origin` | Provenance tag |
+
+Filterable: `event_id`, `event_type`, `account`, `period_id`. Full-text
+searchable (`?q=`): `event_id`, `account`. No `tier_allowlists` override —
+falls back to the C12 default (full record, subject to tenant-namespace
+isolation).
+
+### MCP Tools (4)
+
+| Tool Name | Cacheable | Mutation | Description |
+|---|:---:|:---:|---|
+| `economy_list_postings` | ✔ | ✘ | List/query posting lines. |
+| `economy_get_postings` | ✔ | ✘ | Fetch a single posting line by ID. |
+| `economy_upsert_postings` | ✘ | ✔ | Create or update a posting line. |
+| `economy_archive_postings` | ✘ | ✔ | Soft-archive a posting line (falls back to the standard C12 `is_archived` field even though the spec declares no dedicated one). |
+
+### REST Routes (16)
+
+Mounted under `/api/economy/postings` — the standard C12 verb set: `GET`/`POST`
+list+create, `POST .../bulk`, `GET`/`PATCH .../{id}`, `POST .../{id}/archive`,
+`POST .../{id}/restore`, `GET .../{id}/events`, `GET`/`POST .../{id}/comments`,
+`GET`/`POST .../{id}/tags`, `DELETE .../{id}/tags/{tag}`,
+`GET`/`POST .../{id}/documents`, `DELETE .../{id}/documents/{doc_id}`.
+
+### Storage and Tenancy
+
+Backed by the `economy_postings` table, tenant-scoped (`namespace_id`
+row-level security). `enabled_guard` is **enforced** — reads and writes
+through this surface require `metadata.economy.enabled` on the calling
+namespace, matching the hand-written boundary's own opt-in gate.
+
+---
+
 ## Appendix: Spec vs. Shipped Matrix (Delta from `docs/vertical_engines/08-economy-engine.md`)
 
 | Feature / Capability | Spec Proposal | Shipped State (Main @ 7304330) | Notes |

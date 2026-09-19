@@ -230,6 +230,103 @@ except InsufficientStockError as err:
 
 ---
 
+## 6. Resource Surface (C12, Wave A-1)
+
+4 declarative `ResourceSpec`s live in `nce/vertical_modules/inventory/resources.py`,
+all under the `inventory` engine slug — the original C12 pilot engine (Wave A-1),
+and the engine used tonight to live-verify the per-namespace opt-in guard
+(#294) and its `namespace_id`-omission fix (§10.9a, PRODUCT_SKU-adjacent).
+
+### STOCK_LOCATION (`stock_locations` table)
+
+Stock locations hierarchy (warehouses, vans, zones, bins).
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `kind` | Location kind (warehouse/van/zone/bin) |
+| `name` | Display name |
+| `parent_id`, `level` | Hierarchy placement |
+| `vehicle_ref` | Vehicle reference, for van-kind locations |
+| `raw` | Unstructured source payload |
+| `updated_at` | Concurrency version field |
+
+Filterable: `kind`, `parent_id`, `level`. Searchable (`?q=`): `name`, `vehicle_ref`.
+
+### INVENTORY_ITEM (`inventory_items` table)
+
+Per-SKU inventory on hand, reserved, and reorder thresholds.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `sku` | Stock-keeping unit |
+| `location_id` | Which stock location this row is for |
+| `qty_on_hand`, `qty_reserved`, `qty_blocked` | Quantity state |
+| `reorder_point` | Reorder threshold |
+| `updated_at` | Concurrency version field |
+
+Filterable: `sku`, `location_id`. Searchable (`?q=`): `sku`.
+
+Tier redaction:
+
+| Tier | Visible fields |
+|---|---|
+| `external-customer` | `id`, `sku`, `location_id`, `qty_on_hand`, `created_at`, `updated_at` |
+| `contractor` | `id`, `sku`, `location_id`, `qty_on_hand`, `qty_reserved`, `created_at`, `updated_at` |
+
+### GOODS_RECEIPT (`goods_receipts` table)
+
+Physical inbound goods receipts with line matching and package verification.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `po_ref`, `delivery_note_ref` | Purchase-order and delivery-note cross-reference |
+| `location_id` | Receiving location |
+| `lines`, `scans`, `match_result` | Line items, scan records, and match outcome |
+| `receipt_hash` | Integrity hash for the receipt |
+| `received_at` | Concurrency version field (not `updated_at` — this spec's own field) |
+
+Filterable: `po_ref`, `delivery_note_ref`, `location_id`. Searchable (`?q=`):
+`po_ref`, `delivery_note_ref`.
+
+### INVENTORY_RMA (`inventory_rma` table)
+
+Return Merchandise Authorizations for defective or quarantined stock.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `rma_ref` | RMA reference |
+| `sku`, `serial` | Item identity |
+| `location_id` | Where the return originated |
+| `qty`, `reason` | Return quantity and reason |
+
+Filterable: `rma_ref`, `sku`, `location_id`, `reason`. Searchable (`?q=`):
+`rma_ref`, `sku`, `serial`, `reason`. No `version_field` — RMAs are append-only,
+not mutated in place.
+
+### MCP Tools (16) and REST Routes (64)
+
+Each of the 4 specs above generates the standard 4 MCP tools and 16 REST
+routes:
+
+| Base path | Entity |
+|---|---|
+| `/api/inventory/stock-locations` | STOCK_LOCATION |
+| `/api/inventory/inventory-items` | INVENTORY_ITEM |
+| `/api/inventory/goods-receipts` | GOODS_RECEIPT |
+| `/api/inventory/inventory-rma` | INVENTORY_RMA |
+
+### Storage and Tenancy
+
+All four tables are tenant-scoped (`namespace_id` row-level security).
+`enabled_guard` is **enforced on all four specs** — reads and writes through
+this surface require `metadata.inventory.enabled` on the calling namespace.
+
+---
+
 ## Appendix: Spec vs. Shipped Matrix (Commit `7304330`)
 
 | Capability | Spec Reference (`11-inventory-engine.md`) | Shipped in Code? | Status |

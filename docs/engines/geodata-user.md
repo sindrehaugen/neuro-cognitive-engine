@@ -320,4 +320,15 @@ A caller that displays any of this data to end users must show the corresponding
 
 ---
 
+## No C12 Resource Surface
+
+Geodata owns zero node types in `nce/config_data/node-ownership.json` and has
+no `nce/vertical_modules/geodata/resources.py` — there is no C12 declaration
+to be missing here. OSM elements, N50 land cover, and place names (§3–§10
+above) are geospatial reference data served through hand-written tools/routes,
+not modeled as knowledge-graph node types. This is a fact about the estate,
+not a documentation gap.
+
+---
+
 > **Verified-against: 6dbe622**

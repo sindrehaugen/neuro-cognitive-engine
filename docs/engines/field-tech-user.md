@@ -97,4 +97,85 @@ NCE supports an elastic workforce of 5–15 external freelance technicians.
 
 ---
 
+## 6. Resource Surface (C12, Wave E-9/E-10)
+
+3 declarative `ResourceSpec`s live in `nce/vertical_modules/field_tech/resources.py`,
+all under the `field_tech` engine slug.
+
+### WORK_ORDER (`work_orders` table)
+
+Field service work orders: install/service kind, dispatch status, and assignment.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `kind`, `source_kind`, `source_ref` | What triggered this work order and its kind |
+| `location_id` | Where the work happens |
+| `assignee_id`, `assignee_kind` | Who it's assigned to |
+| `status`, `priority` | Dispatch state |
+| `summary`, `due_at` | Content and deadline |
+| `partner_scope_id` | External-partner isolation scope |
+| `updated_at` | Concurrency version field |
+
+Filterable: `status`, `kind`, `assignee_id`, `location_id`,
+`partner_scope_id`, `source_kind`. Searchable (`?q=`): `summary`, `source_ref`.
+No `tier_allowlists` override — redaction for this engine is enforced at the
+PostgreSQL `partner_isolation_policy` level (§5 above), not via C12's
+tier-allowlist mechanism.
+
+### FIELD_TECH_TIME_ENTRY (`time_entries` table)
+
+Technician time entries against a work order, GPS- or manually-sourced.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `work_order_id` | Parent work order |
+| `started_at`, `ended_at` | Time window |
+| `source` | GPS or manual entry |
+| `approved` | Approval state |
+| `partner_scope_id` | External-partner isolation scope |
+| `updated_at` | Concurrency version field |
+
+Filterable: `work_order_id`, `approved`, `source`, `partner_scope_id`. No
+full-text search fields declared.
+
+### FIELD_TECH_CHECKLIST (`checklists` table)
+
+ISO9001 compliance checklists against a work order, with templated items.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `work_order_id` | Parent work order |
+| `template_id` | Which checklist template this instance follows |
+| `items` | Checklist item state |
+| `completed_at` | Completion timestamp |
+| `partner_scope_id` | External-partner isolation scope |
+| `updated_at` | Concurrency version field |
+
+Filterable: `work_order_id`, `partner_scope_id`. Searchable (`?q=`): `template_id`.
+
+None of the 3 specs declare a `tier_allowlists` override — all redaction for
+this engine happens at the PostgreSQL RLS level.
+
+### MCP Tools (12) and REST Routes (48)
+
+Each spec generates the standard 4 MCP tools and 16 REST routes:
+
+| Base path | Entity |
+|---|---|
+| `/api/field_tech/work-orders` | WORK_ORDER |
+| `/api/field_tech/time-entries` | FIELD_TECH_TIME_ENTRY |
+| `/api/field_tech/checklists` | FIELD_TECH_CHECKLIST |
+
+### Storage and Tenancy
+
+All three tables are tenant-scoped, plus the additional `partner_isolation_policy`
+RLS layer described in §5. `enabled_guard` is **enforced on all three specs**
+— reads and writes through this surface require `metadata.field_tech.enabled`
+on the calling namespace.
+
+---
+
 > **Verified-against: 7304330**

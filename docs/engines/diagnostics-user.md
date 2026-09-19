@@ -197,4 +197,15 @@ When anomaly frequency exceeds `NCE_DIAG_CRASH_STORM_THRESHOLD` within `NCE_DIAG
 
 ---
 
+## No C12 Resource Surface
+
+Diagnostics owns zero node types in `nce/config_data/node-ownership.json` and
+has no `nce/vertical_modules/diagnostics/resources.py` — there is no C12
+declaration to be missing here. This is a fact about the estate (diagnostics
+data is ingested and digested, per §1–§4 above, but nothing about a crash
+report or anomaly is modeled as a standalone knowledge-graph node type with
+its own identity), not a documentation gap.
+
+---
+
 > **Verified-against: 7304330**

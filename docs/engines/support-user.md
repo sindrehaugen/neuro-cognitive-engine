@@ -185,6 +185,122 @@ resolved = await do_resolve_ticket(pool, {
 
 ---
 
+## 10. Resource Surface (C12, Wave E-8/D-5)
+
+4 declarative `ResourceSpec`s live in `nce/vertical_modules/support/resources.py`,
+all under the `support` engine slug, separate from the hand-written tools in
+the Appendix below.
+
+### TICKET (`service_tickets` table)
+
+Service tickets: status/priority lifecycle, SLA profile, and AI diagnosis
+payload.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `source`, `source_id` | Ticket origin |
+| `asset_id`, `room_id`, `customer_id` | Linked context |
+| `status`, `priority` | Lifecycle state |
+| `summary`, `description` | Content |
+| `sla_profile` | Which SLA clock applies |
+| `change_origin` | Provenance tag |
+| `updated_at` | Concurrency version field |
+
+Filterable: `source`, `status`, `priority`, `asset_id`, `room_id`,
+`customer_id`, `sla_profile`. Searchable (`?q=`): `summary`, `description`,
+`customer_id`, `room_id`, `source_id`.
+
+Tier redaction:
+
+| Tier | Visible fields |
+|---|---|
+| `external-customer` | `id`, `source`, `status`, `priority`, `summary`, `description`, `asset_id`, `room_id`, `created_at`, `updated_at`, `first_response_at`, `resolved_at` |
+| `contractor` | `id`, `source`, `status`, `priority`, `summary`, `description`, `asset_id`, `room_id`, `customer_id`, `sla_profile`, `created_at`, `updated_at`, `first_response_at`, `resolved_at` |
+
+### SLA (`sla_clocks` table)
+
+Per-ticket SLA countdown and breach state, keyed 1:1 on `ticket_id` — note
+`id_field` here is `ticket_id`, not `id`, since this table has no separate
+surrogate key.
+
+| Field | Role |
+|---|---|
+| `ticket_id` | Primary identifier (1:1 with TICKET) |
+| `sla_profile` | Which SLA profile applies |
+| `first_response_due`, `resolution_due` | Deadlines |
+| `breached`, `breach_type` | Breach state |
+| `paused_intervals` | Recorded pause windows |
+| `updated_at` | Concurrency version field |
+
+Filterable: `breached`, `breach_type`. No full-text search fields declared.
+No `tier_allowlists` override.
+
+### SUPPORT_HEALTH_SCORE (`customer_health` table)
+
+Rolling per-customer health score, churn risk, and contributing drivers.
+`id_field` is `customer_id`, `version_field` is `computed_at` (not
+`updated_at` — this spec's own field, matching its point-in-time-roll-up
+nature).
+
+| Field | Role |
+|---|---|
+| `customer_id` | Primary identifier |
+| `score`, `trend` | Health score and trend |
+| `churn_risk` | Risk classification |
+| `drivers` | Contributing factors |
+| `last_touchpoint_at` | Last customer touchpoint |
+
+Filterable: `churn_risk`. Searchable (`?q=`): `customer_id`. No
+`tier_allowlists` override.
+
+### TICKET_ACTION (`support_ticket_actions` table)
+
+Append-only ticket action log tracking interventions (tiltak) and outcomes
+(utfall) per ticket, per ADR 0042.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `ticket_id` | Parent ticket |
+| `action_type` | Intervention type |
+| `action_summary`, `action_details` | Content |
+| `outcome`, `outcome_notes` | Result |
+| `performed_by`, `performed_at` | Who did it and when |
+| `change_origin` | Provenance tag |
+| `updated_at` | Concurrency version field |
+
+Filterable: `ticket_id`, `action_type`, `outcome`, `performed_by`.
+Searchable (`?q=`): `action_summary`, `outcome_notes`, `action_details`.
+
+Tier redaction:
+
+| Tier | Visible fields |
+|---|---|
+| `external-customer` | `id`, `ticket_id`, `action_type`, `action_summary`, `outcome`, `outcome_notes`, `performed_at` |
+| `contractor` | `id`, `ticket_id`, `action_type`, `action_summary`, `action_details`, `outcome`, `outcome_notes`, `performed_by`, `performed_at` |
+
+### MCP Tools (16) and REST Routes (64)
+
+Each of the 4 specs above generates the standard 4 MCP tools and 16 REST
+routes:
+
+| Base path | Entity |
+|---|---|
+| `/api/support/tickets` | TICKET |
+| `/api/support/sla-clocks` | SLA |
+| `/api/support/customer-health` | SUPPORT_HEALTH_SCORE |
+| `/api/support/ticket-actions` | TICKET_ACTION |
+
+### Storage and Tenancy
+
+All four tables are tenant-scoped (`namespace_id` row-level security).
+`enabled_guard` is **enforced on all four specs** — reads and writes
+through this surface require `metadata.support.enabled` on the calling
+namespace.
+
+---
+
 ## Appendix: Tool Reference (`nce/tool_registry.py:1030-1089`)
 
 | Tool | cacheable | admin_only | mutation | Role (per `mcp_handlers.py` docstrings) |

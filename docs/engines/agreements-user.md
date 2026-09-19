@@ -198,4 +198,130 @@ The Agreements Engine exposes strictly **1 MCP Tool** and **5 REST Routes**:
 
 ---
 
+## 10. Resource Surface (C12, Wave B-9)
+
+3 declarative `ResourceSpec`s live in `nce/vertical_modules/agreements/resources.py`,
+all under the `agreements` engine slug, separate from the hand-written ingestion/
+review/compliance tools documented above.
+
+### AGREEMENT (`agreements` table)
+
+C12 authoritative contract register with Oneflow mirror linkage, lifecycle
+state, and principal tier redaction.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `agreement_number`, `title` | Identity |
+| `customer_id`, `deal_id` | Linked customer / sales deal |
+| `status`, `agreement_type` | Lifecycle state and contract type |
+| `start_date`, `end_date`, `auto_renewal`, `notice_period_days` | Term |
+| `annual_value`, `monthly_value`, `currency`, `billing_frequency`, `payment_terms_days` | Commercial terms |
+| `oneflow_contract_id` | Oneflow e-signature mirror linkage |
+| `metadata` | Tenant-defined arbitrary attributes |
+| `updated_at` | Concurrency version field |
+| `is_archived` | Soft-delete flag |
+
+Filterable: `status`, `agreement_type`, `customer_id`, `deal_id`,
+`auto_renewal`, `is_archived`. Searchable (`?q=`): `agreement_number`,
+`title`, `oneflow_contract_id`.
+
+Tier redaction:
+
+| Tier | Visible fields |
+|---|---|
+| `contractor` | `id`, `agreement_number`, `title`, `customer_id`, `status`, `agreement_type`, `start_date`, `end_date`, `created_at`, `updated_at` |
+| `external-customer` | `id`, `agreement_number`, `title`, `status`, `agreement_type`, `start_date`, `end_date`, `auto_renewal`, `billing_frequency`, `payment_terms_days`, `created_at` |
+
+`enabled_guard`: **enforced**.
+
+### AGREEMENT_SIGNATURE (`agreement_parties` table)
+
+C12 agreement parties and signatories linking counterparty identities to
+contract lifecycle.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `agreement_id` | Parent agreement |
+| `party_type` | Role of this party (e.g. customer, vendor) |
+| `party_name`, `org_number` | Counterparty identity |
+| `signatory_name`, `signatory_email` | Signer identity |
+| `signed_at`, `signature_status`, `signature_source` | Signature lifecycle |
+| `role` | Party's role on the agreement |
+| `metadata` | Tenant-defined arbitrary attributes |
+| `updated_at` | Concurrency version field |
+| `is_archived` | Soft-delete flag |
+
+Filterable: `agreement_id`, `party_type`, `signature_status`, `is_archived`.
+Searchable (`?q=`): `party_name`, `org_number`, `signatory_name`,
+`signatory_email`.
+
+Tier redaction:
+
+| Tier | Visible fields |
+|---|---|
+| `contractor` | `id`, `agreement_id`, `party_type`, `party_name`, `role`, `signature_status`, `created_at` |
+| `external-customer` | `id`, `agreement_id`, `party_type`, `party_name`, `signatory_name`, `signature_status`, `signed_at` |
+
+`enabled_guard`: **enforced**. This is the surface Q-46/break-h9c found
+blocked, first by a datetime-binding bug fixed in #284, then by a real,
+unresolved architecture gap: `agreements.customer_id` hard-FKs to
+`sales_customers`, but every customer created through the Golden Thread
+scenario (and the sales DEAL/QUOTE flow generally) only ever exists as a
+`kg_nodes` graph node, never as a row in that relational table. Creating an
+`AGREEMENT` against a graph-only customer will fail with a foreign-key
+violation until that gap is closed at the architecture level (not this
+lane's call — filed, not fixed).
+
+### AGREEMENT_TEMPLATE (`agreement_templates` table)
+
+C12 standardized agreement clause packages, SLA profiles, and contract
+templates.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `name`, `code` | Template identity |
+| `category` | Template classification |
+| `description` | Template description |
+| `default_terms`, `sla_profile`, `body_template` | Template content |
+| `is_active` | Whether the template is offered |
+| `metadata` | Tenant-defined arbitrary attributes |
+| `updated_at` | Concurrency version field |
+| `is_archived` | Soft-delete flag |
+
+Filterable: `category`, `is_active`, `is_archived`. Searchable (`?q=`):
+`name`, `code`, `description`.
+
+Tier redaction:
+
+| Tier | Visible fields |
+|---|---|
+| `contractor` | `id`, `name`, `code`, `category`, `description`, `is_active`, `created_at` |
+| `external-customer` | `id`, `name`, `category`, `description`, `is_active` |
+
+`enabled_guard`: **enforced**.
+
+### MCP Tools (12) and REST Routes (48)
+
+Each of the 3 specs above generates the standard 4 MCP tools
+(`agreements_list_<entity>`, `_get_<entity>`, `_upsert_<entity>`,
+`_archive_<entity>`) and 16 REST routes under its own base path:
+
+| Base path | Entity |
+|---|---|
+| `/api/agreements/agreements` | AGREEMENT |
+| `/api/agreements/parties` | AGREEMENT_SIGNATURE |
+| `/api/agreements/templates` | AGREEMENT_TEMPLATE |
+
+### Storage and Tenancy
+
+All three tables (`agreements`, `agreement_parties`, `agreement_templates`)
+are tenant-scoped (`namespace_id` row-level security). `enabled_guard` is
+**enforced on all three specs** — reads and writes through this surface
+require `metadata.agreements.enabled` on the calling namespace.
+
+---
+
 > **Verified-against: 7304330**

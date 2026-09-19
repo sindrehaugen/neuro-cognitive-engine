@@ -369,3 +369,57 @@ The following configuration parameters are defined in `nce/config.py` under the 
 | `NCE_PROCUREMENT_SYNC_INTERVAL_MINUTES` | `int` | `1440` | Sourcing synchronization interval (daily). |
 | `NCE_PROCUREMENT_RECALIBRATE_AFTER_N` | `int` | `100` | Rolling decision count window required to trigger threshold delta calculations. |
 | `NCE_PROCUREMENT_AUTONOMY_PO_CEILING` | `float` | `0.0` | Sourcing value ceiling limit. Defaults to 0 (all purchases require manual confirm). |
+
+---
+
+## 11. Resource Surface (C12, Wave B-8)
+
+`PO_LINE` is declared via `ResourceSpec` (`nce/vertical_modules/procurement/resources.py`)
+and mounted under the shared C12 REST and MCP framework (`nce/resource_surface/`).
+It exposes purchase-order lines, self-transitioning through
+draft/ordered/received/cancelled status, all owned by Procurement.
+
+### Fields
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `po_number` | Purchase order number |
+| `line_ref` | Line reference within the PO |
+| `project_id` | Linked project |
+| `bom_line_label` | Linked BOM line, if any |
+| `artnr` | Supplier article number |
+| `description` | Line item description |
+| `quantity`, `unit_price`, `line_total`, `currency` | Commercial terms |
+| `status` | Lifecycle state (draft/ordered/received/cancelled) |
+| `updated_at` | Concurrency version field |
+
+Filterable: `po_number`, `line_ref`, `project_id`, `status`. Full-text
+searchable (`?q=`): `po_number`, `line_ref`, `artnr`, `description`. No
+`tier_allowlists` override — falls back to the C12 default (full record,
+subject to tenant-namespace isolation).
+
+### MCP Tools (4)
+
+| Tool Name | Cacheable | Mutation | Description |
+|---|:---:|:---:|---|
+| `procurement_list_po_lines` | ✔ | ✘ | List/query PO lines. |
+| `procurement_get_po_lines` | ✔ | ✘ | Fetch a single PO line by ID. |
+| `procurement_upsert_po_lines` | ✘ | ✔ | Create or update a PO line. |
+| `procurement_archive_po_lines` | ✘ | ✔ | Soft-archive a PO line (falls back to the standard C12 `is_archived` field even though the spec declares no dedicated one). |
+
+### REST Routes (16)
+
+Mounted under `/api/procurement/po-lines` — the standard C12 verb set:
+`GET`/`POST` list+create, `POST .../bulk`, `GET`/`PATCH .../{id}`,
+`POST .../{id}/archive`, `POST .../{id}/restore`, `GET .../{id}/events`,
+`GET`/`POST .../{id}/comments`, `GET`/`POST .../{id}/tags`,
+`DELETE .../{id}/tags/{tag}`, `GET`/`POST .../{id}/documents`,
+`DELETE .../{id}/documents/{doc_id}`.
+
+### Storage and Tenancy
+
+Backed by the `procurement_po_lines` table, tenant-scoped (`namespace_id`
+row-level security). `enabled_guard`: **none** — this engine has no
+`nce/vertical_modules/procurement/_guard.py`, so the generated surface has no
+per-namespace opt-in check to enforce (unlike the 7 engines that do).
