@@ -1319,6 +1319,11 @@ def build_admin_routes() -> list[Route]:
             methods=["GET"],
         ),
         Route(
+            "/api/assets/merge",
+            endpoint=assets_handlers.api_assets_merge_queue,
+            methods=["GET"],
+        ),
+        Route(
             "/api/assets",
             endpoint=assets_handlers.api_assets_list,
             methods=["GET"],
@@ -1327,6 +1332,21 @@ def build_admin_routes() -> list[Route]:
             "/api/assets/{id}",
             endpoint=assets_handlers.api_assets_get,
             methods=["GET"],
+        ),
+        Route(
+            "/api/assets/{id}/move",
+            endpoint=assets_handlers.api_assets_move,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/assets/{id}/merge",
+            endpoint=assets_handlers.api_assets_merge,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/assets/{id}/link-product",
+            endpoint=assets_handlers.api_assets_link_product,
+            methods=["POST"],
         ),
         Route(
             "/api/assets/{id}/qr",
