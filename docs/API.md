@@ -529,20 +529,84 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/sales/agreements/{id}` | `api_admin_sales_agreement_detail` |
 | GET | `/api/sales/commission` | `api_admin_sales_calculate_commission` |
 | GET | `/api/sales/customers` | `api_admin_sales_customers` |
+| GET | `/api/sales/customers` | `handle_list` |
 | POST | `/api/sales/customers` | `api_admin_sales_create_customer` |
+| POST | `/api/sales/customers` | `handle_create` |
+| POST | `/api/sales/customers/bulk` | `handle_bulk` |
 | GET | `/api/sales/customers/{id}` | `api_admin_sales_customer_profile` |
+| GET | `/api/sales/customers/{id}` | `handle_get` |
+| PATCH | `/api/sales/customers/{id}` | `handle_patch` |
+| POST | `/api/sales/customers/{id}/archive` | `handle_archive` |
+| GET | `/api/sales/customers/{id}/comments` | `handle_list_comments` |
+| POST | `/api/sales/customers/{id}/comments` | `handle_add_comment` |
+| GET | `/api/sales/customers/{id}/documents` | `handle_list_documents` |
+| POST | `/api/sales/customers/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/sales/customers/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/sales/customers/{id}/events` | `handle_events` |
+| POST | `/api/sales/customers/{id}/restore` | `handle_restore` |
+| GET | `/api/sales/customers/{id}/tags` | `handle_list_tags` |
+| POST | `/api/sales/customers/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/sales/customers/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/sales/dashboard` | `api_admin_sales_dashboard` |
 | POST | `/api/sales/dealroom` | `api_admin_sales_dealroom` |
+| GET | `/api/sales/deals` | `handle_list` |
 | POST | `/api/sales/deals` | `api_admin_sales_create_deal` |
+| POST | `/api/sales/deals` | `handle_create` |
+| POST | `/api/sales/deals/bulk` | `handle_bulk` |
 | POST | `/api/sales/deals/edit` | `api_admin_sales_edit_deal` |
+| GET | `/api/sales/deals/{id}` | `handle_get` |
+| PATCH | `/api/sales/deals/{id}` | `handle_patch` |
+| POST | `/api/sales/deals/{id}/archive` | `handle_archive` |
+| GET | `/api/sales/deals/{id}/comments` | `handle_list_comments` |
+| POST | `/api/sales/deals/{id}/comments` | `handle_add_comment` |
+| GET | `/api/sales/deals/{id}/documents` | `handle_list_documents` |
+| POST | `/api/sales/deals/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/sales/deals/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/sales/deals/{id}/events` | `handle_events` |
+| POST | `/api/sales/deals/{id}/restore` | `handle_restore` |
+| GET | `/api/sales/deals/{id}/tags` | `handle_list_tags` |
+| POST | `/api/sales/deals/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/sales/deals/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/sales/divergences` | `api_admin_sales_divergences` |
 | POST | `/api/sales/lead-score` | `api_admin_sales_lead_score` |
+| GET | `/api/sales/leads` | `handle_list` |
 | POST | `/api/sales/leads` | `api_admin_sales_create_lead` |
+| POST | `/api/sales/leads` | `handle_create` |
+| POST | `/api/sales/leads/bulk` | `handle_bulk` |
+| GET | `/api/sales/leads/{id}` | `handle_get` |
+| PATCH | `/api/sales/leads/{id}` | `handle_patch` |
+| POST | `/api/sales/leads/{id}/archive` | `handle_archive` |
+| GET | `/api/sales/leads/{id}/comments` | `handle_list_comments` |
+| POST | `/api/sales/leads/{id}/comments` | `handle_add_comment` |
+| GET | `/api/sales/leads/{id}/documents` | `handle_list_documents` |
+| POST | `/api/sales/leads/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/sales/leads/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/sales/leads/{id}/events` | `handle_events` |
+| POST | `/api/sales/leads/{id}/restore` | `handle_restore` |
+| GET | `/api/sales/leads/{id}/tags` | `handle_list_tags` |
+| POST | `/api/sales/leads/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/sales/leads/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/sales/manager` | `api_admin_sales_manager` |
 | GET | `/api/sales/morning-brief` | `api_admin_sales_morning_brief_slice` |
 | GET | `/api/sales/overview` | `api_admin_sales_overview` |
 | POST | `/api/sales/quote-draft` | `api_admin_sales_quote_draft` |
+| GET | `/api/sales/quotes` | `handle_list` |
+| POST | `/api/sales/quotes` | `handle_create` |
+| POST | `/api/sales/quotes/bulk` | `handle_bulk` |
 | GET | `/api/sales/quotes/{id}` | `api_admin_sales_quote_detail` |
+| GET | `/api/sales/quotes/{id}` | `handle_get` |
+| PATCH | `/api/sales/quotes/{id}` | `handle_patch` |
+| POST | `/api/sales/quotes/{id}/archive` | `handle_archive` |
+| GET | `/api/sales/quotes/{id}/comments` | `handle_list_comments` |
+| POST | `/api/sales/quotes/{id}/comments` | `handle_add_comment` |
+| GET | `/api/sales/quotes/{id}/documents` | `handle_list_documents` |
+| POST | `/api/sales/quotes/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/sales/quotes/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/sales/quotes/{id}/events` | `handle_events` |
+| POST | `/api/sales/quotes/{id}/restore` | `handle_restore` |
+| GET | `/api/sales/quotes/{id}/tags` | `handle_list_tags` |
+| POST | `/api/sales/quotes/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/sales/quotes/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/sales/seller-detail/{user}` | `api_admin_sales_seller_detail` |
 | GET | `/api/sales/stats` | `api_admin_sales_stats` |
 | GET | `/api/sales/targets` | `api_admin_sales_targets_get` |
@@ -993,6 +1057,10 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `resources_upsert_travel_legs` |  | yes |  |  |
 | `rotate_signing_key` |  | yes |  |  |
 | `sales_add_quote_line` |  | yes |  |  |
+| `sales_archive_customers` |  | yes |  |  |
+| `sales_archive_deals` |  | yes |  |  |
+| `sales_archive_leads` |  | yes |  |  |
+| `sales_archive_quotes` |  | yes |  |  |
 | `sales_calculate_commission` |  |  | yes |  |
 | `sales_create_customer` | yes | yes |  |  |
 | `sales_create_deal` | yes | yes |  |  |
@@ -1000,12 +1068,24 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_divergence_log` |  |  | yes |  |
 | `sales_draft_quote` |  |  | yes |  |
 | `sales_edit_deal` | yes | yes |  |  |
+| `sales_get_customers` |  |  | yes |  |
+| `sales_get_deals` |  |  | yes |  |
+| `sales_get_leads` |  |  | yes |  |
 | `sales_get_quote_lines` |  |  |  |  |
+| `sales_get_quotes` |  |  | yes |  |
 | `sales_get_signed_baseline` |  |  |  |  |
+| `sales_list_customers` |  |  | yes |  |
+| `sales_list_deals` |  |  | yes |  |
+| `sales_list_leads` |  |  | yes |  |
+| `sales_list_quotes` |  |  | yes |  |
 | `sales_morning_brief_slice` |  |  | yes |  |
 | `sales_ping` |  |  | yes |  |
 | `sales_request_signature` | yes | yes |  |  |
 | `sales_score_lead` |  |  | yes |  |
+| `sales_upsert_customers` |  | yes |  |  |
+| `sales_upsert_deals` |  | yes |  |  |
+| `sales_upsert_leads` |  | yes |  |  |
+| `sales_upsert_quotes` |  | yes |  |  |
 | `search_codebase` |  |  | yes |  |
 | `semantic_search` |  |  | yes |  |
 | `shred_memory` | yes | yes |  |  |
@@ -1101,4 +1181,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 686 REST endpoints, 397 MCP tools._
+_Totals: 750 REST endpoints, 413 MCP tools._

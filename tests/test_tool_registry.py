@@ -389,6 +389,15 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "system_design_promote_functional_location",
         # Lane D Wave D-5 -- support_log_ticket_action
         "support_log_ticket_action",
+        # Lane B Wave B-1 -- C12 Sales resource surface mutations (upsert + archive)
+        "sales_upsert_customers",
+        "sales_archive_customers",
+        "sales_upsert_leads",
+        "sales_archive_leads",
+        "sales_upsert_deals",
+        "sales_archive_deals",
+        "sales_upsert_quotes",
+        "sales_archive_quotes",
     }
 )
 
@@ -697,6 +706,15 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "support_ticket_timeline",
         # Lane D Wave D-7 -- Support on-call rota reader (cacheable read)
         "support_get_on_call",
+        # Lane B Wave B-1 -- C12 Sales resource surface cacheable reads (list + get)
+        "sales_list_customers",
+        "sales_get_customers",
+        "sales_list_leads",
+        "sales_get_leads",
+        "sales_list_deals",
+        "sales_get_deals",
+        "sales_list_quotes",
+        "sales_get_quotes",
     }
 )
 
