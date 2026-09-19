@@ -39,6 +39,9 @@ CONTRACTOR_ALLOWED_ALLOCATION_FIELDS = frozenset(
         "id",
         "namespace_id",
         "resource_id",
+        "resource_name",
+        "resource_kind",
+        "resource_ref_id",
         "demand_kind",
         "demand_id",
         "functional_location_id",
@@ -324,4 +327,104 @@ async def do_detect_conflicts(engine: Any, params: dict[str, Any]) -> dict[str, 
         "namespace_id": str(ns_id),
         "conflicts": conflicts,
         "total_conflicts": len(conflicts),
+    }
+
+
+async def do_get_on_call_allocations(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
+    """
+    Query active or scheduled on-call allocations for a tenant namespace.
+    Replaces legacy ad-hoc on_call_routing table with canonical Resources ALLOCATION
+    records marked with role=on_call (Charter §8 Wave D-7).
+    """
+    require_resources_enabled(params.get("namespace_metadata"))
+    ns_id = _parse_uuid(params.get("namespace_id"), "namespace_id")
+
+    starts_at_raw = params.get("starts_at")
+    ends_at_raw = params.get("ends_at")
+    at_raw = params.get("at")
+    include_released = bool(params.get("include_released", False))
+    contractor_view = bool(params.get("contractor_view", False))
+
+    pool = _extract_pool(engine)
+
+    query = """
+        SELECT a.id, a.namespace_id, a.resource_id, a.demand_kind, a.demand_id,
+               a.functional_location_id, a.starts_at, a.ends_at, a.status, a.confidence,
+               a.attrs, a.created_at, a.updated_at,
+               r.kind AS resource_kind, r.display_name AS resource_name, r.ref_id AS resource_ref_id,
+               r.attrs AS resource_attrs
+        FROM allocations a
+        JOIN resources r ON a.resource_id = r.id AND a.namespace_id = r.namespace_id
+        WHERE a.namespace_id = $1
+          AND (a.attrs->>'role' = 'on_call' OR a.demand_kind = 'on_call')
+    """
+    args: list[Any] = [ns_id]
+
+    if starts_at_raw and ends_at_raw:
+        starts_at = _parse_datetime(starts_at_raw, "starts_at")
+        ends_at = _parse_datetime(ends_at_raw, "ends_at")
+        query += f" AND tstzrange(a.starts_at, a.ends_at) && tstzrange(${len(args) + 1}, ${len(args) + 2})"
+        args.extend([starts_at, ends_at])
+    elif at_raw:
+        at_dt = _parse_datetime(at_raw, "at")
+        query += f" AND a.starts_at <= ${len(args) + 1} AND a.ends_at > ${len(args) + 1}"
+        args.append(at_dt)
+    elif not starts_at_raw and not ends_at_raw:
+        # Default to current time window
+        now_dt = datetime.now(timezone.utc)
+        query += f" AND a.starts_at <= ${len(args) + 1} AND a.ends_at > ${len(args) + 1}"
+        args.append(now_dt)
+
+    if not include_released:
+        query += " AND a.status <> 'released'"
+
+    query += " ORDER BY a.starts_at ASC, a.created_at ASC"
+
+    async with scoped_pg_session(pool, ns_id) as conn:
+        rows = await conn.fetch(query, *args)
+
+    allocations_out = []
+    for r in rows:
+        r_dict = dict(r)
+        r_raw_attrs = r_dict.get("resource_attrs")
+        r_attrs = json.loads(r_raw_attrs) if isinstance(r_raw_attrs, str) else (r_raw_attrs or {})
+        a_raw_attrs = r_dict.get("attrs")
+        a_attrs = json.loads(a_raw_attrs) if isinstance(a_raw_attrs, str) else (a_raw_attrs or {})
+        rec = {
+            "id": str(r_dict["id"]),
+            "namespace_id": str(r_dict["namespace_id"]),
+            "resource_id": str(r_dict["resource_id"]),
+            "resource_name": r_dict.get("resource_name"),
+            "resource_kind": r_dict.get("resource_kind"),
+            "resource_ref_id": r_dict.get("resource_ref_id"),
+            "resource_attrs": r_attrs,
+            "demand_kind": r_dict.get("demand_kind"),
+            "demand_id": str(r_dict["demand_id"]) if r_dict.get("demand_id") else None,
+            "functional_location_id": str(r_dict["functional_location_id"])
+            if r_dict.get("functional_location_id")
+            else None,
+            "starts_at": r_dict["starts_at"].isoformat()
+            if hasattr(r_dict.get("starts_at"), "isoformat")
+            else str(r_dict.get("starts_at") or ""),
+            "ends_at": r_dict["ends_at"].isoformat()
+            if hasattr(r_dict.get("ends_at"), "isoformat")
+            else str(r_dict.get("ends_at") or ""),
+            "status": r_dict.get("status", "active"),
+            "confidence": r_dict.get("confidence", 1.0),
+            "attrs": a_attrs,
+            "created_at": r_dict["created_at"].isoformat()
+            if hasattr(r_dict.get("created_at"), "isoformat")
+            else str(r_dict.get("created_at") or ""),
+            "updated_at": r_dict["updated_at"].isoformat()
+            if hasattr(r_dict.get("updated_at"), "isoformat")
+            else str(r_dict.get("updated_at") or ""),
+        }
+        if contractor_view or r_dict.get("resource_kind") == "contractor":
+            rec = redact_contractor_view(rec)
+        allocations_out.append(rec)
+
+    return {
+        "namespace_id": str(ns_id),
+        "on_call": allocations_out,
+        "count": len(allocations_out),
     }

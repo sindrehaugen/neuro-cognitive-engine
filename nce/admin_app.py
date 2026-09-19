@@ -1468,6 +1468,12 @@ def build_admin_routes() -> list[Route]:
             endpoint=support_handlers.api_support_tickets_timeline,
             methods=["GET"],
         ),
+        # Support vertical module on-call rota and active responder routing (Wave D-7)
+        Route(
+            "/api/support/on-call",
+            endpoint=support_handlers.api_support_on_call,
+            methods=["GET"],
+        ),
         # Field Tech vertical module routes (ML12-B6, M12.W6)
         Route(
             "/api/field-tech/dispatch",

@@ -6177,6 +6177,41 @@ TOOLS = [
             "required": ["namespace_id", "ticket_id"],
         },
     ),
+    # Support vertical module on-call rota and active responder routing (Wave D-7)
+    Tool(
+        name="support_get_on_call",
+        description=(
+            "Retrieve active on-call responders from Staff & Resources Engine "
+            "for a tenant namespace. Watcher; read-only, cacheable."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active namespace UUID."},
+                "at": {
+                    "type": "string",
+                    "description": "Optional ISO datetime to query point-in-time on-call roster (defaults to now UTC).",
+                },
+                "starts_at": {
+                    "type": "string",
+                    "description": "Optional window start ISO datetime.",
+                },
+                "ends_at": {
+                    "type": "string",
+                    "description": "Optional window end ISO datetime.",
+                },
+                "include_released": {
+                    "type": "boolean",
+                    "description": "Whether to include released allocations (defaults to False).",
+                },
+                "contractor_view": {
+                    "type": "boolean",
+                    "description": "Whether to redact internal rates/margins (defaults to False).",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
     # Field Tech vertical module tools (ML12-B5, M12.W5)
     Tool(
         name="field_tech_dispatch",

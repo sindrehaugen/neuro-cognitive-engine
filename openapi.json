@@ -12135,6 +12135,38 @@
         ],
         "type": "object"
       },
+      "Tool_support_get_on_call_Input": {
+        "properties": {
+          "at": {
+            "description": "Optional ISO datetime to query point-in-time on-call roster (defaults to now UTC).",
+            "type": "string"
+          },
+          "contractor_view": {
+            "description": "Whether to redact internal rates/margins (defaults to False).",
+            "type": "boolean"
+          },
+          "ends_at": {
+            "description": "Optional window end ISO datetime.",
+            "type": "string"
+          },
+          "include_released": {
+            "description": "Whether to include released allocations (defaults to False).",
+            "type": "boolean"
+          },
+          "namespace_id": {
+            "description": "Active namespace UUID.",
+            "type": "string"
+          },
+          "starts_at": {
+            "description": "Optional window start ISO datetime.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id"
+        ],
+        "type": "object"
+      },
       "Tool_support_get_sla_clocks_Input": {
         "properties": {
           "id": {
@@ -17791,6 +17823,17 @@
         "migration": false,
         "mutation": false,
         "name": "support_get_customer_health"
+      },
+      "support_get_on_call": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Retrieve active on-call responders from Staff & Resources Engine for a tenant namespace. Watcher; read-only, cacheable.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_support_get_on_call_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "support_get_on_call"
       },
       "support_get_sla_clocks": {
         "admin_only": false,
@@ -67259,6 +67302,70 @@
           }
         },
         "summary": "GET /api/support/customers/{id}/health \u2014 get customer health score & churn risk.",
+        "tags": [
+          "support"
+        ]
+      }
+    },
+    "/api/support/on-call": {
+      "get": {
+        "description": "Query parameters:\nnamespace_id (str, required): Active namespace UUID.\nat (str, optional): Point-in-time ISO timestamp.\nstarts_at (str, optional): Window start ISO timestamp.\nends_at (str, optional): Window end ISO timestamp.\ninclude_released (bool, optional): Include released allocations.\ncontractor_view (bool, optional): Redact internal rates/margins.\nResponse (JSON):\n{\"ok\": True, \"namespace_id\": str, \"on_call\": [...], \"count\": int, \"query_time\": str, \"resources_available\": bool}",
+        "operationId": "get_api_support_on_call",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "GET /api/support/on-call \u2014 retrieve active on-call responders.",
         "tags": [
           "support"
         ]
