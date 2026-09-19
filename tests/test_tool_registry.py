@@ -61,7 +61,7 @@ _C12_TOOL_SPECS = build_all_resource_tool_specs()
 _C12_TOOL_NAMES = frozenset(_C12_TOOL_SPECS)
 _C12_MUTATION_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.mutation)
 _C12_CACHEABLE_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.cacheable)
-_EXPECTED_STATIC_TOTAL = 316  # 292 hand-written tools + 8 FUNCTIONAL_LOCATION tree tools (Lane C Wave C-1) + 1 C17 site master data address-registry feed (Lane F Wave F-9) + 2 support action/timeline tools (Lane D Wave D-5) + 1 support on-call rota (Lane D Wave D-7) + 1 assets service history (Lane D Wave D-3) + 8 room cat & FL metadata tools (Lane C Wave C-2) + 3 support summary/links tools (Lane D Wave D-6); see _C12_TOOL_NAMES above
+_EXPECTED_STATIC_TOTAL = 322  # 292 hand-written tools + 8 FUNCTIONAL_LOCATION tree tools (Lane C Wave C-1) + 1 C17 site master data address-registry feed (Lane F Wave F-9) + 2 support action/timeline tools (Lane D Wave D-5) + 1 support on-call rota (Lane D Wave D-7) + 1 assets service history (Lane D Wave D-3) + 8 room cat & FL metadata tools (Lane C Wave C-2) + 6 assets person/subcomponent tools (Lane D Wave D-2) + 3 support summary/links tools (Lane D Wave D-6); see _C12_TOOL_NAMES above
 
 # Re-exported for tests/unit/test_{assets,economy,inventory}_surface.py and
 # test_sales_skeleton.py, which each do `from tests.test_tool_registry import
@@ -317,6 +317,11 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "assets_sync_netbox",
         # Wave A-5 -- Assets failure pattern recorder (Actor mutation)
         "assets_record_failure_pattern",
+        # Wave D-2 -- Assets person assignment & sub-components (Actor mutations)
+        "assets_assign_person",
+        "assets_unassign_person",
+        "assets_link_subcomponent",
+        "assets_unlink_subcomponent",
         # Wave IN-2 -- Inventory kitting & package reservation (Actor mutations)
         "inventory_reserve_kit",
         "inventory_release_kit",
@@ -363,9 +368,6 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "geodata_import_place_names",
         # Lane F Wave F-9 -- C17 Site Master Data address-registry enrichment
         "sites_enrich_address_from_registry",
-        # Lane E Wave E-5 -- C12 Vendors CONTRACTOR resource surface mutations (upsert + archive)
-        "vendors_upsert_contractors",
-        "vendors_archive_contractors",
         # Lane E Wave E-8 -- C12 Support TICKET/SLA/SUPPORT_HEALTH_SCORE resource surface mutations
         "support_upsert_tickets",
         "support_archive_tickets",
@@ -444,17 +446,18 @@ def test_mutation_tools_count():
     +1 Lane F Wave F-9 sites_enrich_address_from_registry -> 131.
     +1 Lane D Wave D-5 support_log_ticket_action -> 132.
     +3 Wave C-2 Room Categories & FL Metadata mutations -> 135.
-    +1 Lane D Wave D-6 support_link_ticket -> 136."""
+    +4 Lane D Wave D-2 assets person & subcomponents -> 139.
+    +1 Lane D Wave D-6 support_link_ticket -> 140."""
     c12_mutation_tools = frozenset(
         n for n, s in build_all_resource_tool_specs().items() if s.mutation
     )
     hand_written_mutation_tools = MUTATION_TOOLS - c12_mutation_tools
 
-    assert len(MUTATION_TOOLS) >= 136, (
-        f"Sanity floor: expected at least 136 mutation tools, got {len(MUTATION_TOOLS)}."
+    assert len(MUTATION_TOOLS) >= 140, (
+        f"Sanity floor: expected at least 140 mutation tools, got {len(MUTATION_TOOLS)}."
     )
-    assert len(hand_written_mutation_tools) == 136, (
-        "Hand-written (non-C12) mutation tool count changed: expected 136, "
+    assert len(hand_written_mutation_tools) == 140, (
+        "Hand-written (non-C12) mutation tool count changed: expected 140, "
         f"got {len(hand_written_mutation_tools)}. If you added/removed a "
         "hand-written mutation tool, update this pin by import. If you only "
         "registered a new C12 ResourceSpec, this number should not move -- "
@@ -644,6 +647,9 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "assets_generate_qr",
         # Wave D-3 -- Assets service history reader (cacheable read)
         "assets_service_history",
+        # Wave D-2 -- Assets person assignment & sub-components (cacheable reads)
+        "assets_list_person_assets",
+        "assets_list_subcomponents",
         # Wave A-1 -- C12 Inventory resource surface cacheable reads (list + get)
         "inventory_list_stock_locations",
         "inventory_get_stock_locations",
@@ -681,9 +687,6 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "geodata_query_n50_land_cover",
         # Lane F Wave F-13 -- geodata nearest place-name query (global table, no namespace_id)
         "geodata_query_nearest_place_name",
-        # Lane E Wave E-5 -- C12 Vendors CONTRACTOR resource surface cacheable reads (list + get)
-        "vendors_list_contractors",
-        "vendors_get_contractors",
         # Lane E Wave E-8 -- C12 Support TICKET/SLA/SUPPORT_HEALTH_SCORE resource surface cacheable reads
         "support_list_tickets",
         "support_get_tickets",
@@ -749,17 +752,17 @@ def test_cacheable_tools_exact_match():
 def test_cacheable_tools_count():
     """Converted to a derived assertion (janitor pass 7, K-H4) -- same
     treatment as test_mutation_tools_count above. 115 is the hand-written
-    baseline + 5 Lane F Wave F-11..F-15 tools + 5 Wave C-1 FL tree reads + 1 Wave D-5 support timeline + 1 Wave D-7 on-call + 5 Wave C-2 room cat/FL metadata reads + 2 Wave D-6 support summary & links = 135."""
+    baseline + 5 Lane F Wave F-11..F-15 tools + 5 Wave C-1 FL tree reads + 1 Wave D-5 support timeline + 1 Wave D-7 on-call + 1 Wave D-3 service history + 5 Wave C-2 room cat/FL metadata reads + 2 Wave D-2 assets person & subcomponents + 2 Wave D-6 support summary & links = 137."""
     c12_cacheable_tools = frozenset(
         n for n, s in build_all_resource_tool_specs().items() if s.cacheable
     )
     hand_written_cacheable_tools = CACHEABLE_TOOLS - c12_cacheable_tools
 
-    assert len(CACHEABLE_TOOLS) >= 135, (
-        f"Sanity floor: expected at least 135 cacheable tools, got {len(CACHEABLE_TOOLS)}."
+    assert len(CACHEABLE_TOOLS) >= 137, (
+        f"Sanity floor: expected at least 137 cacheable tools, got {len(CACHEABLE_TOOLS)}."
     )
-    assert len(hand_written_cacheable_tools) == 135, (
-        "Hand-written (non-C12) cacheable tool count changed: expected 135, "
+    assert len(hand_written_cacheable_tools) == 137, (
+        "Hand-written (non-C12) cacheable tool count changed: expected 137, "
         f"got {len(hand_written_cacheable_tools)}. If you added/removed a "
         "hand-written cacheable tool, update this pin by import. If you "
         "only registered a new C12 ResourceSpec, this number should not "
@@ -912,6 +915,11 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "assets_sync_netbox",
         # Wave A-5 -- Assets failure pattern recorder (admin_only mutation)
         "assets_record_failure_pattern",
+        # Wave D-2 -- Assets person assignment & sub-components (admin_only mutations)
+        "assets_assign_person",
+        "assets_unassign_person",
+        "assets_link_subcomponent",
+        "assets_unlink_subcomponent",
         # Wave IN-2 -- Inventory kitting & package reservation (admin_only mutations)
         "inventory_reserve_kit",
         "inventory_release_kit",
@@ -946,8 +954,8 @@ def test_admin_only_tools_exact_match():
 
 def test_admin_only_tools_count():
     assert (
-        len(ADMIN_ONLY_TOOLS) == 100
-    )  # 90 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3) + 1 BRREG registry-feed enrichment (Lane F Wave F-8) + 1 geodata OSM import (Lane F Wave F-11) + 1 geodata N50 land-cover import (Lane F Wave F-12) + 1 geodata place-name import (Lane F Wave F-13) + 1 sites address-registry enrichment (Lane F Wave F-9) + 1 support_log_ticket_action (Lane D Wave D-5) + 1 support_link_ticket (Lane D Wave D-6)
+        len(ADMIN_ONLY_TOOLS) == 104
+    )  # 90 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3) + 1 BRREG registry-feed enrichment (Lane F Wave F-8) + 1 geodata OSM import (Lane F Wave F-11) + 1 geodata N50 land-cover import (Lane F Wave F-12) + 1 geodata place-name import (Lane F Wave F-13) + 1 sites address-registry enrichment (Lane F Wave F-9) + 1 support_log_ticket_action (Lane D Wave D-5) + 4 assets person & sub-components (Lane D Wave D-2) + 1 support_link_ticket (Lane D Wave D-6)
 
 
 # ---------------------------------------------------------------------------

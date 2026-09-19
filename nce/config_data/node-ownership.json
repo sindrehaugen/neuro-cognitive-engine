@@ -81,7 +81,13 @@
     { "node_type": "ALLOCATION",            "owner_engine": "resources",     "transition": null,
       "_note": "Module 15 (Staff & Resources Engine) time-window resource allocation." },
     { "node_type": "TRAVEL_LEG",            "owner_engine": "resources",     "transition": null,
-      "_note": "Module 15 (Staff & Resources Engine) technician travel leg segment." }
+      "_note": "Module 15 (Staff & Resources Engine) technician travel leg segment." },
+    { "node_type": "PORTAL_USER",            "owner_engine": "customer_portal", "transition": null,
+      "_note": "Module 17 (Customer Portal Engine) external customer login identity (portal_users table). Q-32 exemption to Q-5's config_data freeze, granted 2026-09-19: adding owner_engine rows for hr/marketing/customer_portal/business_insights only, nothing else in this file. See the RESOURCE_SURFACE_EXEMPTIONS entry for why no ResourceSpec is declared: the table's RLS policy requires customer_scope_id = get_nce_external_scope(), a GUC admin_app deliberately never sets." },
+    { "node_type": "PORTAL_DOCUMENT_SHARE",  "owner_engine": "customer_portal", "transition": null,
+      "_note": "Module 17 (Customer Portal Engine) FDV/as-built/drawing share granted to an external customer (portal_document_shares table). Same RLS gap as PORTAL_USER." },
+    { "node_type": "PORTAL_SERVICE_REQUEST", "owner_engine": "customer_portal", "transition": null,
+      "_note": "Module 17 (Customer Portal Engine) customer-submitted service request, handed off to a support TICKET (portal_service_requests table). Same RLS gap as PORTAL_USER." }
   ]
 }
 

@@ -31,12 +31,12 @@ Total Declared Resources: **30**
 | **sales** | `deals` | `DEAL` | `sales_deals` | `/api/sales/deals` | `sales_list_deals`, `sales_get_deals`, `sales_upsert_deals`, `sales_archive_deals` | `stage`, `owner_slug`, `customer_id`, `lead_id`, `is_archived` |
 | **sales** | `leads` | `LEAD` | `sales_leads` | `/api/sales/leads` | `sales_list_leads`, `sales_get_leads`, `sales_upsert_leads`, `sales_archive_leads` | `source`, `status`, `customer_id`, `is_archived` |
 | **sales** | `quotes` | `QUOTE` | `sales_quotes` | `/api/sales/quotes` | `sales_list_quotes`, `sales_get_quotes`, `sales_upsert_quotes`, `sales_archive_quotes` | `status`, `deal_id`, `customer_id`, `is_archived` |
+| **sales** | `signed_baselines` | `SIGNED_BASELINE` | `sales_signed_baselines` | `/api/sales/signed-baselines` | `sales_list_signed_baselines`, `sales_get_signed_baselines`, `sales_upsert_signed_baselines`, `sales_archive_signed_baselines` | `quote_id` |
 | **sites** | `sites` | `SITE` | `sites` | `/api/sites/sites` | `sites_list_sites`, `sites_get_sites`, `sites_upsert_sites`, `sites_archive_sites` | `cadastre_id`, `name`, `site_type`, `archived` |
 | **support** | `customer-health` | `SUPPORT_HEALTH_SCORE` | `customer_health` | `/api/support/customer-health` | `support_list_customer_health`, `support_get_customer_health`, `support_upsert_customer_health`, `support_archive_customer_health` | `churn_risk` |
 | **support** | `sla-clocks` | `SLA` | `sla_clocks` | `/api/support/sla-clocks` | `support_list_sla_clocks`, `support_get_sla_clocks`, `support_upsert_sla_clocks`, `support_archive_sla_clocks` | `breached`, `breach_type` |
 | **support** | `ticket-actions` | `TICKET_ACTION` | `support_ticket_actions` | `/api/support/ticket-actions` | `support_list_ticket_actions`, `support_get_ticket_actions`, `support_upsert_ticket_actions`, `support_archive_ticket_actions` | `ticket_id`, `action_type`, `outcome`, `performed_by` |
 | **support** | `tickets` | `TICKET` | `service_tickets` | `/api/support/tickets` | `support_list_tickets`, `support_get_tickets`, `support_upsert_tickets`, `support_archive_tickets` | `source`, `status`, `priority`, `asset_id`, `room_id`, `customer_id`, `sla_profile` |
-| **vendors** | `contractors` | `CONTRACTOR` | `contractor_profiles` | `/api/vendors/contractors` | `vendors_list_contractors`, `vendors_get_contractors`, `vendors_upsert_contractors`, `vendors_archive_contractors` | `partner_scope_id` |
 
 ## Standard Verbs & Route Endpoints
 

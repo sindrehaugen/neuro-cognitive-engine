@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from nce.resource_surface import register_resource
 from nce.resource_surface.spec import ResourceSpec
+from nce.vertical_modules.agreements._guard import require_agreements_enabled
 
 # ---------------------------------------------------------------------------
 # 1. AGREEMENT
@@ -79,6 +80,7 @@ AGREEMENT_SPEC = ResourceSpec(
         ),
     },
     description="C12 authoritative contract register with Oneflow mirror linkage, lifecycle state, and principal tier redaction.",
+    enabled_guard=require_agreements_enabled,
 )
 register_resource(AGREEMENT_SPEC)
 
@@ -134,6 +136,7 @@ AGREEMENT_PARTY_SPEC = ResourceSpec(
         ),
     },
     description="C12 agreement parties and signatories linking counterparty identities to contract lifecycle.",
+    enabled_guard=require_agreements_enabled,
 )
 register_resource(AGREEMENT_PARTY_SPEC)
 
@@ -180,5 +183,6 @@ AGREEMENT_TEMPLATE_SPEC = ResourceSpec(
         ),
     },
     description="C12 standardized agreement clause packages, SLA profiles, and contract templates.",
+    enabled_guard=require_agreements_enabled,
 )
 register_resource(AGREEMENT_TEMPLATE_SPEC)

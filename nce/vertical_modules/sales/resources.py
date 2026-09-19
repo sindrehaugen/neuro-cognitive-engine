@@ -6,6 +6,23 @@ Registers C12 ResourceSpec instances for:
   - LEAD (sales_leads table)
   - DEAL (sales_deals table)
   - QUOTE (sales_quotes table)
+
+Lane E (Lane E's C12 registration pass, post-B-1):
+  - SIGNED_BASELINE (sales_signed_baselines table) -- the prior exemption text
+    said "pending Wave B-4 / 132i-b freeze baseline wiring", but the table and
+    its writer (do_freeze_baseline, sales/baseline.py) both already exist
+    (grep -n "CREATE TABLE IF NOT EXISTS sales_signed_baselines" nce/schema.sql
+    -> line 1680); append-only and immutable at the database grant level (the
+    tenant-RLS bulk-grant block in schema.sql grants this table only SELECT,
+    INSERT -- no UPDATE/DELETE -- alongside event_log/event_parents/
+    divergence_log), so version_field/soft_delete_field are None, matching the
+    economy POSTING precedent.
+
+OPPORTUNITY and BOM_LINE stay exempted. OPPORTUNITY is still entity='opportunities'
+inside the polymorphic sales_read_model multiplex table (grep -n "WHERE entity=.opportunities."
+nce/schema.sql) -- CUSTOMER/LEAD/DEAL/QUOTE moved off that table via B-1, but
+OPPORTUNITY has not, and ResourceSpec has no multi-entity-per-table support.
+BOM_LINE is the cross-engine transition split, unaffected by any of this.
 """
 
 from __future__ import annotations
@@ -202,9 +219,37 @@ QUOTE_SPEC = ResourceSpec(
 )
 register_resource(QUOTE_SPEC)
 
+# ---------------------------------------------------------------------------
+# 5. SIGNED_BASELINE
+# ---------------------------------------------------------------------------
+SIGNED_BASELINE_SPEC = ResourceSpec(
+    engine="sales",
+    entity="signed_baselines",
+    node_type="SIGNED_BASELINE",
+    table_name="sales_signed_baselines",
+    id_field="id",
+    version_field=None,
+    soft_delete_field=None,
+    filterable_fields=("quote_id",),
+    searchable_fields=("quote_id",),
+    writable_fields=(
+        "quote_id",
+        "signed_margin_pct",
+        "signed_total_nok",
+        "signed_at",
+    ),
+    description=(
+        "Legally signed, immutable quote baseline (margin and total at signing time); "
+        "append-only, no version/soft-delete field -- the database grants this table "
+        "only SELECT and INSERT."
+    ),
+)
+register_resource(SIGNED_BASELINE_SPEC)
+
 __all__ = [
     "CUSTOMER_SPEC",
     "LEAD_SPEC",
     "DEAL_SPEC",
     "QUOTE_SPEC",
+    "SIGNED_BASELINE_SPEC",
 ]

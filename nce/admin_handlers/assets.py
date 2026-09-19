@@ -43,6 +43,16 @@ from nce.admin_handlers._shared import (
     admin_state,
     bump_mcp_cache_generation,
 )
+from nce.vertical_modules.assets.assignment import (
+    PersonNotFoundError,
+    SubcomponentCycleError,
+    do_assign_asset_person,
+    do_get_asset_subcomponents,
+    do_get_person_assets,
+    do_link_subcomponent,
+    do_unassign_asset_person,
+    do_unlink_subcomponent,
+)
 from nce.vertical_modules.assets.failure_pattern import (
     AssetNotFoundError,
     do_record_failure_pattern,
@@ -1007,3 +1017,278 @@ async def api_assets_service_history(request: Any) -> JSONResponse:
     if result.get("not_found"):
         return JSONResponse(result, status_code=404)
     return JSONResponse(result)
+
+
+# ---------------------------------------------------------------------------
+# Wave D-2: POST /api/assets/{id}/assign
+# ---------------------------------------------------------------------------
+
+
+async def api_assets_assign_person(request: Any) -> JSONResponse:
+    """POST /api/assets/{id}/assign — assign asset to person (EMPLOYEE -[uses]-> ASSET)."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    asset_id = request.path_params.get("id", "").strip()
+    if not asset_id:
+        return JSONResponse({"error": "Missing path parameter: id"}, status_code=422)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+
+    params = {
+        "namespace_id": namespace_id,
+        "asset_id": asset_id,
+        "employee_id": body.get("employee_id"),
+        "principal_id": body.get("principal_id"),
+        "role": body.get("role") or "user",
+        "change_origin": body.get("change_origin") or "agent",
+    }
+
+    try:
+        result = await do_assign_asset_person(admin_state.engine, params)
+    except (AssetNotFoundError, PersonNotFoundError) as exc:
+        return JSONResponse({"error": str(exc), "not_found": True}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Assets assign person error",
+            exc,
+            status_code=500,
+            log_event="api_assets_assign_person",
+        )
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_assets_assign_person")
+    return JSONResponse(result)
+
+
+# ---------------------------------------------------------------------------
+# Wave D-2: POST /api/assets/{id}/unassign
+# ---------------------------------------------------------------------------
+
+
+async def api_assets_unassign_person(request: Any) -> JSONResponse:
+    """POST /api/assets/{id}/unassign — unassign asset from person."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    asset_id = request.path_params.get("id", "").strip()
+    if not asset_id:
+        return JSONResponse({"error": "Missing path parameter: id"}, status_code=422)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    namespace_id, err = _require_namespace_id(
+        body.get("namespace_id") or request.query_params.get("namespace_id")
+    )
+    if err is not None:
+        return err
+
+    params = {
+        "namespace_id": namespace_id,
+        "asset_id": asset_id,
+        "employee_id": body.get("employee_id") or request.query_params.get("employee_id"),
+    }
+
+    try:
+        result = await do_unassign_asset_person(admin_state.engine, params)
+    except AssetNotFoundError as exc:
+        return JSONResponse({"error": str(exc), "not_found": True}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Assets unassign person error",
+            exc,
+            status_code=500,
+            log_event="api_assets_unassign_person",
+        )
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_assets_unassign_person")
+    return JSONResponse(result)
+
+
+# ---------------------------------------------------------------------------
+# Wave D-2: GET /api/assets/by-person/{employee_id}
+# ---------------------------------------------------------------------------
+
+
+async def api_assets_list_person_assets(request: Any) -> JSONResponse:
+    """GET /api/assets/by-person/{employee_id} — list assets assigned to employee."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    employee_id = request.path_params.get("employee_id", "").strip()
+    namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
+    if err is not None:
+        return err
+
+    include_faults_raw = request.query_params.get("include_faults", "false").lower()
+    include_faults = include_faults_raw in ("true", "1", "yes")
+
+    params = {
+        "namespace_id": namespace_id,
+        "employee_id": employee_id or request.query_params.get("employee_id"),
+        "principal_id": request.query_params.get("principal_id"),
+        "include_faults": include_faults,
+    }
+
+    try:
+        result = await do_get_person_assets(admin_state.engine, params)
+        return JSONResponse(result)
+    except PersonNotFoundError as exc:
+        return JSONResponse({"error": str(exc), "not_found": True}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Assets list person assets error",
+            exc,
+            status_code=500,
+            log_event="api_assets_list_person_assets",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Wave D-2: POST /api/assets/{id}/sub-components
+# ---------------------------------------------------------------------------
+
+
+async def api_assets_link_subcomponent(request: Any) -> JSONResponse:
+    """POST /api/assets/{id}/sub-components — link sub-component to parent asset."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    parent_asset_id = request.path_params.get("id", "").strip()
+    if not parent_asset_id:
+        return JSONResponse({"error": "Missing path parameter: id"}, status_code=422)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id, err = _require_namespace_id(body.get("namespace_id"))
+    if err is not None:
+        return err
+
+    sub_asset_id = body.get("sub_asset_id") or body.get("child_asset_id")
+    if not sub_asset_id:
+        return JSONResponse({"error": "Missing required field: sub_asset_id"}, status_code=422)
+
+    params = {
+        "namespace_id": namespace_id,
+        "parent_asset_id": parent_asset_id,
+        "sub_asset_id": sub_asset_id,
+        "relation": body.get("relation") or "part_of",
+        "change_origin": body.get("change_origin") or "agent",
+    }
+
+    try:
+        result = await do_link_subcomponent(admin_state.engine, params)
+    except AssetNotFoundError as exc:
+        return JSONResponse({"error": str(exc), "not_found": True}, status_code=404)
+    except SubcomponentCycleError as exc:
+        return JSONResponse({"error": str(exc), "cycle": True}, status_code=409)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Assets link sub-component error",
+            exc,
+            status_code=500,
+            log_event="api_assets_link_subcomponent",
+        )
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_assets_link_subcomponent")
+    return JSONResponse(result)
+
+
+# ---------------------------------------------------------------------------
+# Wave D-2: DELETE /api/assets/{id}/sub-components/{sub_id}
+# ---------------------------------------------------------------------------
+
+
+async def api_assets_unlink_subcomponent(request: Any) -> JSONResponse:
+    """DELETE /api/assets/{id}/sub-components/{sub_id} — unlink sub-component."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    parent_asset_id = request.path_params.get("id", "").strip()
+    sub_asset_id = request.path_params.get("sub_id", "").strip()
+    if not parent_asset_id or not sub_asset_id:
+        return JSONResponse({"error": "Missing path parameter: id and/or sub_id"}, status_code=422)
+
+    namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
+    if err is not None:
+        return err
+
+    params = {
+        "namespace_id": namespace_id,
+        "parent_asset_id": parent_asset_id,
+        "sub_asset_id": sub_asset_id,
+    }
+
+    try:
+        result = await do_unlink_subcomponent(admin_state.engine, params)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Assets unlink sub-component error",
+            exc,
+            status_code=500,
+            log_event="api_assets_unlink_subcomponent",
+        )
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_assets_unlink_subcomponent")
+    return JSONResponse(result)
+
+
+# ---------------------------------------------------------------------------
+# Wave D-2: GET /api/assets/{id}/sub-components
+# ---------------------------------------------------------------------------
+
+
+async def api_assets_list_subcomponents(request: Any) -> JSONResponse:
+    """GET /api/assets/{id}/sub-components — list sub-components and parent asset."""
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    asset_id = request.path_params.get("id", "").strip()
+    if not asset_id:
+        return JSONResponse({"error": "Missing path parameter: id"}, status_code=422)
+
+    namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
+    if err is not None:
+        return err
+
+    params = {
+        "namespace_id": namespace_id,
+        "asset_id": asset_id,
+    }
+
+    try:
+        result = await do_get_asset_subcomponents(admin_state.engine, params)
+        return JSONResponse(result)
+    except AssetNotFoundError as exc:
+        return JSONResponse({"error": str(exc), "not_found": True}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        return admin_error_response(
+            "Assets list sub-components error",
+            exc,
+            status_code=500,
+            log_event="api_assets_list_subcomponents",
+        )

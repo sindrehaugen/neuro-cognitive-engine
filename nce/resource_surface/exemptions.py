@@ -174,13 +174,6 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
             "sweep. Scheduled for Wave B-1 / B-3 deal lifecycle restructuring."
         ),
     ),
-    "SIGNED_BASELINE": ResourceExemption(
-        owner_engine="sales",
-        reason=(
-            "Legally signed immutable contract baseline written to WORM storage; "
-            "pending Wave B-4 / 132i-b freeze baseline wiring."
-        ),
-    ),
     # ---------------------------------------------------------------------------
     # Vendors Engine (Lane D Wave D-8 / Lane E)
     # ---------------------------------------------------------------------------
@@ -203,6 +196,30 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
         reason=(
             "Dead registry row with zero references across nce/ or tests/ (documented "
             "in Charter §13 Update 12); retained as an inert reservation."
+        ),
+    ),
+    "CONTRACTOR": ResourceExemption(
+        owner_engine="vendors",
+        reason=(
+            "Regression: Lane E's own Wave E-5 (PR #236) declared this against a real "
+            "table (contractor_profiles) without checking its RLS policy first, and "
+            "the spec is unreachable in production. contractor_profiles' ONLY policy "
+            "is external_isolation_policy, requiring partner_scope_id = "
+            "get_nce_external_scope() (grep -n \"POLICY.*contractor_profiles\" "
+            "nce/schema.sql -> one policy, no separate tenant policy to OR against "
+            "it; confirmed live via pg_policies too). admin_app.py:59 documents that "
+            "the nce.external_scope_id GUC is NEVER set on admin_app sessions, and "
+            "every C12 route/tool runs through admin_app's connection pool (the "
+            "nce_app role this table's FORCE ROW LEVEL SECURITY applies to). So the "
+            "CONTRACTOR resource surface returns zero rows on every read and fails "
+            "every write, served from admin_app -- the same unreachable-by-RLS class "
+            "found on customer_portal's three tables. The only legitimate path is "
+            "hand-written: vendors/contractors.py and partner_view.py both call "
+            "set_external_scope(conn, partner_scope_uuid) explicitly per request "
+            "before querying, something resource_surface has no generic hook for. "
+            "Do not re-declare without either a resource_surface capability for "
+            "dual-key RLS tables or routing partner-facing reads through a separate "
+            "app that establishes the external scope, the way customer_portal does."
         ),
     ),
     # ---------------------------------------------------------------------------
@@ -268,6 +285,48 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
         reason=(
             "Photographic installation proof attachments linked to work orders; "
             "scheduled for C14 document integration."
+        ),
+    ),
+    # ---------------------------------------------------------------------------
+    # Customer Portal Engine (Module 17 / Lane E Wave E-17)
+    # ---------------------------------------------------------------------------
+    "PORTAL_USER": ResourceExemption(
+        owner_engine="customer_portal",
+        reason=(
+            "Real, tenant-scoped table (portal_users) but its RLS policy "
+            "(external_isolation_policy) requires customer_scope_id = "
+            "get_nce_external_scope(), and admin_app.py:59 documents the contract "
+            "explicitly: \"the nce.external_scope_id GUC is NEVER set on admin_app "
+            "sessions.\" Every C12 route/tool runs through admin_app's connection "
+            "pool (the same nce_app role the table's FORCE ROW LEVEL SECURITY "
+            "applies to), so get_nce_external_scope() always returns NULL there and "
+            "customer_scope_id = NULL is never true in SQL: a C12 spec on this "
+            "table would silently return zero rows on every read and raise a raw "
+            "Postgres RLS-violation error on every write, not a translated NCE "
+            "error. This is a structural mismatch between C12's tenant_scope model "
+            "(namespace_id only) and this table's dual-key RLS (namespace_id AND "
+            "customer_scope_id), not a missing field list -- needs either a "
+            "resource_surface capability for dual-key RLS tables or a decision "
+            "that this table is only ever queried from the separate customer_portal "
+            "app (nce/vertical_modules/customer_portal/app.py), which does "
+            "establish the external scope. Confirmed the table itself is fine: "
+            "grep -n \"CREATE TABLE IF NOT EXISTS portal_users\" nce/schema.sql."
+        ),
+    ),
+    "PORTAL_DOCUMENT_SHARE": ResourceExemption(
+        owner_engine="customer_portal",
+        reason=(
+            "Same RLS gap as PORTAL_USER: portal_document_shares carries the "
+            "identical external_isolation_policy keyed on customer_scope_id, which "
+            "admin_app's connection pool never sets."
+        ),
+    ),
+    "PORTAL_SERVICE_REQUEST": ResourceExemption(
+        owner_engine="customer_portal",
+        reason=(
+            "Same RLS gap as PORTAL_USER: portal_service_requests carries the "
+            "identical external_isolation_policy keyed on customer_scope_id, which "
+            "admin_app's connection pool never sets."
         ),
     ),
 }

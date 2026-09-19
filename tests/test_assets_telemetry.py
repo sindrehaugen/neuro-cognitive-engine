@@ -139,12 +139,17 @@ def test_the_documented_vendor_platforms_are_exactly_the_declared_set() -> None:
     Pinning the whole set — not a sample of it — so a dropped or renamed
     platform is caught rather than discovered by an operator whose env
     key stops working.
+
+    ``huddly``/``poly`` dropped per Q-38 part 1 (2026-09-19): neither ever
+    had a dispatch branch (both always fell to ``UnimplementedVendorAdapter``
+    if their swap flag were set), named from the original engine doc's
+    platform list with no NCE asset or consumer behind either — listing a
+    platform nothing will ever build is not a "not yet built" declaration,
+    it is a stale inventory entry.
     """
     assert set(VENDOR_PLATFORMS) == {
         "crestron",
-        "huddly",
         "neat",
-        "poly",
         "qsys",
         "sennheiser",
         "shure",
@@ -187,26 +192,14 @@ def test_vendor_platform_swaps_to_its_real_adapter_when_the_flag_is_set(
         from nce.vertical_modules.assets.ymcs import YMCSTelemetryAdapter
 
         assert isinstance(adapter, YMCSTelemetryAdapter)
-    elif platform == "crestron":
-        from nce.vertical_modules.assets.xio_cloud import CrestronXiOCloudTelemetryAdapter
-
-        assert isinstance(adapter, CrestronXiOCloudTelemetryAdapter)
     elif platform == "neat":
         from nce.vertical_modules.assets.neat_pulse import NeatPulseTelemetryAdapter
 
         assert isinstance(adapter, NeatPulseTelemetryAdapter)
-    elif platform == "sennheiser":
-        from nce.vertical_modules.assets.sennheiser import SennheiserTelemetryAdapter
-
-        assert isinstance(adapter, SennheiserTelemetryAdapter)
     elif platform == "qsys":
         from nce.vertical_modules.assets.qsys_reflect import QSysReflectTelemetryAdapter
 
         assert isinstance(adapter, QSysReflectTelemetryAdapter)
-    elif platform == "shure":
-        from nce.vertical_modules.assets.shure_cloud import ShureCloudTelemetryAdapter
-
-        assert isinstance(adapter, ShureCloudTelemetryAdapter)
     elif platform == "neowit":
         from nce.vertical_modules.assets.neowit import NeowitTelemetryAdapter
 
@@ -247,13 +240,13 @@ def test_real_adapter_env_key_is_the_documented_shape() -> None:
 async def test_the_vendor_stub_raises_and_names_its_api_and_its_env_key() -> None:
     """A stub must fail LOUDLY and tell the operator both what is missing and
     how to get back to the mock."""
-    adapter = UnimplementedVendorAdapter("poly", VENDOR_PLATFORMS["poly"])
+    adapter = UnimplementedVendorAdapter("crestron", VENDOR_PLATFORMS["crestron"])
     with pytest.raises(NotImplementedError) as excinfo:
         await adapter.fetch_samples(uuid.uuid4())
     message = str(excinfo.value)
-    assert "poly" in message
-    assert VENDOR_PLATFORMS["poly"] in message
-    assert "NCE_ASSETS_TELEMETRY_POLY_REAL" in message
+    assert "crestron" in message
+    assert VENDOR_PLATFORMS["crestron"] in message
+    assert "NCE_ASSETS_TELEMETRY_CRESTRON_REAL" in message
 
 
 def test_telemetry_adapter_is_abstract() -> None:
@@ -881,7 +874,15 @@ async def test_a_malformed_adapter_payload_is_refused_before_any_row_is_written(
 
 
 # ---------------------------------------------------------------------------
-# AV Cloud Telemetry Adapters: Crestron XiO, Neat, Sennheiser, Q-SYS, Shure, Yealink
+# AV Cloud Telemetry Adapters: Neat, Q-SYS, Yealink
+#
+# Crestron/Sennheiser/Shure are NOT here: Q-38 (2026-09-19) found their
+# "real" adapters called hardcoded, never-verified endpoints with no host
+# client or vendor doc behind them -- worse than unimplemented, because
+# they looked implemented. Routed to UnimplementedVendorAdapter instead
+# (see test_vendor_platform_swaps_to_its_real_adapter_when_the_flag_is_set
+# below); a real client for any of the three returns when a wave exists
+# to derive one from the vendor's own public API docs.
 # ---------------------------------------------------------------------------
 
 
@@ -893,69 +894,6 @@ class TestAVCloudAdapters:
     2. Parse real API responses into TelemetrySample objects when connected to a transport.
     3. Record degradation and return [] when an HTTP query fails, never inventing data.
     """
-
-    @pytest.mark.asyncio
-    async def test_crestron_xio_cloud_adapter_unconfigured_raises(self) -> None:
-        from nce.vertical_modules.assets.xio_cloud import CrestronXiOCloudTelemetryAdapter
-
-        adapter = CrestronXiOCloudTelemetryAdapter(endpoint_url=None, api_key=None, timeout=10.0)
-        assert adapter.platform == "crestron"
-        assert adapter._timeout <= 4.9
-
-        with pytest.raises(NotImplementedError, match="crestron") as excinfo:
-            await adapter.fetch_samples(uuid.uuid4())
-        assert "NCE_ASSETS_CRESTRON_ENDPOINT_URL" in str(excinfo.value)
-        assert "NCE_ASSETS_CRESTRON_API_KEY" in str(excinfo.value)
-
-    @pytest.mark.asyncio
-    async def test_crestron_xio_cloud_adapter_live_http(self) -> None:
-        from nce.vertical_modules.assets.xio_cloud import CrestronXiOCloudTelemetryAdapter
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            assert request.headers.get("XiO-Subscription-Key") == "test-key"
-            assert request.headers.get("XiO-Account-Id") == "test-acc"
-            return httpx.Response(
-                200,
-                json={
-                    "metrics": {
-                        "status_online": 1.0,
-                        "temperature_celsius": 42.5,
-                        "hdmi_sync_detected": 1.0,
-                        "uptime_seconds": 86400.0,
-                    },
-                    "raw": {"source": "crestron_xio_cloud", "device_model": "Crestron-DM-NVX-360"},
-                },
-            )
-
-        adapter = CrestronXiOCloudTelemetryAdapter(
-            endpoint_url="https://api.crestron.com",
-            api_key="test-key",
-            account_id="test-acc",
-            transport=httpx.MockTransport(handler),
-        )
-        test_id = uuid.uuid4()
-        samples = await adapter.fetch_samples(test_id)
-        assert len(samples) == 4
-        metrics = {s.metric: s.value for s in samples}
-        assert metrics["status_online"] == 1.0
-        assert metrics["temperature_celsius"] == 42.5
-        assert metrics["hdmi_sync_detected"] == 1.0
-
-    @pytest.mark.asyncio
-    async def test_crestron_xio_cloud_adapter_http_failure_degrades_gracefully(self) -> None:
-        from nce.vertical_modules.assets.xio_cloud import CrestronXiOCloudTelemetryAdapter
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(503, text="Service Unavailable")
-
-        adapter = CrestronXiOCloudTelemetryAdapter(
-            endpoint_url="https://api.crestron.com",
-            api_key="test-key",
-            transport=httpx.MockTransport(handler),
-        )
-        test_id = uuid.uuid4()
-        samples = await adapter.fetch_samples(test_id)
-        assert samples == []
 
     @pytest.mark.asyncio
     async def test_neat_pulse_adapter_unconfigured_raises(self) -> None:
@@ -1100,49 +1038,6 @@ class TestAVCloudAdapters:
             transport=httpx.MockTransport(handler),
         )
         assert await adapter.fetch_samples(uuid.uuid4(), serial="neat-bar-0099") == []
-
-    @pytest.mark.asyncio
-    async def test_sennheiser_adapter_unconfigured_raises(self) -> None:
-        from nce.vertical_modules.assets.sennheiser import SennheiserTelemetryAdapter
-
-        adapter = SennheiserTelemetryAdapter(endpoint_url=None, api_key=None, timeout=10.0)
-        assert adapter.platform == "sennheiser"
-        assert adapter._timeout <= 4.9
-
-        with pytest.raises(NotImplementedError, match="sennheiser") as excinfo:
-            await adapter.fetch_samples(uuid.uuid4())
-        assert "NCE_ASSETS_SENNHEISER_ENDPOINT_URL" in str(excinfo.value)
-
-    @pytest.mark.asyncio
-    async def test_sennheiser_adapter_live_http(self) -> None:
-        from nce.vertical_modules.assets.sennheiser import SennheiserTelemetryAdapter
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200,
-                json={
-                    "metrics": {
-                        "status_online": 1.0,
-                        "beam_elevation_deg": 25.0,
-                        "beam_azimuth_deg": 180.0,
-                        "rf_signal_quality_percent": 98.0,
-                    },
-                    "raw": {"source": "sennheiser_cockpit"},
-                },
-            )
-
-        adapter = SennheiserTelemetryAdapter(
-            endpoint_url="https://cockpit.local",
-            api_key="senn-key",
-            transport=httpx.MockTransport(handler),
-        )
-        test_id = uuid.uuid4()
-        samples = await adapter.fetch_samples(test_id)
-        assert len(samples) == 4
-        metrics = {s.metric: s.value for s in samples}
-        assert metrics["status_online"] == 1.0
-        assert metrics["beam_elevation_deg"] == 25.0
-        assert metrics["beam_azimuth_deg"] == 180.0
 
     @pytest.mark.asyncio
     async def test_qsys_reflect_adapter_unconfigured_raises(self) -> None:
@@ -1326,50 +1221,6 @@ class TestAVCloudAdapters:
             transport=httpx.MockTransport(handler),
         )
         assert await adapter.fetch_samples(uuid.uuid4(), serial="SN-1001") == []
-
-    @pytest.mark.asyncio
-    async def test_shure_cloud_adapter_unconfigured_raises(self) -> None:
-        from nce.vertical_modules.assets.shure_cloud import ShureCloudTelemetryAdapter
-
-        adapter = ShureCloudTelemetryAdapter(endpoint_url=None, api_key=None, timeout=10.0)
-        assert adapter.platform == "shure"
-        assert adapter._timeout <= 4.9
-
-        with pytest.raises(NotImplementedError, match="shure") as excinfo:
-            await adapter.fetch_samples(uuid.uuid4())
-        assert "NCE_ASSETS_SHURE_ENDPOINT_URL" in str(excinfo.value)
-        assert "NCE_ASSETS_SHURE_API_KEY" in str(excinfo.value)
-
-    @pytest.mark.asyncio
-    async def test_shure_cloud_adapter_live_http(self) -> None:
-        from nce.vertical_modules.assets.shure_cloud import ShureCloudTelemetryAdapter
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            assert request.headers.get("X-API-KEY") == "shure-token"
-            return httpx.Response(
-                200,
-                json={
-                    "metrics": {
-                        "status_online": 1.0,
-                        "dante_clock_sync": 1.0,
-                        "active_lobes_count": 8.0,
-                    },
-                    "raw": {"source": "shure_cloud"},
-                },
-            )
-
-        adapter = ShureCloudTelemetryAdapter(
-            endpoint_url="https://cloud.shure.com",
-            api_key="shure-token",
-            transport=httpx.MockTransport(handler),
-        )
-        test_id = uuid.uuid4()
-        samples = await adapter.fetch_samples(test_id)
-        assert len(samples) == 3
-        metrics = {s.metric: s.value for s in samples}
-        assert metrics["status_online"] == 1.0
-        assert metrics["dante_clock_sync"] == 1.0
-        assert metrics["active_lobes_count"] == 8.0
 
     @pytest.mark.asyncio
     async def test_yealink_adapter_alias_unconfigured_raises(self) -> None:

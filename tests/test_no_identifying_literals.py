@@ -140,27 +140,26 @@ def _candidate_tokens(line: str) -> set[str]:
     return candidates
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "RED by design, not a bug in the check (Q-45 ruling, 2026-09-19): running "
-        "this for real found genuine occurrences, not false positives -- almost all "
-        "are Lane F's own Q-25 AGPL-compliance disclaimers ('not a port of the "
-        "host's <module>.py', 'read for shape only'), the exact citation that PROVES "
-        "independent re-implementation also being a citation of the private path "
-        "this gate exists to keep out. Ruling: the path stays banned (this test), "
-        "and the disclaimer keeps its value without the path -- 'not a port of the "
-        "host's <component>, read for shape only (Q-25)' names what was checked in "
-        "prose, never the private path. Lanes are rewriting their disclaimers to "
-        "that shape; this stays xfail until that sweep lands, so the gate goes green "
-        "by the sites being fixed, never by the rule being weakened. One occurrence "
-        "is separate, more serious, and NOT part of this sweep: a pre-charter file "
-        "admits code was 'lifted from' the private tree rather than read for shape "
-        "-- a possible real Q-25 violation, escalated to Sindre as Q-44, deliberately "
-        "left untouched (rewording it before the facts are established would look "
-        "like concealment) -- do not fix its wording as part of this xfail closing."
-    ),
-)
+# NOTE (2026-09-19): this test carried `xfail(strict=True)` until today -- it was
+# RED by design, not broken. Running it for real found genuine occurrences, almost
+# all of them Lane F's own Q-25 AGPL-compliance disclaimers, where the citation that
+# PROVES independent re-implementation ("not a port of the host's <module>.py") was
+# itself a citation of the private path this gate exists to keep out. The Q-45 ruling
+# was that the path stays banned and the disclaimer keeps its value without it --
+# "not a port of the host's <component>, read for shape only (Q-25)" names what was
+# checked in prose, never the path.
+#
+# That sweep is now complete. The last remaining occurrence was separate and more
+# serious: a pre-charter file admitted code was "lifted from" the private tree rather
+# than read for shape. Escalated as Q-44, it was resolved by measurement before the
+# wording was touched -- 1.1% substantive-line overlap against the referenced client
+# (both matches boilerplate) and zero of 52 header-to-field alias pairs in common.
+# There was no copying; the comment was false, and the file now states what was
+# measured.
+#
+# The marker is removed rather than relaxed. The gate went green by every site being
+# fixed, never by the rule being weakened -- which was the condition all along. It is
+# now a live gate: reintroducing any banned host token fails CI.
 def test_no_banned_host_token_reaches_the_public_tree() -> None:
     """H-10: no hashed host module/directory/filename token may reach the tree.
 

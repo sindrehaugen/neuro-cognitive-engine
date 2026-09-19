@@ -35,6 +35,7 @@ from nce.admin_handlers._shared import bump_mcp_cache_generation
 from nce.admin_http_support import admin_error_response
 from nce.auth import NamespaceContext, set_namespace_context
 from nce.db_utils import scoped_pg_session
+from nce.engine_registry import EngineDisabledError
 from nce.resource_surface.comments import (
     add_entity_tag,
     append_entity_comment,
@@ -100,6 +101,20 @@ def serialize_val(val: Any) -> Any:
     if isinstance(val, list):
         return [serialize_val(v) for v in val]
     return val
+
+
+def _version_str(value: Any) -> str:
+    """Normalise a stored version_field value to the isoformat() shape the
+    client is actually handed back. Duplicated from
+    ``nce.resource_surface.mcp`` (which imports FROM this module, so the
+    reverse import would be circular) -- see that module's copy for the full
+    reasoning: a real Postgres row round-trips version_field as a
+    ``datetime``, and ``str(a_datetime)`` uses a space separator where
+    ``isoformat()`` uses "T", so comparing the two forms directly makes every
+    expected_version check on a real Postgres-backed resource fail with a
+    spurious conflict.
+    """
+    return value.isoformat() if isinstance(value, datetime) else str(value)
 
 
 def row_to_dict(row: Any) -> dict[str, Any]:
@@ -174,6 +189,41 @@ def extract_namespace_id(
         return None, admin_error_response(f"Invalid namespace_id: {exc}", exc, status_code=422)
 
 
+async def _enforce_enabled_guard(spec: ResourceSpec, ns_uuid: UUID | None) -> JSONResponse | None:
+    """Run ``spec.enabled_guard`` at the REST boundary, same contract as a
+    hand-written route's own ``require_*_enabled`` call. Real-Postgres-backed
+    path only, mirroring every other generated-surface fallback split in this
+    module -- the in-memory store has no ``namespaces`` row to check opt-in
+    against, and it is never the deployment this gate protects.
+
+    Deliberately NOT keyed on ``spec.tenant_scope`` -- that describes the
+    underlying TABLE's RLS scope, not whether a per-namespace opt-in applies
+    to the calling tenant. PRODUCT_SKU is ``tenant_scope == "global"`` (a
+    shared parts catalog with no namespace_id column) but its hand-written
+    boundary (nce/admin_handlers/product.py) still requires a namespace_id
+    and still gates on it: the catalog is shared, whether a given tenant may
+    read/write it through the API is not. Keying this on tenant_scope would
+    have silently left PRODUCT_SKU one of the 18 ungated specs this gate
+    exists to close.
+    """
+    if (
+        ns_uuid is None
+        or spec.enabled_guard is None
+        or not admin_state.engine
+        or not getattr(admin_state.engine, "pg_pool", None)
+    ):
+        return None
+    try:
+        await spec.enabled_guard(admin_state.engine.pg_pool, str(ns_uuid))
+    except EngineDisabledError as exc:
+        return admin_error_response(
+            f"{spec.engine} vertical is not enabled for this namespace",
+            exc,
+            status_code=409,
+        )
+    return None
+
+
 def make_resource_routes(spec: ResourceSpec) -> list[Route]:
     """Generate all Starlette Route definitions for a ResourceSpec."""
 
@@ -181,11 +231,25 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
     is_tenant = spec.tenant_scope == "tenant"
     is_global = spec.tenant_scope == "global"
     is_graph = spec.tenant_scope == "graph"
+    # An enabled_guard's subject is the CALLER's namespace, not the table's
+    # storage scope -- a global spec like PRODUCT_SKU still needs a real
+    # namespace_id to check opt-in against. Omitting namespace_id entirely
+    # must be refused (422, same as the hand-written boundary, e.g.
+    # nce/admin_handlers/product.py:70), not silently skip the gate. Found
+    # live 2026-09-19: the first cut of this gate keyed `extract_namespace_id`
+    # on `is_tenant` alone, so a caller that omitted namespace_id for a
+    # global spec got `ns_uuid = None` and `_enforce_enabled_guard` never ran
+    # -- the generated surface stayed strictly more permissive than the
+    # hand-written one for exactly that one input shape.
+    requires_namespace = is_tenant or spec.enabled_guard is not None
 
     async def handle_list(request: Request) -> Response:
-        ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
+        ns_uuid, err_resp = extract_namespace_id(request, required=requires_namespace)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
         if ns_uuid is not None:
             try:
                 set_namespace_context(NamespaceContext(namespace_id=ns_uuid))
@@ -335,9 +399,12 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         )
 
     async def handle_get(request: Request) -> Response:
-        ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
+        ns_uuid, err_resp = extract_namespace_id(request, required=requires_namespace)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -401,9 +468,12 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                 "External customers cannot modify global resources", exc, status_code=403
             )
 
-        ns_uuid, err_resp = extract_namespace_id(request, body, required=is_tenant)
+        ns_uuid, err_resp = extract_namespace_id(request, body, required=requires_namespace)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         # Filter to allowed writable fields
         data: dict[str, Any] = {}
@@ -418,10 +488,19 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         if not is_global or "namespace_id" in spec.writable_fields:
             if ns_uuid:
                 data["namespace_id"] = str(ns_uuid)
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
         if spec.version_field:
+            # Kept as the isoformat() string in `data` itself -- `data` also
+            # becomes the in-memory-fallback row below, and every OTHER
+            # handler reading that shared bucket (handle_get, handle_list,
+            # handle_archive, ...) returns it via a bare JSONResponse with no
+            # datetime fallback (unlike mcp.py, which wraps every response in
+            # json.dumps(..., default=str)). Storing a real datetime here
+            # would fix this handler and break all of those. The real
+            # datetime is bound only at the actual SQL parameter list below,
+            # which is the only place that needs one.
             data[spec.version_field] = now_iso
-        data["version"] = now_iso
         if spec.soft_delete_field and spec.soft_delete_field not in data:
             data[spec.soft_delete_field] = False
 
@@ -440,7 +519,7 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                     session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                     async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
                         cols = list(data.keys())
-                        vals = [data[c] for c in cols]
+                        vals = [now if c == spec.version_field else data[c] for c in cols]
                         val_placeholders = [f"${i + 1}" for i in range(len(cols))]
                         query = f"""
                             INSERT INTO {spec.table_name} ({', '.join(cols)})
@@ -514,7 +593,10 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             )
 
         return JSONResponse(
-            {"status": "ok", "id": item_id, "item": created, **created}, status_code=201
+            serialize_val(
+                {"status": "ok", "id": item_id, "version": now_iso, "item": created, **created}
+            ),
+            status_code=201,
         )
 
     async def handle_patch(request: Request) -> Response:
@@ -530,9 +612,12 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                 "External customers cannot modify global resources", exc, status_code=403
             )
 
-        ns_uuid, err_resp = extract_namespace_id(request, body, required=is_tenant)
+        ns_uuid, err_resp = extract_namespace_id(request, body, required=requires_namespace)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -584,7 +669,7 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             )
 
         if expected_version and spec.version_field:
-            actual_version = str(existing.get(spec.version_field, ""))
+            actual_version = _version_str(existing.get(spec.version_field, ""))
             if actual_version != expected_version:
                 exc = ValueError(
                     f"Version conflict: expected {expected_version}, got {actual_version}"
@@ -608,15 +693,20 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             if f in body:
                 updates[f] = body[f]
 
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
         if spec.version_field:
-            updates[spec.version_field] = now_iso
+            # String in `updates` for the same reason as handle_create above:
+            # `updates` also becomes (via {**existing, **updates}) the
+            # in-memory-fallback row, read back by other handlers with no
+            # datetime-safe JSON fallback. Real datetime bound only in `vals`
+            # below, for the actual SQL parameter list.
+            updates[spec.version_field] = now.isoformat()
 
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None) and spec.table_name:
             try:
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
-                    vals = list(updates.values())
+                    vals = [now if k == spec.version_field else v for k, v in updates.items()]
                     if is_global:
                         set_items = [f"{k} = ${i + 2}" for i, k in enumerate(updates.keys())]
                         query = f"""
@@ -652,7 +742,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                 route=f"api_{spec.engine}_{spec.mcp_slug}_patch",
             )
 
-        return JSONResponse({"status": "ok", "id": item_id, "item": updated, **updated})
+        return JSONResponse(
+            serialize_val({"status": "ok", "id": item_id, "item": updated, **updated})
+        )
 
     async def handle_archive(request: Request) -> Response:
         body: dict[str, Any] = {}
@@ -668,9 +760,12 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                 "External customers cannot modify global resources", exc, status_code=403
             )
 
-        ns_uuid, err_resp = extract_namespace_id(request, body, required=is_tenant)
+        ns_uuid, err_resp = extract_namespace_id(request, body, required=requires_namespace)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -746,9 +841,12 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                 "External customers cannot modify global resources", exc, status_code=403
             )
 
-        ns_uuid, err_resp = extract_namespace_id(request, body, required=is_tenant)
+        ns_uuid, err_resp = extract_namespace_id(request, body, required=requires_namespace)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -811,9 +909,12 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         return JSONResponse({"status": "ok", "id": item_id, "archived": False})
 
     async def handle_events(request: Request) -> Response:
-        ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
+        ns_uuid, err_resp = extract_namespace_id(request, required=requires_namespace)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -841,9 +942,12 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         return JSONResponse({"events": [], "count": 0})
 
     async def handle_list_comments(request: Request) -> Response:
-        ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
+        ns_uuid, err_resp = extract_namespace_id(request, required=requires_namespace)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -880,9 +984,12 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         except Exception as exc:
             return admin_error_response("Malformed JSON body", exc, status_code=400)
 
-        ns_uuid, err_resp = extract_namespace_id(request, body, required=is_tenant)
+        ns_uuid, err_resp = extract_namespace_id(request, body, required=requires_namespace)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         comment_text = body.get("comment") or body.get("body")
@@ -927,9 +1034,12 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         return JSONResponse({"status": "ok", "comment": entry}, status_code=201)
 
     async def handle_list_tags(request: Request) -> Response:
-        ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
+        ns_uuid, err_resp = extract_namespace_id(request, required=requires_namespace)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -964,9 +1074,12 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         except Exception as exc:
             return admin_error_response("Malformed JSON body", exc, status_code=400)
 
-        ns_uuid, err_resp = extract_namespace_id(request, body, required=is_tenant)
+        ns_uuid, err_resp = extract_namespace_id(request, body, required=requires_namespace)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         tag = body.get("tag")
@@ -998,9 +1111,12 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         return JSONResponse({"status": "ok", "tags": tag_list})
 
     async def handle_remove_tag(request: Request) -> Response:
-        ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
+        ns_uuid, err_resp = extract_namespace_id(request, required=requires_namespace)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         tag = request.path_params.get("tag")
@@ -1035,9 +1151,12 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         return JSONResponse({"status": "ok", "tags": tag_list})
 
     async def handle_list_documents(request: Request) -> Response:
-        ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
+        ns_uuid, err_resp = extract_namespace_id(request, required=requires_namespace)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -1104,10 +1223,13 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             )
 
         ns_uuid, err_resp = extract_namespace_id(
-            request, body if isinstance(body, dict) else None, required=is_tenant
+            request, body if isinstance(body, dict) else None, required=requires_namespace
         )
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -1264,9 +1386,12 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                 "External customers cannot modify global resources", exc, status_code=403
             )
 
-        ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
+        ns_uuid, err_resp = extract_namespace_id(request, required=requires_namespace)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         doc_id_raw = request.path_params.get("doc_id")
@@ -1339,10 +1464,13 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             )
 
         ns_uuid, err_resp = extract_namespace_id(
-            request, body if isinstance(body, dict) else None, required=is_tenant
+            request, body if isinstance(body, dict) else None, required=requires_namespace
         )
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         items_to_insert = body.get("items") if isinstance(body, dict) else body
         if not isinstance(items_to_insert, list):

@@ -1391,6 +1391,37 @@ def build_admin_routes() -> list[Route]:
             endpoint=assets_handlers.api_assets_link_product,
             methods=["POST"],
         ),
+        # Wave D-2: Person assignment & sub-components
+        Route(
+            "/api/assets/{id}/assign",
+            endpoint=assets_handlers.api_assets_assign_person,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/assets/{id}/unassign",
+            endpoint=assets_handlers.api_assets_unassign_person,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/assets/by-person/{employee_id}",
+            endpoint=assets_handlers.api_assets_list_person_assets,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/assets/{id}/sub-components",
+            endpoint=assets_handlers.api_assets_link_subcomponent,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/assets/{id}/sub-components/{sub_id}",
+            endpoint=assets_handlers.api_assets_unlink_subcomponent,
+            methods=["DELETE"],
+        ),
+        Route(
+            "/api/assets/{id}/sub-components",
+            endpoint=assets_handlers.api_assets_list_subcomponents,
+            methods=["GET"],
+        ),
         Route(
             "/api/assets/{id}/service-history",
             endpoint=assets_handlers.api_assets_service_history,
