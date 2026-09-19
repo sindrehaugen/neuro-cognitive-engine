@@ -51,6 +51,7 @@ from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
+from nce.config import DeploymentConfigurationError
 from nce.entity_resolution.merge_queue import enqueue as merge_enqueue
 from nce.entity_resolution.resolver import resolve as c1_resolve
 from nce.vertical_modules.system_design.fold_rules import (
@@ -83,10 +84,6 @@ WATERMARK_OVERLAP = timedelta(seconds=300)
 # any further than the rest of this document's unmeasured claims.
 AUTO_MATCH_SCORE = 0.92
 QUEUE_FLOOR_SCORE = 0.55
-
-
-class BackfillConfigError(RuntimeError):
-    """Raised when required importer configuration is missing."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,11 +131,26 @@ def source_schema_name() -> str:
     Never a literal in the tree (charter §9 identity gate) — always read
     from ``NCE_IMPORT_SOURCE_SCHEMA_FL`` at call time, never cached as a
     module constant, so a test or a re-dispatch can change it cleanly.
+
+    Raises ``DeploymentConfigurationError`` (``nce.config``), not a local
+    exception, when unset. This is D49b's exact case, not a caller error:
+    no MCP argument a client sends can set a missing environment variable
+    — only the operator provisioning the rig namespace can. Subclassing
+    ``ValueError`` here would map to -32602 "Invalid parameters" over the
+    wire, telling a caller to retry with different arguments when no
+    argument would help; ``DeploymentConfigurationError`` deliberately
+    does not derive from ``ValueError`` for exactly this reason (see its
+    docstring), and is already mapped in ``nce/mcp_errors.py`` — reusing
+    it needs no new error-contract allowlist entry. Four other vertical
+    modules raise it for the identical "required env var unset" shape:
+    ``sales/source_adapters/d365.py``, ``system_design/sow.py``,
+    ``system_design/netbox_bridge.py``, ``product/sources/nettailer.py``.
     """
     schema = os.environ.get(SOURCE_SCHEMA_ENV)
     if not schema:
-        raise BackfillConfigError(
-            f"{SOURCE_SCHEMA_ENV} is not set — refuse to guess the host's schema name."
+        raise DeploymentConfigurationError(
+            SOURCE_SCHEMA_ENV,
+            f"{SOURCE_SCHEMA_ENV} is not set — refuse to guess the host's schema name.",
         )
     return schema
 

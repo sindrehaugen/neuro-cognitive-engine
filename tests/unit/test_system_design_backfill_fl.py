@@ -22,6 +22,7 @@ from typing import Any
 
 import pytest
 
+from nce.config import DeploymentConfigurationError
 from nce.vertical_modules.system_design import backfill_fl
 from nce.vertical_modules.system_design.graph import _fl_label
 
@@ -80,8 +81,12 @@ def _row(source_id: str = "guid-1", *parts: str) -> backfill_fl.SourceFLRow:
 
 def test_source_schema_name_requires_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(backfill_fl.SOURCE_SCHEMA_ENV, raising=False)
-    with pytest.raises(backfill_fl.BackfillConfigError):
+    # DeploymentConfigurationError, not ValueError: an unset env var is the
+    # operator's failure to fix, not a caller-supplied bad argument — see
+    # source_schema_name()'s docstring and nce.config.DeploymentConfigurationError's.
+    with pytest.raises(DeploymentConfigurationError) as exc_info:
         backfill_fl.source_schema_name()
+    assert not isinstance(exc_info.value, ValueError)
 
 
 def test_source_schema_name_reads_env_never_a_default(monkeypatch: pytest.MonkeyPatch) -> None:
