@@ -121,8 +121,8 @@ async def do_summarise_ticket(
         # 3. Fetch SLA clock status
         sla_row = await conn.fetchrow(
             """
-            SELECT sla_profile, is_breached, running_stage,
-                   time_to_first_response_breach_at, time_to_resolution_breach_at
+            SELECT sla_profile, breached, breach_type,
+                   first_response_due, resolution_due
             FROM sla_clocks
             WHERE ticket_id = $1::uuid AND namespace_id = $2::uuid
             """,
@@ -168,10 +168,11 @@ async def do_summarise_ticket(
             raw_facts.append(f"Target equipment asset: {ticket_row['asset_id']}.")
 
         if sla_row:
-            sla_breached_str = "BREACHED" if sla_row["is_breached"] else "in-compliance"
-            raw_facts.append(
-                f"SLA Status: {sla_breached_str} (running stage: {sla_row['running_stage']})."
+            sla_breached_str = "BREACHED" if sla_row["breached"] else "in-compliance"
+            breach_detail = (
+                f", breach type: {sla_row['breach_type']}" if sla_row["breach_type"] else ""
             )
+            raw_facts.append(f"SLA Status: {sla_breached_str}{breach_detail}.")
 
         for act in action_rows:
             raw_facts.append(

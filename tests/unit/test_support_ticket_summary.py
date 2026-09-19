@@ -164,10 +164,10 @@ async def test_do_summarise_ticket_success(sample_ns_id, sample_ticket_id):
         # sla_row
         {
             "sla_profile": "gold",
-            "is_breached": False,
-            "running_stage": "first_response",
-            "time_to_first_response_breach_at": None,
-            "time_to_resolution_breach_at": None,
+            "breached": False,
+            "breach_type": None,
+            "first_response_due": None,
+            "resolution_due": None,
         },
     ]
 
