@@ -61,7 +61,7 @@ _C12_TOOL_SPECS = build_all_resource_tool_specs()
 _C12_TOOL_NAMES = frozenset(_C12_TOOL_SPECS)
 _C12_MUTATION_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.mutation)
 _C12_CACHEABLE_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.cacheable)
-_EXPECTED_STATIC_TOTAL = 311  # 292 hand-written tools + 8 FUNCTIONAL_LOCATION tree tools (Lane C Wave C-1) + 1 C17 site master data address-registry feed (Lane F Wave F-9) + 2 support action/timeline tools (Lane D Wave D-5) + 1 support on-call rota (Lane D Wave D-7) + 1 assets service history (Lane D Wave D-3) + 6 assets person/subcomponent tools (Lane D Wave D-2); see _C12_TOOL_NAMES above
+_EXPECTED_STATIC_TOTAL = 319  # 292 hand-written tools + 8 FUNCTIONAL_LOCATION tree tools (Lane C Wave C-1) + 1 C17 site master data address-registry feed (Lane F Wave F-9) + 2 support action/timeline tools (Lane D Wave D-5) + 1 support on-call rota (Lane D Wave D-7) + 1 assets service history (Lane D Wave D-3) + 8 room cat & FL metadata tools (Lane C Wave C-2) + 6 assets person/subcomponent tools (Lane D Wave D-2); see _C12_TOOL_NAMES above
 
 # Re-exported for tests/unit/test_{assets,economy,inventory}_surface.py and
 # test_sales_skeleton.py, which each do `from tests.test_tool_registry import
@@ -392,8 +392,21 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "system_design_move_functional_location",
         "system_design_merge_functional_locations",
         "system_design_promote_functional_location",
+        # Wave C-2 -- Room Categories & FL Metadata mutations (3 tools)
+        "system_design_set_fl_room_category",
+        "system_design_assign_fl_responsible",
+        "system_design_unassign_fl_responsible",
         # Lane D Wave D-5 -- support_log_ticket_action
         "support_log_ticket_action",
+        # Lane B Wave B-1 -- C12 Sales resource surface mutations (upsert + archive)
+        "sales_upsert_customers",
+        "sales_archive_customers",
+        "sales_upsert_leads",
+        "sales_archive_leads",
+        "sales_upsert_deals",
+        "sales_archive_deals",
+        "sales_upsert_quotes",
+        "sales_archive_quotes",
     }
 )
 
@@ -433,17 +446,18 @@ def test_mutation_tools_count():
     +3 Wave C-1 FL tree mutations -> 130.
     +1 Lane F Wave F-9 sites_enrich_address_from_registry -> 131.
     +1 Lane D Wave D-5 support_log_ticket_action -> 132.
-    +4 Lane D Wave D-2 assets person & subcomponents -> 136."""
+    +3 Wave C-2 Room Categories & FL Metadata mutations -> 135.
+    +4 Lane D Wave D-2 assets person & subcomponents -> 139."""
     c12_mutation_tools = frozenset(
         n for n, s in build_all_resource_tool_specs().items() if s.mutation
     )
     hand_written_mutation_tools = MUTATION_TOOLS - c12_mutation_tools
 
-    assert len(MUTATION_TOOLS) >= 131, (
-        f"Sanity floor: expected at least 131 mutation tools, got {len(MUTATION_TOOLS)}."
+    assert len(MUTATION_TOOLS) >= 139, (
+        f"Sanity floor: expected at least 139 mutation tools, got {len(MUTATION_TOOLS)}."
     )
-    assert len(hand_written_mutation_tools) == 136, (
-        "Hand-written (non-C12) mutation tool count changed: expected 136, "
+    assert len(hand_written_mutation_tools) == 139, (
+        "Hand-written (non-C12) mutation tool count changed: expected 139, "
         f"got {len(hand_written_mutation_tools)}. If you added/removed a "
         "hand-written mutation tool, update this pin by import. If you only "
         "registered a new C12 ResourceSpec, this number should not move -- "
@@ -702,10 +716,25 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "system_design_get_fl_children",
         "system_design_get_fl_ancestors",
         "system_design_get_fl_path",
+        # Wave C-2 -- Room Categories & FL Metadata cacheable reads (5 tools)
+        "system_design_list_room_categories",
+        "system_design_get_room_category",
+        "system_design_get_fl_room_category",
+        "system_design_list_fl_responsible",
+        "system_design_list_my_responsible_fls",
         # Lane D Wave D-5 -- Support ticket timeline reader (cacheable read)
         "support_ticket_timeline",
         # Lane D Wave D-7 -- Support on-call rota reader (cacheable read)
         "support_get_on_call",
+        # Lane B Wave B-1 -- C12 Sales resource surface cacheable reads (list + get)
+        "sales_list_customers",
+        "sales_get_customers",
+        "sales_list_leads",
+        "sales_get_leads",
+        "sales_list_deals",
+        "sales_get_deals",
+        "sales_list_quotes",
+        "sales_get_quotes",
     }
 )
 
@@ -723,17 +752,17 @@ def test_cacheable_tools_exact_match():
 def test_cacheable_tools_count():
     """Converted to a derived assertion (janitor pass 7, K-H4) -- same
     treatment as test_mutation_tools_count above. 115 is the hand-written
-    baseline + 5 Lane F Wave F-11..F-15 tools + 5 Wave C-1 FL tree reads + 1 Wave D-5 support timeline + 1 Wave D-7 on-call + 1 Wave D-3 service history + 2 Wave D-2 assets person & subcomponents = 130."""
+    baseline + 5 Lane F Wave F-11..F-15 tools + 5 Wave C-1 FL tree reads + 1 Wave D-5 support timeline + 1 Wave D-7 on-call + 1 Wave D-3 service history + 5 Wave C-2 room cat/FL metadata reads + 2 Wave D-2 assets person & subcomponents = 135."""
     c12_cacheable_tools = frozenset(
         n for n, s in build_all_resource_tool_specs().items() if s.cacheable
     )
     hand_written_cacheable_tools = CACHEABLE_TOOLS - c12_cacheable_tools
 
-    assert len(CACHEABLE_TOOLS) >= 128, (
-        f"Sanity floor: expected at least 128 cacheable tools, got {len(CACHEABLE_TOOLS)}."
+    assert len(CACHEABLE_TOOLS) >= 135, (
+        f"Sanity floor: expected at least 135 cacheable tools, got {len(CACHEABLE_TOOLS)}."
     )
-    assert len(hand_written_cacheable_tools) == 130, (
-        "Hand-written (non-C12) cacheable tool count changed: expected 130, "
+    assert len(hand_written_cacheable_tools) == 135, (
+        "Hand-written (non-C12) cacheable tool count changed: expected 135, "
         f"got {len(hand_written_cacheable_tools)}. If you added/removed a "
         "hand-written cacheable tool, update this pin by import. If you "
         "only registered a new C12 ResourceSpec, this number should not "

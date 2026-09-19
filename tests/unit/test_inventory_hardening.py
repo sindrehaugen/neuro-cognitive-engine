@@ -51,14 +51,14 @@ _NAMESPACE_ID = "00000000-0000-4000-8000-000000000001"
 _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
-# --- MEASURED post-rebase onto main (Wave D-5 Support Ticket Action + Wave D-1 Asset Resource + Wave D-7 on-call rota + Wave D-3 service history) + Lane D Wave D-2 assets person assignment & subcomponents (6 tools: 4 mutating/admin-only, 2 cacheable reads):
-# TOTAL: 397 from main + 6 = 403.
-# MUTATION: 178 + 4 = 182.
-# CACHEABLE: 174 + 2 = 176.
+# --- MEASURED post-rebase onto main (incorporating Wave D-1, D-5, D-7, D-3, Wave B-1 sales surface, Wave C-2 room categories: 421 tools) + Lane D Wave D-2 assets person assignment & subcomponents (6 tools: 4 mutating/admin-only, 2 cacheable reads):
+# TOTAL: 421 from main + 6 = 427.
+# MUTATION: 189 + 4 = 193.
+# CACHEABLE: 187 + 2 = 189.
 # ADMIN_ONLY: 99 + 4 = 103.
-_TOTAL_TOOLS = 403
-_MUTATION_TOOLS = 182
-_CACHEABLE_TOOLS = 176
+_TOTAL_TOOLS = 427
+_MUTATION_TOOLS = 193
+_CACHEABLE_TOOLS = 189
 _ADMIN_ONLY_TOOLS = 103
 _MIGRATION_TOOLS = 5
 

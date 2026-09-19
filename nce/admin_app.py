@@ -902,10 +902,27 @@ def build_admin_routes() -> list[Route]:
             endpoint=system_design_handlers.api_system_design_sync_device_capabilities,
             methods=["POST"],
         ),
+        # System Design vertical module endpoints (Wave C-2) — Room Categories
+        Route(
+            "/api/system-design/room-categories",
+            endpoint=system_design_handlers.api_system_design_list_room_categories,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/system-design/room-categories/{id}",
+            endpoint=system_design_handlers.api_system_design_get_room_category,
+            methods=["GET"],
+        ),
         # System Design vertical module endpoints (Wave C-1) — FUNCTIONAL_LOCATION tree
         Route(
             "/api/system-design/functional-locations",
             endpoint=system_design_handlers.api_system_design_list_functional_locations,
+            methods=["GET"],
+        ),
+        # System Design vertical module endpoints (Wave C-2) — My Responsible FLs (before {id})
+        Route(
+            "/api/system-design/functional-locations/my-responsible",
+            endpoint=system_design_handlers.api_system_design_my_responsible_fls,
             methods=["GET"],
         ),
         Route(
@@ -942,6 +959,32 @@ def build_admin_routes() -> list[Route]:
             "/api/system-design/functional-locations/{id}/promote",
             endpoint=system_design_handlers.api_system_design_promote_functional_location,
             methods=["POST"],
+        ),
+        # System Design vertical module endpoints (Wave C-2) — FL Metadata & Responsible
+        Route(
+            "/api/system-design/functional-locations/{id}/room-category",
+            endpoint=system_design_handlers.api_system_design_get_fl_room_category,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/system-design/functional-locations/{id}/room-category",
+            endpoint=system_design_handlers.api_system_design_set_fl_room_category,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/system-design/functional-locations/{id}/responsible",
+            endpoint=system_design_handlers.api_system_design_list_fl_responsible,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/system-design/functional-locations/{id}/responsible",
+            endpoint=system_design_handlers.api_system_design_assign_fl_responsible,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/system-design/functional-locations/{id}/responsible/{employee_id}",
+            endpoint=system_design_handlers.api_system_design_unassign_fl_responsible,
+            methods=["DELETE"],
         ),
         # ------------------------------------------------------------------
         # Vendors vertical module endpoints (M4.W3)

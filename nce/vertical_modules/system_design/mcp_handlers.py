@@ -1403,3 +1403,163 @@ async def handle_system_design_promote_functional_location(
     else:
         result = await promote_fl_node(None, namespace_id, node_id, actor=actor)
     return json.dumps(result, default=str)
+
+
+# ---------------------------------------------------------------------------
+# Room Categories & FL Metadata (Wave C-2)
+# ---------------------------------------------------------------------------
+
+
+@mcp_handler
+async def handle_system_design_list_room_categories(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_list_room_categories -- list standardized AV/engineering room categories."""
+    from nce.vertical_modules.system_design.room_categories import do_get_room_categories
+
+    categories = do_get_room_categories(engine, arguments)
+    return json.dumps(categories, default=str)
+
+
+@mcp_handler
+async def handle_system_design_get_room_category(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_get_room_category -- retrieve definition for a single room category."""
+    from nce.vertical_modules.system_design.room_categories import do_get_room_category
+
+    category_id = str(arguments.get("category_id") or arguments.get("id") or "").strip()
+    if not category_id:
+        raise ValueError("category_id is required")
+    category = do_get_room_category(engine, category_id)
+    return json.dumps(category, default=str)
+
+
+@mcp_handler
+async def handle_system_design_set_fl_room_category(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_set_fl_room_category -- associate a room category with a functional location."""
+    from nce.vertical_modules.system_design.room_categories import do_set_fl_room_category
+
+    namespace_id = require_namespace_id(arguments)
+    fl_id = str(
+        arguments.get("fl_id") or arguments.get("node_id") or arguments.get("fl_id_or_label") or ""
+    ).strip()
+    if not fl_id:
+        raise ValueError("fl_id is required")
+    category_id = str(arguments.get("category_id") or "").strip()
+    if not category_id:
+        raise ValueError("category_id is required")
+
+    params = {
+        "fl_id": fl_id,
+        "category_id": category_id,
+        "actor": actor_of(arguments),
+    }
+    result = await do_set_fl_room_category(engine, namespace_id, params)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_system_design_get_fl_room_category(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_get_fl_room_category -- get room category for a functional location."""
+    from nce.vertical_modules.system_design.room_categories import do_get_fl_room_category
+
+    namespace_id = require_namespace_id(arguments)
+    fl_id = str(
+        arguments.get("fl_id") or arguments.get("node_id") or arguments.get("fl_id_or_label") or ""
+    ).strip()
+    if not fl_id:
+        raise ValueError("fl_id is required")
+
+    result = await do_get_fl_room_category(engine, namespace_id, {"fl_id": fl_id})
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_system_design_assign_fl_responsible(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_assign_fl_responsible -- assign a responsible employee to a functional location."""
+    from nce.vertical_modules.system_design.room_categories import do_assign_fl_responsible
+
+    namespace_id = require_namespace_id(arguments)
+    fl_id = str(
+        arguments.get("fl_id") or arguments.get("node_id") or arguments.get("fl_id_or_label") or ""
+    ).strip()
+    if not fl_id:
+        raise ValueError("fl_id is required")
+    employee_id = str(arguments.get("employee_id") or "").strip()
+    if not employee_id:
+        raise ValueError("employee_id is required")
+    role = str(arguments.get("role") or "primary").strip()
+
+    params = {
+        "fl_id": fl_id,
+        "employee_id": employee_id,
+        "role": role,
+        "actor": actor_of(arguments),
+    }
+    result = await do_assign_fl_responsible(engine, namespace_id, params)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_system_design_unassign_fl_responsible(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_unassign_fl_responsible -- remove a responsible employee assignment from a functional location."""
+    from nce.vertical_modules.system_design.room_categories import do_unassign_fl_responsible
+
+    namespace_id = require_namespace_id(arguments)
+    fl_id = str(
+        arguments.get("fl_id") or arguments.get("node_id") or arguments.get("fl_id_or_label") or ""
+    ).strip()
+    if not fl_id:
+        raise ValueError("fl_id is required")
+    employee_id = str(arguments.get("employee_id") or "").strip()
+    if not employee_id:
+        raise ValueError("employee_id is required")
+
+    params = {
+        "fl_id": fl_id,
+        "employee_id": employee_id,
+        "actor": actor_of(arguments),
+    }
+    result = await do_unassign_fl_responsible(engine, namespace_id, params)
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_system_design_list_fl_responsible(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_list_fl_responsible -- list employees assigned to a functional location."""
+    from nce.vertical_modules.system_design.room_categories import do_list_fl_responsible
+
+    namespace_id = require_namespace_id(arguments)
+    fl_id = str(
+        arguments.get("fl_id") or arguments.get("node_id") or arguments.get("fl_id_or_label") or ""
+    ).strip()
+    if not fl_id:
+        raise ValueError("fl_id is required")
+
+    results = await do_list_fl_responsible(engine, namespace_id, {"fl_id": fl_id})
+    return json.dumps(results, default=str)
+
+
+@mcp_handler
+async def handle_system_design_list_my_responsible_fls(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_list_my_responsible_fls -- list functional locations assigned to the calling employee."""
+    from nce.vertical_modules.system_design.room_categories import do_list_my_responsible_fls
+
+    namespace_id = require_namespace_id(arguments)
+    employee_id = arguments.get("employee_id")
+
+    results = await do_list_my_responsible_fls(engine, namespace_id, employee_id=employee_id)
+    return json.dumps(results, default=str)

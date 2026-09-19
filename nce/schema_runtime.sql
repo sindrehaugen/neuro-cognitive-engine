@@ -2032,6 +2032,74 @@ BEGIN
     END IF;
 END $$;
 
+ALTER TABLE sales_customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sales_customers FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON sales_customers;
+CREATE POLICY tenant_isolation_policy ON sales_customers
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE sales_customers FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE sales_customers TO nce_app;
+    END IF;
+END $$;
+
+ALTER TABLE sales_leads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sales_leads FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON sales_leads;
+CREATE POLICY tenant_isolation_policy ON sales_leads
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE sales_leads FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE sales_leads TO nce_app;
+    END IF;
+END $$;
+
+ALTER TABLE sales_deals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sales_deals FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON sales_deals;
+CREATE POLICY tenant_isolation_policy ON sales_deals
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE sales_deals FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE sales_deals TO nce_app;
+    END IF;
+END $$;
+
+ALTER TABLE sales_quotes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sales_quotes FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON sales_quotes;
+CREATE POLICY tenant_isolation_policy ON sales_quotes
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE sales_quotes FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE sales_quotes TO nce_app;
+    END IF;
+END $$;
+
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
