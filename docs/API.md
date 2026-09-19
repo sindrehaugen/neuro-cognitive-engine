@@ -582,6 +582,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/support/customer-health/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/support/customer-health/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/support/customers/{id}/health` | `api_support_customer_health` |
+| GET | `/api/support/on-call` | `api_support_on_call` |
 | GET | `/api/support/sla-clocks` | `handle_list` |
 | POST | `/api/support/sla-clocks` | `handle_create` |
 | POST | `/api/support/sla-clocks/bulk` | `handle_bulk` |
@@ -1024,6 +1025,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `support_dispatch_work_order` | yes | yes |  |  |
 | `support_failure_pattern` | yes | yes |  |  |
 | `support_get_customer_health` |  |  | yes |  |
+| `support_get_on_call` |  |  | yes |  |
 | `support_get_sla_clocks` |  |  | yes |  |
 | `support_get_ticket_actions` |  |  | yes |  |
 | `support_get_tickets` |  |  | yes |  |
@@ -1097,4 +1099,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 684 REST endpoints, 395 MCP tools._
+_Totals: 685 REST endpoints, 396 MCP tools._
