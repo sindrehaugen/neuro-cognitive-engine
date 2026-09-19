@@ -87,6 +87,11 @@ UNMANAGED_PG_AUDITED_SITES: Final[frozenset[str]] = frozenset(
         # against.
         "geodata.n50.import",
         "geodata.n50.bbox_query",
+        # Wave F-13: geodata_place_names is a GLOBAL table (migration 090,
+        # same reasoning as product_catalog) -- import and nearest-lookup
+        # both read/write it with no namespace_id to scope against.
+        "geodata.place_names.import",
+        "geodata.place_names.nearest",
     }
 )
 

@@ -1923,6 +1923,20 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # Geodata FEED module (Wave F-13) — a GLOBAL table (migration 090), not
+    # a tenant vertical engine, so no `engine=` opt-in gate applies.
+    "geodata_import_place_names": ToolSpec(
+        _h(geodata_mcp_handlers, "handle_geodata_import_place_names"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "geodata_query_nearest_place_name": ToolSpec(
+        _h(geodata_mcp_handlers, "handle_geodata_query_nearest_place_name"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
 }
 
 # ---------------------------------------------------------------------------

@@ -760,7 +760,9 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `forget_memory` |  | yes |  |  |
 | `geodata_import_n50_land_cover` | yes | yes |  |  |
 | `geodata_import_osm_elements` | yes | yes |  |  |
+| `geodata_import_place_names` | yes | yes |  |  |
 | `geodata_query_n50_land_cover` |  |  | yes |  |
+| `geodata_query_nearest_place_name` |  |  | yes |  |
 | `geodata_query_osm_elements` |  |  | yes |  |
 | `get_event_provenance` |  |  |  |  |
 | `get_health` |  |  |  |  |
@@ -1005,4 +1007,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 619 REST endpoints, 368 MCP tools._
+_Totals: 619 REST endpoints, 370 MCP tools._

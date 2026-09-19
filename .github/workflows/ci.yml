@@ -709,6 +709,17 @@ jobs:
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/test_geodata_n50.py -m integration -q --tb=short
 
+      # Lane F Wave F-13: tests/test_geodata_place_names.py -- point/GiST
+      # nearest-neighbour lookup and ON CONFLICT upsert behaviour against the
+      # real geodata_place_names global table, which no mock can prove. Same
+      # reasoning as F-11's geodata OSM step above.
+      - name: Integration — geodata place names (tests/test_geodata_place_names.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/test_geodata_place_names.py -m integration -q --tb=short
+
       # Module 5, Wave 15 (Batch 132d): tests/test_sales_lines_manual.py -- the
       # MANUAL-PICK origination path for BOM_LINE, and the first real caller of
       # the guarded store above. There is no test_sales_* glob in this workflow

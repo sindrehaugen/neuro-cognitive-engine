@@ -432,6 +432,10 @@ EXPECTED_GLOBAL_TABLES: set[str] = {
     # world, not a tenant's data — the same reasoning as product_catalog
     # above (MLV16F Wave F-12, migration 089).
     "geodata_n50_land_cover",
+    # Place names describe the physical world, not a tenant's data — the
+    # same reasoning as product_catalog above (MLV16F Wave F-13, migration
+    # 090).
+    "geodata_place_names",
 }
 
 
