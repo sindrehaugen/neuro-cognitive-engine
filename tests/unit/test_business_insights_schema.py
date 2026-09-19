@@ -24,9 +24,9 @@ def test_business_insights_tables_registered_in_expected_tenant_rls_tables():
 
 
 def test_expected_tenant_rls_tables_total_count():
-    """Verify total count of tenant RLS tables after C16 principal_bindings additions is 97 (96 baseline + 1 principal_bindings)."""
-    assert len(EXPECTED_TENANT_RLS_TABLES) == 97, (
-        f"Expected 97 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
+    """Verify total count of tenant RLS tables after C4 outbound_webhooks additions is 98 (97 baseline + 1 outbound_webhooks)."""
+    assert len(EXPECTED_TENANT_RLS_TABLES) == 98, (
+        f"Expected 98 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
     )
 
 

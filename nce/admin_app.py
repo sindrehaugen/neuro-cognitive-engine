@@ -245,6 +245,9 @@ def build_admin_routes() -> list[Route]:
             methods=["POST"],
         ),
         Route("/api/admin/quotas", endpoint=h.api_admin_quotas, methods=["GET"]),
+        Route("/api/admin/webhooks", endpoint=h.api_admin_webhooks_post, methods=["POST"]),
+        Route("/api/admin/webhooks", endpoint=h.api_admin_webhooks_get, methods=["GET"]),
+        Route("/api/admin/webhooks/{id}", endpoint=h.api_admin_webhooks_delete, methods=["DELETE"]),
         Route("/api/admin/settings", endpoint=h.api_admin_settings_list, methods=["GET"]),
         Route("/api/admin/settings", endpoint=h.api_admin_settings_patch, methods=["PATCH"]),
         Route(

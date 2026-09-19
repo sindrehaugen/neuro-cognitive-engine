@@ -8,3 +8,4 @@ from nce.admin_handlers.muscles import *  # noqa: F403
 from nce.admin_handlers.replay import *  # noqa: F403
 from nce.admin_handlers.settings import *  # noqa: F403
 from nce.admin_handlers.tools import *  # noqa: F403
+from nce.admin_handlers.webhooks import *  # noqa: F403

@@ -430,7 +430,19 @@ async def deliver_one(
     """
     event_type = event["event_type"]
     handlers = OUTBOX_HANDLERS.get(event_type) or []
-    if not handlers:
+
+    # C4 Outbound Webhooks (Wave A-7): discover active matching tenant webhooks
+    matching_webhooks: list[Any] = []
+    ns_id = event.get("namespace_id")
+    if ns_id:
+        try:
+            from nce.outbound_webhooks import get_matching_webhooks
+
+            matching_webhooks = await get_matching_webhooks(conn, ns_id, event_type)
+        except Exception as exc:
+            log.debug("[outbox] error checking matching outbound webhooks: %s", exc)
+
+    if not handlers and not matching_webhooks:
         # Check if the catalogue declares that this event has NO consumers.
         # Fail-closed: only genuinely unconsumed or deprecated selectors with empty
         # declared_consumers are acknowledged without delivery. ACTIVE or UNPRODUCED
@@ -505,6 +517,23 @@ async def deliver_one(
             action = await handler(conn, event)
             if action is not None:
                 actions.append(action)
+
+        if matching_webhooks:
+            from nce.outbound_webhooks import (
+                prepare_webhook_payload,
+                send_webhook_http_sync,
+            )
+
+            payload_dict = prepare_webhook_payload(event)
+            for wh in matching_webhooks:
+                target_url = wh.url
+                hmac_secret = wh.secret
+
+                def _build_action(u: str, s: str, p: dict[str, Any]) -> PostCommitAction:
+                    return lambda: send_webhook_http_sync(u, s, p)
+
+                actions.append(_build_action(target_url, hmac_secret, payload_dict))
+
         return actions
 
 
