@@ -21,6 +21,17 @@ still just a claim someone made once. ``test_verified_live_backing_is_still_true
 re-executes each cited check for real, every run, so a claim that stops being
 true (a rename, a revert, a dropped migration) is caught here rather than
 trusted forever.
+
+§10.5b (ORCH_PROTOCOL.md, 2026-09-19): only ``test_host_parity_doc_is_current`` (the
+byte-for-byte drift check against ``docs/_generated/host_parity.md``, an OUTPUT) is
+marked ``@pytest.mark.doc_gate`` and excluded on ``pull_request`` --
+``.github/workflows/regen-generated-docs.yml`` regenerates and self-verifies that file
+on `main` after every merge instead. ``docs/host_parity_seed.yaml`` (``_SEED`` above) is
+the hand-written INPUT this generator reads, not a generated artefact -- it is not
+touched by that workflow and PRs still carry and review it normally. Every other test
+in this file (RED-family floor, positive controls, the identity gate, the
+verified_live re-execution) is a real correctness check unrelated to file staleness
+and is NOT marked ``doc_gate`` -- all of them keep running on every PR.
 """
 
 from __future__ import annotations
@@ -66,6 +77,7 @@ def _load_generator():
     return mod
 
 
+@pytest.mark.doc_gate
 def test_host_parity_doc_is_current():
     gen = _load_generator()
     expected = gen.generate().strip()
@@ -181,6 +193,15 @@ def _check_F21_fl_tree_ops() -> bool:
     )
 
 
+def _check_F22_design_versions() -> bool:
+    from nce.vertical_modules.system_design import design_versions
+
+    return all(
+        hasattr(design_versions, name)
+        for name in ("create_design", "list_designs", "set_active_design", "set_room_spec")
+    )
+
+
 def _check_F32_notifications_and_reminders() -> bool:
     from nce.resource_surface import get_all_resource_specs, load_all_engine_resources
 
@@ -221,6 +242,7 @@ def _check_F40_sites() -> bool:
 _VERIFIED_LIVE_CHECKS = {
     "F15": _check_F15_legal_entities,
     "F21": _check_F21_fl_tree_ops,
+    "F22": _check_F22_design_versions,
     "F32": _check_F32_notifications_and_reminders,
     "F35": _check_F35_me_context_route,
     "F39": _check_F39_document_register_tables,

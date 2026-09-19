@@ -1816,3 +1816,495 @@ async def api_system_design_my_responsible_fls(request) -> JSONResponse:
         return admin_error_response("Failed to retrieve assigned functional locations", exc)
 
     return JSONResponse({"status": "ok", "functional_locations": results, "count": len(results)})
+
+
+# ---------------------------------------------------------------------------
+# Wave C-3: DESIGN Versions & Room Specifications REST Endpoints
+# ---------------------------------------------------------------------------
+
+
+async def api_system_design_list_designs(request) -> JSONResponse:
+    """GET /api/system-design/designs
+
+    Query parameters:
+        namespace_id (str, required): Active tenant namespace UUID.
+        functional_location_id (str, optional): FL UUID or label filter.
+        fl_id (str, optional): Alias for functional_location_id.
+        is_active (bool, optional): Active design filter.
+        q / query (str, optional): Search keyword.
+        limit (int, optional): Max results (default 50).
+        offset (int, optional): Pagination offset (default 0).
+    """
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.design_versions import list_designs
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    fl_id = request.query_params.get("functional_location_id") or request.query_params.get("fl_id")
+    is_active_val = request.query_params.get("is_active")
+    is_active = None
+    if is_active_val is not None:
+        is_active = is_active_val.lower() in ("true", "1", "yes")
+
+    query = request.query_params.get("query") or request.query_params.get("q")
+    try:
+        limit = int(request.query_params.get("limit", 50))
+    except (ValueError, TypeError):
+        limit = 50
+    try:
+        offset = int(request.query_params.get("offset", 0))
+    except (ValueError, TypeError):
+        offset = 0
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                designs = await list_designs(
+                    conn,
+                    namespace_id,
+                    functional_location_id=str(fl_id) if fl_id else None,
+                    is_active=is_active,
+                    query=str(query) if query else None,
+                    limit=limit,
+                    offset=offset,
+                )
+        else:
+            designs = await list_designs(
+                None,
+                namespace_id,
+                functional_location_id=str(fl_id) if fl_id else None,
+                is_active=is_active,
+                query=str(query) if query else None,
+                limit=limit,
+                offset=offset,
+            )
+    except Exception as exc:
+        log.exception("api_system_design_list_designs: unexpected error")
+        return admin_error_response("Failed to list designs", exc)
+
+    return JSONResponse({"status": "ok", "designs": designs, "count": len(designs)})
+
+
+async def api_system_design_create_design(request) -> JSONResponse:
+    """POST /api/system-design/designs
+
+    JSON body:
+        namespace_id (str, required)
+        design_id / id (str, required)
+        name (str, required)
+        functional_location_id / fl_id (str, required)
+        version (int, optional)
+        revision (str, optional)
+        room_spec (dict, optional)
+        is_active (bool, optional)
+        metadata (dict, optional)
+        source_id (str, optional)
+    """
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.design_versions import (
+        InvalidDesignError,
+        InvalidRoomSpecError,
+        create_design,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
+
+    design_id = str(body.get("design_id") or body.get("id") or "").strip()
+    name = str(body.get("name") or "").strip()
+    fl_id = str(body.get("functional_location_id") or body.get("fl_id") or "").strip()
+    if not design_id or not name or not fl_id:
+        return JSONResponse(
+            {"error": "design_id, name, and functional_location_id are required"},
+            status_code=422,
+        )
+
+    version = int(body.get("version", 1))
+    revision = body.get("revision")
+    room_spec = body.get("room_spec")
+    is_active = bool(body.get("is_active", False))
+    metadata = body.get("metadata")
+    source_id = body.get("source_id")
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                created = await create_design(
+                    conn,
+                    namespace_id,
+                    design_id=design_id,
+                    name=name,
+                    functional_location_id=fl_id,
+                    version=version,
+                    revision=str(revision) if revision else None,
+                    room_spec=room_spec,
+                    is_active=is_active,
+                    metadata=metadata,
+                    source_id=str(source_id) if source_id else None,
+                )
+        else:
+            created = await create_design(
+                None,
+                namespace_id,
+                design_id=design_id,
+                name=name,
+                functional_location_id=fl_id,
+                version=version,
+                revision=str(revision) if revision else None,
+                room_spec=room_spec,
+                is_active=is_active,
+                metadata=metadata,
+                source_id=str(source_id) if source_id else None,
+            )
+    except (InvalidDesignError, InvalidRoomSpecError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        log.exception("api_system_design_create_design: unexpected error")
+        return admin_error_response("Failed to create design", exc)
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_system_design_create_design")
+    return JSONResponse({"status": "ok", "design": created}, status_code=201)
+
+
+async def api_system_design_get_design(request) -> JSONResponse:
+    """GET /api/system-design/designs/{id}"""
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.design_versions import (
+        DesignNotFoundError,
+        get_design,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    design_id = str(request.path_params.get("id") or "").strip()
+    if not design_id:
+        return JSONResponse({"error": "Missing design id"}, status_code=422)
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                design = await get_design(conn, namespace_id, design_id)
+        else:
+            design = await get_design(None, namespace_id, design_id)
+    except DesignNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except Exception as exc:
+        log.exception("api_system_design_get_design: unexpected error")
+        return admin_error_response("Failed to get design", exc)
+
+    return JSONResponse({"status": "ok", "design": design})
+
+
+async def api_system_design_update_design(request) -> JSONResponse:
+    """PATCH /api/system-design/designs/{id}"""
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.design_versions import (
+        DesignNotFoundError,
+        InvalidDesignError,
+        InvalidRoomSpecError,
+        update_design,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
+
+    design_id = str(request.path_params.get("id") or "").strip()
+    if not design_id:
+        return JSONResponse({"error": "Missing design id"}, status_code=422)
+
+    name = body.get("name")
+    revision = body.get("revision")
+    room_spec = body.get("room_spec")
+    metadata = body.get("metadata")
+    is_active_val = body.get("is_active")
+    is_active = bool(is_active_val) if is_active_val is not None else None
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                updated = await update_design(
+                    conn,
+                    namespace_id,
+                    design_id,
+                    name=str(name) if name is not None else None,
+                    revision=str(revision) if revision is not None else None,
+                    room_spec=room_spec,
+                    metadata=metadata,
+                    is_active=is_active,
+                )
+        else:
+            updated = await update_design(
+                None,
+                namespace_id,
+                design_id,
+                name=str(name) if name is not None else None,
+                revision=str(revision) if revision is not None else None,
+                room_spec=room_spec,
+                metadata=metadata,
+                is_active=is_active,
+            )
+    except DesignNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except (InvalidDesignError, InvalidRoomSpecError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        log.exception("api_system_design_update_design: unexpected error")
+        return admin_error_response("Failed to update design", exc)
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_system_design_update_design")
+    return JSONResponse({"status": "ok", "design": updated})
+
+
+async def api_system_design_set_active_design(request) -> JSONResponse:
+    """POST /api/system-design/designs/{id}/set-active"""
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.design_versions import (
+        DesignNotFoundError,
+        set_active_design,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    raw_ns = request.query_params.get("namespace_id")
+    if not raw_ns:
+        try:
+            body = await request.json()
+            raw_ns = body.get("namespace_id")
+        except Exception:
+            pass
+
+    namespace_id, ns_err = _require_namespace_id(
+        raw_ns, missing_error=_MISSING_NAMESPACE_QUERY_PARAM
+    )
+    if ns_err is not None:
+        return ns_err
+
+    design_id = str(request.path_params.get("id") or "").strip()
+    if not design_id:
+        return JSONResponse({"error": "Missing design id"}, status_code=422)
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                active = await set_active_design(conn, namespace_id, design_id)
+        else:
+            active = await set_active_design(None, namespace_id, design_id)
+    except DesignNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except Exception as exc:
+        log.exception("api_system_design_set_active_design: unexpected error")
+        return admin_error_response("Failed to set active design", exc)
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_system_design_set_active_design")
+    return JSONResponse({"status": "ok", "design": active})
+
+
+async def api_system_design_get_room_spec(request) -> JSONResponse:
+    """GET /api/system-design/designs/{id}/room-spec"""
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.design_versions import (
+        DesignNotFoundError,
+        get_room_spec,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    design_id = str(request.path_params.get("id") or "").strip()
+    if not design_id:
+        return JSONResponse({"error": "Missing design id"}, status_code=422)
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                spec = await get_room_spec(conn, namespace_id, design_id)
+        else:
+            spec = await get_room_spec(None, namespace_id, design_id)
+    except DesignNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except Exception as exc:
+        log.exception("api_system_design_get_room_spec: unexpected error")
+        return admin_error_response("Failed to get room spec", exc)
+
+    return JSONResponse({"status": "ok", "room_spec": spec})
+
+
+async def api_system_design_set_room_spec(request) -> JSONResponse:
+    """PUT /api/system-design/designs/{id}/room-spec"""
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.design_versions import (
+        DesignNotFoundError,
+        InvalidRoomSpecError,
+        set_room_spec,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
+
+    design_id = str(request.path_params.get("id") or "").strip()
+    if not design_id:
+        return JSONResponse({"error": "Missing design id"}, status_code=422)
+
+    room_spec = body.get("room_spec")
+    if room_spec is None or not isinstance(room_spec, dict):
+        return JSONResponse({"error": "room_spec must be a dictionary"}, status_code=422)
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                updated_spec = await set_room_spec(conn, namespace_id, design_id, room_spec)
+        else:
+            updated_spec = await set_room_spec(None, namespace_id, design_id, room_spec)
+    except DesignNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except InvalidRoomSpecError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        log.exception("api_system_design_set_room_spec: unexpected error")
+        return admin_error_response("Failed to set room spec", exc)
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_system_design_set_room_spec")
+    return JSONResponse({"status": "ok", "room_spec": updated_spec})
+
+
+async def api_system_design_list_fl_designs(request) -> JSONResponse:
+    """GET /api/system-design/functional-locations/{id}/designs"""
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.design_versions import list_designs
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    fl_id = str(request.path_params.get("id") or "").strip()
+    if not fl_id:
+        return JSONResponse({"error": "Missing functional location id"}, status_code=422)
+
+    is_active_val = request.query_params.get("is_active")
+    is_active = None
+    if is_active_val is not None:
+        is_active = is_active_val.lower() in ("true", "1", "yes")
+
+    try:
+        limit = int(request.query_params.get("limit", 50))
+    except (ValueError, TypeError):
+        limit = 50
+    try:
+        offset = int(request.query_params.get("offset", 0))
+    except (ValueError, TypeError):
+        offset = 0
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                designs = await list_designs(
+                    conn,
+                    namespace_id,
+                    functional_location_id=fl_id,
+                    is_active=is_active,
+                    limit=limit,
+                    offset=offset,
+                )
+        else:
+            designs = await list_designs(
+                None,
+                namespace_id,
+                functional_location_id=fl_id,
+                is_active=is_active,
+                limit=limit,
+                offset=offset,
+            )
+    except Exception as exc:
+        log.exception("api_system_design_list_fl_designs: unexpected error")
+        return admin_error_response("Failed to list functional location designs", exc)
+
+    return JSONResponse({"status": "ok", "designs": designs, "count": len(designs)})
+
+
+async def api_system_design_get_fl_active_design(request) -> JSONResponse:
+    """GET /api/system-design/functional-locations/{id}/active-design"""
+    from nce.db_utils import scoped_pg_session
+    from nce.vertical_modules.system_design.design_versions import get_active_design_for_fl
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    fl_id = str(request.path_params.get("id") or "").strip()
+    if not fl_id:
+        return JSONResponse({"error": "Missing functional location id"}, status_code=422)
+
+    try:
+        if getattr(admin_state.engine, "pg_pool", None):
+            async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+                active = await get_active_design_for_fl(conn, namespace_id, fl_id)
+        else:
+            active = await get_active_design_for_fl(None, namespace_id, fl_id)
+    except Exception as exc:
+        log.exception("api_system_design_get_fl_active_design: unexpected error")
+        return admin_error_response("Failed to get active design for functional location", exc)
+
+    return JSONResponse({"status": "ok", "active_design": active})

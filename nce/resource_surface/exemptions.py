@@ -59,8 +59,9 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     "DESIGN": ResourceExemption(
         owner_engine="system_design",
         reason=(
-            "kg_nodes-only spine node referencing topology and geometry snapshots. "
-            "Scheduled for Wave C-3 DESIGN versions per functional location."
+            "Solution design versions per functional location are managed via "
+            "Wave C-3 design_versions domain service backed by kg_nodes, kg_edges, "
+            "and system_design_geometry; standalone ResourceSpec deferred to Lane E."
         ),
     ),
     "DESIGN_LINE": ResourceExemption(

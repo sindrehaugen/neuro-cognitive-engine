@@ -99,7 +99,7 @@ def _format_node_dict(row: dict[str, Any], depth: int | None = None) -> dict[str
     label = str(row.get("label", ""))
     kind = row.get("kind") or derive_fl_kind(label, depth)
     change_origin = str(row.get("change_origin", "sync"))
-    as_built = change_origin in ("operator", "field_tech", "as_built")
+    as_built = change_origin == "operator"
 
     parts = [p for p in label.split(":") if p and p != "FL"]
     name = parts[-1] if parts else label
@@ -605,7 +605,7 @@ async def merge_fl_nodes(
             await conn.execute(
                 """
                 UPDATE kg_nodes
-                SET change_origin = 'merged',
+                SET change_origin = 'consolidation',
                     updated_at = NOW()
                 WHERE label = $1 AND namespace_id = $2::uuid
                 """,
@@ -632,7 +632,7 @@ async def merge_fl_nodes(
 
     bucket = _MEM_NODES.get(ns_str, {})
     if absorbed_label in bucket:
-        bucket[absorbed_label]["change_origin"] = "merged"
+        bucket[absorbed_label]["change_origin"] = "consolidation"
 
     _MEM_MERGE_AUDIT.setdefault(ns_str, []).append(audit_entry)
 

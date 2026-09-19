@@ -1563,3 +1563,241 @@ async def handle_system_design_list_my_responsible_fls(
 
     results = await do_list_my_responsible_fls(engine, namespace_id, employee_id=employee_id)
     return json.dumps(results, default=str)
+
+
+# ---------------------------------------------------------------------------
+# Wave C-3: DESIGN Versions per Functional Location & Room Specifications
+# ---------------------------------------------------------------------------
+
+
+@mcp_handler
+async def handle_system_design_list_designs(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: system_design_list_designs -- list designs with optional FL and active filters."""
+    from nce.vertical_modules.system_design.design_versions import list_designs
+
+    namespace_id = require_namespace_id(arguments)
+    fl_id = arguments.get("functional_location_id") or arguments.get("fl_id")
+    is_active_val = arguments.get("is_active")
+    is_active = None
+    if is_active_val is not None:
+        if isinstance(is_active_val, str):
+            is_active = is_active_val.lower() in ("true", "1", "yes")
+        else:
+            is_active = bool(is_active_val)
+    query = arguments.get("query") or arguments.get("q")
+    limit = int(arguments.get("limit", 50))
+    offset = int(arguments.get("offset", 0))
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            designs = await list_designs(
+                conn,
+                namespace_id,
+                functional_location_id=str(fl_id) if fl_id else None,
+                is_active=is_active,
+                query=str(query) if query else None,
+                limit=limit,
+                offset=offset,
+            )
+    else:
+        designs = await list_designs(
+            None,
+            namespace_id,
+            functional_location_id=str(fl_id) if fl_id else None,
+            is_active=is_active,
+            query=str(query) if query else None,
+            limit=limit,
+            offset=offset,
+        )
+    return json.dumps(designs, default=str)
+
+
+@mcp_handler
+async def handle_system_design_get_design(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: system_design_get_design -- fetch details of a design version."""
+    from nce.vertical_modules.system_design.design_versions import get_design
+
+    namespace_id = require_namespace_id(arguments)
+    design_id = str(arguments.get("design_id") or arguments.get("id") or "").strip()
+    if not design_id:
+        raise ValueError("design_id is required")
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            design = await get_design(conn, namespace_id, design_id)
+    else:
+        design = await get_design(None, namespace_id, design_id)
+    return json.dumps(design, default=str)
+
+
+@mcp_handler
+async def handle_system_design_create_design(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: system_design_create_design -- create a new design version for a functional location."""
+    from nce.vertical_modules.system_design.design_versions import create_design
+
+    namespace_id = require_namespace_id(arguments)
+    design_id = str(arguments.get("design_id") or arguments.get("id") or "").strip()
+    name = str(arguments.get("name") or "").strip()
+    fl_id = str(arguments.get("functional_location_id") or arguments.get("fl_id") or "").strip()
+    version = int(arguments.get("version", 1))
+    revision = arguments.get("revision")
+    room_spec = arguments.get("room_spec")
+    is_active = bool(arguments.get("is_active", False))
+    metadata = arguments.get("metadata")
+    source_id = arguments.get("source_id")
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            created = await create_design(
+                conn,
+                namespace_id,
+                design_id=design_id,
+                name=name,
+                functional_location_id=fl_id,
+                version=version,
+                revision=str(revision) if revision else None,
+                room_spec=room_spec,
+                is_active=is_active,
+                metadata=metadata,
+                source_id=str(source_id) if source_id else None,
+            )
+    else:
+        created = await create_design(
+            None,
+            namespace_id,
+            design_id=design_id,
+            name=name,
+            functional_location_id=fl_id,
+            version=version,
+            revision=str(revision) if revision else None,
+            room_spec=room_spec,
+            is_active=is_active,
+            metadata=metadata,
+            source_id=str(source_id) if source_id else None,
+        )
+    return json.dumps(created, default=str)
+
+
+@mcp_handler
+async def handle_system_design_update_design(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: system_design_update_design -- update design fields."""
+    from nce.vertical_modules.system_design.design_versions import update_design
+
+    namespace_id = require_namespace_id(arguments)
+    design_id = str(arguments.get("design_id") or arguments.get("id") or "").strip()
+    if not design_id:
+        raise ValueError("design_id is required")
+
+    name = arguments.get("name")
+    revision = arguments.get("revision")
+    room_spec = arguments.get("room_spec")
+    metadata = arguments.get("metadata")
+    is_active_val = arguments.get("is_active")
+    is_active = None
+    if is_active_val is not None:
+        if isinstance(is_active_val, str):
+            is_active = is_active_val.lower() in ("true", "1", "yes")
+        else:
+            is_active = bool(is_active_val)
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            updated = await update_design(
+                conn,
+                namespace_id,
+                design_id,
+                name=str(name) if name is not None else None,
+                revision=str(revision) if revision is not None else None,
+                room_spec=room_spec,
+                metadata=metadata,
+                is_active=is_active,
+            )
+    else:
+        updated = await update_design(
+            None,
+            namespace_id,
+            design_id,
+            name=str(name) if name is not None else None,
+            revision=str(revision) if revision is not None else None,
+            room_spec=room_spec,
+            metadata=metadata,
+            is_active=is_active,
+        )
+    return json.dumps(updated, default=str)
+
+
+@mcp_handler
+async def handle_system_design_set_active_design(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_set_active_design -- atomically set design active for its FL."""
+    from nce.vertical_modules.system_design.design_versions import set_active_design
+
+    namespace_id = require_namespace_id(arguments)
+    design_id = str(arguments.get("design_id") or arguments.get("id") or "").strip()
+    if not design_id:
+        raise ValueError("design_id is required")
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            active = await set_active_design(conn, namespace_id, design_id)
+    else:
+        active = await set_active_design(None, namespace_id, design_id)
+    return json.dumps(active, default=str)
+
+
+@mcp_handler
+async def handle_system_design_get_active_design(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: system_design_get_active_design -- fetch active design for a functional location."""
+    from nce.vertical_modules.system_design.design_versions import get_active_design_for_fl
+
+    namespace_id = require_namespace_id(arguments)
+    fl_id = str(arguments.get("functional_location_id") or arguments.get("fl_id") or "").strip()
+    if not fl_id:
+        raise ValueError("functional_location_id is required")
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            active = await get_active_design_for_fl(conn, namespace_id, fl_id)
+    else:
+        active = await get_active_design_for_fl(None, namespace_id, fl_id)
+    return json.dumps(active, default=str)
+
+
+@mcp_handler
+async def handle_system_design_get_room_spec(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: system_design_get_room_spec -- get ROOM_SPEC metadata from a design."""
+    from nce.vertical_modules.system_design.design_versions import get_room_spec
+
+    namespace_id = require_namespace_id(arguments)
+    design_id = str(arguments.get("design_id") or arguments.get("id") or "").strip()
+    if not design_id:
+        raise ValueError("design_id is required")
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            spec = await get_room_spec(conn, namespace_id, design_id)
+    else:
+        spec = await get_room_spec(None, namespace_id, design_id)
+    return json.dumps(spec, default=str)
+
+
+@mcp_handler
+async def handle_system_design_set_room_spec(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: system_design_set_room_spec -- update ROOM_SPEC metadata on a design."""
+    from nce.vertical_modules.system_design.design_versions import set_room_spec
+
+    namespace_id = require_namespace_id(arguments)
+    design_id = str(arguments.get("design_id") or arguments.get("id") or "").strip()
+    if not design_id:
+        raise ValueError("design_id is required")
+    room_spec = arguments.get("room_spec") or {}
+
+    if getattr(engine, "pg_pool", None):
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+            updated_spec = await set_room_spec(conn, namespace_id, design_id, room_spec)
+    else:
+        updated_spec = await set_room_spec(None, namespace_id, design_id, room_spec)
+    return json.dumps(updated_spec, default=str)

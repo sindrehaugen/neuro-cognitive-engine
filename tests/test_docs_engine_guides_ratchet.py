@@ -15,6 +15,14 @@ nothing in ``tests/`` checked it against the code.
    -- i.e. it matches what ``scripts/gen_surface_table.py`` produces right now.
    If this fails, someone edited the generated file directly instead of running
    the generator, and it has silently started to drift.
+
+§10.5b (ORCH_PROTOCOL.md, 2026-09-19): assertion 2 (``test_generated_surface_doc_matches_the_generator``)
+is marked ``@pytest.mark.doc_gate`` and excluded on ``pull_request`` -- ``surface.md`` is
+touched by 5 of 5 open PRs measured the night this changed, the single biggest generated-doc
+collision source in the estate. PRs no longer carry it;
+``.github/workflows/regen-generated-docs.yml`` regenerates and self-verifies it (by running
+THIS exact test) on `main` after every merge instead. Assertion 1 is unrelated to file
+staleness and is NOT marked ``doc_gate`` -- it keeps running on every PR.
 """
 
 from __future__ import annotations
@@ -114,6 +122,7 @@ def test_registered_tool_count_is_at_least_the_charter_floor():
     )
 
 
+@pytest.mark.doc_gate
 @pytest.mark.skipif(not _SURFACE_DOC.exists(), reason="docs/_generated/surface.md not present")
 def test_generated_surface_doc_matches_the_generator():
     gen = _load_generator()
