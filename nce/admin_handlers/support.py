@@ -49,6 +49,11 @@ from nce.admin_handlers._shared import (
     admin_state,
     bump_mcp_cache_generation,
 )
+from nce.admin_http_support import (
+    admin_client_error,
+    admin_validation_error,
+    engine_unavailable,
+)
 from nce.vertical_modules.support._guard import (
     SupportDisabledError,
     require_support_enabled,
@@ -1094,12 +1099,12 @@ async def api_support_tickets_log_action(request: Any) -> JSONResponse:
     Response (JSON):
         {"ok": True, "action": {...}, "ticket_id": str, "status": "logged"}
     """
-    if not admin_state.engine:
-        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+    if (e := engine_unavailable()) is not None:
+        return e
 
     ticket_id = (request.path_params.get("id") or "").strip()
     if not ticket_id:
-        return JSONResponse({"error": "Missing path parameter: id"}, status_code=422)
+        return admin_client_error("Missing path parameter: id", status_code=422)
 
     try:
         body = await request.json()
@@ -1114,7 +1119,7 @@ async def api_support_tickets_log_action(request: Any) -> JSONResponse:
     try:
         await require_support_enabled(pool, namespace_id)
     except SupportDisabledError as exc:
-        return JSONResponse({"error": str(exc), "reason": "support_disabled"}, status_code=409)
+        return admin_client_error(str(exc), status_code=409, extra={"reason": "support_disabled"})
 
     params = dict(body)
     params["namespace_id"] = namespace_id
@@ -1123,12 +1128,13 @@ async def api_support_tickets_log_action(request: Any) -> JSONResponse:
     try:
         result = await do_log_ticket_action(admin_state.engine, params)
     except TicketNotFoundError as exc:
-        return JSONResponse(
-            {"error": str(exc), "not_found": True, "ticket_id": exc.ticket_id},
+        return admin_client_error(
+            str(exc),
             status_code=404,
+            extra={"not_found": True, "ticket_id": exc.ticket_id},
         )
     except ValueError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=422)
+        return admin_validation_error(exc, status_code=422)
     except Exception as exc:
         return admin_error_response(
             "Support ticket log action error",
@@ -1159,12 +1165,12 @@ async def api_support_tickets_timeline(request: Any) -> JSONResponse:
     Response (JSON):
         {"ok": True, "ticket_id": str, "ticket_summary": str, "actions": [...], ...}
     """
-    if not admin_state.engine:
-        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+    if (e := engine_unavailable()) is not None:
+        return e
 
     ticket_id = (request.path_params.get("id") or "").strip()
     if not ticket_id:
-        return JSONResponse({"error": "Missing path parameter: id"}, status_code=422)
+        return admin_client_error("Missing path parameter: id", status_code=422)
 
     namespace_id, err = _require_namespace_id(request.query_params.get("namespace_id"))
     if err is not None:
@@ -1174,7 +1180,7 @@ async def api_support_tickets_timeline(request: Any) -> JSONResponse:
     try:
         await require_support_enabled(pool, namespace_id)
     except SupportDisabledError as exc:
-        return JSONResponse({"error": str(exc), "reason": "support_disabled"}, status_code=409)
+        return admin_client_error(str(exc), status_code=409, extra={"reason": "support_disabled"})
 
     params: dict[str, Any] = {
         "namespace_id": namespace_id,
@@ -1185,17 +1191,18 @@ async def api_support_tickets_timeline(request: Any) -> JSONResponse:
         try:
             params["limit"] = int(limit)
         except ValueError:
-            return JSONResponse({"error": "limit must be an integer"}, status_code=422)
+            return admin_client_error("limit must be an integer", status_code=422)
 
     try:
         result = await do_get_ticket_timeline(admin_state.engine, params)
     except TicketNotFoundError as exc:
-        return JSONResponse(
-            {"error": str(exc), "not_found": True, "ticket_id": exc.ticket_id},
+        return admin_client_error(
+            str(exc),
             status_code=404,
+            extra={"not_found": True, "ticket_id": exc.ticket_id},
         )
     except ValueError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=422)
+        return admin_validation_error(exc, status_code=422)
     except Exception as exc:
         return admin_error_response(
             "Support ticket timeline error",
