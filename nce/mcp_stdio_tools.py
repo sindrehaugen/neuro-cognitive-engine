@@ -6237,6 +6237,190 @@ TOOLS = [
             "required": ["namespace_id", "design_id", "room_spec"],
         },
     ),
+    # Wave C-4 (DESIGN_REQUEST intake queue / losningsdesign-ko)
+    Tool(
+        name="system_design_create_design_request",
+        description="Create a new solution design request in the intake queue (losningsdesign-ko).",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "title": {
+                    "type": "string",
+                    "description": "Short summary title of the design request.",
+                },
+                "quote_id": {
+                    "type": "string",
+                    "description": "Optional linked Sales QUOTE identifier.",
+                },
+                "functional_location_id": {
+                    "type": "string",
+                    "description": "Optional target functional location identifier or label.",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Optional detailed problem statement or brief.",
+                },
+                "priority": {
+                    "type": "string",
+                    "description": "Priority: 'low', 'normal', 'high', 'urgent'. Defaults to 'normal'.",
+                },
+                "owner_id": {
+                    "type": "string",
+                    "description": "Optional assigned design engineer employee ID.",
+                },
+                "room_spec": {
+                    "type": "object",
+                    "description": "Optional room specification dictionary.",
+                },
+                "metadata": {
+                    "type": "object",
+                    "description": "Optional arbitrary metadata dictionary.",
+                },
+                "request_id": {
+                    "type": "string",
+                    "description": "Optional custom request identifier.",
+                },
+            },
+            "required": ["namespace_id", "title"],
+        },
+    ),
+    Tool(
+        name="system_design_get_design_request",
+        description="Fetch a solution design request by ID from the intake queue.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "request_id": {"type": "string", "description": "Design request identifier."},
+            },
+            "required": ["namespace_id", "request_id"],
+        },
+    ),
+    Tool(
+        name="system_design_list_design_requests",
+        description="List solution design requests from the intake queue with optional filters.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "status": {
+                    "type": "string",
+                    "description": (
+                        "Optional filter by status ('pending', 'assigned', 'in_progress', "
+                        "'completed', 'cancelled', 'rejected')."
+                    ),
+                },
+                "owner_id": {
+                    "type": "string",
+                    "description": "Optional filter by assigned owner ID.",
+                },
+                "quote_id": {
+                    "type": "string",
+                    "description": "Optional filter by linked quote ID.",
+                },
+                "functional_location_id": {
+                    "type": "string",
+                    "description": "Optional filter by target functional location.",
+                },
+                "priority": {
+                    "type": "string",
+                    "description": "Optional filter by priority ('low', 'normal', 'high', 'urgent').",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Optional text search query across title and description.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum records to return (default 50).",
+                },
+                "offset": {"type": "integer", "description": "Pagination offset (default 0)."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="system_design_update_design_request",
+        description="Update fields on an existing solution design request.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "request_id": {"type": "string", "description": "Design request identifier."},
+                "title": {"type": "string", "description": "Optional updated title."},
+                "description": {"type": "string", "description": "Optional updated description."},
+                "status": {
+                    "type": "string",
+                    "description": (
+                        "Optional updated status ('pending', 'assigned', 'in_progress', "
+                        "'completed', 'cancelled', 'rejected')."
+                    ),
+                },
+                "priority": {
+                    "type": "string",
+                    "description": "Optional updated priority ('low', 'normal', 'high', 'urgent').",
+                },
+                "owner_id": {
+                    "type": "string",
+                    "description": "Optional updated assigned owner ID.",
+                },
+                "room_spec": {
+                    "type": "object",
+                    "description": "Optional updated room specification.",
+                },
+                "metadata": {"type": "object", "description": "Optional updated metadata."},
+            },
+            "required": ["namespace_id", "request_id"],
+        },
+    ),
+    Tool(
+        name="system_design_assign_design_request",
+        description="Assign a solution design request to an owner (engineer).",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "request_id": {"type": "string", "description": "Design request identifier."},
+                "owner_id": {"type": "string", "description": "Employee ID of assignee."},
+            },
+            "required": ["namespace_id", "request_id", "owner_id"],
+        },
+    ),
+    Tool(
+        name="system_design_complete_design_request",
+        description="Mark a design request as completed and link the resulting DESIGN node.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "request_id": {"type": "string", "description": "Design request identifier."},
+                "design_id": {"type": "string", "description": "Resulting design identifier."},
+            },
+            "required": ["namespace_id", "request_id", "design_id"],
+        },
+    ),
+    Tool(
+        name="system_design_fulfill_request_from_quote",
+        description="Fulfill a design request by lifting its linked quote into a DESIGN proposal.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "request_id": {"type": "string", "description": "Design request identifier."},
+                "design_id": {
+                    "type": "string",
+                    "description": "Optional target design identifier.",
+                },
+                "namespace_slug": {
+                    "type": "string",
+                    "description": "Optional namespace slug for functional location prefix.",
+                },
+                "source_id": {"type": "string", "description": "Optional source identifier."},
+            },
+            "required": ["namespace_id", "request_id"],
+        },
+    ),
     # -----------------------------------------------------------------
     # Support vertical module tools (Module 10, Wave 5, ML10-B5)
     # -----------------------------------------------------------------

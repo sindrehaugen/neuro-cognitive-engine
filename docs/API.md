@@ -948,6 +948,14 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | DELETE | `/api/system-design/planned` | `api_system_design_delete_planned` |
 | GET | `/api/system-design/procurement-view` | `api_system_design_procurement_view` |
 | POST | `/api/system-design/publish-design-docs` | `api_system_design_publish_design_docs` |
+| GET | `/api/system-design/requests` | `api_system_design_list_requests` |
+| POST | `/api/system-design/requests` | `api_system_design_create_request` |
+| GET | `/api/system-design/requests/{id}` | `api_system_design_get_request` |
+| PATCH | `/api/system-design/requests/{id}` | `api_system_design_update_request` |
+| POST | `/api/system-design/requests/{id}/assign` | `api_system_design_assign_request` |
+| POST | `/api/system-design/requests/{id}/cancel` | `api_system_design_cancel_request` |
+| POST | `/api/system-design/requests/{id}/complete` | `api_system_design_complete_request` |
+| POST | `/api/system-design/requests/{id}/fulfill` | `api_system_design_fulfill_request` |
 | GET | `/api/system-design/room-categories` | `api_system_design_list_room_categories` |
 | GET | `/api/system-design/room-categories/{id}` | `api_system_design_get_room_category` |
 | GET | `/api/system-design/signal-flow` | `api_system_design_inspect_signal_flow` |
@@ -1400,16 +1408,21 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `support_upsert_sla_clocks` |  | yes |  |  |
 | `support_upsert_ticket_actions` |  | yes |  |  |
 | `support_upsert_tickets` |  | yes |  |  |
+| `system_design_assign_design_request` |  | yes |  |  |
 | `system_design_assign_fl_responsible` |  | yes |  |  |
 | `system_design_author_functional_location` |  | yes |  |  |
 | `system_design_author_topology` |  | yes |  |  |
+| `system_design_complete_design_request` |  | yes |  |  |
 | `system_design_create_design` |  | yes |  |  |
+| `system_design_create_design_request` |  | yes |  |  |
 | `system_design_delete_planned` | yes | yes |  |  |
 | `system_design_enrich_design_lines` |  | yes |  |  |
 | `system_design_from_quote` |  | yes |  |  |
+| `system_design_fulfill_request_from_quote` |  | yes |  |  |
 | `system_design_generate_sow` |  |  |  |  |
 | `system_design_get_active_design` |  |  | yes |  |
 | `system_design_get_design` |  |  | yes |  |
+| `system_design_get_design_request` |  |  | yes |  |
 | `system_design_get_fl_ancestors` |  |  | yes |  |
 | `system_design_get_fl_children` |  |  | yes |  |
 | `system_design_get_fl_path` |  |  | yes |  |
@@ -1421,6 +1434,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `system_design_get_standards` |  |  | yes |  |
 | `system_design_get_topology` |  |  | yes |  |
 | `system_design_inspect_signal_flow` |  |  |  |  |
+| `system_design_list_design_requests` |  |  | yes |  |
 | `system_design_list_designs` |  |  | yes |  |
 | `system_design_list_fl_responsible` |  |  | yes |  |
 | `system_design_list_functional_locations` |  |  | yes |  |
@@ -1440,6 +1454,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `system_design_to_quote` |  | yes |  |  |
 | `system_design_unassign_fl_responsible` |  | yes |  |  |
 | `system_design_update_design` |  | yes |  |  |
+| `system_design_update_design_request` |  | yes |  |  |
 | `system_design_validate_design_graph` |  |  |  |  |
 | `trigger_consolidation` |  | yes |  |  |
 | `trust_dial_get_status` |  |  | yes |  |
@@ -1462,4 +1477,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 958 REST endpoints, 486 MCP tools._
+_Totals: 966 REST endpoints, 493 MCP tools._
