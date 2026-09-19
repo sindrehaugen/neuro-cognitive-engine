@@ -6,9 +6,9 @@ Wave F-9): on-demand address validation/geocoding against Kartverket's
 public Adresse REST API (Geonorge, against the cadastre) — public, free,
 no authentication.
 
-Read for shape only (Q-25): the host's own integration lives at
-``backend/steps_product/kartverket.py``. This module's schema, functions
-and tests are its own, not a port of the host's.
+Read for shape only (Q-25): the host's own Kartverket address client.
+This module's schema, functions and tests are its own, not a port of the
+host's.
 
 What this wave does NOT do, stated rather than discovered
 --------------------------------------------------------------

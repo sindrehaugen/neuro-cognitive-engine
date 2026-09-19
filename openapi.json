@@ -11247,6 +11247,27 @@
         ],
         "type": "object"
       },
+      "Tool_sites_enrich_address_from_registry_Input": {
+        "properties": {
+          "namespace_id": {
+            "description": "Tenant namespace UUID.",
+            "type": "string"
+          },
+          "query": {
+            "description": "Optional freetext address to look up instead of the site's own stored address.",
+            "type": "string"
+          },
+          "site_id": {
+            "description": "UUID of the sites row to enrich.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "site_id"
+        ],
+        "type": "object"
+      },
       "Tool_sites_get_sites_Input": {
         "properties": {
           "id": {
@@ -16876,6 +16897,17 @@
         "migration": false,
         "mutation": true,
         "name": "sites_archive_sites"
+      },
+      "sites_enrich_address_from_registry": {
+        "admin_only": true,
+        "cacheable": false,
+        "description": "Validate/geocode a site's address against Kartverket's cadastre (Adresse API) and merge the result into the site's own address/coordinate fields. Operator/cron pull; mutation; fails soft (matched=false) when the address is not found in the registry.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_sites_enrich_address_from_registry_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "sites_enrich_address_from_registry"
       },
       "sites_get_sites": {
         "admin_only": false,
