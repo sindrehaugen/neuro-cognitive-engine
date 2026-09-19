@@ -270,4 +270,46 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
             "scheduled for C14 document integration."
         ),
     ),
+    # ---------------------------------------------------------------------------
+    # Customer Portal Engine (Module 17 / Lane E Wave E-17)
+    # ---------------------------------------------------------------------------
+    "PORTAL_USER": ResourceExemption(
+        owner_engine="customer_portal",
+        reason=(
+            "Real, tenant-scoped table (portal_users) but its RLS policy "
+            "(external_isolation_policy) requires customer_scope_id = "
+            "get_nce_external_scope(), and admin_app.py:59 documents the contract "
+            "explicitly: \"the nce.external_scope_id GUC is NEVER set on admin_app "
+            "sessions.\" Every C12 route/tool runs through admin_app's connection "
+            "pool (the same nce_app role the table's FORCE ROW LEVEL SECURITY "
+            "applies to), so get_nce_external_scope() always returns NULL there and "
+            "customer_scope_id = NULL is never true in SQL: a C12 spec on this "
+            "table would silently return zero rows on every read and raise a raw "
+            "Postgres RLS-violation error on every write, not a translated NCE "
+            "error. This is a structural mismatch between C12's tenant_scope model "
+            "(namespace_id only) and this table's dual-key RLS (namespace_id AND "
+            "customer_scope_id), not a missing field list -- needs either a "
+            "resource_surface capability for dual-key RLS tables or a decision "
+            "that this table is only ever queried from the separate customer_portal "
+            "app (nce/vertical_modules/customer_portal/app.py), which does "
+            "establish the external scope. Confirmed the table itself is fine: "
+            "grep -n \"CREATE TABLE IF NOT EXISTS portal_users\" nce/schema.sql."
+        ),
+    ),
+    "PORTAL_DOCUMENT_SHARE": ResourceExemption(
+        owner_engine="customer_portal",
+        reason=(
+            "Same RLS gap as PORTAL_USER: portal_document_shares carries the "
+            "identical external_isolation_policy keyed on customer_scope_id, which "
+            "admin_app's connection pool never sets."
+        ),
+    ),
+    "PORTAL_SERVICE_REQUEST": ResourceExemption(
+        owner_engine="customer_portal",
+        reason=(
+            "Same RLS gap as PORTAL_USER: portal_service_requests carries the "
+            "identical external_isolation_policy keyed on customer_scope_id, which "
+            "admin_app's connection pool never sets."
+        ),
+    ),
 }
