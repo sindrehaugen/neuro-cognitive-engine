@@ -62,7 +62,9 @@ _C12_TOOL_NAMES = frozenset(_C12_TOOL_SPECS)
 _C12_MUTATION_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.mutation)
 _C12_CACHEABLE_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.cacheable)
 
-_EXPECTED_STATIC_TOTAL = 300  # 292 hand-written tools + 8 FUNCTIONAL_LOCATION tree tools (Lane C Wave C-1); see _C12_TOOL_NAMES above
+_EXPECTED_STATIC_TOTAL = (
+    308  # 292 hand-written tools + 8 FL tree tools (C-1) + 8 room cat & FL metadata tools (C-2)
+)
 
 # Re-exported for tests/unit/test_{assets,economy,inventory}_surface.py and
 # test_sales_skeleton.py, which each do `from tests.test_tool_registry import
@@ -386,6 +388,10 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "system_design_move_functional_location",
         "system_design_merge_functional_locations",
         "system_design_promote_functional_location",
+        # Wave C-2 -- Room Categories & FL Metadata mutations (3 tools)
+        "system_design_set_fl_room_category",
+        "system_design_assign_fl_responsible",
+        "system_design_unassign_fl_responsible",
     }
 )
 
@@ -422,17 +428,18 @@ def test_mutation_tools_count():
     +1 Lane F Wave F-11 geodata_import_osm_elements -> 125.
     +1 Lane F Wave F-12 geodata_import_n50_land_cover -> 126.
     +1 Lane F Wave F-13 geodata_import_place_names -> 127.
-    +3 Wave C-1 FL tree mutations -> 130."""
+    +3 Wave C-1 FL tree mutations -> 130.
+    +3 Wave C-2 Room Categories & FL Metadata mutations -> 133."""
     c12_mutation_tools = frozenset(
         n for n, s in build_all_resource_tool_specs().items() if s.mutation
     )
     hand_written_mutation_tools = MUTATION_TOOLS - c12_mutation_tools
 
-    assert len(MUTATION_TOOLS) >= 130, (
-        f"Sanity floor: expected at least 130 mutation tools, got {len(MUTATION_TOOLS)}."
+    assert len(MUTATION_TOOLS) >= 133, (
+        f"Sanity floor: expected at least 133 mutation tools, got {len(MUTATION_TOOLS)}."
     )
-    assert len(hand_written_mutation_tools) == 130, (
-        "Hand-written (non-C12) mutation tool count changed: expected 130, "
+    assert len(hand_written_mutation_tools) == 133, (
+        "Hand-written (non-C12) mutation tool count changed: expected 133, "
         f"got {len(hand_written_mutation_tools)}. If you added/removed a "
         "hand-written mutation tool, update this pin by import. If you only "
         "registered a new C12 ResourceSpec, this number should not move -- "
@@ -684,6 +691,12 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "system_design_get_fl_children",
         "system_design_get_fl_ancestors",
         "system_design_get_fl_path",
+        # Wave C-2 -- Room Categories & FL Metadata cacheable reads (5 tools)
+        "system_design_list_room_categories",
+        "system_design_get_room_category",
+        "system_design_get_fl_room_category",
+        "system_design_list_fl_responsible",
+        "system_design_list_my_responsible_fls",
     }
 )
 
@@ -701,17 +714,17 @@ def test_cacheable_tools_exact_match():
 def test_cacheable_tools_count():
     """Converted to a derived assertion (janitor pass 7, K-H4) -- same
     treatment as test_mutation_tools_count above. 115 is the hand-written
-    baseline + 5 Lane F Wave F-11..F-15 tools + 5 Wave C-1 FL tree reads = 125."""
+    baseline + 5 Lane F Wave F-11..F-15 tools + 5 Wave C-1 FL tree reads + 5 Wave C-2 room cat/FL metadata reads = 130."""
     c12_cacheable_tools = frozenset(
         n for n, s in build_all_resource_tool_specs().items() if s.cacheable
     )
     hand_written_cacheable_tools = CACHEABLE_TOOLS - c12_cacheable_tools
 
-    assert len(CACHEABLE_TOOLS) >= 125, (
-        f"Sanity floor: expected at least 125 cacheable tools, got {len(CACHEABLE_TOOLS)}."
+    assert len(CACHEABLE_TOOLS) >= 130, (
+        f"Sanity floor: expected at least 130 cacheable tools, got {len(CACHEABLE_TOOLS)}."
     )
-    assert len(hand_written_cacheable_tools) == 125, (
-        "Hand-written (non-C12) cacheable tool count changed: expected 125, "
+    assert len(hand_written_cacheable_tools) == 130, (
+        "Hand-written (non-C12) cacheable tool count changed: expected 130, "
         f"got {len(hand_written_cacheable_tools)}. If you added/removed a "
         "hand-written cacheable tool, update this pin by import. If you "
         "only registered a new C12 ResourceSpec, this number should not "
