@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from nce.resource_surface import register_resource
 from nce.resource_surface.spec import ResourceSpec
+from nce.vertical_modules.field_tech._guard import require_field_tech_enabled
 
 # 1. WORK_ORDER
 WORK_ORDER_SPEC = ResourceSpec(
@@ -53,6 +54,7 @@ WORK_ORDER_SPEC = ResourceSpec(
         "partner_scope_id",
     ),
     description="Field service work orders: install/service kind, dispatch status, and assignment.",
+    enabled_guard=require_field_tech_enabled,
 )
 register_resource(WORK_ORDER_SPEC)
 
@@ -77,6 +79,7 @@ FIELD_TECH_TIME_ENTRY_SPEC = ResourceSpec(
         "partner_scope_id",
     ),
     description="Technician time entries against a work order, GPS- or manually-sourced.",
+    enabled_guard=require_field_tech_enabled,
 )
 register_resource(FIELD_TECH_TIME_ENTRY_SPEC)
 
@@ -94,5 +97,6 @@ FIELD_TECH_CHECKLIST_SPEC = ResourceSpec(
     searchable_fields=("template_id",),
     writable_fields=("work_order_id", "template_id", "items", "completed_at", "partner_scope_id"),
     description="ISO9001 compliance checklists against a work order, with templated items.",
+    enabled_guard=require_field_tech_enabled,
 )
 register_resource(FIELD_TECH_CHECKLIST_SPEC)

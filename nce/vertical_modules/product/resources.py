@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from nce.resource_surface import register_resource
 from nce.resource_surface.spec import ResourceSpec
+from nce.vertical_modules.product._guard import require_product_enabled
 
 # 1. PRODUCT_SKU
 PRODUCT_SKU_SPEC = ResourceSpec(
@@ -45,5 +46,6 @@ PRODUCT_SKU_SPEC = ResourceSpec(
         "Global shared parts library keyed on (manufacturer, mfr_part_no) — one row "
         "per physical part number, shared across every tenant."
     ),
+    enabled_guard=require_product_enabled,
 )
 register_resource(PRODUCT_SKU_SPEC)

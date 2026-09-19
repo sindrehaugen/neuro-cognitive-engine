@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from nce.resource_surface import register_resource
 from nce.resource_surface.spec import ResourceSpec
+from nce.vertical_modules.inventory._guard import require_inventory_enabled
 
 # 1. STOCK_LOCATION
 STOCK_LOCATION_SPEC = ResourceSpec(
@@ -26,6 +27,7 @@ STOCK_LOCATION_SPEC = ResourceSpec(
     searchable_fields=("name", "vehicle_ref"),
     writable_fields=("kind", "name", "parent_id", "level", "vehicle_ref", "raw"),
     description="Stock locations hierarchy (warehouses, vans, zones, bins).",
+    enabled_guard=require_inventory_enabled,
 )
 register_resource(STOCK_LOCATION_SPEC)
 
@@ -69,6 +71,7 @@ INVENTORY_ITEM_SPEC = ResourceSpec(
         ),
     },
     description="Per-SKU inventory on hand, reserved, and reorder thresholds.",
+    enabled_guard=require_inventory_enabled,
 )
 register_resource(INVENTORY_ITEM_SPEC)
 
@@ -94,6 +97,7 @@ GOODS_RECEIPT_SPEC = ResourceSpec(
         "receipt_hash",
     ),
     description="Physical inbound goods receipts with line matching and package verification.",
+    enabled_guard=require_inventory_enabled,
 )
 register_resource(GOODS_RECEIPT_SPEC)
 
@@ -111,6 +115,7 @@ INVENTORY_RMA_SPEC = ResourceSpec(
     searchable_fields=("rma_ref", "sku", "serial", "reason"),
     writable_fields=("rma_ref", "sku", "serial", "location_id", "qty", "reason"),
     description="Return Merchandise Authorizations for defective or quarantined stock.",
+    enabled_guard=require_inventory_enabled,
 )
 register_resource(INVENTORY_RMA_SPEC)
 

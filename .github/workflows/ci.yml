@@ -909,6 +909,21 @@ jobs:
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/integration/test_resource_surface_upsert_live.py -m integration -q --tb=short
 
+      # C12 resource-surface per-namespace opt-in gate: nce/resource_surface/
+      # (mcp.py, rest.py) called none of the 7 gated engines' own
+      # require_*_enabled, for any of their 18 registered ResourceSpecs -- a
+      # feature-boundary bypass within a namespace (RLS still scopes by
+      # namespace_id; a namespace that never opted in to e.g. inventory could
+      # still read/write it through the generated surface while the
+      # hand-written routes correctly refuse). Found by lane E, quantified by
+      # ML-orch, fixed by lane H (2026-09-19) via ResourceSpec.enabled_guard.
+      - name: Integration — C12 resource-surface engine-guard (tests/integration/test_resource_surface_engine_guard_live.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/integration/test_resource_surface_engine_guard_live.py -m integration -q --tb=short
+
 
 
   # REST-surface mutations must invalidate the MCP response cache.
