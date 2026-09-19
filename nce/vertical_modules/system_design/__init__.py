@@ -13,6 +13,22 @@ from __future__ import annotations
 from nce.vertical_modules.system_design.capability_sync import (
     do_sync_device_capabilities,
 )
+from nce.vertical_modules.system_design.design_versions import (
+    DesignNotFoundError,
+    DesignVersionError,
+    InvalidDesignError,
+    InvalidRoomSpecError,
+    canonical_design_label,
+    create_design,
+    get_active_design_for_fl,
+    get_design,
+    get_room_spec,
+    list_designs,
+    set_active_design,
+    set_room_spec,
+    update_design,
+    validate_room_spec,
+)
 from nce.vertical_modules.system_design.devices import (
     do_author_device_topology,
 )
@@ -172,4 +188,18 @@ __all__ = [
     "do_unassign_fl_responsible",
     "do_list_fl_responsible",
     "do_list_my_responsible_fls",
+    "canonical_design_label",
+    "validate_room_spec",
+    "create_design",
+    "get_design",
+    "list_designs",
+    "update_design",
+    "set_active_design",
+    "get_active_design_for_fl",
+    "get_room_spec",
+    "set_room_spec",
+    "DesignVersionError",
+    "DesignNotFoundError",
+    "InvalidDesignError",
+    "InvalidRoomSpecError",
 ]

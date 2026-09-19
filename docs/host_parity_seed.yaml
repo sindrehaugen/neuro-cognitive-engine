@@ -216,6 +216,9 @@ families:
     disposition: MOVE
     replacing_route: "DESIGN resource layer (list per location, versions, set-active); ROOM_SPEC as design metadata"
     notes: "Existing: topology + geometry + design-node-state revisions"
+    verified_live: true
+    verified_asof: "2026-09-19"
+    verified_evidence: "nce/vertical_modules/system_design/design_versions.py exports create_design, list_designs, set_active_design, set_room_spec (Wave C-3)"
 
   - id: F23
     category: "Delivery — Project/Procurement/Field/Resources"

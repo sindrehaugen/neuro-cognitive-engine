@@ -241,6 +241,47 @@ _EXPECTED_TOOLS: dict[str, dict[str, bool]] = {
         "admin_only": False,
         "mutation": False,
     },
+    # Wave C-3 — DESIGN Versions & Room Specifications
+    "system_design_list_designs": {
+        "cacheable": True,
+        "admin_only": False,
+        "mutation": False,
+    },
+    "system_design_get_design": {
+        "cacheable": True,
+        "admin_only": False,
+        "mutation": False,
+    },
+    "system_design_create_design": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": True,
+    },
+    "system_design_update_design": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": True,
+    },
+    "system_design_set_active_design": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": True,
+    },
+    "system_design_get_active_design": {
+        "cacheable": True,
+        "admin_only": False,
+        "mutation": False,
+    },
+    "system_design_get_room_spec": {
+        "cacheable": True,
+        "admin_only": False,
+        "mutation": False,
+    },
+    "system_design_set_room_spec": {
+        "cacheable": False,
+        "admin_only": False,
+        "mutation": True,
+    },
 }
 
 

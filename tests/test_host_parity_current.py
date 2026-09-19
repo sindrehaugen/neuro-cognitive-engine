@@ -181,6 +181,15 @@ def _check_F21_fl_tree_ops() -> bool:
     )
 
 
+def _check_F22_design_versions() -> bool:
+    from nce.vertical_modules.system_design import design_versions
+
+    return all(
+        hasattr(design_versions, name)
+        for name in ("create_design", "list_designs", "set_active_design", "set_room_spec")
+    )
+
+
 def _check_F32_notifications_and_reminders() -> bool:
     from nce.resource_surface import get_all_resource_specs, load_all_engine_resources
 
@@ -221,6 +230,7 @@ def _check_F40_sites() -> bool:
 _VERIFIED_LIVE_CHECKS = {
     "F15": _check_F15_legal_entities,
     "F21": _check_F21_fl_tree_ops,
+    "F22": _check_F22_design_versions,
     "F32": _check_F32_notifications_and_reminders,
     "F35": _check_F35_me_context_route,
     "F39": _check_F39_document_register_tables,
