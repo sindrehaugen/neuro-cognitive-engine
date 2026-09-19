@@ -24,7 +24,19 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "G004"]
+# W605 added 2026-09-19: an invalid escape sequence (e.g. "\|" in a non-raw
+# string) is only a DeprecationWarning on the 3.10 every worktree runs, but a
+# hard SyntaxError on 3.12 (the deployed runtime, per ci.yml's own matrix
+# comment). Cost lane E a full CI round twice: the offending module fails to
+# import on 3.12, so every AST-walking ratchet that reads it collapses too
+# (19 unrelated-looking failures from one bad docstring). Invisible locally
+# by construction -- no worktree here runs 3.12 -- so it can only be caught
+# by a lint rule, not by "run the tests before pushing." "E" does not cover
+# W-prefixed pycodestyle codes; this is additive to the existing "E" set, not
+# a replacement -- confirmed with `ruff check --select W605 .` before adding
+# it here, which found zero violations on this tree, run separately from
+# (and before) editing this list.
+select = ["E", "F", "I", "UP", "G004", "W605"]
 # E501 conflicts with legacy long lines; formatter + 100-col cap handle style incrementally.
 ignore = ["E501"]
 
