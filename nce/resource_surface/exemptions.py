@@ -174,13 +174,6 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
             "sweep. Scheduled for Wave B-1 / B-3 deal lifecycle restructuring."
         ),
     ),
-    "SIGNED_BASELINE": ResourceExemption(
-        owner_engine="sales",
-        reason=(
-            "Legally signed immutable contract baseline written to WORM storage; "
-            "pending Wave B-4 / 132i-b freeze baseline wiring."
-        ),
-    ),
     # ---------------------------------------------------------------------------
     # Vendors Engine (Lane D Wave D-8 / Lane E)
     # ---------------------------------------------------------------------------
