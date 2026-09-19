@@ -1466,6 +1466,43 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # Assets vertical module person assignment & sub-components (Wave D-2)
+    "assets_assign_person": ToolSpec(
+        _h(assets_mcp_handlers, "handle_assets_assign_person"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "assets_unassign_person": ToolSpec(
+        _h(assets_mcp_handlers, "handle_assets_unassign_person"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "assets_list_person_assets": ToolSpec(
+        _h(assets_mcp_handlers, "handle_assets_list_person_assets"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
+    "assets_link_subcomponent": ToolSpec(
+        _h(assets_mcp_handlers, "handle_assets_link_subcomponent"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "assets_unlink_subcomponent": ToolSpec(
+        _h(assets_mcp_handlers, "handle_assets_unlink_subcomponent"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "assets_list_subcomponents": ToolSpec(
+        _h(assets_mcp_handlers, "handle_assets_list_subcomponents"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # ------------------------------------------------------------------
     # Support vertical module tools (Module 10, Wave 5, ML10-B5)
     # ------------------------------------------------------------------

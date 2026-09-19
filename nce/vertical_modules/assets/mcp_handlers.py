@@ -68,6 +68,14 @@ from uuid import UUID
 from nce.db_utils import scoped_pg_session
 from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import mcp_handler
+from nce.vertical_modules.assets.assignment import (
+    do_assign_asset_person,
+    do_get_asset_subcomponents,
+    do_get_person_assets,
+    do_link_subcomponent,
+    do_unassign_asset_person,
+    do_unlink_subcomponent,
+)
 from nce.vertical_modules.assets.failure_pattern import (
     do_record_failure_pattern,
 )
@@ -738,4 +746,77 @@ async def handle_assets_service_history(engine: NCEEngine, arguments: dict[str, 
     """MCP tool: assets_service_history — fetch composite service history for an asset."""
     require_namespace_id(arguments)
     result = await do_get_asset_service_history(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+# ---------------------------------------------------------------------------
+# Wave D-2: Person assignment & sub-components
+# ---------------------------------------------------------------------------
+
+
+@mcp_handler
+async def handle_assets_assign_person(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: assets_assign_person — assign an asset to an employee (EMPLOYEE -[uses]-> ASSET).
+
+    Actor; mutation, admin_only. Requires ``namespace_id``, ``asset_id``, and ``employee_id`` or ``principal_id``.
+    """
+    require_namespace_id(arguments)
+    result = await do_assign_asset_person(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_assets_unassign_person(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: assets_unassign_person — unassign an asset from an employee.
+
+    Actor; mutation, admin_only. Requires ``namespace_id`` and ``asset_id``. Optional ``employee_id``.
+    """
+    require_namespace_id(arguments)
+    result = await do_unassign_asset_person(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_assets_list_person_assets(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: assets_list_person_assets — list all assets assigned to an employee.
+
+    Watcher; read-only, cacheable. Requires ``namespace_id`` and ``employee_id`` or ``principal_id``.
+    Optional ``include_faults``.
+    """
+    require_namespace_id(arguments)
+    result = await do_get_person_assets(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_assets_link_subcomponent(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: assets_link_subcomponent — link an asset as a sub-component (ASSET -[part_of]-> ASSET).
+
+    Actor; mutation, admin_only. Requires ``namespace_id``, ``parent_asset_id``, and ``sub_asset_id``.
+    Optional ``relation`` (default 'part_of').
+    """
+    require_namespace_id(arguments)
+    result = await do_link_subcomponent(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_assets_unlink_subcomponent(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: assets_unlink_subcomponent — unlink a sub-component from its parent asset.
+
+    Actor; mutation, admin_only. Requires ``namespace_id``, ``parent_asset_id``, and ``sub_asset_id``.
+    """
+    require_namespace_id(arguments)
+    result = await do_unlink_subcomponent(engine, dict(arguments))
+    return json.dumps(result, default=str)
+
+
+@mcp_handler
+async def handle_assets_list_subcomponents(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: assets_list_subcomponents — retrieve sub-components and parent for an asset.
+
+    Watcher; read-only, cacheable. Requires ``namespace_id`` and ``asset_id``.
+    """
+    require_namespace_id(arguments)
+    result = await do_get_asset_subcomponents(engine, dict(arguments))
     return json.dumps(result, default=str)

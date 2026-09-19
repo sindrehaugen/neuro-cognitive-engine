@@ -2873,6 +2873,121 @@ TOOLS = [
             "required": ["namespace_id", "asset_id", "product_sku"],
         },
     ),
+    # Assets vertical module person assignment & sub-components (Wave D-2)
+    Tool(
+        name="assets_assign_person",
+        description=(
+            "Assign an asset to a person/employee via KG 'uses' edge and C16 principal mapping (Wave D-2). "
+            "Enforces Contract-A single-writer ownership for ASSET. Actor; mutation, admin-only."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "asset_id": {"type": "string", "description": "Target asset UUID to assign."},
+                "employee_id": {"type": "string", "description": "Employee ID or person identifier."},
+                "principal_id": {
+                    "type": "string",
+                    "description": "Optional principal ID resolved via C16 principal_bindings.",
+                },
+                "notes": {"type": "string", "description": "Optional assignment notes."},
+            },
+            "required": ["namespace_id", "asset_id"],
+        },
+    ),
+    Tool(
+        name="assets_unassign_person",
+        description=(
+            "Unassign an asset from its assigned person by removing the KG 'uses' edge (Wave D-2). "
+            "Enforces Contract-A single-writer ownership for ASSET. Actor; mutation, admin-only."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "asset_id": {"type": "string", "description": "Target asset UUID to unassign."},
+                "employee_id": {
+                    "type": "string",
+                    "description": "Optional specific employee ID to unassign.",
+                },
+            },
+            "required": ["namespace_id", "asset_id"],
+        },
+    ),
+    Tool(
+        name="assets_list_person_assets",
+        description=(
+            "List all assets assigned to a person/employee via KG 'uses' edge, optionally including open fault tickets (Wave D-2). "
+            "Watcher; read-only, cacheable."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "employee_id": {"type": "string", "description": "Employee ID or person identifier."},
+                "principal_id": {
+                    "type": "string",
+                    "description": "Optional principal ID resolved via C16 principal_bindings.",
+                },
+                "include_faults": {
+                    "type": "boolean",
+                    "description": "Whether to include open service tickets (faults) for assigned assets (default true).",
+                },
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="assets_link_subcomponent",
+        description=(
+            "Link a child sub-component asset to a parent asset via KG 'part_of' edge (Wave D-2). "
+            "Enforces Contract-A single-writer ownership for ASSET and validates against circular hierarchy cycles. Actor; mutation, admin-only."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "parent_asset_id": {"type": "string", "description": "Parent asset UUID."},
+                "sub_asset_id": {"type": "string", "description": "Child sub-component asset UUID."},
+                "relation": {
+                    "type": "string",
+                    "description": "Boundary edge predicate (defaults to 'part_of').",
+                },
+            },
+            "required": ["namespace_id", "parent_asset_id", "sub_asset_id"],
+        },
+    ),
+    Tool(
+        name="assets_unlink_subcomponent",
+        description=(
+            "Unlink a child sub-component asset from its parent asset by removing the KG 'part_of' edge (Wave D-2). "
+            "Enforces Contract-A single-writer ownership for ASSET. Actor; mutation, admin-only."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "parent_asset_id": {"type": "string", "description": "Parent asset UUID."},
+                "sub_asset_id": {"type": "string", "description": "Child sub-component asset UUID."},
+            },
+            "required": ["namespace_id", "parent_asset_id", "sub_asset_id"],
+        },
+    ),
+    Tool(
+        name="assets_list_subcomponents",
+        description=(
+            "List sub-components (children) and parent asset hierarchy for an asset via KG 'part_of' edges (Wave D-2). "
+            "Watcher; read-only, cacheable."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "asset_id": {"type": "string", "description": "Asset UUID to inspect."},
+            },
+            "required": ["namespace_id", "asset_id"],
+        },
+    ),
     Tool(
         name="assets_service_history",
         description=(

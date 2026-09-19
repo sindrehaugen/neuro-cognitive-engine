@@ -43,6 +43,19 @@ unregistered (B132a/B133b) — ``graph.py`` writes EDGES to those, never the
 nodes.
 """
 
+from nce.vertical_modules.assets.assignment import (
+    AssetAssignmentError,
+    AssetNotFoundError,
+    PersonNotFoundError,
+    PrincipalBindingNotFoundError,
+    SubcomponentCycleError,
+    do_assign_asset_person,
+    do_get_asset_subcomponents,
+    do_get_person_assets,
+    do_link_subcomponent,
+    do_unassign_asset_person,
+    do_unlink_subcomponent,
+)
 from nce.vertical_modules.assets.failure_pattern import (
     do_record_failure_pattern,
     get_failure_patterns,
@@ -53,11 +66,22 @@ from nce.vertical_modules.assets.service_history import do_get_asset_service_his
 from nce.vertical_modules.assets.warranty import do_check_warranty_eol
 
 __all__ = [
+    "AssetAssignmentError",
+    "AssetNotFoundError",
+    "PersonNotFoundError",
+    "PrincipalBindingNotFoundError",
+    "SubcomponentCycleError",
+    "do_assign_asset_person",
     "do_check_warranty_eol",
     "do_generate_asset_qr",
     "do_get_asset_service_history",
+    "do_get_asset_subcomponents",
+    "do_get_person_assets",
     "do_get_room_register",
+    "do_link_subcomponent",
     "do_record_failure_pattern",
     "do_sync_netbox",
+    "do_unassign_asset_person",
+    "do_unlink_subcomponent",
     "get_failure_patterns",
 ]
