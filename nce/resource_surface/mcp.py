@@ -188,6 +188,19 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                 except ValueError as exc:
                     return json.dumps({"error": f"Invalid namespace_id: {exc}"})
 
+        if ns_uuid and spec.enabled_guard and hasattr(engine, "pg_pool") and engine.pg_pool:
+            # Raises a subclass of EngineDisabledError, caught and translated
+            # by the @mcp_handler decorator this function is wrapped in below
+            # (build_mcp_tool_specs' return dict) -- not caught here, same
+            # contract as a hand-written handler's own require_*_enabled call.
+            #
+            # Deliberately not keyed on `is_tenant`: it describes the table's
+            # RLS scope, not whether a caller-tenant opt-in applies. PRODUCT_SKU
+            # is tenant_scope="global" but its hand-written boundary still
+            # requires and gates on namespace_id -- keying this on is_tenant
+            # would leave it one of the 18 originally-ungated specs.
+            await spec.enabled_guard(engine.pg_pool, str(ns_uuid))
+
         if ns_uuid:
             try:
                 set_namespace_context(NamespaceContext(namespace_id=ns_uuid))
@@ -321,6 +334,19 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                 except ValueError as exc:
                     return json.dumps({"error": f"Invalid namespace_id: {exc}"})
 
+        if ns_uuid and spec.enabled_guard and hasattr(engine, "pg_pool") and engine.pg_pool:
+            # Raises a subclass of EngineDisabledError, caught and translated
+            # by the @mcp_handler decorator this function is wrapped in below
+            # (build_mcp_tool_specs' return dict) -- not caught here, same
+            # contract as a hand-written handler's own require_*_enabled call.
+            #
+            # Deliberately not keyed on `is_tenant`: it describes the table's
+            # RLS scope, not whether a caller-tenant opt-in applies. PRODUCT_SKU
+            # is tenant_scope="global" but its hand-written boundary still
+            # requires and gates on namespace_id -- keying this on is_tenant
+            # would leave it one of the 18 originally-ungated specs.
+            await spec.enabled_guard(engine.pg_pool, str(ns_uuid))
+
         item: dict[str, Any] | None = None
         if hasattr(engine, "pg_pool") and engine.pg_pool:
             if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
@@ -366,6 +392,19 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                     ns_uuid = UUID(str(ns_raw))
                 except ValueError as exc:
                     return json.dumps({"error": f"Invalid namespace_id: {exc}"})
+
+        if ns_uuid and spec.enabled_guard and hasattr(engine, "pg_pool") and engine.pg_pool:
+            # Raises a subclass of EngineDisabledError, caught and translated
+            # by the @mcp_handler decorator this function is wrapped in below
+            # (build_mcp_tool_specs' return dict) -- not caught here, same
+            # contract as a hand-written handler's own require_*_enabled call.
+            #
+            # Deliberately not keyed on `is_tenant`: it describes the table's
+            # RLS scope, not whether a caller-tenant opt-in applies. PRODUCT_SKU
+            # is tenant_scope="global" but its hand-written boundary still
+            # requires and gates on namespace_id -- keying this on is_tenant
+            # would leave it one of the 18 originally-ungated specs.
+            await spec.enabled_guard(engine.pg_pool, str(ns_uuid))
 
         item_id = str(arguments.get("id") or uuid.uuid4())
         expected_version = arguments.get("expected_version")
@@ -479,6 +518,19 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                     ns_uuid = UUID(str(ns_raw))
                 except ValueError as exc:
                     return json.dumps({"error": f"Invalid namespace_id: {exc}"})
+
+        if ns_uuid and spec.enabled_guard and hasattr(engine, "pg_pool") and engine.pg_pool:
+            # Raises a subclass of EngineDisabledError, caught and translated
+            # by the @mcp_handler decorator this function is wrapped in below
+            # (build_mcp_tool_specs' return dict) -- not caught here, same
+            # contract as a hand-written handler's own require_*_enabled call.
+            #
+            # Deliberately not keyed on `is_tenant`: it describes the table's
+            # RLS scope, not whether a caller-tenant opt-in applies. PRODUCT_SKU
+            # is tenant_scope="global" but its hand-written boundary still
+            # requires and gates on namespace_id -- keying this on is_tenant
+            # would leave it one of the 18 originally-ungated specs.
+            await spec.enabled_guard(engine.pg_pool, str(ns_uuid))
 
         field_name = spec.soft_delete_field or "is_archived"
         if hasattr(engine, "pg_pool") and engine.pg_pool:

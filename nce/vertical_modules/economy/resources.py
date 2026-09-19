@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from nce.resource_surface import register_resource
 from nce.resource_surface.spec import ResourceSpec
+from nce.vertical_modules.economy._guard import require_economy_enabled
 
 # 1. POSTING
 POSTING_SPEC = ResourceSpec(
@@ -43,5 +44,6 @@ POSTING_SPEC = ResourceSpec(
         "Balanced general-ledger posting lines behind the POSTING node; append-only, "
         "no version/soft-delete field."
     ),
+    enabled_guard=require_economy_enabled,
 )
 register_resource(POSTING_SPEC)

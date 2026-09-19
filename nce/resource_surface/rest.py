@@ -35,6 +35,7 @@ from nce.admin_handlers._shared import bump_mcp_cache_generation
 from nce.admin_http_support import admin_error_response
 from nce.auth import NamespaceContext, set_namespace_context
 from nce.db_utils import scoped_pg_session
+from nce.engine_registry import EngineDisabledError
 from nce.resource_surface.comments import (
     add_entity_tag,
     append_entity_comment,
@@ -188,6 +189,41 @@ def extract_namespace_id(
         return None, admin_error_response(f"Invalid namespace_id: {exc}", exc, status_code=422)
 
 
+async def _enforce_enabled_guard(spec: ResourceSpec, ns_uuid: UUID | None) -> JSONResponse | None:
+    """Run ``spec.enabled_guard`` at the REST boundary, same contract as a
+    hand-written route's own ``require_*_enabled`` call. Real-Postgres-backed
+    path only, mirroring every other generated-surface fallback split in this
+    module -- the in-memory store has no ``namespaces`` row to check opt-in
+    against, and it is never the deployment this gate protects.
+
+    Deliberately NOT keyed on ``spec.tenant_scope`` -- that describes the
+    underlying TABLE's RLS scope, not whether a per-namespace opt-in applies
+    to the calling tenant. PRODUCT_SKU is ``tenant_scope == "global"`` (a
+    shared parts catalog with no namespace_id column) but its hand-written
+    boundary (nce/admin_handlers/product.py) still requires a namespace_id
+    and still gates on it: the catalog is shared, whether a given tenant may
+    read/write it through the API is not. Keying this on tenant_scope would
+    have silently left PRODUCT_SKU one of the 18 ungated specs this gate
+    exists to close.
+    """
+    if (
+        ns_uuid is None
+        or spec.enabled_guard is None
+        or not admin_state.engine
+        or not getattr(admin_state.engine, "pg_pool", None)
+    ):
+        return None
+    try:
+        await spec.enabled_guard(admin_state.engine.pg_pool, str(ns_uuid))
+    except EngineDisabledError as exc:
+        return admin_error_response(
+            f"{spec.engine} vertical is not enabled for this namespace",
+            exc,
+            status_code=409,
+        )
+    return None
+
+
 def make_resource_routes(spec: ResourceSpec) -> list[Route]:
     """Generate all Starlette Route definitions for a ResourceSpec."""
 
@@ -200,6 +236,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
         if ns_uuid is not None:
             try:
                 set_namespace_context(NamespaceContext(namespace_id=ns_uuid))
@@ -352,6 +391,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -418,6 +460,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         ns_uuid, err_resp = extract_namespace_id(request, body, required=is_tenant)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         # Filter to allowed writable fields
         data: dict[str, Any] = {}
@@ -559,6 +604,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         ns_uuid, err_resp = extract_namespace_id(request, body, required=is_tenant)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -704,6 +752,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         ns_uuid, err_resp = extract_namespace_id(request, body, required=is_tenant)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -782,6 +833,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         ns_uuid, err_resp = extract_namespace_id(request, body, required=is_tenant)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -847,6 +901,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -877,6 +934,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -916,6 +976,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         ns_uuid, err_resp = extract_namespace_id(request, body, required=is_tenant)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         comment_text = body.get("comment") or body.get("body")
@@ -963,6 +1026,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -1000,6 +1066,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         ns_uuid, err_resp = extract_namespace_id(request, body, required=is_tenant)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         tag = body.get("tag")
@@ -1034,6 +1103,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         tag = request.path_params.get("tag")
@@ -1071,6 +1143,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -1141,6 +1216,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         )
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         if not item_id:
@@ -1300,6 +1378,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         ns_uuid, err_resp = extract_namespace_id(request, required=is_tenant)
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         item_id = request.path_params.get("id")
         doc_id_raw = request.path_params.get("doc_id")
@@ -1376,6 +1457,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         )
         if err_resp:
             return err_resp
+        guard_resp = await _enforce_enabled_guard(spec, ns_uuid)
+        if guard_resp:
+            return guard_resp
 
         items_to_insert = body.get("items") if isinstance(body, dict) else body
         if not isinstance(items_to_insert, list):

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from nce.resource_surface import register_resource
 from nce.resource_surface.spec import ResourceSpec
+from nce.vertical_modules.support._guard import require_support_enabled
 
 # 1. TICKET
 TICKET_SPEC = ResourceSpec(
@@ -82,6 +83,7 @@ TICKET_SPEC = ResourceSpec(
         ),
     },
     description="Service tickets: status/priority lifecycle, SLA profile, and AI diagnosis payload.",
+    enabled_guard=require_support_enabled,
 )
 register_resource(TICKET_SPEC)
 
@@ -106,6 +108,7 @@ SLA_SPEC = ResourceSpec(
         "paused_intervals",
     ),
     description="Per-ticket SLA countdown and breach state, keyed 1:1 on ticket_id.",
+    enabled_guard=require_support_enabled,
 )
 register_resource(SLA_SPEC)
 
@@ -123,6 +126,7 @@ SUPPORT_HEALTH_SCORE_SPEC = ResourceSpec(
     searchable_fields=("customer_id",),
     writable_fields=("score", "trend", "churn_risk", "drivers", "last_touchpoint_at"),
     description="Rolling per-customer health score, churn risk, and contributing drivers.",
+    enabled_guard=require_support_enabled,
 )
 register_resource(SUPPORT_HEALTH_SCORE_SPEC)
 
@@ -172,6 +176,7 @@ TICKET_ACTION_SPEC = ResourceSpec(
         ),
     },
     description="Append-only ticket action log tracking interventions (tiltak) and outcomes (utfall) per ticket per ADR 0042.",
+    enabled_guard=require_support_enabled,
 )
 register_resource(TICKET_ACTION_SPEC)
 

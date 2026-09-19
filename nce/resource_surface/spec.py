@@ -8,8 +8,9 @@ redaction are generated across all 17 vertical engines without hand-writing boil
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,20 @@ class ResourceSpec:
                             fields are stripped from responses for that tier.
         governed_verbs:     Verbs requiring @governed confirmation ('create', 'archive', etc.).
         description:        Human-readable description of the resource.
+        enabled_guard:      Optional per-namespace opt-in check, e.g.
+                            ``require_inventory_enabled`` from the owning engine's
+                            ``_guard.py``. Called as ``await enabled_guard(pool,
+                            namespace_id)`` at the top of every generated MCP handler
+                            and REST route for a tenant-scoped spec, before any read
+                            or write -- mirrors the hand-written boundary convention
+                            (see e.g. ``nce/vertical_modules/inventory/_guard.py``'s
+                            own docstring: apply at the handler/route boundary, never
+                            inside a ``do_*`` core). Expected to raise a subclass of
+                            ``nce.engine_registry.EngineDisabledError`` when the
+                            namespace has not opted in; that exception is translated
+                            the same way a hand-written handler's is. ``None`` (the
+                            default) means the spec has no opt-in gate to enforce --
+                            true for specs whose engine has no ``_guard.py`` at all.
     """
 
     engine: str
@@ -51,6 +66,7 @@ class ResourceSpec:
     governed_verbs: tuple[str, ...] = ()
     description: str = ""
     storage_kind: str = "postgres"
+    enabled_guard: Callable[[Any, str], Awaitable[None]] | None = None
     tenant_scope: str = field(init=False)
 
     def __post_init__(self) -> None:
