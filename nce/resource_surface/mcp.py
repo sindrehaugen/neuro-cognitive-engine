@@ -170,11 +170,18 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
     is_tenant = spec.tenant_scope == "tenant"
     is_global = spec.tenant_scope == "global"
     is_graph = spec.tenant_scope == "graph"
+    # An enabled_guard's subject is the CALLER's namespace, not the table's
+    # storage scope -- a global spec like PRODUCT_SKU still needs a real
+    # namespace_id to check opt-in against. Omitting namespace_id must be
+    # refused, not silently treated as "no namespace to gate," matching the
+    # hand-written boundary (e.g. nce/admin_handlers/product.py) which
+    # already requires namespace_id unconditionally for a gated engine.
+    requires_namespace = is_tenant or spec.enabled_guard is not None
 
     async def handle_list(engine: Any, arguments: dict[str, Any]) -> str:
         ns_raw = arguments.get("namespace_id")
         ns_uuid: UUID | None = None
-        if is_tenant:
+        if requires_namespace:
             if not ns_raw:
                 return json.dumps({"error": "Missing required argument: namespace_id"})
             try:
@@ -194,11 +201,12 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
             # (build_mcp_tool_specs' return dict) -- not caught here, same
             # contract as a hand-written handler's own require_*_enabled call.
             #
-            # Deliberately not keyed on `is_tenant`: it describes the table's
-            # RLS scope, not whether a caller-tenant opt-in applies. PRODUCT_SKU
-            # is tenant_scope="global" but its hand-written boundary still
-            # requires and gates on namespace_id -- keying this on is_tenant
-            # would leave it one of the 18 originally-ungated specs.
+            # `ns_uuid` is guaranteed non-None here whenever enabled_guard is
+            # set: `requires_namespace` above already refused a missing
+            # namespace_id for exactly that case, including for a
+            # tenant_scope="global" spec like PRODUCT_SKU (its hand-written
+            # boundary requires namespace_id unconditionally too -- see
+            # `requires_namespace`'s own comment for the incident this fixes).
             await spec.enabled_guard(engine.pg_pool, str(ns_uuid))
 
         if ns_uuid:
@@ -320,7 +328,7 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
 
         ns_raw = arguments.get("namespace_id")
         ns_uuid: UUID | None = None
-        if is_tenant:
+        if requires_namespace:
             if not ns_raw:
                 return json.dumps({"error": "Missing required argument: namespace_id"})
             try:
@@ -340,11 +348,12 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
             # (build_mcp_tool_specs' return dict) -- not caught here, same
             # contract as a hand-written handler's own require_*_enabled call.
             #
-            # Deliberately not keyed on `is_tenant`: it describes the table's
-            # RLS scope, not whether a caller-tenant opt-in applies. PRODUCT_SKU
-            # is tenant_scope="global" but its hand-written boundary still
-            # requires and gates on namespace_id -- keying this on is_tenant
-            # would leave it one of the 18 originally-ungated specs.
+            # `ns_uuid` is guaranteed non-None here whenever enabled_guard is
+            # set: `requires_namespace` above already refused a missing
+            # namespace_id for exactly that case, including for a
+            # tenant_scope="global" spec like PRODUCT_SKU (its hand-written
+            # boundary requires namespace_id unconditionally too -- see
+            # `requires_namespace`'s own comment for the incident this fixes).
             await spec.enabled_guard(engine.pg_pool, str(ns_uuid))
 
         item: dict[str, Any] | None = None
@@ -379,7 +388,7 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
     async def handle_upsert(engine: Any, arguments: dict[str, Any]) -> str:
         ns_raw = arguments.get("namespace_id")
         ns_uuid: UUID | None = None
-        if is_tenant:
+        if requires_namespace:
             if not ns_raw:
                 return json.dumps({"error": "Missing required argument: namespace_id"})
             try:
@@ -399,11 +408,12 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
             # (build_mcp_tool_specs' return dict) -- not caught here, same
             # contract as a hand-written handler's own require_*_enabled call.
             #
-            # Deliberately not keyed on `is_tenant`: it describes the table's
-            # RLS scope, not whether a caller-tenant opt-in applies. PRODUCT_SKU
-            # is tenant_scope="global" but its hand-written boundary still
-            # requires and gates on namespace_id -- keying this on is_tenant
-            # would leave it one of the 18 originally-ungated specs.
+            # `ns_uuid` is guaranteed non-None here whenever enabled_guard is
+            # set: `requires_namespace` above already refused a missing
+            # namespace_id for exactly that case, including for a
+            # tenant_scope="global" spec like PRODUCT_SKU (its hand-written
+            # boundary requires namespace_id unconditionally too -- see
+            # `requires_namespace`'s own comment for the incident this fixes).
             await spec.enabled_guard(engine.pg_pool, str(ns_uuid))
 
         item_id = str(arguments.get("id") or uuid.uuid4())
@@ -505,7 +515,7 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
 
         ns_raw = arguments.get("namespace_id")
         ns_uuid: UUID | None = None
-        if is_tenant:
+        if requires_namespace:
             if not ns_raw:
                 return json.dumps({"error": "Missing required argument: namespace_id"})
             try:
@@ -525,11 +535,12 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
             # (build_mcp_tool_specs' return dict) -- not caught here, same
             # contract as a hand-written handler's own require_*_enabled call.
             #
-            # Deliberately not keyed on `is_tenant`: it describes the table's
-            # RLS scope, not whether a caller-tenant opt-in applies. PRODUCT_SKU
-            # is tenant_scope="global" but its hand-written boundary still
-            # requires and gates on namespace_id -- keying this on is_tenant
-            # would leave it one of the 18 originally-ungated specs.
+            # `ns_uuid` is guaranteed non-None here whenever enabled_guard is
+            # set: `requires_namespace` above already refused a missing
+            # namespace_id for exactly that case, including for a
+            # tenant_scope="global" spec like PRODUCT_SKU (its hand-written
+            # boundary requires namespace_id unconditionally too -- see
+            # `requires_namespace`'s own comment for the incident this fixes).
             await spec.enabled_guard(engine.pg_pool, str(ns_uuid))
 
         field_name = spec.soft_delete_field or "is_archived"

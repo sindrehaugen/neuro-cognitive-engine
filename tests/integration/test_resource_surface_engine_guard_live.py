@@ -38,11 +38,36 @@ Deliberately NOT keyed on ``spec.tenant_scope``: PRODUCT_SKU is
 ``tenant_scope == "global"`` (a shared parts catalog with no namespace_id
 column) but its hand-written boundary still requires and gates on a caller
 namespace_id -- keying the generated gate on tenant_scope would have left
-PRODUCT_SKU one of the 18 ungated specs this fix exists to close. Exercised
-here via INVENTORY's STOCK_LOCATION_SPEC (a genuinely tenant-scoped table),
-not PRODUCT_SKU, to keep this test's own setup ordinary; the tenant_scope
-independence itself is covered by ``test_c12_resource_surface_ratchet``-style
-unit assertion, not repeated live here.
+PRODUCT_SKU one of the 18 ungated specs this fix exists to close.
+
+A SECOND DEFECT IN THE FIRST FIX: OMITTING namespace_id SKIPPED THE GATE TOO
+-----------------------------------------------------------------------------
+The first cut of this fix only ran ``enabled_guard`` when ``ns_uuid`` was
+already non-``None`` (i.e. a ``namespace_id`` was supplied and parsed). For a
+tenant-scoped spec that's fine -- ``namespace_id`` was already mandatory. For
+a GLOBAL spec with an ``enabled_guard`` (PRODUCT_SKU), ``namespace_id`` was
+still treated as *optional* (``extract_namespace_id(..., required=is_tenant)``
+/ the MCP handlers' own ``if is_tenant: ... else: if ns_raw: ...``), so a
+caller that omitted it entirely got ``ns_uuid = None`` and the guard never
+ran -- while ``nce/admin_handlers/product.py:70``, the hand-written boundary
+this gate is supposed to match, hard-requires ``namespace_id`` and returns
+422 for the same omission. Found by ML-orch reviewing #294: the generated
+surface was still strictly more permissive than the hand-written one, for
+exactly the one input shape (`namespace_id` omitted, not just invalid) the
+live verification below didn't produce.
+
+Fixed by introducing ``requires_namespace = is_tenant or spec.enabled_guard
+is not None`` in both ``mcp.py`` and ``rest.py``: an ``enabled_guard``'s
+subject is the CALLER's namespace, not the table's storage scope, so it makes
+``namespace_id`` mandatory regardless of ``tenant_scope`` -- refusing the
+omitted case (422 REST / the MCP "missing required argument" shape) rather
+than silently treating "no namespace" as "nothing to gate."
+``test_mcp_list_refused_when_namespace_id_omitted_for_global_gated_spec`` and
+its REST equivalent below exercise PRODUCT_SKU specifically, the one real
+spec this gap affected -- ``STOCK_LOCATION_SPEC`` (tenant-scoped) cannot
+reach this code path at all, which is exactly why the first round of live
+verification passed while the gap stayed open: the positive control and the
+gap were on different specs.
 
 MUTATION-CHECKED (verified by hand, not via a scripted rerun)
 -----------------------------------------------------------------
@@ -51,6 +76,12 @@ Ran ``test_mcp_list_refused_when_namespace_not_opted_in`` and
 ``enabled_guard=require_inventory_enabled`` temporarily removed from
 ``STOCK_LOCATION_SPEC``: both failed (no exception / 200 instead of a 409),
 confirming they exercise the gate and are not vacuous. Restored before commit.
+
+Ran ``test_mcp_list_refused_when_namespace_id_omitted_for_global_gated_spec``
+and its REST equivalent with ``requires_namespace`` reverted to plain
+``is_tenant`` in both modules: both failed (200/successful list instead of a
+refusal), confirming they exercise the omitted-namespace-id path specifically
+and are not vacuous. Restored before commit.
 """
 
 from __future__ import annotations
@@ -232,3 +263,59 @@ async def test_rest_create_refused_when_namespace_not_opted_in(
             },
         )
     assert r.status_code == 409, f"ungated write over REST: {r.text}"
+
+
+@pytest.mark.asyncio
+async def test_mcp_list_refused_when_namespace_id_omitted_for_global_gated_spec(
+    engine: NCEEngine,
+) -> None:
+    """PRODUCT_SKU is tenant_scope="global" (no namespace_id column at all)
+    but its hand-written boundary (nce/admin_handlers/product.py) still
+    requires a caller namespace_id and gates on it. The first cut of this
+    fix let a caller skip the gate entirely by omitting namespace_id, since
+    an omitted-but-optional namespace_id meant `ns_uuid is None` and the
+    guard call was itself keyed on `ns_uuid` being truthy. No namespace_id
+    is passed at all here -- this is the exact input the first fix missed.
+    """
+    result = json.loads(await TOOL_REGISTRY["product_list_product_skus"].handler(engine, {}))
+    # A missing-argument refusal (the existing, established shape for every
+    # other required-argument check in this module), not the guard's
+    # McpError -- there is no namespace to gate yet, there is no namespace
+    # at all. Must not be a successful item listing either way.
+    assert "items" not in result, f"omitted namespace_id was silently served: {result}"
+    assert "namespace_id" in result.get("error", "").lower(), result
+
+
+def _product_rest_app() -> Starlette:
+    load_all_engine_resources()
+    product_sku_spec = next(
+        s for s in get_all_resource_specs() if s.engine == "product" and s.entity == "product-skus"
+    )
+    return Starlette(routes=make_resource_routes(product_sku_spec))
+
+
+@pytest.fixture
+def product_rest_client(engine: NCEEngine):
+    previous = admin_state.engine
+    admin_state.engine = engine
+    try:
+        yield httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=_product_rest_app()), base_url="http://test"
+        )
+    finally:
+        admin_state.engine = previous
+
+
+@pytest.mark.asyncio
+async def test_rest_list_refused_when_namespace_id_omitted_for_global_gated_spec(
+    product_rest_client: httpx.AsyncClient,
+) -> None:
+    """REST equivalent of the MCP test above -- the exact input (no
+    namespace_id query param at all) the first cut of this fix let through
+    for a global-scoped-but-gated spec. Matches
+    nce/admin_handlers/product.py:70's own 422 for the same omission, not
+    the 409 a present-but-disabled namespace gets.
+    """
+    async with product_rest_client as client:
+        r = await client.get("/api/product/product-skus")
+    assert r.status_code == 422, f"omitted namespace_id was not refused over REST: {r.text}"
