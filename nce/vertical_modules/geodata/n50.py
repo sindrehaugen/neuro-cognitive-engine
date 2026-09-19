@@ -10,8 +10,8 @@ decision as ADR 0046 (Wave F-11's OSM store): a live per-request call to
 an external source does not scale, so the data lives in
 ``geodata_n50_land_cover`` (migration 089) and is refreshed by a
 batch import. Read for shape only (Q-25); this module's schema,
-functions and tests are its own, not a port of the host's
-``n50_arealdekke.py``.
+functions and tests are its own, not a port of the host's N50
+land-cover module.
 
 No vendor inherits another's answer, checked rather than assumed
 --------------------------------------------------------------------

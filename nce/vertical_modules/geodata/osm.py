@@ -10,7 +10,7 @@ service, one backend is one sender for every tenant, and a live call per
 read does not scale — so the data lives in ``geodata_osm_elements``
 (migration 086) and is refreshed by a batch import, never fetched live
 per request. Read for shape only (Q-25); this module's schema, functions
-and tests are its own, not a port of the host's ``osm_lokal.py``.
+and tests are its own, not a port of the host's local OSM-mirror module.
 
 What this wave does NOT do, stated rather than discovered
 --------------------------------------------------------------

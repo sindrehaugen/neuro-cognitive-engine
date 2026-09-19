@@ -24,7 +24,7 @@ looked up by serial number, never by NCE's own asset id.
 Q-25 (AGPL / proprietary boundary) — read for shape only, re-implemented
 --------------------------------------------------------------------------
 Endpoints, the auth flow and response shapes were read from the host's
-``integrations/ymcs_client.py`` FOR SHAPE ONLY. No text, comment or
+YMCS integration client FOR SHAPE ONLY. No text, comment or
 structure from that file was copied, and its write-path endpoint set
 (``SKRIVEVEIENE``) was never read into this module — this adapter has no
 concept of a write call at all. The allow-list below was independently
