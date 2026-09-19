@@ -89,6 +89,16 @@ def validate(families: list[dict]) -> list[str]:
         if not (fam.get("description") or "").strip():
             problems.append(f"{fam_id} ({name}): missing description")
 
+        if fam.get("verified_live"):
+            if not (fam.get("verified_asof") or "").strip():
+                problems.append(
+                    f"{fam_id} ({name}): verified_live is set but verified_asof is missing"
+                )
+            if not (fam.get("verified_evidence") or "").strip():
+                problems.append(
+                    f"{fam_id} ({name}): verified_live is set but verified_evidence is missing"
+                )
+
     return problems
 
 
@@ -144,6 +154,31 @@ def generate() -> str:
     lines.append("|---|---|")
     for d in sorted(counts):
         lines.append(f"| {d} | {counts[d]} |")
+    lines.append("")
+
+    verified = [fam for fam in families if fam.get("verified_live")]
+    lines.append("## Backing confirmed live")
+    lines.append("")
+    lines.append(
+        "Families whose `replacing_route` claim has been re-checked against the live "
+        "tree (not just written down when the family was authored) and found true, as "
+        "of the stated date. This is the question the table exists to answer: which "
+        "families are actually ready to retire today, not merely planned to be. A "
+        "family absent from this list has not been re-verified — it may still be true, "
+        "unverified is not the same as false."
+    )
+    lines.append("")
+    if verified:
+        lines.append("| ID | Family | As of | Evidence |")
+        lines.append("|---|---|---|---|")
+        for fam in sorted(verified, key=lambda f: f.get("id", "")):
+            fam_id = fam.get("id", "")
+            name = fam.get("family", "")
+            asof = fam.get("verified_asof", "")
+            evidence = (fam.get("verified_evidence") or "").replace("|", "\\|")
+            lines.append(f"| {fam_id} | `{name}` | {asof} | {evidence} |")
+    else:
+        lines.append("(none re-verified yet)")
     lines.append("")
 
     by_category: dict[str, list[dict]] = {}

@@ -21,6 +21,19 @@ Total families: 51
 | NEW | 5 |
 | RETIRE | 2 |
 
+## Backing confirmed live
+
+Families whose `replacing_route` claim has been re-checked against the live tree (not just written down when the family was authored) and found true, as of the stated date. This is the question the table exists to answer: which families are actually ready to retire today, not merely planned to be. A family absent from this list has not been re-verified — it may still be true, unverified is not the same as false.
+
+| ID | Family | As of | Evidence |
+|---|---|---|---|
+| F15 | `national_business_registry_lookup` | 2026-09-19 | get_all_resource_specs() includes engine='legal_entities'; nce/migrations/085_legal_entity_register.sql present (Wave A-5, #240) |
+| F21 | `functional_location_tree` | 2026-09-19 | nce/vertical_modules/fl_tree.py exports get_fl_children, get_fl_ancestors, move_fl_node, merge_fl_nodes (Wave C-1, #241) |
+| F32 | `notifications_and_reminders` | 2026-09-19 | get_all_resource_specs() includes engine='notifications' entities 'notifications' and 'reminders'; nce/migrations/083_notifications_reminders.sql present (Wave A-3, #228) |
+| F35 | `principal_identity_mapping` | 2026-09-19 | GET and PUT /api/me/context mounted in nce/me_app.py; nce/migrations/093_principal_bindings.sql present (Wave A-6, #262) |
+| F39 | `document_register` | 2026-09-19 | nce/migrations/084_document_register.sql creates documents (with tags column), document_links (polymorphic about-edges), and document_shares (expiring tokens) (Wave A-4) |
+| F40 | `address_and_cadastre_identity` | 2026-09-19 | get_all_resource_specs() includes engine='sites' entity 'sites'; nce/migrations/095_site_master_data.sql present (Wave A-9, #267) |
+
 ## Families by category
 
 ### Delivery — Project/Procurement/Field/Resources
