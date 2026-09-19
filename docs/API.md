@@ -98,11 +98,43 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/admin/webhooks` | `api_admin_webhooks_post` |
 | DELETE | `/api/admin/webhooks/{id}` | `api_admin_webhooks_delete` |
 | GET | `/api/agreements` | `api_agreements_list` |
+| GET | `/api/agreements/agreements` | `handle_list` |
+| POST | `/api/agreements/agreements` | `handle_create` |
+| POST | `/api/agreements/agreements/bulk` | `handle_bulk` |
+| GET | `/api/agreements/agreements/{id}` | `handle_get` |
+| PATCH | `/api/agreements/agreements/{id}` | `handle_patch` |
+| POST | `/api/agreements/agreements/{id}/archive` | `handle_archive` |
+| GET | `/api/agreements/agreements/{id}/comments` | `handle_list_comments` |
+| POST | `/api/agreements/agreements/{id}/comments` | `handle_add_comment` |
+| GET | `/api/agreements/agreements/{id}/documents` | `handle_list_documents` |
+| POST | `/api/agreements/agreements/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/agreements/agreements/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/agreements/agreements/{id}/events` | `handle_events` |
+| POST | `/api/agreements/agreements/{id}/restore` | `handle_restore` |
+| GET | `/api/agreements/agreements/{id}/tags` | `handle_list_tags` |
+| POST | `/api/agreements/agreements/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/agreements/agreements/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/agreements/comment` | `api_agreements_comment` |
 | POST | `/api/agreements/compliance-audit` | `api_agreements_compliance_audit` |
 | GET | `/api/agreements/coverage` | `api_agreements_coverage` |
 | POST | `/api/agreements/create` | `api_agreements_create` |
 | POST | `/api/agreements/extract` | `api_agreements_extract` |
+| GET | `/api/agreements/parties` | `handle_list` |
+| POST | `/api/agreements/parties` | `handle_create` |
+| POST | `/api/agreements/parties/bulk` | `handle_bulk` |
+| GET | `/api/agreements/parties/{id}` | `handle_get` |
+| PATCH | `/api/agreements/parties/{id}` | `handle_patch` |
+| POST | `/api/agreements/parties/{id}/archive` | `handle_archive` |
+| GET | `/api/agreements/parties/{id}/comments` | `handle_list_comments` |
+| POST | `/api/agreements/parties/{id}/comments` | `handle_add_comment` |
+| GET | `/api/agreements/parties/{id}/documents` | `handle_list_documents` |
+| POST | `/api/agreements/parties/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/agreements/parties/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/agreements/parties/{id}/events` | `handle_events` |
+| POST | `/api/agreements/parties/{id}/restore` | `handle_restore` |
+| GET | `/api/agreements/parties/{id}/tags` | `handle_list_tags` |
+| POST | `/api/agreements/parties/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/agreements/parties/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/agreements/reconcile` | `api_agreements_reconcile` |
 | POST | `/api/agreements/record-signature` | `api_agreements_record_signature` |
 | POST | `/api/agreements/request-signature` | `api_agreements_request_signature` |
@@ -110,6 +142,22 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/agreements/sla-coverage` | `api_agreements_sla_coverage` |
 | POST | `/api/agreements/suggest-revision` | `api_agreements_suggest_revision` |
 | POST | `/api/agreements/suggest-terms` | `api_agreements_suggest_terms` |
+| GET | `/api/agreements/templates` | `handle_list` |
+| POST | `/api/agreements/templates` | `handle_create` |
+| POST | `/api/agreements/templates/bulk` | `handle_bulk` |
+| GET | `/api/agreements/templates/{id}` | `handle_get` |
+| PATCH | `/api/agreements/templates/{id}` | `handle_patch` |
+| POST | `/api/agreements/templates/{id}/archive` | `handle_archive` |
+| GET | `/api/agreements/templates/{id}/comments` | `handle_list_comments` |
+| POST | `/api/agreements/templates/{id}/comments` | `handle_add_comment` |
+| GET | `/api/agreements/templates/{id}/documents` | `handle_list_documents` |
+| POST | `/api/agreements/templates/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/agreements/templates/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/agreements/templates/{id}/events` | `handle_events` |
+| POST | `/api/agreements/templates/{id}/restore` | `handle_restore` |
+| GET | `/api/agreements/templates/{id}/tags` | `handle_list_tags` |
+| POST | `/api/agreements/templates/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/agreements/templates/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/agreements/upsert` | `api_agreements_upsert` |
 | GET | `/api/agreements/{id}` | `api_agreements_detail` |
 | GET | `/api/assets` | `api_assets_list` |
@@ -775,9 +823,18 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `a2a_update_grant_scopes` |  | yes |  |  |
 | `a2a_verify_grant_status` |  |  |  |  |
 | `abort_migration` |  | yes |  | yes |
+| `agreements_archive_agreements` |  | yes |  |  |
+| `agreements_archive_parties` |  | yes |  |  |
+| `agreements_archive_templates` |  | yes |  |  |
 | `agreements_coverage_matrix` |  |  | yes |  |
 | `agreements_create` | yes | yes |  |  |
 | `agreements_extract` | yes | yes |  |  |
+| `agreements_get_agreements` |  |  | yes |  |
+| `agreements_get_parties` |  |  | yes |  |
+| `agreements_get_templates` |  |  | yes |  |
+| `agreements_list_agreements` |  |  | yes |  |
+| `agreements_list_parties` |  |  | yes |  |
+| `agreements_list_templates` |  |  | yes |  |
 | `agreements_lookup_terms` |  |  | yes |  |
 | `agreements_reconcile_kickback` |  |  | yes |  |
 | `agreements_record_signature` | yes | yes |  |  |
@@ -785,6 +842,9 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `agreements_review_extraction` | yes | yes |  |  |
 | `agreements_run_compliance_audit` |  |  | yes |  |
 | `agreements_suggest_revision` | yes | yes |  |  |
+| `agreements_upsert_agreements` |  | yes |  |  |
+| `agreements_upsert_parties` |  | yes |  |  |
+| `agreements_upsert_templates` |  | yes |  |  |
 | `assets_advance_lifecycle` |  | yes |  |  |
 | `assets_archive_assets` |  | yes |  |  |
 | `assets_attach_sla` |  | yes |  |  |
@@ -1181,4 +1241,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 750 REST endpoints, 413 MCP tools._
+_Totals: 798 REST endpoints, 425 MCP tools._
