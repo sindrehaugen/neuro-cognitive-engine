@@ -368,9 +368,6 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "geodata_import_place_names",
         # Lane F Wave F-9 -- C17 Site Master Data address-registry enrichment
         "sites_enrich_address_from_registry",
-        # Lane E Wave E-5 -- C12 Vendors CONTRACTOR resource surface mutations (upsert + archive)
-        "vendors_upsert_contractors",
-        "vendors_archive_contractors",
         # Lane E Wave E-8 -- C12 Support TICKET/SLA/SUPPORT_HEALTH_SCORE resource surface mutations
         "support_upsert_tickets",
         "support_archive_tickets",
@@ -687,9 +684,6 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "geodata_query_n50_land_cover",
         # Lane F Wave F-13 -- geodata nearest place-name query (global table, no namespace_id)
         "geodata_query_nearest_place_name",
-        # Lane E Wave E-5 -- C12 Vendors CONTRACTOR resource surface cacheable reads (list + get)
-        "vendors_list_contractors",
-        "vendors_get_contractors",
         # Lane E Wave E-8 -- C12 Support TICKET/SLA/SUPPORT_HEALTH_SCORE resource surface cacheable reads
         "support_list_tickets",
         "support_get_tickets",

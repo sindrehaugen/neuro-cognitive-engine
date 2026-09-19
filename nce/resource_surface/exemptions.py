@@ -205,6 +205,30 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
             "in Charter §13 Update 12); retained as an inert reservation."
         ),
     ),
+    "CONTRACTOR": ResourceExemption(
+        owner_engine="vendors",
+        reason=(
+            "Regression: Lane E's own Wave E-5 (PR #236) declared this against a real "
+            "table (contractor_profiles) without checking its RLS policy first, and "
+            "the spec is unreachable in production. contractor_profiles' ONLY policy "
+            "is external_isolation_policy, requiring partner_scope_id = "
+            "get_nce_external_scope() (grep -n \"POLICY.*contractor_profiles\" "
+            "nce/schema.sql -> one policy, no separate tenant policy to OR against "
+            "it; confirmed live via pg_policies too). admin_app.py:59 documents that "
+            "the nce.external_scope_id GUC is NEVER set on admin_app sessions, and "
+            "every C12 route/tool runs through admin_app's connection pool (the "
+            "nce_app role this table's FORCE ROW LEVEL SECURITY applies to). So the "
+            "CONTRACTOR resource surface returns zero rows on every read and fails "
+            "every write, served from admin_app -- the same unreachable-by-RLS class "
+            "found on customer_portal's three tables. The only legitimate path is "
+            "hand-written: vendors/contractors.py and partner_view.py both call "
+            "set_external_scope(conn, partner_scope_uuid) explicitly per request "
+            "before querying, something resource_surface has no generic hook for. "
+            "Do not re-declare without either a resource_surface capability for "
+            "dual-key RLS tables or routing partner-facing reads through a separate "
+            "app that establishes the external scope, the way customer_portal does."
+        ),
+    ),
     # ---------------------------------------------------------------------------
     # Agreements Engine (Lane B Wave B-10 / Lane E)
     # ---------------------------------------------------------------------------
