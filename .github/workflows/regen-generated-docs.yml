@@ -12,39 +12,54 @@ name: Regenerate generated docs (post-merge)
 #
 # This job commits straight to `main` (no PR of its own) and only when the
 # regenerated content actually differs -- git diff --quiet decides that, the
-# same idempotency check used by .github/workflows/refresh-lock.yml. It is a
-# fixed point: a push whose ONLY change is one of these 6 files (i.e. this
-# job's own prior commit) regenerates to byte-identical content and finds no
-# diff, so it does not re-trigger itself in a loop.
+# same idempotency check used by .github/workflows/refresh-lock.yml.
 #
-# WHAT THIS DOES NOT CHANGE: every existing --check gate in ci.yml (the D-GEN
-# engine-figures check, gen_openapi.py --check via test_openapi_current.py,
-# gen_api_docs.py --check via test_api_docs_current.py, gen_portal_parity.py
-# --check via test_host_parity_current.py) is untouched and keeps running on
-# every push to `main`, including this job's own regen commit. That is the
-# actual correctness enforcement, unchanged per ML-orch's explicit
-# requirement -- this workflow only moves WHEN the regeneration happens, from
-# "inside every PR" to "once, after merge."
+# THIS JOB CANNOT RE-TRIGGER ITSELF (and CI's own --check gates never see its
+# commit either): a push made with the default GITHUB_TOKEN does not fire
+# `on: push` workflows -- GitHub suppresses that to prevent exactly this kind
+# of recursion. refresh-lock.yml:19-21 already documents this for its own
+# GITHUB_TOKEN-authored PRs ("a PR opened with GITHUB_TOKEN does not trigger
+# other workflows, so the required checks will not start by themselves");
+# the same rule applies here to a direct push. An earlier draft of this
+# workflow claimed the opposite -- that ci.yml's --check gates would run on
+# this job's own regen commit -- which is false, caught by ML-orch before
+# merge. There is no infinite-loop risk either way (this workflow's own
+# push never re-triggers it), but it also means NOTHING external verifies
+# this job's output until the next NON-bot push to `main`.
 #
-# WHAT HAPPENS IF THIS JOB FAILS OR NEVER RUNS: nothing is silent. The moment
-# a merge to `main` changes something one of these generators reads (a tool
-# registered, a migration added, a route mounted) without this job
-# successfully regenerating afterwards, ci.yml's own --check gates -- which
-# ALSO run on every push to `main`, completely independent of this workflow --
-# go red on that same push and stay red until a regeneration lands, exactly as
-# they do today for a human contributor who forgot to regenerate before this
-# change. A GitHub Actions job failing is visible on the Actions tab like any
-# other; this adds no new alerting beyond that, which is a real, stated limit
-# (see the PR body), not a solved problem.
+# THE FIX: this job verifies its own output before it commits, using each
+# generator's own --check mode (gen_engine_figures.py, gen_openapi.py,
+# gen_api_docs.py, gen_portal_parity.py all have one; see the "Verify"
+# step below). If any disagree, the job fails RED on the Actions tab and
+# commits nothing -- self-contained, no dependency on a workflow trigger
+# that cannot fire, no PAT needed. This is strictly stronger than what a
+# human contributor gets today (a gate that cannot be skipped), not a
+# weaker substitute for the external gates.
+#
+# RESIDUAL, STATED NOT FIXED: gen_golden_thread_seams.py has no --check mode
+# at all (confirmed reading the script), so this job cannot self-verify
+# docs/_generated/golden_thread_seams.md the way it can the other four --
+# and this is not a gap this change introduces: no CI gate anywhere checks
+# that file today either (checked before writing this job). Out of scope
+# for §10.5b to fix; noted so it is not mistaken for solved.
+#
+# WHAT HAPPENS IF THIS JOB FAILS: for the four self-checked artefacts, the
+# job goes red immediately and commits nothing -- visible on the Actions tab
+# like any other failing job, and it cannot be silently skipped the way a
+# forgotten regeneration in a PR could be before this change. For
+# golden_thread_seams.md specifically (the one file with no --check), a bad
+# regeneration is only caught by the same manual/nightly discipline that
+# already applies today (nothing regresses; nothing new is added either).
 #
 # KNOWN, ACCEPTED COST: a doc on `main` is briefly stale between a merge
 # landing and this job's regen commit landing a few minutes later, and this
 # job can lose a race against a fast second merge (its `git push` is
-# rejected, non-fast-forward). Both resolve on their own: the job regenerates
-# from current HEAD every time and is idempotent, and a lost race just means
-# the NEXT push to `main` (the one that raced it) re-triggers this same job,
-# which then regenerates against the union of both merges' source changes.
-# Nothing is lost, no force-push, no rebase.
+# rejected, non-fast-forward). Both resolve on their own: the job
+# regenerates from current HEAD every time and is idempotent, and a lost
+# race just means the racing merge's own ordinary (non-bot) push to `main`
+# triggers its own run of this workflow, which regenerates against the
+# union of both merges' source changes. Nothing is lost, no force-push, no
+# rebase.
 
 on:
   push:
@@ -64,12 +79,6 @@ jobs:
     name: Regenerate docs/API.md, openapi.json, engine figures, golden thread seams, host parity
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # This job's own regen commit's message carries this marker so it does not
-    # re-trigger itself in a *second* run purely for log noise -- correctness
-    # does not depend on this skip (see the fixed-point note above: a re-run
-    # against a docs-only commit would just find zero diff and exit cleanly),
-    # this only saves a few CI minutes.
-    if: "!contains(github.event.head_commit.message, '[skip regen]')"
     steps:
       - uses: actions/checkout@v7
         with:
@@ -118,6 +127,23 @@ jobs:
       - name: Regenerate docs/_generated/host_parity.md
         run: python scripts/gen_portal_parity.py
 
+      # This job's own commit is invisible to ci.yml's --check gates (see the
+      # header comment: GITHUB_TOKEN pushes don't trigger `on: push`), so this
+      # step is the only thing that verifies the four self-checkable
+      # generators before anything is committed. A drift here means a bug in
+      # this job's own invocations (wrong flags, wrong paths, an environment
+      # difference from what --check expects) -- fail loudly, commit nothing.
+      - name: Verify regenerated docs pass their own --check (self-contained, no external trigger needed)
+        env:
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+        run: |
+          python scripts/gen_api_docs.py --check
+          python scripts/gen_openapi.py --check
+          python scripts/gen_engine_figures.py --repo . --baseline HEAD \
+            --out docs/_generated/engine_figures.md \
+            --update-status docs/vertical_engines/ENGINE_STATUS.md --check
+          python scripts/gen_portal_parity.py --check
+
       - name: Commit and push if the regenerated docs actually changed
         run: |
           set -e
@@ -134,15 +160,18 @@ jobs:
           fi
 
           git add $TARGETS
-          git commit -m "docs: regenerate generated artefacts [skip regen]
+          git commit -m "docs: regenerate generated artefacts [bot]
 
           Auto-regenerated by .github/workflows/regen-generated-docs.yml
           after a merge to ${{ github.ref_name }} changed something these
-          docs are derived from. See that workflow for the exact generator
-          invocations; see charter §10.5b for why this runs post-merge
-          instead of inside the PR that changed the source."
+          docs are derived from, and self-verified in this same run (see the
+          'Verify regenerated docs pass their own --check' step) since this
+          commit's own push does not trigger ci.yml's external gates. See
+          that workflow for the exact generator invocations; see charter
+          §10.5b for why this runs post-merge instead of inside the PR that
+          changed the source."
 
           if ! git push origin HEAD:${{ github.ref_name }}; then
-            echo "Push rejected -- ${{ github.ref_name }} moved under this job (a fast second merge, the known/accepted race in this workflow's header comment). That push's own run of this workflow will regenerate against the current state and commit what's actually needed; nothing from this run is lost, nothing needs a retry here."
+            echo "Push rejected -- ${{ github.ref_name }} moved under this job (a fast second merge, the known/accepted race in this workflow's header comment). That merge's own ordinary push triggers its own run of this workflow, which regenerates against the current state; nothing from this run is lost, nothing needs a retry here."
             exit 0
           fi
