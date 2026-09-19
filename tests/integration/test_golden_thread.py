@@ -12,7 +12,8 @@ customer → design → quote → sign → **baseline frozen** → project → P
 H-9 Golden Thread v2 extension (charter §9, 2026-09-19), steps 29-37: address →
 **SITE** → FL tree (children/ancestors/move real; **merge broken**, break-h9a) →
 room category + responsible employee → **deal with participants (not built,
-break-h9b)** → **agreement with parties (blocked, break-h9c)** → **billing run
+break-h9b)** → **agreement with parties (graph/relational customer-identity
+split, break-h9c)** → **billing run
 (not built, break-h9d)** → **customer invoice (not built, break-h9e)** →
 notification received by the responsible employee. A stated partial per S7: the
 thread has a genuine gap from steps 33-36 (participants/billing/invoice do not
@@ -453,16 +454,19 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         canonical_label="agreement with parties",
         is_broken=True,
         review_break="break-h9c",
-        phase1_wave="resource_surface-fix",
+        phase1_wave="customer-graph-relational-split",
         description=(
             "AGREEMENT/AGREEMENT_PARTY (B-9, migration 096) exist only as C12 resource-surface "
-            "tools -- no hand-written creation path. Every C12 upsert against a real Postgres "
-            "table currently fails: handle_upsert (nce/resource_surface/mcp.py) binds "
-            "datetime.now(timezone.utc).isoformat() (a str) into the real timestamptz "
-            "version_field column; asyncpg's binary protocol requires a real datetime. Affects "
-            "26 of 30 registered ResourceSpecs (every one using the default version_field="
-            "'updated_at'), not just agreements -- flagged estate-wide, not fixed here (owned "
-            "by resource_surface, which this lane's charter forbids editing)."
+            "tools -- no hand-written creation path. The resource_surface datetime/version_field "
+            "bug this step was originally blocked on landed on main in #284; re-verified live and "
+            "it is fixed. Re-running this step against a real Postgres surfaces a second, distinct "
+            "blocker: 'agreements' hard-FKs customer_id to sales_customers.id "
+            "(agreements_customer_id_fkey), but the Golden Thread's CUSTOMER concept -- and every "
+            "customer in the sales engine's DEAL/QUOTE flow -- lives only as a kg_nodes graph node "
+            "(do_create_deal writes entity_type='CUSTOMER' to kg_nodes; step 1). Nothing anywhere "
+            "in the tree bridges a graph-modeled customer to a real sales_customers row. Not a test "
+            "bug and not fixed here -- an architecture question (graph vs. C12-relational customer "
+            "identity) outside this lane's charter to decide."
         ),
     ),
     BurndownStep(
@@ -1878,14 +1882,17 @@ class TestGoldenThreadSteps:
     @pytest.mark.xfail(
         strict=True,
         reason=(
-            "break-h9c: AGREEMENT/AGREEMENT_PARTY (B-9, migration 096) exist only as C12 "
-            "resource-surface tools -- no hand-written creation path. Every C12 upsert "
-            "against a real Postgres table crashed until this wave's own resource_surface "
-            "fix (handle_upsert bound a str where asyncpg needs a real datetime for the "
-            "version_field column, affecting 26 of 30 registered ResourceSpecs). That fix "
-            "is in its own PR (mlv16h/resource-surface-upsert-datetime-fix), not yet on "
-            "main as of this wave -- re-check this seam once it lands; it may close on "
-            "its own with zero changes here."
+            "break-h9c (re-diagnosed): the resource_surface datetime/version_field bug this "
+            "was originally blocked on merged to main in #284 -- confirmed fixed by live "
+            "re-run. That re-run surfaced the real, distinct blocker: asyncpg.exceptions."
+            "ForeignKeyViolationError on agreements_customer_id_fkey. ctx.customer_id is a "
+            "synthetic UUID that only ever exists as a kg_nodes graph node (entity_type="
+            "'CUSTOMER', written by do_create_deal in step 1) -- no step anywhere in this "
+            "file, and no code path anywhere in nce/, ever creates a matching row in the "
+            "C12-relational sales_customers table. 'agreements' hard-FKs to that table, so "
+            "any real customer_id must exist there first. This is an architecture split "
+            "(graph-modeled customer identity vs. C12-relational customer identity) with no "
+            "bridge between them, not a test bug and not fixed here."
         ),
     )
     async def test_step_34_agreement_parties(self, scenario: GoldenThreadScenarioContext) -> None:
@@ -2572,9 +2579,11 @@ class TestGoldenThreadPositiveControls:
         The original 28 steps still execute with zero broken steps. H-9 (2026-09-19)
         added 5 genuine breaks alongside 4 new working steps: break-h9a (fl_tree_merge,
         a real bug in Lane C's merge_fl_nodes, fix dispatched), break-h9b
-        (deal_participants, not built), break-h9c (agreement_parties, blocked on the
-        resource_surface fix), break-h9d/e (billing_run/customer_invoice, Wave B-12,
-        not started). A stated partial per S7, not a silent one.
+        (deal_participants, not built), break-h9c (agreement_parties: resource_surface
+        fix landed in #284, but re-verification surfaced a distinct, unbridged
+        graph-vs-relational customer-identity gap), break-h9d/e (billing_run/
+        customer_invoice, Wave B-12, not started). A stated partial per S7, not a
+        silent one.
         """
         broken_steps = [s for s in GOLDEN_THREAD_STEPS if s.is_broken]
         assert len(broken_steps) == 5, f"Expected 5 broken steps, found: {broken_steps}"
