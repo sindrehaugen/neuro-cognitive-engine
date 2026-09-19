@@ -405,6 +405,8 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "legal_entities": "namespace_id",
     # C16 Principal Mapping (Shared Core, Wave A-6): principal bindings.
     "principal_bindings": "namespace_id",
+    # C4 Outbound Webhooks (Shared Core, Wave A-7): outbound webhooks.
+    "outbound_webhooks": "namespace_id",
 }
 
 

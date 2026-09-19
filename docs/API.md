@@ -94,6 +94,9 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/admin/tools` | `api_admin_tools` |
 | POST | `/api/admin/tools/toggle` | `api_admin_tools_toggle` |
 | GET | `/api/admin/verify-chain/{namespace_id}` | `api_admin_verify_chain` |
+| GET | `/api/admin/webhooks` | `api_admin_webhooks_get` |
+| POST | `/api/admin/webhooks` | `api_admin_webhooks_post` |
+| DELETE | `/api/admin/webhooks/{id}` | `api_admin_webhooks_delete` |
 | GET | `/api/agreements` | `api_agreements_list` |
 | POST | `/api/agreements/comment` | `api_agreements_comment` |
 | POST | `/api/agreements/compliance-audit` | `api_agreements_compliance_audit` |
@@ -1025,4 +1028,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 627 REST endpoints, 380 MCP tools._
+_Totals: 630 REST endpoints, 380 MCP tools._
