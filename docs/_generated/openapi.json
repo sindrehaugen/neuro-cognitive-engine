@@ -5396,6 +5396,55 @@
         ],
         "type": "object"
       },
+      "Tool_agreements_calculate_index_adjustment_Input": {
+        "properties": {
+          "base_index": {
+            "description": "Optional explicit base index value.",
+            "type": "number"
+          },
+          "base_period": {
+            "description": "Base period (e.g. '2023' or '2023-01').",
+            "type": "string"
+          },
+          "cap_pct": {
+            "description": "Optional regulation cap ceiling (e.g. 0.05).",
+            "type": "number"
+          },
+          "current_annual_amount": {
+            "description": "Optional current amount to adjust.",
+            "type": "number"
+          },
+          "floor_pct": {
+            "description": "Optional regulation floor (default 0.0).",
+            "type": "number"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "regulation_ratio": {
+            "description": "Optional regulation ratio (default 1.0).",
+            "type": "number"
+          },
+          "series_id": {
+            "description": "Index series identifier (e.g. 'SSB_KPI').",
+            "type": "string"
+          },
+          "target_index": {
+            "description": "Optional explicit target index value.",
+            "type": "number"
+          },
+          "target_period": {
+            "description": "Target period (e.g. '2024' or '2024-01').",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "series_id"
+        ],
+        "type": "object"
+      },
       "Tool_agreements_coverage_matrix_Input": {
         "properties": {
           "namespace_id": {
@@ -5440,6 +5489,27 @@
         ],
         "type": "object"
       },
+      "Tool_agreements_evaluate_price_rule_Input": {
+        "properties": {
+          "context": {
+            "description": "Evaluation context parameters.",
+            "type": "object"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "rule_id": {
+            "description": "Rule identifier to evaluate (e.g. 'RULE_KPI_STANDARD').",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "rule_id"
+        ],
+        "type": "object"
+      },
       "Tool_agreements_extract_Input": {
         "properties": {
           "namespace_id": {
@@ -5474,6 +5544,30 @@
         ],
         "type": "object"
       },
+      "Tool_agreements_get_index_series_Input": {
+        "properties": {
+          "frequency": {
+            "description": "Optional; measurement frequency ('monthly', 'quarterly', 'annual').",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "search": {
+            "description": "Optional; text query to filter series by name or description.",
+            "type": "string"
+          },
+          "series_id": {
+            "description": "Optional; specific index series identifier (e.g. 'SSB_KPI').",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id"
+        ],
+        "type": "object"
+      },
       "Tool_agreements_get_parties_Input": {
         "properties": {
           "id": {
@@ -5488,6 +5582,30 @@
         "required": [
           "namespace_id",
           "id"
+        ],
+        "type": "object"
+      },
+      "Tool_agreements_get_price_rules_Input": {
+        "properties": {
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "rule_id": {
+            "description": "Optional specific rule ID (e.g. 'RULE_KPI_STANDARD').",
+            "type": "string"
+          },
+          "rule_type": {
+            "description": "Optional rule type filter.",
+            "type": "string"
+          },
+          "search": {
+            "description": "Optional text query.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id"
         ],
         "type": "object"
       },
@@ -7896,15 +8014,23 @@
       "Tool_economy_validate_contract_Input": {
         "properties": {
           "contract_id": {
-            "description": "Contract identifier in economy_contracts.",
+            "description": "Contract identifier in economy_contracts or agreements.",
+            "type": "string"
+          },
+          "index_series_id": {
+            "description": "Optional; Agreements Config-as-IP index series ID (e.g. 'SSB_KPI').",
             "type": "string"
           },
           "namespace_id": {
             "description": "Caller namespace UUID.",
             "type": "string"
           },
+          "price_rule_id": {
+            "description": "Optional; Agreements Config-as-IP price rule ID (e.g. 'RULE_KPI_STANDARD').",
+            "type": "string"
+          },
           "proposed_cpi_pct": {
-            "description": "Proposed CPI uplift fraction (e.g. 0.05 or '0.05' for 5%).",
+            "description": "Optional; proposed CPI uplift fraction (e.g. 0.05 or '0.05' for 5%).",
             "type": [
               "number",
               "string"
@@ -7913,8 +8039,7 @@
         },
         "required": [
           "namespace_id",
-          "contract_id",
-          "proposed_cpi_pct"
+          "contract_id"
         ],
         "type": "object"
       },
@@ -18268,6 +18393,17 @@
         "mutation": true,
         "name": "agreements_archive_templates"
       },
+      "agreements_calculate_index_adjustment": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Calculate index-linked price regulation uplift percentage and optional renewal amounts between base and target periods using Config-as-IP index series.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_agreements_calculate_index_adjustment_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "agreements_calculate_index_adjustment"
+      },
       "agreements_coverage_matrix": {
         "admin_only": false,
         "cacheable": true,
@@ -18289,6 +18425,17 @@
         "migration": false,
         "mutation": true,
         "name": "agreements_create"
+      },
+      "agreements_evaluate_price_rule": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Evaluate an agreement pricing rule (prisregel) against a contract, room count, or volume context.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_agreements_evaluate_price_rule_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "agreements_evaluate_price_rule"
       },
       "agreements_extract": {
         "admin_only": true,
@@ -18312,6 +18459,17 @@
         "mutation": false,
         "name": "agreements_get_agreements"
       },
+      "agreements_get_index_series": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Query economic index series (SSB KPI, KPI-JAE, ICT services producer price, EU HICP) and historical measurement figures from Agreements Config-as-IP.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_agreements_get_index_series_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "agreements_get_index_series"
+      },
       "agreements_get_parties": {
         "admin_only": false,
         "cacheable": true,
@@ -18322,6 +18480,17 @@
         "migration": false,
         "mutation": false,
         "name": "agreements_get_parties"
+      },
+      "agreements_get_price_rules": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Query agreement pricing rules (prisregel) covering index regulation, room SLA categories, volume tier discounts, and commitment terms from Agreements Config-as-IP.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_agreements_get_price_rules_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "agreements_get_price_rules"
       },
       "agreements_get_templates": {
         "admin_only": false,
@@ -31376,6 +31545,221 @@
         ]
       }
     },
+    "/api/agreements/index-series": {
+      "get": {
+        "description": "GET /api/agreements/index-series \u2014 query economic index series.",
+        "operationId": "get_api_agreements_index_series",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "GET /api/agreements/index-series \u2014 query economic index series.",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/index-series/calculate": {
+      "post": {
+        "description": "POST /api/agreements/index-series/calculate \u2014 calculate index-linked price adjustment.",
+        "operationId": "post_api_agreements_index_series_calculate",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "POST /api/agreements/index-series/calculate \u2014 calculate index-linked price adjustment.",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/index-series/{id}": {
+      "get": {
+        "description": "GET /api/agreements/index-series \u2014 query economic index series.",
+        "operationId": "get_api_agreements_index_series_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "GET /api/agreements/index-series \u2014 query economic index series.",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
     "/api/agreements/parties": {
       "get": {
         "description": "handle_list (/api/agreements/parties)",
@@ -32799,6 +33183,221 @@
           }
         },
         "summary": "handle_remove_tag (/api/agreements/parties/{id}/tags/{tag})",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/price-rules": {
+      "get": {
+        "description": "GET /api/agreements/price-rules \u2014 query agreement pricing rules.",
+        "operationId": "get_api_agreements_price_rules",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "GET /api/agreements/price-rules \u2014 query agreement pricing rules.",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/price-rules/evaluate": {
+      "post": {
+        "description": "POST /api/agreements/price-rules/evaluate \u2014 evaluate a pricing rule.",
+        "operationId": "post_api_agreements_price_rules_evaluate",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "POST /api/agreements/price-rules/evaluate \u2014 evaluate a pricing rule.",
+        "tags": [
+          "agreements"
+        ]
+      }
+    },
+    "/api/agreements/price-rules/{id}": {
+      "get": {
+        "description": "GET /api/agreements/price-rules \u2014 query agreement pricing rules.",
+        "operationId": "get_api_agreements_price_rules_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "GET /api/agreements/price-rules \u2014 query agreement pricing rules.",
         "tags": [
           "agreements"
         ]

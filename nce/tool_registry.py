@@ -1273,6 +1273,35 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=True,
         mutation=True,
     ),
+    # Wave B-10: Price Rules & Index Series (Config-as-IP)
+    "agreements_get_index_series": ToolSpec(
+        _h(agreements_mcp_handlers, "handle_agreements_get_index_series"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+        engine="agreements",
+    ),
+    "agreements_calculate_index_adjustment": ToolSpec(
+        _h(agreements_mcp_handlers, "handle_agreements_calculate_index_adjustment"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+        engine="agreements",
+    ),
+    "agreements_get_price_rules": ToolSpec(
+        _h(agreements_mcp_handlers, "handle_agreements_get_price_rules"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+        engine="agreements",
+    ),
+    "agreements_evaluate_price_rule": ToolSpec(
+        _h(agreements_mcp_handlers, "handle_agreements_evaluate_price_rule"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+        engine="agreements",
+    ),
     # ------------------------------------------------------------------
     # Economy vertical module tools (M8.W4) — Advisor: read-only
     # ------------------------------------------------------------------
