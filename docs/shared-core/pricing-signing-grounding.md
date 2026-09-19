@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** PLACEHOLDER_SHA (mlv16f/f15-fx-weather) · **Last-audited:** 2026-09-19
+> **Status:** shipped · **Verified-against:** 03d2e13 (mlv16f/f15-fx-weather) · **Last-audited:** 2026-09-19
 # Shared Core Pricing, Signing, and Grounding Guide (Doc 64)
 
 This guide details the design, configuration, implementation, and security models of the Neuro-Cognitive Engine (NCE) shared-core components for **Pricing (C6)**, **Signing (C7)**, and **Structural-Enforcement Grounding (C9a/C9b)**. These services are implemented in the `nce/` core and are shared by all downstream vertical engines.
