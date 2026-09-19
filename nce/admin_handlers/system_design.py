@@ -1446,3 +1446,373 @@ async def api_system_design_promote_functional_location(request) -> JSONResponse
         admin_state.engine, route="api_system_design_promote_functional_location"
     )
     return JSONResponse({"status": "ok", **result})
+
+
+# ---------------------------------------------------------------------------
+# Room Categories & FL Metadata REST Endpoints (Wave C-2)
+# ---------------------------------------------------------------------------
+
+
+async def api_system_design_list_room_categories(request) -> JSONResponse:
+    """GET /api/system-design/room-categories
+
+    Query parameters:
+        q (str, optional): Search keyword matching category ID, name, or description.
+        min_capacity (int, optional): Minimum seat capacity filter.
+        max_capacity (int, optional): Maximum seat capacity filter.
+
+    Response (JSON):
+        {"status": "ok", "room_categories": [...], "count": int}
+    """
+    from nce.vertical_modules.system_design.room_categories import do_get_room_categories
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    q = request.query_params.get("q")
+    min_cap = request.query_params.get("min_capacity")
+    max_cap = request.query_params.get("max_capacity")
+
+    try:
+        min_c = int(min_cap) if min_cap is not None else None
+        max_c = int(max_cap) if max_cap is not None else None
+    except ValueError:
+        return JSONResponse({"error": "Invalid capacity parameter"}, status_code=422)
+
+    categories = do_get_room_categories(
+        admin_state.engine,
+        {"q": q, "min_capacity": min_c, "max_capacity": max_c},
+    )
+    return JSONResponse({"status": "ok", "room_categories": categories, "count": len(categories)})
+
+
+async def api_system_design_get_room_category(request) -> JSONResponse:
+    """GET /api/system-design/room-categories/{id}
+
+    Path parameters:
+        id (str, required): Room category ID (e.g. BOARDROOM, HUDDLE).
+
+    Response (JSON):
+        {"status": "ok", "category": {...}}
+    """
+    from nce.vertical_modules.system_design.room_categories import (
+        RoomCategoryNotFoundError,
+        do_get_room_category,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    category_id = str(request.path_params.get("id") or "").strip()
+    if not category_id:
+        return JSONResponse({"error": "Missing category id"}, status_code=422)
+
+    try:
+        category = do_get_room_category(admin_state.engine, category_id)
+    except RoomCategoryNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+
+    return JSONResponse({"status": "ok", "category": category})
+
+
+async def api_system_design_get_fl_room_category(request) -> JSONResponse:
+    """GET /api/system-design/functional-locations/{id}/room-category
+
+    Path parameters:
+        id (str, required): Functional location UUID or label.
+    Query parameters:
+        namespace_id (str, required): Active tenant namespace UUID.
+
+    Response (JSON):
+        {"status": "ok", "fl_id": str, "fl_label": str, "category_id": str | None, "category": dict | None}
+    """
+    from nce.vertical_modules.system_design.fl_tree import FLNodeNotFoundError
+    from nce.vertical_modules.system_design.room_categories import do_get_fl_room_category
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    node_id = str(request.path_params.get("id") or "").strip()
+    if not node_id:
+        return JSONResponse({"error": "Missing functional location id"}, status_code=422)
+
+    try:
+        result = await do_get_fl_room_category(admin_state.engine, namespace_id, {"fl_id": node_id})
+    except FLNodeNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except Exception as exc:
+        log.exception("api_system_design_get_fl_room_category: unexpected error")
+        return admin_error_response("Failed to get room category", exc)
+
+    return JSONResponse({"status": "ok", **result})
+
+
+async def api_system_design_set_fl_room_category(request) -> JSONResponse:
+    """POST /api/system-design/functional-locations/{id}/room-category
+
+    Path parameters:
+        id (str, required): Functional location UUID or label.
+    JSON Body:
+        namespace_id (str, required): Active tenant namespace UUID.
+        category_id (str, required): Room category ID (e.g. BOARDROOM).
+        actor (str, optional): Actor initiating change.
+
+    Response (JSON):
+        {"status": "ok", "fl_id": str, "fl_label": str, "category_id": str, "actor": str | None}
+    """
+    from nce.vertical_modules.system_design.fl_tree import FLNodeNotFoundError
+    from nce.vertical_modules.system_design.room_categories import (
+        RoomCategoryNotFoundError,
+        do_set_fl_room_category,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
+
+    node_id = str(request.path_params.get("id") or "").strip()
+    if not node_id:
+        return JSONResponse({"error": "Missing functional location id"}, status_code=422)
+
+    category_id = str(body.get("category_id") or "").strip()
+    if not category_id:
+        return JSONResponse({"error": "category_id is required"}, status_code=422)
+
+    actor = body.get("actor")
+    params = {"fl_id": node_id, "category_id": category_id, "actor": actor}
+
+    try:
+        result = await do_set_fl_room_category(admin_state.engine, namespace_id, params)
+    except FLNodeNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except RoomCategoryNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except Exception as exc:
+        log.exception("api_system_design_set_fl_room_category: unexpected error")
+        return admin_error_response("Failed to set room category", exc)
+
+    await bump_mcp_cache_generation(
+        admin_state.engine, route="api_system_design_set_fl_room_category"
+    )
+    return JSONResponse({"status": "ok", **result})
+
+
+async def api_system_design_list_fl_responsible(request) -> JSONResponse:
+    """GET /api/system-design/functional-locations/{id}/responsible
+
+    Path parameters:
+        id (str, required): Functional location UUID or label.
+    Query parameters:
+        namespace_id (str, required): Active tenant namespace UUID.
+
+    Response (JSON):
+        {"status": "ok", "responsible": [...], "count": int}
+    """
+    from nce.vertical_modules.system_design.fl_tree import FLNodeNotFoundError
+    from nce.vertical_modules.system_design.room_categories import do_list_fl_responsible
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    node_id = str(request.path_params.get("id") or "").strip()
+    if not node_id:
+        return JSONResponse({"error": "Missing functional location id"}, status_code=422)
+
+    try:
+        results = await do_list_fl_responsible(admin_state.engine, namespace_id, {"fl_id": node_id})
+    except FLNodeNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except Exception as exc:
+        log.exception("api_system_design_list_fl_responsible: unexpected error")
+        return admin_error_response("Failed to list responsible personnel", exc)
+
+    return JSONResponse({"status": "ok", "responsible": results, "count": len(results)})
+
+
+async def api_system_design_assign_fl_responsible(request) -> JSONResponse:
+    """POST /api/system-design/functional-locations/{id}/responsible
+
+    Path parameters:
+        id (str, required): Functional location UUID or label.
+    JSON Body:
+        namespace_id (str, required): Active tenant namespace UUID.
+        employee_id (str, required): Employee identifier.
+        role (str, optional): Role designation (default: primary).
+        actor (str, optional): Actor initiating assignment.
+
+    Response (JSON):
+        {"status": "ok", "fl_id": str, "fl_label": str, "employee_id": str, "role": str, "actor": str | None}
+    """
+    from nce.vertical_modules.system_design.fl_tree import FLNodeNotFoundError
+    from nce.vertical_modules.system_design.room_categories import (
+        InvalidResponsibleRoleError,
+        do_assign_fl_responsible,
+    )
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=422)
+
+    namespace_id, ns_err = _require_namespace_id(body.get("namespace_id"))
+    if ns_err is not None:
+        return ns_err
+
+    node_id = str(request.path_params.get("id") or "").strip()
+    if not node_id:
+        return JSONResponse({"error": "Missing functional location id"}, status_code=422)
+
+    employee_id = str(body.get("employee_id") or "").strip()
+    if not employee_id:
+        return JSONResponse({"error": "employee_id is required"}, status_code=422)
+
+    role = str(body.get("role") or "primary").strip()
+    actor = body.get("actor")
+
+    params = {
+        "fl_id": node_id,
+        "employee_id": employee_id,
+        "role": role,
+        "actor": actor,
+    }
+
+    try:
+        result = await do_assign_fl_responsible(admin_state.engine, namespace_id, params)
+    except FLNodeNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except InvalidResponsibleRoleError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        log.exception("api_system_design_assign_fl_responsible: unexpected error")
+        return admin_error_response("Failed to assign responsible personnel", exc)
+
+    await bump_mcp_cache_generation(
+        admin_state.engine, route="api_system_design_assign_fl_responsible"
+    )
+    return JSONResponse({"status": "ok", **result})
+
+
+async def api_system_design_unassign_fl_responsible(request) -> JSONResponse:
+    """DELETE /api/system-design/functional-locations/{id}/responsible/{employee_id}
+
+    Path parameters:
+        id (str, required): Functional location UUID or label.
+        employee_id (str, required): Employee identifier.
+    Query / Body parameters:
+        namespace_id (str, required): Active tenant namespace UUID.
+        actor (str, optional): Actor initiating removal.
+
+    Response (JSON):
+        {"status": "ok", "unassigned": bool, ...}
+    """
+    from nce.vertical_modules.system_design.fl_tree import FLNodeNotFoundError
+    from nce.vertical_modules.system_design.room_categories import do_unassign_fl_responsible
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    raw_ns = request.query_params.get("namespace_id")
+    actor = None
+    if not raw_ns:
+        try:
+            body = await request.json()
+            raw_ns = body.get("namespace_id")
+            actor = body.get("actor")
+        except Exception:
+            pass
+
+    namespace_id, ns_err = _require_namespace_id(
+        raw_ns, missing_error=_MISSING_NAMESPACE_QUERY_PARAM
+    )
+    if ns_err is not None:
+        return ns_err
+
+    node_id = str(request.path_params.get("id") or "").strip()
+    employee_id = str(request.path_params.get("employee_id") or "").strip()
+    if not node_id or not employee_id:
+        return JSONResponse(
+            {"error": "Missing functional location id or employee id"}, status_code=422
+        )
+
+    params = {
+        "fl_id": node_id,
+        "employee_id": employee_id,
+        "actor": actor,
+    }
+
+    try:
+        result = await do_unassign_fl_responsible(admin_state.engine, namespace_id, params)
+    except FLNodeNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except Exception as exc:
+        log.exception("api_system_design_unassign_fl_responsible: unexpected error")
+        return admin_error_response("Failed to unassign responsible personnel", exc)
+
+    await bump_mcp_cache_generation(
+        admin_state.engine, route="api_system_design_unassign_fl_responsible"
+    )
+    return JSONResponse({"status": "ok", **result})
+
+
+async def api_system_design_my_responsible_fls(request) -> JSONResponse:
+    """GET /api/system-design/functional-locations/my-responsible
+
+    Query parameters:
+        namespace_id (str, required): Active tenant namespace UUID.
+
+    Authentication & Security (C16 Principal Mapping):
+        Resolves calling principal identity via current_principal(request).
+        If caller is unbound, non-employee tier, or missing employee_id,
+        returns an empty list [] per C16 security contract.
+
+    Response (JSON):
+        {"status": "ok", "functional_locations": [...], "count": int}
+    """
+    from nce.principal_bindings import current_principal
+    from nce.vertical_modules.system_design.room_categories import do_list_my_responsible_fls
+
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    try:
+        principal = await current_principal(request)
+        results = await do_list_my_responsible_fls(
+            admin_state.engine, namespace_id, principal=principal
+        )
+    except Exception as exc:
+        log.exception("api_system_design_my_responsible_fls: unexpected error")
+        return admin_error_response("Failed to retrieve assigned functional locations", exc)
+
+    return JSONResponse({"status": "ok", "functional_locations": results, "count": len(results)})
