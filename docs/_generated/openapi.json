@@ -4062,6 +4062,35 @@
         ],
         "type": "object"
       },
+      "Tool_assets_service_history_Input": {
+        "properties": {
+          "asset_id": {
+            "description": "Target asset UUID to retrieve service history for.",
+            "type": "string"
+          },
+          "limit": {
+            "description": "Max timeline entries to return (default 50, max 200).",
+            "type": "integer"
+          },
+          "namespace_id": {
+            "description": "Active tenant namespace UUID.",
+            "type": "string"
+          },
+          "order": {
+            "description": "Timeline sorting order: 'desc' (newest first, default) or 'asc'.",
+            "enum": [
+              "desc",
+              "asc"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "asset_id"
+        ],
+        "type": "object"
+      },
       "Tool_assets_sync_netbox_Input": {
         "properties": {
           "fuzzy_threshold": {
@@ -14915,6 +14944,17 @@
         "migration": false,
         "mutation": true,
         "name": "assets_seed_from_bom"
+      },
+      "assets_service_history": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Retrieve full composite service history for an asset (Wave D-3). Aggregates support tickets, action logs with outcomes, field tech work orders, and knowledge graph failure pattern / boundary edges into a unified chronological timeline. Watcher; read-only.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_assets_service_history_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "assets_service_history"
       },
       "assets_sync_netbox": {
         "admin_only": true,
@@ -29181,6 +29221,81 @@
           }
         },
         "summary": "GET /api/assets/{id}/qr or GET /api/assets/qr",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/api/assets/{id}/service-history": {
+      "get": {
+        "description": "Path parameter:\nid (str): the asset's UUID (``assets.id``).\nQuery parameters:\nnamespace_id (str, required): Active namespace UUID.\nlimit (int, optional): Max timeline items to return (default 50).\norder (str, optional): 'desc' (newest first, default) or 'asc'.\nResponse (JSON):\n{\n\"ok\": True,\n\"asset_id\": \"...\",\n\"asset\": {...},\n\"timeline\": [...],\n\"tickets\": [...],\n\"work_orders\": [...],\n\"actions\": [...],\n\"outcome_edges\": [...],\n\"summary\": {...}\n}",
+        "operationId": "get_api_assets_id_service_history",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "GET /api/assets/{id}/service-history",
         "tags": [
           "assets"
         ]
