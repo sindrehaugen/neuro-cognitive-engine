@@ -557,6 +557,15 @@ EVENT_CATALOGUE: Mapping[str, EventContract] = {
         status="UNCONSUMED",
         description="Emitted when a complete system design revision is superseded or retired.",
     ),
+    "DESIGN.updated": EventContract(
+        selector="DESIGN.updated",
+        node_type="DESIGN",
+        op="updated",
+        declared_producers=("nce/vertical_modules/system_design/design_versions.py",),
+        declared_consumers=(),
+        status="UNCONSUMED",
+        description="Emitted when a solution design version is updated, activated, or has room specifications modified.",
+    ),
     "DESIGN_LINE.retired": EventContract(
         selector="DESIGN_LINE.retired",
         node_type="DESIGN_LINE",

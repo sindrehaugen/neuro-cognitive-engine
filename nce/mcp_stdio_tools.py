@@ -5960,6 +5960,162 @@ TOOLS = [
         },
     ),
     # -----------------------------------------------------------------
+    # System Design vertical module tools (Wave C-3: DESIGN Versions & Room Specifications)
+    # -----------------------------------------------------------------
+    Tool(
+        name="system_design_list_designs",
+        description="List all design versions for a namespace or specific functional location.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "functional_location_id": {
+                    "type": "string",
+                    "description": "Optional functional location UUID or label filter.",
+                },
+                "is_active": {
+                    "type": "boolean",
+                    "description": "Optional filter for active design versions only.",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Optional keyword search query on design name, ID, or label.",
+                },
+                "limit": {"type": "integer", "description": "Max designs to return (default 50)."},
+                "offset": {"type": "integer", "description": "Pagination offset (default 0)."},
+            },
+            "required": ["namespace_id"],
+        },
+    ),
+    Tool(
+        name="system_design_get_design",
+        description="Get a specific design version by ID.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "design_id": {
+                    "type": "string",
+                    "description": "Design version UUID or identifier.",
+                },
+            },
+            "required": ["namespace_id", "design_id"],
+        },
+    ),
+    Tool(
+        name="system_design_create_design",
+        description="Create a new design version for a functional location.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "design_id": {"type": "string", "description": "Unique design version identifier."},
+                "name": {"type": "string", "description": "Design version name."},
+                "functional_location_id": {
+                    "type": "string",
+                    "description": "Target functional location UUID or label.",
+                },
+                "version": {"type": "integer", "description": "Version number (default 1)."},
+                "revision": {
+                    "type": "string",
+                    "description": "Optional revision label (e.g. revA).",
+                },
+                "room_spec": {
+                    "type": "object",
+                    "description": "Room specification metadata dictionary.",
+                },
+                "is_active": {
+                    "type": "boolean",
+                    "description": "Whether this design should be initially active.",
+                },
+                "metadata": {"type": "object", "description": "Arbitrary metadata dictionary."},
+                "source_id": {
+                    "type": "string",
+                    "description": "Optional external source reference.",
+                },
+            },
+            "required": ["namespace_id", "design_id", "name", "functional_location_id"],
+        },
+    ),
+    Tool(
+        name="system_design_update_design",
+        description="Update fields, metadata, or active status of an existing design version.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "design_id": {"type": "string", "description": "Target design version identifier."},
+                "name": {"type": "string", "description": "Updated design name."},
+                "revision": {"type": "string", "description": "Updated revision label."},
+                "room_spec": {
+                    "type": "object",
+                    "description": "Updated room specification metadata.",
+                },
+                "metadata": {"type": "object", "description": "Updated metadata dictionary."},
+                "is_active": {"type": "boolean", "description": "Updated active status flag."},
+            },
+            "required": ["namespace_id", "design_id"],
+        },
+    ),
+    Tool(
+        name="system_design_set_active_design",
+        description="Atomically set a design version as the active design for its functional location.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "design_id": {
+                    "type": "string",
+                    "description": "Design version identifier to activate.",
+                },
+            },
+            "required": ["namespace_id", "design_id"],
+        },
+    ),
+    Tool(
+        name="system_design_get_active_design",
+        description="Get the currently active design version for a functional location.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "functional_location_id": {
+                    "type": "string",
+                    "description": "Target functional location UUID or label.",
+                },
+            },
+            "required": ["namespace_id", "functional_location_id"],
+        },
+    ),
+    Tool(
+        name="system_design_get_room_spec",
+        description="Get the room specification metadata associated with a design version.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "design_id": {"type": "string", "description": "Target design version identifier."},
+            },
+            "required": ["namespace_id", "design_id"],
+        },
+    ),
+    Tool(
+        name="system_design_set_room_spec",
+        description="Set or update the room specification metadata on a design version.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Active tenant namespace UUID."},
+                "design_id": {"type": "string", "description": "Target design version identifier."},
+                "room_spec": {
+                    "type": "object",
+                    "description": "Room specification metadata dictionary.",
+                },
+            },
+            "required": ["namespace_id", "design_id", "room_spec"],
+        },
+    ),
+    # -----------------------------------------------------------------
     # Support vertical module tools (Module 10, Wave 5, ML10-B5)
     # -----------------------------------------------------------------
     Tool(

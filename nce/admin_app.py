@@ -986,6 +986,52 @@ def build_admin_routes() -> list[Route]:
             endpoint=system_design_handlers.api_system_design_unassign_fl_responsible,
             methods=["DELETE"],
         ),
+        # System Design vertical module endpoints (Wave C-3) — DESIGN Versions & Room Specifications
+        Route(
+            "/api/system-design/designs",
+            endpoint=system_design_handlers.api_system_design_list_designs,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/system-design/designs",
+            endpoint=system_design_handlers.api_system_design_create_design,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/system-design/designs/{id}",
+            endpoint=system_design_handlers.api_system_design_get_design,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/system-design/designs/{id}",
+            endpoint=system_design_handlers.api_system_design_update_design,
+            methods=["PATCH"],
+        ),
+        Route(
+            "/api/system-design/designs/{id}/set-active",
+            endpoint=system_design_handlers.api_system_design_set_active_design,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/system-design/designs/{id}/room-spec",
+            endpoint=system_design_handlers.api_system_design_get_room_spec,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/system-design/designs/{id}/room-spec",
+            endpoint=system_design_handlers.api_system_design_set_room_spec,
+            methods=["PUT"],
+        ),
+        Route(
+            "/api/system-design/functional-locations/{id}/designs",
+            endpoint=system_design_handlers.api_system_design_list_fl_designs,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/system-design/functional-locations/{id}/active-design",
+            endpoint=system_design_handlers.api_system_design_get_fl_active_design,
+            methods=["GET"],
+        ),
         # ------------------------------------------------------------------
         # Vendors vertical module endpoints (M4.W3)
         # ------------------------------------------------------------------

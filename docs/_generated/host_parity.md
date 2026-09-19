@@ -29,6 +29,7 @@ Families whose `replacing_route` claim has been re-checked against the live tree
 |---|---|---|---|
 | F15 | `national_business_registry_lookup` | 2026-09-19 | get_all_resource_specs() includes engine='legal_entities'; nce/migrations/085_legal_entity_register.sql present (Wave A-5, #240) |
 | F21 | `functional_location_tree` | 2026-09-19 | nce/vertical_modules/fl_tree.py exports get_fl_children, get_fl_ancestors, move_fl_node, merge_fl_nodes (Wave C-1, #241) |
+| F22 | `design_versions_and_room_specs` | 2026-09-19 | nce/vertical_modules/system_design/design_versions.py exports create_design, list_designs, set_active_design, set_room_spec (Wave C-3) |
 | F32 | `notifications_and_reminders` | 2026-09-19 | get_all_resource_specs() includes engine='notifications' entities 'notifications' and 'reminders'; nce/migrations/083_notifications_reminders.sql present (Wave A-3, #228) |
 | F35 | `principal_identity_mapping` | 2026-09-19 | GET and PUT /api/me/context mounted in nce/me_app.py; nce/migrations/093_principal_bindings.sql present (Wave A-6, #262) |
 | F39 | `document_register` | 2026-09-19 | nce/migrations/084_document_register.sql creates documents (with tags column), document_links (polymorphic about-edges), and document_shares (expiring tokens) (Wave A-4) |
