@@ -41,6 +41,11 @@ from nce.vertical_modules.support.sla import (
     evaluate_sla_status,
     load_sla_profiles,
 )
+from nce.vertical_modules.support.summary import (
+    do_get_ticket_links,
+    do_link_ticket,
+    do_summarise_ticket,
+)
 from nce.vertical_modules.support.tickets import (
     AutocloseConfidenceRefusalError,
     InvalidTicketStatusError,
@@ -63,7 +68,9 @@ __all__ = [
     "compute_health_score",
     "do_check_sla_breaches",
     "do_get_on_call",
+    "do_get_ticket_links",
     "do_health_score",
+    "do_link_ticket",
     "do_open_proactive_telemetry_ticket",
     "do_open_ticket",
     "do_query_ticket",
@@ -72,6 +79,7 @@ __all__ = [
     "do_record_upsell_signal",
     "do_resolve_ticket",
     "do_sla_clock",
+    "do_summarise_ticket",
     "do_support_at_risk_aggregate",
     "do_triage_ticket",
     "do_troubleshoot",
