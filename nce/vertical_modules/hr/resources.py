@@ -12,27 +12,32 @@ REST route shadowing (documented, not a defect to fix here): admin_handlers/hr.p
 already registers GET/POST /api/hr/employees, GET /api/hr/employees/{id},
 GET/POST /api/hr/absences, and POST /api/hr/skills, each doing real work beyond
 generic CRUD -- do_get_employee composes skills + active certs with role-based
-field redaction; do_record_skill and do_create_employee are gated by
-require_hr_enabled (an opt-in-per-namespace check the generic C12 write path
-has no hook for -- the same pre-existing gap already accepted for inventory's
-C12 surface, see nce/vertical_modules/inventory/_guard.py, not new to this wave).
-None of these hand-written routes are retired: none is generic CRUD.
-Starlette matches routes in registration order and the hand-written ones are
-registered before build_all_resource_routes() in admin_app.py, so for the
-exact (path, method) pairs that collide -- GET/POST /api/hr/employees,
-GET /api/hr/employees/{id}, GET/POST /api/hr/absences, POST /api/hr/skills --
-the hand-written handler stays authoritative and the C12-generated route is
-inert (never reached), not broken. Every other C12-generated route (PATCH,
-archive, restore, bulk, events, comments, tags, documents, and all MCP tool
-twins) is genuinely new capability with no collision. Flagged to ML-orch as a
-new failure-mode class (REST-route shadowing) distinct from the TOOL_REGISTRY
-name-collision class K-H4/K-H5 already guard -- no existing ratchet detects it.
+field redaction. None of these hand-written routes are retired: none is
+generic CRUD. Starlette matches routes in registration order and the
+hand-written ones are registered before build_all_resource_routes() in
+admin_app.py, so for the exact (path, method) pairs that collide --
+GET/POST /api/hr/employees, GET /api/hr/employees/{id}, GET/POST /api/hr/absences,
+POST /api/hr/skills -- the hand-written handler stays authoritative and the
+C12-generated route is inert (never reached), not broken. Every other
+C12-generated route (PATCH, archive, restore, bulk, events, comments, tags,
+documents, and all MCP tool twins) is genuinely new capability with no
+collision. Flagged to ML-orch as a new failure-mode class (REST-route
+shadowing) distinct from the TOOL_REGISTRY name-collision class K-H4/K-H5
+already guard -- no existing ratchet detects it.
+
+enabled_guard=require_hr_enabled (Wave A-9-H / #294, landed after this wave's
+initial declaration): every generated route/tool for these four specs now
+enforces the same per-namespace opt-in check the hand-written routes already
+did, at the same boundary (before any DB access), matching HrDisabledError's
+existing translation path (already a subclass of EngineDisabledError, so
+#294's generic handling applies with zero changes to _guard.py).
 """
 
 from __future__ import annotations
 
 from nce.resource_surface import register_resource
 from nce.resource_surface.spec import ResourceSpec
+from nce.vertical_modules.hr._guard import require_hr_enabled
 
 # ---------------------------------------------------------------------------
 # 1. EMPLOYEE
@@ -44,6 +49,7 @@ EMPLOYEE_SPEC = ResourceSpec(
     table_name="employees",
     id_field="id",
     version_field="updated_at",
+    enabled_guard=require_hr_enabled,
     soft_delete_field=None,
     filterable_fields=("department", "role", "location_id", "active"),
     searchable_fields=("name", "email", "employee_id"),
@@ -73,6 +79,7 @@ SKILL_SPEC = ResourceSpec(
     table_name="skills",
     id_field="id",
     version_field="updated_at",
+    enabled_guard=require_hr_enabled,
     soft_delete_field=None,
     filterable_fields=("employee_id", "category", "level"),
     searchable_fields=("name",),
@@ -100,6 +107,7 @@ CERTIFICATION_SPEC = ResourceSpec(
     table_name="certifications",
     id_field="id",
     version_field="updated_at",
+    enabled_guard=require_hr_enabled,
     soft_delete_field=None,
     filterable_fields=("employee_id", "status", "valid_to"),
     searchable_fields=("name", "authority"),
@@ -128,6 +136,7 @@ ABSENCE_SPEC = ResourceSpec(
     table_name="absences",
     id_field="id",
     version_field="updated_at",
+    enabled_guard=require_hr_enabled,
     soft_delete_field=None,
     filterable_fields=("employee_id", "type", "status", "compliance_state"),
     searchable_fields=("reason",),
