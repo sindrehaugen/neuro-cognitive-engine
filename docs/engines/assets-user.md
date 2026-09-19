@@ -186,4 +186,62 @@ health = await do_compute_health(engine, {"namespace_id": ns_id, "asset_id": ass
 
 ---
 
+## 8. Resource Surface (C12)
+
+`ASSET` is declared via `ResourceSpec` (`nce/vertical_modules/assets/resources.py`)
+and mounted under the shared C12 REST and MCP framework (`nce/resource_surface/`),
+separately from the 8 hand-written tools in §2 above. It exposes the physical
+installed equipment register with lifecycle state, serials, and room locations.
+
+### Fields
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `bom_line_id` | Linked BOM line, if installed against one |
+| `serial` | Physical serial number |
+| `functional_location_id` | Where the asset is installed |
+| `lifecycle_state` | Install/service lifecycle state |
+| `change_origin` | Provenance tag |
+| `is_shell` | Marks a placeholder/shell asset record |
+| `product_id`, `product_sku` | Linked catalog product |
+| `updated_at` | Concurrency version field |
+
+Filterable: `bom_line_id`, `serial`, `functional_location_id`,
+`lifecycle_state`, `is_shell`, `product_id`. Full-text searchable (`?q=`):
+`serial`, `bom_line_id`, `functional_location_id`.
+
+### Principal Tier Redaction
+
+| Tier | Visible fields |
+|---|---|
+| `external-customer` | `id`, `serial`, `functional_location_id`, `lifecycle_state`, `is_shell`, `created_at`, `updated_at` |
+| `contractor` | `id`, `bom_line_id`, `serial`, `functional_location_id`, `lifecycle_state`, `is_shell`, `created_at`, `updated_at` |
+
+### MCP Tools (4)
+
+| Tool Name | Cacheable | Mutation | Description |
+|---|:---:|:---:|---|
+| `assets_list_assets` | ✔ | ✘ | List/query installed assets. |
+| `assets_get_assets` | ✔ | ✘ | Fetch a single asset by ID. |
+| `assets_upsert_assets` | ✘ | ✔ | Create or update an asset. |
+| `assets_archive_assets` | ✘ | ✔ | Soft-archive an asset (no dedicated soft-delete field declared; falls back to the standard C12 `is_archived`). |
+
+### REST Routes (16)
+
+Mounted under `/api/assets/assets` — the standard C12 verb set: `GET`/`POST`
+list+create, `POST .../bulk`, `GET`/`PATCH .../{id}`, `POST .../{id}/archive`,
+`POST .../{id}/restore`, `GET .../{id}/events`, `GET`/`POST .../{id}/comments`,
+`GET`/`POST .../{id}/tags`, `DELETE .../{id}/tags/{tag}`,
+`GET`/`POST .../{id}/documents`, `DELETE .../{id}/documents/{doc_id}`.
+
+### Storage and Tenancy
+
+Backed by the `assets` table, tenant-scoped (`namespace_id` row-level
+security). `enabled_guard`: **none** — this engine has no
+`nce/vertical_modules/assets/_guard.py`, so the generated surface has no
+per-namespace opt-in check to enforce.
+
+---
+
 > **Verified-against: b75c873**

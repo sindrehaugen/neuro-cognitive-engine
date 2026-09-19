@@ -291,3 +291,26 @@ If the Sales baseline is unavailable, `build_margin_trinity` returns `{"signed":
 | `do_recall_similar_projects` / `do_record_project_outcome` / `do_generate_case_study_edge` | — | — | — | *(planned — implemented, unwired)* |
 
 Every project entry point is namespace-scoped: writes go through `assert_owner` for `PROJECT_PROJECT`/`PROJECT_GATE`/`PROJECT_TASK`, and all queries carry an explicit `namespace_id` filter rather than relying on RLS alone.
+
+---
+
+## 9. No C12 Resource Surface
+
+Project owns 4 node types in `nce/config_data/node-ownership.json`; none has
+a C12 `ResourceSpec` today, and all 4 are explicitly exempted
+(`nce/resource_surface/exemptions.py`), not merely undeclared:
+
+- `PROJECT_PROJECT` — kg_nodes-only spine node with phase gates and capacity
+  metadata; scheduled for Wave C-6's PROJECT resource declaration.
+- `PROJECT_GATE`, `PROJECT_TASK` — kg_nodes-only stubs (phase gates/approval
+  criteria; work breakdown tasks and timeline items); scheduled alongside
+  `PROJECT_PROJECT` in the same Wave C-6.
+- `PROJECT_CASE_STUDY` — kg_nodes-only stub for customer case studies and
+  historical delivery baselines; pending a Project↔Marketing integration
+  wave (this is a different, project-owned node type from `marketing`'s own
+  `CASE_STUDY` C12 spec — the two engines model the same real-world concept
+  from different sides, one as a graph stub, one as a declared resource).
+
+All four are kg_nodes-only stubs blocked on a future wave, not the
+multi-table shape blocking some of System Design's node types — none is a
+documentation gap.

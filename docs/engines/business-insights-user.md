@@ -52,3 +52,57 @@ The Business Insights Engine is governed by four strict architectural guarantees
   Financial data egress to external LLMs is disabled by default. Egress requires authenticated board-level credentials, an explicit recorded sign-off reference, and full audit logging to the cognitive ledger.
 - **BI-4: Day-One Grace Degradation**
   When an upstream engine is unmigrated or unavailable, its metrics degrade gracefully to `"not available yet"` rather than failing or emitting confusing zeroes.
+
+---
+
+## 3. Resource Surface (C12, Wave E-16, partial)
+
+`BUSINESS_INSIGHTS_KPI_SNAPSHOT` is declared via `ResourceSpec`
+(`nce/vertical_modules/business_insights/resources.py`) and mounted under the
+shared C12 REST and MCP framework (`nce/resource_surface/`). It stores cached
+point-in-time KPI roll-ups and trend history behind the `business_insights_kpi_snapshots`
+table — a snapshot record, not a mutated-in-place one, so it has no
+`updated_at` column and therefore no `version_field` (no optimistic-concurrency
+check on upsert).
+
+### Fields
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `kpi_key` | Which metric this snapshot is for |
+| `value` | The captured metric value |
+| `period` | The reporting period the snapshot covers |
+| `captured_at` | When the snapshot was taken |
+| `source_engine` | Which engine's data the KPI was rolled up from |
+| `business_insights_source_id` | Cross-reference to the source record |
+| `raw` | Unstructured source payload |
+
+Filterable: `kpi_key`, `period`, `source_engine`. Full-text searchable (`?q=`): `kpi_key`.
+No `tier_allowlists` override — falls back to the C12 default (full record,
+subject to tenant-namespace isolation).
+
+### MCP Tools (4)
+
+| Tool Name | Cacheable | Mutation | Description |
+|---|:---:|:---:|---|
+| `business_insights_list_kpi_snapshots` | ✔ | ✘ | List/query cached KPI snapshots. |
+| `business_insights_get_kpi_snapshots` | ✔ | ✘ | Fetch a single KPI snapshot by ID. |
+| `business_insights_upsert_kpi_snapshots` | ✘ | ✔ | Create or update a KPI snapshot. |
+| `business_insights_archive_kpi_snapshots` | ✘ | ✔ | Soft-archive a KPI snapshot (no dedicated soft-delete field; the standard C12 `is_archived` fallback applies). |
+
+### REST Routes (16)
+
+Mounted under `/api/business_insights/kpi-snapshots` — the standard C12 verb
+set: `GET`/`POST` list+create, `POST .../bulk`, `GET`/`PATCH .../{id}`,
+`POST .../{id}/archive`, `POST .../{id}/restore`, `GET .../{id}/events`,
+`GET`/`POST .../{id}/comments`, `GET`/`POST .../{id}/tags`,
+`DELETE .../{id}/tags/{tag}`, `GET`/`POST .../{id}/documents`,
+`DELETE .../{id}/documents/{doc_id}`.
+
+### Storage and Tenancy
+
+Backed by the `business_insights_kpi_snapshots` table, tenant-scoped
+(`namespace_id` row-level security). `enabled_guard` is **enforced** — reads
+and writes through this surface require `metadata.business_insights.enabled`
+on the calling namespace, matching the hand-written boundary's own opt-in gate.

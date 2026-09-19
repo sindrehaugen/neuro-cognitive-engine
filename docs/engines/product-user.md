@@ -321,3 +321,64 @@ The Product Engine exposes **6 MCP tools** and **3 REST routes** mounted on the 
 | `GET` | `/api/product/search` | `api_product_search` | Standard | Searches product catalog by keyword (`query` parameter) with pagination. |
 | `GET` | `/api/product/{id}` | `api_product_get` | Standard | Retrieves master product details, list prices, and relationship edges. |
 | `GET` | `/api/product/enrichment/review` | `api_product_enrichment_review` | Standard | Lists pending enrichment proposals flagged with `needs_review = true`. |
+
+---
+
+## 10. Resource Surface (C12, Wave E-2)
+
+`PRODUCT_SKU` is declared via `ResourceSpec` (`nce/vertical_modules/product/resources.py`)
+and mounted under the shared C12 REST and MCP framework (`nce/resource_surface/`),
+separately from the hand-written tools/routes in §9 above. It is a **global
+shared parts library** keyed on `(manufacturer, mfr_part_no)` — one row per
+physical part number, shared across every tenant, per Sindre's ruling
+(2026-09-04, migration `064_product_catalog_global.sql`). Per-tenant
+commercial data (list/cost price) lives in the separate, tenant-scoped
+`product_prices` table and is out of scope for this spec.
+
+### Fields
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `gtin` | Global Trade Item Number |
+| `manufacturer`, `mfr_part_no` | Manufacturer identity keys |
+| `product_source_id` | Cross-reference to the source feed |
+| `lifecycle_status` | Product lifecycle state |
+| `etim_specs` | Structured ETIM specification data |
+| `updated_at` | Concurrency version field |
+| `is_deleted` | Soft-delete flag |
+
+Filterable: `gtin`, `manufacturer`, `mfr_part_no`, `product_source_id`,
+`lifecycle_status`. Full-text searchable (`?q=`): `manufacturer`,
+`mfr_part_no`, `gtin`. No `tier_allowlists` override.
+
+### MCP Tools (4)
+
+| Tool Name | Cacheable | Mutation | Description |
+|---|:---:|:---:|---|
+| `product_list_product_skus` | ✔ | ✘ | List/query the global product catalog. |
+| `product_get_product_skus` | ✔ | ✘ | Fetch a single catalog SKU by ID. |
+| `product_upsert_product_skus` | ✘ | ✔ | Create or update a catalog SKU. |
+| `product_archive_product_skus` | ✘ | ✔ | Soft-archive a catalog SKU. |
+
+### REST Routes (16)
+
+Mounted under `/api/product/product-skus` — the standard C12 verb set:
+`GET`/`POST` list+create, `POST .../bulk`, `GET`/`PATCH .../{id}`,
+`POST .../{id}/archive`, `POST .../{id}/restore`, `GET .../{id}/events`,
+`GET`/`POST .../{id}/comments`, `GET`/`POST .../{id}/tags`,
+`DELETE .../{id}/tags/{tag}`, `GET`/`POST .../{id}/documents`,
+`DELETE .../{id}/documents/{doc_id}`.
+
+### Storage and Tenancy
+
+Backed by the `product_catalog` table — **global scope**, no `namespace_id`
+column, shared across every tenant. `enabled_guard` is **enforced** despite
+the global scope: a caller must still supply a real `namespace_id` and that
+namespace must have `metadata.product.enabled` set, even though the row
+being read or written isn't itself tenant-owned. This is deliberate, not an
+inconsistency — the catalog is shared, but *whether a given tenant may reach
+it through the API* is not, and `namespace_id` is mandatory on every call to
+this surface specifically so that check has something to check (Q-46/#294
+correction: a caller omitting `namespace_id` entirely does not skip the gate,
+it is refused).

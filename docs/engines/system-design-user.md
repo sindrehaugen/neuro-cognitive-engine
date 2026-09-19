@@ -371,3 +371,29 @@ result = await do_design_to_quote(engine, {"namespace_id": str(ns_id), "design_i
 ## 9. Related reading
 - [System Design Admin Guide](system-design-admin.md) — enablement caveats, NetBox/SharePoint/Lucid adapters, RLS tables, troubleshooting.
 - `docs/vertical_engines/06-system-design-engine.md` — original design-intent spec (DISCUSSION doc; several sections describe functionality not yet built — treat as roadmap, not ground truth).
+
+---
+
+## 10. No C12 Resource Surface
+
+System Design owns 9 node types in `nce/config_data/node-ownership.json`;
+none has a C12 `ResourceSpec` today. All 9 are explicitly exempted
+(`nce/resource_surface/exemptions.py`), for two different reasons, not one:
+
+- **`DEVICE`, `PORT`, `RACK`, `CABLE`** — each is a **multi-table spread**
+  (device capabilities/node state/geometry for `DEVICE`; physical cabinet
+  placement/rack units/geometry for `RACK`; cable runs/wire gauge/topology
+  endpoints for `CABLE`), not 1:1 with a single table the way every declared
+  `ResourceSpec` in this codebase is. C12 has no mechanism for a spec backed
+  by more than one table — this is the "blocked on multi-table support"
+  reason genuinely blocking these four, pending a System Design resource wave.
+- **`FUNCTIONAL_LOCATION`, `DESIGN`, `DESIGN_LINE`, `SIGNAL_CHAIN`, `BOM_LINE`**
+  — kg_nodes-only stubs today (design versions specifically are managed via
+  the Wave C-3 `design_versions` domain service over `kg_nodes`/`kg_edges`/
+  `system_design_geometry`, §3 above), deferred to a future Lane E wave, or
+  (`SIGNAL_CHAIN`) retired as a virtual walk with no table anywhere.
+  `BOM_LINE` is additionally cross-engine transition-split across five
+  engines (system_design, sales, procurement, inventory, field_tech) and
+  scheduled for a multi-engine wave, not a System-Design-only one.
+
+None of the 9 is a documentation gap — each has a filed, reasoned exemption.

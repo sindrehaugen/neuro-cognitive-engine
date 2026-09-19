@@ -508,3 +508,26 @@ Returns scorecard metrics for a specific vendor or all active vendors across the
 | `GET /api/vendors/{id}` | REST | — | `true` | `false` | — | HTTP detail endpoint for vendor profile and scorecard. |
 | `GET /api/vendors/scorecard` | REST | — | `true` | `false` | — | HTTP dashboard endpoint for single or paged vendor scorecards. |
 | `do_partner_view` | Core / A2A | `true` | `false` | `false` | Partner | Single restricted skill available to external contractor principals. |
+
+---
+
+## No C12 Resource Surface
+
+`CONTRACTOR` was declared and shipped (Wave E-5, PR #236) against a real
+table, `contractor_profiles` — then found unreachable and removed
+(`nce/resource_surface/exemptions.py`), not left un-declared by choice. Its
+only RLS policy, `external_isolation_policy`, requires
+`partner_scope_id = get_nce_external_scope()`. Every C12 route/tool runs
+through `admin_app`'s connection pool, and `admin_app.py:59` documents that
+the `nce.external_scope_id` GUC is never set on those sessions — so the
+generated surface returned zero rows on every read and failed every write,
+served from `admin_app`, the same unreachable-by-RLS class found on
+`customer_portal`'s three tables (found the same night).
+
+The only legitimate path for contractor/partner data is the hand-written one
+already in place: `vendors/contractors.py` and `partner_view.py` both call
+`set_external_scope(conn, partner_scope_uuid)` explicitly per request before
+querying, something `resource_surface` has no generic hook for. Do not
+re-declare `CONTRACTOR` without either a `resource_surface` capability for
+dual-key RLS tables or a separate app that establishes the external scope,
+the way `customer_portal` does.

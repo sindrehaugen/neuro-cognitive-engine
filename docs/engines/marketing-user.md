@@ -127,3 +127,80 @@ Publishes an **approved** artifact. This tool hard-refuses (`MarketingUnapproved
 - It will not let you self-service a testimonial withdrawal today (§4.2) — ask an administrator.
 
 For the enablement mechanics, the exact approval/consent enforcement code paths, the REST route contract, and the full list of known gaps, see `docs/engines/marketing-admin.md`.
+
+---
+
+## 10. Resource Surface (C12, Wave E-15)
+
+3 declarative `ResourceSpec`s live in `nce/vertical_modules/marketing/resources.py`,
+all under the `marketing` engine slug, separate from the human-approval-gated
+hand-written tools documented above. None declare a `tier_allowlists` override.
+
+### CASE_STUDY (`case_studies` table)
+
+C12 drafted, approved, and published customer success stories.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `project_id` | Linked project the case study is about |
+| `title`, `body` | Content |
+| `status` | Draft/approved/published lifecycle state |
+| `anonymized` | Whether customer identity is anonymized |
+| `approver`, `approved_at` | Human approval-gate record (§6) |
+| `marketing_source_id`, `raw` | Source-feed cross-reference and payload |
+| `updated_at` | Concurrency version field |
+
+Filterable: `status`, `project_id`, `anonymized`. Searchable (`?q=`): `title`, `body`.
+
+### TESTIMONIAL (`testimonials` table)
+
+C12 customer testimonial quotes with structured consent tiers and NPS capture.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `customer_id`, `project_id` | Who gave the testimonial and for which project |
+| `quote` | The testimonial text |
+| `status` | Lifecycle state |
+| `consent`, `consent_tier`, `consent_scope`, `consent_recorded_at` | Structured consent record (§4) |
+| `nps_at_capture` | NPS score at the time of capture |
+| `marketing_source_id` | Source-feed cross-reference |
+
+Filterable: `status`, `customer_id`, `project_id`, `consent_tier`. Searchable
+(`?q=`): `quote`.
+
+### CONTENT_ASSET (`content_assets` table)
+
+C12 marketing content assets with AEO/GEO metadata and MinIO storage references.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `kind` | Asset kind |
+| `ref_id` | Cross-reference to the source record (e.g. a case study) |
+| `title` | Display title |
+| `seo` | AEO/GEO metadata |
+| `storage_uri` | MinIO storage reference |
+| `status` | Lifecycle state |
+| `marketing_source_id` | Source-feed cross-reference |
+
+Filterable: `kind`, `status`. Searchable (`?q=`): `title`.
+
+### MCP Tools (12) and REST Routes (48)
+
+Each of the 3 specs above generates the standard 4 MCP tools and 16 REST
+routes:
+
+| Base path | Entity |
+|---|---|
+| `/api/marketing/case-studies` | CASE_STUDY |
+| `/api/marketing/testimonials` | TESTIMONIAL |
+| `/api/marketing/content-assets` | CONTENT_ASSET |
+
+### Storage and Tenancy
+
+All three tables are tenant-scoped (`namespace_id` row-level security).
+`enabled_guard` is **enforced on all three specs** — reads and writes
+through this surface require `metadata.marketing.enabled` on the calling
+namespace.

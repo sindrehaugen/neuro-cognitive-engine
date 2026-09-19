@@ -102,4 +102,112 @@ The private AI coach acts as an individual mentor for each employee:
 
 ---
 
+## 6. Resource Surface (C12, Wave E-14)
+
+4 declarative `ResourceSpec`s live in `nce/vertical_modules/hr/resources.py`,
+all under the `hr` engine slug. None declare a `tier_allowlists` override —
+BI-1's person-grain barrier (Business Insights §2) is what actually keeps
+individual HR records from being aggregated into leaderboards; C12 tier
+redaction is a separate, additional mechanism this engine doesn't currently use.
+
+### EMPLOYEE (`employees` table)
+
+C12 employee profile cards with department, role, and leave balance.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `employee_id` | Human-facing employee identifier |
+| `name`, `email` | Identity |
+| `role`, `department` | Org placement |
+| `location_id` | Assigned location |
+| `leave_balance` | Remaining leave |
+| `active` | Employment status |
+| `hr_source_id`, `raw` | Source-feed cross-reference and payload |
+| `updated_at` | Concurrency version field |
+
+Filterable: `department`, `role`, `location_id`, `active`. Searchable
+(`?q=`): `name`, `email`, `employee_id`.
+
+### SKILL (`skills` table)
+
+C12 employee skill assessments with category and proficiency level.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `skill_id` | Skill catalog identifier |
+| `employee_id` | Whose skill this is |
+| `name`, `category`, `level` | Skill identity and proficiency |
+| `assessed_at` | When last assessed |
+| `hr_source_id`, `raw` | Source-feed cross-reference and payload |
+| `updated_at` | Concurrency version field |
+
+Filterable: `employee_id`, `category`, `level`. Searchable (`?q=`): `name`.
+
+### CERTIFICATION (`certifications` table)
+
+C12 employee certification records with issuing authority and validity window.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `cert_id` | Certification identifier |
+| `employee_id` | Certificate holder |
+| `authority`, `name` | Issuing authority and certification name |
+| `issued`, `valid_to` | Validity window |
+| `status` | Current status |
+| `hr_source_id`, `raw` | Source-feed cross-reference and payload |
+| `updated_at` | Concurrency version field |
+
+Filterable: `employee_id`, `status`, `valid_to`. Searchable (`?q=`): `name`, `authority`.
+
+This is the table the Golden Thread's step 22 (`test_step_22_cert_expiry`)
+writes real rows into and reads `do_check_hr_cert_expiry` against directly —
+the one Golden Thread step with a known, pre-existing, unrelated failure
+(the `CERTIFICATION.EXPIRED` outbox event, not this resource surface).
+
+### ABSENCE (`absences` table)
+
+C12 employee absence/leave records with compliance state tracking.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `absence_id` | Absence record identifier |
+| `employee_id` | Whose absence this is |
+| `type` | Absence type |
+| `start_date`, `end_date`, `days` | Duration |
+| `reason` | Stated reason |
+| `status`, `compliance_state` | Approval and Norwegian statutory compliance state |
+| `hr_source_id`, `raw` | Source-feed cross-reference and payload |
+| `updated_at` | Concurrency version field |
+
+Filterable: `employee_id`, `type`, `status`, `compliance_state`. Searchable
+(`?q=`): `reason`.
+
+### MCP Tools (16) and REST Routes (64)
+
+Each of the 4 specs above generates the standard 4 MCP tools and 16 REST
+routes:
+
+| Base path | Entity |
+|---|---|
+| `/api/hr/employees` | EMPLOYEE |
+| `/api/hr/skills` | SKILL |
+| `/api/hr/certifications` | CERTIFICATION |
+| `/api/hr/absences` | ABSENCE |
+
+### Storage and Tenancy
+
+All four tables are tenant-scoped (`namespace_id` row-level security).
+`enabled_guard` is **enforced on all four specs** — reads and writes through
+this surface require `metadata.hr.enabled` on the calling namespace. Wired
+during this wave's own rebase after ML-orch's dispatch on #294 landed — the
+one PR of the three (hr/marketing/business_insights) that caught it without
+needing the standing `tests/unit/test_engine_guard_ratchet.py` ratchet
+(#296) to catch it for it.
+
+---
+
 > **Verified-against: 7304330**

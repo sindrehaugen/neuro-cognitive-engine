@@ -264,9 +264,176 @@ result = await do_on_signed_callback(engine, {
 
 ---
 
+## 9. Resource Surface (C12, Wave B-1)
+
+5 declarative `ResourceSpec`s live in `nce/vertical_modules/sales/resources.py`,
+all under the `sales` engine slug. **This closes part of the Appendix's own
+"not implemented" list below** — `sales_list_customers` and its C12 siblings
+now exist, generated, not hand-written; the Appendix predates this wave and
+is left as the historical record it always was, not silently edited to look
+consistent (see this file's own note about the charter and the registry
+disagreeing).
+
+### CUSTOMER (`sales_customers` table)
+
+C12 customer master accounts with billing/shipping metadata and principal
+tier redaction. **This is the table Q-46 (break-h9c) found nothing ever
+writes to** — deals, leads, and quotes reference `customer_id`, but every
+customer in the Golden Thread scenario (and the DEAL/QUOTE flow generally)
+lives only as a `kg_nodes` graph node. A real customer created here, through
+this surface, has no automatic bridge to that graph representation either —
+the two are simply unconnected today.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `name`, `org_number` | Identity |
+| `email`, `phone` | Contact |
+| `billing_address`, `shipping_address` | Addresses |
+| `tier`, `status` | Classification and lifecycle |
+| `metadata` | Tenant-defined arbitrary attributes |
+| `updated_at` | Concurrency version field |
+| `is_archived` | Soft-delete flag |
+
+Filterable: `tier`, `status`, `is_archived`. Searchable (`?q=`): `name`,
+`org_number`, `email`, `phone`.
+
+Tier redaction:
+
+| Tier | Visible fields |
+|---|---|
+| `contractor` | `id`, `name`, `email`, `phone`, `shipping_address`, `status`, `created_at`, `updated_at` |
+| `external-customer` | `id`, `name`, `email`, `phone`, `billing_address`, `shipping_address`, `created_at` |
+
+### LEAD (`sales_leads` table)
+
+C12 inbound and campaign sales leads with qualification status and estimated
+pipeline value.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `title` | Lead title |
+| `customer_id` | Linked customer, if known |
+| `contact_name`, `email`, `phone`, `company` | Contact details |
+| `source`, `status` | Origin and qualification state |
+| `estimated_value` | Estimated pipeline value |
+| `metadata` | Tenant-defined arbitrary attributes |
+| `updated_at` | Concurrency version field |
+| `is_archived` | Soft-delete flag |
+
+Filterable: `source`, `status`, `customer_id`, `is_archived`. Searchable
+(`?q=`): `title`, `contact_name`, `email`, `phone`, `company`.
+
+Tier redaction:
+
+| Tier | Visible fields |
+|---|---|
+| `contractor` | `id`, `title`, `contact_name`, `company`, `status`, `created_at` |
+| `external-customer` | `id`, `title`, `status`, `created_at` |
+
+### DEAL (`sales_deals` table)
+
+C12 pipeline deals with stage tracking, probability weighting, and expected
+close dates.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `title` | Deal title |
+| `customer_id`, `lead_id` | Linked customer / originating lead |
+| `owner_slug` | Deal owner |
+| `stage`, `value`, `currency`, `expected_close_date`, `probability` | Pipeline state |
+| `metadata` | Tenant-defined arbitrary attributes |
+| `updated_at` | Concurrency version field |
+| `is_archived` | Soft-delete flag |
+
+Filterable: `stage`, `owner_slug`, `customer_id`, `lead_id`, `is_archived`.
+Searchable (`?q=`): `title`, `owner_slug`.
+
+Tier redaction:
+
+| Tier | Visible fields |
+|---|---|
+| `contractor` | `id`, `title`, `stage`, `expected_close_date`, `created_at` |
+| `external-customer` | `id`, `title`, `stage`, `created_at` |
+
+This C12 `DEAL` spec is separate from the `DEAL` knowledge-graph node
+`do_create_deal` writes (§1's `test_step_01_customer`-style deal-model
+creation) — the two currently coexist as different representations of "a
+deal," same as `CUSTOMER` above.
+
+### QUOTE (`sales_quotes` table)
+
+C12 customer quotes with versioning, currency, VAT totals, and validity windows.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `quote_number` | Quote identifier |
+| `deal_id`, `customer_id` | Linked deal / customer |
+| `title`, `version` | Content and version |
+| `status` | Lifecycle state |
+| `total_ex_vat`, `total_inc_vat`, `currency` | Commercial totals |
+| `valid_until` | Validity window |
+| `metadata` | Tenant-defined arbitrary attributes |
+| `updated_at` | Concurrency version field |
+| `is_archived` | Soft-delete flag |
+
+Filterable: `status`, `deal_id`, `customer_id`, `is_archived`. Searchable
+(`?q=`): `quote_number`, `title`.
+
+Tier redaction:
+
+| Tier | Visible fields |
+|---|---|
+| `contractor` | `id`, `quote_number`, `title`, `status`, `created_at`, `valid_until` |
+| `external-customer` | `id`, `quote_number`, `title`, `status`, `total_ex_vat`, `total_inc_vat`, `currency`, `valid_until`, `created_at` |
+
+### SIGNED_BASELINE (`sales_signed_baselines` table)
+
+Legally signed, immutable quote baseline (margin and total at signing time).
+Append-only, no `version_field`/`soft_delete_field` — **the database grants
+this table only `SELECT` and `INSERT`**, so this generated surface's
+`upsert`/`archive` tools exist but cannot actually update or archive a row;
+only the create path is real. This is the same table §3's hand-written
+`do_freeze_signed_baseline`/`sales_get_signed_baseline` write to and read
+from — two paths onto one append-only table.
+
+| Field | Role |
+|---|---|
+| `id` | Primary identifier |
+| `quote_id` | The quote this baseline freezes |
+| `signed_margin_pct`, `signed_total_nok` | Frozen commercial terms |
+| `signed_at` | When signed |
+
+Filterable and searchable on `quote_id`.
+
+### MCP Tools (20) and REST Routes (80)
+
+Each of the 5 specs above generates the standard 4 MCP tools and 16 REST
+routes:
+
+| Base path | Entity |
+|---|---|
+| `/api/sales/customers` | CUSTOMER |
+| `/api/sales/leads` | LEAD |
+| `/api/sales/deals` | DEAL |
+| `/api/sales/quotes` | QUOTE |
+| `/api/sales/signed-baselines` | SIGNED_BASELINE |
+
+### Storage and Tenancy
+
+All five tables are tenant-scoped (`namespace_id` row-level security).
+`enabled_guard`: **none** — this engine has no `nce/vertical_modules/sales/_guard.py`,
+so the generated surface has no per-namespace opt-in check to enforce on any
+of the 5 specs.
+
+---
+
 ## Appendix: spec vs. shipped (delta from `docs/vertical_engines/05-sales-engine.md`)
 
 The design spec describes a much larger MCP/REST surface than exists on `main` today. As of this audit:
-- **Not implemented as MCP tools:** `sales_list_customers`, `sales_customer_profile`, `sales_overview`, `sales_dashboard`, `sales_stats`, `sales_seller_detail`, `sales_quote_detail`, `sales_score_lead`, `sales_draft_quote`, `sales_open_dealroom`, `sales_request_signature`, `sales_freeze_signed_baseline`, `sales_convert_signed_quote_to_project`, `sales_sync_now` — all *(planned — not yet implemented as MCP tools)*. The underlying `do_*` functions exist for most of these (accessible via REST or direct call), except a dedicated signing REST route, which is also not present.
+- **Not implemented as MCP tools:** `sales_list_customers`, `sales_customer_profile`, `sales_overview`, `sales_dashboard`, `sales_stats`, `sales_seller_detail`, `sales_quote_detail`, `sales_score_lead`, `sales_draft_quote`, `sales_open_dealroom`, `sales_request_signature`, `sales_freeze_signed_baseline`, `sales_convert_signed_quote_to_project`, `sales_sync_now` — all *(planned — not yet implemented as MCP tools)*. **`sales_list_customers` is stale as of §9 above** — it now exists, generated by C12, not hand-written. The underlying `do_*` functions exist for most of the rest (accessible via REST or direct call), except a dedicated signing REST route, which is also not present.
 - **Not implemented anywhere:** `api_sales_signing_webhook` (POST), `api_sales_sync_status`/`api_sales_sync_now` REST routes, and the `NCE_SALES_*` config-var family described in the spec (see the admin guide §1 for what actually gates the engine today — namely, nothing).
 - **Implemented and matches spec:** the signed-baseline freeze mechanism (WORM), the C5 source-mode resolver + divergence log, the C8 public-quote redaction, DealRoom's PostgreSQL cutover (`bom_line_content` with LATERAL product_catalog join, zero MongoDB touches, no fabricated defaults, and shared C6 pricing resolver, Wave S-3), and the dedicated DealRoom REST route (`POST /api/sales/dealroom`).

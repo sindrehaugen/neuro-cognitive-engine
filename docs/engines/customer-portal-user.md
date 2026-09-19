@@ -141,3 +141,29 @@ Note that `bom_lines`/`assets` are supplied by the caller, not fetched by the to
 | `customer_portal_sla_status` | Watcher (self-service SLA clock) | **Shipped**, but degrades to hardcoded defaults with no upstream SLA data | §2.2 |
 | Expansion interest → Sales lead | Creates a lead object in Sales | **Confirms Sales engine reachability only** — no lead object created by this engine | §4.2 |
 | A2A reads from Project/Assets/Support/Agreements/Economy | 6 owner engines feed the 6 read-projection tools | **No A2A client code exists in this module** — `engine` param unused in all 6 read cores | §0 |
+
+---
+
+## No C12 Resource Surface
+
+`PORTAL_USER`, `PORTAL_DOCUMENT_SHARE`, and `PORTAL_SERVICE_REQUEST` are real,
+tenant-scoped tables (`portal_users`, `portal_document_shares`,
+`portal_service_requests`) but are explicitly **exempted** from C12
+(`nce/resource_surface/exemptions.py`), not merely undeclared. Each table's
+only RLS policy (`external_isolation_policy`) requires
+`customer_scope_id = get_nce_external_scope()`, and `admin_app.py:59`
+documents the contract explicitly: the `nce.external_scope_id` GUC is
+**never** set on `admin_app` sessions. Every C12 route/tool runs through
+`admin_app`'s connection pool — the same `nce_app` role these tables' `FORCE
+ROW LEVEL SECURITY` applies to — so `get_nce_external_scope()` always returns
+`NULL` there, and `customer_scope_id = NULL` is never true in SQL. A C12 spec
+on any of these three tables would silently return zero rows on every read
+and raise a raw Postgres RLS-violation error on every write, not a translated
+NCE error.
+
+This is a structural mismatch between C12's tenant_scope model
+(`namespace_id` only) and this engine's dual-key RLS (`namespace_id` AND
+`customer_scope_id`), not a missing field list — it needs either a second
+tenant-scope kind in C12 or a dedicated connection path that actually sets
+`external_scope_id`, and is Sindre's call, not this lane's. Same class of
+defect as `CONTRACTOR` (vendors engine, below) — found together, same night.
