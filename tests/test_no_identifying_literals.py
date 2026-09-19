@@ -140,32 +140,26 @@ def _candidate_tokens(line: str) -> set[str]:
     return candidates
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "RED by design, not a bug in the check (Q-45 ruling, 2026-09-19): running "
-        "this for real found genuine occurrences, not false positives -- almost all "
-        "are Lane F's own Q-25 AGPL-compliance disclaimers ('not a port of the "
-        "host's <module>.py', 'read for shape only'), the exact citation that PROVES "
-        "independent re-implementation also being a citation of the private path "
-        "this gate exists to keep out. Ruling: the path stays banned (this test), "
-        "and the disclaimer keeps its value without the path -- 'not a port of the "
-        "host's <component>, read for shape only (Q-25)' names what was checked in "
-        "prose, never the private path. Lanes are rewriting their disclaimers to "
-        "that shape; this stays xfail until that sweep lands, so the gate goes green "
-        "by the sites being fixed, never by the rule being weakened. One occurrence "
-        "was separate and more serious: a pre-charter file admitted code was "
-        "'lifted from' the private tree rather than read for shape. That was "
-        "escalated as Q-44 and is now RESOLVED (2026-09-19): the facts were "
-        "established by measurement before the wording was touched -- a line-level "
-        "comparison against the referenced client found 1.1% overlap on substantive "
-        "lines (both matches boilerplate) and zero of the 52 header-to-field alias "
-        "pairs in common. There was no copying; the comment was simply false, and "
-        "the file's provenance note now states what was measured. This is the only "
-        "site closed by correcting prose rather than by a lane's disclaimer sweep, "
-        "and it was closed on evidence, not on convenience."
-    ),
-)
+# NOTE (2026-09-19): this test carried `xfail(strict=True)` until today -- it was
+# RED by design, not broken. Running it for real found genuine occurrences, almost
+# all of them Lane F's own Q-25 AGPL-compliance disclaimers, where the citation that
+# PROVES independent re-implementation ("not a port of the host's <module>.py") was
+# itself a citation of the private path this gate exists to keep out. The Q-45 ruling
+# was that the path stays banned and the disclaimer keeps its value without it --
+# "not a port of the host's <component>, read for shape only (Q-25)" names what was
+# checked in prose, never the path.
+#
+# That sweep is now complete. The last remaining occurrence was separate and more
+# serious: a pre-charter file admitted code was "lifted from" the private tree rather
+# than read for shape. Escalated as Q-44, it was resolved by measurement before the
+# wording was touched -- 1.1% substantive-line overlap against the referenced client
+# (both matches boilerplate) and zero of 52 header-to-field alias pairs in common.
+# There was no copying; the comment was false, and the file now states what was
+# measured.
+#
+# The marker is removed rather than relaxed. The gate went green by every site being
+# fixed, never by the rule being weakened -- which was the condition all along. It is
+# now a live gate: reintroducing any banned host token fails CI.
 def test_no_banned_host_token_reaches_the_public_tree() -> None:
     """H-10: no hashed host module/directory/filename token may reach the tree.
 
