@@ -51,22 +51,15 @@ _NAMESPACE_ID = "00000000-0000-4000-8000-000000000001"
 _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
-# --- MEASURED post-rebase onto 8ed821a (#243/#251/#237/#249/#250/#255/#256/
-# #257/#239/#248/#246/#244/#253) plus Lane F Wave F-13 / F-15,
-# Wave C-1 FUNCTIONAL_LOCATION tree tools, Wave A-9 C17 Site Master Data
-# tools, and this lane's own Wave F-9 address-registry enrichment (+1
-# total, +1 mutation, +1 admin_only; not cacheable):
-#   NCE_MASTER_KEY="x"*32 python -c "
-#     import nce.tool_registry as tr
-#     print(len(tr.TOOL_REGISTRY), len(tr.MUTATION_TOOLS), len(tr.CACHEABLE_TOOLS), len(tr.ADMIN_ONLY_TOOLS))"
-# TOTAL: 384 + 1 F-9 sites_enrich_address_from_registry = 385.
-# MUTATION: 172 + 1 F-9 mutation = 173.
-# CACHEABLE: 167 (unaffected -- F-9's tool is not cacheable).
-# ADMIN_ONLY: 97 + 1 F-9 admin_only = 98.
-_TOTAL_TOOLS = 385
-_MUTATION_TOOLS = 173
-_CACHEABLE_TOOLS = 167
-_ADMIN_ONLY_TOOLS = 98
+# --- MEASURED post-rebase onto HEAD (Wave F-9 sites address enrichment) + Lane D Wave D-5 Support Ticket Action tools:
+# TOTAL: 385 from HEAD + 4 C12 Ticket Action tools + 2 Support Action/Timeline tools = 391.
+# MUTATION: 173 from HEAD + 2 C12 Ticket Action mutations + 1 support_log_ticket_action = 176.
+# CACHEABLE: 167 from HEAD + 2 C12 Ticket Action reads + 1 support_ticket_timeline = 170.
+# ADMIN_ONLY: 98 from HEAD + 1 support_log_ticket_action = 99.
+_TOTAL_TOOLS = 391
+_MUTATION_TOOLS = 176
+_CACHEABLE_TOOLS = 170
+_ADMIN_ONLY_TOOLS = 99
 _MIGRATION_TOOLS = 5
 
 

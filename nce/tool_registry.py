@@ -1542,6 +1542,18 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    "support_log_ticket_action": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_log_ticket_action"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "support_ticket_timeline": ToolSpec(
+        _h(support_mcp_handlers, "handle_support_ticket_timeline"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # Field Tech vertical module tools (ML12-B5, M12.W5)
     "field_tech_dispatch": ToolSpec(
         _h(field_tech_mcp_handlers, "handle_field_tech_dispatch"),

@@ -1438,6 +1438,16 @@ def build_admin_routes() -> list[Route]:
             endpoint=support_handlers.api_support_at_risk_aggregate,
             methods=["GET"],
         ),
+        Route(
+            "/api/support/tickets/{id}/actions",
+            endpoint=support_handlers.api_support_tickets_log_action,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/support/tickets/{id}/timeline",
+            endpoint=support_handlers.api_support_tickets_timeline,
+            methods=["GET"],
+        ),
         # Field Tech vertical module routes (ML12-B6, M12.W6)
         Route(
             "/api/field-tech/dispatch",

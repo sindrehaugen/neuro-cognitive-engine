@@ -2729,11 +2729,161 @@
         },
         "type": "object"
       },
+      "Support_ticket_actions": {
+        "description": "Append-only ticket action log tracking interventions (tiltak) and outcomes (utfall) per ticket per ADR 0042.",
+        "properties": {
+          "action_details": {
+            "description": "Field action_details",
+            "type": "string"
+          },
+          "action_summary": {
+            "description": "Field action_summary",
+            "type": "string"
+          },
+          "action_type": {
+            "description": "Field action_type",
+            "type": "string"
+          },
+          "change_origin": {
+            "description": "Field change_origin",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "outcome": {
+            "description": "Field outcome",
+            "type": "string"
+          },
+          "outcome_notes": {
+            "description": "Field outcome_notes",
+            "type": "string"
+          },
+          "performed_at": {
+            "description": "Field performed_at",
+            "type": "string"
+          },
+          "performed_by": {
+            "description": "Field performed_by",
+            "type": "string"
+          },
+          "ticket_id": {
+            "description": "Field ticket_id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "Support_ticket_actions_Create": {
+        "description": "Payload for creating a support ticket-actions",
+        "properties": {
+          "action_details": {
+            "type": "string"
+          },
+          "action_summary": {
+            "type": "string"
+          },
+          "action_type": {
+            "type": "string"
+          },
+          "change_origin": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "outcome_notes": {
+            "type": "string"
+          },
+          "performed_at": {
+            "type": "string"
+          },
+          "performed_by": {
+            "type": "string"
+          },
+          "ticket_id": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Support_ticket_actions_List": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Support_ticket_actions"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Cursor token for fetching the next page",
+            "nullable": true,
+            "type": "string"
+          },
+          "total": {
+            "description": "Total matching count if requested",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "Support_ticket_actions_Update": {
+        "description": "Payload for updating a support ticket-actions",
+        "properties": {
+          "action_details": {
+            "type": "string"
+          },
+          "action_summary": {
+            "type": "string"
+          },
+          "action_type": {
+            "type": "string"
+          },
+          "change_origin": {
+            "type": "string"
+          },
+          "expected_version": {
+            "description": "Optimistic concurrency lock version",
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "outcome_notes": {
+            "type": "string"
+          },
+          "performed_at": {
+            "type": "string"
+          },
+          "performed_by": {
+            "type": "string"
+          },
+          "ticket_id": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "Support_tickets": {
         "description": "Service tickets: status/priority lifecycle, SLA profile, and AI diagnosis payload.",
         "properties": {
           "asset_id": {
             "description": "Field asset_id",
+            "type": "string"
+          },
+          "change_origin": {
+            "description": "Field change_origin",
             "type": "string"
           },
           "customer_id": {
@@ -2790,6 +2940,9 @@
         "description": "Payload for creating a support tickets",
         "properties": {
           "asset_id": {
+            "type": "string"
+          },
+          "change_origin": {
             "type": "string"
           },
           "customer_id": {
@@ -2849,6 +3002,9 @@
         "description": "Payload for updating a support tickets",
         "properties": {
           "asset_id": {
+            "type": "string"
+          },
+          "change_origin": {
             "type": "string"
           },
           "customer_id": {
@@ -11575,6 +11731,27 @@
         ],
         "type": "object"
       },
+      "Tool_support_archive_ticket_actions_Input": {
+        "properties": {
+          "id": {
+            "description": "ID of Ticket Action to archive.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Audit reason for archiving.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "id"
+        ],
+        "type": "object"
+      },
       "Tool_support_archive_tickets_Input": {
         "properties": {
           "id": {
@@ -11707,6 +11884,23 @@
         ],
         "type": "object"
       },
+      "Tool_support_get_ticket_actions_Input": {
+        "properties": {
+          "id": {
+            "description": "Unique identifier of the Ticket Action.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "id"
+        ],
+        "type": "object"
+      },
       "Tool_support_get_tickets_Input": {
         "properties": {
           "id": {
@@ -11811,6 +12005,48 @@
         ],
         "type": "object"
       },
+      "Tool_support_list_ticket_actions_Input": {
+        "properties": {
+          "action_type": {
+            "description": "Filter by action_type.",
+            "type": "string"
+          },
+          "cursor": {
+            "description": "Pagination cursor from previous response.",
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 500,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "outcome": {
+            "description": "Filter by outcome.",
+            "type": "string"
+          },
+          "performed_by": {
+            "description": "Filter by performed_by.",
+            "type": "string"
+          },
+          "q": {
+            "description": "Full-text search term.",
+            "type": "string"
+          },
+          "ticket_id": {
+            "description": "Filter by ticket_id.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id"
+        ],
+        "type": "object"
+      },
       "Tool_support_list_tickets_Input": {
         "properties": {
           "asset_id": {
@@ -11847,6 +12083,10 @@
             "description": "Filter by room_id.",
             "type": "string"
           },
+          "sla_profile": {
+            "description": "Filter by sla_profile.",
+            "type": "string"
+          },
           "source": {
             "description": "Filter by source.",
             "type": "string"
@@ -11858,6 +12098,89 @@
         },
         "required": [
           "namespace_id"
+        ],
+        "type": "object"
+      },
+      "Tool_support_log_ticket_action_Input": {
+        "properties": {
+          "action_details": {
+            "description": "Optional detailed narrative or diagnostic data.",
+            "type": "string"
+          },
+          "action_summary": {
+            "description": "Brief summary of the action/tiltak taken.",
+            "type": "string"
+          },
+          "action_type": {
+            "description": "Category of action performed.",
+            "enum": [
+              "diagnostic",
+              "configuration",
+              "restart",
+              "firmware_update",
+              "hardware_replacement",
+              "cable_check",
+              "vendor_escalation",
+              "work_order",
+              "user_instruction",
+              "other"
+            ],
+            "type": "string"
+          },
+          "change_origin": {
+            "default": "agent",
+            "description": "Origin of the action entry.",
+            "enum": [
+              "sync",
+              "webhook",
+              "agent",
+              "operator",
+              "consolidation",
+              "replay",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Active namespace UUID.",
+            "type": "string"
+          },
+          "outcome": {
+            "description": "Outcome/utfall of the intervention.",
+            "enum": [
+              "resolved",
+              "improved",
+              "no_change",
+              "worsened",
+              "inconclusive",
+              "failed",
+              "pending_verification"
+            ],
+            "type": "string"
+          },
+          "outcome_notes": {
+            "description": "Optional notes or observations regarding the outcome.",
+            "type": "string"
+          },
+          "performed_at": {
+            "description": "Optional ISO 8601 timestamp when the action was performed (defaults to current time).",
+            "type": "string"
+          },
+          "performed_by": {
+            "description": "Name or ID of technician, engineer, or agent who performed the action.",
+            "type": "string"
+          },
+          "ticket_id": {
+            "description": "Support ticket UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "ticket_id",
+          "action_type",
+          "action_summary",
+          "outcome"
         ],
         "type": "object"
       },
@@ -12115,6 +12438,28 @@
         ],
         "type": "object"
       },
+      "Tool_support_ticket_timeline_Input": {
+        "properties": {
+          "limit": {
+            "default": 100,
+            "description": "Maximum number of action entries to return (1-500).",
+            "type": "integer"
+          },
+          "namespace_id": {
+            "description": "Active namespace UUID.",
+            "type": "string"
+          },
+          "ticket_id": {
+            "description": "Support ticket UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "ticket_id"
+        ],
+        "type": "object"
+      },
       "Tool_support_triage_ticket_Input": {
         "properties": {
           "namespace_id": {
@@ -12283,10 +12628,60 @@
         ],
         "type": "object"
       },
+      "Tool_support_upsert_ticket_actions_Input": {
+        "properties": {
+          "action_details": {
+            "description": "Value for action_details."
+          },
+          "action_summary": {
+            "description": "Value for action_summary."
+          },
+          "action_type": {
+            "description": "Value for action_type."
+          },
+          "change_origin": {
+            "description": "Value for change_origin."
+          },
+          "expected_version": {
+            "description": "Concurrency check version.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Optional ID of existing Ticket Action to update.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "outcome": {
+            "description": "Value for outcome."
+          },
+          "outcome_notes": {
+            "description": "Value for outcome_notes."
+          },
+          "performed_at": {
+            "description": "Value for performed_at."
+          },
+          "performed_by": {
+            "description": "Value for performed_by."
+          },
+          "ticket_id": {
+            "description": "Value for ticket_id."
+          }
+        },
+        "required": [
+          "namespace_id"
+        ],
+        "type": "object"
+      },
       "Tool_support_upsert_tickets_Input": {
         "properties": {
           "asset_id": {
             "description": "Value for asset_id."
+          },
+          "change_origin": {
+            "description": "Value for change_origin."
           },
           "customer_id": {
             "description": "Value for customer_id."
@@ -17019,6 +17414,17 @@
         "mutation": true,
         "name": "support_archive_sla_clocks"
       },
+      "support_archive_ticket_actions": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Soft-archive a Ticket Action resource.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_support_archive_ticket_actions_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "support_archive_ticket_actions"
+      },
       "support_archive_tickets": {
         "admin_only": false,
         "cacheable": false,
@@ -17085,6 +17491,17 @@
         "mutation": false,
         "name": "support_get_sla_clocks"
       },
+      "support_get_ticket_actions": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Fetch a single Ticket Action resource by ID.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_support_get_ticket_actions_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "support_get_ticket_actions"
+      },
       "support_get_tickets": {
         "admin_only": false,
         "cacheable": true,
@@ -17129,6 +17546,17 @@
         "mutation": false,
         "name": "support_list_sla_clocks"
       },
+      "support_list_ticket_actions": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "List and query Ticket Action resources for support.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_support_list_ticket_actions_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "support_list_ticket_actions"
+      },
       "support_list_tickets": {
         "admin_only": false,
         "cacheable": true,
@@ -17139,6 +17567,17 @@
         "migration": false,
         "mutation": false,
         "name": "support_list_tickets"
+      },
+      "support_log_ticket_action": {
+        "admin_only": true,
+        "cacheable": false,
+        "description": "Append an action/intervention record (tiltak) and outcome (utfall) to a support ticket. Actor; mutation, admin-only.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_support_log_ticket_action_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "support_log_ticket_action"
       },
       "support_open_ticket": {
         "admin_only": true,
@@ -17206,6 +17645,17 @@
         "mutation": true,
         "name": "support_sync_now"
       },
+      "support_ticket_timeline": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Retrieve the chronological timeline of actions, interventions, and milestone events for a ticket. Watcher; read-only, cacheable.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_support_ticket_timeline_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "support_ticket_timeline"
+      },
       "support_triage_ticket": {
         "admin_only": false,
         "cacheable": true,
@@ -17260,6 +17710,17 @@
         "migration": false,
         "mutation": true,
         "name": "support_upsert_sla_clocks"
+      },
+      "support_upsert_ticket_actions": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Create or update a Ticket Action resource.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_support_upsert_ticket_actions_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "support_upsert_ticket_actions"
       },
       "support_upsert_tickets": {
         "admin_only": false,
@@ -66216,6 +66677,1434 @@
         ]
       }
     },
+    "/api/support/ticket-actions": {
+      "get": {
+        "description": "handle_list (/api/support/ticket-actions)",
+        "operationId": "get_api_support_ticket_actions",
+        "parameters": [
+          {
+            "description": "Maximum number of records to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque pagination cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort column with optional +/- prefix",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated list of projected fields",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Full-text search query across: action_summary, outcome_notes, action_details",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on ticket_id",
+            "in": "query",
+            "name": "ticket_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on action_type",
+            "in": "query",
+            "name": "action_type",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on outcome",
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on performed_by",
+            "in": "query",
+            "name": "performed_by",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Support_ticket_actions_List"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list (/api/support/ticket-actions)",
+        "tags": [
+          "support"
+        ]
+      },
+      "post": {
+        "description": "handle_create (/api/support/ticket-actions)",
+        "operationId": "post_api_support_ticket_actions",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Support_ticket_actions_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Support_ticket_actions"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_create (/api/support/ticket-actions)",
+        "tags": [
+          "support"
+        ]
+      }
+    },
+    "/api/support/ticket-actions/bulk": {
+      "post": {
+        "description": "handle_bulk (/api/support/ticket-actions/bulk)",
+        "operationId": "post_api_support_ticket_actions_bulk",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "items": {
+                    "items": {
+                      "$ref": "#/components/schemas/Support_ticket_actions_Create"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Support_ticket_actions"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_bulk (/api/support/ticket-actions/bulk)",
+        "tags": [
+          "support"
+        ]
+      }
+    },
+    "/api/support/ticket-actions/{id}": {
+      "get": {
+        "description": "handle_get (/api/support/ticket-actions/{id})",
+        "operationId": "get_api_support_ticket_actions_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Support_ticket_actions"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_get (/api/support/ticket-actions/{id})",
+        "tags": [
+          "support"
+        ]
+      },
+      "patch": {
+        "description": "handle_patch (/api/support/ticket-actions/{id})",
+        "operationId": "patch_api_support_ticket_actions_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Support_ticket_actions_Update"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Support_ticket_actions"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_patch (/api/support/ticket-actions/{id})",
+        "tags": [
+          "support"
+        ]
+      }
+    },
+    "/api/support/ticket-actions/{id}/archive": {
+      "post": {
+        "description": "handle_archive (/api/support/ticket-actions/{id}/archive)",
+        "operationId": "post_api_support_ticket_actions_id_archive",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Support_ticket_actions_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Support_ticket_actions"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_archive (/api/support/ticket-actions/{id}/archive)",
+        "tags": [
+          "support"
+        ]
+      }
+    },
+    "/api/support/ticket-actions/{id}/comments": {
+      "get": {
+        "description": "handle_list_comments (/api/support/ticket-actions/{id}/comments)",
+        "operationId": "get_api_support_ticket_actions_id_comments",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EntityComment"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_comments (/api/support/ticket-actions/{id}/comments)",
+        "tags": [
+          "support"
+        ]
+      },
+      "post": {
+        "description": "handle_add_comment (/api/support/ticket-actions/{id}/comments)",
+        "operationId": "post_api_support_ticket_actions_id_comments",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityCommentInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Support_ticket_actions"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_add_comment (/api/support/ticket-actions/{id}/comments)",
+        "tags": [
+          "support"
+        ]
+      }
+    },
+    "/api/support/ticket-actions/{id}/documents": {
+      "get": {
+        "description": "handle_list_documents (/api/support/ticket-actions/{id}/documents)",
+        "operationId": "get_api_support_ticket_actions_id_documents",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum number of records to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque pagination cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort column with optional +/- prefix",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated list of projected fields",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Full-text search query across: action_summary, outcome_notes, action_details",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on ticket_id",
+            "in": "query",
+            "name": "ticket_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on action_type",
+            "in": "query",
+            "name": "action_type",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on outcome",
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on performed_by",
+            "in": "query",
+            "name": "performed_by",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Support_ticket_actions_List"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_documents (/api/support/ticket-actions/{id}/documents)",
+        "tags": [
+          "support"
+        ]
+      },
+      "post": {
+        "description": "handle_attach_document (/api/support/ticket-actions/{id}/documents)",
+        "operationId": "post_api_support_ticket_actions_id_documents",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Support_ticket_actions_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Support_ticket_actions"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_attach_document (/api/support/ticket-actions/{id}/documents)",
+        "tags": [
+          "support"
+        ]
+      }
+    },
+    "/api/support/ticket-actions/{id}/documents/{doc_id}": {
+      "delete": {
+        "description": "handle_detach_document (/api/support/ticket-actions/{id}/documents/{doc_id})",
+        "operationId": "delete_api_support_ticket_actions_id_documents_doc_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL path parameter doc_id",
+            "in": "path",
+            "name": "doc_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Support_ticket_actions"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_detach_document (/api/support/ticket-actions/{id}/documents/{doc_id})",
+        "tags": [
+          "support"
+        ]
+      }
+    },
+    "/api/support/ticket-actions/{id}/events": {
+      "get": {
+        "description": "handle_events (/api/support/ticket-actions/{id}/events)",
+        "operationId": "get_api_support_ticket_actions_id_events",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EntityTimelineEvent"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_events (/api/support/ticket-actions/{id}/events)",
+        "tags": [
+          "support"
+        ]
+      }
+    },
+    "/api/support/ticket-actions/{id}/restore": {
+      "post": {
+        "description": "handle_restore (/api/support/ticket-actions/{id}/restore)",
+        "operationId": "post_api_support_ticket_actions_id_restore",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Support_ticket_actions_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Support_ticket_actions"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_restore (/api/support/ticket-actions/{id}/restore)",
+        "tags": [
+          "support"
+        ]
+      }
+    },
+    "/api/support/ticket-actions/{id}/tags": {
+      "get": {
+        "description": "handle_list_tags (/api/support/ticket-actions/{id}/tags)",
+        "operationId": "get_api_support_ticket_actions_id_tags",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_tags (/api/support/ticket-actions/{id}/tags)",
+        "tags": [
+          "support"
+        ]
+      },
+      "post": {
+        "description": "handle_add_tag (/api/support/ticket-actions/{id}/tags)",
+        "operationId": "post_api_support_ticket_actions_id_tags",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityTagInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Support_ticket_actions"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_add_tag (/api/support/ticket-actions/{id}/tags)",
+        "tags": [
+          "support"
+        ]
+      }
+    },
+    "/api/support/ticket-actions/{id}/tags/{tag}": {
+      "delete": {
+        "description": "handle_remove_tag (/api/support/ticket-actions/{id}/tags/{tag})",
+        "operationId": "delete_api_support_ticket_actions_id_tags_tag",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL path parameter tag",
+            "in": "path",
+            "name": "tag",
+            "required": true,
+            "schema": {
+              "format": "string",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Support_ticket_actions"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_remove_tag (/api/support/ticket-actions/{id}/tags/{tag})",
+        "tags": [
+          "support"
+        ]
+      }
+    },
     "/api/support/tickets": {
       "get": {
         "description": "handle_list (/api/support/tickets)",
@@ -66260,9 +68149,18 @@
             }
           },
           {
-            "description": "Full-text search query across: summary, description, customer_id",
+            "description": "Full-text search query across: summary, description, customer_id, room_id, source_id",
             "in": "query",
             "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on source",
+            "in": "query",
+            "name": "source",
             "required": false,
             "schema": {
               "type": "string"
@@ -66287,9 +68185,9 @@
             }
           },
           {
-            "description": "Equality filter on customer_id",
+            "description": "Equality filter on asset_id",
             "in": "query",
-            "name": "customer_id",
+            "name": "asset_id",
             "required": false,
             "schema": {
               "type": "string"
@@ -66305,18 +68203,18 @@
             }
           },
           {
-            "description": "Equality filter on asset_id",
+            "description": "Equality filter on customer_id",
             "in": "query",
-            "name": "asset_id",
+            "name": "customer_id",
             "required": false,
             "schema": {
               "type": "string"
             }
           },
           {
-            "description": "Equality filter on source",
+            "description": "Equality filter on sla_profile",
             "in": "query",
-            "name": "source",
+            "name": "sla_profile",
             "required": false,
             "schema": {
               "type": "string"
@@ -66687,6 +68585,90 @@
           }
         },
         "summary": "handle_patch (/api/support/tickets/{id})",
+        "tags": [
+          "support"
+        ]
+      }
+    },
+    "/api/support/tickets/{id}/actions": {
+      "post": {
+        "description": "Path parameter:\nid (str): Ticket UUID.\nRequest body (JSON):\nnamespace_id (str, required): Active namespace UUID.\naction_type (str, required): Category of action performed.\naction_summary (str, required): Summary of action/tiltak taken.\naction_details (str, optional): Detailed narrative or data.\noutcome (str, optional): Outcome of action.\noutcome_notes (str, optional): Outcome notes.\nperformed_by (str, optional): Technician or agent name.\nperformed_at (str, optional): ISO timestamp.\nchange_origin (str, optional): Origin enum.\nResponse (JSON):\n{\"ok\": True, \"action\": {...}, \"ticket_id\": str, \"status\": \"logged\"}",
+        "operationId": "post_api_support_tickets_id_actions",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Support_tickets_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Support_tickets"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "POST /api/support/tickets/{id}/actions \u2014 append an action/intervention record to a ticket.",
         "tags": [
           "support"
         ]
@@ -67073,9 +69055,18 @@
             }
           },
           {
-            "description": "Full-text search query across: summary, description, customer_id",
+            "description": "Full-text search query across: summary, description, customer_id, room_id, source_id",
             "in": "query",
             "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on source",
+            "in": "query",
+            "name": "source",
             "required": false,
             "schema": {
               "type": "string"
@@ -67100,9 +69091,9 @@
             }
           },
           {
-            "description": "Equality filter on customer_id",
+            "description": "Equality filter on asset_id",
             "in": "query",
-            "name": "customer_id",
+            "name": "asset_id",
             "required": false,
             "schema": {
               "type": "string"
@@ -67118,18 +69109,18 @@
             }
           },
           {
-            "description": "Equality filter on asset_id",
+            "description": "Equality filter on customer_id",
             "in": "query",
-            "name": "asset_id",
+            "name": "customer_id",
             "required": false,
             "schema": {
               "type": "string"
             }
           },
           {
-            "description": "Equality filter on source",
+            "description": "Equality filter on sla_profile",
             "in": "query",
-            "name": "source",
+            "name": "sla_profile",
             "required": false,
             "schema": {
               "type": "string"
@@ -67743,9 +69734,18 @@
             }
           },
           {
-            "description": "Full-text search query across: summary, description, customer_id",
+            "description": "Full-text search query across: summary, description, customer_id, room_id, source_id",
             "in": "query",
             "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on source",
+            "in": "query",
+            "name": "source",
             "required": false,
             "schema": {
               "type": "string"
@@ -67770,9 +69770,9 @@
             }
           },
           {
-            "description": "Equality filter on customer_id",
+            "description": "Equality filter on asset_id",
             "in": "query",
-            "name": "customer_id",
+            "name": "asset_id",
             "required": false,
             "schema": {
               "type": "string"
@@ -67788,18 +69788,18 @@
             }
           },
           {
-            "description": "Equality filter on asset_id",
+            "description": "Equality filter on customer_id",
             "in": "query",
-            "name": "asset_id",
+            "name": "customer_id",
             "required": false,
             "schema": {
               "type": "string"
             }
           },
           {
-            "description": "Equality filter on source",
+            "description": "Equality filter on sla_profile",
             "in": "query",
-            "name": "source",
+            "name": "sla_profile",
             "required": false,
             "schema": {
               "type": "string"
@@ -68102,6 +70102,190 @@
           }
         },
         "summary": "handle_remove_tag (/api/support/tickets/{id}/tags/{tag})",
+        "tags": [
+          "support"
+        ]
+      }
+    },
+    "/api/support/tickets/{id}/timeline": {
+      "get": {
+        "description": "Path parameter:\nid (str): Ticket UUID.\nQuery parameters:\nnamespace_id (str, required): Active namespace UUID.\nlimit (int, optional): Max records to return.\nResponse (JSON):\n{\"ok\": True, \"ticket_id\": str, \"ticket_summary\": str, \"actions\": [...], ...}",
+        "operationId": "get_api_support_tickets_id_timeline",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum number of records to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque pagination cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort column with optional +/- prefix",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated list of projected fields",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Full-text search query across: summary, description, customer_id, room_id, source_id",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on source",
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on status",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on priority",
+            "in": "query",
+            "name": "priority",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on asset_id",
+            "in": "query",
+            "name": "asset_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on room_id",
+            "in": "query",
+            "name": "room_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on customer_id",
+            "in": "query",
+            "name": "customer_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on sla_profile",
+            "in": "query",
+            "name": "sla_profile",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Support_tickets_List"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "GET /api/support/tickets/{id}/timeline \u2014 retrieve action timeline for a ticket.",
         "tags": [
           "support"
         ]
