@@ -184,6 +184,27 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     # ---------------------------------------------------------------------------
     # Vendors Engine (Lane D Wave D-8 / Lane E)
     # ---------------------------------------------------------------------------
+    "CONTRACTOR": ResourceExemption(
+        owner_engine="vendors",
+        reason=(
+            "UNREACHABLE from admin_app, not unmodelled. contractor_profiles is a real "
+            "tenant table, but it carries exactly one RLS policy -- external_isolation_"
+            "policy, PERMISSIVE, FOR ALL TO nce_app -- whose USING and WITH CHECK both "
+            "require partner_scope_id = get_nce_external_scope(). admin_app.py:59 states "
+            "as a contract that the nce.external_scope_id GUC is NEVER set on admin_app "
+            "sessions, and the table is ENABLE + FORCE ROW LEVEL SECURITY, so the owner "
+            "is subject to it too. Verified against live pg_policies: one policy, no "
+            "second tenant policy to OR against. A C12 surface here would therefore "
+            "return zero rows on every read and fail every write -- declared, documented "
+            "and non-functional. Employees reach contractor data through service-layer "
+            "logic, not a direct RLS path (the same rationale admin_app.py:59 gives). "
+            "Do NOT weaken the policy to make a spec work: the policy is a correct "
+            "security boundary and the spec was the error. Swept 2026-09-19 -- this is "
+            "the ONLY one of the 30 declared specs whose table depends on that GUC; the "
+            "other three such tables (portal_users, portal_document_shares, "
+            "portal_service_requests) were exempted at declaration time for this reason."
+        ),
+    ),
     "VENDOR": ResourceExemption(
         owner_engine="vendors",
         reason=(
