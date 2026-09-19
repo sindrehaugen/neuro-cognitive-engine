@@ -723,4 +723,5 @@ class TestProjectAdvancePhaseToolRegistry:
         +1 Wave F-13 geodata_import_place_names, admin_only;
         +1 Wave F-9 sites_enrich_address_from_registry, admin_only;
         +1 Lane D Wave D-5 support_log_ticket_action)."""
+
     assert len(ADMIN_ONLY_TOOLS) == 99
