@@ -32,6 +32,23 @@ if TYPE_CHECKING:
     from nce.tool_registry import ToolSpec
 
 
+def _version_str(value: Any) -> str:
+    """Normalise a stored version_field value to the same string shape handle_upsert
+    hands the client (see its ``now.isoformat()`` return).
+
+    A real Postgres row round-trips version_field as a ``datetime`` (asyncpg decodes
+    the timestamptz column natively); the in-memory fallback stores whatever
+    handle_upsert put there, which is the same ``datetime`` object since the fix
+    below. ``str(a_datetime)`` uses a space separator ("2026-09-19 18:00:59+00:00"),
+    not ``isoformat()``'s "T" ("2026-09-19T18:00:59+00:00") -- comparing the two
+    forms directly made every expected_version check on a real Postgres-backed
+    resource fail with a spurious 409, always, because the client's remembered
+    version (from the isoformat response) could never equal the bare str() of the
+    same instant read back from the row.
+    """
+    return value.isoformat() if isinstance(value, datetime) else str(value)
+
+
 def build_mcp_tool_definitions(spec: ResourceSpec) -> list[Tool]:
     """Generate the 4 mcp.types.Tool objects for a ResourceSpec."""
     prefix = f"{spec.engine}"
@@ -344,9 +361,9 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
         if not is_global or "namespace_id" in spec.writable_fields:
             if ns_uuid:
                 data["namespace_id"] = str(ns_uuid)
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
         if spec.version_field:
-            data[spec.version_field] = now_iso
+            data[spec.version_field] = now
 
         if hasattr(engine, "pg_pool") and engine.pg_pool:
             if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
@@ -374,7 +391,7 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                     if existing_row:
                         existing = row_to_dict(existing_row)
                         if expected_version and spec.version_field:
-                            actual = str(existing.get(spec.version_field, ""))
+                            actual = _version_str(existing.get(spec.version_field, ""))
                             if actual != str(expected_version):
                                 return json.dumps(
                                     {
@@ -412,7 +429,7 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
             mem = _get_mem_bucket(spec, str(ns_uuid) if ns_uuid else None)
             existing = mem.get(item_id)
             if existing and expected_version and spec.version_field:
-                actual = str(existing.get(spec.version_field, ""))
+                actual = _version_str(existing.get(spec.version_field, ""))
                 if actual != str(expected_version):
                     return json.dumps(
                         {
@@ -424,7 +441,8 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
             mem[item_id] = dict(data)
 
         return json.dumps(
-            {"status": "ok", "id": item_id, "version": now_iso, "data": data}, default=str
+            {"status": "ok", "id": item_id, "version": now.isoformat(), "data": data},
+            default=str,
         )
 
     async def handle_archive(engine: Any, arguments: dict[str, Any]) -> str:
