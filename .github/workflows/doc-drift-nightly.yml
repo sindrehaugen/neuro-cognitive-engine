@@ -1,15 +1,39 @@
-name: Nightly doc-drift check (does the post-merge regen job still work?)
+name: Nightly doc-drift check (independent scheduled re-check)
 
-# 🔴 KEPT AFTER §10.5b'S REVERT, 2026-09-19 late night: ci.yml's PR/push doc
-# gates are back (regen-generated-docs.yml's GITHUB_TOKEN commits are
-# unconditionally rejected by branch protection -- see that workflow's own
-# header for the incident). This nightly check stays anyway: it is
-# independently valuable as a completely separate, read-only re-check of
-# `main`, it is what actually caught the drift going unfixed while ci.yml's
-# gates were off, and it costs nothing extra to leave running. It should now
-# almost always agree with ci.yml (both are checking the same 4 files against
-# the same source), which is fine -- redundant confirmation, not redundant
-# risk.
+# 🔴 regen-generated-docs.yml, the "post-merge regen job" this workflow's
+# comments below refer to, is DELETED (2026-09-20): `main` requires 9 status
+# checks even for a direct push (`enforce_admins: true`), so that job's
+# GITHUB_TOKEN commits were unconditionally rejected -- structurally, not
+# intermittently. A fix that made its own diff check ignore the volatile
+# stamp churn documented further down would only have turned "always red"
+# into "always a silent no-op": the job could still never push a REAL fix if
+# one were ever needed, so patching its detection would not have restored any
+# value it could actually deliver. Deleted rather than patched.
+#
+# THIS WORKFLOW IS KEPT, UNCHANGED IN PURPOSE: it was never just "does the
+# regen job still work" -- it is an independent, scheduled, read-only
+# re-check of whatever `main` currently holds, and it is what actually caught
+# the post-merge job's silent-failure incident in the first place. With
+# ci.yml's PR/push doc gates restored (§10.5b reverted the same night), this
+# nightly check is now redundant CONFIRMATION of those gates, not a
+# substitute for them -- both check the same 4 files against the same
+# source, so agreement is the expected, unremarkable case.
+#
+# KNOWN, UNCLOSED GAPS AFTER ALL OF THIS -- stated, not fixed here, none are
+# a regression from tonight's incident:
+#   - docs/vertical_engines/ENGINE_STATUS.md has no byte-for-byte check
+#     anywhere (ci.yml's D-GEN step never passed --update-status to check
+#     it; tests/unit/test_config_docs_ratchet.py cross-validates its NUMBERS
+#     independently of the generator, which is a different, narrower
+#     guarantee than "matches a fresh regen").
+#   - docs/_generated/golden_thread_seams.md has no --check mode and no
+#     pytest gates it, by any mechanism, today.
+#   - docs/_generated/waves_landed.md has a pytest counterpart but it is
+#     DELIBERATELY advisory (Q-17: the byte-comparison goes red on every
+#     unrelated merge because wave stamps move independently of wave
+#     landings).
+# All three were true before tonight and remain true after; none of the
+# incidents this file documents changed their status.
 #
 # §10.5b, second correction (ORCH_PROTOCOL.md, 2026-09-19): the four doc-drift
 # checks (docs/API.md, openapi.json, docs/_generated/surface.md,
