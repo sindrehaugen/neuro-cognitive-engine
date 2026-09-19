@@ -126,6 +126,85 @@ def row_to_dict(row: Any) -> dict[str, Any]:
     return dict(row)
 
 
+async def upsert_secondary_tables(
+    conn: Any,
+    spec: ResourceSpec,
+    item_id: str,
+    ns_uuid: Any,
+    is_global: bool,
+    data: dict[str, Any],
+) -> dict[str, Any]:
+    """Write each of ``spec.secondary_tables``' routed fields present in
+    ``data``, keyed on ``join_field = item_id``. Shared by mcp.py's
+    ``handle_upsert`` and this module's own ``handle_create``/``handle_patch``
+    -- the same "two generated backends from one spec" reasoning that made
+    #284's fix need to land in both applies here too, so this is ONE
+    implementation both import, not two copies that can drift.
+
+    Checks for an existing row first and UPDATEs only the supplied columns,
+    or INSERTs a fresh row with everything supplied -- never a blind
+    ``INSERT ... ON CONFLICT DO UPDATE``. Found live while writing this
+    wave's own test: a PATCH that only touched ``status`` failed a NOT NULL
+    constraint on ``system_design_node_state.node_type``, because
+    ``INSERT ... ON CONFLICT``'s INSERT branch is validated against the
+    table's constraints regardless of whether the conflict resolves to
+    UPDATE -- a partial update has no reason to supply a column it isn't
+    changing, and previously-first-cut ON CONFLICT design demanded it
+    supply every NOT NULL column on every call, existing row or not.
+
+    Returns the dict of secondary fields actually written (join_field and
+    namespace_id excluded), for callers that merge it into their own
+    response.
+    """
+    written: dict[str, Any] = {}
+    for sec in spec.secondary_tables:
+        sec_data = {f: data[f] for f in sec.fields if f in data}
+        if not sec_data:
+            continue
+        if is_global:
+            existing = await conn.fetchrow(
+                f"SELECT 1 FROM {sec.table_name} WHERE {sec.join_field} = $1", item_id
+            )
+        else:
+            existing = await conn.fetchrow(
+                f"SELECT 1 FROM {sec.table_name} WHERE namespace_id = $1 AND {sec.join_field} = $2",
+                ns_uuid,
+                item_id,
+            )
+        if existing:
+            cols = list(sec_data.keys())
+            vals = list(sec_data.values())
+            if is_global:
+                set_items = [f"{c} = ${i + 2}" for i, c in enumerate(cols)]
+                await conn.execute(
+                    f"UPDATE {sec.table_name} SET {', '.join(set_items)} WHERE {sec.join_field} = $1",
+                    item_id,
+                    *vals,
+                )
+            else:
+                set_items = [f"{c} = ${i + 3}" for i, c in enumerate(cols)]
+                await conn.execute(
+                    f"UPDATE {sec.table_name} SET {', '.join(set_items)} WHERE namespace_id = $1 AND {sec.join_field} = $2",
+                    ns_uuid,
+                    item_id,
+                    *vals,
+                )
+        else:
+            insert_data = dict(sec_data)
+            insert_data[sec.join_field] = item_id
+            if not is_global:
+                insert_data["namespace_id"] = str(ns_uuid) if ns_uuid else None
+            cols = list(insert_data.keys())
+            vals = list(insert_data.values())
+            placeholders = [f"${i + 1}" for i in range(len(cols))]
+            await conn.execute(
+                f"INSERT INTO {sec.table_name} ({', '.join(cols)}) VALUES ({', '.join(placeholders)})",
+                *vals,
+            )
+        written.update(sec_data)
+    return written
+
+
 def redact_item(item: dict[str, Any], spec: ResourceSpec, principal_tier: str) -> dict[str, Any]:
     """Apply C3/C8 principal tier redaction to an item dict."""
     # Employee tier has full visibility
@@ -437,6 +516,25 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                             row = await conn.fetchrow(query, ns_uuid, item_id)
                         if row:
                             item = row_to_dict(row)
+                            # Multi-table spec: merge each secondary table's
+                            # row (same reasoning as the MCP handler's own
+                            # copy of this -- a missing secondary row is not
+                            # an error, the primary row is still a real
+                            # resource on its own).
+                            for sec in spec.secondary_tables:
+                                if is_global:
+                                    sec_row = await conn.fetchrow(
+                                        f"SELECT * FROM {sec.table_name} WHERE {sec.join_field} = $1",
+                                        item_id,
+                                    )
+                                else:
+                                    sec_row = await conn.fetchrow(
+                                        f"SELECT * FROM {sec.table_name} WHERE namespace_id = $1 AND {sec.join_field} = $2",
+                                        ns_uuid,
+                                        item_id,
+                                    )
+                                if sec_row:
+                                    item.update(row_to_dict(sec_row))
                 except Exception as exc:
                     return admin_error_response(
                         f"Database fetch error: {exc}", exc, status_code=500
@@ -516,10 +614,16 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                 )
             if spec.table_name:
                 try:
+                    secondary_field_names = {f for sec in spec.secondary_tables for f in sec.fields}
+                    primary_data = (
+                        {k: v for k, v in data.items() if k not in secondary_field_names}
+                        if secondary_field_names
+                        else data
+                    )
                     session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                     async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
-                        cols = list(data.keys())
-                        vals = [now if c == spec.version_field else data[c] for c in cols]
+                        cols = list(primary_data.keys())
+                        vals = [now if c == spec.version_field else primary_data[c] for c in cols]
                         val_placeholders = [f"${i + 1}" for i in range(len(cols))]
                         query = f"""
                             INSERT INTO {spec.table_name} ({', '.join(cols)})
@@ -527,7 +631,17 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                             RETURNING *
                         """
                         row = await conn.fetchrow(query, *vals)
-                        created = row_to_dict(row) if row else data
+                        created = row_to_dict(row) if row else primary_data
+
+                        # Multi-table spec: shared with mcp.py's
+                        # handle_upsert and this module's own handle_patch --
+                        # see upsert_secondary_tables' own docstring for why
+                        # this is not a blind ON CONFLICT.
+                        created.update(
+                            await upsert_secondary_tables(
+                                conn, spec, item_id, ns_uuid, is_global, data
+                            )
+                        )
                 except Exception as exc:
                     return admin_error_response(
                         f"Failed to create {spec.entity}: {exc}", exc, status_code=500
@@ -704,11 +818,21 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
 
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None) and spec.table_name:
             try:
+                secondary_field_names = {f for sec in spec.secondary_tables for f in sec.fields}
+                primary_updates = (
+                    {k: v for k, v in updates.items() if k not in secondary_field_names}
+                    if secondary_field_names
+                    else updates
+                )
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
-                    vals = [now if k == spec.version_field else v for k, v in updates.items()]
+                    vals = [
+                        now if k == spec.version_field else v for k, v in primary_updates.items()
+                    ]
                     if is_global:
-                        set_items = [f"{k} = ${i + 2}" for i, k in enumerate(updates.keys())]
+                        set_items = [
+                            f"{k} = ${i + 2}" for i, k in enumerate(primary_updates.keys())
+                        ]
                         query = f"""
                             UPDATE {spec.table_name}
                             SET {', '.join(set_items)}
@@ -717,7 +841,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                         """
                         row = await conn.fetchrow(query, item_id, *vals)
                     else:
-                        set_items = [f"{k} = ${i + 3}" for i, k in enumerate(updates.keys())]
+                        set_items = [
+                            f"{k} = ${i + 3}" for i, k in enumerate(primary_updates.keys())
+                        ]
                         query = f"""
                             UPDATE {spec.table_name}
                             SET {', '.join(set_items)}
@@ -725,7 +851,16 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                             RETURNING *
                         """
                         row = await conn.fetchrow(query, ns_uuid, item_id, *vals)
-                    updated = row_to_dict(row) if row else {**existing, **updates}
+                    updated = row_to_dict(row) if row else {**existing, **primary_updates}
+
+                    # Multi-table spec: shared with handle_create and
+                    # mcp.py's handle_upsert -- see upsert_secondary_tables'
+                    # own docstring.
+                    updated.update(
+                        await upsert_secondary_tables(
+                            conn, spec, item_id, ns_uuid, is_global, updates
+                        )
+                    )
             except Exception as exc:
                 return admin_error_response(
                     f"Failed to update {spec.entity}: {exc}", exc, status_code=500

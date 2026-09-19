@@ -25,7 +25,7 @@ from mcp.types import Tool
 from nce.auth import NamespaceContext, set_namespace_context
 from nce.db_utils import scoped_pg_session
 from nce.mcp_errors import mcp_handler
-from nce.resource_surface.rest import _get_mem_bucket, row_to_dict
+from nce.resource_surface.rest import _get_mem_bucket, row_to_dict, upsert_secondary_tables
 from nce.resource_surface.spec import ResourceSpec
 
 if TYPE_CHECKING:
@@ -376,6 +376,27 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                         row = await conn.fetchrow(query, ns_uuid, item_id)
                     if row:
                         item = row_to_dict(row)
+                        # Multi-table spec: merge each secondary table's row into
+                        # the response, joined on its own join_field holding the
+                        # same identity value as this item_id. A secondary table
+                        # with no matching row yet (never upserted into) is
+                        # simply absent from the merge, not an error -- the
+                        # primary row is still a real, gettable resource on its
+                        # own.
+                        for sec in spec.secondary_tables:
+                            if is_global:
+                                sec_row = await conn.fetchrow(
+                                    f"SELECT * FROM {sec.table_name} WHERE {sec.join_field} = $1",
+                                    item_id,
+                                )
+                            else:
+                                sec_row = await conn.fetchrow(
+                                    f"SELECT * FROM {sec.table_name} WHERE namespace_id = $1 AND {sec.join_field} = $2",
+                                    ns_uuid,
+                                    item_id,
+                                )
+                            if sec_row:
+                                item.update(row_to_dict(sec_row))
         else:
             mem = _get_mem_bucket(spec, str(ns_uuid) if ns_uuid else None)
             item = mem.get(str(item_id))
@@ -437,6 +458,19 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                     }
                 )
             if spec.table_name:
+                # Multi-table spec: route each secondary table's own fields
+                # out of the primary column list first -- the primary
+                # INSERT/UPDATE below must never reference a column that
+                # only exists on a secondary table. `data` itself is left
+                # untouched (a `.pop` here would also affect the in-memory
+                # fallback's single-blob storage, which is not what a
+                # secondary-table split means there).
+                secondary_field_names = {f for sec in spec.secondary_tables for f in sec.fields}
+                primary_data = (
+                    {k: v for k, v in data.items() if k not in secondary_field_names}
+                    if secondary_field_names
+                    else data
+                )
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(engine.pg_pool, session_ns) as conn:
                     # Check for existing
@@ -464,16 +498,20 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                                     }
                                 )
 
-                        vals = list(data.values())
+                        vals = list(primary_data.values())
                         if is_global:
-                            set_items = [f"{k} = ${i + 2}" for i, k in enumerate(data.keys())]
+                            set_items = [
+                                f"{k} = ${i + 2}" for i, k in enumerate(primary_data.keys())
+                            ]
                             await conn.execute(
                                 f"UPDATE {spec.table_name} SET {', '.join(set_items)} WHERE {spec.id_field} = $1",
                                 item_id,
                                 *vals,
                             )
                         else:
-                            set_items = [f"{k} = ${i + 3}" for i, k in enumerate(data.keys())]
+                            set_items = [
+                                f"{k} = ${i + 3}" for i, k in enumerate(primary_data.keys())
+                            ]
                             await conn.execute(
                                 f"UPDATE {spec.table_name} SET {', '.join(set_items)} WHERE namespace_id = $1 AND {spec.id_field} = $2",
                                 ns_uuid,
@@ -481,13 +519,18 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                                 *vals,
                             )
                     else:
-                        cols = list(data.keys())
-                        vals = [data[c] for c in cols]
+                        cols = list(primary_data.keys())
+                        vals = [primary_data[c] for c in cols]
                         placeholders = [f"${i + 1}" for i in range(len(cols))]
                         await conn.execute(
                             f"INSERT INTO {spec.table_name} ({', '.join(cols)}) VALUES ({', '.join(placeholders)})",
                             *vals,
                         )
+
+                    # Multi-table spec: shared with rest.py's handle_create
+                    # and handle_patch -- see upsert_secondary_tables' own
+                    # docstring for why this is not a blind ON CONFLICT.
+                    await upsert_secondary_tables(conn, spec, item_id, ns_uuid, is_global, data)
         else:
             mem = _get_mem_bucket(spec, str(ns_uuid) if ns_uuid else None)
             existing = mem.get(item_id)

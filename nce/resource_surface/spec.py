@@ -14,6 +14,71 @@ from typing import Any
 
 
 @dataclass(frozen=True)
+class SecondaryTable:
+    """A secondary table a multi-table ResourceSpec also reads and writes,
+    joined to the primary table on a shared identity value.
+
+    Wave: multi-table ResourceSpec support (2026-09-20), dispatched to close
+    system_design's DEVICE/PORT/RACK/CABLE exemptions (``nce/resource_surface/
+    exemptions.py``) -- each is a "multi-table spread", not 1:1 with a table,
+    which is exactly the shape C12 had no declaration for before this.
+
+    Attributes:
+        table_name: The secondary table's name. Validated the same way
+                    ``ResourceSpec.table_name`` is -- must be a real,
+                    RLS-known table (``nce.event_log``), never silently
+                    accepted.
+        join_field: Column on the secondary table holding the SAME identity
+                    value as the primary table's row for the same logical
+                    resource (e.g. ``node_label``, matching
+                    ``system_design_device_capabilities.node_label`` /
+                    ``system_design_node_state.node_label`` for a DEVICE).
+                    This is deliberately allowed to differ from
+                    ``id_field`` in *name* while holding the same *value* --
+                    the primary table's own identity column may be called
+                    something else.
+        fields:     Column names on the secondary table. A spec's
+                    ``writable_fields`` entries that match one of these are
+                    routed to THIS table on upsert instead of the primary
+                    one; every other entry stays on the primary table. A
+                    field name must not appear in more than one
+                    ``SecondaryTable`` (validated) -- routing would be
+                    ambiguous.
+    """
+
+    table_name: str
+    join_field: str
+    fields: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        from nce.event_log import (
+            EXPECTED_GLOBAL_TABLES,
+            EXPECTED_SPECIAL_RLS_TABLES,
+            EXPECTED_TENANT_RLS_TABLES,
+        )
+
+        if (
+            self.table_name not in EXPECTED_TENANT_RLS_TABLES
+            and self.table_name not in EXPECTED_GLOBAL_TABLES
+            and self.table_name not in EXPECTED_SPECIAL_RLS_TABLES
+        ):
+            raise ValueError(
+                f"SecondaryTable {self.table_name!r} is in neither "
+                f"EXPECTED_TENANT_RLS_TABLES, EXPECTED_GLOBAL_TABLES, nor "
+                f"EXPECTED_SPECIAL_RLS_TABLES in nce.event_log -- the same "
+                f"check ResourceSpec.table_name gets, applied here too so a "
+                f"secondary table can't silently be a typo."
+            )
+        if not self.fields:
+            raise ValueError(
+                f"SecondaryTable {self.table_name!r} declares no fields -- "
+                f"a secondary table with nothing routed to it is never "
+                f"written or read, which means it should not be declared "
+                f"at all."
+            )
+
+
+@dataclass(frozen=True)
 class ResourceSpec:
     """Declarative contract for a C12 resource surface.
 
@@ -50,6 +115,18 @@ class ResourceSpec:
                             the same way a hand-written handler's is. ``None`` (the
                             default) means the spec has no opt-in gate to enforce --
                             true for specs whose engine has no ``_guard.py`` at all.
+        secondary_tables:   Tuple of ``SecondaryTable`` -- additional tables this
+                            spec also reads and writes, each joined to the
+                            primary ``table_name`` row by identity value (see
+                            ``SecondaryTable``). Empty by default: most specs
+                            are still 1:1 with a single table, and this changes
+                            nothing for them. Generated ``get``/``upsert``
+                            handlers merge/split across every secondary table
+                            declared here; ``list``/``archive`` touch the
+                            primary table only (documented limitation, not an
+                            oversight -- listing with N joins and archiving N
+                            tables independently are real features a future
+                            wave can add if a real spec needs them).
     """
 
     engine: str
@@ -67,6 +144,7 @@ class ResourceSpec:
     description: str = ""
     storage_kind: str = "postgres"
     enabled_guard: Callable[[Any, str], Awaitable[None]] | None = None
+    secondary_tables: tuple[SecondaryTable, ...] = ()
     tenant_scope: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -96,6 +174,28 @@ class ResourceSpec:
         else:
             scope = "graph"
         object.__setattr__(self, "tenant_scope", scope)
+
+        if self.secondary_tables:
+            if self.table_name is None:
+                raise ValueError(
+                    f"Resource {self.engine}:{self.entity} declares secondary_tables "
+                    f"but no primary table_name -- a multi-table spec needs a primary "
+                    f"table to join the secondary ones against. (This also means "
+                    f"secondary_tables cannot yet help a graph-only/kg_nodes-backed "
+                    f"spec like DEVICE: resource_surface has no generated read/write "
+                    f"path for the graph storage_kind at all today -- a separate, "
+                    f"pre-existing gap this feature does not close by itself.)"
+                )
+            seen_fields: dict[str, str] = {}
+            for sec in self.secondary_tables:
+                for f in sec.fields:
+                    if f in seen_fields:
+                        raise ValueError(
+                            f"Resource {self.engine}:{self.entity}: field {f!r} is "
+                            f"routed to both {seen_fields[f]!r} and {sec.table_name!r} "
+                            f"-- a field must belong to exactly one table."
+                        )
+                    seen_fields[f] = sec.table_name
 
     @property
     def rest_slug(self) -> str:
