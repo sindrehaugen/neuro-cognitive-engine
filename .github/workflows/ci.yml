@@ -47,13 +47,19 @@ jobs:
       # nothing else. A gate that exists and is wired into no workflow is the same defect class
       # as TD-1 above, and as the healthchecks that returned 200 on a degraded payload.
       #
-      # Cost of this gate, stated rather than inherited: a PR that adds a tool or a migration
-      # must regenerate. That is bounded - unlike the waves_landed byte-comparison (Q-17), which
-      # went red on EVERY commit because wave stamps move with unrelated merges. These counters
-      # move only when someone adds a counted thing, and that someone is exactly who should
-      # update the page. Fix: python scripts/gen_engine_figures.py --repo . --baseline HEAD
-      #   --out docs/_generated/engine_figures.md --update-status docs/vertical_engines/ENGINE_STATUS.md
+      # §10.5b (ORCH_PROTOCOL.md, 2026-09-19): PRs no longer carry
+      # docs/_generated/engine_figures.md -- .github/workflows/regen-generated-docs.yml
+      # regenerates and self-verifies it (this same --check) on `main` after every
+      # merge instead. Requiring this gate on a PR would force the PR to carry the
+      # file again, which is exactly the collision §10.5b removes -- so this step
+      # only runs on an ordinary push to `main`, not on `pull_request`. #295 shipped
+      # the post-merge job but left THIS step running unconditionally on both events,
+      # which meant PRs still had to carry a current file and still collided on every
+      # merge -- ML-orch caught it live, verified by E reproducing the failure
+      # (dropping the files broke a PR exactly as this step, unchanged, still
+      # required them). Fixed here, not as a followup.
       - name: Engine figures are current (D-GEN gate)
+        if: github.event_name == 'push'
         run: |
           python scripts/gen_engine_figures.py --repo . --baseline HEAD             --out docs/_generated/engine_figures.md --check
 
@@ -163,7 +169,26 @@ jobs:
           MINIO_SECRET_KEY: test-minio-secret-key
         # Wave T-3: Exclude integration, perf, and live-tier scenarios.
         # Golden Thread multi-engine scenario runs nightly against the live stack.
-        run: pytest tests/ -m "not integration and not perf and not live" -q --tb=short
+        #
+        # §10.5b (ORCH_PROTOCOL.md, 2026-09-19): also exclude doc_gate on a PR only.
+        # Those are the byte-for-byte "committed file matches a fresh regen" checks
+        # for files PRs no longer carry (docs/API.md, openapi.json,
+        # docs/_generated/surface.md, docs/_generated/host_parity.md) --
+        # .github/workflows/regen-generated-docs.yml regenerates and self-verifies
+        # every one of them on `main` after every merge instead. Requiring them on
+        # a PR would force the PR to carry a current copy again, which is exactly
+        # the collision §10.5b removes. Every other test in those same files (schema
+        # coverage, RED-family floors, positive controls, the identity gate) is a
+        # real correctness check unrelated to file staleness and keeps running on
+        # every PR either way -- doc_gate marks only the drift check itself, never a
+        # whole file. Still runs on an ordinary push to `main`.
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            MARKEXPR="not integration and not perf and not live and not doc_gate"
+          else
+            MARKEXPR="not integration and not perf and not live"
+          fi
+          pytest tests/ -m "$MARKEXPR" -q --tb=short
 
       - name: Empty with-block gate
         run: python scripts/check_empty_with.py
