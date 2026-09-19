@@ -70,7 +70,10 @@ BANNED: list[tuple[str, re.Pattern[str], tuple[tuple[str, str], ...]]] = [
     ),
     (
         "private fork module names",
-        re.compile(r"\b(steps_product|steps_d365|agreement_sidecar|hr_sidecar|lysning)\b", re.I),
+        re.compile(
+            r"\b(steps_product|steps_d365|steps_finago|agreement_sidecar|hr_sidecar|lysning)\b",
+            re.I,
+        ),
         (),
     ),
     (
@@ -182,7 +185,7 @@ def test_the_gate_itself_can_fail() -> None:
         "named customer": "the Veidekke pilot",
         "customer hardware (identifying in context)": "switch M4350 and PR460X",
         "private fork name": "ported from the steps-ai fork",
-        "private fork module names": "backend/steps_product and src/lysning/pages",
+        "private fork module names": "backend/steps_product, steps_finago and src/lysning/pages",
         "planning-corpus owner": "from Andreas's reference",
         "private TypeScript source paths": "see lib/finance/events/emit.ts",
     }
