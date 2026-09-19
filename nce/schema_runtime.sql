@@ -2032,3 +2032,11 @@ BEGIN
         GRANT USAGE, SELECT ON SEQUENCE geodata_place_names_id_seq TO nce_app;
     END IF;
 END $$;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE pricing_fx_rates FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE ON TABLE pricing_fx_rates TO nce_app;
+    END IF;
+END $$;

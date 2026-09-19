@@ -15,6 +15,7 @@ from nce.db_utils import scoped_pg_session
 from nce.mcp_args import require_namespace_id as _require_namespace_id
 from nce.mcp_errors import mcp_handler
 from nce.orchestrator import NCEEngine
+from nce.pricing.fx import do_get_fx_rates
 from nce.pricing.resolver import resolve_price
 
 
@@ -65,3 +66,17 @@ async def handle_pricing_resolve(engine: NCEEngine, arguments: dict[str, Any]) -
             "stale": result["stale"],
         }
     )
+
+
+@mcp_handler
+async def handle_pricing_get_fx_rates(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: pricing_get_fx_rates — today's EUR/USD-to-NOK exchange
+    rates from Norges Bank (Actor).
+
+    No ``namespace_id``: an exchange rate is not tenant data, the same
+    reasoning as every other GLOBAL geodata feed in this lane. Optional
+    ``force`` (bool) bypasses the in-process TTL cache. Thin adapter —
+    all logic lives in :func:`do_get_fx_rates`.
+    """
+    result = await do_get_fx_rates(engine, dict(arguments))
+    return json.dumps(result, default=str)

@@ -436,6 +436,10 @@ EXPECTED_GLOBAL_TABLES: set[str] = {
     # same reasoning as product_catalog above (MLV16F Wave F-13, migration
     # 090).
     "geodata_place_names",
+    # An EUR/NOK exchange rate describes the world, not a tenant's data —
+    # the same reasoning as product_catalog above (MLV16F Wave F-15,
+    # migration 092).
+    "pricing_fx_rates",
 }
 
 

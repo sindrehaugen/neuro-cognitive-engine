@@ -52,28 +52,32 @@ _LOCATION_A = "11111111-1111-4111-8111-111111111111"
 _LOCATION_B = "22222222-2222-4222-8222-222222222222"
 
 # --- MEASURED post-rebase onto 8ed821a (#243/#251/#237/#249/#250/#255/#256/
-# #257/#239/#248/#246/#244/#253) plus this branch's own geodata place-name
-# nearest-lookup registration (Lane F Wave F-13):
+# #257/#239/#248/#246/#244/#253) plus this lane's own geodata place-name
+# nearest-lookup (Lane F Wave F-13) and FX rate feed + weather live-read
+# (Lane F Wave F-15) registrations:
 #   NCE_MASTER_KEY="x"*32 python -c "
 #     import nce.tool_registry as tr
 #     print(len(tr.TOOL_REGISTRY), len(tr.MUTATION_TOOLS), len(tr.CACHEABLE_TOOLS), len(tr.ADMIN_ONLY_TOOLS))"
 # TOTAL: 283 hand-written baseline + 1 BRREG registry-feed (Lane F Wave F-8)
 # + 2 geodata OSM (Lane F Wave F-11) + 2 geodata N50 land-cover (Lane F
-# Wave F-12) + 2 geodata place names (Lane F Wave F-13) hand-written + 80
-# live C12 tools (16 Inventory + 8 Notifications + 4 Procurement PO_LINE +
-# 4 Document Register + 8 Resources ALLOCATION/TRAVEL_LEG + 4 Product + 4
-# Legal-Entity Register + 4 Vendors CONTRACTOR + 12 Support
-# TICKET/SLA/SUPPORT_HEALTH_SCORE (Lane E Wave E-8) + 4 Economy POSTING
-# (Lane E Wave E-7) + 12 Field Tech WORK_ORDER/TIME_ENTRY/CHECKLIST, Lane E
-# Wave E-10) = 370. See tests/test_tool_registry.py for the equivalent
-# derived hand-written/C12 split for MUTATION (127 hand-written incl.
-# BRREG+all three geodata waves + 40 live C12 = 167) and CACHEABLE (118
-# hand-written incl. all three geodata waves + 40 live C12 = 158);
-# ADMIN_ONLY (97) = 96 + 1 geodata place-name import (Lane F Wave F-13) --
-# field_tech (E-10) registered no admin_only tools, unaffected here too.
-_TOTAL_TOOLS = 370
+# Wave F-12) + 2 geodata place names (Lane F Wave F-13) + 2 FX/weather feed
+# tools (Lane F Wave F-15: pricing_get_fx_rates, geodata_get_weather)
+# hand-written + 80 live C12 tools (16 Inventory + 8 Notifications + 4
+# Procurement PO_LINE + 4 Document Register + 8 Resources
+# ALLOCATION/TRAVEL_LEG + 4 Product + 4 Legal-Entity Register + 4 Vendors
+# CONTRACTOR + 12 Support TICKET/SLA/SUPPORT_HEALTH_SCORE (Lane E Wave E-8)
+# + 4 Economy POSTING (Lane E Wave E-7) + 12 Field Tech WORK_ORDER/
+# TIME_ENTRY/CHECKLIST, Lane E Wave E-10) = 372. See
+# tests/test_tool_registry.py for the equivalent derived hand-written/C12
+# split for MUTATION (127 hand-written incl. BRREG+F-11/F-12/F-13 -- F-15
+# adds none, neither new tool is a mutation -- + 40 live C12 = 167) and
+# CACHEABLE (120 hand-written incl. all four geodata/pricing waves + 40
+# live C12 = 160); ADMIN_ONLY (97) = 96 + 1 geodata place-name import
+# (Lane F Wave F-13) -- F-15 and field_tech (E-10) registered no
+# admin_only tools, unaffected here too.
+_TOTAL_TOOLS = 372
 _MUTATION_TOOLS = 167
-_CACHEABLE_TOOLS = 158
+_CACHEABLE_TOOLS = 160
 _ADMIN_ONLY_TOOLS = 97
 _MIGRATION_TOOLS = 5
 
