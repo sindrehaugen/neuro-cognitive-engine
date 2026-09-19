@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `6dbe622` (public `main`) · **Last-audited:** generated
+> **Status:** shipped · **Verified-against:** `2afa3b4` (public `main`) · **Last-audited:** generated
 
 # NCE Engine Figures — Inventory & Counters
 
@@ -14,7 +14,7 @@
 
 | Counter | Value | Source of Truth |
 |---|---|---|
-| `TOOL_REGISTRY` entries | **372** MCP tools (70 shared + 302 across 24 engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = 372` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |
+| `TOOL_REGISTRY` entries | **380** MCP tools (70 shared + 310 across 24 engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = 380` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |
 | SQL migrations | 85 files (+1 optional), `001` → `092` — gaps at `002`, `009`, `010`, `059`, `087`, `088`, `091` | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |
 | Golden Thread seam burndown | **0 of 28** lifecycle steps broken (0 distinct seams) | Generated in [`docs/_generated/golden_thread_seams.md`](golden_thread_seams.md) from [`tests/integration/test_golden_thread.py`](../../tests/integration/test_golden_thread.py) |
 | v1.6 C12 resource-surface registrations | **11 of 24** engines have `resources.py` | AST of `nce/vertical_modules/<engine>/resources.py` per engine — see the v1.6 section below |
@@ -56,9 +56,9 @@
 
 ## Tool Registry Breakdown
 
-- **Total Registered Tools:** 372
+- **Total Registered Tools:** 380
 - **Shared Core Tools:** 70
-- **Vertical Engine Tools:** 302 across 24 engine packages
+- **Vertical Engine Tools:** 310 across 24 engine packages
 
 | Engine Package | Tool Count |
 |---|---:|
@@ -84,7 +84,7 @@
 | `resources` | 22 |
 | `sales` | 14 |
 | `support` | 25 |
-| `system_design` | 17 |
+| `system_design` | 25 |
 | `vendors` | 18 |
 
 ## SQL Migration Census

@@ -592,6 +592,14 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/system-design/enrich-design-lines` | `api_system_design_enrich_design_lines` |
 | POST | `/api/system-design/from-quote` | `api_system_design_from_quote` |
 | POST | `/api/system-design/functional-location` | `api_system_design_author_functional_location` |
+| GET | `/api/system-design/functional-locations` | `api_system_design_list_functional_locations` |
+| GET | `/api/system-design/functional-locations/{id}` | `api_system_design_get_functional_location` |
+| GET | `/api/system-design/functional-locations/{id}/ancestors` | `api_system_design_get_fl_ancestors` |
+| GET | `/api/system-design/functional-locations/{id}/children` | `api_system_design_get_fl_children` |
+| POST | `/api/system-design/functional-locations/{id}/merge` | `api_system_design_merge_functional_locations` |
+| POST | `/api/system-design/functional-locations/{id}/move` | `api_system_design_move_functional_location` |
+| GET | `/api/system-design/functional-locations/{id}/path` | `api_system_design_get_fl_path` |
+| POST | `/api/system-design/functional-locations/{id}/promote` | `api_system_design_promote_functional_location` |
 | DELETE | `/api/system-design/planned` | `api_system_design_delete_planned` |
 | GET | `/api/system-design/procurement-view` | `api_system_design_procurement_view` |
 | POST | `/api/system-design/publish-design-docs` | `api_system_design_publish_design_docs` |
@@ -973,12 +981,20 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `system_design_enrich_design_lines` |  | yes |  |  |
 | `system_design_from_quote` |  | yes |  |  |
 | `system_design_generate_sow` |  |  |  |  |
+| `system_design_get_fl_ancestors` |  |  | yes |  |
+| `system_design_get_fl_children` |  |  | yes |  |
+| `system_design_get_fl_path` |  |  | yes |  |
+| `system_design_get_functional_location` |  |  | yes |  |
 | `system_design_get_signal_rules` |  |  | yes |  |
 | `system_design_get_standards` |  |  | yes |  |
 | `system_design_get_topology` |  |  | yes |  |
 | `system_design_inspect_signal_flow` |  |  |  |  |
+| `system_design_list_functional_locations` |  |  | yes |  |
+| `system_design_merge_functional_locations` |  | yes |  |  |
+| `system_design_move_functional_location` |  | yes |  |  |
 | `system_design_ping` |  |  | yes |  |
 | `system_design_procurement_view` |  |  | yes |  |
+| `system_design_promote_functional_location` |  | yes |  |  |
 | `system_design_propose_design` |  |  |  |  |
 | `system_design_publish_design_docs` |  | yes |  |  |
 | `system_design_sync_device_capabilities` |  | yes |  |  |
@@ -1009,4 +1025,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 619 REST endpoints, 372 MCP tools._
+_Totals: 627 REST endpoints, 380 MCP tools._
