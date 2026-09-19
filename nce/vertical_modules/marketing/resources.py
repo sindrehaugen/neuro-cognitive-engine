@@ -24,12 +24,22 @@ collides: /api/marketing/draft, /testimonials/capture, /testimonials/retract,
 /assets, /suggest-content, /audit-seo, /approve, /publish are all different
 paths from what CASE_STUDY/TESTIMONIAL/CONTENT_ASSET's C12 surface generates
 (case-studies, testimonials, content-assets).
+
+enabled_guard=require_marketing_enabled (#294/#296): every generated
+route/tool for these three specs now enforces the same per-namespace
+opt-in check the hand-written routes already did, at the same boundary
+(before any DB access), matching MarketingDisabledError's existing
+translation path (already a subclass of EngineDisabledError, so #294's
+generic handling applies with zero changes to _guard.py). #296 makes
+this a hard CI failure (tests/unit/test_engine_guard_ratchet.py) for
+any spec on an engine with a _guard.py, not just a reminder.
 """
 
 from __future__ import annotations
 
 from nce.resource_surface import register_resource
 from nce.resource_surface.spec import ResourceSpec
+from nce.vertical_modules.marketing._guard import require_marketing_enabled
 
 # ---------------------------------------------------------------------------
 # 1. CASE_STUDY
@@ -41,6 +51,7 @@ CASE_STUDY_SPEC = ResourceSpec(
     table_name="case_studies",
     id_field="id",
     version_field="updated_at",
+    enabled_guard=require_marketing_enabled,
     soft_delete_field=None,
     filterable_fields=("status", "project_id", "anonymized"),
     searchable_fields=("title", "body"),
@@ -69,6 +80,7 @@ TESTIMONIAL_SPEC = ResourceSpec(
     table_name="testimonials",
     id_field="id",
     version_field="updated_at",
+    enabled_guard=require_marketing_enabled,
     soft_delete_field=None,
     filterable_fields=("status", "customer_id", "project_id", "consent_tier"),
     searchable_fields=("quote",),
@@ -98,6 +110,7 @@ CONTENT_ASSET_SPEC = ResourceSpec(
     table_name="content_assets",
     id_field="id",
     version_field="updated_at",
+    enabled_guard=require_marketing_enabled,
     soft_delete_field=None,
     filterable_fields=("kind", "status"),
     searchable_fields=("title",),
