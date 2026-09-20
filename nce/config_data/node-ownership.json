@@ -1,5 +1,5 @@
 {
-  "_comment": "Contract A (§9.1) node ownership map. Each future engine's graph wave appends its node types. node_type strings are the CODE-LEVEL strings passed to assert_owner, not spec labels.",
+  "_comment": "Contract A (§9.1) node ownership map. Each future engine's graph wave appends its node types. node_type strings are the CODE-LEVEL strings passed to assert_owner, not spec labels. Tables deliberately given no node_type -- and therefore no C12 surface -- record that decision in their own COMMENT ON TABLE, not here; see procurement_bid_prices.",
   "ownership": [
     { "node_type": "PRODUCT_SKU",          "owner_engine": "product",       "transition": null },
     { "node_type": "PACKAGE",              "owner_engine": "product",       "transition": null },

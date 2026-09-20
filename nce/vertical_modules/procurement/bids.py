@@ -26,6 +26,18 @@ Public surface
     ``{artnrs: [...]}`` → ``{results: [{artnr, leverandor, bid_id, pris}, ...]}``
     Returns the single best (lowest pris) BID per artnr from the cache.
     Capped at ``_MAX_ARTNRS`` articles per call.
+
+No C12 ResourceSpec, deliberately (2026-09-20 measurement, C-8 wave)
+---------------------------------------------------------------------
+``procurement_bid_prices`` has no ``node_type`` in ``node-ownership.json`` and
+is not a candidate for one -- see that file's own ``_comment`` for the
+convention this follows. ``do_resolve_bids()`` above deliberately returns
+only the best bid per artnr, never the full set of competing per-supplier
+prices; a generic C12 list/get surface would expose every row and blow
+straight past that narrowing, leaking competitively sensitive per-supplier
+pricing this module was built to withhold. If a future wave considers
+registering this table, that narrowing is the reason not to -- reduce the
+resolution logic first, don't route around it with a generic surface.
 """
 
 from __future__ import annotations
