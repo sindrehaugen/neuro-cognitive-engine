@@ -704,11 +704,10 @@ NAME_PINS: dict[str, frozenset[str]] = {
             "economy_generate_ehf",
             "economy_validate_contract",
             "economy_get_gl_records",
-            # Lane E Wave E-7 -- C12 POSTING resource surface (list/get/upsert/archive)
+            # Lane E Wave E-7 -- C12 POSTING resource surface (list/get only since
+            # 2026-09-20: upsert/archive removed, WORM ledger excludes both)
             "economy_list_postings",
             "economy_get_postings",
-            "economy_upsert_postings",
-            "economy_archive_postings",
             # Lane E Wave B-11 -- revenue-side Agreements<->GL reconciliation
             "economy_reconcile_agreements",
         }
