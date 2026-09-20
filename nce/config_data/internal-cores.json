@@ -2,12 +2,12 @@
   "nce/vertical_modules/economy/billing_runs.py::do_generate_billing_run": {
     "engine": "economy",
     "owner": "MLV16G-B12",
-    "reason": "Governed billing-run generation core (Wave B-12); REST/MCP surface registration deferred to Lane E (mechanical, matches the D-8 precedent)."
+    "reason": "Governed billing-run generation core (Wave B-12). The read-only half of the deferred REST/MCP surface shipped in #360 (BILLING_RUN_SPEC/BILLING_CANDIDATE_SPEC, excluded_verbs={\"upsert\",\"archive\"}, citing this function by file:line) -- that surface gives visibility into rows this core produces, it does not call this core. This function itself is still called by nothing (checked: zero hits outside its own definition, resources.py's citations, and spec.py's docstring example). Deliberately unwired, not overlooked: tracked by golden-thread's live xfail at step 35 (test_step_35_billing_run), ruled non-blocking for v1.6."
   },
   "nce/vertical_modules/economy/customer_invoices.py::do_propose_customer_invoice": {
     "engine": "economy",
     "owner": "MLV16G-B13",
-    "reason": "Governed customer-invoice proposal core (Wave B-13, proposal transition only); REST/MCP surface registration deferred to Lane E, same as B-12's do_generate_billing_run."
+    "reason": "Governed customer-invoice proposal core (Wave B-13, proposal transition only). Same shape as do_generate_billing_run above: the read-only REST/MCP surface shipped in #360 (CUSTOMER_INVOICE_SPEC, excluded_verbs={\"upsert\",\"archive\"}, citing this function by file:line) gives visibility into rows this core produces, but never calls it. Zero real callers of this function anywhere. Deliberately unwired: tracked by golden-thread's live xfail at step 36 (test_step_36_customer_invoice), ruled non-blocking for v1.6."
   },
   "nce/vertical_modules/economy/contracts.py::do_upsert_contract": {
     "engine": "economy",
