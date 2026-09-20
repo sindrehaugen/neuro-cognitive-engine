@@ -1231,6 +1231,18 @@ jobs:
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/integration/test_product_lifecycle_status_check.py -m integration -q --tb=short
 
+      # PRODUCT_SKU is the one registered tenant_scope="global" spec (a shared
+      # parts catalog, no namespace_id column). Only guard-refusal tests existed
+      # for it through MCP -- none ever asserted a real, successful list/get
+      # against Postgres, and none proved the specific thing global scope means:
+      # a row is visible to every opted-in namespace, not just its creator.
+      - name: Integration — Product SKU global-scope MCP list/get (tests/integration/test_product_sku_global_scope_live.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/integration/test_product_sku_global_scope_live.py -m integration -q --tb=short
+
 
   # REST-surface mutations must invalidate the MCP response cache.
   # `bump_cache_generation` is called from the MCP dispatch loop only, so a
