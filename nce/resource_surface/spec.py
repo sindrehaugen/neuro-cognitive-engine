@@ -286,10 +286,22 @@ class ResourceSpec:
                             Do NOT use this field to hide a
                             verb you simply have not implemented validation
                             for, and do NOT cite reason (3) for a write path
-                            that does not exist yet -- either case is what
-                            ``governed_verbs`` and hand-written retirement
-                            are for, not this field. On the REST side
-                            the mapping is:
+                            that does not exist yet -- the working answer
+                            today is hand-written retirement (ASSET's /move
+                            and /merge, Wave D-1, admin_handlers/assets.py),
+                            not this field. ``governed_verbs`` reads like a
+                            second alternative here but is not one: it is
+                            declared and documented (see that field's own
+                            entry above) but reserved -- a non-empty value
+                            raises in ``__post_init__`` below, because no
+                            generated backend (rest.py, mcp.py) reads it, and
+                            Sindre's ruling on #328 was explicit: guard it,
+                            do not build it. Do not send a reader here to
+                            "use governed_verbs instead" -- send them to
+                            hand-written retirement, or to that field's own
+                            docstring if they need to know why it raises.
+
+                            On the REST side the mapping is:
                             ``"list"`` -> the list route only; ``"get"`` ->
                             the get-by-id route only; ``"upsert"`` -> create +
                             patch + bulk (mirrors MCP's single upsert tool
