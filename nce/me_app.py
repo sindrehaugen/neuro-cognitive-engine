@@ -1184,11 +1184,11 @@ async def put_me_context(request: Request) -> JSONResponse:
     except Exception:
         body = {}
 
-    principal_id = (
-        body.get("principal_id")
-        or getattr(ns_ctx, "principal_id", None)
-        or getattr(ns_ctx, "agent_id", None)
-    )
+    # Bind only the authenticated caller: principal_id and tier come from the
+    # verified JWT context, never the request body, so this endpoint can only
+    # ever write the caller's own principal_bindings row under the caller's
+    # own verified tier.
+    principal_id = getattr(ns_ctx, "principal_id", None) or getattr(ns_ctx, "agent_id", None)
     if not principal_id:
         return JSONResponse(
             {
@@ -1203,7 +1203,7 @@ async def put_me_context(request: Request) -> JSONResponse:
             status_code=400,
         )
 
-    tier = body.get("tier", getattr(ns_ctx, "principal_kind", "employee"))
+    tier = getattr(ns_ctx, "principal_kind", "employee")
     employee_id = body.get("employee_id")
     customer_id = body.get("customer_id")
     contractor_id = body.get("contractor_id")
