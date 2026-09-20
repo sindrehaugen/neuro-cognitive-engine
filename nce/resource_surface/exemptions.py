@@ -323,4 +323,26 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
             "in memory only, zero kg_nodes writes anywhere in the module)."
         ),
     ),
+    # ---------------------------------------------------------------------------
+    # Economy Engine (Wave B-12)
+    # ---------------------------------------------------------------------------
+    "BILLING_RUN": ResourceExemption(
+        owner_engine="economy",
+        reason=(
+            "kg_nodes-primary satellite (economy_billing_runs, migration 102) exists "
+            "and is real, unlike the business_insights entries above -- only the "
+            "REST/MCP resource-surface registration is missing. Written exclusively "
+            "through the governed do_generate_billing_run core (billing_runs.py), "
+            "never via generic C12 PATCH; deferred to Lane E (mechanical, matches "
+            "the D-8 declare-specs-hand-to-lane-E precedent)."
+        ),
+    ),
+    "BILLING_CANDIDATE": ResourceExemption(
+        owner_engine="economy",
+        reason=(
+            "kg_nodes-primary satellite (economy_billing_candidates, migration 103) "
+            "exists and is real; same deferral as BILLING_RUN -- REST/MCP surface "
+            "registration is Lane E's mechanical follow-on, not a persistence gap."
+        ),
+    ),
 }
