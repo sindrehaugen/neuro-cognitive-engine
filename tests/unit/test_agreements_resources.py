@@ -100,7 +100,11 @@ def test_agreement_resource_crud_lifecycle():
     v1 = item["updated_at"]
     assert item["agreement_number"] == "AGR-2026-001"
     assert item["title"] == "Master AV Service Agreement"
-    assert item["status"] == "active"
+    # "status" is the response envelope's own success indicator, not the
+    # agreement's business status -- the real value lives under "item",
+    # same object, unaffected by the envelope-key precedence fix.
+    assert item["status"] == "ok"
+    assert item["item"]["status"] == "active"
     assert item["annual_value"] == 240000.00
 
     # 2. Get single item
