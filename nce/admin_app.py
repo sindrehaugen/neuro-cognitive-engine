@@ -1139,6 +1139,14 @@ def build_admin_routes() -> list[Route]:
             endpoint=project_handlers.api_project_get_phase,
             methods=["GET"],
         ),
+        # Wave C-6: list_bom_lines_for_quote (nce/bom_lines.py) existed with
+        # no route -- literal-before-{id} ordering note above applies here
+        # too, though nothing else under /api/project/ currently collides.
+        Route(
+            "/api/project/{id}/bom-lines",
+            endpoint=project_handlers.api_project_get_bom_lines,
+            methods=["GET"],
+        ),
         Route(
             "/api/project/{id}/phase",
             endpoint=project_handlers.api_project_advance_phase,

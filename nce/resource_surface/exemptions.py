@@ -88,13 +88,16 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     # ---------------------------------------------------------------------------
     # Project Engine (Lane C Wave C-6 / Lane E)
     # ---------------------------------------------------------------------------
-    "PROJECT_PROJECT": ResourceExemption(
-        owner_engine="project",
-        reason=(
-            "kg_nodes-only spine node with phase gates and capacity metadata; scheduled "
-            "for Wave C-6 PROJECT resource declaration."
-        ),
-    ),
+    # PROJECT_PROJECT: registered (Wave C-6, 2026-09-20) --
+    # nce/vertical_modules/project/resources.py. Thin kg_nodes-primary
+    # identity only (label/entity_type/change_origin/timestamps) -- kg_nodes
+    # itself has no attribute storage (confirmed empty for every PROJECT_*
+    # node type, Q-47, still open). Phase gates/capacity/my-day/reports stay
+    # on their own hand-written routes; this registration does not expose
+    # them and was never meant to -- the old exemption reason here
+    # ("phase gates and capacity metadata") described data that was never
+    # actually queryable via kg_nodes, the same shape as the E-unblock
+    # miscalculation from earlier tonight.
     "PROJECT_GATE": ResourceExemption(
         owner_engine="project",
         reason=(
