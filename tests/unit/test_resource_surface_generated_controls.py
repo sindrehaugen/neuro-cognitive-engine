@@ -158,6 +158,8 @@ def test_no_registered_spec_is_also_exempted() -> None:
 
 @pytest.mark.parametrize("spec", _SPECS, ids=_SPEC_IDS)
 def test_generated_create_and_get(spec: ResourceSpec) -> None:
+    if "upsert" in spec.excluded_verbs:
+        pytest.skip(f"{spec.engine}:{spec.entity} excludes upsert -- see spec.excluded_verbs")
     client = _client_for_spec(spec)
     payload = _sample_payload(spec, _NS_A)
     create_resp = client.post(spec.rest_collection_path, json=payload)
@@ -175,6 +177,10 @@ def test_generated_create_and_get(spec: ResourceSpec) -> None:
 def test_generated_list(spec: ResourceSpec) -> None:
     if "list" in spec.excluded_verbs:
         pytest.skip(f"{spec.engine}:{spec.entity} excludes list -- see spec.excluded_verbs")
+    if "upsert" in spec.excluded_verbs:
+        pytest.skip(
+            f"{spec.engine}:{spec.entity} excludes upsert -- no route to seed a row to list"
+        )
     client = _client_for_spec(spec)
     client.post(spec.rest_collection_path, json=_sample_payload(spec, _NS_A))
     list_resp = client.get(f"{spec.rest_collection_path}?namespace_id={_NS_A}")
@@ -188,6 +194,8 @@ def test_generated_list(spec: ResourceSpec) -> None:
 def test_generated_patch(spec: ResourceSpec) -> None:
     if not spec.writable_fields:
         pytest.skip(f"{spec.engine}:{spec.entity} declares no writable_fields to patch")
+    if "upsert" in spec.excluded_verbs:
+        pytest.skip(f"{spec.engine}:{spec.entity} excludes upsert -- see spec.excluded_verbs")
     client = _client_for_spec(spec)
     created = client.post(spec.rest_collection_path, json=_sample_payload(spec, _NS_A)).json()
     item_id = created[spec.id_field]
@@ -201,6 +209,12 @@ def test_generated_patch(spec: ResourceSpec) -> None:
 
 @pytest.mark.parametrize("spec", _SPECS, ids=_SPEC_IDS)
 def test_generated_archive_and_restore(spec: ResourceSpec) -> None:
+    if "archive" in spec.excluded_verbs:
+        pytest.skip(f"{spec.engine}:{spec.entity} excludes archive -- see spec.excluded_verbs")
+    if "upsert" in spec.excluded_verbs:
+        pytest.skip(
+            f"{spec.engine}:{spec.entity} excludes upsert -- no route to seed a row to archive"
+        )
     client = _client_for_spec(spec)
     created = client.post(spec.rest_collection_path, json=_sample_payload(spec, _NS_A)).json()
     item_id = created[spec.id_field]
@@ -236,7 +250,12 @@ def test_generated_negative_rls_tenant_scoped(spec: ResourceSpec) -> None:
     The cross-namespace LIST leg is skipped for a spec that excludes "list"
     (spec.excluded_verbs) -- there is no list route to call. GET and PATCH
     negative-RLS checks still run unconditionally; excluded_verbs never
-    touches those."""
+    touches those. The whole test is skipped for a spec that excludes
+    "upsert" -- there is no route to create the row every leg below needs."""
+    if "upsert" in spec.excluded_verbs:
+        pytest.skip(
+            f"{spec.engine}:{spec.entity} excludes upsert -- no route to seed a row"
+        )
     client = _client_for_spec(spec)
     created = client.post(spec.rest_collection_path, json=_sample_payload(spec, _NS_A)).json()
     item_id = created[spec.id_field]
