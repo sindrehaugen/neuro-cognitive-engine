@@ -59,7 +59,7 @@ The catalog consistency validator categorizes all tables in the engine into thre
 ```
                               ┌─────────────────────────────────────────────────────────┐
                               │            NCE Database Schema Surface                  │
-                              │                 (114 Total Tables)                      │
+                              │                 (118 Total Tables)                      │
                               └────────────────────────────┬────────────────────────────┘
                                                            │
                      ┌─────────────────────────────────────┼─────────────────────────────────────┐
