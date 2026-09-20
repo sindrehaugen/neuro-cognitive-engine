@@ -7,10 +7,23 @@ NCE exposes capabilities through:
   - Declarative MCP tools (agent JSON-RPC tool definitions)
   - Public Pydantic data models
 
-This script compiles these sources of truth into a deterministic, comprehensive
-OpenAPI 3.1.0 specification document at:
+This script compiles these sources of truth into a deterministic OpenAPI 3.1.0
+specification document at:
   - docs/_generated/openapi.json
   - openapi.json (repo root)
+
+For C12 ResourceSpecs, the per-item response schema documents the curated
+surface only -- id_field, version_field, soft_delete_field, and the union of
+writable_fields/filterable_fields -- not every column the live response
+actually contains. A real response is always a superset: storage-internal
+columns present on every tenant-scoped table (namespace_id, created_at) are
+never in any spec's field lists, so they never appear in any schema, on any
+registered spec (see OPENAPI_RESPONSE_SCHEMA_SWEEP.md, 2026-09-20, for the
+full accounting and why this is accepted rather than fixed absent a real
+consumer of this file). A consumer following this schema gets at least what
+is documented, never less -- the gap runs in the safe direction, but "this
+schema documents everything the endpoint returns" is not a claim this script
+makes or should be read as making.
 
 Usage:
     python scripts/gen_openapi.py                  # write both files
