@@ -579,7 +579,7 @@ async def do_resolve_ticket(
 
 
 # ============================================================================
-# Wave D-5: TICKET_ACTION Log & Timeline (ADR 0042)
+# Wave D-5: TICKET_ACTION Log & Timeline (ADR-0008)
 # ============================================================================
 
 _ALLOWED_ACTION_TYPES = frozenset(
@@ -616,7 +616,7 @@ async def do_log_ticket_action(
     engine_or_pool: Any,
     params: dict[str, Any],
 ) -> dict[str, Any]:
-    """Append a structured action log entry (tiltak + utfall) to a support ticket per ADR 0042.
+    """Append a structured action log entry (tiltak + utfall) to a support ticket per ADR-0008.
 
     Inserts into support_ticket_actions table, appends to service_tickets.events JSONB,
     and returns the created ticket action record.

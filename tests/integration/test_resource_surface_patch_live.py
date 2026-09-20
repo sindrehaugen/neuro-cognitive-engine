@@ -10,18 +10,20 @@ POPULATION -- measured, not assumed to match #375's 17 (that population was
 archive-eligible; this one is upsert-eligible, a materially different and
 much larger filter).
 
-Of 56 registered specs, 49 do not exclude ``upsert`` and declare at least
+Of 56 registered specs, 48 do not exclude ``upsert`` and declare at least
 one writable field (a spec with zero writable fields has nothing for PATCH
-to touch). Of those 49, **9 are graph/kg_nodes-primary** (``table_name is
-None``: ``project:projects``, ``sales:contacts``, and 7 ``system_design``
-specs) -- explicitly OUT OF SCOPE here. Per G's standing rule ("no in-memory
-type table, ever") applied to fixtures generally: a graph-primary PATCH
-needs the same ``assert_owner``/ownership-registry seeding
-``tests/test_agreements_sla.py`` uses for a kg_nodes writer, a materially
-different and harder fixture than any of the 40 relational specs below.
-Sizing that population is a separate task, not done here.
+to touch; was 49 before ADR-0008 excluded ``upsert`` on
+``support:ticket-actions`` and cleared its ``writable_fields`` -- see the
+floor test's own comment below). Of those 48, **9 are graph/kg_nodes-primary**
+(``table_name is None``: ``project:projects``, ``sales:contacts``, and 7
+``system_design`` specs) -- explicitly OUT OF SCOPE here. Per G's standing
+rule ("no in-memory type table, ever") applied to fixtures generally: a
+graph-primary PATCH needs the same ``assert_owner``/ownership-registry
+seeding ``tests/test_agreements_sla.py`` uses for a kg_nodes writer, a
+materially different and harder fixture than any of the 39 relational
+specs below. Sizing that population is a separate task, not done here.
 
-Of the remaining **40 relational specs**, 3 cannot create a row through
+Of the remaining **39 relational specs**, 3 cannot create a row through
 the generated surface AT ALL, for a reason that has nothing to do with
 this file's job (found while building this fixture, not part of the
 dispatch): ``field_tech:checklists``/``time-entries``/``work-orders`` each
@@ -40,14 +42,14 @@ fixed here, since it needs a ``ResourceSpec`` edit (adding the missing
 field to ``writable_fields``) outside this file's read-only-by-convention
 scope for a live-test PR.
 
-**37 relational specs are exercised for real.** ``expected_version``: each
+**36 relational specs are exercised for real.** ``expected_version``: each
 spec's own PATCH is asserted with a correct ``expected_version`` (proves
 the per-spec ``version_field`` wiring, not just a shared mechanism --
 version_field names and response shapes differ per spec). The STALE-version
 409 rejection itself is asserted only once (a second, dedicated test on one
 representative spec) -- #379 already proved that mechanism is spec-generic
-(shared ``handle_patch`` code, not per-spec logic), so repeating it 37
-times would prove the same fact 37 times, not 37 different facts.
+(shared ``handle_patch`` code, not per-spec logic), so repeating it 36
+times would prove the same fact 36 times, not 36 different facts.
 """
 
 from __future__ import annotations
@@ -339,9 +341,17 @@ async def _typed_sample_payload(
 
 
 def test_discovery_floor_matches_the_measured_population() -> None:
-    assert len(_PATCH_ELIGIBLE) >= 40, (
+    # Floor moved 40 -> 39 (ADR-0008, 2026-09-21): TICKET_ACTION_SPEC now
+    # excludes "upsert" (the table's own append-only grant no longer
+    # permits UPDATE/DELETE, migration 108) and clears writable_fields to
+    # () per the fail-safe convention -- either change alone drops it out
+    # of this population's filter ("upsert" not in excluded_verbs and
+    # writable_fields). Deliberate, not a regression; re-derive with the
+    # same filter this list uses before moving this number again.
+    assert len(_PATCH_ELIGIBLE) >= 39, (
         f"Only {len(_PATCH_ELIGIBLE)} relational, upsert-eligible, writable specs "
-        f"found -- expected at least 40 (measured on main@fbfc78a). A spec was "
+        f"found -- expected at least 39 (measured post-ADR-0008, "
+        f"TICKET_ACTION_SPEC's exclusion already accounted for). A spec was "
         f"excluded, lost its writable_fields, or the population shrank."
     )
 

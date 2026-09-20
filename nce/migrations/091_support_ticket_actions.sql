@@ -2,7 +2,7 @@
 -- ============================================================================
 -- Support Engine (Module 10, Wave D-5 -- TICKET_ACTION log):
 -- Table backing append-only ticket action log tracking interventions (tiltak)
--- and outcomes (utfall) per ticket per ADR 0042.
+-- and outcomes (utfall) per ticket per ADR-0008.
 --
 -- STRICT ROW LEVEL SECURITY + EXPLICIT NAMESPACE PREDICATE ENFORCEMENT
 -- --------------------------------------------------------------------------

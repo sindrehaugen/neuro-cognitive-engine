@@ -6080,22 +6080,10 @@
         "type": "object"
       },
       "Support_ticket_actions": {
-        "description": "Append-only ticket action log tracking interventions (tiltak) and outcomes (utfall) per ticket per ADR 0042.",
+        "description": "Append-only ticket action log tracking interventions (tiltak) and outcomes (utfall) per ticket per ADR-0008.",
         "properties": {
-          "action_details": {
-            "description": "Field action_details",
-            "type": "string"
-          },
-          "action_summary": {
-            "description": "Field action_summary",
-            "type": "string"
-          },
           "action_type": {
             "description": "Field action_type",
-            "type": "string"
-          },
-          "change_origin": {
-            "description": "Field change_origin",
             "type": "string"
           },
           "id": {
@@ -6104,14 +6092,6 @@
           },
           "outcome": {
             "description": "Field outcome",
-            "type": "string"
-          },
-          "outcome_notes": {
-            "description": "Field outcome_notes",
-            "type": "string"
-          },
-          "performed_at": {
-            "description": "Field performed_at",
             "type": "string"
           },
           "performed_by": {
@@ -6134,35 +6114,7 @@
       },
       "Support_ticket_actions_Create": {
         "description": "Payload for creating a support ticket-actions",
-        "properties": {
-          "action_details": {
-            "type": "string"
-          },
-          "action_summary": {
-            "type": "string"
-          },
-          "action_type": {
-            "type": "string"
-          },
-          "change_origin": {
-            "type": "string"
-          },
-          "outcome": {
-            "type": "string"
-          },
-          "outcome_notes": {
-            "type": "string"
-          },
-          "performed_at": {
-            "type": "string"
-          },
-          "performed_by": {
-            "type": "string"
-          },
-          "ticket_id": {
-            "type": "string"
-          }
-        },
+        "properties": {},
         "type": "object"
       },
       "Support_ticket_actions_List": {
@@ -6191,35 +6143,8 @@
       "Support_ticket_actions_Update": {
         "description": "Payload for updating a support ticket-actions",
         "properties": {
-          "action_details": {
-            "type": "string"
-          },
-          "action_summary": {
-            "type": "string"
-          },
-          "action_type": {
-            "type": "string"
-          },
-          "change_origin": {
-            "type": "string"
-          },
           "expected_version": {
             "description": "Optimistic concurrency lock version",
-            "type": "string"
-          },
-          "outcome": {
-            "type": "string"
-          },
-          "outcome_notes": {
-            "type": "string"
-          },
-          "performed_at": {
-            "type": "string"
-          },
-          "performed_by": {
-            "type": "string"
-          },
-          "ticket_id": {
             "type": "string"
           }
         },
@@ -19825,53 +19750,6 @@
         ],
         "type": "object"
       },
-      "Tool_support_upsert_ticket_actions_Input": {
-        "properties": {
-          "action_details": {
-            "description": "Value for action_details."
-          },
-          "action_summary": {
-            "description": "Value for action_summary."
-          },
-          "action_type": {
-            "description": "Value for action_type."
-          },
-          "change_origin": {
-            "description": "Value for change_origin."
-          },
-          "expected_version": {
-            "description": "Concurrency check version.",
-            "type": "string"
-          },
-          "id": {
-            "description": "Optional ID of existing Ticket Action to update.",
-            "type": "string"
-          },
-          "namespace_id": {
-            "description": "Caller namespace UUID.",
-            "type": "string"
-          },
-          "outcome": {
-            "description": "Value for outcome."
-          },
-          "outcome_notes": {
-            "description": "Value for outcome_notes."
-          },
-          "performed_at": {
-            "description": "Value for performed_at."
-          },
-          "performed_by": {
-            "description": "Value for performed_by."
-          },
-          "ticket_id": {
-            "description": "Value for ticket_id."
-          }
-        },
-        "required": [
-          "namespace_id"
-        ],
-        "type": "object"
-      },
       "Tool_support_upsert_tickets_Input": {
         "properties": {
           "asset_id": {
@@ -26956,17 +26834,6 @@
         "migration": false,
         "mutation": true,
         "name": "support_upsert_sla_clocks"
-      },
-      "support_upsert_ticket_actions": {
-        "admin_only": false,
-        "cacheable": false,
-        "description": "Create or update a Ticket Action resource.",
-        "inputSchema": {
-          "$ref": "#/components/schemas/Tool_support_upsert_ticket_actions_Input"
-        },
-        "migration": false,
-        "mutation": true,
-        "name": "support_upsert_ticket_actions"
       },
       "support_upsert_tickets": {
         "admin_only": false,
@@ -109771,161 +109638,6 @@
         "tags": [
           "support"
         ]
-      },
-      "post": {
-        "description": "handle_create (/api/support/ticket-actions)",
-        "operationId": "post_api_support_ticket_actions",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Support_ticket_actions_Create"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Support_ticket_actions"
-                }
-              }
-            },
-            "description": "Successful operation"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Validation failure or malformed input"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Missing, expired, or invalid authentication credentials"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Principal tier refusal or cross-tenant boundary violation"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Resource or endpoint not found"
-          }
-        },
-        "summary": "handle_create (/api/support/ticket-actions)",
-        "tags": [
-          "support"
-        ]
-      }
-    },
-    "/api/support/ticket-actions/bulk": {
-      "post": {
-        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
-        "operationId": "post_api_support_ticket_actions_bulk",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "items": {
-                    "items": {
-                      "$ref": "#/components/schemas/Support_ticket_actions_Create"
-                    },
-                    "type": "array"
-                  }
-                },
-                "required": [
-                  "items"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Support_ticket_actions"
-                }
-              }
-            },
-            "description": "Successful operation"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Validation failure or malformed input"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Missing, expired, or invalid authentication credentials"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Principal tier refusal or cross-tenant boundary violation"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Resource or endpoint not found"
-          }
-        },
-        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
-        "tags": [
-          "support"
-        ]
       }
     },
     "/api/support/ticket-actions/{id}": {
@@ -109997,88 +109709,6 @@
           }
         },
         "summary": "handle_get (/api/support/ticket-actions/{id})",
-        "tags": [
-          "support"
-        ]
-      },
-      "patch": {
-        "description": "handle_patch (/api/support/ticket-actions/{id})",
-        "operationId": "patch_api_support_ticket_actions_id",
-        "parameters": [
-          {
-            "description": "URL path parameter id",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Support_ticket_actions_Update"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Support_ticket_actions"
-                }
-              }
-            },
-            "description": "Successful operation"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Validation failure or malformed input"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Missing, expired, or invalid authentication credentials"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Principal tier refusal or cross-tenant boundary violation"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Resource or endpoint not found"
-          }
-        },
-        "summary": "handle_patch (/api/support/ticket-actions/{id})",
         "tags": [
           "support"
         ]

@@ -973,10 +973,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/support/sync/now` | `api_support_sync_now` |
 | GET | `/api/support/sync/status` | `api_support_sync_status` |
 | GET | `/api/support/ticket-actions` | `handle_list` |
-| POST | `/api/support/ticket-actions` | `handle_create` |
-| POST | `/api/support/ticket-actions/bulk` | `handle_bulk` |
 | GET | `/api/support/ticket-actions/{id}` | `handle_get` |
-| PATCH | `/api/support/ticket-actions/{id}` | `handle_patch` |
 | GET | `/api/support/ticket-actions/{id}/comments` | `handle_list_comments` |
 | POST | `/api/support/ticket-actions/{id}/comments` | `handle_add_comment` |
 | GET | `/api/support/ticket-actions/{id}/documents` | `handle_list_documents` |
@@ -1623,7 +1620,6 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `support_upsell_signal` | yes | yes |  |  |
 | `support_upsert_customer_health` |  | yes |  |  |
 | `support_upsert_sla_clocks` |  | yes |  |  |
-| `support_upsert_ticket_actions` |  | yes |  |  |
 | `support_upsert_tickets` |  | yes |  |  |
 | `system_design_archive_cables` |  | yes |  |  |
 | `system_design_archive_design_requests` |  | yes |  |  |
@@ -1719,4 +1715,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 1173 REST endpoints, 528 MCP tools._
+_Totals: 1170 REST endpoints, 527 MCP tools._

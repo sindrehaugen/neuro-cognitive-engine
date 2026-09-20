@@ -4140,6 +4140,19 @@ BEGIN
     END IF;
 END $$;
 
+-- ---------------------------------------------------------------------------
+-- 108_support_ticket_actions_append_only.sql mirror -- ADR 0008. Narrows the
+-- original grant above to match the table's own documented append-only
+-- invariant (event_log's shape, not its trigger -- see the migration's own
+-- header for why grant-only is proportionate here).
+-- ---------------------------------------------------------------------------
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE UPDATE, DELETE ON TABLE support_ticket_actions FROM nce_app;
+    END IF;
+END $$;
+
 
 -- ============================================================================
 -- Field Tech Engine (Module 12) Tables

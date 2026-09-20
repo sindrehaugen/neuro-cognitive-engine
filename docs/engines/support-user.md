@@ -257,7 +257,14 @@ Filterable: `churn_risk`. Searchable (`?q=`): `customer_id`. No
 ### TICKET_ACTION (`support_ticket_actions` table)
 
 Append-only ticket action log tracking interventions (tiltak) and outcomes
-(utfall) per ticket, per ADR 0042.
+(utfall) per ticket, per ADR-0008. `excluded_verbs={"archive", "upsert"}`
+(2026-09-21) — `archive` because the table has no `is_archived` column,
+`upsert` because migration `108_support_ticket_actions_append_only.sql`
+revokes `UPDATE`/`DELETE` at the grant level. Generated surface for this
+spec is `list`/`get` only: 2 MCP tools, not the 4 the table below still
+shows for the other three specs (that table predates the archive wave
+and hasn't been reconciled for `SLA`/`SUPPORT_HEALTH_SCORE` either —
+out of scope here).
 
 | Field | Role |
 |---|---|

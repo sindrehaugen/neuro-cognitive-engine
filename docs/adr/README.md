@@ -18,6 +18,7 @@ ADRs are retroactive where the decision has already shipped. In-flight or planne
 | [0005](0005-shadow-column-reembedding.md) | Shadow-column re-embedding migration (embedding_v2) | Shipped |
 | [0006](0006-env-only-nce-master-key.md) | Environment-only NCE_MASTER_KEY (_ENV_ONLY_SECRETS) | Shipped |
 | [0007](0007-snapshot-export-import-replay.md) | Snapshot export/import + observational/forked replay | Shipped |
+| [0008](0008-append-only-ticket-action-log.md) | Append-only enforcement for support_ticket_actions (grant revocation, replacing a phantom "ADR 0042") | Shipped |
 
 ## Format
 
