@@ -2019,10 +2019,71 @@ async def reschedule_jobs() -> str:
     return f"rescheduled {len(rescheduled)} jobs"
 
 
+_ASSETS_TICK_CURSOR_KEY = "NCE_ASSETS_TELEMETRY_TICK_CURSOR"
+_ASSETS_TICK_BATCH_SIZE = 100
+
+
+async def _fetch_asset_tick_batch(
+    conn: Any,
+    terminal_lifecycle_state: str,
+    cursor: str | None,
+    batch_size: int = _ASSETS_TICK_BATCH_SIZE,
+) -> tuple[list[Any], str | None]:
+    """Fetch one keyset-paginated batch of non-terminal assets, and the next cursor.
+
+    Extracted from ``_assets_telemetry_tick`` so the rotation logic is
+    testable without also invoking ``do_pull_telemetry``/``NCEEngine``.
+
+    Fair-rotation fix for the tick's original ``LIMIT 100`` with no
+    ``ORDER BY``, no cursor: above 100 non-terminal assets it served an
+    arbitrary ~100 forever and never reached the rest (found by lane F,
+    2026-09-20). ``id`` (the table's own primary key, already indexed --
+    no migration needed) gives a stable total order for keyset pagination:
+    ``id > cursor ORDER BY id LIMIT batch_size``. When a batch comes back
+    shorter than ``batch_size`` the scan has reached the end of the
+    non-terminal set for this pass; the caller wraps the cursor back to
+    ``None`` so the next tick starts over from the beginning rather than
+    returning nothing forever.
+
+    Deliberately not ``ORDER BY id`` alone with no cursor persisted: that
+    would make every tick re-scan the SAME first 100 (by id order) even
+    though it now looks like a sensible query -- deterministic starvation
+    of the tail, not fixed, just harder to notice. The cursor must be
+    carried between ticks for rotation to mean anything.
+
+    Returns
+    -------
+    (rows, next_cursor):
+        ``rows`` are ``asyncpg.Record``s with ``namespace_id``/``asset_id``.
+        ``next_cursor`` is the last row's ``asset_id`` as a string when a
+        full batch came back (more may remain), or ``None`` when this
+        batch reached the end (wrap around next tick).
+    """
+    rows = await conn.fetch(
+        """
+        SELECT namespace_id, id AS asset_id
+        FROM assets
+        WHERE lifecycle_state <> $1
+          AND ($2::uuid IS NULL OR id > $2::uuid)
+        ORDER BY id
+        LIMIT $3
+        """,
+        terminal_lifecycle_state,
+        cursor,
+        batch_size,
+    )
+    if len(rows) < batch_size:
+        return list(rows), None
+    return list(rows), str(rows[-1]["asset_id"])
+
+
 async def _assets_telemetry_tick(pool: asyncpg.Pool) -> None:
     """APScheduler job: periodic YMCS-ONLY telemetry pull for assets (Wave A-1).
 
-    Runs every 5 minutes. Scans every non-terminal asset in every namespace
+    Runs every 5 minutes. Scans every non-terminal asset in every namespace,
+    100 at a time in a persisted keyset-cursor rotation (see
+    ``_fetch_asset_tick_batch``; fixed 2026-09-20 -- above 100 non-terminal
+    assets this tick previously serviced an arbitrary same ~100 forever),
     and calls ``do_pull_telemetry`` with ``platform="ymcs"`` HARDCODED --
     never any other platform, and never conditioned on what the asset
     actually is.
@@ -2060,6 +2121,8 @@ async def _assets_telemetry_tick(pool: asyncpg.Pool) -> None:
 
     try:
         from nce.orchestrator import NCEEngine
+        from nce.settings_store import get as store_get
+        from nce.settings_store import set as store_set
         from nce.vertical_modules.assets.lifecycle import load_lifecycle_config
         from nce.vertical_modules.assets.telemetry import do_pull_telemetry
 
@@ -2074,17 +2137,19 @@ async def _assets_telemetry_tick(pool: asyncpg.Pool) -> None:
         # de-synchronise this scan.
         terminal_lifecycle_state = load_lifecycle_config()["STATES"][-1]
 
-        # Scan active namespaces that contain assets
+        # Fair-rotation cursor, persisted in the existing settings store (no
+        # new table -- see _fetch_asset_tick_batch's docstring). A global
+        # cursor, not per-namespace: the query itself scans across every
+        # namespace in one pass, same as before this fix.
+        cursor = await store_get(_ASSETS_TICK_CURSOR_KEY, None, pool=pool)
+
         async with unmanaged_pg_connection(pool, site="cron.assets_telemetry.scan") as conn:
-            rows = await conn.fetch(
-                """
-                SELECT DISTINCT namespace_id, id AS asset_id
-                FROM assets
-                WHERE lifecycle_state <> $1
-                LIMIT 100
-                """,
-                terminal_lifecycle_state,
+            rows, next_cursor = await _fetch_asset_tick_batch(
+                conn, terminal_lifecycle_state, cursor
             )
+
+        if next_cursor != cursor:
+            await store_set(_ASSETS_TICK_CURSOR_KEY, next_cursor, pool=pool)
 
         if not rows:
             return
