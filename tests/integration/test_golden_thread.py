@@ -1923,18 +1923,35 @@ class TestGoldenThreadSteps:
             "nce.vertical_modules.sales (confirmed by reading resources.py/graph.py and "
             "migration 088_sales_resource_tables.sql) -- do_create_deal takes no "
             "participants/attendees argument at all. Aspirational per the original H-9 "
-            "charter text, not yet built by any landed wave (tracked as B-1-followup)."
+            "charter text, not yet built by any landed wave (tracked as B-1-followup). "
+            "K34 (2026-09-20): this step now ATTEMPTS the real call "
+            "(TOOL_REGISTRY['sales_add_deal_participant']) instead of raising "
+            "unconditionally -- it fails today with a genuine KeyError because no tool "
+            "by that name is registered, and will XPASS (forcing this marker's removal "
+            "under strict=True) the moment one is. If the landed feature registers under "
+            "a different tool name, update this call site to match rather than leaving "
+            "the marker stale."
         ),
     )
     async def test_step_33_deal_participants(self, scenario: GoldenThreadScenarioContext) -> None:
         """Step 33: deal with participants (not built -- see xfail reason)."""
         ctx = scenario
         await self._ensure_prereqs(ctx, 1)
-        # There is no participants argument to pass; this call demonstrates
-        # the gap rather than working around it with an invented kwarg.
-        raise NotImplementedError(
-            "DEAL_PARTICIPANT does not exist -- do_create_deal has no participants concept"
+        # No participants tool exists yet -- this is a real dict lookup against
+        # the live TOOL_REGISTRY, not a hand-authored raise, so it stops
+        # failing the instant a tool by this name is registered.
+        result = json.loads(
+            await TOOL_REGISTRY["sales_add_deal_participant"].handler(
+                ctx.engine,
+                {
+                    "namespace_id": str(ctx.namespace_id),
+                    "deal_id": ctx.deal_id,
+                    "participant_name": "Golden Thread Attendee",
+                    "role": "stakeholder",
+                },
+            )
         )
+        assert result.get("status") == "ok", result
 
     @pytest.mark.xfail(
         strict=True,
@@ -2002,15 +2019,32 @@ class TestGoldenThreadSteps:
         reason=(
             "break-h9e: no customer-invoice capability exists anywhere in the tree "
             "(distinct from the existing supplier-invoice approval path "
-            "economy_approve_invoice already covers). Depends on billing_run (step 35) "
-            "existing first; tracked under the same Wave B-12."
+            "economy_approve_invoice already covers). billing_run (step 35, B-12) now "
+            "exists (PR #333), but customer-invoice generation from a BILLING_CANDIDATE "
+            "is a separate, still-unbuilt capability (tracked as B-13). K34 (2026-09-20): "
+            "this step now ATTEMPTS the real call "
+            "(TOOL_REGISTRY['economy_generate_customer_invoice']) instead of raising "
+            "unconditionally -- fails today with a genuine KeyError, will XPASS the "
+            "moment a tool by that name is registered."
         ),
     )
     async def test_step_36_customer_invoice(self, scenario: GoldenThreadScenarioContext) -> None:
         """Step 36: customer invoice (not built -- see xfail reason)."""
         ctx = scenario
         await self._ensure_prereqs(ctx, 1)
-        raise NotImplementedError("No customer-invoice capability exists anywhere in the tree")
+        # No customer-invoice tool exists yet -- real dict lookup against the
+        # live TOOL_REGISTRY, same mechanism as step 33/34.
+        result = json.loads(
+            await TOOL_REGISTRY["economy_generate_customer_invoice"].handler(
+                ctx.engine,
+                {
+                    "namespace_id": str(ctx.namespace_id),
+                    "customer_id": ctx.customer_id,
+                    "quote_id": ctx.quote_id,
+                },
+            )
+        )
+        assert result.get("status") == "ok", result
 
     async def test_step_37_notification_received(
         self, scenario: GoldenThreadScenarioContext
