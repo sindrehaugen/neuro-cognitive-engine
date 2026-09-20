@@ -97,6 +97,15 @@ ALLOCATION_SPEC = ResourceSpec(
         "confidence",
         "attrs",
     ),
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column that allocations does not have. status
+    # is a free-form VARCHAR (default 'reserved', 'released' is the only
+    # other value referenced anywhere -- a partial-index condition, not an
+    # enumerated CHECK) already filterable and writable via generic PATCH --
+    # not an archived-shaped state this spec lacks a path for, and no
+    # hand-written archive path either. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description="Time-window resource booking against a demand source, with exclusion-guarded double-booking.",
     enabled_guard=_require_resources_enabled_via_pool,
 )
@@ -126,6 +135,11 @@ TRAVEL_LEG_SPEC = ResourceSpec(
         "status",
         "attrs",
     ),
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column that travel_legs does not have; no
+    # alternate soft-delete column or hand-written archive path either. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description="Travel route legs (flight/train/car) associated with an allocation.",
     enabled_guard=_require_resources_enabled_via_pool,
 )
@@ -149,12 +163,19 @@ RESOURCE_SPEC = ResourceSpec(
         "display_name",
         "attrs",
     ),
-    excluded_verbs=frozenset({"list"}),
+    # archive wave (2026-09-20): "resources" table has no "is_archived"
+    # column and no status/active column of any kind (confirmed against
+    # schema.sql directly: attrs, created_at, display_name, id, kind,
+    # namespace_id, ref_id, updated_at -- that's all of them). Unioned with
+    # the pre-existing "list" exclusion (reason (1), tool-name collision --
+    # see this spec's own description below), not a replacement for it. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"list", "archive"}),
     description=(
         "Schedulable resource master data (employee/contractor/vehicle/tool). "
         "list is excluded -- the existing hand-written resources_list_resources "
         "tool (kind filter, pagination) stays authoritative; this spec adds "
-        "get/upsert/archive only."
+        "get/upsert only (archive also excluded, no is_archived column)."
     ),
     enabled_guard=_require_resources_enabled_via_pool,
 )

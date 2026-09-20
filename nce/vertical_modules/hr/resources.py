@@ -65,6 +65,19 @@ EMPLOYEE_SPEC = ResourceSpec(
         "hr_source_id",
         "raw",
     ),
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column that employees does not have. NOT simply
+    # a missing column, though -- employees DOES have a real boolean
+    # "active" column (default true), but it is the wrong shape for this
+    # mechanism even if named: handle_archive always does
+    # `SET {field} = true` (rest.py:1174), so pointing soft_delete_field at
+    # "active" would make archiving set active BACK to true (its
+    # non-archived default) -- backwards, a silent no-op wearing a 200.
+    # "active" is already writable via the generic PATCH route today, so
+    # deactivation already has a correct path; nothing reads or writes it
+    # to false anywhere in this engine currently, but the mechanism exists.
+    # See _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description="C12 employee profile cards with department, role, and leave balance.",
 )
 register_resource(EMPLOYEE_SPEC)
@@ -93,6 +106,11 @@ SKILL_SPEC = ResourceSpec(
         "hr_source_id",
         "raw",
     ),
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column that skills does not have; no alternate
+    # soft-delete column or hand-written archive path either. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description="C12 employee skill assessments with category and proficiency level.",
 )
 register_resource(SKILL_SPEC)
@@ -122,6 +140,14 @@ CERTIFICATION_SPEC = ResourceSpec(
         "hr_source_id",
         "raw",
     ),
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column that certifications does not have.
+    # status is a free-form TEXT column (no enumerated CHECK, default
+    # 'active') already filterable and writable via generic PATCH -- not an
+    # archived-shaped state this spec lacks a path for, and no hand-written
+    # archive path either. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description="C12 employee certification records with issuing authority and validity window.",
 )
 register_resource(CERTIFICATION_SPEC)
@@ -153,6 +179,14 @@ ABSENCE_SPEC = ResourceSpec(
         "hr_source_id",
         "raw",
     ),
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column that absences does not have. status is a
+    # free-form TEXT column (no enumerated CHECK, default 'pending')
+    # already filterable and writable via generic PATCH -- not an
+    # archived-shaped state this spec lacks a path for, and no hand-written
+    # archive path either. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description="C12 employee absence/leave records with compliance state tracking.",
 )
 register_resource(ABSENCE_SPEC)

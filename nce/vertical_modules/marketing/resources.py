@@ -66,6 +66,14 @@ CASE_STUDY_SPEC = ResourceSpec(
         "marketing_source_id",
         "raw",
     ),
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column that case_studies does not have.
+    # status's own CHECK enum (draft/in_review/approved/published/retracted)
+    # already covers lifecycle termination ("retracted") and is already
+    # writable via generic PATCH -- not a hidden soft-delete gap, and no
+    # hand-written archive path either. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description="C12 drafted, approved, and published customer success stories.",
 )
 register_resource(CASE_STUDY_SPEC)
@@ -96,6 +104,14 @@ TESTIMONIAL_SPEC = ResourceSpec(
         "nps_at_capture",
         "marketing_source_id",
     ),
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column that testimonials does not have.
+    # status's own CHECK enum (requested/received/approved/declined/
+    # retracted) already covers lifecycle termination ("retracted") and is
+    # already writable via generic PATCH -- not a hidden soft-delete gap,
+    # and no hand-written archive path either. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description="C12 customer testimonial quotes with structured consent tiers and NPS capture.",
 )
 register_resource(TESTIMONIAL_SPEC)
@@ -123,6 +139,23 @@ CONTENT_ASSET_SPEC = ResourceSpec(
         "status",
         "marketing_source_id",
     ),
+    # archive wave (2026-09-20): the sharpest case in this wave. status's own
+    # CHECK enum is (draft/approved/published/archived) -- "archived" IS a
+    # real, named legal value here, unlike every sibling spec in this wave.
+    # But excluding "archive" is still correct: status is already writable
+    # via generic PATCH, so the archive intent this enum value expresses is
+    # already fully reachable today (PATCH status="archived") through a
+    # working path -- adding the dedicated "archive" verb would only ever
+    # give a SECOND, redundant way to do it, and the generic verb's
+    # mechanism (rest.py:1174's unconditional `SET {field} = true`) cannot
+    # write a specific enum string anyway even if soft_delete_field pointed
+    # at "status" -- it would violate the CHECK constraint outright.
+    # Confirmed no code currently writes status="archived" (grep -rn
+    # "'archived'" nce/vertical_modules/marketing/ -> no matches); the value
+    # exists in the schema but has no writer yet, same "designed for, not
+    # yet wired" shape as several exemptions found earlier tonight. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description="C12 marketing content assets with AEO/GEO metadata and MinIO storage references.",
 )
 register_resource(CONTENT_ASSET_SPEC)

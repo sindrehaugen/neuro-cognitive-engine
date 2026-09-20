@@ -73,23 +73,21 @@ _INVENTORY_TOOLS = frozenset(
         "inventory_stock_levels",
         "inventory_transfer_stock",
         "inventory_valuation",
-        # C12 Resource Surface tools (Wave A-1)
+        # C12 Resource Surface tools (Wave A-1). archive removed 2026-09-20
+        # (archive wave -- none of the 4 tables has an is_archived column;
+        # see ARCHIVE_COLUMN_SWEEP.md).
         "inventory_list_stock_locations",
         "inventory_get_stock_locations",
         "inventory_upsert_stock_locations",
-        "inventory_archive_stock_locations",
         "inventory_list_inventory_items",
         "inventory_get_inventory_items",
         "inventory_upsert_inventory_items",
-        "inventory_archive_inventory_items",
         "inventory_list_goods_receipts",
         "inventory_get_goods_receipts",
         "inventory_upsert_goods_receipts",
-        "inventory_archive_goods_receipts",
         "inventory_list_inventory_rma",
         "inventory_get_inventory_rma",
         "inventory_upsert_inventory_rma",
-        "inventory_archive_inventory_rma",
     }
 )
 
@@ -107,15 +105,13 @@ _INVENTORY_MUTATION = frozenset(
         "inventory_reserve_stock",
         "inventory_restock_from_rma",
         "inventory_transfer_stock",
-        # C12 Resource Surface mutations
+        # C12 Resource Surface mutations. archive removed 2026-09-20 (archive
+        # wave -- none of the 4 tables has an is_archived column; see
+        # ARCHIVE_COLUMN_SWEEP.md).
         "inventory_upsert_stock_locations",
-        "inventory_archive_stock_locations",
         "inventory_upsert_inventory_items",
-        "inventory_archive_inventory_items",
         "inventory_upsert_goods_receipts",
-        "inventory_archive_goods_receipts",
         "inventory_upsert_inventory_rma",
-        "inventory_archive_inventory_rma",
     }
 )
 _INVENTORY_CACHEABLE = frozenset(
@@ -177,8 +173,12 @@ def test_inventory_tool_names_are_exactly_the_measured_set() -> None:
     assert found == _INVENTORY_TOOLS, found ^ _INVENTORY_TOOLS
 
 
-def test_inventory_tool_count_is_thirty_three() -> None:
-    assert len(_registered_inventory_tools()) == 33
+def test_inventory_tool_count_is_twenty_nine() -> None:
+    # 33 -> 29 (2026-09-20, archive wave): the 4 C12 inventory specs each
+    # lost their "archive" tool (none of the 4 tables has an is_archived
+    # column; see ARCHIVE_COLUMN_SWEEP.md). Renamed with the count since the
+    # old name was itself the claim.
+    assert len(_registered_inventory_tools()) == 29
 
 
 def test_derived_counters_match_the_registry_they_summarise() -> None:

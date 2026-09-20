@@ -174,14 +174,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/assets/assets/bulk` | `handle_bulk` |
 | GET | `/api/assets/assets/{id}` | `handle_get` |
 | PATCH | `/api/assets/assets/{id}` | `handle_patch` |
-| POST | `/api/assets/assets/{id}/archive` | `handle_archive` |
 | GET | `/api/assets/assets/{id}/comments` | `handle_list_comments` |
 | POST | `/api/assets/assets/{id}/comments` | `handle_add_comment` |
 | GET | `/api/assets/assets/{id}/documents` | `handle_list_documents` |
 | POST | `/api/assets/assets/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/assets/assets/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/assets/assets/{id}/events` | `handle_events` |
-| POST | `/api/assets/assets/{id}/restore` | `handle_restore` |
 | GET | `/api/assets/assets/{id}/tags` | `handle_list_tags` |
 | POST | `/api/assets/assets/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/assets/assets/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -221,14 +219,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/business_insights/kpi-snapshots/bulk` | `handle_bulk` |
 | GET | `/api/business_insights/kpi-snapshots/{id}` | `handle_get` |
 | PATCH | `/api/business_insights/kpi-snapshots/{id}` | `handle_patch` |
-| POST | `/api/business_insights/kpi-snapshots/{id}/archive` | `handle_archive` |
 | GET | `/api/business_insights/kpi-snapshots/{id}/comments` | `handle_list_comments` |
 | POST | `/api/business_insights/kpi-snapshots/{id}/comments` | `handle_add_comment` |
 | GET | `/api/business_insights/kpi-snapshots/{id}/documents` | `handle_list_documents` |
 | POST | `/api/business_insights/kpi-snapshots/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/business_insights/kpi-snapshots/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/business_insights/kpi-snapshots/{id}/events` | `handle_events` |
-| POST | `/api/business_insights/kpi-snapshots/{id}/restore` | `handle_restore` |
 | GET | `/api/business_insights/kpi-snapshots/{id}/tags` | `handle_list_tags` |
 | POST | `/api/business_insights/kpi-snapshots/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/business_insights/kpi-snapshots/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -334,14 +330,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/field_tech/checklists/bulk` | `handle_bulk` |
 | GET | `/api/field_tech/checklists/{id}` | `handle_get` |
 | PATCH | `/api/field_tech/checklists/{id}` | `handle_patch` |
-| POST | `/api/field_tech/checklists/{id}/archive` | `handle_archive` |
 | GET | `/api/field_tech/checklists/{id}/comments` | `handle_list_comments` |
 | POST | `/api/field_tech/checklists/{id}/comments` | `handle_add_comment` |
 | GET | `/api/field_tech/checklists/{id}/documents` | `handle_list_documents` |
 | POST | `/api/field_tech/checklists/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/field_tech/checklists/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/field_tech/checklists/{id}/events` | `handle_events` |
-| POST | `/api/field_tech/checklists/{id}/restore` | `handle_restore` |
 | GET | `/api/field_tech/checklists/{id}/tags` | `handle_list_tags` |
 | POST | `/api/field_tech/checklists/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/field_tech/checklists/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -350,14 +344,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/field_tech/time-entries/bulk` | `handle_bulk` |
 | GET | `/api/field_tech/time-entries/{id}` | `handle_get` |
 | PATCH | `/api/field_tech/time-entries/{id}` | `handle_patch` |
-| POST | `/api/field_tech/time-entries/{id}/archive` | `handle_archive` |
 | GET | `/api/field_tech/time-entries/{id}/comments` | `handle_list_comments` |
 | POST | `/api/field_tech/time-entries/{id}/comments` | `handle_add_comment` |
 | GET | `/api/field_tech/time-entries/{id}/documents` | `handle_list_documents` |
 | POST | `/api/field_tech/time-entries/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/field_tech/time-entries/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/field_tech/time-entries/{id}/events` | `handle_events` |
-| POST | `/api/field_tech/time-entries/{id}/restore` | `handle_restore` |
 | GET | `/api/field_tech/time-entries/{id}/tags` | `handle_list_tags` |
 | POST | `/api/field_tech/time-entries/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/field_tech/time-entries/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -366,14 +358,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/field_tech/work-orders/bulk` | `handle_bulk` |
 | GET | `/api/field_tech/work-orders/{id}` | `handle_get` |
 | PATCH | `/api/field_tech/work-orders/{id}` | `handle_patch` |
-| POST | `/api/field_tech/work-orders/{id}/archive` | `handle_archive` |
 | GET | `/api/field_tech/work-orders/{id}/comments` | `handle_list_comments` |
 | POST | `/api/field_tech/work-orders/{id}/comments` | `handle_add_comment` |
 | GET | `/api/field_tech/work-orders/{id}/documents` | `handle_list_documents` |
 | POST | `/api/field_tech/work-orders/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/field_tech/work-orders/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/field_tech/work-orders/{id}/events` | `handle_events` |
-| POST | `/api/field_tech/work-orders/{id}/restore` | `handle_restore` |
 | GET | `/api/field_tech/work-orders/{id}/tags` | `handle_list_tags` |
 | POST | `/api/field_tech/work-orders/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/field_tech/work-orders/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -388,14 +378,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/hr/absences/bulk` | `handle_bulk` |
 | GET | `/api/hr/absences/{id}` | `handle_get` |
 | PATCH | `/api/hr/absences/{id}` | `handle_patch` |
-| POST | `/api/hr/absences/{id}/archive` | `handle_archive` |
 | GET | `/api/hr/absences/{id}/comments` | `handle_list_comments` |
 | POST | `/api/hr/absences/{id}/comments` | `handle_add_comment` |
 | GET | `/api/hr/absences/{id}/documents` | `handle_list_documents` |
 | POST | `/api/hr/absences/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/hr/absences/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/hr/absences/{id}/events` | `handle_events` |
-| POST | `/api/hr/absences/{id}/restore` | `handle_restore` |
 | GET | `/api/hr/absences/{id}/tags` | `handle_list_tags` |
 | POST | `/api/hr/absences/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/hr/absences/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -406,14 +394,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/hr/certifications/bulk` | `handle_bulk` |
 | GET | `/api/hr/certifications/{id}` | `handle_get` |
 | PATCH | `/api/hr/certifications/{id}` | `handle_patch` |
-| POST | `/api/hr/certifications/{id}/archive` | `handle_archive` |
 | GET | `/api/hr/certifications/{id}/comments` | `handle_list_comments` |
 | POST | `/api/hr/certifications/{id}/comments` | `handle_add_comment` |
 | GET | `/api/hr/certifications/{id}/documents` | `handle_list_documents` |
 | POST | `/api/hr/certifications/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/hr/certifications/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/hr/certifications/{id}/events` | `handle_events` |
-| POST | `/api/hr/certifications/{id}/restore` | `handle_restore` |
 | GET | `/api/hr/certifications/{id}/tags` | `handle_list_tags` |
 | POST | `/api/hr/certifications/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/hr/certifications/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -428,14 +414,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/hr/employees/{id}` | `api_hr_employee` |
 | GET | `/api/hr/employees/{id}` | `handle_get` |
 | PATCH | `/api/hr/employees/{id}` | `handle_patch` |
-| POST | `/api/hr/employees/{id}/archive` | `handle_archive` |
 | GET | `/api/hr/employees/{id}/comments` | `handle_list_comments` |
 | POST | `/api/hr/employees/{id}/comments` | `handle_add_comment` |
 | GET | `/api/hr/employees/{id}/documents` | `handle_list_documents` |
 | POST | `/api/hr/employees/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/hr/employees/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/hr/employees/{id}/events` | `handle_events` |
-| POST | `/api/hr/employees/{id}/restore` | `handle_restore` |
 | GET | `/api/hr/employees/{id}/tags` | `handle_list_tags` |
 | POST | `/api/hr/employees/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/hr/employees/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -449,14 +433,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/hr/skills/bulk` | `handle_bulk` |
 | GET | `/api/hr/skills/{id}` | `handle_get` |
 | PATCH | `/api/hr/skills/{id}` | `handle_patch` |
-| POST | `/api/hr/skills/{id}/archive` | `handle_archive` |
 | GET | `/api/hr/skills/{id}/comments` | `handle_list_comments` |
 | POST | `/api/hr/skills/{id}/comments` | `handle_add_comment` |
 | GET | `/api/hr/skills/{id}/documents` | `handle_list_documents` |
 | POST | `/api/hr/skills/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/hr/skills/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/hr/skills/{id}/events` | `handle_events` |
-| POST | `/api/hr/skills/{id}/restore` | `handle_restore` |
 | GET | `/api/hr/skills/{id}/tags` | `handle_list_tags` |
 | POST | `/api/hr/skills/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/hr/skills/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -470,14 +452,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/inventory/goods-receipts/bulk` | `handle_bulk` |
 | GET | `/api/inventory/goods-receipts/{id}` | `handle_get` |
 | PATCH | `/api/inventory/goods-receipts/{id}` | `handle_patch` |
-| POST | `/api/inventory/goods-receipts/{id}/archive` | `handle_archive` |
 | GET | `/api/inventory/goods-receipts/{id}/comments` | `handle_list_comments` |
 | POST | `/api/inventory/goods-receipts/{id}/comments` | `handle_add_comment` |
 | GET | `/api/inventory/goods-receipts/{id}/documents` | `handle_list_documents` |
 | POST | `/api/inventory/goods-receipts/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/inventory/goods-receipts/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/inventory/goods-receipts/{id}/events` | `handle_events` |
-| POST | `/api/inventory/goods-receipts/{id}/restore` | `handle_restore` |
 | GET | `/api/inventory/goods-receipts/{id}/tags` | `handle_list_tags` |
 | POST | `/api/inventory/goods-receipts/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/inventory/goods-receipts/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -486,14 +466,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/inventory/inventory-items/bulk` | `handle_bulk` |
 | GET | `/api/inventory/inventory-items/{id}` | `handle_get` |
 | PATCH | `/api/inventory/inventory-items/{id}` | `handle_patch` |
-| POST | `/api/inventory/inventory-items/{id}/archive` | `handle_archive` |
 | GET | `/api/inventory/inventory-items/{id}/comments` | `handle_list_comments` |
 | POST | `/api/inventory/inventory-items/{id}/comments` | `handle_add_comment` |
 | GET | `/api/inventory/inventory-items/{id}/documents` | `handle_list_documents` |
 | POST | `/api/inventory/inventory-items/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/inventory/inventory-items/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/inventory/inventory-items/{id}/events` | `handle_events` |
-| POST | `/api/inventory/inventory-items/{id}/restore` | `handle_restore` |
 | GET | `/api/inventory/inventory-items/{id}/tags` | `handle_list_tags` |
 | POST | `/api/inventory/inventory-items/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/inventory/inventory-items/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -502,14 +480,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/inventory/inventory-rma/bulk` | `handle_bulk` |
 | GET | `/api/inventory/inventory-rma/{id}` | `handle_get` |
 | PATCH | `/api/inventory/inventory-rma/{id}` | `handle_patch` |
-| POST | `/api/inventory/inventory-rma/{id}/archive` | `handle_archive` |
 | GET | `/api/inventory/inventory-rma/{id}/comments` | `handle_list_comments` |
 | POST | `/api/inventory/inventory-rma/{id}/comments` | `handle_add_comment` |
 | GET | `/api/inventory/inventory-rma/{id}/documents` | `handle_list_documents` |
 | POST | `/api/inventory/inventory-rma/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/inventory/inventory-rma/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/inventory/inventory-rma/{id}/events` | `handle_events` |
-| POST | `/api/inventory/inventory-rma/{id}/restore` | `handle_restore` |
 | GET | `/api/inventory/inventory-rma/{id}/tags` | `handle_list_tags` |
 | POST | `/api/inventory/inventory-rma/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/inventory/inventory-rma/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -530,14 +506,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/inventory/stock-locations/bulk` | `handle_bulk` |
 | GET | `/api/inventory/stock-locations/{id}` | `handle_get` |
 | PATCH | `/api/inventory/stock-locations/{id}` | `handle_patch` |
-| POST | `/api/inventory/stock-locations/{id}/archive` | `handle_archive` |
 | GET | `/api/inventory/stock-locations/{id}/comments` | `handle_list_comments` |
 | POST | `/api/inventory/stock-locations/{id}/comments` | `handle_add_comment` |
 | GET | `/api/inventory/stock-locations/{id}/documents` | `handle_list_documents` |
 | POST | `/api/inventory/stock-locations/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/inventory/stock-locations/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/inventory/stock-locations/{id}/events` | `handle_events` |
-| POST | `/api/inventory/stock-locations/{id}/restore` | `handle_restore` |
 | GET | `/api/inventory/stock-locations/{id}/tags` | `handle_list_tags` |
 | POST | `/api/inventory/stock-locations/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/inventory/stock-locations/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -568,14 +542,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/marketing/case-studies/bulk` | `handle_bulk` |
 | GET | `/api/marketing/case-studies/{id}` | `handle_get` |
 | PATCH | `/api/marketing/case-studies/{id}` | `handle_patch` |
-| POST | `/api/marketing/case-studies/{id}/archive` | `handle_archive` |
 | GET | `/api/marketing/case-studies/{id}/comments` | `handle_list_comments` |
 | POST | `/api/marketing/case-studies/{id}/comments` | `handle_add_comment` |
 | GET | `/api/marketing/case-studies/{id}/documents` | `handle_list_documents` |
 | POST | `/api/marketing/case-studies/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/marketing/case-studies/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/marketing/case-studies/{id}/events` | `handle_events` |
-| POST | `/api/marketing/case-studies/{id}/restore` | `handle_restore` |
 | GET | `/api/marketing/case-studies/{id}/tags` | `handle_list_tags` |
 | POST | `/api/marketing/case-studies/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/marketing/case-studies/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -584,14 +556,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/marketing/content-assets/bulk` | `handle_bulk` |
 | GET | `/api/marketing/content-assets/{id}` | `handle_get` |
 | PATCH | `/api/marketing/content-assets/{id}` | `handle_patch` |
-| POST | `/api/marketing/content-assets/{id}/archive` | `handle_archive` |
 | GET | `/api/marketing/content-assets/{id}/comments` | `handle_list_comments` |
 | POST | `/api/marketing/content-assets/{id}/comments` | `handle_add_comment` |
 | GET | `/api/marketing/content-assets/{id}/documents` | `handle_list_documents` |
 | POST | `/api/marketing/content-assets/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/marketing/content-assets/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/marketing/content-assets/{id}/events` | `handle_events` |
-| POST | `/api/marketing/content-assets/{id}/restore` | `handle_restore` |
 | GET | `/api/marketing/content-assets/{id}/tags` | `handle_list_tags` |
 | POST | `/api/marketing/content-assets/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/marketing/content-assets/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -606,14 +576,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/marketing/testimonials/retract` | `api_marketing_retract_testimonial` |
 | GET | `/api/marketing/testimonials/{id}` | `handle_get` |
 | PATCH | `/api/marketing/testimonials/{id}` | `handle_patch` |
-| POST | `/api/marketing/testimonials/{id}/archive` | `handle_archive` |
 | GET | `/api/marketing/testimonials/{id}/comments` | `handle_list_comments` |
 | POST | `/api/marketing/testimonials/{id}/comments` | `handle_add_comment` |
 | GET | `/api/marketing/testimonials/{id}/documents` | `handle_list_documents` |
 | POST | `/api/marketing/testimonials/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/marketing/testimonials/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/marketing/testimonials/{id}/events` | `handle_events` |
-| POST | `/api/marketing/testimonials/{id}/restore` | `handle_restore` |
 | GET | `/api/marketing/testimonials/{id}/tags` | `handle_list_tags` |
 | POST | `/api/marketing/testimonials/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/marketing/testimonials/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -760,14 +728,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/resources/allocations/bulk` | `handle_bulk` |
 | GET | `/api/resources/allocations/{id}` | `handle_get` |
 | PATCH | `/api/resources/allocations/{id}` | `handle_patch` |
-| POST | `/api/resources/allocations/{id}/archive` | `handle_archive` |
 | GET | `/api/resources/allocations/{id}/comments` | `handle_list_comments` |
 | POST | `/api/resources/allocations/{id}/comments` | `handle_add_comment` |
 | GET | `/api/resources/allocations/{id}/documents` | `handle_list_documents` |
 | POST | `/api/resources/allocations/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/resources/allocations/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/resources/allocations/{id}/events` | `handle_events` |
-| POST | `/api/resources/allocations/{id}/restore` | `handle_restore` |
 | GET | `/api/resources/allocations/{id}/tags` | `handle_list_tags` |
 | POST | `/api/resources/allocations/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/resources/allocations/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -784,14 +750,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/resources/resources/bulk` | `handle_bulk` |
 | GET | `/api/resources/resources/{id}` | `handle_get` |
 | PATCH | `/api/resources/resources/{id}` | `handle_patch` |
-| POST | `/api/resources/resources/{id}/archive` | `handle_archive` |
 | GET | `/api/resources/resources/{id}/comments` | `handle_list_comments` |
 | POST | `/api/resources/resources/{id}/comments` | `handle_add_comment` |
 | GET | `/api/resources/resources/{id}/documents` | `handle_list_documents` |
 | POST | `/api/resources/resources/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/resources/resources/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/resources/resources/{id}/events` | `handle_events` |
-| POST | `/api/resources/resources/{id}/restore` | `handle_restore` |
 | GET | `/api/resources/resources/{id}/tags` | `handle_list_tags` |
 | POST | `/api/resources/resources/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/resources/resources/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -801,14 +765,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/resources/travel-legs/bulk` | `handle_bulk` |
 | GET | `/api/resources/travel-legs/{id}` | `handle_get` |
 | PATCH | `/api/resources/travel-legs/{id}` | `handle_patch` |
-| POST | `/api/resources/travel-legs/{id}/archive` | `handle_archive` |
 | GET | `/api/resources/travel-legs/{id}/comments` | `handle_list_comments` |
 | POST | `/api/resources/travel-legs/{id}/comments` | `handle_add_comment` |
 | GET | `/api/resources/travel-legs/{id}/documents` | `handle_list_documents` |
 | POST | `/api/resources/travel-legs/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/resources/travel-legs/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/resources/travel-legs/{id}/events` | `handle_events` |
-| POST | `/api/resources/travel-legs/{id}/restore` | `handle_restore` |
 | GET | `/api/resources/travel-legs/{id}/tags` | `handle_list_tags` |
 | POST | `/api/resources/travel-legs/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/resources/travel-legs/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -983,14 +945,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/support/customer-health/bulk` | `handle_bulk` |
 | GET | `/api/support/customer-health/{id}` | `handle_get` |
 | PATCH | `/api/support/customer-health/{id}` | `handle_patch` |
-| POST | `/api/support/customer-health/{id}/archive` | `handle_archive` |
 | GET | `/api/support/customer-health/{id}/comments` | `handle_list_comments` |
 | POST | `/api/support/customer-health/{id}/comments` | `handle_add_comment` |
 | GET | `/api/support/customer-health/{id}/documents` | `handle_list_documents` |
 | POST | `/api/support/customer-health/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/support/customer-health/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/support/customer-health/{id}/events` | `handle_events` |
-| POST | `/api/support/customer-health/{id}/restore` | `handle_restore` |
 | GET | `/api/support/customer-health/{id}/tags` | `handle_list_tags` |
 | POST | `/api/support/customer-health/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/support/customer-health/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -1001,14 +961,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/support/sla-clocks/bulk` | `handle_bulk` |
 | GET | `/api/support/sla-clocks/{id}` | `handle_get` |
 | PATCH | `/api/support/sla-clocks/{id}` | `handle_patch` |
-| POST | `/api/support/sla-clocks/{id}/archive` | `handle_archive` |
 | GET | `/api/support/sla-clocks/{id}/comments` | `handle_list_comments` |
 | POST | `/api/support/sla-clocks/{id}/comments` | `handle_add_comment` |
 | GET | `/api/support/sla-clocks/{id}/documents` | `handle_list_documents` |
 | POST | `/api/support/sla-clocks/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/support/sla-clocks/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/support/sla-clocks/{id}/events` | `handle_events` |
-| POST | `/api/support/sla-clocks/{id}/restore` | `handle_restore` |
 | GET | `/api/support/sla-clocks/{id}/tags` | `handle_list_tags` |
 | POST | `/api/support/sla-clocks/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/support/sla-clocks/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -1019,14 +977,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/support/ticket-actions/bulk` | `handle_bulk` |
 | GET | `/api/support/ticket-actions/{id}` | `handle_get` |
 | PATCH | `/api/support/ticket-actions/{id}` | `handle_patch` |
-| POST | `/api/support/ticket-actions/{id}/archive` | `handle_archive` |
 | GET | `/api/support/ticket-actions/{id}/comments` | `handle_list_comments` |
 | POST | `/api/support/ticket-actions/{id}/comments` | `handle_add_comment` |
 | GET | `/api/support/ticket-actions/{id}/documents` | `handle_list_documents` |
 | POST | `/api/support/ticket-actions/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/support/ticket-actions/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/support/ticket-actions/{id}/events` | `handle_events` |
-| POST | `/api/support/ticket-actions/{id}/restore` | `handle_restore` |
 | GET | `/api/support/ticket-actions/{id}/tags` | `handle_list_tags` |
 | POST | `/api/support/ticket-actions/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/support/ticket-actions/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -1039,7 +995,6 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/support/tickets/{id}` | `handle_get` |
 | PATCH | `/api/support/tickets/{id}` | `handle_patch` |
 | POST | `/api/support/tickets/{id}/actions` | `api_support_tickets_log_action` |
-| POST | `/api/support/tickets/{id}/archive` | `handle_archive` |
 | GET | `/api/support/tickets/{id}/comments` | `handle_list_comments` |
 | POST | `/api/support/tickets/{id}/comments` | `handle_add_comment` |
 | POST | `/api/support/tickets/{id}/dispatch` | `api_support_tickets_dispatch` |
@@ -1051,7 +1006,6 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/support/tickets/{id}/links` | `api_support_tickets_links` |
 | POST | `/api/support/tickets/{id}/links` | `api_support_tickets_link` |
 | POST | `/api/support/tickets/{id}/resolve` | `api_support_tickets_resolve` |
-| POST | `/api/support/tickets/{id}/restore` | `handle_restore` |
 | GET | `/api/support/tickets/{id}/sla-clock` | `api_support_ticket_sla_clock` |
 | GET | `/api/support/tickets/{id}/summary` | `api_support_ticket_summary` |
 | GET | `/api/support/tickets/{id}/tags` | `handle_list_tags` |
@@ -1271,7 +1225,6 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `agreements_upsert_parties` |  | yes |  |  |
 | `agreements_upsert_templates` |  | yes |  |  |
 | `assets_advance_lifecycle` |  | yes |  |  |
-| `assets_archive_assets` |  | yes |  |  |
 | `assets_assign_person` | yes | yes |  |  |
 | `assets_attach_sla` |  | yes |  |  |
 | `assets_check_warranty_eol` |  |  | yes |  |
@@ -1295,7 +1248,6 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `assets_upsert_assets` |  | yes |  |  |
 | `boost_memory` |  | yes |  |  |
 | `bridge_status` |  |  |  |  |
-| `business_insights_archive_kpi_snapshots` |  | yes |  |  |
 | `business_insights_ask_business` | yes |  |  |  |
 | `business_insights_generate_board_pack` | yes |  |  |  |
 | `business_insights_get_kpi_snapshots` |  |  | yes |  |
@@ -1372,9 +1324,6 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `explain_config_change` | yes |  |  |  |
 | `explain_memory` |  |  |  |  |
 | `explain_past_decision` | yes | yes |  |  |
-| `field_tech_archive_checklists` |  | yes |  |  |
-| `field_tech_archive_time_entries` |  | yes |  |  |
-| `field_tech_archive_work_orders` |  | yes |  |  |
 | `field_tech_assign` | yes | yes |  |  |
 | `field_tech_attach_photo` |  | yes |  |  |
 | `field_tech_complete_checklist` |  | yes |  |  |
@@ -1407,10 +1356,6 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `get_health` |  |  |  |  |
 | `get_recent_context` |  |  |  |  |
 | `graph_search` |  |  | yes |  |
-| `hr_archive_absences` |  | yes |  |  |
-| `hr_archive_certifications` |  | yes |  |  |
-| `hr_archive_employees` |  | yes |  |  |
-| `hr_archive_skills` |  | yes |  |  |
 | `hr_build_onboarding_quest` | yes | yes |  |  |
 | `hr_capacity` |  |  | yes |  |
 | `hr_cert_status` |  |  | yes |  |
@@ -1438,10 +1383,6 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `hr_upsert_skills` |  | yes |  |  |
 | `import_snapshot` |  | yes |  |  |
 | `index_code_file` |  | yes |  |  |
-| `inventory_archive_goods_receipts` |  | yes |  |  |
-| `inventory_archive_inventory_items` |  | yes |  |  |
-| `inventory_archive_inventory_rma` |  | yes |  |  |
-| `inventory_archive_stock_locations` |  | yes |  |  |
 | `inventory_create_restock_po` | yes | yes |  |  |
 | `inventory_dispose_rma_weee` | yes | yes |  |  |
 | `inventory_forecast_demand` |  |  | yes |  |
@@ -1483,9 +1424,6 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `manage_namespace` |  | yes |  |  |
 | `manage_quotas` |  | yes |  |  |
 | `marketing_approve_content` | yes | yes |  |  |
-| `marketing_archive_case_studies` |  | yes |  |  |
-| `marketing_archive_content_assets` |  | yes |  |  |
-| `marketing_archive_testimonials` |  | yes |  |  |
 | `marketing_audit_seo` |  |  | yes |  |
 | `marketing_capture_testimonial` | yes | yes |  |  |
 | `marketing_draft_case_study` | yes | yes |  |  |
@@ -1573,9 +1511,6 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `replay_status` | yes |  |  |  |
 | `resolve` |  |  | yes |  |
 | `resolve_contradiction` |  | yes |  |  |
-| `resources_archive_allocations` |  | yes |  |  |
-| `resources_archive_resources` |  | yes |  |  |
-| `resources_archive_travel_legs` |  | yes |  |  |
 | `resources_create` | yes | yes |  |  |
 | `resources_detect_conflicts` |  |  | yes |  |
 | `resources_field_schedule` |  |  | yes |  |
@@ -1659,10 +1594,6 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `store_media` |  | yes |  |  |
 | `store_memory` |  | yes |  |  |
 | `suggest_queries` |  |  |  |  |
-| `support_archive_customer_health` |  | yes |  |  |
-| `support_archive_sla_clocks` |  | yes |  |  |
-| `support_archive_ticket_actions` |  | yes |  |  |
-| `support_archive_tickets` |  | yes |  |  |
 | `support_at_risk_aggregate` |  |  | yes |  |
 | `support_dispatch_work_order` | yes | yes |  |  |
 | `support_failure_pattern` | yes | yes |  |  |
@@ -1788,4 +1719,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 1219 REST endpoints, 551 MCP tools._
+_Totals: 1173 REST endpoints, 528 MCP tools._
