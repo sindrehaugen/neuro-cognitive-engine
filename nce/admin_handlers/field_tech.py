@@ -10,6 +10,7 @@ Admin HTTP handlers for Module 12 (Field Tech Engine):
   - api_field_tech_complete_checklist: POST /api/field-tech/checklists
   - api_field_tech_scan_serial: POST /api/field-tech/scans
   - api_field_tech_log_time: POST /api/field-tech/time-entries
+  - api_field_tech_approve_time_entry: POST /api/field-tech/time-entries/{id}/approve
   - api_field_tech_attach_photo: POST /api/field-tech/photos
   - api_field_tech_sync: POST /api/field-tech/sync
   - api_field_tech_record_outcome: POST /api/field-tech/outcomes
@@ -32,6 +33,7 @@ from nce.admin_handlers._shared import (
     bump_mcp_cache_generation,
 )
 from nce.auth import resolve_partner_scope
+from nce.db_utils import scoped_pg_session
 from nce.vertical_modules.field_tech._guard import (
     FieldTechDisabledError,
     require_field_tech_enabled,
@@ -47,7 +49,12 @@ from nce.vertical_modules.field_tech.partner_view import do_partner_view
 from nce.vertical_modules.field_tech.photo import do_attach_photo
 from nce.vertical_modules.field_tech.scan import do_scan_serial
 from nce.vertical_modules.field_tech.sync import do_sync
-from nce.vertical_modules.field_tech.time_entry import do_log_time
+from nce.vertical_modules.field_tech.time_entry import (
+    TimeEntryNotFoundError,
+    _time_entry_idempotency_key,
+    do_approve_time_entry,
+    do_log_time,
+)
 from nce.vertical_modules.field_tech.work_orders import (
     WorkOrderInvalidTransitionError,
     WorkOrderNotFoundError,
@@ -417,6 +424,76 @@ async def api_field_tech_log_time(request: Any) -> JSONResponse:
     except Exception as exc:
         log.exception("api_field_tech_log_time error: %s", exc)
         return admin_error_response("Internal log time error", exc)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/field-tech/time-entries/{id}/approve
+# ---------------------------------------------------------------------------
+
+
+async def api_field_tech_approve_time_entry(request: Any) -> JSONResponse:
+    """POST /api/field-tech/time-entries/{id}/approve — governed confirm-first approval.
+
+    C-7: ``approved`` was previously a plain writable field on
+    FIELD_TECH_TIME_ENTRY_SPEC's generic PATCH -- no confirmation, no audit.
+    This route replaces that: @governed (do_approve_time_entry) requires
+    confirm=True to actually flip the flag, and every confirmed call is
+    audited to event_log. ``approved`` is removed from writable_fields in
+    the same change so PATCH can no longer set it directly.
+
+    Body: ``{"namespace_id": str, "confirm"?: bool, "idempotency_key"?: str}``.
+    Without ``confirm: true``, returns the @governed "pending_approval" shape
+    without approving anything -- same contract as every other governed
+    action in this estate (see procurement's generate_po route).
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    time_entry_id = request.path_params.get("id", "").strip()
+    if not time_entry_id:
+        return JSONResponse({"error": "Missing path parameter: id"}, status_code=422)
+
+    body, err = await _parse_json_body(request)
+    if err:
+        return err
+
+    namespace_id, err = _require_namespace_id(
+        request.query_params.get("namespace_id") or body.get("namespace_id")
+    )
+    if err:
+        return err
+
+    pool = _extract_pool(admin_state.engine)
+    try:
+        await require_field_tech_enabled(pool, namespace_id)
+    except FieldTechDisabledError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+    confirm = bool(body.get("confirm", False))
+    idempotency_key = str(body.get("idempotency_key") or "").strip()
+    if not idempotency_key:
+        idempotency_key = _time_entry_idempotency_key(namespace_id, time_entry_id)
+
+    try:
+        async with scoped_pg_session(pool, namespace_id) as conn:
+            result = await do_approve_time_entry(
+                conn,
+                namespace_id,
+                idempotency_key=idempotency_key,
+                confirm=confirm,
+                engine=admin_state.engine,
+                time_entry_id=time_entry_id,
+            )
+    except TimeEntryNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:
+        log.exception("api_field_tech_approve_time_entry error: %s", exc)
+        return admin_error_response("Internal approve time entry error", exc)
+
+    await bump_mcp_cache_generation(admin_state.engine, route="api_field_tech_approve_time_entry")
+    return JSONResponse(result)
 
 
 # ---------------------------------------------------------------------------

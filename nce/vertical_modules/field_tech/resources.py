@@ -70,15 +70,24 @@ FIELD_TECH_TIME_ENTRY_SPEC = ResourceSpec(
     soft_delete_field=None,
     filterable_fields=("work_order_id", "approved", "source", "partner_scope_id"),
     searchable_fields=(),
+    # "approved" is deliberately NOT writable here (C-7, 2026-09-20). It used
+    # to be a plain writable_fields entry -- any caller with generic PATCH
+    # access could flip it with no confirmation and no audit. Approval now
+    # goes through POST /{id}/approve (field_tech/time_entry.py's
+    # do_approve_time_entry, @governed, confirm-first, audited to
+    # event_log). Re-adding "approved" here would reopen the exact gap the
+    # governed route exists to close -- a front door beside an open window.
     writable_fields=(
         "work_order_id",
         "started_at",
         "ended_at",
         "source",
-        "approved",
         "partner_scope_id",
     ),
-    description="Technician time entries against a work order, GPS- or manually-sourced.",
+    description=(
+        "Technician time entries against a work order, GPS- or manually-sourced. "
+        "Approval is governed: POST /{id}/approve, not PATCH."
+    ),
     enabled_guard=require_field_tech_enabled,
 )
 register_resource(FIELD_TECH_TIME_ENTRY_SPEC)
