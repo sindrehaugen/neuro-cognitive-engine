@@ -248,8 +248,52 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/documents/documents/{id}/tags` | `handle_list_tags` |
 | POST | `/api/documents/documents/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/documents/documents/{id}/tags/{tag}` | `handle_remove_tag` |
+| GET | `/api/economy/billing-candidates` | `handle_list` |
+| GET | `/api/economy/billing-candidates/{id}` | `handle_get` |
+| GET | `/api/economy/billing-candidates/{id}/comments` | `handle_list_comments` |
+| POST | `/api/economy/billing-candidates/{id}/comments` | `handle_add_comment` |
+| GET | `/api/economy/billing-candidates/{id}/documents` | `handle_list_documents` |
+| POST | `/api/economy/billing-candidates/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/economy/billing-candidates/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/economy/billing-candidates/{id}/events` | `handle_events` |
+| GET | `/api/economy/billing-candidates/{id}/tags` | `handle_list_tags` |
+| POST | `/api/economy/billing-candidates/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/economy/billing-candidates/{id}/tags/{tag}` | `handle_remove_tag` |
+| GET | `/api/economy/billing-runs` | `handle_list` |
+| GET | `/api/economy/billing-runs/{id}` | `handle_get` |
+| GET | `/api/economy/billing-runs/{id}/comments` | `handle_list_comments` |
+| POST | `/api/economy/billing-runs/{id}/comments` | `handle_add_comment` |
+| GET | `/api/economy/billing-runs/{id}/documents` | `handle_list_documents` |
+| POST | `/api/economy/billing-runs/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/economy/billing-runs/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/economy/billing-runs/{id}/events` | `handle_events` |
+| GET | `/api/economy/billing-runs/{id}/tags` | `handle_list_tags` |
+| POST | `/api/economy/billing-runs/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/economy/billing-runs/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET,POST | `/api/economy/close-narrative` | `api_economy_close_narrative` |
+| GET | `/api/economy/contracts` | `handle_list` |
 | POST | `/api/economy/contracts/validate` | `api_economy_validate_contract` |
+| GET | `/api/economy/contracts/{id}` | `handle_get` |
+| GET | `/api/economy/contracts/{id}/comments` | `handle_list_comments` |
+| POST | `/api/economy/contracts/{id}/comments` | `handle_add_comment` |
+| GET | `/api/economy/contracts/{id}/documents` | `handle_list_documents` |
+| POST | `/api/economy/contracts/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/economy/contracts/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/economy/contracts/{id}/events` | `handle_events` |
+| GET | `/api/economy/contracts/{id}/tags` | `handle_list_tags` |
+| POST | `/api/economy/contracts/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/economy/contracts/{id}/tags/{tag}` | `handle_remove_tag` |
+| GET | `/api/economy/customer-invoices` | `handle_list` |
+| GET | `/api/economy/customer-invoices/{id}` | `handle_get` |
+| GET | `/api/economy/customer-invoices/{id}/comments` | `handle_list_comments` |
+| POST | `/api/economy/customer-invoices/{id}/comments` | `handle_add_comment` |
+| GET | `/api/economy/customer-invoices/{id}/documents` | `handle_list_documents` |
+| POST | `/api/economy/customer-invoices/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/economy/customer-invoices/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/economy/customer-invoices/{id}/events` | `handle_events` |
+| GET | `/api/economy/customer-invoices/{id}/tags` | `handle_list_tags` |
+| POST | `/api/economy/customer-invoices/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/economy/customer-invoices/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET,POST | `/api/economy/dunning` | `api_economy_dunning` |
 | POST | `/api/economy/ehf/generate` | `api_economy_generate_ehf` |
 | POST | `/api/economy/emit-event` | `api_economy_emit_event` |
@@ -1317,9 +1361,17 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `economy_generate_close_narrative` |  |  | yes |  |
 | `economy_generate_ehf` | yes |  |  |  |
 | `economy_generate_kid` |  |  | yes |  |
+| `economy_get_billing_candidates` |  |  | yes |  |
+| `economy_get_billing_runs` |  |  | yes |  |
+| `economy_get_contracts` |  |  | yes |  |
+| `economy_get_customer_invoices` |  |  | yes |  |
 | `economy_get_gl_records` |  |  | yes |  |
 | `economy_get_postings` |  |  | yes |  |
 | `economy_gl_sync_status` |  |  | yes |  |
+| `economy_list_billing_candidates` |  |  | yes |  |
+| `economy_list_billing_runs` |  |  | yes |  |
+| `economy_list_contracts` |  |  | yes |  |
+| `economy_list_customer_invoices` |  |  | yes |  |
 | `economy_list_postings` |  |  | yes |  |
 | `economy_match_invoice` |  |  | yes |  |
 | `economy_reconcile_agreements` |  | yes |  |  |
@@ -1750,4 +1802,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 1185 REST endpoints, 547 MCP tools._
+_Totals: 1229 REST endpoints, 555 MCP tools._

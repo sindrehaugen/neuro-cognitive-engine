@@ -206,7 +206,7 @@ class ResourceSpec:
                             REST routes and the MCP tool surface for this spec:
                             any subset of ``{"list", "get", "upsert", "archive"}``.
                             Empty by default: every spec still gets all four
-                            unless it opts out here. Exactly two legitimate
+                            unless it opts out here. Exactly three legitimate
                             reasons, and no others:
                             (1) a spec whose ``entity`` happens to produce a
                             generated tool name that collides with an
@@ -255,10 +255,40 @@ class ResourceSpec:
                             it is out of scope until a second spec actually
                             needs it -- one affected spec today, no named
                             caller wanting the split.
+                            (3) a governed actor already owns the write path
+                            -- a specific, named function, cited by
+                            file:line, that performs the write under its own
+                            control flow (a ``@governed`` action, an
+                            idempotency-guarded core, or equivalent) -- and
+                            the generic surface exists only so rows that
+                            actor already produces become visible, not so a
+                            second write path can compete with it. The test
+                            for (3): can you name that governed writer by
+                            file:line? If yes, this reason applies. If you
+                            are excluding the verb because no writer has
+                            been built yet, or because the writer's shape is
+                            still undecided, that is NOT reason (3) -- it is
+                            the "not implemented yet" case the prohibition
+                            below already forbids, wearing (3)'s
+                            justification as a coat; the distinction is the
+                            whole point of this reason existing separately
+                            from an unfinished-validation excuse.
+                            BILLING_RUN/BILLING_CANDIDATE/CUSTOMER_INVOICE/
+                            CONTRACT (economy/resources.py) are the
+                            precedent: ``do_generate_billing_run``
+                            (billing_runs.py:306), ``do_propose_customer_invoice``
+                            (customer_invoices.py:162), and
+                            ``do_upsert_contract`` (contracts.py:381) are
+                            each a real, already-shipped governed writer --
+                            the exclusion is read-only visibility for rows
+                            those actors already produce, not a placeholder
+                            for a write path nobody has built.
                             Do NOT use this field to hide a
                             verb you simply have not implemented validation
-                            for; that is what ``governed_verbs`` and
-                            hand-written retirement are for. On the REST side
+                            for, and do NOT cite reason (3) for a write path
+                            that does not exist yet -- either case is what
+                            ``governed_verbs`` and hand-written retirement
+                            are for, not this field. On the REST side
                             the mapping is:
                             ``"list"`` -> the list route only; ``"get"`` ->
                             the get-by-id route only; ``"upsert"`` -> create +
