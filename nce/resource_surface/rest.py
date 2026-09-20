@@ -32,10 +32,12 @@ from starlette.routing import Route
 
 from nce import admin_state
 from nce.admin_handlers._shared import bump_mcp_cache_generation
-from nce.admin_http_support import admin_error_response
+from nce.admin_http_support import admin_error_response, ownership_denied_response
 from nce.auth import NamespaceContext, set_namespace_context
 from nce.db_utils import scoped_pg_session
 from nce.engine_registry import EngineDisabledError
+from nce.entity_resolution.ownership import OwnershipError, assert_owner
+from nce.events.emit import emit_graph_write
 from nce.resource_surface.comments import (
     add_entity_tag,
     append_entity_comment,
@@ -717,6 +719,17 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                     node_label = item_id
                     session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                     async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                        # Every hand-written kg_nodes writer in this codebase
+                        # (system_design/devices.py, project/convert.py,
+                        # project/case_study.py, ...) calls assert_owner
+                        # before the INSERT and emit_graph_write after --
+                        # deny-by-default ownership plus an outbox event any
+                        # subscriber can react to. The generated surface must
+                        # honor the same two invariants for the same table,
+                        # not silently bypass them because the write happens
+                        # to be declarative instead of hand-written.
+                        await assert_owner(conn, session_ns, spec.node_type, spec.engine)
+
                         # kg_nodes identity row first -- every system_design
                         # satellite table (device_capabilities, node_state,
                         # geometry) carries a real FK to
@@ -752,6 +765,16 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                                     conn, spec, node_label, ns_uuid, is_global, sec_data
                                 )
                             )
+
+                        await emit_graph_write(
+                            conn,
+                            namespace_id=session_ns,
+                            node_type=spec.node_type,
+                            op="upserted",
+                            node_id=node_label,
+                        )
+                except OwnershipError as exc:
+                    return ownership_denied_response(exc)
                 except Exception as exc:
                     return admin_error_response(
                         f"Failed to create {spec.entity}: {exc}", exc, status_code=500
@@ -997,6 +1020,12 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
                     if is_graph:
                         node_label = existing["label"]
+                        # Same deny-by-default guard handle_create makes --
+                        # a PATCH mutates the same owned kg_nodes row (or its
+                        # secondary tables), so it needs the same check, not
+                        # just the initial write.
+                        await assert_owner(conn, session_ns, spec.node_type, spec.engine)
+
                         # Only `change_origin` is a real writable column on
                         # kg_nodes itself; everything else routes to a
                         # secondary table.
@@ -1027,6 +1056,14 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                                     conn, spec, node_label, ns_uuid, is_global, sec_updates
                                 )
                             )
+
+                        await emit_graph_write(
+                            conn,
+                            namespace_id=session_ns,
+                            node_type=spec.node_type,
+                            op="upserted",
+                            node_id=node_label,
+                        )
                     else:
                         primary_updates = (
                             {k: v for k, v in updates.items() if k not in secondary_field_names}
@@ -1069,6 +1106,8 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                                 conn, spec, item_id, ns_uuid, is_global, updates
                             )
                         )
+            except OwnershipError as exc:
+                return ownership_denied_response(exc)
             except Exception as exc:
                 return admin_error_response(
                     f"Failed to update {spec.entity}: {exc}", exc, status_code=500

@@ -12,6 +12,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from nce.config import cfg
+from nce.entity_resolution.ownership import OwnershipError
 
 log = logging.getLogger("nce-admin")
 
@@ -107,6 +108,35 @@ def admin_validation_error(
     log.warning("Sanitized unexpected admin client error (%s): %s", type(exc).__name__, exc)
     fallback = "Invalid request" if cfg.IS_PROD else (str(exc) or "Invalid request")
     return admin_client_error(fallback, status_code=status_code)
+
+
+def ownership_denied_response(exc: OwnershipError) -> JSONResponse:
+    """HTTP form of a deny-by-default ``assert_owner`` refusal.
+
+    403, not 500. ``OwnershipError`` is not a ``ValueError``, so without this
+    it falls through to the generic handler and a *correct, expected*
+    authorisation refusal is reported as a server fault — with the refusal
+    text in ``detail``, where a caller cannot act on it and an operator sees
+    a phantom 5xx.
+
+    The message is fixed and caller-vetted (it names a node type and an
+    engine, never tenant data), so it is safe to return in production, which
+    is why this does not go through :func:`admin_error_response`'s dev-only
+    detail path.
+
+    Promoted here from ``nce/admin_handlers/system_design.py``'s own private
+    copy on 2026-09-20, when ``nce/resource_surface`` needed the exact same
+    response for its generated kg_nodes-primary write path -- one shared
+    implementation, not a second copy of an identical-looking rule.
+    """
+    return JSONResponse(
+        {
+            "error": "Not permitted to write this node type",
+            "reason": "ownership_denied",
+            "detail": str(exc),
+        },
+        status_code=403,
+    )
 
 
 def sanitize_admin_reason(exc: Exception) -> str:

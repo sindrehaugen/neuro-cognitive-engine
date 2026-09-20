@@ -71,6 +71,7 @@ from nce.admin_handlers._shared import (
     admin_error_response,
     admin_state,
     bump_mcp_cache_generation,
+    ownership_denied_response,
 )
 from nce.entity_resolution.ownership import OwnershipError
 from nce.vertical_modules.system_design.capability_sync import do_sync_device_capabilities
@@ -379,28 +380,6 @@ def _version_conflict_response(exc: VersionConflictError) -> JSONResponse:
     )
 
 
-def _ownership_denied_response(exc: OwnershipError) -> JSONResponse:
-    """HTTP form of a deny-by-default ``assert_owner`` refusal.
-
-    403, not 500. ``OwnershipError`` is not a ``ValueError``, so without this it
-    falls through to the generic handler and a *correct, expected* authorisation
-    refusal is reported as a server fault — with the refusal text in ``detail``,
-    where a caller cannot act on it and an operator sees a phantom 5xx.
-
-    The message is fixed and caller-vetted (it names a node type and an engine,
-    never tenant data), so it is safe to return in production, which is why this
-    does not go through ``admin_error_response``'s dev-only detail path.
-    """
-    return JSONResponse(
-        {
-            "error": "Not permitted to write this node type",
-            "reason": "ownership_denied",
-            "detail": str(exc),
-        },
-        status_code=403,
-    )
-
-
 async def _read_json_body(request) -> tuple[dict[str, Any] | None, JSONResponse | None]:
     """Parse a required JSON object body, or return the 422 to send instead."""
     try:
@@ -469,7 +448,7 @@ async def api_system_design_author_topology(request) -> JSONResponse:
     except VersionConflictError as exc:
         return _version_conflict_response(exc)
     except OwnershipError as exc:
-        return _ownership_denied_response(exc)
+        return ownership_denied_response(exc)
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=422)
     except Exception as exc:
@@ -536,7 +515,7 @@ async def api_system_design_author_functional_location(request) -> JSONResponse:
     except VersionConflictError as exc:
         return _version_conflict_response(exc)
     except OwnershipError as exc:
-        return _ownership_denied_response(exc)
+        return ownership_denied_response(exc)
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=422)
     except Exception as exc:
@@ -738,7 +717,7 @@ async def api_system_design_delete_planned(request) -> JSONResponse:
     except RetireDeniedError as exc:
         return _retire_denied_response(exc)
     except OwnershipError as exc:
-        return _ownership_denied_response(exc)
+        return ownership_denied_response(exc)
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=422)
     except Exception as exc:

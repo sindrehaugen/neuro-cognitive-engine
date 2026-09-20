@@ -37,6 +37,24 @@ real defect, not a feature: it would treat a permanent dual-book
 reconciliation as if it were a transitional Dynamics-365 migration like
 Sales's. If economy ever needs a flip gate for some other reason, that is
 its own design decision, not a side effect of this generalization existing.
+
+STATED LIMITATION: A STALE COMPARISON READS IDENTICALLY TO A CLEAN ONE
+-------------------------------------------------------------------------
+:func:`flip_blocked` (and this module's own :func:`flip_status`) answer
+"were there zero divergence rows in the window" -- they cannot distinguish
+that from "nothing has compared anything in the window at all," because
+both produce a `COUNT(*) = 0`. Pre-existing in ``main``'s original
+``sales/flip.py`` (this generalization carried it forward faithfully, not
+introduced it), but worth stating plainly here because of what this gate
+now authorizes: a ``both -> nce`` cutover to single-source. "Zero
+divergences because parity held" and "zero divergences because the parity
+check silently stopped running" are indistinguishable inputs to the same
+gate, and only the first one should ever authorize a flip. A dead
+comparison job is therefore the one failure mode this gate cannot catch --
+it would read as maximally clean. Filed as a follow-on, not built here: a
+heartbeat requiring at least N comparisons to have actually run in the
+window (not merely zero divergences among however many ran), so an idle
+comparator blocks the flip instead of silently permitting it.
 """
 
 from __future__ import annotations

@@ -95,14 +95,19 @@ from __future__ import annotations
 
 import json
 import uuid
+from typing import Any
+from unittest.mock import patch
 
 import asyncpg
 import httpx
 import pytest
+import pytest_asyncio
 from starlette.applications import Starlette
 
 from nce import admin_state
+from nce.auth import set_namespace_context
 from nce.engine_registry import populate_engine_modules
+from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
 from nce.orchestrator import NCEEngine
 from nce.resource_surface.mcp import build_mcp_tool_specs
 from nce.resource_surface.rest import make_resource_routes
@@ -197,11 +202,25 @@ CABLE_PROBE_SPEC = ResourceSpec(
 )
 
 
-@pytest.fixture
-def engine(pg_pool: asyncpg.Pool) -> NCEEngine:
+@pytest_asyncio.fixture
+async def engine(pg_pool: asyncpg.Pool, namespace_id: uuid.UUID) -> NCEEngine:
+    """Real NCEEngine over the live pool, with the ownership registry seeded.
+
+    Wave (2026-09-20): kg_nodes-primary create/patch now calls assert_owner
+    (deny-by-default) before writing, matching every hand-written kg_nodes
+    writer (system_design/devices.py, project/convert.py, ...) -- a real
+    gap found and closed after Wave 3(b) shipped without it. DEVICE/PORT/
+    RACK/CABLE all really are owned by system_design in
+    nce/config_data/node-ownership.json, so seeding here is not a synthetic
+    allowance -- it is what production already grants this engine.
+    """
     eng = NCEEngine()
     eng.pg_pool = pg_pool
     populate_engine_modules(eng)
+    async with pg_pool.acquire() as conn:
+        async with conn.transaction():
+            await set_namespace_context(conn, namespace_id)
+            await seed_node_ownership_registry(conn, namespace_id)
     return eng
 
 
@@ -555,3 +574,102 @@ async def test_positive_control_geometry_is_not_a_secondary_table_target(
     for spec in (DEVICE_PROBE_SPEC, PORT_PROBE_SPEC, RACK_PROBE_SPEC, CABLE_PROBE_SPEC):
         table_names = {sec.table_name for sec in spec.secondary_tables}
         assert "system_design_geometry" not in table_names, spec.entity
+
+
+# ---------------------------------------------------------------------------
+# Follow-up (2026-09-20): the generated write path skipped two invariants
+# every hand-written kg_nodes writer respects -- assert_owner (deny-by-
+# default ownership) and emit_graph_write (outbox event on write). Found
+# while reading system_design/devices.py for an unrelated wave (C-6) and
+# noticing its own docstring: "Guard every owned-node write with
+# assert_owner + emit_graph_write." Neither call existed anywhere in
+# resource_surface/rest.py or mcp.py. Fixed in both backends' create/patch
+# (rest.py) and upsert (mcp.py) kg_nodes-primary branches; the `engine`
+# fixture above now seeds the ownership registry for exactly that reason
+# (DEVICE/PORT/RACK/CABLE really are system_design-owned in
+# node-ownership.json, so this is not a synthetic test allowance).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_rest_create_refused_for_an_unowned_node_type(
+    engine: NCEEngine, namespace_id: uuid.UUID
+) -> None:
+    """Deny-by-default: a node_type with no node-ownership.json row must be
+    refused with 403/ownership_denied, not silently written.
+    """
+    unowned_spec = ResourceSpec(
+        engine="system_design",
+        entity="unowned-kgprimary-probe",
+        node_type="NOT_A_REAL_OWNED_TYPE",
+        table_name=None,
+        id_field="node_label",
+        soft_delete_field=None,
+        writable_fields=("change_origin",),
+        description="Test-only probe spec for a node_type no engine owns.",
+    )
+    async with _rest_client(engine, unowned_spec) as client:
+        r = await client.post(
+            "/api/system_design/unowned-kgprimary-probe",
+            json={"namespace_id": str(namespace_id), "node_label": "should-not-be-written"},
+        )
+    assert r.status_code == 403, r.text
+    body = r.json()
+    assert body["reason"] == "ownership_denied"
+
+    async with engine.pg_pool.acquire() as conn:
+        row = await conn.fetchval(
+            "SELECT 1 FROM kg_nodes WHERE namespace_id = $1 AND label = $2",
+            namespace_id,
+            "should-not-be-written",
+        )
+    assert row is None, "refused write must not have reached kg_nodes"
+
+
+@pytest.mark.asyncio
+async def test_mcp_upsert_calls_assert_owner_and_emit_graph_write(
+    engine: NCEEngine, namespace_id: uuid.UUID
+) -> None:
+    """Spy on both calls (still calling through to the real implementation)
+    to prove the generated write path actually invokes them, not just that
+    a real end-to-end write happens to succeed for an unrelated reason.
+    """
+    from nce.entity_resolution import ownership as ownership_module
+    from nce.events import emit as emit_module
+
+    owner_calls: list[tuple[Any, ...]] = []
+    emit_calls: list[dict[str, Any]] = []
+    real_assert_owner = ownership_module.assert_owner
+    real_emit_graph_write = emit_module.emit_graph_write
+
+    async def _owner_spy(*args: Any, **kwargs: Any) -> None:
+        owner_calls.append(args)
+        return await real_assert_owner(*args, **kwargs)
+
+    async def _emit_spy(*args: Any, **kwargs: Any) -> None:
+        emit_calls.append(kwargs)
+        return await real_emit_graph_write(*args, **kwargs)
+
+    tools = build_mcp_tool_specs(DEVICE_PROBE_SPEC)
+    node_label = f"probe-kg-device-spy-{uuid.uuid4().hex[:8]}"
+    with (
+        patch("nce.resource_surface.mcp.assert_owner", side_effect=_owner_spy),
+        patch("nce.resource_surface.mcp.emit_graph_write", side_effect=_emit_spy),
+    ):
+        upsert = tools[f"system_design_upsert_{DEVICE_PROBE_SPEC.mcp_slug}"]
+        result = json.loads(
+            await upsert.handler(
+                engine, {"namespace_id": str(namespace_id), "id": node_label, "status": "planned"}
+            )
+        )
+
+    assert result["status"] == "ok", result
+    # assert_owner(conn, namespace_id, node_type, writer_engine) -- called
+    # positionally in the generated handler, so asserted positionally here.
+    assert len(owner_calls) == 1
+    assert owner_calls[0][2] == "DEVICE"
+    assert owner_calls[0][3] == "system_design"
+    assert len(emit_calls) == 1
+    assert emit_calls[0]["node_type"] == "DEVICE"
+    assert emit_calls[0]["op"] == "upserted"
+    assert emit_calls[0]["node_id"] == node_label
