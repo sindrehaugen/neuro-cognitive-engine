@@ -41,6 +41,14 @@ def test_signed_baseline_excludes_write_verbs() -> None:
     assert SIGNED_BASELINE_SPEC.excluded_verbs == frozenset({"upsert", "archive"})
 
 
+def test_signed_baseline_writable_fields_cleared_fail_safe() -> None:
+    """excluded_verbs's own docstring: when "upsert" is excluded,
+    writable_fields must be () -- a populated list has no reader today, but
+    left in place it's a fail-open landmine for whoever removes the
+    exclusion later (every field instantly writable, no review)."""
+    assert SIGNED_BASELINE_SPEC.writable_fields == ()
+
+
 def test_signed_baseline_generates_only_list_and_get_mcp_tools() -> None:
     """Mutation-verify: the spec declaring excluded_verbs is not the same as
     the generator honoring it -- prove the actual generated tool set."""

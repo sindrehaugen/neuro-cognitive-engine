@@ -309,7 +309,14 @@ class ResourceSpec:
                             -> archive + restore together. Sub-resource routes
                             (events/comments/tags/documents) are never
                             affected by this field -- they do not depend on
-                            which core verbs exist.
+                            which core verbs exist. When ``"upsert"`` is
+                            excluded, clear ``writable_fields`` to ``()`` too
+                            -- it has no reader while upsert is excluded, but
+                            a populated list left in place is a fail-open
+                            landmine for whoever removes the exclusion later
+                            (every field becomes immediately writable with no
+                            review), where an empty one is fail-safe (forces
+                            a deliberate re-listing).
     """
 
     engine: str
