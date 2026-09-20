@@ -58,15 +58,10 @@ _KNOWN_GAPS: dict[int, str] = {
     # 99 was reserved by PR #330 (Lane E) and 100 by this same lane's own
     # PR #332 (Wave B-15, procurement_deal_registrations) -- both have since
     # merged, so neither is a gap on this rebased branch. Removed per the
-    # shrink-only rule rather than left stale.
-    #
-    # 104 is Lane E's (PR #336, system_design_design_requests) -- both this
-    # lane's own B-13 (customer_invoices, this PR) and #336 raced onto 104;
-    # ML-orch's ruling kept 104 with #336 (claimed first, rebased onto it
-    # twice already) and renumbered this lane's own migration to 105. This
-    # branch is unstacked from #336, so its own tree shows 104 as a gap
-    # until #336 merges -- remove this entry then, per the shrink-only rule.
-    104: "reserved by PR #336 (Lane E, system_design_design_requests) -- not yet merged on this branch's base",
+    # shrink-only rule rather than left stale. 104 was reserved by PR #336
+    # (Lane E, system_design_design_requests) during the same collision that
+    # renumbered this lane's own migration to 105 -- also merged and removed
+    # the same way.
 }
 
 
