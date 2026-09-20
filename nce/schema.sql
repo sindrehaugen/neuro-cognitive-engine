@@ -1584,7 +1584,10 @@ Fed via upsert_bid_projection() from Product''s A2A projection push — not a
 primary Nettailer ingest (§9.1: Product owns the single feed).  Natural key is
 (namespace_id, artnr, leverandor, bid_id); ON CONFLICT DO UPDATE keeps cache
 current.  do_resolve_bids() reads this cache for best-BID-per-artnr resolution.
-FORCE RLS isolates per tenant.';
+FORCE RLS isolates per tenant.  Deliberately given no node_type and no C12
+ResourceSpec: do_resolve_bids() returns only the best bid per artnr, never raw
+per-supplier prices, so a generic list/get surface would blow past that
+deliberate narrowing and expose competitively sensitive per-supplier bids.';
 
 -- --- System Design Phase-2: device capability attributes (migration 038) ---
 -- Typed/queryable AVIXA Revit Parameter attributes for DEVICE/PORT nodes.
