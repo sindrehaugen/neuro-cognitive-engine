@@ -287,6 +287,36 @@ def extract_tool_registry_stats(repo: str, baseline: str) -> dict[str, Any]:
     }
 
 
+def render_migration_gaps_display(
+    never_allocated_nums: list[int], optional_only_nums: list[int]
+) -> str:
+    """Render the one phrase every "what are the migration gaps" consumer
+    interpolates -- extracted as a pure function (K-consolidation, 2026-09-20)
+    so it is testable with synthetic inputs, not just against whatever
+    numbers happen to be true gaps in the repo today.
+
+    Two categories, never flattened into one: ``never_allocated_nums`` (no
+    migration file anywhere, base or optional/) and ``optional_only_nums``
+    (missing from the base directory but covered by a real file under
+    ``optional/`` -- not a gap, a real migration living somewhere else).
+    Conflating them was the finding this fixes: a bare "gaps at ..." list
+    that included an optional-covered number looked identical to a true
+    gap, which is exactly the false-positive shape (something correctly
+    provisioned looking indistinguishable from something missing) this
+    session kept finding in room categories, billing candidates, and here.
+    """
+    never_allocated_str = ", ".join(f"`{n:03d}`" for n in never_allocated_nums)
+    optional_only_str = ", ".join(f"`{n:03d}`" for n in optional_only_nums)
+
+    display = (
+        f"gaps at {never_allocated_str} (never allocated)" if never_allocated_nums else "no gaps"
+    )
+    if optional_only_nums:
+        plural = "s exist" if len(optional_only_nums) > 1 else " exists"
+        display += f"; {optional_only_str}{plural} only under `nce/migrations/optional/`"
+    return display
+
+
 def extract_migration_stats(repo: str, baseline: str) -> dict[str, Any]:
     """Scan nce/migrations/ and nce/migrations/optional/ for migration figures."""
     all_files = git_ls_tree(repo, baseline, "nce/migrations/")
@@ -313,6 +343,22 @@ def extract_migration_stats(repo: str, baseline: str) -> dict[str, Any]:
     missing_nums = sorted(list(all_expected - set(prefix_nums)))
     gaps_str = ", ".join(f"`{n:03d}`" for n in missing_nums)
 
+    # missing_nums (above) is scoped to the base directory only -- a number
+    # covered by an optional/ file (e.g. 010_citus_sharding.sql) is missing
+    # from base but not "unallocated": a real migration exists for it, just
+    # outside the base sequence. Two genuinely different questions, so two
+    # derived answers instead of one flattened list: never_allocated_nums
+    # (no file anywhere, base or optional -- the true gaps) and
+    # optional_only_nums (covered by optional/ alone, base-missing but not a
+    # gap). Both are derived here so neither can go stale independently of
+    # the other, unlike a hand-written sentence naming them.
+    optional_prefix_nums = {int(m[:3]) for m in optional_migrations if re.match(r"^\d{3}_", m)}
+    never_allocated_nums = sorted(n for n in missing_nums if n not in optional_prefix_nums)
+    optional_only_nums = sorted(n for n in missing_nums if n in optional_prefix_nums)
+    never_allocated_str = ", ".join(f"`{n:03d}`" for n in never_allocated_nums)
+    optional_only_str = ", ".join(f"`{n:03d}`" for n in optional_only_nums)
+    gaps_display = render_migration_gaps_display(never_allocated_nums, optional_only_nums)
+
     return {
         "base_count": len(base_migrations),
         "optional_count": len(optional_migrations),
@@ -321,6 +367,11 @@ def extract_migration_stats(repo: str, baseline: str) -> dict[str, Any]:
         "max_prefix": max_prefix,
         "missing_prefixes": missing_nums,
         "gaps_str": gaps_str,
+        "never_allocated_nums": never_allocated_nums,
+        "never_allocated_str": never_allocated_str,
+        "optional_only_nums": optional_only_nums,
+        "optional_only_str": optional_only_str,
+        "gaps_display": gaps_display,
         "optional_files": optional_migrations,
     }
 
@@ -437,7 +488,7 @@ def generate_markdown(
         "| Counter | Value | Source of Truth |",
         "|---|---|---|",
         f"| `TOOL_REGISTRY` entries | **{tool_stats['total_tools']}** MCP tools ({tool_stats['shared_count']} shared + {tool_stats['engine_count']} across {tool_stats['num_engines']} engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = {tool_stats['expected_total']}` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |",
-        f"| SQL migrations | {mig_stats['base_count']} files (+{mig_stats['optional_count']} optional), `{mig_stats['min_prefix']}` → `{mig_stats['max_prefix']}` — gaps at {mig_stats['gaps_str']} | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |",
+        f"| SQL migrations | {mig_stats['base_count']} files (+{mig_stats['optional_count']} optional), `{mig_stats['min_prefix']}` → `{mig_stats['max_prefix']}` — {mig_stats['gaps_display']} | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |",
         f"| Golden Thread seam burndown | **{gt_stats['broken']} of {gt_stats['total_steps']}** lifecycle steps broken ({gt_stats['distinct_seams']} distinct seams) | Generated in [`docs/_generated/golden_thread_seams.md`](golden_thread_seams.md) from [`tests/integration/test_golden_thread.py`](../../tests/integration/test_golden_thread.py) |",
         f"| v1.6 C12 resource-surface registrations | **{v16_stats['registered']} of {v16_stats['num_engines']}** engines have `resources.py` | AST of `nce/vertical_modules/<engine>/resources.py` per engine — see the v1.6 section below |",
         f"| `EXPECTED_TENANT_RLS_TABLES` | **{rls_stats['count']}** | AST of [`nce/event_log.py`](../../nce/event_log.py) |",
@@ -539,7 +590,7 @@ def update_engine_status(
     mig_row = (
         f"| SQL migrations | {mig_stats['base_count']} files (+{mig_stats['optional_count']} optional), "
         f"`{mig_stats['min_prefix']}` → `{mig_stats['max_prefix']}` — "
-        f"gaps at `002`, `009`, `059` (never allocated); `010` exists only under `nce/migrations/optional/`. — "
+        f"{mig_stats['gaps_display']}. — "
         f"see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |"
     )
     text = re.sub(
