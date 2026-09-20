@@ -792,9 +792,16 @@ jobs:
         # MinIO service anywhere in this workflow. That ONE test is deselected by
         # name -- deliberately not by adding the whole FILE back to KNOWN_UNWIRED,
         # which would have kept all nine ungated to avoid running eight of them.
+        # tests/test_sales_quote_clone.py (charter Wave B-5 remainder): the
+        # sales_clone_quote composite operation, same shape as the manual-pick
+        # origination path above -- added here rather than a new dedicated
+        # step for the same "sneaking under an existing glob asserts a false
+        # owner" reason this step's own comment gives, this file just belongs
+        # to the same M5 BOM_LINE surface, not a different one.
         run: >-
           pytest tests/test_sales_lines_manual.py tests/test_sales_get_quote_lines.py
           tests/test_sales_dealroom.py tests/test_sales_open_dealroom_mcp.py
+          tests/test_sales_quote_clone.py
           -m integration -q --tb=short
           --deselect 'tests/test_sales_dealroom.py::TestSalesDealRoom::test_open_dealroom_prices_correctly_and_handles_toggles'
 

@@ -1103,6 +1103,15 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=True,
     ),
+    # sales_clone_quote (charter Wave B-5): mutation=True (creates a new
+    # QUOTE + N BOM_LINE rows, bumps the MCP cache generation), admin_only=False
+    # (a salesperson clones their own quote), cacheable=False (it writes).
+    "sales_clone_quote": ToolSpec(
+        _h(sales_mcp_handlers, "handle_sales_clone_quote"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
     # Sales quote signing orchestration via C7 SignTransport (Wave S-2a).
     # Actor tool: admin_only=True, mutation=True, cacheable=False.
     "sales_request_signature": ToolSpec(

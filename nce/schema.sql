@@ -5651,6 +5651,16 @@ CREATE INDEX IF NOT EXISTS idx_sales_quotes_customer
 CREATE INDEX IF NOT EXISTS idx_sales_quotes_number
     ON sales_quotes (namespace_id, quote_number);
 
+-- ---------------------------------------------------------------------------
+-- 099_sales_quote_billing_method.sql mirror -- Charter B-5: billing_method
+-- attribute. See that migration's header for the nullable-no-default rationale.
+-- ---------------------------------------------------------------------------
+ALTER TABLE sales_quotes ADD COLUMN IF NOT EXISTS billing_method TEXT;
+
+ALTER TABLE sales_quotes DROP CONSTRAINT IF EXISTS sales_quotes_billing_method_check;
+ALTER TABLE sales_quotes ADD CONSTRAINT sales_quotes_billing_method_check
+    CHECK (billing_method IS NULL OR billing_method IN ('percent', 'hours_amount'));
+
 ALTER TABLE sales_quotes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sales_quotes FORCE ROW LEVEL SECURITY;
 

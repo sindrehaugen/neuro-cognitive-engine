@@ -4793,6 +4793,27 @@ TOOLS = [
         },
     ),
     Tool(
+        name="sales_clone_quote",
+        description=(
+            "Clone a Sales quote and its BOM_LINE content into a new draft quote. The new "
+            "quote is always status=draft, version=1, with its own quote_number (source "
+            "number + -COPY suffix). Cloned lines are written through the sales-owned "
+            "content:create:external transition, not the source line's own original flow -- "
+            "provenance is a copy-into-new-container operation, not a new origination path."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "quote_id": {
+                    "type": "string",
+                    "description": "The SOURCE Sales QUOTE identifier to clone.",
+                },
+            },
+            "required": ["namespace_id", "quote_id"],
+        },
+    ),
+    Tool(
         name="sales_request_signature",
         description=(
             "Initiate an e-signature request for a sales quote via C7 SignTransport. "

@@ -236,7 +236,7 @@ QUOTE_SPEC = ResourceSpec(
     id_field="id",
     version_field="updated_at",
     soft_delete_field="is_archived",
-    filterable_fields=("status", "deal_id", "customer_id", "is_archived"),
+    filterable_fields=("status", "deal_id", "customer_id", "is_archived", "billing_method"),
     searchable_fields=("quote_number", "title"),
     writable_fields=(
         "quote_number",
@@ -250,6 +250,11 @@ QUOTE_SPEC = ResourceSpec(
         "currency",
         "valid_until",
         "metadata",
+        # Wave B-5 (migration 099): billing_method in {"percent", "hours_amount"},
+        # nullable -- see that migration's header for why no default is asserted.
+        # No caller reads it yet (grep confirmed against commission.py); this is
+        # the attribute the charter asked for, not a behavior change.
+        "billing_method",
     ),
     tier_allowlists={
         "contractor": (
@@ -270,6 +275,7 @@ QUOTE_SPEC = ResourceSpec(
             "currency",
             "valid_until",
             "created_at",
+            "billing_method",
         ),
     },
     description="C12 customer quotes with versioning, currency, VAT totals, and validity windows.",
