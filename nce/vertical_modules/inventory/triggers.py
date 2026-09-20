@@ -215,17 +215,34 @@ the prior sum already is". The two costs, named:
 
 Why a direct in-process call and not ``nce.events.bus.publish``
 -------------------------------------------------------------------
-The brief offers "the C4 event bus / A2A" and does not choose. The bus half is
-choosable only in appearance: ``register_automation_subscribers()``
-(``nce/vertical_modules/project/automation.py:648``) has zero production
-callers on main, which is the stated, documented reason Batch 132c — the C4
-``GOODS_RECEIPT.created`` publish — is BLOCKED (``goods_receipt.py``'s
-"Explicit out of scope" section: "a publish today would look green and deliver
-nothing"). Publishing here would reproduce that defect under a different batch
-number and this wave's own acceptance test would be green while the match
-never ran. The A2A half is therefore taken literally: Procurement's registered
-tool handler is invoked, in process, and its real verdict is what lands in
-``match_result``. Nothing here subscribes, publishes, or registers a handler.
+The brief offers "the C4 event bus / A2A" and does not choose.
+
+An earlier version of this section argued the bus half was choosable only in
+appearance, because ``register_automation_subscribers()``
+(``nce/vertical_modules/project/automation.py:700``) had zero production
+callers on main. **That premise is stale as of `975b86c` (2026-09-01,
+"register Module 7's subscribers"): both relay-running processes now call it
+at startup** (``nce/mcp_stdio_main.py:148``, ``nce/cron.py:2402``), and it
+registers a real, non-stub handler for exactly the selector this wave cares
+about — ``GOODS_RECEIPT.created`` → ``_handle_goods_receipt_created``
+(``automation.py:611``), which enqueues a real RQ task, not a no-op. A publish
+here would reach a live subscriber today.
+
+**The choice survives anyway, for a reason that has nothing to do with
+subscriber count.** ``subscribe``/``publish`` is the C4 outbox's async,
+post-commit contract by design (M0.W20d's own ``PostCommitAction`` closure
+mechanism): a handler runs after the relay's transaction commits and, on the
+automation side, enqueues an RQ task for a worker to pick up later. Nothing in
+that path returns a value to the code that published the event. This wave
+needs the opposite: Procurement's real verdict, computed synchronously, so it
+can be written onto ``goods_receipts.match_result`` in the SAME operation
+that recorded the receipt (see :func:`_persist_match_result` below) — not a
+value some later worker produces and nobody here is positioned to receive.
+Publishing would still leave ``match_result`` with nothing to write. The A2A
+half is therefore taken literally: Procurement's registered tool handler is
+invoked, in process, and its real, synchronously-returned verdict is what
+lands in ``match_result``. Nothing here subscribes, publishes, or registers a
+handler.
 
 Namespace scoping is EXPLICIT, never delegated to RLS
 --------------------------------------------------------

@@ -46,7 +46,11 @@ Two mechanical constraints, both learned the hard way
 2. **Registration must be called from every process that runs a relay.**  This
    module being importable is not enough — a ``register_*`` function nobody
    calls is precisely the defect that left ``register_automation_subscribers``
-   dead on main.  ``register_system_design_subscribers()`` is invoked from
+   dead on main until ``975b86c`` (2026-09-01, "register Module 7's
+   subscribers") registered it in both relay-running processes; it is a fixed
+   historical example, cited for the lesson, not a live one — do not read this
+   paragraph as describing ``register_automation_subscribers``'s current
+   state.  ``register_system_design_subscribers()`` is invoked from
    ``nce/mcp_stdio_main.py`` (before the relay loop task is created) and from
    ``nce/cron.py`` (at scheduler startup).  Those are the two relay-running
    processes; a third would need the same call.
