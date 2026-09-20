@@ -54,10 +54,23 @@ _SURFACE_ROOT_PATTERNS = frozenset(
 
 
 def _load_allowlist() -> dict[str, dict[str, Any]]:
-    """Load the shrink-only internal-cores allowlist."""
+    """Load the shrink-only internal-cores allowlist.
+
+    Discovery floor (inert-instrument audit, 2026-09-20): an empty or malformed
+    internal-cores.json satisfied test_internal_cores_allowlist_is_shrink_only_and_reasoned
+    vacuously -- every one of its checks is a set difference or a for-loop over
+    ``allowlist``, which is trivially empty/no-op if ``allowlist`` itself is empty.
+    Verified by loading a scratch copy of the real file emptied to ``{}`` and confirming
+    the test still passed; this file's existence check alone did not catch that. This is
+    the "well-instrumented master" this session initially (wrongly) vouched for as
+    already correct -- it was not, and only surfaced under the AST census in PR #321's
+    follow-up sweep.
+    """
     assert _ALLOWLIST_PATH.exists(), f"Missing allowlist at {_ALLOWLIST_PATH}"
     with open(_ALLOWLIST_PATH, encoding="utf-8") as f:
-        return json.load(f)
+        data = json.load(f)
+    assert data, f"{_ALLOWLIST_PATH} parsed empty -- the loader broke, not the estate"
+    return data
 
 
 @lru_cache(maxsize=1)

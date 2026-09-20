@@ -75,6 +75,9 @@ def test_do_generate_case_study_edge_removed_from_internal_cores() -> None:
     with open(cores_path, encoding="utf-8") as f:
         data = json.load(f)
     allowlist = set(data.keys()) if isinstance(data, dict) else set(data)
+    # Discovery floor (inert-instrument audit, 2026-09-20): an empty or malformed
+    # internal-cores.json would satisfy the assertion below vacuously.
+    assert allowlist, "internal-cores.json parsed empty -- the loader broke, not the estate"
     assert (
         "nce/vertical_modules/project/case_study.py::do_generate_case_study_edge" not in allowlist
     )
