@@ -42,9 +42,9 @@ def test_customer_portal_tables_registered_in_expected_tenant_rls_tables():
 
 
 def test_expected_tenant_rls_tables_total_count():
-    """Total count of tenant RLS tables after C17 Sites, Wave D-5 support_ticket_actions, C12 Sales, and Wave B-9 agreements resource additions, Wave B-2 CONTACT (sales_contacts), and the D-9 flip-gate heartbeat (source_mode_heartbeat), must be 109."""
-    assert len(EXPECTED_TENANT_RLS_TABLES) == 109, (
-        f"Expected 109 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
+    """Total count of tenant RLS tables after C17 Sites, Wave D-5 support_ticket_actions, C12 Sales, and Wave B-9 agreements resource additions, Wave B-2 CONTACT (sales_contacts), the D-9 flip-gate heartbeat (source_mode_heartbeat), and Wave B-15 procurement_deal_registrations, must be 110."""
+    assert len(EXPECTED_TENANT_RLS_TABLES) == 110, (
+        f"Expected 110 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
     )
 
 
