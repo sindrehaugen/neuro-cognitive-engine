@@ -1,4 +1,4 @@
--- 106_sales_deal_participants.sql
+-- 107_sales_deal_participants.sql
 --
 -- C12 DEAL_PARTICIPANT resource (charter Wave B-3, sub-resource half, Lane E).
 -- Genuinely new node type -- Sindre's Q-5 carve-out extension (new node type
