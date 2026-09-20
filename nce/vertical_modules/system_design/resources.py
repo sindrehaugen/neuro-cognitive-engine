@@ -499,6 +499,100 @@ DESIGN_SPEC = ResourceSpec(
 )
 register_resource(DESIGN_SPEC)
 
+# ---------------------------------------------------------------------------
+# 7. DESIGN_REQUEST
+# ---------------------------------------------------------------------------
+# Charter's C-4 asks for DESIGN_REQUEST (SD-owned) with owner+status.
+# Migration 104 (2026-09-20) gave this node type what CONTACT/097 already
+# established for exactly this shape: kg_nodes identity (label, entity_type,
+# change_origin, timestamps) plus a satellite table
+# (system_design_design_requests) for the real fields, joined by node_label.
+# Previously ran entirely on system_design_geometry's meta JSONB column --
+# NOT routed through SecondaryTable (which has no validation hook, same
+# restriction DEVICE/RACK/CABLE and DESIGN both hit above), and had no
+# kg_nodes row at all. design_requests.py's own six functions (create/get/
+# list/update/assign/complete) were rewritten in the same PR to read/write
+# the new table instead -- confirmed by grep to be the ONLY code anywhere
+# touching DESIGN_REQUEST storage, so no reader was left pointing at the old
+# location. Existing rows (if any) are backfilled by migration 104 itself,
+# not silently orphaned.
+#
+# Tool-name collision: entity="design_requests" generates
+# system_design_list_design_requests, which already exists as a hand-written
+# tool (nce/tool_registry.py) -- same exact-match-on-list shape as RESOURCE/
+# FUNCTIONAL_LOCATION/DESIGN. get/upsert/archive do not collide (hand-written
+# get is singular system_design_get_design_request; no hand-written upsert
+# or archive tool exists for this node type). excluded_verbs={"list"} closes
+# this the same way.
+DESIGN_REQUEST_SPEC = ResourceSpec(
+    engine="system_design",
+    entity="design_requests",
+    node_type="DESIGN_REQUEST",
+    table_name=None,
+    id_field="node_label",
+    version_field="updated_at",
+    soft_delete_field=None,
+    # Trimmed to kg_nodes' own real columns, same constraint DEVICE_SPEC's
+    # docstring documents: a graph-primary spec's list/search handler queries
+    # kg_nodes only and never joins secondary_tables, so a satellite-table
+    # field here would be a runtime SQL error, not a working filter. Moot in
+    # practice anyway -- list is excluded below, and the hand-written
+    # system_design_list_design_requests tool already supports filtering on
+    # status/priority/owner_id/quote_id/functional_location_id via real SQL
+    # against the actual table.
+    filterable_fields=("change_origin",),
+    searchable_fields=(),
+    writable_fields=(
+        "change_origin",
+        "title",
+        "description",
+        "quote_id",
+        "functional_location_id",
+        "status",
+        "priority",
+        "owner_id",
+        "design_id",
+        "room_spec",
+        "metadata",
+    ),
+    secondary_tables=(
+        SecondaryTable(
+            table_name="system_design_design_requests",
+            join_field="node_label",
+            fields=(
+                "title",
+                "description",
+                "quote_id",
+                "functional_location_id",
+                "status",
+                "priority",
+                "owner_id",
+                "design_id",
+                "room_spec",
+                "metadata",
+            ),
+        ),
+    ),
+    excluded_verbs=frozenset({"list"}),
+    # Explicitly empty, not omitted -- an absent key is fail-OPEN on
+    # redact_item's live X-NCE-Principal-Tier header path (see DEVICE_SPEC's
+    # comment for the full mechanism). This is an internal System Design
+    # intake queue, not customer- or contractor-facing.
+    tier_allowlists={"external-customer": (), "contractor": ()},
+    description=(
+        "C12 solution design intake queue request: graph identity (label, "
+        "entity_type, change_origin, timestamps) plus title/description/"
+        "quote_id/functional_location_id/status/priority/owner_id/design_id/"
+        "room_spec/metadata on the system_design_design_requests satellite "
+        "table. list is excluded -- the existing hand-written "
+        "system_design_list_design_requests tool stays authoritative; this "
+        "spec adds get/upsert/archive only. Bulk create is refused, same as "
+        "every other kg_nodes-primary spec in this module: identity-plus-"
+        "satellite partial-failure semantics have no precedent here."
+    ),
+)
+register_resource(DESIGN_REQUEST_SPEC)
+
 __all__ = [
     "DEVICE_SPEC",
     "PORT_SPEC",
@@ -506,4 +600,5 @@ __all__ = [
     "CABLE_SPEC",
     "FUNCTIONAL_LOCATION_SPEC",
     "DESIGN_SPEC",
+    "DESIGN_REQUEST_SPEC",
 ]
