@@ -17,12 +17,17 @@ nothing in ``tests/`` checked it against the code.
    the generator, and it has silently started to drift.
 
 §10.5b (ORCH_PROTOCOL.md, 2026-09-19): assertion 2 (``test_generated_surface_doc_matches_the_generator``)
-is marked ``@pytest.mark.doc_gate`` and excluded on ``pull_request`` -- ``surface.md`` is
-touched by 5 of 5 open PRs measured the night this changed, the single biggest generated-doc
-collision source in the estate. PRs no longer carry it;
-``.github/workflows/regen-generated-docs.yml`` regenerates and self-verifies it (by running
-THIS exact test) on `main` after every merge instead. Assertion 1 is unrelated to file
-staleness and is NOT marked ``doc_gate`` -- it keeps running on every PR.
+is marked ``@pytest.mark.doc_gate``. §10.5b briefly excluded ``doc_gate`` tests from
+``pull_request`` on the theory that a post-merge job (``regen-generated-docs.yml``) would
+regenerate and commit current docs on `main` instead of requiring PRs to carry them --
+REVERTED the same night: `main` requires 9 status checks even for direct pushes
+(``enforce_admins: true``), so that job's ``GITHUB_TOKEN`` commits are unconditionally
+rejected, and a merge landed without current docs before this was caught. ``doc_gate`` now
+runs in ``ci.yml``'s normal sweep again, on every PR and push, same as any other test -- the
+marker is a label, not an exclusion, and it still matters for one thing:
+``.github/workflows/doc-drift-nightly.yml`` invokes exactly the ``doc_gate``-marked tests
+standalone (``pytest -m doc_gate``) as an independent scheduled re-check. Assertion 1 is
+unrelated to file staleness and is NOT marked ``doc_gate``.
 """
 
 from __future__ import annotations
