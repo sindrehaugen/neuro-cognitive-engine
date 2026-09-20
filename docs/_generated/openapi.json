@@ -6273,6 +6273,172 @@
         },
         "type": "object"
       },
+      "System_design_design_requests": {
+        "description": "C12 solution design intake queue request: graph identity (label, entity_type, change_origin, timestamps) plus title/description/quote_id/functional_location_id/status/priority/owner_id/design_id/room_spec/metadata on the system_design_design_requests satellite table. list is excluded -- the existing hand-written system_design_list_design_requests tool stays authoritative; this spec adds get/upsert/archive only. Bulk create is refused, same as every other kg_nodes-primary spec in this module: identity-plus-satellite partial-failure semantics have no precedent here.",
+        "properties": {
+          "change_origin": {
+            "description": "Field change_origin",
+            "type": "string"
+          },
+          "description": {
+            "description": "Field description",
+            "type": "string"
+          },
+          "design_id": {
+            "description": "Field design_id",
+            "type": "string"
+          },
+          "functional_location_id": {
+            "description": "Field functional_location_id",
+            "type": "string"
+          },
+          "metadata": {
+            "description": "Field metadata",
+            "type": "string"
+          },
+          "node_label": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "owner_id": {
+            "description": "Field owner_id",
+            "type": "string"
+          },
+          "priority": {
+            "description": "Field priority",
+            "type": "string"
+          },
+          "quote_id": {
+            "description": "Field quote_id",
+            "type": "string"
+          },
+          "room_spec": {
+            "description": "Field room_spec",
+            "type": "string"
+          },
+          "status": {
+            "description": "Field status",
+            "type": "string"
+          },
+          "title": {
+            "description": "Field title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_label"
+        ],
+        "type": "object"
+      },
+      "System_design_design_requests_Create": {
+        "description": "Payload for creating a system_design design_requests",
+        "properties": {
+          "change_origin": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "design_id": {
+            "type": "string"
+          },
+          "functional_location_id": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "string"
+          },
+          "owner_id": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "quote_id": {
+            "type": "string"
+          },
+          "room_spec": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "System_design_design_requests_List": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/System_design_design_requests"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Cursor token for fetching the next page",
+            "nullable": true,
+            "type": "string"
+          },
+          "total": {
+            "description": "Total matching count if requested",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "System_design_design_requests_Update": {
+        "description": "Payload for updating a system_design design_requests",
+        "properties": {
+          "change_origin": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "design_id": {
+            "type": "string"
+          },
+          "expected_version": {
+            "description": "Optimistic concurrency lock version",
+            "type": "string"
+          },
+          "functional_location_id": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "string"
+          },
+          "owner_id": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "quote_id": {
+            "type": "string"
+          },
+          "room_spec": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "System_design_designs": {
         "description": "C12 solution design: graph identity only (label, entity_type, change_origin, timestamps). is_active is real, stored data (on system_design_geometry.meta) but is not exposed here -- see the comment above this spec for why (the sole validation choke point for that table has no SecondaryTable hook yet). Per-FL design listing and set-active stay on their own hand-written routes.",
         "properties": {
@@ -19899,6 +20065,26 @@
         ],
         "type": "object"
       },
+      "Tool_system_design_archive_design_requests_Input": {
+        "properties": {
+          "id": {
+            "description": "ID of Design Request to archive.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Audit reason for archiving.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
       "Tool_system_design_archive_designs_Input": {
         "properties": {
           "id": {
@@ -20495,6 +20681,22 @@
         "required": [
           "namespace_id",
           "request_id"
+        ],
+        "type": "object"
+      },
+      "Tool_system_design_get_design_requests_Input": {
+        "properties": {
+          "id": {
+            "description": "Unique identifier of the Design Request.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
         ],
         "type": "object"
       },
@@ -21494,6 +21696,57 @@
           },
           "status": {
             "description": "Value for status."
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "Tool_system_design_upsert_design_requests_Input": {
+        "properties": {
+          "change_origin": {
+            "description": "Value for change_origin."
+          },
+          "description": {
+            "description": "Value for description."
+          },
+          "design_id": {
+            "description": "Value for design_id."
+          },
+          "expected_version": {
+            "description": "Concurrency check version.",
+            "type": "string"
+          },
+          "functional_location_id": {
+            "description": "Value for functional_location_id."
+          },
+          "id": {
+            "description": "Optional ID of existing Design Request to update.",
+            "type": "string"
+          },
+          "metadata": {
+            "description": "Value for metadata."
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "owner_id": {
+            "description": "Value for owner_id."
+          },
+          "priority": {
+            "description": "Value for priority."
+          },
+          "quote_id": {
+            "description": "Value for quote_id."
+          },
+          "room_spec": {
+            "description": "Value for room_spec."
+          },
+          "status": {
+            "description": "Value for status."
+          },
+          "title": {
+            "description": "Value for title."
           }
         },
         "required": [],
@@ -27044,6 +27297,17 @@
         "mutation": true,
         "name": "system_design_archive_cables"
       },
+      "system_design_archive_design_requests": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Soft-archive a Design Request resource.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_system_design_archive_design_requests_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "system_design_archive_design_requests"
+      },
       "system_design_archive_designs": {
         "admin_only": false,
         "cacheable": false,
@@ -27274,6 +27538,17 @@
         "migration": false,
         "mutation": false,
         "name": "system_design_get_design_request"
+      },
+      "system_design_get_design_requests": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Fetch a single Design Request resource by ID.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_system_design_get_design_requests_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "system_design_get_design_requests"
       },
       "system_design_get_designs": {
         "admin_only": false,
@@ -27736,6 +28011,17 @@
         "migration": false,
         "mutation": true,
         "name": "system_design_upsert_cables"
+      },
+      "system_design_upsert_design_requests": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Create or update a Design Request resource.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_system_design_upsert_design_requests_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "system_design_upsert_design_requests"
       },
       "system_design_upsert_designs": {
         "admin_only": false,
@@ -118360,6 +118646,1217 @@
           }
         },
         "summary": "handle_remove_tag (/api/system_design/cables/{id}/tags/{tag})",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/design-requests": {
+      "post": {
+        "description": "handle_create (/api/system_design/design-requests)",
+        "operationId": "post_api_system_design_design_requests",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_create (/api/system_design/design-requests)",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/design-requests/bulk": {
+      "post": {
+        "description": "handle_bulk (/api/system_design/design-requests/bulk)",
+        "operationId": "post_api_system_design_design_requests_bulk",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_bulk (/api/system_design/design-requests/bulk)",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/design-requests/{id}": {
+      "get": {
+        "description": "handle_get (/api/system_design/design-requests/{id})",
+        "operationId": "get_api_system_design_design_requests_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_get (/api/system_design/design-requests/{id})",
+        "tags": [
+          "system_design"
+        ]
+      },
+      "patch": {
+        "description": "handle_patch (/api/system_design/design-requests/{id})",
+        "operationId": "patch_api_system_design_design_requests_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_patch (/api/system_design/design-requests/{id})",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/design-requests/{id}/archive": {
+      "post": {
+        "description": "handle_archive (/api/system_design/design-requests/{id}/archive)",
+        "operationId": "post_api_system_design_design_requests_id_archive",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_archive (/api/system_design/design-requests/{id}/archive)",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/design-requests/{id}/comments": {
+      "get": {
+        "description": "handle_list_comments (/api/system_design/design-requests/{id}/comments)",
+        "operationId": "get_api_system_design_design_requests_id_comments",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_comments (/api/system_design/design-requests/{id}/comments)",
+        "tags": [
+          "system_design"
+        ]
+      },
+      "post": {
+        "description": "handle_add_comment (/api/system_design/design-requests/{id}/comments)",
+        "operationId": "post_api_system_design_design_requests_id_comments",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_add_comment (/api/system_design/design-requests/{id}/comments)",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/design-requests/{id}/documents": {
+      "get": {
+        "description": "handle_list_documents (/api/system_design/design-requests/{id}/documents)",
+        "operationId": "get_api_system_design_design_requests_id_documents",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_documents (/api/system_design/design-requests/{id}/documents)",
+        "tags": [
+          "system_design"
+        ]
+      },
+      "post": {
+        "description": "handle_attach_document (/api/system_design/design-requests/{id}/documents)",
+        "operationId": "post_api_system_design_design_requests_id_documents",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_attach_document (/api/system_design/design-requests/{id}/documents)",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/design-requests/{id}/documents/{doc_id}": {
+      "delete": {
+        "description": "handle_detach_document (/api/system_design/design-requests/{id}/documents/{doc_id})",
+        "operationId": "delete_api_system_design_design_requests_id_documents_doc_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL path parameter doc_id",
+            "in": "path",
+            "name": "doc_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_detach_document (/api/system_design/design-requests/{id}/documents/{doc_id})",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/design-requests/{id}/events": {
+      "get": {
+        "description": "handle_events (/api/system_design/design-requests/{id}/events)",
+        "operationId": "get_api_system_design_design_requests_id_events",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_events (/api/system_design/design-requests/{id}/events)",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/design-requests/{id}/restore": {
+      "post": {
+        "description": "handle_restore (/api/system_design/design-requests/{id}/restore)",
+        "operationId": "post_api_system_design_design_requests_id_restore",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_restore (/api/system_design/design-requests/{id}/restore)",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/design-requests/{id}/tags": {
+      "get": {
+        "description": "handle_list_tags (/api/system_design/design-requests/{id}/tags)",
+        "operationId": "get_api_system_design_design_requests_id_tags",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_tags (/api/system_design/design-requests/{id}/tags)",
+        "tags": [
+          "system_design"
+        ]
+      },
+      "post": {
+        "description": "handle_add_tag (/api/system_design/design-requests/{id}/tags)",
+        "operationId": "post_api_system_design_design_requests_id_tags",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_add_tag (/api/system_design/design-requests/{id}/tags)",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/design-requests/{id}/tags/{tag}": {
+      "delete": {
+        "description": "handle_remove_tag (/api/system_design/design-requests/{id}/tags/{tag})",
+        "operationId": "delete_api_system_design_design_requests_id_tags_tag",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL path parameter tag",
+            "in": "path",
+            "name": "tag",
+            "required": true,
+            "schema": {
+              "format": "string",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_remove_tag (/api/system_design/design-requests/{id}/tags/{tag})",
         "tags": [
           "system_design"
         ]

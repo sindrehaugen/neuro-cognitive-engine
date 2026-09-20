@@ -4831,56 +4831,43 @@ BEGIN
 END $$;
 
 -- ============================================================================
--- C12 DESIGN_REQUEST Resource Surface (Lane E, charter Wave C-4)
--- Migration 104_system_design_design_requests.sql
+-- Migration 100_procurement_deal_registrations.sql
 -- ============================================================================
 
-CREATE TABLE IF NOT EXISTS system_design_design_requests (
-    id                      UUID        NOT NULL DEFAULT gen_random_uuid(),
-    namespace_id            UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
-    node_label              TEXT        NOT NULL,
-    title                   TEXT        NOT NULL,
-    description             TEXT        NOT NULL DEFAULT '',
-    quote_id                TEXT,
-    functional_location_id  TEXT,
-    status                  TEXT        NOT NULL DEFAULT 'pending',
-    priority                TEXT        NOT NULL DEFAULT 'normal',
-    owner_id                TEXT,
-    design_id               TEXT,
-    room_spec               JSONB       NOT NULL DEFAULT '{}'::jsonb,
-    metadata                JSONB       NOT NULL DEFAULT '{}'::jsonb,
-    completed_at            TIMESTAMPTZ,
-    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+CREATE TABLE IF NOT EXISTS procurement_deal_registrations (
+    id                UUID          NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id      UUID          NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    supplier          TEXT          NOT NULL,
+    deal_name         TEXT          NOT NULL,
+    status            TEXT          NOT NULL DEFAULT 'submitted',
+    estimated_value   NUMERIC(18,2),
+    registered_by     TEXT,
+    valid_from        TIMESTAMPTZ,
+    valid_to          TIMESTAMPTZ,
+    notes             TEXT,
+    is_archived       BOOLEAN       NOT NULL DEFAULT FALSE,
+    created_at        TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ   NOT NULL DEFAULT now(),
     PRIMARY KEY (id),
-    UNIQUE (namespace_id, node_label),
-    CONSTRAINT fk_sddr_kg_nodes
-        FOREIGN KEY (node_label, namespace_id)
-        REFERENCES kg_nodes (label, namespace_id)
-        ON DELETE CASCADE,
-    CONSTRAINT system_design_design_requests_status_check
-        CHECK (status IN ('pending', 'assigned', 'in_progress', 'completed', 'cancelled', 'rejected')),
-    CONSTRAINT system_design_design_requests_priority_check
-        CHECK (priority IN ('low', 'normal', 'high', 'urgent'))
+    CONSTRAINT procurement_deal_registrations_status_check
+        CHECK (status IN ('submitted', 'approved', 'rejected', 'expired')),
+    CONSTRAINT procurement_deal_registrations_supplier_not_blank
+        CHECK (btrim(supplier) <> ''),
+    CONSTRAINT procurement_deal_registrations_deal_name_not_blank
+        CHECK (btrim(deal_name) <> '')
 );
 
-CREATE INDEX IF NOT EXISTS idx_sddr_namespace_node_label
-    ON system_design_design_requests (namespace_id, node_label);
+CREATE INDEX IF NOT EXISTS idx_procurement_deal_registrations_ns_supplier
+    ON procurement_deal_registrations (namespace_id, supplier);
 
-CREATE INDEX IF NOT EXISTS idx_sddr_namespace_status
-    ON system_design_design_requests (namespace_id, status);
-
-CREATE INDEX IF NOT EXISTS idx_sddr_namespace_owner
-    ON system_design_design_requests (namespace_id, owner_id);
-
-CREATE INDEX IF NOT EXISTS idx_sddr_namespace_quote
-    ON system_design_design_requests (namespace_id, quote_id);
+CREATE INDEX IF NOT EXISTS idx_procurement_deal_registrations_ns_status
+    ON procurement_deal_registrations (namespace_id, status);
 
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
-        REVOKE ALL ON TABLE system_design_design_requests FROM nce_app;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE system_design_design_requests TO nce_app;
+        REVOKE ALL ON TABLE procurement_deal_registrations FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE procurement_deal_registrations TO nce_app;
     END IF;
 END $$;
 
@@ -5043,6 +5030,60 @@ BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
         REVOKE ALL ON TABLE economy_billing_candidate_lines FROM nce_app;
         GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE economy_billing_candidate_lines TO nce_app;
+    END IF;
+END $$;
+
+-- ============================================================================
+-- C12 DESIGN_REQUEST Resource Surface (Lane E, charter Wave C-4)
+-- Migration 104_system_design_design_requests.sql
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS system_design_design_requests (
+    id                      UUID        NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id            UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    node_label              TEXT        NOT NULL,
+    title                   TEXT        NOT NULL,
+    description             TEXT        NOT NULL DEFAULT '',
+    quote_id                TEXT,
+    functional_location_id  TEXT,
+    status                  TEXT        NOT NULL DEFAULT 'pending',
+    priority                TEXT        NOT NULL DEFAULT 'normal',
+    owner_id                TEXT,
+    design_id               TEXT,
+    room_spec               JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    metadata                JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    completed_at            TIMESTAMPTZ,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    UNIQUE (namespace_id, node_label),
+    CONSTRAINT fk_sddr_kg_nodes
+        FOREIGN KEY (node_label, namespace_id)
+        REFERENCES kg_nodes (label, namespace_id)
+        ON DELETE CASCADE,
+    CONSTRAINT system_design_design_requests_status_check
+        CHECK (status IN ('pending', 'assigned', 'in_progress', 'completed', 'cancelled', 'rejected')),
+    CONSTRAINT system_design_design_requests_priority_check
+        CHECK (priority IN ('low', 'normal', 'high', 'urgent'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_sddr_namespace_node_label
+    ON system_design_design_requests (namespace_id, node_label);
+
+CREATE INDEX IF NOT EXISTS idx_sddr_namespace_status
+    ON system_design_design_requests (namespace_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_sddr_namespace_owner
+    ON system_design_design_requests (namespace_id, owner_id);
+
+CREATE INDEX IF NOT EXISTS idx_sddr_namespace_quote
+    ON system_design_design_requests (namespace_id, quote_id);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE system_design_design_requests FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE system_design_design_requests TO nce_app;
     END IF;
 END $$;
 

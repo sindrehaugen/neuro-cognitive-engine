@@ -1081,6 +1081,21 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/system_design/cables/{id}/tags` | `handle_list_tags` |
 | POST | `/api/system_design/cables/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/system_design/cables/{id}/tags/{tag}` | `handle_remove_tag` |
+| POST | `/api/system_design/design-requests` | `handle_create` |
+| POST | `/api/system_design/design-requests/bulk` | `handle_bulk` |
+| GET | `/api/system_design/design-requests/{id}` | `handle_get` |
+| PATCH | `/api/system_design/design-requests/{id}` | `handle_patch` |
+| POST | `/api/system_design/design-requests/{id}/archive` | `handle_archive` |
+| GET | `/api/system_design/design-requests/{id}/comments` | `handle_list_comments` |
+| POST | `/api/system_design/design-requests/{id}/comments` | `handle_add_comment` |
+| GET | `/api/system_design/design-requests/{id}/documents` | `handle_list_documents` |
+| POST | `/api/system_design/design-requests/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/system_design/design-requests/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/system_design/design-requests/{id}/events` | `handle_events` |
+| POST | `/api/system_design/design-requests/{id}/restore` | `handle_restore` |
+| GET | `/api/system_design/design-requests/{id}/tags` | `handle_list_tags` |
+| POST | `/api/system_design/design-requests/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/system_design/design-requests/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/system_design/designs` | `handle_create` |
 | POST | `/api/system_design/designs/bulk` | `handle_bulk` |
 | GET | `/api/system_design/designs/{id}` | `handle_get` |
@@ -1629,6 +1644,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `support_upsert_ticket_actions` |  | yes |  |  |
 | `support_upsert_tickets` |  | yes |  |  |
 | `system_design_archive_cables` |  | yes |  |  |
+| `system_design_archive_design_requests` |  | yes |  |  |
 | `system_design_archive_designs` |  | yes |  |  |
 | `system_design_archive_devices` |  | yes |  |  |
 | `system_design_archive_functional_locations` |  | yes |  |  |
@@ -1650,6 +1666,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `system_design_get_cables` |  |  | yes |  |
 | `system_design_get_design` |  |  | yes |  |
 | `system_design_get_design_request` |  |  | yes |  |
+| `system_design_get_design_requests` |  |  | yes |  |
 | `system_design_get_designs` |  |  | yes |  |
 | `system_design_get_devices` |  |  | yes |  |
 | `system_design_get_fl_ancestors` |  |  | yes |  |
@@ -1692,6 +1709,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `system_design_update_design` |  | yes |  |  |
 | `system_design_update_design_request` |  | yes |  |  |
 | `system_design_upsert_cables` |  | yes |  |  |
+| `system_design_upsert_design_requests` |  | yes |  |  |
 | `system_design_upsert_designs` |  | yes |  |  |
 | `system_design_upsert_devices` |  | yes |  |  |
 | `system_design_upsert_functional_locations` |  | yes |  |  |
@@ -1719,4 +1737,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 1159 REST endpoints, 542 MCP tools._
+_Totals: 1174 REST endpoints, 545 MCP tools._
