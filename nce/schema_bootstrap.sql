@@ -4924,3 +4924,111 @@ BEGIN
         GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE product_packages TO nce_app;
     END IF;
 END $$;
+
+-- ============================================================================
+-- C12 BILLING_RUN resource (B-12)
+-- Migration 102_billing_runs.sql
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS economy_billing_runs (
+    id                UUID        NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id      UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    node_label        TEXT        NOT NULL,
+    period_start      DATE        NOT NULL,
+    period_end        DATE        NOT NULL,
+    status            TEXT        NOT NULL DEFAULT 'confirmed'
+                      CHECK (status IN ('confirmed', 'failed')),
+    failure_reason    TEXT,
+    candidate_count   INTEGER     NOT NULL DEFAULT 0 CHECK (candidate_count >= 0),
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    UNIQUE (namespace_id, node_label),
+    CONSTRAINT fk_economy_billing_runs_kg_nodes
+        FOREIGN KEY (node_label, namespace_id)
+        REFERENCES kg_nodes (label, namespace_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_economy_billing_runs_namespace_node_label
+    ON economy_billing_runs (namespace_id, node_label);
+
+CREATE INDEX IF NOT EXISTS idx_economy_billing_runs_namespace_period
+    ON economy_billing_runs (namespace_id, period_start, period_end);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE economy_billing_runs FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE economy_billing_runs TO nce_app;
+    END IF;
+END $$;
+
+-- ============================================================================
+-- C12 BILLING_CANDIDATE resource + candidate lines (B-12)
+-- Migration 103_billing_candidates.sql
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS economy_billing_candidates (
+    id                UUID        NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id      UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    node_label        TEXT        NOT NULL,
+    billing_run_id    UUID        NOT NULL REFERENCES economy_billing_runs(id) ON DELETE CASCADE,
+    customer_id       UUID        REFERENCES sales_customers(id) ON DELETE SET NULL,
+    agreement_id      UUID        REFERENCES agreements(id) ON DELETE SET NULL,
+    period_start      DATE        NOT NULL,
+    period_end        DATE        NOT NULL,
+    currency          TEXT        NOT NULL DEFAULT 'NOK',
+    total_amount      NUMERIC(18,2) NOT NULL DEFAULT 0.00 CHECK (total_amount >= 0),
+    status            TEXT        NOT NULL DEFAULT 'draft'
+                      CHECK (status IN ('draft', 'approved', 'exported')),
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    UNIQUE (namespace_id, node_label),
+    CONSTRAINT fk_economy_billing_candidates_kg_nodes
+        FOREIGN KEY (node_label, namespace_id)
+        REFERENCES kg_nodes (label, namespace_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_economy_billing_candidates_namespace_node_label
+    ON economy_billing_candidates (namespace_id, node_label);
+
+CREATE INDEX IF NOT EXISTS idx_economy_billing_candidates_run
+    ON economy_billing_candidates (billing_run_id);
+
+CREATE INDEX IF NOT EXISTS idx_economy_billing_candidates_customer
+    ON economy_billing_candidates (namespace_id, customer_id);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE economy_billing_candidates FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE economy_billing_candidates TO nce_app;
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS economy_billing_candidate_lines (
+    id                   UUID          NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id         UUID          NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    billing_candidate_id UUID          NOT NULL REFERENCES economy_billing_candidates(id) ON DELETE CASCADE,
+    price_tier           TEXT          NOT NULL,
+    room_count           INTEGER       NOT NULL CHECK (room_count > 0),
+    unit_monthly_rate    NUMERIC(18,2) NOT NULL CHECK (unit_monthly_rate >= 0),
+    line_amount          NUMERIC(18,2) NOT NULL CHECK (line_amount >= 0),
+    covered_fl_labels    JSONB         NOT NULL DEFAULT '[]'::jsonb,
+    created_at           TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_economy_billing_candidate_lines_candidate
+    ON economy_billing_candidate_lines (billing_candidate_id);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE economy_billing_candidate_lines FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE economy_billing_candidate_lines TO nce_app;
+    END IF;
+END $$;
