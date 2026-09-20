@@ -301,18 +301,13 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET,POST | `/api/economy/mrr-arr-churn` | `api_economy_mrr_arr_churn` |
 | POST | `/api/economy/periodisering` | `api_economy_periodisering` |
 | GET | `/api/economy/postings` | `handle_list` |
-| POST | `/api/economy/postings` | `handle_create` |
-| POST | `/api/economy/postings/bulk` | `handle_bulk` |
 | GET | `/api/economy/postings/{id}` | `handle_get` |
-| PATCH | `/api/economy/postings/{id}` | `handle_patch` |
-| POST | `/api/economy/postings/{id}/archive` | `handle_archive` |
 | GET | `/api/economy/postings/{id}/comments` | `handle_list_comments` |
 | POST | `/api/economy/postings/{id}/comments` | `handle_add_comment` |
 | GET | `/api/economy/postings/{id}/documents` | `handle_list_documents` |
 | POST | `/api/economy/postings/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/economy/postings/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/economy/postings/{id}/events` | `handle_events` |
-| POST | `/api/economy/postings/{id}/restore` | `handle_restore` |
 | GET | `/api/economy/postings/{id}/tags` | `handle_list_tags` |
 | POST | `/api/economy/postings/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/economy/postings/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -1299,7 +1294,6 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `documents_list_documents` |  |  | yes |  |
 | `documents_upsert_documents` |  | yes |  |  |
 | `economy_approve_invoice` | yes | yes |  |  |
-| `economy_archive_postings` |  | yes |  |  |
 | `economy_compute_dunning` |  |  | yes |  |
 | `economy_compute_periodisering` |  |  | yes |  |
 | `economy_compute_recognition_schedule` |  |  | yes |  |
@@ -1323,7 +1317,6 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `economy_match_invoice` |  |  | yes |  |
 | `economy_reconcile_agreements` |  | yes |  |  |
 | `economy_snapshot_mrr_arr_churn` |  |  | yes |  |
-| `economy_upsert_postings` |  | yes |  |  |
 | `economy_validate_contract` |  |  | yes |  |
 | `economy_validate_kid` |  |  | yes |  |
 | `evaluate_circuit_impact` |  |  |  |  |
@@ -1726,4 +1719,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 1178 REST endpoints, 530 MCP tools._
+_Totals: 1173 REST endpoints, 528 MCP tools._
