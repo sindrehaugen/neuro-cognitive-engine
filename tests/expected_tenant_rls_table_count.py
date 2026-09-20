@@ -33,4 +33,4 @@ the number of places a lane has to know about is (five -> one).
 
 from __future__ import annotations
 
-EXPECTED_TENANT_RLS_TABLE_COUNT = 117
+EXPECTED_TENANT_RLS_TABLE_COUNT = 118
