@@ -375,6 +375,24 @@ FLAG_PINS: dict[str, dict[str, dict[str, bool]]] = {
             "admin_only": False,
             "mutation": True,
         },
+        # Wave E-20 (charter's C-3) -- DESIGN. list is excluded (see
+        # DESIGN_SPEC's own comment); the hand-written
+        # system_design_list_designs stays authoritative.
+        "system_design_get_designs": {
+            "cacheable": True,
+            "admin_only": False,
+            "mutation": False,
+        },
+        "system_design_upsert_designs": {
+            "cacheable": False,
+            "admin_only": False,
+            "mutation": True,
+        },
+        "system_design_archive_designs": {
+            "cacheable": False,
+            "admin_only": False,
+            "mutation": True,
+        },
     },
     # -----------------------------------------------------------------------
     # vendors -- Wave V-1 (tests/unit/test_vendors_surface.py)
