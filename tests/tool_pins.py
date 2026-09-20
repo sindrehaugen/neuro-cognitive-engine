@@ -489,7 +489,12 @@ FLAG_PINS: dict[str, dict[str, dict[str, bool]]] = {
     # assets -- (tests/unit/test_assets_surface.py)
     # -----------------------------------------------------------------------
     "assets": {
-        "assets_get": {"cacheable": True, "admin_only": False, "mutation": False, "migration": False},
+        "assets_get": {
+            "cacheable": True,
+            "admin_only": False,
+            "mutation": False,
+            "migration": False,
+        },
         "assets_list": {
             "cacheable": True,
             "admin_only": False,
