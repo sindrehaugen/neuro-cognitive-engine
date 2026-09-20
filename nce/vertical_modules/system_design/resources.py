@@ -470,10 +470,69 @@ FUNCTIONAL_LOCATION_SPEC = ResourceSpec(
 )
 register_resource(FUNCTIONAL_LOCATION_SPEC)
 
+# ---------------------------------------------------------------------------
+# 6. DESIGN
+# ---------------------------------------------------------------------------
+# Charter's C-3 asks for "DESIGN spec listing per FL with is_active,
+# POST /{id}/set-active." ``is_active`` IS real, stored data -- confirmed by
+# reading design_versions.py directly, not assumed -- but it lives on
+# ``system_design_geometry.meta`` (a JSONB column, e.g.
+# ``jsonb_set(meta, '{is_active}', 'false'::jsonb)`` in
+# ``do_set_active_design``). That is the SAME table ``SecondaryTable``'s own
+# docstring forbids routing through: ``geometry.py``'s ``validate_geometry()``
+# is the sole, mandatory choke point for every write to that table ("cannot
+# route around it. One place, not two."), and it has no validation hook for
+# a generic SecondaryTable write. Exposing ``is_active`` here would be a
+# second, unvalidated path into ``system_design_geometry`` -- the identical
+# reasoning that already excluded DEVICE/RACK/CABLE's ``rack_position``/
+# ``cable_length_m`` above, now confirmed to also block DESIGN's one real
+# field. Not this lane's to fix (would need a validation hook added to
+# SecondaryTable itself, named as a separate wave, not absorbed here).
+#
+# So: identity only, same PROJECT_PROJECT/FUNCTIONAL_LOCATION precedent.
+# ``is_active``/``set-active``/per-FL listing stay on the existing
+# hand-written routes (``nce/admin_handlers/project.py``'s C-3 handlers,
+# backed by ``design_versions.py``), which correctly enforce the
+# single-active-per-FL invariant through ``validate_geometry()``'s own path
+# -- not replaced or duplicated here.
+#
+# Second, independent blocker, also present: entity="designs" generates MCP
+# tool system_design_list_designs, which already exists as a hand-written
+# tool (nce/mcp_stdio_tools.py). get/upsert/archive do not collide
+# (hand-written get is singular system_design_get_design; create/update are
+# named differently from upsert; no hand-written archive exists at all).
+# excluded_verbs={"list"} closes this the same way RESOURCE_SPEC/
+# FUNCTIONAL_LOCATION_SPEC do.
+DESIGN_SPEC = ResourceSpec(
+    engine="system_design",
+    entity="designs",
+    node_type="DESIGN",
+    table_name=None,
+    id_field="label",
+    version_field="updated_at",
+    soft_delete_field=None,
+    filterable_fields=("change_origin",),
+    searchable_fields=(),
+    writable_fields=("change_origin",),
+    excluded_verbs=frozenset({"list"}),
+    # Explicitly empty, not omitted -- see DEVICE_SPEC's comment above.
+    tier_allowlists={"external-customer": (), "contractor": ()},
+    description=(
+        "C12 solution design: graph identity only (label, entity_type, "
+        "change_origin, timestamps). is_active is real, stored data (on "
+        "system_design_geometry.meta) but is not exposed here -- see the "
+        "comment above this spec for why (the sole validation choke point "
+        "for that table has no SecondaryTable hook yet). Per-FL design "
+        "listing and set-active stay on their own hand-written routes."
+    ),
+)
+register_resource(DESIGN_SPEC)
+
 __all__ = [
     "DEVICE_SPEC",
     "PORT_SPEC",
     "RACK_SPEC",
     "CABLE_SPEC",
     "FUNCTIONAL_LOCATION_SPEC",
+    "DESIGN_SPEC",
 ]

@@ -56,14 +56,13 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     # {"list"} closes the system_design_list_functional_locations collision
     # the same way RESOURCE_SPEC does. See FUNCTIONAL_LOCATION_SPEC's own
     # comment for the full reasoning.
-    "DESIGN": ResourceExemption(
-        owner_engine="system_design",
-        reason=(
-            "Solution design versions per functional location are managed via "
-            "Wave C-3 design_versions domain service backed by kg_nodes, kg_edges, "
-            "and system_design_geometry; standalone ResourceSpec deferred to Lane E."
-        ),
-    ),
+    # DESIGN: registered (Wave E-20, 2026-09-20) --
+    # nce/vertical_modules/system_design/resources.py. Identity-only --
+    # is_active is real, stored data but lives on system_design_geometry.meta,
+    # the same validation-choke-point table DEVICE/RACK/CABLE's geometry
+    # fields already couldn't route through. excluded_verbs={"list"} closes
+    # the system_design_list_designs collision. See DESIGN_SPEC's own comment
+    # for the full reasoning.
     "DESIGN_LINE": ResourceExemption(
         owner_engine="system_design",
         reason=(
