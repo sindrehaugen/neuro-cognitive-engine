@@ -1422,6 +1422,17 @@ BEGIN
     END IF;
 END $BODY$;
 
+-- lifecycle_status is a closed vocabulary (migration 106, Q-49): the
+-- backfill (normalise known synonyms, default anything else to 'active')
+-- runs once, in the migration only -- this mirror only needs the end-state
+-- constraint, since a database bootstrapped fresh from this file never has
+-- a non-conforming row to normalise.
+ALTER TABLE product_catalog
+    DROP CONSTRAINT IF EXISTS product_catalog_lifecycle_status_check;
+ALTER TABLE product_catalog
+    ADD CONSTRAINT product_catalog_lifecycle_status_check
+    CHECK (lifecycle_status IN ('coming', 'active', 'EOL', 'EOS'));
+
 -- Indexes for product_prices
 CREATE INDEX IF NOT EXISTS idx_product_prices_namespace_mfr_part_no
     ON product_prices (namespace_id, mfr_part_no);

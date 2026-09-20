@@ -245,6 +245,25 @@ def test_find_replacements_discontinued_treated_as_eol():
     assert len(results) == 1
 
 
+def test_find_replacements_eos_treated_as_eol():
+    """'eos' (end-of-sale) added to _EOL_STATUSES alongside the closed
+    product_catalog.lifecycle_status vocabulary (migration 106, Q-49) --
+    an end-of-sale product must trigger the same replacement search an
+    end-of-life one does."""
+    from nce.vertical_modules.product.related import _extract_model_tokens, _find_replacements
+
+    subject_tokens = _extract_model_tokens("HPE", "J9777A-SFP-10G")
+    candidates = [
+        {
+            "manufacturer": "HPE",
+            "mfr_part_no": "J9777A-SFP-10G-NEW",
+            "lifecycle_status": "active",
+        },
+    ]
+    results = _find_replacements("eos", subject_tokens, candidates)
+    assert len(results) == 1
+
+
 # ---------------------------------------------------------------------------
 # 4. do_related_products — groups + edge writes (mock conn)
 # ---------------------------------------------------------------------------
