@@ -416,15 +416,68 @@ def test_cores_removed_from_internal_cores_allowlist() -> None:
     assert len(allowlist) <= 69  # Shrink-only allowlist (68 after Wave RS-3)
 
 
+def _callee_name(call: ast.Call) -> str | None:
+    """Return the plain name of a Call node's callee, whether bare Name or Attribute."""
+    func = call.func
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return None
+
+
+def _find_calls_to(func_node: ast.AST, target_name: str) -> list[ast.Call]:
+    """Return every real ast.Call node within func_node whose callee is target_name.
+
+    Walks actual Call nodes (ast.walk descends through Await wrappers to the Call
+    inside), so a name that merely appears in an import statement or a dead
+    variable assignment does NOT count -- only a genuine invocation does.
+    """
+    return [
+        node
+        for node in ast.walk(func_node)
+        if isinstance(node, ast.Call) and _callee_name(node) == target_name
+    ]
+
+
+def _calls_function(func_node: ast.AST, target_name: str) -> bool:
+    """True if func_node contains a real Call node invoking target_name."""
+    return bool(_find_calls_to(func_node, target_name))
+
+
+def _call_passes_keyword(func_node: ast.AST, target_name: str, keyword: str) -> bool:
+    """True if a real Call node invoking target_name passes `keyword=...` as an ast.keyword.
+
+    This deliberately does NOT match a same-named local variable, attribute, or
+    import -- only an actual ast.keyword attached to the matching Call node.
+    """
+    for call in _find_calls_to(func_node, target_name):
+        for kw in call.keywords:
+            if kw.arg == keyword:
+                return True
+    return False
+
+
 def test_ast_reachability_from_mcp_handlers() -> None:
-    """Verify MCP handlers import and call do_ingest_spec and do_golden_record."""
+    """Verify MCP handlers import and call do_ingest_spec and do_golden_record.
+
+    Fixed 2026-09-20 (inert-instrument audit): the previous version asserted a
+    substring ("do_ingest_spec" / "do_golden_record" / "engine_or_pool") was
+    present anywhere in ast.unparse()'d source. That is satisfied by a bare
+    `import do_ingest_spec` line or a same-named dead local variable, even if
+    the handler no longer actually calls the function or forwards the
+    argument. Mutation-verified during the audit: aliasing the call away from
+    its imported name, and replacing `engine_or_pool=engine.pg_pool` with an
+    unused local `engine_or_pool = None`, both left the old check green. This
+    version walks real ast.Call nodes instead.
+    """
     repo_root = Path(__file__).resolve().parents[2]
     handlers_path = repo_root / "nce" / "vertical_modules" / "product" / "mcp_handlers.py"
 
     source = handlers_path.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(handlers_path))
 
-    # Find functions handle_product_ingest_spec and handle_product_golden_record
+    # Find functions handle_product_ingest_spec, handle_product_golden_record, handle_product_enrich
     found_handlers: dict[str, ast.AsyncFunctionDef] = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.AsyncFunctionDef) and node.name in {
@@ -438,14 +491,116 @@ def test_ast_reachability_from_mcp_handlers() -> None:
     assert "handle_product_golden_record" in found_handlers
     assert "handle_product_enrich" in found_handlers
 
-    # Check that handle_product_ingest_spec calls do_ingest_spec
-    ingest_source = ast.unparse(found_handlers["handle_product_ingest_spec"])
-    assert "do_ingest_spec" in ingest_source
+    # handle_product_ingest_spec must contain a real Call node invoking do_ingest_spec
+    assert _calls_function(found_handlers["handle_product_ingest_spec"], "do_ingest_spec"), (
+        "handle_product_ingest_spec has no real Call node invoking do_ingest_spec "
+        "(an import or dead reference alone is not enough)"
+    )
 
-    # Check that handle_product_golden_record calls do_golden_record
-    golden_source = ast.unparse(found_handlers["handle_product_golden_record"])
-    assert "do_golden_record" in golden_source
+    # handle_product_golden_record must contain a real Call node invoking do_golden_record
+    assert _calls_function(found_handlers["handle_product_golden_record"], "do_golden_record"), (
+        "handle_product_golden_record has no real Call node invoking do_golden_record "
+        "(an import or dead reference alone is not enough)"
+    )
 
-    # Check that handle_product_enrich passes engine_or_pool
-    enrich_source = ast.unparse(found_handlers["handle_product_enrich"])
-    assert "engine_or_pool" in enrich_source
+    # handle_product_enrich must pass engine_or_pool as a genuine keyword argument
+    # on its call to do_enrich_product, not merely reference the name somewhere.
+    assert _call_passes_keyword(
+        found_handlers["handle_product_enrich"], "do_enrich_product", "engine_or_pool"
+    ), (
+        "handle_product_enrich's call to do_enrich_product does not pass "
+        "engine_or_pool as a real keyword argument (a same-named local "
+        "variable alone is not enough)"
+    )
+
+
+def test_ast_reachability_helper_detects_real_call_and_keyword() -> None:
+    """Sanity check for the AST-walk helpers themselves.
+
+    Guards against the helpers silently regressing to "always False" (which
+    would make the two regression tests below pass vacuously): confirms they
+    correctly recognize a genuine, unaliased call and a genuine keyword
+    argument on synthetic source shaped like the real handlers.
+    """
+    synthetic_source = (
+        "async def handle_product_ingest_spec(engine, arguments):\n"
+        "    from nce.vertical_modules.product.ingestion import do_ingest_spec\n"
+        "    result = await do_ingest_spec(conn, idempotency_key=idem_key)\n"
+        "    return result\n"
+        "\n"
+        "async def handle_product_enrich(engine, arguments):\n"
+        "    result = await do_enrich_product(conn, engine_or_pool=engine.pg_pool)\n"
+        "    return result\n"
+    )
+    tree = ast.parse(synthetic_source)
+    ingest_func, enrich_func = tree.body[0], tree.body[1]
+    assert isinstance(ingest_func, ast.AsyncFunctionDef)
+    assert isinstance(enrich_func, ast.AsyncFunctionDef)
+
+    assert _calls_function(ingest_func, "do_ingest_spec")
+    assert _call_passes_keyword(enrich_func, "do_enrich_product", "engine_or_pool")
+
+
+def test_ast_reachability_regression_alias_call_is_not_mistaken_for_invocation() -> None:
+    """Regression for the exact mutation used in the 2026-09-20 audit.
+
+    Renaming the call to an unused alias while leaving `import do_ingest_spec`
+    in scope must NOT be detected as calling do_ingest_spec. The pre-fix
+    substring-on-ast.unparse() check passed this incorrectly, because the
+    import line alone contains the substring "do_ingest_spec".
+    """
+    synthetic_source = (
+        "async def handle_product_ingest_spec(engine, arguments):\n"
+        "    from nce.vertical_modules.product.ingestion import (\n"
+        "        _derive_ingest_idempotency_key,\n"
+        "        do_ingest_spec,\n"
+        "    )\n"
+        "    _unrelated_alias_call = do_ingest_spec  # keep import referenced\n"
+        "    result = await _unrelated_alias_call(\n"
+        "        conn,\n"
+        "        idempotency_key=idem_key,\n"
+        "    )\n"
+        "    return result\n"
+    )
+    tree = ast.parse(synthetic_source)
+    func_node = tree.body[0]
+    assert isinstance(func_node, ast.AsyncFunctionDef)
+
+    # The old check (`"do_ingest_spec" in ast.unparse(func_node)`) would pass here.
+    assert "do_ingest_spec" in ast.unparse(func_node)
+
+    # The AST-walk check correctly reports no real invocation.
+    assert not _calls_function(func_node, "do_ingest_spec"), (
+        "AST-walk check incorrectly reports a call that exists only via an import alias"
+    )
+
+
+def test_ast_reachability_regression_dead_variable_is_not_mistaken_for_keyword_argument() -> None:
+    """Regression for the exact mutation used in the 2026-09-20 audit.
+
+    A dead local variable named `engine_or_pool` that is never passed to
+    do_enrich_product must NOT satisfy the keyword-argument check. The pre-fix
+    substring-on-ast.unparse() check passed this incorrectly, because the
+    dead assignment alone contains the substring "engine_or_pool".
+    """
+    synthetic_source = (
+        "async def handle_product_enrich(engine, arguments):\n"
+        "    engine_or_pool = None  # mutation probe: no longer actually forwarded\n"
+        "    result = await do_enrich_product(\n"
+        "        conn,\n"
+        "        idempotency_key=idem_key,\n"
+        "        confirm=confirm,\n"
+        "    )\n"
+        "    return result\n"
+    )
+    tree = ast.parse(synthetic_source)
+    func_node = tree.body[0]
+    assert isinstance(func_node, ast.AsyncFunctionDef)
+
+    # The old check (`"engine_or_pool" in ast.unparse(func_node)`) would pass here.
+    assert "engine_or_pool" in ast.unparse(func_node)
+
+    # The AST-walk check correctly reports it was never forwarded as a keyword argument.
+    assert not _call_passes_keyword(func_node, "do_enrich_product", "engine_or_pool"), (
+        "AST-walk check incorrectly reports engine_or_pool as forwarded when it's only a dead local variable"
+    )
