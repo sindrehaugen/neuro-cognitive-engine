@@ -4802,6 +4802,9 @@ CREATE TABLE IF NOT EXISTS source_mode_heartbeat (
     namespace_id     UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
     engine           TEXT        NOT NULL,
     last_checked_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- SAMPLED, not exact -- see migration 098's own comment: the write is
+    -- throttled, so this increments at most once per throttle window, not
+    -- once per actual comparison.
     check_count      BIGINT      NOT NULL DEFAULT 1,
     PRIMARY KEY (namespace_id, engine)
 );

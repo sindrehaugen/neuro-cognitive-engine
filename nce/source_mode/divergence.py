@@ -287,15 +287,15 @@ async def record_comparison_heartbeat(
     the field this feature actually exists to answer.
 
     Never raises: a monitoring heartbeat must not be able to fail the read
-    it is observing. Any error (lock timeout, connection blip, migration
-    098 not yet applied to this namespace/deployment) is logged at warning
-    and swallowed -- a missed write simply reads as staleness on
-    flip_status(), which is the correct, self-correcting signal; failing
-    the caller's actual read would not be.
+    it is observing. Any error -- lock timeout, connection blip, migration
+    098 not yet applied to this namespace/deployment, even a malformed
+    ``namespace_id`` (its own UUID conversion is inside the same guarded
+    block, not above it) -- is logged at warning and swallowed. A missed
+    write simply reads as staleness on flip_status(), which is the correct,
+    self-correcting signal; failing the caller's actual read would not be.
     """
-    ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
-
     try:
+        ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
         async with scoped_pg_session(pool, namespace_id) as conn:
             await conn.execute(
                 """
@@ -312,11 +312,15 @@ async def record_comparison_heartbeat(
                 _HEARTBEAT_THROTTLE_SECONDS,
             )
     except Exception:
+        # namespace_id (the raw argument), not ns_uuid, in the log message
+        # deliberately: ns_uuid's own conversion is inside this same try,
+        # so a malformed namespace_id is exactly one of the failures this
+        # block must survive, and ns_uuid may not exist when that happens.
         log.warning(
             "record_comparison_heartbeat failed for engine=%s namespace_id=%s -- "
             "swallowed, must not fail the read it is observing",
             engine,
-            ns_uuid,
+            namespace_id,
             exc_info=True,
         )
 
