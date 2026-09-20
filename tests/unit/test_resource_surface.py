@@ -722,3 +722,59 @@ def test_excluded_verbs_empty_default_generates_all_four():
     tool_specs = build_mcp_tool_specs(probe)
     assert len(tool_specs) == 4
     assert f"{probe.engine}_list_{probe.mcp_slug}" in tool_specs
+
+
+# ---------------------------------------------------------------------------
+# governed_verbs -- declared in this dataclass, read NOWHERE (zero occurrences
+# in rest.py, zero in mcp.py). A guard, not an implementation: this session
+# found the field via a peer session citing it several times as if it already
+# provided confirm-first protection. Zero registered specs declare a
+# non-empty value today, so this raise changes nothing for anything that
+# exists -- it exists so the NEXT spec to set it fails loudly at import
+# instead of shipping silent nothing. Per C:\Claude\INSTRUMENT_STANDARD.md:
+# a new gate ships with a committed positive control proving it fires, plus
+# a control proving the empty default still passes (so the raise is
+# demonstrably conditional on the field, not unconditional).
+# ---------------------------------------------------------------------------
+
+
+def test_governed_verbs_non_empty_raises_at_declaration() -> None:
+    with pytest.raises(ValueError, match="governed_verbs"):
+        ResourceSpec(
+            engine="k_h_probe",
+            entity="k-h-governed-verbs-probe",
+            node_type="K_H_GOVERNED_VERBS_PROBE",
+            storage_kind="kg_nodes",
+            writable_fields=("label",),
+            governed_verbs=("archive",),
+        )
+
+
+def test_governed_verbs_error_names_the_asset_pattern() -> None:
+    """The error must point somewhere real, not just refuse -- ASSET's
+    hand-written /move and /merge (Wave D-1) is the one working example of
+    @governed confirmation in this codebase."""
+    with pytest.raises(ValueError, match="admin_handlers/assets.py"):
+        ResourceSpec(
+            engine="k_h_probe",
+            entity="k-h-governed-verbs-message-probe",
+            node_type="K_H_GOVERNED_VERBS_MESSAGE_PROBE",
+            storage_kind="kg_nodes",
+            writable_fields=("label",),
+            governed_verbs=("create",),
+        )
+
+
+def test_governed_verbs_empty_default_does_not_raise() -> None:
+    """Positive control for the two tests above: the default (empty tuple)
+    must NOT raise -- proves the guard is conditional on the field actually
+    being non-empty, not an unconditional raise that would also make the
+    tests above pass for the wrong reason."""
+    probe = ResourceSpec(
+        engine="k_h_probe",
+        entity="k-h-governed-verbs-default-probe",
+        node_type="K_H_GOVERNED_VERBS_DEFAULT_PROBE",
+        storage_kind="kg_nodes",
+        writable_fields=("label",),
+    )
+    assert probe.governed_verbs == ()

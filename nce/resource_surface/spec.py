@@ -153,7 +153,16 @@ class ResourceSpec:
         tier_allowlists:    Mapping of principal tier ('employee', 'contractor',
                             'external-customer') to allowed field names. Non-allowlisted
                             fields are stripped from responses for that tier.
-        governed_verbs:     Verbs requiring @governed confirmation ('create', 'archive', etc.).
+        governed_verbs:     NOT YET IMPLEMENTED -- declaring a non-empty value
+                            here raises in __post_init__ (see below). Neither
+                            generated backend (rest.py, mcp.py) reads this
+                            field, so it currently provides no confirm-first
+                            protection. What @governed confirmation should
+                            mean for a generated verb is an open design
+                            question; the one working example (ASSET's
+                            /move and /merge, Wave D-1) is hand-written, not
+                            generated. Leave this empty until that design
+                            question is answered and the field is wired.
         description:        Human-readable description of the resource.
         enabled_guard:      Optional per-namespace opt-in check, e.g.
                             ``require_inventory_enabled`` from the owning engine's
@@ -327,6 +336,39 @@ class ResourceSpec:
                 f"excludes nothing (the caller meant to omit a real verb) or "
                 f"means a fifth verb needs adding to _KNOWN_VERBS -- either "
                 f"way, deny rather than guess."
+            )
+
+        if self.governed_verbs:
+            # governed_verbs is declared in this dataclass and documented above
+            # ("Verbs requiring @governed confirmation") but is read NOWHERE:
+            # zero occurrences in rest.py, zero in mcp.py. Neither generated
+            # backend has ever implemented confirm-first gating for a verb --
+            # what @governed confirmation even means for a GENERATED verb,
+            # when the one working example (ASSET's /move and /merge, Wave
+            # D-1) is deliberately hand-written in admin_handlers/assets.py
+            # with its own @governed decorator and its own route in
+            # admin_app.py, is an unanswered design question, not a mechanism
+            # this field already provides. Today every registered spec leaves
+            # it empty, so this raise changes nothing for anything that
+            # exists -- it exists so the NEXT spec that sets
+            # governed_verbs=("archive",) and believes it now has confirm-
+            # first protection fails loudly at import time instead of
+            # shipping silent nothing. A declaration that does nothing must
+            # fail at declaration, not wait to be discovered by whoever
+            # eventually reads rest.py/mcp.py looking for where it's honoured.
+            raise ValueError(
+                f"Resource {self.engine}:{self.entity} declares governed_verbs="
+                f"{self.governed_verbs!r}, but no generated backend (rest.py, "
+                f"mcp.py) reads this field -- declaring it currently provides "
+                f"NO confirm-first protection, silently. If this resource "
+                f"needs @governed confirmation on a verb, follow ASSET's "
+                f"working pattern instead: a hand-written route in "
+                f"nce/admin_handlers/assets.py (see do_move / do_merge, Wave "
+                f"D-1) decorated with @governed and wired explicitly in "
+                f"nce/admin_app.py, calling bump_mcp_cache_generation itself. "
+                f"What @governed confirmation should mean for a GENERATED "
+                f"verb is an open design question, not something this field "
+                f"already implements."
             )
 
     @property
