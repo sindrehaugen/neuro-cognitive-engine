@@ -554,10 +554,45 @@ def test_positive_control_fails_on_unwired_marked_file() -> None:
 
 
 def test_positive_control_fails_on_unmarked_globbed_file() -> None:
-    """Standing positive control (U18 / T-5 Q1): prove converse ratchet catches unmarked globbed files."""
+    """Standing positive control (U18 / T-5 Q1): prove converse ratchet catches unmarked globbed files.
+
+    The original version of this control never called ``_workflow_tokens()`` or
+    ``_resolve_workflow_token()`` -- it recomputed the set arithmetic inline against a
+    hardcoded, nonexistent filename (``tests/test_assets_synthetic_unmarked.py``), so it
+    passed regardless of whether real glob resolution worked. Proven vacuous by stubbing
+    ``_resolve_workflow_token`` to always return ``set()``: the real ratchets
+    (``test_every_globbed_file_contributes_a_marked_test``,
+    ``test_every_workflow_glob_matches_at_least_one_marked_test``) both went red, but this
+    control still passed.
+
+    Rewritten to mirror ``test_positive_control_fails_on_unwired_marked_file``: call the
+    REAL ``_workflow_tokens()`` / ``_resolve_workflow_token()`` to find a file that is
+    genuinely resolved by a real workflow glob and genuinely marked today, then perturb
+    only the ``marked`` *input* -- as if that one file's marker had been silently
+    removed -- and re-derive offenders through the same real functions. Nothing about
+    glob resolution is faked; only the marked-set argument is.
+    """
     marked = _files_with_integration_markers()
-    fake_glob_files = {"tests/test_assets_synthetic_unmarked.py"}
-    offenders = sorted(fake_glob_files - marked - GLOBBED_UNMARKED_BY_DESIGN)
-    assert offenders == ["tests/test_assets_synthetic_unmarked.py"], (
-        "Positive control failed: converse ratchet did not isolate synthetic unmarked globbed file"
+
+    globbed_marked_files: set[str] = set()
+    for token in sorted(t for t in _workflow_tokens() if "*" in t):
+        globbed_marked_files |= _resolve_workflow_token(token) & marked
+    assert globbed_marked_files, (
+        "no globbed+marked file found on this tree -- positive control has nothing to "
+        "pretend-unmark (if _workflow_tokens()/_resolve_workflow_token() broke and started "
+        "resolving to nothing, this is exactly how that would show up here)"
+    )
+    victim = sorted(globbed_marked_files)[0]
+
+    fake_marked = marked - {victim}
+    offenders = []
+    for token in sorted(t for t in _workflow_tokens() if "*" in t):
+        for path in sorted(_resolve_workflow_token(token) - fake_marked):
+            if path in GLOBBED_UNMARKED_BY_DESIGN:
+                continue
+            offenders.append(path)
+
+    assert victim in offenders, (
+        f"Positive control failed: converse ratchet did not isolate {victim!r} when its "
+        "marker was pretend-removed from the real, globbed-file input"
     )
