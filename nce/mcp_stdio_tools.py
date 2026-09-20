@@ -5083,6 +5083,25 @@ TOOLS = [
         },
     ),
     Tool(
+        name="sales_open_dealroom",
+        description=(
+            "Materialise or refresh a DealRoom quote payload with toggle-able option lines. "
+            "Read-only: recomputes prices from bom_line_content and the product catalog, never writes."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "quote_id": {"type": "string", "description": "Quote identifier."},
+                "toggled_options": {
+                    "type": "object",
+                    "description": "Optional toggle states by line label or ref.",
+                },
+            },
+            "required": ["namespace_id", "quote_id"],
+        },
+    ),
+    Tool(
         name="sales_ping",
         description=(
             'Liveness probe for the Sales vertical. Returns {"ok": true, "engine": "sales"}.'
