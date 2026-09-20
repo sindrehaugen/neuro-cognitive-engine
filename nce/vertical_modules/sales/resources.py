@@ -23,12 +23,69 @@ inside the polymorphic sales_read_model multiplex table (grep -n "WHERE entity=.
 nce/schema.sql) -- CUSTOMER/LEAD/DEAL/QUOTE moved off that table via B-1, but
 OPPORTUNITY has not, and ResourceSpec has no multi-entity-per-table support.
 BOM_LINE is the cross-engine transition split, unaffected by any of this.
+
+Lane H Wave B-2 (2026-09-20): CONTACT, a genuinely new node type (not a prior
+exemption closed) -- kg_nodes-primary identity plus a new ``sales_contacts``
+satellite table (migration 097), following the DEVICE/PORT/RACK/CABLE
+multi-table pattern (nce/vertical_modules/system_design/resources.py) rather
+than CUSTOMER/LEAD/DEAL/QUOTE's single-relational-table shape, since kg_nodes
+has no attribute column of its own (same finding, every prior graph-primary
+wave). ``CONTACT -> sales`` added to node-ownership.json under the same
+carve-out ML-orch extended from Q-32 (a node-ownership row is a structural
+fact about which engine owns a node type, not the tenant configuration Q-5
+freezes). Deliberately NO customer_id/sales_customers FK on sales_contacts
+(Q-46: nothing anywhere populates sales_customers from a resolved-identity
+path yet; inventing that FK here would assert a relationship no caller has
+built).
+
+TWO THINGS THIS SPEC DELIBERATELY DOES NOT DO
+------------------------------------------------
+1. Bulk create. The dispatch describes "5 routes including bulk", but that
+   is the HOST's inventory (what the host's contact surface does), not an
+   NCE requirement -- the same host-inventory-vs-NCE-gap distinction that
+   sank F-8/F-11/F-14/F-10/B-14/B-11 earlier this same session. Bulk create
+   for a kg_nodes-primary spec (identity row + N secondary rows per item,
+   partial-failure semantics: roll back all or report partial?) has no
+   precedent anywhere in this generator (DEVICE/PORT/RACK/CABLE refuse it
+   too, same reason, system_design/resources.py's own docstring). Shipping
+   this spec closes 4 of the 5 routes the dispatch named; bulk stays
+   refused, and this is a real, stated discrepancy against the dispatch's
+   own "5 routes" framing -- not silently declared "done". Filed as a
+   follow-on question with real stakes (roll-back-all vs. partial-report),
+   not a TODO.
+2. Create-time entity resolution. "C1-resolved on email+phone" describes a
+   PROPERTY of the node type (email+phone are its C1 match fields), not a
+   BEHAVIOUR the create path performs -- resolve() (nce/entity_resolution/
+   resolver.py) states its own contract outright: "never auto-merges and
+   never writes to any table -- read-only" (line 102). A resolve-then-create
+   wrapper would not deduplicate anything; the best it could do is score
+   candidates and queue them, which is a real, separate decision (reject the
+   create? return the existing match? create and queue a merge candidate?
+   three defensible answers, no default, and it would touch every
+   kg_nodes-primary spec, not just this one) -- not built here. CONTACT is
+   C1-*resolvable* (this generic create path does not deduplicate; a future
+   caller can run resolve() against email/phone before calling create if it
+   wants a duplicate check) rather than C1-resolved-on-write, matching the
+   same "state what the surface does and does not do" honesty PROJECT_SPEC's
+   description already uses.
+
+filterable_fields/searchable_fields are declared ONLY against kg_nodes' own
+real columns (change_origin), not sales_contacts' columns -- the generated
+list handler for a graph-primary spec queries kg_nodes directly and never
+joins secondary tables (rest.py's own comment: "Filters and search apply to
+kg_nodes' own real columns ... not the secondary tables"). DEVICE/PORT/RACK
+declare filterable_fields/searchable_fields naming secondary-table columns
+(device_category, model_number, etc.) that do not exist on kg_nodes -- a
+caller who actually uses those filters against a live list call would hit a
+runtime SQL error (undefined column) rather than a working filter. Noticed
+while modelling this spec on theirs; not this wave's table to fix (#311
+already merged), filed separately rather than carried forward here.
 """
 
 from __future__ import annotations
 
 from nce.resource_surface import register_resource
-from nce.resource_surface.spec import ResourceSpec
+from nce.resource_surface.spec import ResourceSpec, SecondaryTable
 
 # ---------------------------------------------------------------------------
 # 1. CUSTOMER
@@ -246,10 +303,58 @@ SIGNED_BASELINE_SPEC = ResourceSpec(
 )
 register_resource(SIGNED_BASELINE_SPEC)
 
+# ---------------------------------------------------------------------------
+# 6. CONTACT
+# ---------------------------------------------------------------------------
+CONTACT_SPEC = ResourceSpec(
+    engine="sales",
+    entity="contacts",
+    node_type="CONTACT",
+    table_name=None,
+    id_field="node_label",
+    version_field="updated_at",
+    soft_delete_field=None,
+    filterable_fields=("change_origin",),
+    searchable_fields=(),
+    writable_fields=(
+        "change_origin",
+        "name",
+        "email",
+        "phone",
+    ),
+    secondary_tables=(
+        SecondaryTable(
+            table_name="sales_contacts",
+            join_field="node_label",
+            fields=("name", "email", "phone"),
+        ),
+    ),
+    # Explicitly empty, not omitted -- an absent key is fail-OPEN on
+    # redact_item's live X-NCE-Principal-Tier header path (see DEVICE_SPEC's
+    # comment, system_design/resources.py, for the full mechanism). A
+    # contact's email/phone are exactly the kind of PII an external-customer
+    # or contractor caller must not see by default.
+    tier_allowlists={"external-customer": (), "contractor": ()},
+    description=(
+        "C12 contact: graph identity (label, entity_type, change_origin, "
+        "timestamps) plus name/email/phone on the sales_contacts satellite "
+        "table. C1-resolvable on email+phone (a property of the node type) "
+        "-- this create path does NOT perform create-time resolution or "
+        "deduplication; resolve() is read-only and never auto-merges, so a "
+        "caller wanting a duplicate check must run it separately before "
+        "calling create. Bulk create is refused, same as every other "
+        "kg_nodes-primary spec (DEVICE/PORT/RACK/CABLE): identity-plus-"
+        "satellite partial-failure semantics have no precedent in this "
+        "generator. No customer_id/sales_customers link (Q-46, open)."
+    ),
+)
+register_resource(CONTACT_SPEC)
+
 __all__ = [
     "CUSTOMER_SPEC",
     "LEAD_SPEC",
     "DEAL_SPEC",
     "QUOTE_SPEC",
     "SIGNED_BASELINE_SPEC",
+    "CONTACT_SPEC",
 ]

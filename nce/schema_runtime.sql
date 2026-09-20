@@ -2227,3 +2227,20 @@ BEGIN
         GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE agreement_templates TO nce_app;
     END IF;
 END $$;
+
+ALTER TABLE sales_contacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sales_contacts FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON sales_contacts;
+CREATE POLICY tenant_isolation_policy ON sales_contacts
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE sales_contacts FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE sales_contacts TO nce_app;
+    END IF;
+END $$;

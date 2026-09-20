@@ -4231,6 +4231,102 @@
         },
         "type": "object"
       },
+      "Sales_contacts": {
+        "description": "C12 contact: graph identity (label, entity_type, change_origin, timestamps) plus name/email/phone on the sales_contacts satellite table. C1-resolvable on email+phone (a property of the node type) -- this create path does NOT perform create-time resolution or deduplication; resolve() is read-only and never auto-merges, so a caller wanting a duplicate check must run it separately before calling create. Bulk create is refused, same as every other kg_nodes-primary spec (DEVICE/PORT/RACK/CABLE): identity-plus-satellite partial-failure semantics have no precedent in this generator. No customer_id/sales_customers link (Q-46, open).",
+        "properties": {
+          "change_origin": {
+            "description": "Field change_origin",
+            "type": "string"
+          },
+          "email": {
+            "description": "Field email",
+            "type": "string"
+          },
+          "name": {
+            "description": "Field name",
+            "type": "string"
+          },
+          "node_label": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "phone": {
+            "description": "Field phone",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_label"
+        ],
+        "type": "object"
+      },
+      "Sales_contacts_Create": {
+        "description": "Payload for creating a sales contacts",
+        "properties": {
+          "change_origin": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Sales_contacts_List": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Sales_contacts"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Cursor token for fetching the next page",
+            "nullable": true,
+            "type": "string"
+          },
+          "total": {
+            "description": "Total matching count if requested",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "Sales_contacts_Update": {
+        "description": "Payload for updating a sales contacts",
+        "properties": {
+          "change_origin": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "expected_version": {
+            "description": "Optimistic concurrency lock version",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "Sales_customers": {
         "description": "C12 customer master accounts with billing/shipping metadata and principal tier redaction.",
         "properties": {
@@ -16123,6 +16219,26 @@
         ],
         "type": "object"
       },
+      "Tool_sales_archive_contacts_Input": {
+        "properties": {
+          "id": {
+            "description": "ID of Contact to archive.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Audit reason for archiving.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
       "Tool_sales_archive_customers_Input": {
         "properties": {
           "id": {
@@ -16434,6 +16550,22 @@
         ],
         "type": "object"
       },
+      "Tool_sales_get_contacts_Input": {
+        "properties": {
+          "id": {
+            "description": "Unique identifier of the Contact.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
       "Tool_sales_get_customers_Input": {
         "properties": {
           "id": {
@@ -16551,6 +16683,34 @@
           "namespace_id",
           "id"
         ],
+        "type": "object"
+      },
+      "Tool_sales_list_contacts_Input": {
+        "properties": {
+          "change_origin": {
+            "description": "Filter by change_origin.",
+            "type": "string"
+          },
+          "cursor": {
+            "description": "Pagination cursor from previous response.",
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 500,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "q": {
+            "description": "Full-text search term.",
+            "type": "string"
+          }
+        },
+        "required": [],
         "type": "object"
       },
       "Tool_sales_list_customers_Input": {
@@ -16834,6 +16994,36 @@
         "required": [
           "namespace_id"
         ],
+        "type": "object"
+      },
+      "Tool_sales_upsert_contacts_Input": {
+        "properties": {
+          "change_origin": {
+            "description": "Value for change_origin."
+          },
+          "email": {
+            "description": "Value for email."
+          },
+          "expected_version": {
+            "description": "Concurrency check version.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Optional ID of existing Contact to update.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Value for name."
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "phone": {
+            "description": "Value for phone."
+          }
+        },
+        "required": [],
         "type": "object"
       },
       "Tool_sales_upsert_customers_Input": {
@@ -24548,6 +24738,17 @@
         "mutation": true,
         "name": "sales_add_quote_line"
       },
+      "sales_archive_contacts": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Soft-archive a Contact resource.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_sales_archive_contacts_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "sales_archive_contacts"
+      },
       "sales_archive_customers": {
         "admin_only": false,
         "cacheable": false,
@@ -24680,6 +24881,17 @@
         "mutation": true,
         "name": "sales_edit_deal"
       },
+      "sales_get_contacts": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Fetch a single Contact resource by ID.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_sales_get_contacts_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "sales_get_contacts"
+      },
       "sales_get_customers": {
         "admin_only": false,
         "cacheable": true,
@@ -24756,6 +24968,17 @@
         "migration": false,
         "mutation": false,
         "name": "sales_get_signed_baselines"
+      },
+      "sales_list_contacts": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "List and query Contact resources for sales.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_sales_list_contacts_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "sales_list_contacts"
       },
       "sales_list_customers": {
         "admin_only": false,
@@ -24855,6 +25078,17 @@
         "migration": false,
         "mutation": false,
         "name": "sales_score_lead"
+      },
+      "sales_upsert_contacts": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Create or update a Contact resource.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_sales_upsert_contacts_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "sales_upsert_contacts"
       },
       "sales_upsert_customers": {
         "admin_only": false,
@@ -87762,6 +87996,1362 @@
           }
         },
         "summary": "GET /api/sales/commission",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/contacts": {
+      "get": {
+        "description": "handle_list (/api/sales/contacts)",
+        "operationId": "get_api_sales_contacts",
+        "parameters": [
+          {
+            "description": "Maximum number of records to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque pagination cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort column with optional +/- prefix",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated list of projected fields",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on change_origin",
+            "in": "query",
+            "name": "change_origin",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sales_contacts_List"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list (/api/sales/contacts)",
+        "tags": [
+          "sales"
+        ]
+      },
+      "post": {
+        "description": "handle_create (/api/sales/contacts)",
+        "operationId": "post_api_sales_contacts",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Sales_contacts_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sales_contacts"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_create (/api/sales/contacts)",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/contacts/bulk": {
+      "post": {
+        "description": "handle_bulk (/api/sales/contacts/bulk)",
+        "operationId": "post_api_sales_contacts_bulk",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "items": {
+                    "items": {
+                      "$ref": "#/components/schemas/Sales_contacts_Create"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sales_contacts"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_bulk (/api/sales/contacts/bulk)",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/contacts/{id}": {
+      "get": {
+        "description": "handle_get (/api/sales/contacts/{id})",
+        "operationId": "get_api_sales_contacts_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sales_contacts"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_get (/api/sales/contacts/{id})",
+        "tags": [
+          "sales"
+        ]
+      },
+      "patch": {
+        "description": "handle_patch (/api/sales/contacts/{id})",
+        "operationId": "patch_api_sales_contacts_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Sales_contacts_Update"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sales_contacts"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_patch (/api/sales/contacts/{id})",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/contacts/{id}/archive": {
+      "post": {
+        "description": "handle_archive (/api/sales/contacts/{id}/archive)",
+        "operationId": "post_api_sales_contacts_id_archive",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Sales_contacts_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sales_contacts"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_archive (/api/sales/contacts/{id}/archive)",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/contacts/{id}/comments": {
+      "get": {
+        "description": "handle_list_comments (/api/sales/contacts/{id}/comments)",
+        "operationId": "get_api_sales_contacts_id_comments",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EntityComment"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_comments (/api/sales/contacts/{id}/comments)",
+        "tags": [
+          "sales"
+        ]
+      },
+      "post": {
+        "description": "handle_add_comment (/api/sales/contacts/{id}/comments)",
+        "operationId": "post_api_sales_contacts_id_comments",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityCommentInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sales_contacts"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_add_comment (/api/sales/contacts/{id}/comments)",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/contacts/{id}/documents": {
+      "get": {
+        "description": "handle_list_documents (/api/sales/contacts/{id}/documents)",
+        "operationId": "get_api_sales_contacts_id_documents",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum number of records to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque pagination cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort column with optional +/- prefix",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated list of projected fields",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on change_origin",
+            "in": "query",
+            "name": "change_origin",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sales_contacts_List"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_documents (/api/sales/contacts/{id}/documents)",
+        "tags": [
+          "sales"
+        ]
+      },
+      "post": {
+        "description": "handle_attach_document (/api/sales/contacts/{id}/documents)",
+        "operationId": "post_api_sales_contacts_id_documents",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Sales_contacts_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sales_contacts"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_attach_document (/api/sales/contacts/{id}/documents)",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/contacts/{id}/documents/{doc_id}": {
+      "delete": {
+        "description": "handle_detach_document (/api/sales/contacts/{id}/documents/{doc_id})",
+        "operationId": "delete_api_sales_contacts_id_documents_doc_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL path parameter doc_id",
+            "in": "path",
+            "name": "doc_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sales_contacts"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_detach_document (/api/sales/contacts/{id}/documents/{doc_id})",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/contacts/{id}/events": {
+      "get": {
+        "description": "handle_events (/api/sales/contacts/{id}/events)",
+        "operationId": "get_api_sales_contacts_id_events",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EntityTimelineEvent"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_events (/api/sales/contacts/{id}/events)",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/contacts/{id}/restore": {
+      "post": {
+        "description": "handle_restore (/api/sales/contacts/{id}/restore)",
+        "operationId": "post_api_sales_contacts_id_restore",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Sales_contacts_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sales_contacts"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_restore (/api/sales/contacts/{id}/restore)",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/contacts/{id}/tags": {
+      "get": {
+        "description": "handle_list_tags (/api/sales/contacts/{id}/tags)",
+        "operationId": "get_api_sales_contacts_id_tags",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_tags (/api/sales/contacts/{id}/tags)",
+        "tags": [
+          "sales"
+        ]
+      },
+      "post": {
+        "description": "handle_add_tag (/api/sales/contacts/{id}/tags)",
+        "operationId": "post_api_sales_contacts_id_tags",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityTagInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sales_contacts"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_add_tag (/api/sales/contacts/{id}/tags)",
+        "tags": [
+          "sales"
+        ]
+      }
+    },
+    "/api/sales/contacts/{id}/tags/{tag}": {
+      "delete": {
+        "description": "handle_remove_tag (/api/sales/contacts/{id}/tags/{tag})",
+        "operationId": "delete_api_sales_contacts_id_tags_tag",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL path parameter tag",
+            "in": "path",
+            "name": "tag",
+            "required": true,
+            "schema": {
+              "format": "string",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sales_contacts"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_remove_tag (/api/sales/contacts/{id}/tags/{tag})",
         "tags": [
           "sales"
         ]

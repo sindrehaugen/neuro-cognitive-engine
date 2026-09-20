@@ -4753,3 +4753,42 @@ BEGIN
         GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE agreement_templates TO nce_app;
     END IF;
 END $$;
+
+-- ============================================================================
+-- C12 CONTACT Resource Surface (Lane H Wave B-2)
+-- Migration 097_sales_contacts.sql
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS sales_contacts (
+    id            UUID        NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id  UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    node_label    TEXT        NOT NULL,
+    name          TEXT,
+    email         TEXT,
+    phone         TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    UNIQUE (namespace_id, node_label),
+    CONSTRAINT fk_sales_contacts_kg_nodes
+        FOREIGN KEY (node_label, namespace_id)
+        REFERENCES kg_nodes (label, namespace_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_sales_contacts_namespace_node_label
+    ON sales_contacts (namespace_id, node_label);
+
+CREATE INDEX IF NOT EXISTS idx_sales_contacts_namespace_email
+    ON sales_contacts (namespace_id, email);
+
+CREATE INDEX IF NOT EXISTS idx_sales_contacts_namespace_phone
+    ON sales_contacts (namespace_id, phone);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE sales_contacts FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE sales_contacts TO nce_app;
+    END IF;
+END $$;
