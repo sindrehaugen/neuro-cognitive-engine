@@ -107,7 +107,12 @@ async def resolve(
         # is "both", so recording the heartbeat here -- the one place every
         # "both"-mode caller already resolves through -- covers every real
         # comparison without touching read_through()'s own signature or any
-        # of its callers.
+        # of its callers. No try/except needed here: this is the hottest
+        # read path in the estate, so record_comparison_heartbeat's own
+        # contract is to never raise (it catches and logs internally,
+        # throttles its actual write, and a missed write just reads as
+        # staleness on flip_status() -- exactly the signal this feature
+        # exists to produce, unlike failing the caller's read would be).
         from nce.source_mode.divergence import record_comparison_heartbeat
 
         await record_comparison_heartbeat(pool, namespace_id=namespace_id, engine=engine)

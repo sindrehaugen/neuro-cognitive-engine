@@ -16,8 +16,10 @@ deliberate decision not made here).
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any
+from unittest.mock import patch
 
 import asyncpg  # type: ignore[import-untyped]
 import pytest
@@ -58,7 +60,33 @@ async def test_last_comparison_at_is_none_before_any_heartbeat(
 
 
 @pytest.mark.asyncio
-async def test_record_comparison_heartbeat_upserts_and_increments(
+async def test_record_comparison_heartbeat_never_raises_even_on_a_real_db_error(
+    pg_pool: asyncpg.Pool, make_namespace: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    """ML-orch's review of this wave: a monitoring heartbeat must not be
+    able to fail the read it observes. Forces a real error (scoped_pg_session
+    raising) and proves the function swallows it and logs at warning,
+    rather than letting the caller's resolve()/read fail alongside it.
+    """
+    ns = await make_namespace()
+
+    with (
+        patch(
+            "nce.source_mode.divergence.scoped_pg_session",
+            side_effect=RuntimeError("simulated connection failure"),
+        ),
+        caplog.at_level(logging.WARNING, logger="nce.source_mode.divergence"),
+    ):
+        await record_comparison_heartbeat(pg_pool, namespace_id=ns, engine="widgets_sync")
+
+    assert any("record_comparison_heartbeat failed" in r.message for r in caplog.records), (
+        "a swallowed failure must still be logged, not silently disappear"
+    )
+    assert await last_comparison_at(pg_pool, namespace_id=ns, engine="widgets_sync") is None
+
+
+@pytest.mark.asyncio
+async def test_record_comparison_heartbeat_first_call_inserts(
     pg_pool: asyncpg.Pool, make_namespace: Any
 ) -> None:
     ns = await make_namespace()
@@ -76,15 +104,67 @@ async def test_record_comparison_heartbeat_upserts_and_increments(
         )
     assert count_after_first == 1
 
+
+@pytest.mark.asyncio
+async def test_record_comparison_heartbeat_is_throttled_within_the_window(
+    pg_pool: asyncpg.Pool, make_namespace: Any
+) -> None:
+    """ML-orch's review of this wave: this is the hottest read path in the
+    estate, and PRIMARY KEY (namespace_id, engine) is a single row every
+    concurrent reader of that pair would otherwise serialize on. A second
+    call immediately after the first must NOT increment check_count or
+    move last_checked_at -- it must be a no-op, proving the throttle
+    actually suppresses the write rather than merely being documented.
+    """
+    ns = await make_namespace()
+
+    await record_comparison_heartbeat(pg_pool, namespace_id=ns, engine="widgets_sync")
+    first = await last_comparison_at(pg_pool, namespace_id=ns, engine="widgets_sync")
+
     await record_comparison_heartbeat(pg_pool, namespace_id=ns, engine="widgets_sync")
     async with pg_pool.acquire() as conn:
         await set_namespace_context(conn, ns)
-        count_after_second = await conn.fetchval(
+        count_after_second_call = await conn.fetchval(
             "SELECT check_count FROM source_mode_heartbeat WHERE namespace_id = $1 AND engine = $2",
             ns,
             "widgets_sync",
         )
-    assert count_after_second == 2, "a second comparison must increment, not overwrite, the count"
+    second = await last_comparison_at(pg_pool, namespace_id=ns, engine="widgets_sync")
+
+    assert count_after_second_call == 1, "an immediate second call must be throttled, not counted"
+    assert second == first, "a throttled call must not move last_checked_at either"
+
+
+@pytest.mark.asyncio
+async def test_record_comparison_heartbeat_increments_after_the_throttle_window_elapses(
+    pg_pool: asyncpg.Pool, make_namespace: Any
+) -> None:
+    """The other half of the throttle proof: once the existing row's
+    last_checked_at is older than the throttle window, the next call must
+    go through -- the WHERE clause's job is to skip a too-recent write, not
+    to freeze the row forever.
+    """
+    ns = await make_namespace()
+    await record_comparison_heartbeat(pg_pool, namespace_id=ns, engine="widgets_sync")
+
+    async with pg_pool.acquire() as conn:
+        await set_namespace_context(conn, ns)
+        await conn.execute(
+            "UPDATE source_mode_heartbeat SET last_checked_at = now() - interval '5 minutes' "
+            "WHERE namespace_id = $1 AND engine = $2",
+            ns,
+            "widgets_sync",
+        )
+
+    await record_comparison_heartbeat(pg_pool, namespace_id=ns, engine="widgets_sync")
+    async with pg_pool.acquire() as conn:
+        await set_namespace_context(conn, ns)
+        count_after = await conn.fetchval(
+            "SELECT check_count FROM source_mode_heartbeat WHERE namespace_id = $1 AND engine = $2",
+            ns,
+            "widgets_sync",
+        )
+    assert count_after == 2, "a call after the throttle window elapsed must go through"
 
 
 @pytest.mark.asyncio

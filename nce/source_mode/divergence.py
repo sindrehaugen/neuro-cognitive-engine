@@ -250,6 +250,20 @@ async def flip_blocked(
 # (every "both"-mode call) and surfaced on flip_status()'s response.
 
 
+# Throttle window for the heartbeat write itself (distinct from
+# flip_status's parity WINDOW_SECONDS, which is measured in days). This is
+# a hot path -- every "both"-mode read calls record_comparison_heartbeat --
+# and PRIMARY KEY (namespace_id, engine) is a single row every concurrent
+# reader of that pair serializes on. 60s buys nothing in staleness
+# precision (this feature detects "has not compared in days") but removes
+# almost all of the write/lock traffic. Consequence: check_count becomes a
+# SAMPLED count (at most one increment per throttle window), not an exact
+# count of every comparison -- documented on the column below and in
+# record_comparison_heartbeat's own docstring so it never silently means
+# something other than what its name says.
+_HEARTBEAT_THROTTLE_SECONDS: float = 60.0
+
+
 async def record_comparison_heartbeat(
     pool: asyncpg.Pool,  # type: ignore[type-arg]
     *,
@@ -260,22 +274,50 @@ async def record_comparison_heartbeat(
 
     Upserts one row per (namespace_id, engine) -- a liveness signal, not an
     audit trail (divergence_log already is the audit trail for actual
-    mismatches). Called unconditionally, whether or not the comparison
-    found any divergence.
+    mismatches). Called unconditionally (whether or not the comparison found
+    any divergence) from the hottest read path in the estate
+    (nce.source_mode.resolver.resolve(), every "both"-mode call) -- so the
+    actual write is throttled to once per
+    :data:`_HEARTBEAT_THROTTLE_SECONDS` per (namespace_id, engine) via the
+    ``WHERE`` clause below, rather than on every call. ``check_count`` is
+    therefore a SAMPLED counter (increments at most once per throttle
+    window), not an exact count of every comparison that ran -- callers
+    wanting "how many comparisons ran" should not rely on this column being
+    exact; ``last_checked_at`` (accurate to within the throttle window) is
+    the field this feature actually exists to answer.
+
+    Never raises: a monitoring heartbeat must not be able to fail the read
+    it is observing. Any error (lock timeout, connection blip, migration
+    098 not yet applied to this namespace/deployment) is logged at warning
+    and swallowed -- a missed write simply reads as staleness on
+    flip_status(), which is the correct, self-correcting signal; failing
+    the caller's actual read would not be.
     """
     ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
 
-    async with scoped_pg_session(pool, namespace_id) as conn:
-        await conn.execute(
-            """
-            INSERT INTO source_mode_heartbeat (namespace_id, engine, last_checked_at, check_count)
-            VALUES ($1, $2, now(), 1)
-            ON CONFLICT (namespace_id, engine) DO UPDATE
-                SET last_checked_at = now(),
-                    check_count = source_mode_heartbeat.check_count + 1
-            """,
-            ns_uuid,
+    try:
+        async with scoped_pg_session(pool, namespace_id) as conn:
+            await conn.execute(
+                """
+                INSERT INTO source_mode_heartbeat (namespace_id, engine, last_checked_at, check_count)
+                VALUES ($1, $2, now(), 1)
+                ON CONFLICT (namespace_id, engine) DO UPDATE
+                    SET last_checked_at = now(),
+                        check_count = source_mode_heartbeat.check_count + 1
+                    WHERE source_mode_heartbeat.last_checked_at
+                          < now() - ($3 * INTERVAL '1 second')
+                """,
+                ns_uuid,
+                engine,
+                _HEARTBEAT_THROTTLE_SECONDS,
+            )
+    except Exception:
+        log.warning(
+            "record_comparison_heartbeat failed for engine=%s namespace_id=%s -- "
+            "swallowed, must not fail the read it is observing",
             engine,
+            ns_uuid,
+            exc_info=True,
         )
 
 

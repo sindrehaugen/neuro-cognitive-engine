@@ -19,6 +19,13 @@ CREATE TABLE IF NOT EXISTS source_mode_heartbeat (
     namespace_id     UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
     engine           TEXT        NOT NULL,
     last_checked_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- SAMPLED, not exact: the write is throttled (at most once per
+    -- _HEARTBEAT_THROTTLE_SECONDS, see nce/source_mode/divergence.py) to
+    -- avoid lock contention on this single hot row per (namespace_id,
+    -- engine), so check_count increments at most once per throttle window,
+    -- not once per actual comparison. last_checked_at is the field this
+    -- table exists to answer accurately; do not treat check_count as an
+    -- exact comparison count.
     check_count      BIGINT      NOT NULL DEFAULT 1,
     PRIMARY KEY (namespace_id, engine)
 );
