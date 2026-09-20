@@ -52,6 +52,7 @@ ML-orch/Sindre separately; it does not block B-12's schema/logic layer.
 
 from __future__ import annotations
 
+import datetime
 import hashlib
 import json
 import logging
@@ -98,6 +99,27 @@ def _parse_uuid(val: Any, field_name: str) -> UUID:
         return UUID(str(val))
     except (ValueError, AttributeError, TypeError) as exc:
         raise ValueError(f"Invalid {field_name} UUID: {val!r}") from exc
+
+
+def _parse_date(val: Any, field_name: str) -> datetime.date:
+    """Coerce to ``datetime.date`` at the boundary.
+
+    asyncpg does not coerce a ``date``-typed column parameter -- it requires
+    an actual ``datetime.date`` and raises ``DataError`` on a plain ISO
+    string (``'str' object has no attribute 'toordinal'``). Accepting an ISO
+    string from callers (the natural shape for an MCP/JSON argument) means
+    this module, not every caller, owns the conversion.
+    """
+    if isinstance(val, datetime.datetime):
+        return val.date()
+    if isinstance(val, datetime.date):
+        return val
+    if not val:
+        raise ValueError(f"{field_name} is required")
+    try:
+        return datetime.date.fromisoformat(str(val))
+    except ValueError as exc:
+        raise ValueError(f"Invalid {field_name} date: {val!r}") from exc
 
 
 def _billing_run_idempotency_key(
@@ -300,6 +322,8 @@ async def do_generate_billing_run(
     if not agreement_ids:
         raise ValueError("agreement_ids must be non-empty")
     agreement_uuids = [_parse_uuid(a, "agreement_ids[]") for a in agreement_ids]
+    period_start = _parse_date(period_start, "period_start")
+    period_end = _parse_date(period_end, "period_end")
 
     rows = await conn.fetch(
         """
