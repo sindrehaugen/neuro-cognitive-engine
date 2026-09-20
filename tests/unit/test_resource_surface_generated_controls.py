@@ -174,6 +174,31 @@ def test_generated_create_and_get(spec: ResourceSpec) -> None:
 
 
 @pytest.mark.parametrize("spec", _SPECS, ids=_SPEC_IDS)
+def test_generated_create_envelope_keys_are_not_shadowed(spec: ResourceSpec) -> None:
+    """A real column sharing a name with a response-envelope key ("status",
+    "version") must never shadow the envelope's own success indicator or
+    concurrency token -- envelope keys always win (rest.py's handle_create).
+    The full row remains available under "item" regardless."""
+    if "upsert" in spec.excluded_verbs:
+        pytest.skip(f"{spec.engine}:{spec.entity} excludes upsert -- see spec.excluded_verbs")
+    if "status" not in spec.writable_fields and "version" not in spec.writable_fields:
+        pytest.skip(f"{spec.engine}:{spec.entity} has no colliding writable field")
+    client = _client_for_spec(spec)
+    create_resp = client.post(spec.rest_collection_path, json=_sample_payload(spec, _NS_A))
+    assert create_resp.status_code == 201, create_resp.text
+    created = create_resp.json()
+    assert created["status"] == "ok", (
+        f"{spec.engine}:{spec.entity} envelope 'status' was shadowed by a real column"
+    )
+    if "version" in spec.writable_fields:
+        assert created["version"] != "generated_version_value", (
+            f"{spec.engine}:{spec.entity} envelope 'version' was shadowed by a real column"
+        )
+    # The real values are still reachable, just not at the top level.
+    assert created["item"]["status"] == "generated_status_value"
+
+
+@pytest.mark.parametrize("spec", _SPECS, ids=_SPEC_IDS)
 def test_generated_list(spec: ResourceSpec) -> None:
     if "list" in spec.excluded_verbs:
         pytest.skip(f"{spec.engine}:{spec.entity} excludes list -- see spec.excluded_verbs")
