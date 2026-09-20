@@ -1808,11 +1808,18 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         and rolls back the whole batch, so the persisted end state is
         identical to a pre-validated refusal (zero rows), even though the
         mechanism is reactive rather than a dry run. Measured before
-        shipping: no table reachable through this route carries an INSERT
-        trigger with a side effect outside that transaction (grepped
-        schema.sql for AFTER INSERT -- one exists, on economy_postings, not
-        C12-registered), so this reactive rollback has no observable gap
-        against a true pre-write dry run today.
+        shipping, both halves: no table reachable through this route
+        carries an INSERT trigger with a side effect outside that
+        transaction (grepped schema.sql for AFTER INSERT -- one exists, on
+        economy_postings, not C12-registered), and this function's own only
+        side effect outside the per-item loop (bump_mcp_cache_generation)
+        runs once, after the loop, on the success path only -- a rolled-back
+        batch bumps nothing. One named, dismissed exception: Postgres
+        sequences are non-transactional, so a serial/identity column whose
+        default a failed batch touched keeps the gap the abort left behind.
+        That is not a correctness problem (nothing here depends on
+        contiguity) but it is the one real difference from a true
+        pre-write dry run, so it is named here rather than implied away.
 
         kg_nodes-primary specs: refused outright (501). The all-or-nothing
         policy above answers the REPORTING semantics question; it does not
