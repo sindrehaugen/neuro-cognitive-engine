@@ -1,9 +1,4 @@
 {
-  "nce/vertical_modules/customer_portal/documents.py::do_get_document": {
-    "engine": "customer_portal",
-    "owner": "MLV15B-CP2",
-    "reason": "Expiring customer document token access core; scheduled for customer portal API route in Wave CP-2."
-  },
   "nce/vertical_modules/economy/billing_runs.py::do_generate_billing_run": {
     "engine": "economy",
     "owner": "MLV16G-B12",
