@@ -585,6 +585,22 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                 try:
                     session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                     async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                        # The `label = $3 OR id::text = $3` leniency below is
+                        # load-bearing for handle_create/handle_patch's response
+                        # shape, not just a convenience lookup here. Both
+                        # handlers build their response dict as {"id": item_id,
+                        # ..., **created}/{"id": item_id, ..., **updated}, and
+                        # since the spread comes last, `created`/`updated`'s own
+                        # "id" (kg_nodes' surrogate UUID) silently overwrites
+                        # the explicit "id": item_id -- so a client that just
+                        # created or patched a resource gets the surrogate UUID
+                        # back, not item_id/label, and can only look the
+                        # resource up again because this WHERE accepts either
+                        # value. Tightening this clause to `label = $3` alone
+                        # would break id round-tripping on every graph-primary
+                        # spec; fix rest.py's create/patch response dicts
+                        # (`{"id": item_id, ...}` ordered after the spread, not
+                        # before) first if that ever needs to happen.
                         query = """
                             SELECT id, label, entity_type, namespace_id, change_origin,
                                    created_at, updated_at
