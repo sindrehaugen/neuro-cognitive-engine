@@ -956,18 +956,13 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | DELETE | `/api/sales/quotes/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/sales/seller-detail/{user}` | `api_admin_sales_seller_detail` |
 | GET | `/api/sales/signed-baselines` | `handle_list` |
-| POST | `/api/sales/signed-baselines` | `handle_create` |
-| POST | `/api/sales/signed-baselines/bulk` | `handle_bulk` |
 | GET | `/api/sales/signed-baselines/{id}` | `handle_get` |
-| PATCH | `/api/sales/signed-baselines/{id}` | `handle_patch` |
-| POST | `/api/sales/signed-baselines/{id}/archive` | `handle_archive` |
 | GET | `/api/sales/signed-baselines/{id}/comments` | `handle_list_comments` |
 | POST | `/api/sales/signed-baselines/{id}/comments` | `handle_add_comment` |
 | GET | `/api/sales/signed-baselines/{id}/documents` | `handle_list_documents` |
 | POST | `/api/sales/signed-baselines/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/sales/signed-baselines/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/sales/signed-baselines/{id}/events` | `handle_events` |
-| POST | `/api/sales/signed-baselines/{id}/restore` | `handle_restore` |
 | GET | `/api/sales/signed-baselines/{id}/tags` | `handle_list_tags` |
 | POST | `/api/sales/signed-baselines/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/sales/signed-baselines/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -1626,7 +1621,6 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_archive_leads` |  | yes |  |  |
 | `sales_archive_quote_templates` |  | yes |  |  |
 | `sales_archive_quotes` |  | yes |  |  |
-| `sales_archive_signed_baselines` |  | yes |  |  |
 | `sales_calculate_commission` |  |  | yes |  |
 | `sales_clone_quote` |  | yes |  |  |
 | `sales_create_customer` | yes | yes |  |  |
@@ -1666,7 +1660,6 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_upsert_leads` |  | yes |  |  |
 | `sales_upsert_quote_templates` |  | yes |  |  |
 | `sales_upsert_quotes` |  | yes |  |  |
-| `sales_upsert_signed_baselines` |  | yes |  |  |
 | `search_codebase` |  |  | yes |  |
 | `semantic_search` |  |  | yes |  |
 | `shred_memory` | yes | yes |  |  |
@@ -1809,4 +1802,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 1234 REST endpoints, 557 MCP tools._
+_Totals: 1229 REST endpoints, 555 MCP tools._
