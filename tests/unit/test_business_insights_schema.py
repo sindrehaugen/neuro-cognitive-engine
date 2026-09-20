@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tests.expected_tenant_rls_table_count import EXPECTED_TENANT_RLS_TABLE_COUNT
+
 from nce.event_log import EXPECTED_TENANT_RLS_TABLES
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -24,9 +26,11 @@ def test_business_insights_tables_registered_in_expected_tenant_rls_tables():
 
 
 def test_expected_tenant_rls_tables_total_count():
-    """Verify total count of tenant RLS tables after C17 sites, Wave D-5 support_ticket_actions, C12 sales, Wave B-9 agreements additions, Wave B-15 procurement_deal_registrations, and Wave B-7 (sales_quote_templates, product_packages), and Wave B-12 (economy_billing_runs/economy_billing_candidates/economy_billing_candidate_lines), and Wave C-4 (system_design_design_requests) is 117."""
-    assert len(EXPECTED_TENANT_RLS_TABLES) == 117, (
-        f"Expected 117 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
+    """Total tenant RLS table count -- see tests/expected_tenant_rls_table_count.py
+    for the single source of truth this pin defers to (K-consolidation)."""
+    assert len(EXPECTED_TENANT_RLS_TABLES) == EXPECTED_TENANT_RLS_TABLE_COUNT, (
+        f"Expected {EXPECTED_TENANT_RLS_TABLE_COUNT} tenant RLS tables, "
+        f"got {len(EXPECTED_TENANT_RLS_TABLES)}"
     )
 
 
