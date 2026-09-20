@@ -659,6 +659,38 @@ async def _dispatch_skill(
     params: dict[str, Any],
     caller_ctx: NamespaceContext,
 ) -> Any:
+    """Route an A2A skill name to its implementation.
+
+    Constraint every branch below must respect, not an oversight scoped to
+    any one of them: this dispatch has no operator/admin distinction.
+    ``NamespaceContext.principal_kind`` is exactly three values --
+    "employee" | "contractor" | "external-customer" (nce/auth.py) -- and
+    every real caller reaching here that is not a contractor or an
+    external customer is "employee". There is no fourth kind to check,
+    and this function reads no admin credential anywhere: contrast
+    ``enforce_mcp_tool_auth``/``ADMIN_ONLY_TOOLS`` on the MCP surface,
+    which key off ``admin_api_key`` -- a credential type this file never
+    inspects. A capability whose only protection is ``admin_only=True``
+    on the MCP tool registry is unconditionally reachable by any
+    authenticated employee-kind caller the moment a branch for it exists
+    here. See ``vendors_calibrate_weights`` below for the one time this
+    happened; it was closed by removing the branch, not by adding a
+    check, because there is no check here to add it to.
+
+    Absence from ``_AGENT_CARD``'s ``skills`` list is not a mitigation
+    either. Several branches below are dispatchable but never advertised
+    there -- reachable by any caller who already knows the skill name,
+    exactly the position ``vendors_calibrate_weights`` was in before it
+    needed closing. Treat every branch below as reachable by any
+    authenticated employee-kind caller, full stop, when deciding whether
+    it needs to be here at all.
+
+    Before adding a branch that wraps an ``admin_only=True`` MCP tool (or
+    any capability that should not be tenant-callable): either do not add
+    it, or build a real gate here first -- there is not one to reuse.
+    (Full per-branch audit: ``A2A_SKILL_GATE_SWEEP.md``, 2026-09-20;
+    nothing currently dispatched here is ``admin_only``.)
+    """
     if _engine is None:
         raise RuntimeError("engine not initialized")
 
@@ -854,14 +886,11 @@ async def _dispatch_skill(
 
         return await do_reliability_radar(_engine, {"namespace_id": ns_id})
 
-    # vendors_calibrate_weights is deliberately NOT dispatchable here (Q-41,
-    # ruled 2026-09-20): it became an operator-only action on the MCP surface
-    # (admin_only=True, nce/tool_registry.py) because any caller could
-    # otherwise silently retune every namespace's vendor scoring. A2A's
-    # skill dispatch has no operator/admin distinction for "employee"-kind
-    # callers (only the contractor allowlist above), so exposing it here
-    # would reopen exactly the gap the MCP-side fix closes. It was never
-    # advertised in _AGENT_CARD's skills list.
+    # vendors_calibrate_weights is deliberately NOT dispatchable here -- see
+    # this function's docstring. It became admin_only=True on the MCP
+    # surface (Q-41, ruled 2026-09-20, nce/tool_registry.py); this dispatch
+    # has no mechanism to enforce that distinction, so a branch here would
+    # reopen exactly what the MCP-side fix closed.
 
     raise ValueError(f"Unknown A2A skill: {skill!r}")
 
