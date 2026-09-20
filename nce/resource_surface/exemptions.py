@@ -361,7 +361,11 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
             "exclusively through do_propose_customer_invoice (customer_invoices.py) "
             "for the 'proposal' transition this wave ships; approved/exported/paid "
             "are real CHECK-constrained states with no writer yet, same shape as "
-            "BILLING_CANDIDATE's own still-unused status enum."
+            "BILLING_CANDIDATE's own still-unused status enum. WHOEVER BUILDS THIS "
+            "SURFACE: vat_rate_assumed must be in the read/list response, not just "
+            "the stored row -- it exists specifically so a human reviewing a "
+            "proposal can tell which VAT rate was assumed vs. determined; a surface "
+            "that drops the column silently defeats the reason it was added."
         ),
     ),
 }
