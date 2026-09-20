@@ -225,14 +225,15 @@ async def test_propose_customer_invoice_happy_path_computes_vat(
     assert result["currency"] == "NOK"
     assert result["subtotal_amount"] == pytest.approx(500.00)
     assert result["vat_rate_pct"] == pytest.approx(25.00)
+    assert result["vat_rate_assumed"] is True
     assert result["vat_amount"] == pytest.approx(125.00)
     assert result["total_amount"] == pytest.approx(625.00)
 
     async with pg_pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT status, invoice_number, kid, subtotal_amount, vat_amount, total_amount, "
-            "billing_candidate_id, customer_id FROM economy_customer_invoices "
-            "WHERE id = $1::uuid",
+            "SELECT status, invoice_number, kid, subtotal_amount, vat_rate_assumed, "
+            "vat_amount, total_amount, billing_candidate_id, customer_id "
+            "FROM economy_customer_invoices WHERE id = $1::uuid",
             uuid.UUID(result["customer_invoice_id"]),
         )
 
@@ -242,8 +243,41 @@ async def test_propose_customer_invoice_happy_path_computes_vat(
     assert row["billing_candidate_id"] == candidate_id
     assert row["customer_id"] == customer_id
     assert row["subtotal_amount"] == pytest.approx(500.00)
+    assert row["vat_rate_assumed"] is True
     assert row["vat_amount"] == pytest.approx(125.00)
     assert row["total_amount"] == pytest.approx(625.00)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_propose_customer_invoice_explicit_vat_rate_is_not_assumed(
+    pg_pool: Any, namespace_id: uuid.UUID
+) -> None:
+    """A caller-supplied vat_rate_pct means the rate was determined, not
+    defaulted -- vat_rate_assumed must be False, distinct from the happy
+    path's default-rate True. Proves the flag is conditional, not always
+    True regardless of input."""
+    await _seed_ownership(pg_pool, namespace_id)
+    candidate_id, _customer_id, _agreement_id = await _seed_billing_candidate(
+        pg_pool, namespace_id, total_amount="1000.00"
+    )
+
+    async with scoped_pg_session(pg_pool, namespace_id) as conn:
+        outer = await do_propose_customer_invoice(
+            conn,
+            namespace_id,
+            idempotency_key=f"propose-explicit-vat-{candidate_id}",
+            confirm=True,
+            engine=None,
+            billing_candidate_id=str(candidate_id),
+            vat_rate_pct=0,
+        )
+
+    result = outer["result"]
+    assert result["vat_rate_pct"] == pytest.approx(0.0)
+    assert result["vat_rate_assumed"] is False
+    assert result["vat_amount"] == pytest.approx(0.0)
+    assert result["total_amount"] == pytest.approx(1000.00)
 
 
 @pytest.mark.integration

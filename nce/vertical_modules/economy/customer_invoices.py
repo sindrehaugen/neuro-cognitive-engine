@@ -42,6 +42,23 @@ already encodes elsewhere in this schema. ``vat_rate_pct`` defaults to
 (``finago-account-mapping.json``'s ``mva_codes["3"]``, "Utgaende MVA, hoy
 sats" -- outbound revenue-side VAT) rather than inventing a new constant.
 
+Why a defaulted VAT rate is never silent (``vat_rate_assumed``)
+---------------------------------------------------------------------
+25% is right most of the time, but not provably always: checked directly
+(not assumed safe) -- ``sales_customers`` has no country, export, or
+VAT-exemption field of any kind (``billing_address`` is free-form JSONB
+with no guaranteed schema), so a customer legitimately due 0% (an export
+sale) or a different rate cannot currently be distinguished from a
+standard-rate one anywhere in this data chain. A confidently-wrong VAT
+line on a money document is the same failure class
+``room_category_pricing.py``'s refuse-and-name design exists to avoid for
+room categories -- so rather than silently default, this module sets
+``vat_rate_assumed=True`` whenever the caller did not explicitly supply
+``vat_rate_pct`` (``False`` when they did -- an explicit override means a
+human or a future caller already determined the correct rate). "A human
+reviews the proposal" is only a real safeguard if the human can tell which
+number was assumed; this column is that visibility.
+
 Why UNIQUE(namespace_id, billing_candidate_id) exists at the DB level
 ---------------------------------------------------------------------
 ``@governed``'s idempotency key only catches an exact-same-call replay
@@ -179,8 +196,11 @@ async def do_propose_customer_invoice(
         namespace and must not already have an invoice (UNIQUE constraint,
         migration 104 -- raises ``CustomerInvoiceAlreadyExistsError``).
     vat_rate_pct:
-        Override for the default 25% outbound VAT rate. ``None`` uses the
-        default (module docstring explains why 25%, not 0%, is the default).
+        Override for the default 25% outbound VAT rate. ``None`` (default)
+        uses 25% and sets ``vat_rate_assumed=True`` on the row -- module
+        docstring explains why this is surfaced rather than silent. Passing
+        an explicit value means the caller determined the correct rate;
+        that row gets ``vat_rate_assumed=False``.
     due_date_days:
         Days from today's issue_date to due_date. Defaults to 14.
 
@@ -189,7 +209,7 @@ async def do_propose_customer_invoice(
     dict with ``status`` ('proposal'), ``customer_invoice_id``,
     ``customer_invoice_label``, ``billing_candidate_id``, ``customer_id``,
     ``issue_date``, ``due_date``, ``currency``, ``subtotal_amount``,
-    ``vat_rate_pct``, ``vat_amount``, ``total_amount``.
+    ``vat_rate_pct``, ``vat_rate_assumed``, ``vat_amount``, ``total_amount``.
 
     Raises
     ------
@@ -215,6 +235,7 @@ async def do_propose_customer_invoice(
             f"BILLING_CANDIDATE {billing_candidate_id} not found in namespace {namespace_id}"
         )
 
+    rate_assumed = vat_rate_pct is None
     rate = Decimal(str(vat_rate_pct)) if vat_rate_pct is not None else _DEFAULT_VAT_RATE_PCT
     subtotal = Decimal(str(candidate["total_amount"]))
     vat_amount = _quantise_money(subtotal * rate / Decimal("100"))
@@ -234,8 +255,8 @@ async def do_propose_customer_invoice(
             INSERT INTO economy_customer_invoices
                 (id, namespace_id, node_label, billing_candidate_id, customer_id,
                  issue_date, due_date, currency, subtotal_amount, vat_rate_pct,
-                 vat_amount, total_amount, status)
-            VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'proposal')
+                 vat_rate_assumed, vat_amount, total_amount, status)
+            VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'proposal')
             """,
             invoice_id,
             ns_uuid,
@@ -247,6 +268,7 @@ async def do_propose_customer_invoice(
             candidate["currency"],
             subtotal,
             rate,
+            rate_assumed,
             vat_amount,
             total_amount,
         )
@@ -273,6 +295,7 @@ async def do_propose_customer_invoice(
         "currency": candidate["currency"],
         "subtotal_amount": float(subtotal),
         "vat_rate_pct": float(rate),
+        "vat_rate_assumed": rate_assumed,
         "vat_amount": float(vat_amount),
         "total_amount": float(total_amount),
     }

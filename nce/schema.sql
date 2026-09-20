@@ -6515,6 +6515,7 @@ CREATE TABLE IF NOT EXISTS economy_customer_invoices (
     currency              TEXT          NOT NULL DEFAULT 'NOK',
     subtotal_amount       NUMERIC(18,2) NOT NULL CHECK (subtotal_amount >= 0),
     vat_rate_pct          NUMERIC(5,2)  NOT NULL DEFAULT 25.00 CHECK (vat_rate_pct >= 0),
+    vat_rate_assumed      BOOLEAN       NOT NULL DEFAULT TRUE,
     vat_amount            NUMERIC(18,2) NOT NULL CHECK (vat_amount >= 0),
     total_amount          NUMERIC(18,2) NOT NULL CHECK (total_amount >= 0),
     status                TEXT          NOT NULL DEFAULT 'proposal'

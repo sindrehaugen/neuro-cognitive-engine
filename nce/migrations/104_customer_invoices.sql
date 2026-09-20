@@ -52,6 +52,17 @@
 -- "Utgaende MVA, hoy sats" -- outbound revenue-side VAT), reusing the
 -- estate's one existing VAT source of truth rather than inventing a new
 -- constant.
+--
+-- vat_rate_assumed: TRUE whenever the 25% default was used because nothing
+-- in the data determined a different rate -- checked directly, not assumed
+-- safe: sales_customers has no country/export/VAT-exemption field of any
+-- kind (billing_address is free-form JSONB with no guaranteed schema), so
+-- a customer legitimately due 0% (export) or another rate cannot currently
+-- be distinguished from a standard-rate one. Per Sindre's own refuse-and-
+-- name discipline applied to money documents rather than just room
+-- categories: a defaulted rate on an invoice must be VISIBLE to whoever
+-- reviews the proposal, not silently indistinguishable from a determined
+-- one -- this column is that visibility, not a guess dressed up as a fact.
 
 BEGIN;
 
@@ -66,6 +77,7 @@ CREATE TABLE IF NOT EXISTS economy_customer_invoices (
     currency              TEXT          NOT NULL DEFAULT 'NOK',
     subtotal_amount       NUMERIC(18,2) NOT NULL CHECK (subtotal_amount >= 0),
     vat_rate_pct          NUMERIC(5,2)  NOT NULL DEFAULT 25.00 CHECK (vat_rate_pct >= 0),
+    vat_rate_assumed      BOOLEAN       NOT NULL DEFAULT TRUE,
     vat_amount            NUMERIC(18,2) NOT NULL CHECK (vat_amount >= 0),
     total_amount          NUMERIC(18,2) NOT NULL CHECK (total_amount >= 0),
     status                TEXT          NOT NULL DEFAULT 'proposal'
