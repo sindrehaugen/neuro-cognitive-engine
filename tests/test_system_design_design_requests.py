@@ -43,6 +43,7 @@ import asyncpg  # type: ignore[import-untyped]
 import pytest
 
 from nce.auth import set_namespace_context
+from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
 from nce.vertical_modules.system_design.design_requests import (
     DesignRequestNotFoundError,
     assign_design_request,
@@ -54,12 +55,31 @@ from nce.vertical_modules.system_design.design_requests import (
 )
 
 
+async def _seed_ownership(pg_pool: asyncpg.Pool, ns_id: uuid.UUID) -> None:  # type: ignore[type-arg]
+    """Seed the node-ownership registry so ``assert_owner`` permits the write.
+
+    The shared ``namespace_id``/raw-insert fixtures create a bare row in
+    ``namespaces`` without going through the real namespace-creation
+    orchestrator (``_create_namespace``), which is the only other place
+    ``seed_node_ownership_registry`` is called -- so every test here that
+    exercises ``create_design_request`` (now ``assert_owner``-guarded) must
+    seed explicitly first. Matches
+    ``test_system_design_author_surface.py``'s own ``_seed_ownership`` helper.
+    """
+    async with pg_pool.acquire() as conn:
+        async with conn.transaction():
+            await set_namespace_context(conn, ns_id)
+            await seed_node_ownership_registry(conn, ns_id)
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_create_writes_both_kg_nodes_identity_and_satellite_row(
     pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
     namespace_id: uuid.UUID,
 ) -> None:
+    await _seed_ownership(pg_pool, namespace_id)
+
     async with pg_pool.acquire() as conn, conn.transaction():
         await set_namespace_context(conn, namespace_id)
         created = await create_design_request(
@@ -105,6 +125,8 @@ async def test_owner_assigned_at_create_transitions_straight_to_assigned(
     pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
     namespace_id: uuid.UUID,
 ) -> None:
+    await _seed_ownership(pg_pool, namespace_id)
+
     async with pg_pool.acquire() as conn, conn.transaction():
         await set_namespace_context(conn, namespace_id)
         created = await create_design_request(
@@ -145,6 +167,8 @@ async def test_list_filters_by_status_owner_and_quote_against_real_columns(
     pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
     namespace_id: uuid.UUID,
 ) -> None:
+    await _seed_ownership(pg_pool, namespace_id)
+
     async with pg_pool.acquire() as conn, conn.transaction():
         await set_namespace_context(conn, namespace_id)
         await create_design_request(
@@ -183,6 +207,8 @@ async def test_complete_sets_design_id_and_realized_as_edge(
     pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
     namespace_id: uuid.UUID,
 ) -> None:
+    await _seed_ownership(pg_pool, namespace_id)
+
     async with pg_pool.acquire() as conn, conn.transaction():
         await set_namespace_context(conn, namespace_id)
         await create_design_request(conn, namespace_id, title="To complete", request_id="REQ-C-01")
@@ -216,6 +242,8 @@ async def test_assign_then_update_reassigns_the_edge_not_duplicates_it(
     pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
     namespace_id: uuid.UUID,
 ) -> None:
+    await _seed_ownership(pg_pool, namespace_id)
+
     async with pg_pool.acquire() as conn, conn.transaction():
         await set_namespace_context(conn, namespace_id)
         await create_design_request(conn, namespace_id, title="Reassign me", request_id="REQ-A-01")
@@ -248,6 +276,9 @@ async def test_tenant_isolation_same_request_id_two_namespaces(
             ns_b,
             f"tenant-b-{ns_b.hex[:8]}",
         )
+
+    await _seed_ownership(pg_pool, ns_a)
+    await _seed_ownership(pg_pool, ns_b)
 
     async with pg_pool.acquire() as conn, conn.transaction():
         await set_namespace_context(conn, ns_a)
