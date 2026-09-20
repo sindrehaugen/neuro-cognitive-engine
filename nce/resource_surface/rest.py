@@ -20,6 +20,7 @@ All error responses MUST call admin_error_response. Never inline an error dict.
 from __future__ import annotations
 
 import base64
+import json
 import logging
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -128,6 +129,134 @@ def row_to_dict(row: Any) -> dict[str, Any]:
     return dict(row)
 
 
+class WriteCoercionError(ValueError):
+    """A writable field's value cannot be coerced to its real column type.
+
+    Raised instead of letting an invalid value reach asyncpg raw, which
+    otherwise surfaces as an opaque asyncpg.exceptions.DataError /
+    InvalidTextRepresentationError wrapped in a generic 500 (see
+    handle_create/handle_patch's own "Failed to create/update ..." catch).
+    Callers translate this to a 400 naming the offending field -- fail
+    loudly. A wrong value silently coerced to something plausible would be
+    worse than the 500 it replaces, not better.
+    """
+
+    def __init__(self, field: str, value: object, reason: str) -> None:
+        self.field = field
+        self.value = value
+        self.reason = reason
+        super().__init__(f"{field!r}: {reason}")
+
+
+_COLUMN_TYPE_CACHE: dict[str, dict[str, str]] = {}
+
+_DATE_TYPES = {"date"}
+_TIMESTAMP_TYPES = {"timestamp with time zone", "timestamp without time zone"}
+_JSON_TYPES = {"json", "jsonb"}
+
+
+async def _column_types(conn: Any, table_name: str) -> dict[str, str]:
+    """Real Postgres column types for ``table_name``, cached for the life of
+    this process.
+
+    Staleness window, stated rather than left for a reader to wonder about:
+    a migration applied to a running deployment (an ``ALTER TABLE`` changing
+    a column's type) is invisible to an already-running process until it
+    restarts, since this cache is never invalidated. Accepted deliberately
+    -- every other in-process cache this generated surface already relies on
+    (``TOOL_REGISTRY``, ``get_all_resource_specs()``'s own registry, built
+    once at import time) is exactly as static, for the same reason:
+    ``ResourceSpec`` declarations and the schema they describe both change
+    only via a deploy, never live, in this codebase's deployment model. If
+    that assumption is ever wrong, the symptom is a coercion attempted
+    against the OLD type while the real column is already the NEW one --
+    a real Postgres error on write, loud and attributable, not a silent
+    wrong-value acceptance.
+    """
+    cached = _COLUMN_TYPE_CACHE.get(table_name)
+    if cached is not None:
+        return cached
+    rows = await conn.fetch(
+        "SELECT column_name, data_type FROM information_schema.columns "
+        "WHERE table_schema='public' AND table_name=$1",
+        table_name,
+    )
+    types = {r["column_name"]: r["data_type"] for r in rows}
+    _COLUMN_TYPE_CACHE[table_name] = types
+    return types
+
+
+async def coerce_writable_values(
+    conn: Any, table_name: str | None, data: dict[str, Any]
+) -> dict[str, Any]:
+    """Coerce ``data``'s values to the real types ``table_name``'s columns
+    need, for the Postgres type categories JSON cannot represent without
+    server-side parsing (measured in full in ``_internal/work-docs/
+    mlv16-orchestration/GENERATED_SURFACE_TYPE_COERCION.md``): date/
+    timestamp columns (JSON has only a string for these) and jsonb/json
+    columns (a client's natural JSON object/array arrives as a Python
+    ``dict``/``list``, which asyncpg's default codec refuses outright --
+    the pool this generated surface binds against registers no custom
+    codec, see ``nce/orchestrator.py``'s ``connect()``).
+
+    Deliberately narrow: numeric/integer/boolean/uuid columns already bind
+    correctly when a client sends the correctly-typed JSON value (a number,
+    a boolean, a valid-format string) -- measured directly against a real
+    Postgres connection before writing this function, not assumed. Coercing
+    them too would be solving a problem that does not exist.
+
+    Raises :class:`WriteCoercionError` rather than silently substituting a
+    value or letting a malformed one fail confusingly inside asyncpg -- an
+    unparseable date or invalid JSON string must be a clear 400 naming the
+    field, never a 500, and never a value quietly accepted after being
+    reshaped into something the caller did not ask for.
+
+    ``table_name is None`` (a graph-primary spec's kg_nodes identity write)
+    returns ``data`` unchanged -- kg_nodes' own real columns are exactly the
+    frozenset ``nce/resource_surface/spec.py``'s ``_KG_NODES_REAL_COLUMNS``
+    already documents, none of which are date/timestamp/jsonb, and a
+    secondary table's own coercion goes through this same function via
+    ``upsert_secondary_tables`` with its OWN table_name, not this one.
+    """
+    if table_name is None:
+        return data
+    types = await _column_types(conn, table_name)
+    coerced: dict[str, Any] = {}
+    for field, value in data.items():
+        col_type = types.get(field)
+        if col_type in _JSON_TYPES:
+            if isinstance(value, (dict, list)):
+                coerced[field] = json.dumps(value)
+                continue
+            if isinstance(value, str):
+                try:
+                    json.loads(value)
+                except (json.JSONDecodeError, ValueError) as exc:
+                    raise WriteCoercionError(
+                        field, value, f"not valid JSON text for a {col_type} column: {exc}"
+                    ) from exc
+                coerced[field] = value
+                continue
+        elif col_type in _DATE_TYPES and isinstance(value, str):
+            try:
+                coerced[field] = date.fromisoformat(value)
+            except ValueError as exc:
+                raise WriteCoercionError(
+                    field, value, f"not a valid ISO date for a {col_type} column: {exc}"
+                ) from exc
+            continue
+        elif col_type in _TIMESTAMP_TYPES and isinstance(value, str):
+            try:
+                coerced[field] = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise WriteCoercionError(
+                    field, value, f"not a valid ISO timestamp for a {col_type} column: {exc}"
+                ) from exc
+            continue
+        coerced[field] = value
+    return coerced
+
+
 async def upsert_secondary_tables(
     conn: Any,
     spec: ResourceSpec,
@@ -163,6 +292,11 @@ async def upsert_secondary_tables(
         sec_data = {f: data[f] for f in sec.fields if f in data}
         if not sec_data:
             continue
+        # Coerced separately from `sec_data` itself: `written` (below) feeds
+        # the caller's API response, and a jsonb field's caller-supplied
+        # dict/list is more useful echoed back as-is than as the json.dumps()
+        # string this function binds to asyncpg.
+        query_data = await coerce_writable_values(conn, sec.table_name, sec_data)
         if is_global:
             existing = await conn.fetchrow(
                 f"SELECT 1 FROM {sec.table_name} WHERE {sec.join_field} = $1", item_id
@@ -174,8 +308,8 @@ async def upsert_secondary_tables(
                 item_id,
             )
         if existing:
-            cols = list(sec_data.keys())
-            vals = list(sec_data.values())
+            cols = list(query_data.keys())
+            vals = list(query_data.values())
             if is_global:
                 set_items = [f"{c} = ${i + 2}" for i, c in enumerate(cols)]
                 await conn.execute(
@@ -192,7 +326,7 @@ async def upsert_secondary_tables(
                     *vals,
                 )
         else:
-            insert_data = dict(sec_data)
+            insert_data = dict(query_data)
             insert_data[sec.join_field] = item_id
             if not is_global:
                 insert_data["namespace_id"] = str(ns_uuid) if ns_uuid else None
@@ -821,6 +955,16 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                     )
                     session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                     async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                        try:
+                            primary_data = await coerce_writable_values(
+                                conn, spec.table_name, primary_data
+                            )
+                        except WriteCoercionError as exc:
+                            return admin_error_response(
+                                f"Invalid value for {spec.entity}.{exc.field}: {exc.reason}",
+                                exc,
+                                status_code=400,
+                            )
                         cols = list(primary_data.keys())
                         vals = [now if c == spec.version_field else primary_data[c] for c in cols]
                         val_placeholders = [f"${i + 1}" for i in range(len(cols))]
@@ -1102,6 +1246,16 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                             if secondary_field_names
                             else updates
                         )
+                        try:
+                            primary_updates = await coerce_writable_values(
+                                conn, spec.table_name, primary_updates
+                            )
+                        except WriteCoercionError as exc:
+                            return admin_error_response(
+                                f"Invalid value for {spec.entity}.{exc.field}: {exc.reason}",
+                                exc,
+                                status_code=400,
+                            )
                         vals = [
                             now if k == spec.version_field else v
                             for k, v in primary_updates.items()
