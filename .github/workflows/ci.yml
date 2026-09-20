@@ -584,6 +584,7 @@ jobs:
           tests/test_pg_trgm_extension.py
           tests/test_principal_sessions.py
           tests/test_schema_contract.py
+          tests/test_source_mode_flip.py
           tests/test_source_mode_resolver.py
           tests/test_source_mode_table.py
           -m integration -q --tb=short
