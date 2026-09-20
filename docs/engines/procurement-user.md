@@ -399,23 +399,30 @@ searchable (`?q=`): `po_number`, `line_ref`, `artnr`, `description`. No
 `tier_allowlists` override — falls back to the C12 default (full record,
 subject to tenant-namespace isolation).
 
-### MCP Tools (4)
+### MCP Tools (2)
+
+`excluded_verbs=frozenset({"upsert", "archive"})` (Lane E, 2026-09-20).
+`upsert` is reason (3) — `upsert_po_line_node` (po_line.py:110/137) and
+`update_po_line_status` (po_line.py:266/319) already own the write path
+under `assert_owner`-guarded per-status transitions; the generic route
+can never call `assert_owner` for a table-backed spec, so it would add an
+unguarded second writer, not a redundant one. `archive` is excluded
+because the fallback this table foretold above was real: no
+`is_archived` column exists on `procurement_po_lines`, so the excluded
+tools below would have 500'd, not silently succeeded.
 
 | Tool Name | Cacheable | Mutation | Description |
 |---|:---:|:---:|---|
 | `procurement_list_po_lines` | ✔ | ✘ | List/query PO lines. |
 | `procurement_get_po_lines` | ✔ | ✘ | Fetch a single PO line by ID. |
-| `procurement_upsert_po_lines` | ✘ | ✔ | Create or update a PO line. |
-| `procurement_archive_po_lines` | ✘ | ✔ | Soft-archive a PO line (falls back to the standard C12 `is_archived` field even though the spec declares no dedicated one). |
 
-### REST Routes (16)
+### REST Routes (11)
 
-Mounted under `/api/procurement/po-lines` — the standard C12 verb set:
-`GET`/`POST` list+create, `POST .../bulk`, `GET`/`PATCH .../{id}`,
-`POST .../{id}/archive`, `POST .../{id}/restore`, `GET .../{id}/events`,
-`GET`/`POST .../{id}/comments`, `GET`/`POST .../{id}/tags`,
-`DELETE .../{id}/tags/{tag}`, `GET`/`POST .../{id}/documents`,
-`DELETE .../{id}/documents/{doc_id}`.
+Mounted under `/api/procurement/po-lines` — `GET` list, `GET .../{id}`,
+`GET .../{id}/events`, `GET`/`POST .../{id}/comments`,
+`GET`/`POST .../{id}/tags`, `DELETE .../{id}/tags/{tag}`,
+`GET`/`POST .../{id}/documents`, `DELETE .../{id}/documents/{doc_id}`.
+No create/patch/bulk/archive/restore routes — see the exclusion above.
 
 ### Storage and Tenancy
 
