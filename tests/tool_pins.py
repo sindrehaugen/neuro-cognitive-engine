@@ -690,6 +690,8 @@ NAME_PINS: dict[str, frozenset[str]] = {
             "economy_get_postings",
             "economy_upsert_postings",
             "economy_archive_postings",
+            # Lane E Wave B-11 -- revenue-side Agreements<->GL reconciliation
+            "economy_reconcile_agreements",
         }
     ),
     # -----------------------------------------------------------------------
