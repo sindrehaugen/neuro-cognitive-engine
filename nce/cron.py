@@ -2020,10 +2020,37 @@ async def reschedule_jobs() -> str:
 
 
 async def _assets_telemetry_tick(pool: asyncpg.Pool) -> None:
-    """APScheduler job: periodic manufacturer telemetry pull for assets (Wave A-1).
+    """APScheduler job: periodic YMCS-ONLY telemetry pull for assets (Wave A-1).
 
-    Runs every 5 minutes. Scans namespaces with active assets,
-    calls do_pull_telemetry for each asset, and writes telemetry_samples idempotently.
+    Runs every 5 minutes. Scans every non-terminal asset in every namespace
+    and calls ``do_pull_telemetry`` with ``platform="ymcs"`` HARDCODED --
+    never any other platform, and never conditioned on what the asset
+    actually is.
+
+    D-10 acceptance review (2026-09-20) found this docstring previously
+    read as "periodic manufacturer telemetry pull," which oversold what the
+    tick does: it dates to Wave A-1 (commit 146d549), when YMCS was the
+    only real adapter that existed, and was never revisited when F-2
+    through F-7 added ``neat``/``qsys``/``neowit``/``disruptive``/
+    ``ochno``/``ais``. Those six adapters are contract-compliant and
+    accepted (``test_advertised_capability_ratchet.py``), but this is the
+    ONLY automatic invocation path for telemetry pulls anywhere in the
+    codebase, so in a live deployment they are reachable only by an
+    operator explicitly calling ``assets_pull_telemetry``/
+    ``api_assets_pull_telemetry`` with that platform -- never by anything
+    NCE itself schedules.
+
+    Per-asset platform dispatch (e.g. from ``product_catalog.manufacturer``,
+    which ``assets.product_id`` FKs to) is NOT built here: measured against
+    the live dev Postgres, 34/34 ``product_catalog`` rows carry a
+    manufacturer, but 32 are test fixtures and the 2 real values
+    (``Biamp``, ``Shure``) map to zero live adapters -- ``Shure`` was one
+    of the three routed to ``UnimplementedVendorAdapter`` in Q-38 part 1.
+    A mapping built on this data would dispatch nothing, correctly,
+    forever. Filed as blocked-on-data, not on design: re-run that query
+    against a real product catalog before building it, since this dev
+    database is the same one ``sales_read_model`` turned out to be
+    pytest residue in.
     """
     ttl = 300
     lock: CronLock | None = await acquire_cron_lock("assets_telemetry_sync", ttl)
