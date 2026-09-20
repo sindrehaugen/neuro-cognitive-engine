@@ -656,7 +656,24 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/project/capacity` | `api_admin_project_capacity` |
 | POST | `/api/project/convert-signed-quote` | `api_project_convert_signed_quote` |
 | GET | `/api/project/my-day` | `api_admin_project_my_day` |
+| GET | `/api/project/projects` | `handle_list` |
+| POST | `/api/project/projects` | `handle_create` |
+| POST | `/api/project/projects/bulk` | `handle_bulk` |
+| GET | `/api/project/projects/{id}` | `handle_get` |
+| PATCH | `/api/project/projects/{id}` | `handle_patch` |
+| POST | `/api/project/projects/{id}/archive` | `handle_archive` |
+| GET | `/api/project/projects/{id}/comments` | `handle_list_comments` |
+| POST | `/api/project/projects/{id}/comments` | `handle_add_comment` |
+| GET | `/api/project/projects/{id}/documents` | `handle_list_documents` |
+| POST | `/api/project/projects/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/project/projects/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/project/projects/{id}/events` | `handle_events` |
+| POST | `/api/project/projects/{id}/restore` | `handle_restore` |
+| GET | `/api/project/projects/{id}/tags` | `handle_list_tags` |
+| POST | `/api/project/projects/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/project/projects/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET,POST | `/api/project/similar` | `api_project_recall_similar` |
+| GET | `/api/project/{id}/bom-lines` | `api_project_get_bom_lines` |
 | POST | `/api/project/{id}/case-study` | `api_project_generate_case_study` |
 | GET | `/api/project/{id}/phase` | `api_project_get_phase` |
 | POST | `/api/project/{id}/phase` | `api_project_advance_phase` |
@@ -1349,16 +1366,20 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `product_search` |  |  | yes |  |
 | `product_upsert_product_skus` |  | yes |  |  |
 | `project_advance_phase` | yes | yes |  |  |
+| `project_archive_projects` |  | yes |  |  |
 | `project_can_enter_phase` |  |  | yes |  |
 | `project_capacity` |  |  | yes |  |
 | `project_convert_signed_quote` | yes | yes |  |  |
 | `project_detect_scope_creep` |  |  | yes |  |
 | `project_generate_case_study_edge` | yes | yes |  |  |
+| `project_get_projects` |  |  | yes |  |
+| `project_list_projects` |  |  | yes |  |
 | `project_my_day` |  |  | yes |  |
 | `project_recall_similar` |  |  | yes |  |
 | `project_record_outcome` | yes | yes |  |  |
 | `project_status_report` |  |  | yes |  |
 | `project_suggest_pl` |  |  | yes |  |
+| `project_upsert_projects` |  | yes |  |  |
 | `purge_dlq` |  | yes |  |  |
 | `replay_dlq` |  | yes |  |  |
 | `replay_fork` | yes |  |  |  |
@@ -1557,4 +1578,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 1030 REST endpoints, 509 MCP tools._
+_Totals: 1047 REST endpoints, 513 MCP tools._

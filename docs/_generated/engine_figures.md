@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `1ae7b5d` (public `main`) · **Last-audited:** generated
+> **Status:** shipped · **Verified-against:** `bf4d1ad` (public `main`) · **Last-audited:** generated
 
 # NCE Engine Figures — Inventory & Counters
 
@@ -14,10 +14,10 @@
 
 | Counter | Value | Source of Truth |
 |---|---|---|
-| `TOOL_REGISTRY` entries | **509** MCP tools (70 shared + 439 across 25 engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = 509` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |
+| `TOOL_REGISTRY` entries | **513** MCP tools (70 shared + 443 across 25 engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = 513` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |
 | SQL migrations | 92 files (+1 optional), `001` → `096` — gaps at `002`, `009`, `010`, `059` | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |
 | Golden Thread seam burndown | **4 of 37** lifecycle steps broken (4 distinct seams) | Generated in [`docs/_generated/golden_thread_seams.md`](golden_thread_seams.md) from [`tests/integration/test_golden_thread.py`](../../tests/integration/test_golden_thread.py) |
-| v1.6 C12 resource-surface registrations | **18 of 25** engines have `resources.py` | AST of `nce/vertical_modules/<engine>/resources.py` per engine — see the v1.6 section below |
+| v1.6 C12 resource-surface registrations | **19 of 25** engines have `resources.py` | AST of `nce/vertical_modules/<engine>/resources.py` per engine — see the v1.6 section below |
 | `EXPECTED_TENANT_RLS_TABLES` | **107** | AST of [`nce/event_log.py`](../../nce/event_log.py) |
 
 ## v1.6 — C12 Resource Surface Registration (Lane E)
@@ -47,7 +47,7 @@
 | `notifications` | ✅ | 2 |
 | `procurement` | ✅ | 1 |
 | `product` | ✅ | 1 |
-| `project` | ⬜ | 0 |
+| `project` | ✅ | 1 |
 | `resources` | ✅ | 2 |
 | `sales` | ✅ | 5 |
 | `sites` | ✅ | 1 |
@@ -57,9 +57,9 @@
 
 ## Tool Registry Breakdown
 
-- **Total Registered Tools:** 509
+- **Total Registered Tools:** 513
 - **Shared Core Tools:** 70
-- **Vertical Engine Tools:** 439 across 25 engine packages
+- **Vertical Engine Tools:** 443 across 25 engine packages
 
 | Engine Package | Tool Count |
 |---|---:|
@@ -81,7 +81,7 @@
 | `notifications` | 8 |
 | `procurement` | 14 |
 | `product` | 12 |
-| `project` | 11 |
+| `project` | 15 |
 | `resources` | 22 |
 | `sales` | 34 |
 | `sites` | 5 |
