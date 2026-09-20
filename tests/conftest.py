@@ -301,24 +301,40 @@ def _integration_pool_dsn() -> str | None:
 
 
 @pytest.fixture(autouse=True)
-def _reset_signing_key_cache_after_test(request: pytest.FixtureRequest) -> None:
-    """Reset the signing key module-level cache after each test if isolated.
+def _reset_signing_key_cache_after_test() -> None:
+    """Reset the signing key module-level cache after every test.
 
     Prevents test-order dependencies by clearing ``_key_cache`` so each
     test starts with a fresh signing state.  Uses ``yield`` to run after
     the test body (teardown semantics).  Safe under ``pytest-xdist``
     because each worker has its own module namespace.
+
+    Unconditional as of 2026-09-20 (was previously gated behind an opt-in
+    ``signing_isolation`` marker only ~24 tests carried): measured that at
+    least 6 other files call the real, unmocked ``get_active_key`` without
+    that marker (test_key_durability.py, test_explain_past_decision.py,
+    test_replay_handlers_integration.py, test_no_unguarded_signing_rotation.py,
+    test_envelope_read_consumers.py, test_master_key_buffer.py), any of which
+    could leave stale cache state for the next test in a full-suite run --
+    confirmed live via test_key_durability.py's own order-dependent pair
+    (passes in isolation, one specific member of the pair fails depending on
+    full-suite collection order). No test anywhere relies on cache state
+    surviving BETWEEN tests (checked: every real cache-populating test
+    populates and asserts within its own body; test_master_key_buffer.py's
+    direct cache-object substitution restores the original in a ``finally``
+    block first). Retrofitting the marker onto every file that touches the
+    real cache doesn't scale to files added later; clearing unconditionally
+    does.
     """
     yield
-    if request.node.get_closest_marker("signing_isolation") is not None:
-        try:
-            import nce.signing as signing_mod
+    try:
+        import nce.signing as signing_mod
 
-            # _key_cache is a _SigningKeyCache(TTLCache) — clear() removes all
-            # entries and __delitem__ zeros their MutableKeyBuffer.
-            signing_mod._key_cache.clear()
-        except Exception:
-            return
+        # _key_cache is a _SigningKeyCache(TTLCache) — clear() removes all
+        # entries and __delitem__ zeros their MutableKeyBuffer.
+        signing_mod._key_cache.clear()
+    except Exception:
+        return
 
 
 # ---------------------------------------------------------------------------
