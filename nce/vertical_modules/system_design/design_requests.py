@@ -29,12 +29,14 @@ import logging
 from typing import Any
 from uuid import UUID, uuid4
 
+from nce.entity_resolution.ownership import assert_owner
 from nce.events.emit import emit_graph_write
 
 log = logging.getLogger("nce.vertical_modules.system_design.design_requests")
 
 # Node type
 _NODE_TYPE_DESIGN_REQUEST = "DESIGN_REQUEST"
+_SYSTEM_DESIGN_ENGINE: str = "system_design"
 
 # Edge predicates
 _PRED_FOR_QUOTE = "for_quote"
@@ -211,6 +213,8 @@ async def create_design_request(
     }
 
     if conn is not None:
+        await assert_owner(conn, ns_uuid, _NODE_TYPE_DESIGN_REQUEST, _SYSTEM_DESIGN_ENGINE)
+
         await conn.execute(
             """
             INSERT INTO kg_nodes
