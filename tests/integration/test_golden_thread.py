@@ -1924,24 +1924,28 @@ class TestGoldenThreadSteps:
             "migration 088_sales_resource_tables.sql) -- do_create_deal takes no "
             "participants/attendees argument at all. Aspirational per the original H-9 "
             "charter text, not yet built by any landed wave (tracked as B-1-followup). "
-            "K34 (2026-09-20): this step now ATTEMPTS the real call "
-            "(TOOL_REGISTRY['sales_add_deal_participant']) instead of raising "
-            "unconditionally -- it fails today with a genuine KeyError because no tool "
-            "by that name is registered, and will XPASS (forcing this marker's removal "
-            "under strict=True) the moment one is. If the landed feature registers under "
-            "a different tool name, update this call site to match rather than leaving "
-            "the marker stale."
+            "K34 (2026-09-20): this step now ATTEMPTS the real capability instead of "
+            "raising unconditionally -- it asserts the live TOOL_REGISTRY contains no "
+            "tool matching 'deal_participant' (a substring predicate, not one guessed "
+            "exact name -- a C12 spec would generate 'sales_upsert_deal_participants', "
+            "a hand-written route could pick anything else entirely; the predicate "
+            "flips to XPASS under any of them). Fails today with a genuine assertion, "
+            "will XPASS (forcing this marker's removal under strict=True) the moment a "
+            "matching tool exists."
         ),
     )
     async def test_step_33_deal_participants(self, scenario: GoldenThreadScenarioContext) -> None:
         """Step 33: deal with participants (not built -- see xfail reason)."""
         ctx = scenario
         await self._ensure_prereqs(ctx, 1)
-        # No participants tool exists yet -- this is a real dict lookup against
-        # the live TOOL_REGISTRY, not a hand-authored raise, so it stops
-        # failing the instant a tool by this name is registered.
+        # A substring predicate over the live TOOL_REGISTRY, not a guessed exact
+        # key -- see the xfail reason for why an exact name is the wrong check.
+        matching = [name for name in TOOL_REGISTRY if "deal_participant" in name]
+        assert matching, (
+            "DEAL_PARTICIPANT has no tool registered under any name -- seam h9b still open"
+        )
         result = json.loads(
-            await TOOL_REGISTRY["sales_add_deal_participant"].handler(
+            await TOOL_REGISTRY[matching[0]].handler(
                 ctx.engine,
                 {
                     "namespace_id": str(ctx.namespace_id),
@@ -2022,20 +2026,28 @@ class TestGoldenThreadSteps:
             "economy_approve_invoice already covers). billing_run (step 35, B-12) now "
             "exists (PR #333), but customer-invoice generation from a BILLING_CANDIDATE "
             "is a separate, still-unbuilt capability (tracked as B-13). K34 (2026-09-20): "
-            "this step now ATTEMPTS the real call "
-            "(TOOL_REGISTRY['economy_generate_customer_invoice']) instead of raising "
-            "unconditionally -- fails today with a genuine KeyError, will XPASS the "
-            "moment a tool by that name is registered."
+            "this step now ATTEMPTS the real capability instead of raising unconditionally "
+            "-- it asserts the live TOOL_REGISTRY contains no tool matching "
+            "'customer_invoice' (a substring predicate, not one guessed exact name -- a "
+            "C12 spec would generate 'economy_upsert_customer_invoices', a hand-written "
+            "route could pick anything else; the predicate flips to XPASS under any of "
+            "them, and 'customer_invoice' does not match the existing supplier-side "
+            "'economy_approve_invoice'). Fails today with a genuine assertion, will "
+            "XPASS the moment a matching tool exists."
         ),
     )
     async def test_step_36_customer_invoice(self, scenario: GoldenThreadScenarioContext) -> None:
         """Step 36: customer invoice (not built -- see xfail reason)."""
         ctx = scenario
         await self._ensure_prereqs(ctx, 1)
-        # No customer-invoice tool exists yet -- real dict lookup against the
-        # live TOOL_REGISTRY, same mechanism as step 33/34.
+        # A substring predicate over the live TOOL_REGISTRY, not a guessed exact
+        # key -- see the xfail reason for why an exact name is the wrong check.
+        matching = [name for name in TOOL_REGISTRY if "customer_invoice" in name]
+        assert matching, (
+            "CUSTOMER_INVOICE has no tool registered under any name -- seam h9e still open"
+        )
         result = json.loads(
-            await TOOL_REGISTRY["economy_generate_customer_invoice"].handler(
+            await TOOL_REGISTRY[matching[0]].handler(
                 ctx.engine,
                 {
                     "namespace_id": str(ctx.namespace_id),
