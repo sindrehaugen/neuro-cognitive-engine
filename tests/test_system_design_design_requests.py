@@ -212,7 +212,7 @@ async def test_complete_sets_design_id_and_realized_as_edge(
     async with pg_pool.acquire() as conn, conn.transaction():
         await set_namespace_context(conn, namespace_id)
         await create_design_request(conn, namespace_id, title="To complete", request_id="REQ-C-01")
-        completed = await complete_design_request(conn, namespace_id, "REQ-C-01", "DESIGN-42")
+        completed = await complete_design_request(conn, namespace_id, "REQ-C-01", "DESIGN:42")
 
     assert completed["status"] == "completed"
     assert completed["design_id"] == "42"
