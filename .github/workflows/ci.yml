@@ -1091,6 +1091,25 @@ jobs:
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/integration/test_resource_surface_graph_patch_live.py -m integration -q --tb=short
 
+      # field_tech:checklists/time-entries/work-orders each had a real
+      # identifier column (checklist_id/time_entry_id/work_order_id) that
+      # was NOT NULL with no default and absent from the spec's own
+      # writable_fields -- no caller could create a row through the
+      # generated surface at all, unconditionally (found building #385,
+      # reproduced live: NotNullViolationError). All three real
+      # hand-written writers treat the identifier as caller-optional with
+      # a server-generated "<PREFIX>-<hex>" fallback on omission; the
+      # generated surface has no mechanism to replicate that fallback
+      # (only id_field gets a uuid4() default), so the fix adds each
+      # identifier to writable_fields, matching the identical, already-
+      # shipped precedent hr:absences.absence_id already uses.
+      - name: Integration — field_tech identifier writable_fields fix (tests/integration/test_field_tech_identifier_writable_fields_live.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/integration/test_field_tech_identifier_writable_fields_live.py -m integration -q --tb=short
+
       # C12 resource-surface multi-table support (SecondaryTable): a spec whose
       # primary identity spreads across two tables (e.g. system_design's DEVICE
       # capability/state split). Found live building this: an undocumented FK

@@ -1403,6 +1403,10 @@
       "Field_tech_checklists": {
         "description": "ISO9001 compliance checklists against a work order, with templated items.",
         "properties": {
+          "checklist_id": {
+            "description": "Field checklist_id",
+            "type": "string"
+          },
           "completed_at": {
             "description": "Field completed_at",
             "type": "string"
@@ -1440,6 +1444,9 @@
       "Field_tech_checklists_Create": {
         "description": "Payload for creating a field_tech checklists",
         "properties": {
+          "checklist_id": {
+            "type": "string"
+          },
           "completed_at": {
             "type": "string"
           },
@@ -1484,6 +1491,9 @@
       "Field_tech_checklists_Update": {
         "description": "Payload for updating a field_tech checklists",
         "properties": {
+          "checklist_id": {
+            "type": "string"
+          },
           "completed_at": {
             "type": "string"
           },
@@ -1533,6 +1543,10 @@
             "description": "Field started_at",
             "type": "string"
           },
+          "time_entry_id": {
+            "description": "Field time_entry_id",
+            "type": "string"
+          },
           "updated_at": {
             "format": "date-time",
             "type": "string"
@@ -1560,6 +1574,9 @@
             "type": "string"
           },
           "started_at": {
+            "type": "string"
+          },
+          "time_entry_id": {
             "type": "string"
           },
           "work_order_id": {
@@ -1608,6 +1625,9 @@
             "type": "string"
           },
           "started_at": {
+            "type": "string"
+          },
+          "time_entry_id": {
             "type": "string"
           },
           "work_order_id": {
@@ -1670,6 +1690,10 @@
           "updated_at": {
             "format": "date-time",
             "type": "string"
+          },
+          "work_order_id": {
+            "description": "Field work_order_id",
+            "type": "string"
           }
         },
         "required": [
@@ -1711,6 +1735,9 @@
             "type": "string"
           },
           "summary": {
+            "type": "string"
+          },
+          "work_order_id": {
             "type": "string"
           }
         },
@@ -1777,6 +1804,9 @@
             "type": "string"
           },
           "summary": {
+            "type": "string"
+          },
+          "work_order_id": {
             "type": "string"
           }
         },
@@ -11237,6 +11267,9 @@
       },
       "Tool_field_tech_upsert_checklists_Input": {
         "properties": {
+          "checklist_id": {
+            "description": "Value for checklist_id."
+          },
           "completed_at": {
             "description": "Value for completed_at."
           },
@@ -11296,6 +11329,9 @@
           "started_at": {
             "description": "Value for started_at."
           },
+          "time_entry_id": {
+            "description": "Value for time_entry_id."
+          },
           "work_order_id": {
             "description": "Value for work_order_id."
           }
@@ -11351,6 +11387,9 @@
           },
           "summary": {
             "description": "Value for summary."
+          },
+          "work_order_id": {
+            "description": "Value for work_order_id."
           }
         },
         "required": [
