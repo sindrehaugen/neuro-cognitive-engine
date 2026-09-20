@@ -209,7 +209,7 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
             "corrected by Lane E Wave E-7. This is the supplier-side node "
             "(economy/graph.py's upsert_invoice_from_procurement, the "
             "PO -[posted_to]-> INVOICE boundary edge) -- distinct from CUSTOMER_INVOICE "
-            "(migration 104, Wave B-13), which answers the customer-facing half of "
+            "(migration 105, Wave B-13), which answers the customer-facing half of "
             "this exemption's original forward reference. Still unbuilt on its own "
             "terms; no wave currently scheduled."
         ),
@@ -355,7 +355,7 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     "CUSTOMER_INVOICE": ResourceExemption(
         owner_engine="economy",
         reason=(
-            "kg_nodes-primary satellite (economy_customer_invoices, migration 104) "
+            "kg_nodes-primary satellite (economy_customer_invoices, migration 105) "
             "exists and is real; same deferral as BILLING_RUN/BILLING_CANDIDATE -- "
             "REST/MCP surface registration is Lane E's mechanical follow-on. Written "
             "exclusively through do_propose_customer_invoice (customer_invoices.py) "

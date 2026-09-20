@@ -3,7 +3,7 @@ nce/vertical_modules/economy/customer_invoices.py
 ====================================================
 B-13 customer-invoice proposal generation (Lane G, dispatched by ML-orch --
 owner engine: economy). Follows directly on B-12 (billing_runs.py):
-migration 104 (economy_customer_invoices, CUSTOMER_INVOICE) turns one
+migration 105 (economy_customer_invoices, CUSTOMER_INVOICE) turns one
 BILLING_CANDIDATE into one invoice, priced and ready for a human to review.
 
 Scope: the 'proposal' transition only
@@ -64,7 +64,7 @@ Why UNIQUE(namespace_id, billing_candidate_id) exists at the DB level
 ``@governed``'s idempotency key only catches an exact-same-call replay
 (same key). A second, differently-keyed proposal call against the same
 candidate is a distinct business error this module should refuse, not
-silently double-invoice -- the UNIQUE constraint (migration 104) is the
+silently double-invoice -- the UNIQUE constraint (migration 105) is the
 defense-in-depth backstop, the same shape ``economy_postings``' sum=0
 trigger backstops ``do_emit_financial_event``'s own Python-level guard.
 """
@@ -109,7 +109,7 @@ class CustomerInvoiceAlreadyExistsError(ValueError):
     Distinct from @governed's own idempotency-key replay dedup: this fires
     for a second, differently-keyed proposal attempt against the same
     candidate, caught via the UNIQUE(namespace_id, billing_candidate_id)
-    constraint (migration 104) rather than assumed away.
+    constraint (migration 105) rather than assumed away.
     """
 
     def __init__(self, billing_candidate_id: Any) -> None:
@@ -194,7 +194,7 @@ async def do_propose_customer_invoice(
     billing_candidate_id:
         The BILLING_CANDIDATE (B-12) to invoice. Must exist in this
         namespace and must not already have an invoice (UNIQUE constraint,
-        migration 104 -- raises ``CustomerInvoiceAlreadyExistsError``).
+        migration 105 -- raises ``CustomerInvoiceAlreadyExistsError``).
     vat_rate_pct:
         Override for the default 25% outbound VAT rate. ``None`` (default)
         uses 25% and sets ``vat_rate_assumed=True`` on the row -- module

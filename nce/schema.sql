@@ -6501,7 +6501,7 @@ ON CONFLICT (namespace_id, node_label) DO NOTHING;
 
 -- ============================================================================
 -- C12 CUSTOMER_INVOICE resource (B-13)
--- Migration 104_customer_invoices.sql
+-- Migration 105_customer_invoices.sql
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS economy_customer_invoices (
