@@ -1233,6 +1233,37 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                         sec_updates = {
                             k: v for k, v in updates.items() if k in secondary_field_names
                         }
+                        # node_type is never in spec.writable_fields (it is
+                        # derived from the spec's own identity, never
+                        # client-supplied -- see handle_create's identical
+                        # injection above), so `updates` never carries it and
+                        # this loop would otherwise leave it silently stale on
+                        # every PATCH that touches another secondary field.
+                        #
+                        # Deliberately NOT unconditional the way handle_create's
+                        # and mcp.py's handle_upsert's injections are (`if
+                        # "node_type" in secondary_field_names: sec_data[...]
+                        # = ...` with no other gate): those two always write
+                        # the kg_nodes identity row first in the same call, so
+                        # an unconditional secondary write alongside it is
+                        # never the FIRST write for that node. A PATCH has no
+                        # such guarantee -- it may be the first call to ever
+                        # touch this node's secondary table. Injecting
+                        # node_type here unconditionally would make node_type
+                        # ALONE able to trigger upsert_secondary_tables, which
+                        # would create a fresh secondary row containing only
+                        # node_type and nothing else the caller asked to set --
+                        # a phantom write with no observable cause. Gating on
+                        # `sec_updates` already being non-empty keeps this
+                        # PATCH-only injection strictly additive: it only ever
+                        # rides along on a write that was going to happen
+                        # anyway -- which is also the exact scenario where
+                        # node_type must be present: an INSERT (no existing
+                        # secondary row yet) into a NOT NULL node_type column,
+                        # see test_rest_patch_first_touch_of_secondary_table_
+                        # still_satisfies_node_type_not_null.
+                        if sec_updates and "node_type" in secondary_field_names:
+                            sec_updates["node_type"] = spec.node_type
                         if sec_updates:
                             updated.update(
                                 await upsert_secondary_tables(
