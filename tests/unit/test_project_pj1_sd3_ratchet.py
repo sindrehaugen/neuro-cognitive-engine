@@ -89,6 +89,10 @@ def test_do_record_project_outcome_removed_from_internal_cores() -> None:
     with open(cores_path, encoding="utf-8") as f:
         data = json.load(f)
     allowlist = set(data.keys()) if isinstance(data, dict) else set(data)
+    # Discovery floor (inert-instrument audit, 2026-09-20): an empty or malformed
+    # internal-cores.json would satisfy the "not in allowlist" assertion below
+    # vacuously.
+    assert allowlist, "internal-cores.json parsed empty -- the loader broke, not the estate"
     assert "nce/vertical_modules/project/recall.py::do_record_project_outcome" not in allowlist
     assert len(allowlist) <= 69  # Shrink-only allowlist (68 after Wave RS-3)
 

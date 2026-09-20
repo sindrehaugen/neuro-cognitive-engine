@@ -177,6 +177,9 @@ def test_rs3_allowlist_shrink():
     with open(cores_path, encoding="utf-8") as f:
         data = json.load(f)
     allowlist = set(data.keys()) if isinstance(data, dict) else set(data)
+    # Discovery floor (inert-instrument audit, 2026-09-20): an empty or malformed
+    # internal-cores.json would satisfy both assertions below vacuously.
+    assert allowlist, "internal-cores.json parsed empty -- the loader broke, not the estate"
     assert (
         "nce/vertical_modules/resources/planner.py::do_record_allocation_outcome" not in allowlist
     )

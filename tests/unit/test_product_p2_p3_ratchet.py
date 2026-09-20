@@ -405,6 +405,12 @@ def test_cores_removed_from_internal_cores_allowlist() -> None:
 
     allowlist = set(data.keys()) if isinstance(data, dict) else set(data)
 
+    # Discovery floor (inert-instrument audit, 2026-09-20): an empty or malformed
+    # internal-cores.json would satisfy every "not in allowlist" assertion below
+    # vacuously -- proving the loader still finds real entries before trusting an
+    # absence.
+    assert allowlist, "internal-cores.json parsed empty -- the loader broke, not the estate"
+
     assert "nce/vertical_modules/product/ingestion.py::do_ingest_spec" not in allowlist
     assert "nce/vertical_modules/product/golden_record.py::do_golden_record" not in allowlist
     assert len(allowlist) <= 69  # Shrink-only allowlist (68 after Wave RS-3)

@@ -490,11 +490,18 @@ class TestToolSchemaAndAllowlist:
         assert "design_id" in target_tool.inputSchema["required"]
 
     def test_do_validate_design_pruned_from_internal_cores(self) -> None:
+        """Inert-instrument audit (2026-09-20): this read ``data.get("internal_cores", [])``,
+        but the file is a flat dict keyed by site id with no ``"internal_cores"`` key at all --
+        ``cores`` was always ``[]`` and ``target not in cores`` always trivially True. Verified
+        by re-inserting the exact target string into a copy of the real file and confirming
+        the old assertion still passed. Fixed to read the file's actual shape.
+        """
         allowlist_path = Path("nce/config_data/internal-cores.json")
         assert allowlist_path.exists()
         with open(allowlist_path, encoding="utf-8") as f:
             data = json.load(f)
 
-        cores = data.get("internal_cores", [])
+        cores = set(data.keys()) if isinstance(data, dict) else set(data)
+        assert cores, "internal-cores.json parsed empty -- the loader broke, not the estate"
         target = "nce/vertical_modules/system_design/validate.py::do_validate_design"
         assert target not in cores, f"{target} must be pruned from internal-cores.json"
