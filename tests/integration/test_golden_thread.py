@@ -2006,17 +2006,45 @@ class TestGoldenThreadSteps:
     @pytest.mark.xfail(
         strict=True,
         reason=(
-            "break-h9d: no billing-run capability exists anywhere in the tree -- "
-            "git ls-tree origin/main -- nce/migrations/ has no billing_run migration, and "
-            "no vertical_modules package implements one. Tracked charter-wide as Wave "
-            "B-12, not yet started as of this wave."
+            "break-h9d: no billing-run capability is reachable from any surface -- "
+            "nce/vertical_modules/economy/billing_runs.py implements "
+            "do_generate_billing_run (migrations 102/103 back it), but nothing "
+            "registers it in TOOL_REGISTRY or wires it into a REST route, so a "
+            "caller has no way to invoke it. K34 (2026-09-20): aligned to the "
+            "same pattern as steps 33/36 -- this step now ATTEMPTS the real "
+            "capability instead of raising unconditionally -- it asserts the live "
+            "TOOL_REGISTRY contains no tool matching 'billing_run' (a substring "
+            "predicate, not one guessed exact name -- a C12 spec would generate "
+            "'economy_upsert_billing_runs', a hand-written route could pick "
+            "anything else entirely; the predicate flips to XPASS under any of "
+            "them). Fails today with a genuine assertion, will XPASS (forcing "
+            "this marker's removal under strict=True) the moment a matching tool "
+            "exists -- previously this raised NotImplementedError unconditionally "
+            "and could never XPASS even after the capability shipped."
         ),
     )
     async def test_step_35_billing_run(self, scenario: GoldenThreadScenarioContext) -> None:
         """Step 35: billing run (not built -- see xfail reason)."""
         ctx = scenario
         await self._ensure_prereqs(ctx, 1)
-        raise NotImplementedError("No billing-run capability exists anywhere in the tree")
+        # A substring predicate over the live TOOL_REGISTRY, not a guessed exact
+        # key -- see the xfail reason for why an exact name is the wrong check.
+        matching = [name for name in TOOL_REGISTRY if "billing_run" in name]
+        assert matching, (
+            "BILLING_RUN has no tool registered under any name -- seam h9d still open"
+        )
+        result = json.loads(
+            await TOOL_REGISTRY[matching[0]].handler(
+                ctx.engine,
+                {
+                    "namespace_id": str(ctx.namespace_id),
+                    "period_start": "2026-09-01",
+                    "period_end": "2026-09-30",
+                    "agreement_ids": [ctx.agreement_id] if ctx.agreement_id else [],
+                },
+            )
+        )
+        assert result.get("status") == "ok", result
 
     @pytest.mark.xfail(
         strict=True,
