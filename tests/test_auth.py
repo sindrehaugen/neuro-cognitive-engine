@@ -1549,7 +1549,10 @@ class TestEnforceMcpToolAuth:
         with pytest.raises(ScopeError, match="missing admin_api_key"):
             enforce_mcp_tool_auth(
                 "vendors_calibrate_weights",
-                {"mcp_api_key": "mcp-secret", "namespace_id": "11111111-2222-4333-8444-555555555555"},
+                {
+                    "mcp_api_key": "mcp-secret",
+                    "namespace_id": "11111111-2222-4333-8444-555555555555",
+                },
             )
 
     def test_vendors_calibrate_weights_accepted_with_admin_key(self, monkeypatch) -> None:
