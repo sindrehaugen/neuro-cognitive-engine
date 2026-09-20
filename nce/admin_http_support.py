@@ -125,9 +125,9 @@ def ownership_denied_response(exc: OwnershipError) -> JSONResponse:
     detail path.
 
     Promoted here from ``nce/admin_handlers/system_design.py``'s own private
-    copy (Wave 2026-09-20) when ``nce/resource_surface`` needed the exact
-    same response for its generated kg_nodes-primary write path -- one
-    shared implementation, not a second copy of an identical-looking rule.
+    copy on 2026-09-20, when ``nce/resource_surface`` needed the exact same
+    response for its generated kg_nodes-primary write path -- one shared
+    implementation, not a second copy of an identical-looking rule.
     """
     return JSONResponse(
         {
