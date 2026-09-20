@@ -10,6 +10,19 @@ Verifies:
   3. Precedence resolution: secret_env() vs DB credentials tested in both orders (db_first vs env_first).
   4. Redaction & zero secret leakage: Exceptions/logs never record plaintext secrets.
   5. Per-tenant namespace isolation: Cross-tenant queries return nothing.
+
+     NOTE: ``test_tenant_namespace_isolation`` below exercises this against
+     ``FakeDb``, an in-memory Python double that keys rows by
+     ``(namespace_id, provider)`` directly from bind arguments rather than
+     parsing or executing the SQL text it is handed, so it verifies the
+     mock's own behavior rather than the query's. Production code is
+     correct: ``signing_credentials`` has RLS ENABLED and FORCED, with a
+     ``tenant_isolation_policy`` carrying both ``USING`` and ``WITH CHECK``
+     (``nce/schema.sql`` ~5119-5126). See
+     ``test_signing_credentials_cross_tenant_isolation_live_pg`` below for
+     the live-Postgres check that exercises the real SQL filter and the RLS
+     policy together; it needs ``NCE_INTEGRATION_PG_DSN``/``PG_DSN``/
+     ``DATABASE_URL`` and skips otherwise.
   6. WORM audit event: append_event() called with actor, provider, and non-secret fingerprint.
   7. Admin API REST handlers & Starlette routing contracts.
 """
@@ -18,14 +31,19 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import urlparse, urlunparse
 from uuid import UUID, uuid4
 
+import asyncpg  # type: ignore[import-untyped]
 import pytest
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from nce.config import cfg
+from nce.db_utils import scoped_pg_session
 from nce.signing import (
     MasterKey,
     SigningKeyDecryptionError,
@@ -606,3 +624,122 @@ async def test_admin_handlers_save_and_status(fake_db: FakeDb, master_key: Maste
     assert del_resp.status_code == 200
     del_body = json.loads(del_resp.body.decode("utf-8"))
     assert del_body["status"] == "ok"
+
+
+# ============================================================================
+# 9. LIVE POSTGRES: TENANT ISOLATION (application filter + FORCED RLS backstop)
+# ============================================================================
+#
+# ``test_tenant_namespace_isolation`` above proves nothing about the real SQL
+# path: its ``FakeDb`` double keys rows by ``(namespace_id, provider)`` taken
+# straight from the bind arguments, without ever parsing or executing the
+# query text, so it verifies the mock's own behavior rather than the
+# query's (see the module docstring above).
+#
+# This test exercises the real thing instead: it seeds a signing credential
+# for namespace A over a connection scoped (via ``scoped_pg_session``, which
+# sets the ``nce.namespace_id`` GUC the RLS policy reads) to the restricted
+# ``nce_app`` Postgres role -- the same role ``tenant_isolation_policy`` on
+# ``signing_credentials`` applies to (``nce/schema.sql`` ~5119-5126, FORCE
+# ROW LEVEL SECURITY) -- then attempts to read it back through
+# ``get_signing_credential_status()`` scoped to namespace B. Because it runs
+# as ``nce_app`` against a live table with FORCED RLS, this proves the
+# application-level WHERE clause AND the database-level policy together:
+# either one alone dropping the filter would still leave the other in place,
+# and only a live Postgres connection can show that.
+#
+# Requires ``NCE_INTEGRATION_PG_DSN`` / ``PG_DSN`` / ``DATABASE_URL`` (see
+# ``tests/conftest.py::_integration_pool_dsn``); skips via the ``pg_pool``
+# fixture when no live Postgres is reachable, exactly like every other
+# ``@pytest.mark.integration`` test in this suite (e.g.
+# ``tests/test_agreements_review.py::test_review_extraction_rls_scoping``,
+# ``tests/test_vendors_contractor_rls.py``).
+#
+# Verification status: written to the repo's established integration-test
+# convention and read back for correctness, but this worktree has no live
+# Postgres reachable, so it has NOT been run here. UNTESTED-locally --
+# needs a live DB to confirm this new test itself is LIVE (i.e. that it
+# would actually fail under a real regression). Do not treat its mere
+# presence as a LIVE verdict until someone runs it against a real Postgres
+# instance.
+
+
+def _app_dsn() -> str:
+    """DSN for the restricted ``nce_app`` role -- the role RLS policies apply to.
+
+    Mirrors ``tests/test_agreements_review.py::_app_dsn`` /
+    ``tests/test_vendors_contractor_rls.py::_app_dsn``: same construction,
+    duplicated per-file per this repo's existing convention rather than
+    factored into a shared helper.
+    """
+    primary = (
+        os.environ.get("NCE_INTEGRATION_PG_DSN")
+        or os.environ.get("PG_DSN")
+        or os.environ.get("DATABASE_URL")
+        or cfg.PG_DSN
+    )
+    parsed = urlparse(primary)
+    netloc = parsed.hostname or ""
+    if parsed.port:
+        netloc = f"{netloc}:{parsed.port}"
+    app_pass = cfg.NCE_APP_PASSWORD or "nce_app_secret"
+    netloc = f"nce_app:{app_pass}@{netloc}"
+    return urlunparse(parsed._replace(netloc=netloc))
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_signing_credentials_cross_tenant_isolation_live_pg(
+    pg_pool: asyncpg.Pool, make_namespace: Any
+) -> None:
+    """Cross-tenant read of a signing credential must return nothing, against a
+    live Postgres connection running as the restricted ``nce_app`` role --
+    proving the application WHERE clause AND the FORCED RLS policy together,
+    not a Python mock's own bookkeeping.
+    """
+    ns_a = await make_namespace()
+    ns_b = await make_namespace()
+
+    app_dsn = _app_dsn()
+    app_pool = await asyncpg.create_pool(app_dsn, min_size=1, max_size=2)
+    try:
+        # Seed a credential for namespace A, scoped as nce_app to namespace A.
+        async with scoped_pg_session(app_pool, ns_a) as conn:
+            save_result = await save_signing_credential(
+                conn=conn,
+                namespace_id=ns_a,
+                provider="criipto",
+                client_id="tenant-a-client-integration",
+                client_secret="tenant-a-secret-integration-test-value",
+                actor="integration-test",
+            )
+        assert save_result["status"] == "ok"
+
+        # Namespace A can read its own credential back.
+        async with scoped_pg_session(app_pool, ns_a) as conn:
+            status_a = await get_signing_credential_status(
+                conn=conn, namespace_id=ns_a, provider="criipto"
+            )
+        assert status_a["configured"] is True
+        assert status_a["client_id"] == "tenant-a-client-integration"
+
+        # Namespace B, reading with its OWN namespace_id, must see nothing --
+        # neither the application filter nor (if that filter were ever
+        # dropped) the FORCED RLS policy will hand back namespace A's row.
+        async with scoped_pg_session(app_pool, ns_b) as conn:
+            status_b = await get_signing_credential_status(
+                conn=conn, namespace_id=ns_b, provider="criipto"
+            )
+        assert status_b["configured"] is False
+
+        # Direct raw SELECT as nce_app, scoped to namespace B: confirms the
+        # RLS policy itself denies the row, independent of anything
+        # get_signing_credential_status()'s Python code does.
+        async with scoped_pg_session(app_pool, ns_b) as conn:
+            raw_row = await conn.fetchrow(
+                "SELECT * FROM signing_credentials WHERE provider = $1",
+                "criipto",
+            )
+        assert raw_row is None
+    finally:
+        await app_pool.close()
