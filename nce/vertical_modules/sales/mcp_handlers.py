@@ -21,6 +21,9 @@ Public entry-points:
   ``handle_sales_open_dealroom`` -- Wave B-4: MCP tool side of the DealRoom
   materialise-quote operation; the REST route and ``do_open_dealroom``
   itself (Wave S-3) already existed, delegates unchanged.
+  ``handle_sales_clone_quote`` -- charter Wave B-5: clones a QUOTE and its
+  BOM_LINE content into a new draft quote; delegates to
+  ``sales.quote_clone.do_clone_quote``.
 
 Registered in ``nce/tool_registry.py`` via:
   ``_h(sales_mcp_handlers, "handle_sales_ping")``
@@ -29,6 +32,7 @@ Registered in ``nce/tool_registry.py`` via:
   ``_h(sales_mcp_handlers, "handle_sales_import_quote_lines")``
   ``_h(sales_mcp_handlers, "handle_sales_get_quote_lines")``
   ``_h(sales_mcp_handlers, "handle_sales_open_dealroom")``
+  ``_h(sales_mcp_handlers, "handle_sales_clone_quote")``
 """
 
 from __future__ import annotations
@@ -51,6 +55,7 @@ from nce.vertical_modules.sales.flip import (
     do_read_sales_divergence,
 )
 from nce.vertical_modules.sales.lines import do_add_quote_line, do_get_quote_lines
+from nce.vertical_modules.sales.quote_clone import do_clone_quote
 from nce.vertical_modules.sales.signing import do_request_signature
 from nce.vertical_modules.sales.write_routing import (
     do_create_customer,
@@ -224,6 +229,50 @@ async def handle_sales_import_quote_lines(engine: NCEEngine, arguments: dict[str
             quote_id=arguments.get("quote_id"),
             lines=arguments.get("lines"),
         )
+
+    return json.dumps(result)
+
+
+@mcp_handler
+async def handle_sales_clone_quote(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: sales_clone_quote — clone a QUOTE and its BOM_LINE content
+    into a new draft quote.
+
+    Charter §13 Wave B-5. Delegates every decision to
+    ``nce.vertical_modules.sales.quote_clone.do_clone_quote`` -- this handler
+    is argument extraction and nothing else, matching this module's own
+    convention.
+
+    The new quote is always ``status="draft"``, ``version=1``, with its own
+    ``quote_number`` (source number + ``-COPY`` suffix). Cloned lines are
+    written through the sales-owned ``content:create:external`` transition --
+    see ``quote_clone.py``'s module docstring for the full provenance
+    reasoning (not the source line's own original flow, and not a new
+    ``CreateFlow`` value).
+
+    Arguments
+    ---------
+    namespace_id (str): Required. Caller namespace UUID.
+    quote_id (str): Required. The SOURCE QUOTE identifier to clone.
+
+    Returns
+    -------
+    JSON body: ``{"quote_id", "quote_number", "source_quote_id",
+    "lines_cloned"}`` -- ``quote_id``/``quote_number`` describe the NEW quote.
+
+    The ``@mcp_handler`` decorator maps a missing/invalid-argument
+    ``ValueError`` and a missing-quote ``QuoteNotFoundError`` (a ``KeyError``
+    subclass) to the SAME ``McpError(-32602)`` at the call-site -- confirmed
+    against ``mcp_errors.py``'s own documented mapping table, not assumed.
+    """
+    ns = require_namespace_id(arguments)
+    ns_uuid = UUID(ns)
+
+    result = await do_clone_quote(
+        engine,
+        ns_uuid,
+        quote_id=arguments.get("quote_id"),
+    )
 
     return json.dumps(result)
 
