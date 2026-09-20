@@ -3870,8 +3870,10 @@ TOOLS = [
     Tool(
         name="vendors_calibrate_weights",
         description=(
-            "Recalibrate vendor scorecard weights from observed outcomes. Mutating: "
-            "updates the stored weighting used by future scorecards."
+            "Recalibrate vendor scorecard weights from observed outcomes. admin_only "
+            "(Q-41, ruled 2026-09-20): the result is one shared, un-namespaced weighting "
+            "model used by every namespace's scorecards, so this is an operator action, "
+            "not a tenant-callable one."
         ),
         inputSchema={
             "type": "object",

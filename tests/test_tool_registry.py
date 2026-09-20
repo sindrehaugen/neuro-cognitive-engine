@@ -890,6 +890,11 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "support_link_ticket",
     }
 )
+# Q-41 (ruled 2026-09-20): vendors_calibrate_weights became admin_only. It is
+# NOT hand-listed above -- it is a tool_pins.py FLAG_PINS entry, and K8
+# already made tool_pins.py the single source of truth for engine-tool flags
+# to avoid asserting the same flag twice (see the module comment above).
+# Flip tests/tool_pins.py's pin for this tool, not this frozenset.
 
 
 def test_admin_only_tools_exact_match():
@@ -908,8 +913,8 @@ def test_admin_only_tools_exact_match():
 
 def test_admin_only_tools_count():
     assert (
-        len(ADMIN_ONLY_TOOLS) == 104
-    )  # 90 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3) + 1 BRREG registry-feed enrichment (Lane F Wave F-8) + 1 geodata OSM import (Lane F Wave F-11) + 1 geodata N50 land-cover import (Lane F Wave F-12) + 1 geodata place-name import (Lane F Wave F-13) + 1 sites address-registry enrichment (Lane F Wave F-9) + 1 support_log_ticket_action (Lane D Wave D-5) + 4 assets person & sub-components (Lane D Wave D-2) + 1 support_link_ticket (Lane D Wave D-6)
+        len(ADMIN_ONLY_TOOLS) == 105
+    )  # 90 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3) + 1 BRREG registry-feed enrichment (Lane F Wave F-8) + 1 geodata OSM import (Lane F Wave F-11) + 1 geodata N50 land-cover import (Lane F Wave F-12) + 1 geodata place-name import (Lane F Wave F-13) + 1 sites address-registry enrichment (Lane F Wave F-9) + 1 support_log_ticket_action (Lane D Wave D-5) + 4 assets person & sub-components (Lane D Wave D-2) + 1 support_link_ticket (Lane D Wave D-6) + 1 vendors_calibrate_weights (Q-41, ruled 2026-09-20)
 
 
 # ---------------------------------------------------------------------------

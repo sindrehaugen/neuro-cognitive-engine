@@ -1254,7 +1254,14 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
     "vendors_calibrate_weights": ToolSpec(
         _h(vendors_mcp_handlers, "handle_vendors_calibrate_weights"),
         cacheable=True,
-        admin_only=False,
+        # Q-41 (ruled 2026-09-20, option 3): the function reads namespace-scoped
+        # ledger data but writes one shared, un-namespaced weights file every
+        # namespace's scorecard reads from -- so a tenant caller was silently
+        # tuning every other tenant's vendor rankings. Ruling: not per-tenant
+        # (that's a migration for a function with no named consumer), just
+        # remove the tenant-triggered write by making calibration an operator
+        # action. The shared model itself stays global by design.
+        admin_only=True,
         mutation=False,
     ),
     "vendors_upsert_vendor": ToolSpec(

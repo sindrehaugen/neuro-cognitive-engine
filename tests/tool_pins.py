@@ -429,7 +429,8 @@ FLAG_PINS: dict[str, dict[str, dict[str, bool]]] = {
         "vendors_compute_performance": {"cacheable": True, "admin_only": False, "mutation": False},
         "vendors_recall_similar_jobs": {"cacheable": True, "admin_only": False, "mutation": False},
         "vendors_reliability_radar": {"cacheable": True, "admin_only": False, "mutation": False},
-        "vendors_calibrate_weights": {"cacheable": True, "admin_only": False, "mutation": False},
+        # Q-41 (ruled 2026-09-20): calibration became an operator action.
+        "vendors_calibrate_weights": {"cacheable": True, "admin_only": True, "mutation": False},
         "vendors_upsert_vendor": {"cacheable": False, "admin_only": True, "mutation": True},
         "vendors_upsert_contractor": {"cacheable": False, "admin_only": True, "mutation": True},
         "vendors_get_contractor": {"cacheable": True, "admin_only": False, "mutation": False},

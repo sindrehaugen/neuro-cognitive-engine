@@ -142,7 +142,13 @@ async def handle_vendors_reliability_radar(engine: NCEEngine, arguments: dict[st
 async def handle_vendors_calibrate_weights(engine: NCEEngine, arguments: dict[str, Any]) -> str:
     """MCP tool: vendors_calibrate_weights — recalibrate vendor scorecard weights dynamically.
 
-    Requires ``namespace_id`` in *arguments*.
+    Requires ``namespace_id`` in *arguments* (it names whose delivery/defect
+    history feeds the calibration) but the resulting weights are a single
+    global model shared by every namespace's scorecard computation -- that is
+    the ruled design (Q-41), not an accident. ``admin_only=True`` on this
+    tool's ``ToolSpec`` is what makes that safe: only an operator can trigger
+    a recalibration, so no tenant can silently tune every other tenant's
+    vendor rankings by calling this tool.
     """
     require_namespace_id(arguments)
     result = await do_calibrate_weights(engine, arguments)
