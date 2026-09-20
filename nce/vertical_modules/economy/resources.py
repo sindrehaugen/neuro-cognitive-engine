@@ -39,6 +39,42 @@ from nce.resource_surface.spec import ResourceSpec
 from nce.vertical_modules.economy._guard import require_economy_enabled
 
 # 1. POSTING
+#
+# excluded_verbs, found by this lane and independently confirmed by H's
+# estate-wide GRANT sweep the same night -- three separate mechanisms, cited
+# together rather than left for the next reader to rediscover:
+#
+# 1. "upsert" (bundles create+patch+bulk) -- reason (2): schema.sql:1899-1914
+#    REVOKEs ALL then GRANTs only SELECT, INSERT to nce_app on
+#    economy_postings ("Corrections must instead go through compensating
+#    reversal postings... enforced structurally", schema.sql:1904-1911), so
+#    patch (UPDATE) is permanently, mechanically forbidden -- the reason (2)
+#    test is satisfied by that exact GRANT line, not an intention. Per
+#    SIGNED_BASELINE_SPEC's own precedent (this field's docstring), "upsert"
+#    can only be excluded as a whole even though only patch is grant-forbidden;
+#    that is acceptable here for the same reason it was there -- create
+#    (INSERT) alone has no named caller either: persist_financial_event
+#    (graph.py:521) is the sole writer and nothing in the current tree calls
+#    it, so excluding create alongside patch does not remove a working path.
+# 2. The generic bulk-create route (rest.py's handle_bulk) issues one
+#    single-row INSERT per item, not one multi-row statement, but
+#    economy_postings' balance trigger (trg_economy_postings_assert_balanced,
+#    schema.sql, AFTER INSERT ... FOR EACH STATEMENT) checks that an entire
+#    statement's postings sum to zero. A real double-entry posting (a debit
+#    line + a credit line for one event) submitted via generic bulk-create
+#    would have the trigger fire once per line, each checking that one line's
+#    amount alone sums to zero -- which it structurally cannot. This is
+#    subsumed by excluding "upsert" above (upsert's REST mapping covers
+#    create+patch+bulk together), not a separate exclusion, but recorded here
+#    because it is an independent reason "upsert" must stay excluded even if
+#    the grant were ever loosened.
+# 3. "archive" -- fits none of the three documented reasons, stated plainly
+#    rather than forced into one: soft_delete_field=None here, and
+#    rest.py's handle_archive falls back to a literal "is_archived" column
+#    (rest.py:524/1174/1270) that economy_postings does not have. Archiving
+#    a leg of a balanced posting would also retroactively break the balance
+#    invariant the trigger enforces, so there is no reasonable column to add
+#    either. An operation with no target, not a permission question.
 POSTING_SPEC = ResourceSpec(
     engine="economy",
     entity="postings",
@@ -49,19 +85,12 @@ POSTING_SPEC = ResourceSpec(
     soft_delete_field=None,
     filterable_fields=("event_id", "event_type", "account", "period_id"),
     searchable_fields=("event_id", "account"),
-    writable_fields=(
-        "event_id",
-        "event_type",
-        "line_no",
-        "account",
-        "amount",
-        "period_id",
-        "economy_source_id",
-        "change_origin",
-    ),
+    writable_fields=(),
+    excluded_verbs=frozenset({"upsert", "archive"}),
     description=(
-        "Balanced general-ledger posting lines behind the POSTING node; append-only, "
-        "no version/soft-delete field."
+        "Read-only view of balanced general-ledger posting lines behind the POSTING "
+        "node; append-only WORM ledger (schema.sql:1899-1914 revokes UPDATE/DELETE), "
+        "corrections go through compensating reversal postings, never PATCH or archive."
     ),
     enabled_guard=require_economy_enabled,
 )
