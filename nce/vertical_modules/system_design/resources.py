@@ -97,49 +97,20 @@ NO enabled_guard: system_design has no ``_guard.py`` anywhere in
 nce/vertical_modules/system_design/ (confirmed) -- no per-namespace opt-in
 check exists for this engine, so #296's engine-guard ratchet does not apply.
 
-tier_allowlists EXPLICITLY EMPTY, NOT OMITTED -- an omitted entry is fail-OPEN
-------------------------------------------------------------------------------
-admin_app.py (the ONLY place ``build_all_resource_routes()`` is mounted --
-confirmed, single call site) is documented HMAC+mTLS, employee/agent-only
-("External principals (contractor, external-customer) are never
-authenticated here", admin_app.py:55-57). ``ADMIN_PRINCIPAL_KIND`` is
-declared "employee" but never actually assigned to ``request.state``
-anywhere in admin_app.py, and admin_app never imports nce.jwt_auth (the only
-module that ever constructs a non-"employee" ``principal_kind`` from a
-verified claim). That is the ``request.state`` path, and it is dead here --
-but it is only HALF of ``resolve_principal_tier()`` (resource_surface/
-rest.py), checked SECOND. The FIRST check is a raw, caller-supplied header
-(``X-NCE-Principal-Tier`` / ``X-NCE-Principal-Kind``) with no verification
-and no dependency on ``request.state`` at all: any caller already
-authenticated to admin_app can set it to "external-customer" and get that
-tier back. Missed this on the first pass of this wave -- caught on review,
-verified directly against ``resolve_principal_tier()``'s source before
-accepting the correction.
-
-That live header path matters because of how ``redact_item`` (resource_surface/
-rest.py) treats an ABSENT tier: ``spec.tier_allowlists.get(principal_tier)``
-returns ``None`` when the key is missing, and ``if tier_allowed is not None
-and k not in tier_allowed: continue`` short-circuits to False on ``None`` --
-meaning NO field is filtered. Omitting ``tier_allowlists`` (the dataclass
-default, an empty dict) is therefore fail-OPEN: a caller who sends that
-header gets every field on these four specs -- ``salience``, ``revision``,
-every capability column -- not the caution "leave it out until someone
-decides" was meant to express. An explicit empty TUPLE closes this:
-``.get("external-customer")`` then returns ``()``, ``tier_allowed is not
-None`` is True, and ``k not in ()`` is True for every field, so everything
-is filtered -- fail-CLOSED. Declared explicitly empty below for exactly this
-reason: nobody has decided what an external caller should see for these node
-types (the existing hand-written system_design surface has no tier-redaction
-precedent to derive an answer from -- admin_handlers/system_design.py, 2756
-lines, grepped for tier/role/redact/external-customer/contractor: zero
-matches), and an explicit empty allowlist says "undecided, therefore
-nothing" where an absent one silently said "unfiltered" and reads
-identically in a diff.
-
-This same gap -- any ResourceSpec that omits tier_allowlists is fail-open on
-the live header path -- almost certainly applies to some of the other ~30
-already-declared specs across the estate. Not audited here; out of this
-wave's scope, filed separately.
+tier_allowlists EXPLICITLY EMPTY, NOT OMITTED
+-----------------------------------------------
+Historical note, corrected: this section originally described a live
+fail-open path (a caller-supplied ``X-NCE-Principal-Tier``/``X-NCE-Principal-
+Kind`` header, read before ``request.state`` and trusted, plus an absent
+``tier_allowlists`` key silently meaning "unfiltered" in ``redact_item``).
+Both halves of that path are fixed as of the principal-tier-hardening wave:
+``resolve_principal_tier()`` (resource_surface/rest.py) now reads only
+``request.state.principal_kind`` and never a header, and ``redact_item``
+treats an absent tier key as an explicit empty allowlist (deny), the same
+as declaring it empty here. The explicit ``()`` entries below are therefore
+now redundant with the dataclass default rather than a fix for it -- kept as
+documentation that this is a considered "undecided, therefore nothing" for
+these four node types, not an oversight.
 
 REST ROUTE COLLISIONS: none. Grepped admin_app.py for
 /api/system-design/{devices,ports,racks,cables} -- no hand-written route at

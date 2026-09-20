@@ -13,6 +13,7 @@ import uuid
 import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
+from tests._verified_tier_middleware import VERIFIED_TIER_TEST_MIDDLEWARE
 
 from nce import admin_state
 from nce.resource_surface import (
@@ -40,7 +41,7 @@ def _reset_env():
 
 
 def _client_for_spec(spec) -> TestClient:
-    app = Starlette(routes=make_resource_routes(spec))
+    app = Starlette(routes=make_resource_routes(spec), middleware=VERIFIED_TIER_TEST_MIDDLEWARE)
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -74,6 +75,7 @@ def test_agreements_specs_registered_and_configured():
 
 def test_agreement_resource_crud_lifecycle():
     client = _client_for_spec(AGREEMENT_SPEC)
+    emp = {"X-NCE-Principal-Tier": "employee"}
 
     # 1. Create
     resp = client.post(
@@ -90,6 +92,7 @@ def test_agreement_resource_crud_lifecycle():
             "auto_renewal": True,
             "notice_period_days": 60,
         },
+        headers=emp,
     )
     assert resp.status_code == 201, resp.text
     item = resp.json()
@@ -101,12 +104,12 @@ def test_agreement_resource_crud_lifecycle():
     assert item["annual_value"] == 240000.00
 
     # 2. Get single item
-    resp = client.get(f"/api/agreements/agreements/{agr_id}?namespace_id={_NS_A}")
+    resp = client.get(f"/api/agreements/agreements/{agr_id}?namespace_id={_NS_A}", headers=emp)
     assert resp.status_code == 200
     assert resp.json()["id"] == agr_id
 
     # 3. List
-    resp = client.get(f"/api/agreements/agreements?namespace_id={_NS_A}&status=active")
+    resp = client.get(f"/api/agreements/agreements?namespace_id={_NS_A}&status=active", headers=emp)
     assert resp.status_code == 200
     listing = resp.json()
     assert len(listing["items"]) == 1
@@ -123,6 +126,7 @@ def test_agreement_resource_crud_lifecycle():
             "annual_value": 260000.00,
             "notice_period_days": 90,
         },
+        headers=emp,
     )
     assert resp.status_code == 200
     patched = resp.json()
@@ -138,27 +142,34 @@ def test_agreement_resource_crud_lifecycle():
             "expected_version": v1,
             "annual_value": 300000.00,
         },
+        headers=emp,
     )
     assert resp.status_code == 409
 
     # 6. Archive (soft delete)
-    resp = client.post(f"/api/agreements/agreements/{agr_id}/archive?namespace_id={_NS_A}")
+    resp = client.post(
+        f"/api/agreements/agreements/{agr_id}/archive?namespace_id={_NS_A}", headers=emp
+    )
     assert resp.status_code == 200
 
     # List default excludes archived
-    resp = client.get(f"/api/agreements/agreements?namespace_id={_NS_A}")
+    resp = client.get(f"/api/agreements/agreements?namespace_id={_NS_A}", headers=emp)
     assert resp.status_code == 200
     assert len(resp.json()["items"]) == 0
 
     # List with include_archived=true shows it
-    resp = client.get(f"/api/agreements/agreements?namespace_id={_NS_A}&include_archived=true")
+    resp = client.get(
+        f"/api/agreements/agreements?namespace_id={_NS_A}&include_archived=true", headers=emp
+    )
     assert resp.status_code == 200
     assert len(resp.json()["items"]) == 1
 
     # 7. Restore
-    resp = client.post(f"/api/agreements/agreements/{agr_id}/restore?namespace_id={_NS_A}")
+    resp = client.post(
+        f"/api/agreements/agreements/{agr_id}/restore?namespace_id={_NS_A}", headers=emp
+    )
     assert resp.status_code == 200
-    resp = client.get(f"/api/agreements/agreements?namespace_id={_NS_A}")
+    resp = client.get(f"/api/agreements/agreements?namespace_id={_NS_A}", headers=emp)
     assert len(resp.json()["items"]) == 1
 
 
@@ -204,6 +215,7 @@ def test_agreement_party_crud_and_signature_status():
 
 def test_agreement_template_crud():
     client = _client_for_spec(AGREEMENT_TEMPLATE_SPEC)
+    emp = {"X-NCE-Principal-Tier": "employee"}
 
     resp = client.post(
         "/api/agreements/templates",
@@ -216,13 +228,14 @@ def test_agreement_template_crud():
             "sla_profile": {"response_hours": 8, "resolution_hours": 24},
             "is_active": True,
         },
+        headers=emp,
     )
     assert resp.status_code == 201, resp.text
     tmpl = resp.json()
     tmpl_id = tmpl["id"]
     assert tmpl["name"] == "Standard SLA Bronze"
 
-    resp = client.get(f"/api/agreements/templates/{tmpl_id}?namespace_id={_NS_A}")
+    resp = client.get(f"/api/agreements/templates/{tmpl_id}?namespace_id={_NS_A}", headers=emp)
     assert resp.status_code == 200
     assert resp.json()["sla_profile"] == {"response_hours": 8, "resolution_hours": 24}
 
@@ -234,6 +247,7 @@ def test_agreement_template_crud():
 
 def test_agreements_multi_tenant_isolation():
     client = _client_for_spec(AGREEMENT_SPEC)
+    emp = {"X-NCE-Principal-Tier": "employee"}
 
     # Create agreement in Namespace A
     resp_a = client.post(
@@ -244,6 +258,7 @@ def test_agreements_multi_tenant_isolation():
             "title": "Confidential Contract A",
             "annual_value": 500000.00,
         },
+        headers=emp,
     )
     assert resp_a.status_code == 201
     agr_a_id = resp_a.json()["id"]
@@ -257,20 +272,21 @@ def test_agreements_multi_tenant_isolation():
             "title": "Confidential Contract B",
             "annual_value": 750000.00,
         },
+        headers=emp,
     )
     assert resp_b.status_code == 201
     agr_b_id = resp_b.json()["id"]
 
     # Namespace A cannot see Namespace B's item
-    resp = client.get(f"/api/agreements/agreements/{agr_b_id}?namespace_id={_NS_A}")
+    resp = client.get(f"/api/agreements/agreements/{agr_b_id}?namespace_id={_NS_A}", headers=emp)
     assert resp.status_code == 404
 
     # Namespace B cannot see Namespace A's item
-    resp = client.get(f"/api/agreements/agreements/{agr_a_id}?namespace_id={_NS_B}")
+    resp = client.get(f"/api/agreements/agreements/{agr_a_id}?namespace_id={_NS_B}", headers=emp)
     assert resp.status_code == 404
 
     # Listing is isolated
-    resp = client.get(f"/api/agreements/agreements?namespace_id={_NS_A}")
+    resp = client.get(f"/api/agreements/agreements?namespace_id={_NS_A}", headers=emp)
     items_a = resp.json()["items"]
     assert len(items_a) == 1
     assert items_a[0]["id"] == agr_a_id

@@ -208,41 +208,48 @@ async def upsert_secondary_tables(
 
 
 def redact_item(item: dict[str, Any], spec: ResourceSpec, principal_tier: str) -> dict[str, Any]:
-    """Apply C3/C8 principal tier redaction to an item dict."""
+    """Apply C3/C8 principal tier redaction to an item dict.
+
+    A tier absent from ``spec.tier_allowlists`` is treated as an explicit
+    empty allowlist (deny), never as unfiltered. An undeclared tier means
+    nobody has decided what it may see -- the safe reading of that silence
+    is "nothing", not "everything".
+    """
     # Employee tier has full visibility
     if principal_tier == "employee":
         return dict(item)
 
-    tier_allowed = spec.tier_allowlists.get(principal_tier)
+    tier_allowed = spec.tier_allowlists.get(principal_tier, ())
     out: dict[str, Any] = {}
     for k, v in item.items():
         # Strip sensitive keywords from non-employee tiers
         lower_k = k.lower()
         if any(sub in lower_k for sub in _SENSITIVE_FIELD_SUBSTRINGS):
             continue
-        if tier_allowed is not None and k not in tier_allowed:
+        if k not in tier_allowed:
             continue
         out[k] = v
     return out
 
 
 def resolve_principal_tier(request: Request) -> str:
-    """Derive principal tier from request headers or auth state."""
-    tier = (
-        (
-            request.headers.get("X-NCE-Principal-Tier")
-            or request.headers.get("X-NCE-Principal-Kind")
-            or ""
-        )
-        .strip()
-        .lower()
-    )
-    if tier in ("employee", "contractor", "external-customer"):
-        return tier
-    state_kind = getattr(request.state, "principal_kind", None)
+    """Derive principal tier from verified auth state only.
+
+    Caller-supplied headers are never trusted for this. The verified value
+    lives on request.state.namespace_ctx.principal_kind: this generated
+    surface only ever runs behind admin_app.py's HMACAuthMiddleware, whose
+    own _resolve_namespace_context sets request.state.namespace_ctx on
+    every authenticated request (nce/auth.py) -- there is no bare
+    request.state.principal_kind attribute anywhere in this codebase, so
+    checking for one would always miss the real, populated context.
+    A principal with no verified tier gets the least-privileged fallback
+    rather than the most-privileged one.
+    """
+    ns_ctx = getattr(request.state, "namespace_ctx", None)
+    state_kind = getattr(ns_ctx, "principal_kind", None)
     if state_kind in ("employee", "contractor", "external-customer"):
         return state_kind
-    return "employee"
+    return "unverified"
 
 
 def extract_namespace_id(

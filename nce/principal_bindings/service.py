@@ -227,7 +227,13 @@ async def delete_principal_binding(
 def extract_principal_identity(
     request: Request,
 ) -> tuple[UUID | None, str | None, str]:
-    """Extract namespace_id, principal_id, and tier from request context, headers, or query params."""
+    """Extract namespace_id, principal_id, and tier from request context, headers, or query params.
+
+    Tier is read exclusively from request.state's verified principal_kind
+    (or its "employee" default). It is never taken from a header or query
+    param: those are attacker-controlled and would let a caller overwrite
+    an already-resolved verified tier with one of their own choosing.
+    """
     ns_ctx = getattr(request.state, "namespace_ctx", None)
     ns_id: UUID | None = None
     principal_id: str | None = None
@@ -254,19 +260,6 @@ def extract_principal_identity(
             or request.headers.get("X-Principal-ID")
             or request.query_params.get("principal_id")
         )
-
-    header_tier = (
-        request.headers.get("X-NCE-Principal-Tier")
-        or request.headers.get("X-Principal-Tier")
-        or request.query_params.get("tier")
-    )
-    if header_tier and header_tier.strip().lower() in (
-        "employee",
-        "customer",
-        "contractor",
-        "external-customer",
-    ):
-        tier = header_tier.strip().lower()
 
     return ns_id, principal_id, tier
 

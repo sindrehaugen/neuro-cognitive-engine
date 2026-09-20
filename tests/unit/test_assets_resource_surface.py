@@ -29,6 +29,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
+from tests._verified_tier_middleware import VERIFIED_TIER_TEST_MIDDLEWARE
 
 from nce import admin_state
 from nce.admin_handlers import assets as assets_handlers
@@ -117,8 +118,10 @@ def test_asset_resource_spec_registered():
 
 def test_asset_c12_crud_in_memory():
     routes = make_resource_routes(ASSET_SPEC)
-    app = Starlette(routes=routes)
-    client = TestClient(app, raise_server_exceptions=False)
+    app = Starlette(routes=routes, middleware=VERIFIED_TIER_TEST_MIDDLEWARE)
+    client = TestClient(
+        app, raise_server_exceptions=False, headers={"X-NCE-Principal-Tier": "employee"}
+    )
 
     # 1. Create asset in Tenant A
     create_payload = {
@@ -454,8 +457,10 @@ async def test_asset_link_product_verb():
 
 def test_asset_shell_exclusion_flag():
     routes = make_resource_routes(ASSET_SPEC)
-    app = Starlette(routes=routes)
-    client = TestClient(app, raise_server_exceptions=False)
+    app = Starlette(routes=routes, middleware=VERIFIED_TIER_TEST_MIDDLEWARE)
+    client = TestClient(
+        app, raise_server_exceptions=False, headers={"X-NCE-Principal-Tier": "employee"}
+    )
 
     # Create real asset
     resp_real = client.post(
