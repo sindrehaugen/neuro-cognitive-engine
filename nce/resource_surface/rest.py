@@ -320,7 +320,15 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
     # global spec got `ns_uuid = None` and `_enforce_enabled_guard` never ran
     # -- the generated surface stayed strictly more permissive than the
     # hand-written one for exactly that one input shape.
-    requires_namespace = is_tenant or spec.enabled_guard is not None
+    # is_graph is included for the same reason as is_tenant: kg_nodes rows
+    # are namespace-scoped (UNIQUE(label, namespace_id), schema.sql), so a
+    # graph-primary spec is exactly as namespace-bound as a tenant one.
+    # Before Wave 3 (2026-09-20) this never mattered -- storage_kind=
+    # "kg_nodes" was an unconditional 501, so no graph-primary spec ever
+    # reached a real query. Once it does, omitting namespace_id must not
+    # silently bind `WHERE namespace_id = NULL` and return zero rows -- it
+    # must 422, same as every other namespace-scoped spec.
+    requires_namespace = is_tenant or is_graph or spec.enabled_guard is not None
 
     async def handle_list(request: Request) -> Response:
         ns_uuid, err_resp = extract_namespace_id(request, required=requires_namespace)
@@ -361,7 +369,7 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         next_cursor: str | None = None
 
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
-            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+            if spec.storage_kind == "mongo":
                 exc = NotImplementedError(
                     f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
                 )
@@ -370,7 +378,67 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                     exc,
                     status_code=501,
                 )
-            if spec.table_name:
+            if is_graph:
+                # kg_nodes-primary list: primary (identity) rows only, same
+                # documented limitation as a postgres-primary multi-table
+                # spec's own list -- see SecondaryTable's docstring. Filters
+                # and search apply to kg_nodes' own real columns (label,
+                # change_origin, timestamps), not the secondary tables.
+                try:
+                    session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                    async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                        where_clauses = ["entity_type = $1", "namespace_id = $2"]
+                        params: list[Any] = [spec.node_type, ns_uuid]
+                        idx = 3
+
+                        for f_col, f_val in active_filters.items():
+                            where_clauses.append(f"{f_col} = ${idx}")
+                            params.append(f_val)
+                            idx += 1
+
+                        if q and spec.searchable_fields:
+                            q_clauses = [
+                                f"{s_col}::text ILIKE ${idx}" for s_col in spec.searchable_fields
+                            ]
+                            where_clauses.append(f"({' OR '.join(q_clauses)})")
+                            params.append(f"%{q}%")
+                            idx += 1
+
+                        if cursor:
+                            try:
+                                dec = base64.b64decode(cursor).decode("utf-8")
+                                where_clauses.append(f"label < ${idx}")
+                                params.append(dec)
+                                idx += 1
+                            except Exception:
+                                pass
+
+                        params.append(limit + 1)
+                        limit_idx = idx
+                        where_sql = f"WHERE {' AND '.join(where_clauses)}"
+                        query = f"""
+                            SELECT id, label, entity_type, namespace_id, change_origin,
+                                   created_at, updated_at
+                            FROM kg_nodes
+                            {where_sql}
+                            ORDER BY label DESC
+                            LIMIT ${limit_idx}
+                        """
+                        rows = await conn.fetch(query, *params)
+                        has_more = len(rows) > limit
+                        page_rows = rows[:limit]
+                        for r in page_rows:
+                            items.append(row_to_dict(r))
+                        if has_more and page_rows:
+                            last_label = str(page_rows[-1]["label"])
+                            next_cursor = base64.b64encode(last_label.encode("utf-8")).decode(
+                                "utf-8"
+                            )
+                except Exception as exc:
+                    return admin_error_response(
+                        f"Failed to query {spec.entity}: {exc}", exc, status_code=500
+                    )
+            elif spec.table_name:
                 try:
                     session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                     async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
@@ -495,7 +563,7 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
 
         item: dict[str, Any] | None = None
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
-            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+            if spec.storage_kind == "mongo":
                 exc = NotImplementedError(
                     f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
                 )
@@ -504,7 +572,39 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                     exc,
                     status_code=501,
                 )
-            if spec.table_name:
+            if is_graph:
+                try:
+                    session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                    async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                        query = """
+                            SELECT id, label, entity_type, namespace_id, change_origin,
+                                   created_at, updated_at
+                            FROM kg_nodes
+                            WHERE entity_type = $1 AND namespace_id = $2
+                              AND (label = $3 OR id::text = $3)
+                            LIMIT 1
+                        """
+                        row = await conn.fetchrow(query, spec.node_type, ns_uuid, item_id)
+                        if row:
+                            item = row_to_dict(row)
+                            node_label = item["label"]
+                            # Multi-table spec: merge each secondary table's
+                            # row -- a missing secondary row is not an error,
+                            # the kg_nodes identity row is still a real
+                            # resource on its own.
+                            for sec in spec.secondary_tables:
+                                sec_row = await conn.fetchrow(
+                                    f"SELECT * FROM {sec.table_name} WHERE namespace_id = $1 AND {sec.join_field} = $2",
+                                    ns_uuid,
+                                    node_label,
+                                )
+                                if sec_row:
+                                    item.update(row_to_dict(sec_row))
+                except Exception as exc:
+                    return admin_error_response(
+                        f"Database fetch error: {exc}", exc, status_code=500
+                    )
+            elif spec.table_name:
                 try:
                     session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                     async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
@@ -603,7 +703,7 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             data[spec.soft_delete_field] = False
 
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
-            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+            if spec.storage_kind == "mongo":
                 exc = NotImplementedError(
                     f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
                 )
@@ -612,7 +712,51 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                     exc,
                     status_code=501,
                 )
-            if spec.table_name:
+            if is_graph:
+                try:
+                    node_label = item_id
+                    session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                    async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                        # kg_nodes identity row first -- every system_design
+                        # satellite table (device_capabilities, node_state,
+                        # geometry) carries a real FK to
+                        # kg_nodes(label, namespace_id), so this must land
+                        # before any secondary-table write, not after.
+                        cols = ["label", "entity_type", "namespace_id"]
+                        vals: list[Any] = [node_label, spec.node_type, ns_uuid]
+                        if "change_origin" in data:
+                            cols.append("change_origin")
+                            vals.append(data["change_origin"])
+                        placeholders = [f"${i + 1}" for i in range(len(cols))]
+                        set_items = [f"{c} = EXCLUDED.{c}" for c in cols if c != "label"]
+                        query = f"""
+                            INSERT INTO kg_nodes ({", ".join(cols)})
+                            VALUES ({", ".join(placeholders)})
+                            ON CONFLICT (label, namespace_id) DO UPDATE
+                                SET {", ".join(set_items)}, updated_at = NOW()
+                            RETURNING id, label, entity_type, namespace_id, change_origin,
+                                      created_at, updated_at
+                        """
+                        row = await conn.fetchrow(query, *vals)
+                        created = row_to_dict(row)
+
+                        secondary_field_names = {
+                            f for sec in spec.secondary_tables for f in sec.fields
+                        }
+                        sec_data = {k: v for k, v in data.items() if k in secondary_field_names}
+                        if "node_type" in secondary_field_names:
+                            sec_data["node_type"] = spec.node_type
+                        if sec_data:
+                            created.update(
+                                await upsert_secondary_tables(
+                                    conn, spec, node_label, ns_uuid, is_global, sec_data
+                                )
+                            )
+                except Exception as exc:
+                    return admin_error_response(
+                        f"Failed to create {spec.entity}: {exc}", exc, status_code=500
+                    )
+            elif spec.table_name:
                 try:
                     secondary_field_names = {f for sec in spec.secondary_tables for f in sec.fields}
                     primary_data = (
@@ -748,7 +892,7 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         # Fetch existing record
         existing: dict[str, Any] | None = None
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
-            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+            if spec.storage_kind == "mongo":
                 exc = NotImplementedError(
                     f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
                 )
@@ -757,7 +901,33 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                     exc,
                     status_code=501,
                 )
-            if spec.table_name:
+            if is_graph:
+                try:
+                    session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                    async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                        query = """
+                            SELECT id, label, entity_type, namespace_id, change_origin,
+                                   created_at, updated_at
+                            FROM kg_nodes
+                            WHERE entity_type = $1 AND namespace_id = $2
+                              AND (label = $3 OR id::text = $3)
+                            LIMIT 1
+                        """
+                        row = await conn.fetchrow(query, spec.node_type, ns_uuid, item_id)
+                        if row:
+                            existing = row_to_dict(row)
+                            node_label = existing["label"]
+                            for sec in spec.secondary_tables:
+                                sec_row = await conn.fetchrow(
+                                    f"SELECT * FROM {sec.table_name} WHERE namespace_id = $1 AND {sec.join_field} = $2",
+                                    ns_uuid,
+                                    node_label,
+                                )
+                                if sec_row:
+                                    existing.update(row_to_dict(sec_row))
+                except Exception as exc:
+                    return admin_error_response(f"Database error: {exc}", exc, status_code=500)
+            elif spec.table_name:
                 try:
                     session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                     async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
@@ -816,51 +986,89 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             # below, for the actual SQL parameter list.
             updates[spec.version_field] = now.isoformat()
 
-        if admin_state.engine and getattr(admin_state.engine, "pg_pool", None) and spec.table_name:
+        if (
+            admin_state.engine
+            and getattr(admin_state.engine, "pg_pool", None)
+            and (spec.table_name or is_graph)
+        ):
             try:
                 secondary_field_names = {f for sec in spec.secondary_tables for f in sec.fields}
-                primary_updates = (
-                    {k: v for k, v in updates.items() if k not in secondary_field_names}
-                    if secondary_field_names
-                    else updates
-                )
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
-                    vals = [
-                        now if k == spec.version_field else v for k, v in primary_updates.items()
-                    ]
-                    if is_global:
-                        set_items = [
-                            f"{k} = ${i + 2}" for i, k in enumerate(primary_updates.keys())
-                        ]
-                        query = f"""
-                            UPDATE {spec.table_name}
-                            SET {', '.join(set_items)}
-                            WHERE {spec.id_field} = $1
-                            RETURNING *
-                        """
-                        row = await conn.fetchrow(query, item_id, *vals)
-                    else:
-                        set_items = [
-                            f"{k} = ${i + 3}" for i, k in enumerate(primary_updates.keys())
-                        ]
-                        query = f"""
-                            UPDATE {spec.table_name}
-                            SET {', '.join(set_items)}
-                            WHERE namespace_id = $1 AND {spec.id_field} = $2
-                            RETURNING *
-                        """
-                        row = await conn.fetchrow(query, ns_uuid, item_id, *vals)
-                    updated = row_to_dict(row) if row else {**existing, **primary_updates}
+                    if is_graph:
+                        node_label = existing["label"]
+                        # Only `change_origin` is a real writable column on
+                        # kg_nodes itself; everything else routes to a
+                        # secondary table.
+                        primary_updates = {k: v for k, v in updates.items() if k == "change_origin"}
+                        if primary_updates:
+                            row = await conn.fetchrow(
+                                """
+                                UPDATE kg_nodes
+                                SET change_origin = $3, updated_at = NOW()
+                                WHERE namespace_id = $1 AND label = $2
+                                RETURNING id, label, entity_type, namespace_id,
+                                          change_origin, created_at, updated_at
+                                """,
+                                ns_uuid,
+                                node_label,
+                                primary_updates["change_origin"],
+                            )
+                            updated = row_to_dict(row) if row else {**existing, **primary_updates}
+                        else:
+                            updated = dict(existing)
 
-                    # Multi-table spec: shared with handle_create and
-                    # mcp.py's handle_upsert -- see upsert_secondary_tables'
-                    # own docstring.
-                    updated.update(
-                        await upsert_secondary_tables(
-                            conn, spec, item_id, ns_uuid, is_global, updates
+                        sec_updates = {
+                            k: v for k, v in updates.items() if k in secondary_field_names
+                        }
+                        if sec_updates:
+                            updated.update(
+                                await upsert_secondary_tables(
+                                    conn, spec, node_label, ns_uuid, is_global, sec_updates
+                                )
+                            )
+                    else:
+                        primary_updates = (
+                            {k: v for k, v in updates.items() if k not in secondary_field_names}
+                            if secondary_field_names
+                            else updates
                         )
-                    )
+                        vals = [
+                            now if k == spec.version_field else v
+                            for k, v in primary_updates.items()
+                        ]
+                        if is_global:
+                            set_items = [
+                                f"{k} = ${i + 2}" for i, k in enumerate(primary_updates.keys())
+                            ]
+                            query = f"""
+                                UPDATE {spec.table_name}
+                                SET {', '.join(set_items)}
+                                WHERE {spec.id_field} = $1
+                                RETURNING *
+                            """
+                            row = await conn.fetchrow(query, item_id, *vals)
+                        else:
+                            set_items = [
+                                f"{k} = ${i + 3}" for i, k in enumerate(primary_updates.keys())
+                            ]
+                            query = f"""
+                                UPDATE {spec.table_name}
+                                SET {', '.join(set_items)}
+                                WHERE namespace_id = $1 AND {spec.id_field} = $2
+                                RETURNING *
+                            """
+                            row = await conn.fetchrow(query, ns_uuid, item_id, *vals)
+                        updated = row_to_dict(row) if row else {**existing, **primary_updates}
+
+                        # Multi-table spec: shared with handle_create and
+                        # mcp.py's handle_upsert -- see upsert_secondary_tables'
+                        # own docstring.
+                        updated.update(
+                            await upsert_secondary_tables(
+                                conn, spec, item_id, ns_uuid, is_global, updates
+                            )
+                        )
             except Exception as exc:
                 return admin_error_response(
                     f"Failed to update {spec.entity}: {exc}", exc, status_code=500
@@ -910,12 +1118,27 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
 
         field_name = spec.soft_delete_field or "is_archived"
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
-            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+            if spec.storage_kind == "mongo":
                 exc = NotImplementedError(
                     f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
                 )
                 return admin_error_response(
                     f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                    exc,
+                    status_code=501,
+                )
+            if is_graph:
+                # kg_nodes and every system_design satellite table
+                # (device_capabilities, node_state, geometry) have no
+                # generic soft-delete/is_archived column -- inventing one
+                # (e.g. overloading node_state.status) is a system_design
+                # content decision, not a mechanical resource_surface gap.
+                exc = NotImplementedError(
+                    f"{spec.entity} has no soft-delete field on its kg_nodes-primary storage"
+                )
+                return admin_error_response(
+                    f"Archive is not supported for {spec.entity}: kg_nodes-primary specs have "
+                    f"no generic soft-delete column",
                     exc,
                     status_code=501,
                 )
@@ -991,12 +1214,22 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
 
         field_name = spec.soft_delete_field or "is_archived"
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
-            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+            if spec.storage_kind == "mongo":
                 exc = NotImplementedError(
                     f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
                 )
                 return admin_error_response(
                     f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                    exc,
+                    status_code=501,
+                )
+            if is_graph:
+                exc = NotImplementedError(
+                    f"{spec.entity} has no soft-delete field on its kg_nodes-primary storage"
+                )
+                return admin_error_response(
+                    f"Restore is not supported for {spec.entity}: kg_nodes-primary specs have "
+                    f"no generic soft-delete column",
                     exc,
                     status_code=501,
                 )
@@ -1058,15 +1291,6 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             )
 
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
-            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
-                exc = NotImplementedError(
-                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
-                )
-                return admin_error_response(
-                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
-                    exc,
-                    status_code=501,
-                )
             try:
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
@@ -1091,15 +1315,6 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             )
 
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
-            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
-                exc = NotImplementedError(
-                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
-                )
-                return admin_error_response(
-                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
-                    exc,
-                    status_code=501,
-                )
             try:
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
@@ -1137,15 +1352,6 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
 
         author = body.get("author", "operator")
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
-            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
-                exc = NotImplementedError(
-                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
-                )
-                return admin_error_response(
-                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
-                    exc,
-                    status_code=501,
-                )
             try:
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
@@ -1183,15 +1389,6 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             )
 
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
-            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
-                exc = NotImplementedError(
-                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
-                )
-                return admin_error_response(
-                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
-                    exc,
-                    status_code=501,
-                )
             try:
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
@@ -1224,15 +1421,6 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             )
 
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
-            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
-                exc = NotImplementedError(
-                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
-                )
-                return admin_error_response(
-                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
-                    exc,
-                    status_code=501,
-                )
             try:
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
@@ -1263,15 +1451,6 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             )
 
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
-            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
-                exc = NotImplementedError(
-                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
-                )
-                return admin_error_response(
-                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
-                    exc,
-                    status_code=501,
-                )
             try:
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
@@ -1310,15 +1489,6 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
 
         session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
-            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
-                exc = NotImplementedError(
-                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
-                )
-                return admin_error_response(
-                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
-                    exc,
-                    status_code=501,
-                )
             try:
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
                     docs = await list_entity_documents(
@@ -1388,15 +1558,6 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
 
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
-            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
-                exc = NotImplementedError(
-                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
-                )
-                return admin_error_response(
-                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
-                    exc,
-                    status_code=501,
-                )
             try:
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
                     if doc_id_raw:
@@ -1549,15 +1710,6 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
 
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
-            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
-                exc = NotImplementedError(
-                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
-                )
-                return admin_error_response(
-                    f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
-                    exc,
-                    status_code=501,
-                )
             try:
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
                     unlinked = await unlink_document(
@@ -1616,12 +1768,35 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             )
 
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
-            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+            if spec.storage_kind == "mongo":
                 exc = NotImplementedError(
                     f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}"
                 )
                 return admin_error_response(
                     f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                    exc,
+                    status_code=501,
+                )
+            if is_graph:
+                # Deliberately refused, not a dead guard: the per-item loop
+                # below gates its real write on `spec.table_name` truthy and
+                # falls back to the in-memory mock bucket otherwise. Without
+                # this refusal a kg_nodes-primary spec would silently write
+                # bulk items to the mock store in production instead of
+                # kg_nodes -- a wrong-backend bug, not a redundant check.
+                # Bulk-creating a kg_nodes identity row PLUS N secondary-table
+                # rows per item also raises a real partial-failure question
+                # (item 3 of 10 fails: roll back all, or report partial?)
+                # with no existing precedent in this generator to follow --
+                # a decision for whoever builds this, not one to make here
+                # under this wave's time pressure.
+                exc = NotImplementedError(
+                    f"Bulk create is not supported yet for kg_nodes-primary spec {spec.entity}"
+                )
+                return admin_error_response(
+                    f"Bulk create is not supported for {spec.entity}: kg_nodes-primary specs "
+                    f"need a defined partial-failure semantics for identity-plus-satellite "
+                    f"writes that this generator does not have yet",
                     exc,
                     status_code=501,
                 )

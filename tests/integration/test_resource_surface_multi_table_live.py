@@ -43,20 +43,20 @@ WHY THIS TEST DOES NOT REGISTER DEVICE ITSELF
 DEVICE's PRIMARY identity is graph-only (a ``kg_nodes`` row); the satellite
 attribute tables (``system_design_device_capabilities``,
 ``system_design_node_state``, ``system_design_geometry``) hold its extended
-fields, keyed by ``node_label`` matching the graph node's own label.
-``resource_surface`` has NO generated read/write path for the
-``storage_kind="kg_nodes"``/graph tenant_scope at all today -- every
-handler in mcp.py/rest.py returns a 501 "backend storage is not supported
-yet" for it, unconditionally, unrelated to this wave. That is a separate,
-larger, pre-existing gap this wave does NOT close: multi-table support alone
-does not let DEVICE be wired as a real ResourceSpec, because its primary
-table_name would have to be None (graph-scoped), and secondary_tables
-explicitly requires a real primary table_name (see spec.py's own
-validation -- raises ValueError otherwise, with this exact reasoning in the
-message). Wiring DEVICE/PORT/RACK/CABLE for real is future work, gated on
-that separate gap; this wave ships and proves the multi-table MECHANISM
-itself, using the same real tables DEVICE will eventually need, without
-registering DEVICE as a production ResourceSpec.
+fields, keyed by ``node_label`` matching the graph node's own label. At the
+time this test was written, ``resource_surface`` had NO generated read/write
+path for the ``storage_kind="kg_nodes"``/graph tenant_scope at all -- every
+handler in mcp.py/rest.py returned a 501 unconditionally, and
+``secondary_tables`` on a ``table_name=None`` spec was rejected at
+construction for exactly that reason. **That gap is closed by Wave 3
+(2026-09-20)** -- see
+``tests/integration/test_resource_surface_kg_nodes_primary_live.py`` for the
+live proof against real DEVICE/PORT/RACK/CABLE tables. This file still does
+not register DEVICE as a production ``ResourceSpec``: that is a
+system_design content decision (``filterable_fields``, ``tier_allowlists``,
+``governed_verbs``) deliberately left to whoever owns that engine, same as
+this wave left multi-table itself to be proven via an unregistered probe
+rather than a real registration.
 
 This test's synthetic spec uses ``system_design_device_capabilities`` as the
 primary table (``id_field="node_label"``, since that table's own natural key
@@ -433,24 +433,27 @@ async def test_positive_control_field_collision_is_rejected_at_construction() ->
 
 
 @pytest.mark.asyncio
-async def test_positive_control_secondary_table_without_primary_is_rejected() -> None:
-    """Proves a graph-only spec (table_name=None) cannot silently accept
-    secondary_tables -- DEVICE/PORT/RACK/CABLE cannot be wired this way
-    until resource_surface's graph storage_kind path exists; this spec
-    exists to make that limitation loud at construction time, not
-    discoverable only by reading this test file's own docstring.
+async def test_positive_control_kg_nodes_primary_with_secondary_tables_is_accepted() -> None:
+    """Wave 3 (2026-09-20) relaxed this: a graph-primary spec (table_name=None)
+    with secondary_tables now constructs successfully -- kg_nodes IS the
+    primary row (identity only), and secondary tables route the real fields.
+    This test used to assert the OPPOSITE (construction raised ValueError)
+    back when resource_surface had no generated read/write path for the
+    graph storage_kind at all; that gap is what Wave 3 closes. See
+    tests/integration/test_resource_surface_kg_nodes_primary_live.py for the
+    live read/write proof against real DEVICE/PORT/RACK/CABLE tables.
     """
-    with pytest.raises(ValueError, match="no primary table_name"):
-        ResourceSpec(
-            engine="system_design",
-            entity="probe-graph-only",
-            node_type="DEVICE",
-            table_name=None,
-            secondary_tables=(
-                SecondaryTable(
-                    table_name="system_design_node_state",
-                    join_field="node_label",
-                    fields=("status",),
-                ),
+    spec = ResourceSpec(
+        engine="system_design",
+        entity="probe-graph-only",
+        node_type="DEVICE",
+        table_name=None,
+        secondary_tables=(
+            SecondaryTable(
+                table_name="system_design_node_state",
+                join_field="node_label",
+                fields=("status",),
             ),
-        )
+        ),
+    )
+    assert spec.tenant_scope == "graph"

@@ -44,6 +44,24 @@ class SecondaryTable:
                     field name must not appear in more than one
                     ``SecondaryTable`` (validated) -- routing would be
                     ambiguous.
+
+    WARNING -- do not target a table with application-level write validation.
+    ``upsert_secondary_tables()`` (``nce/resource_surface/rest.py``) is a
+    plain SELECT-then-branch: it enforces nothing beyond the target table's
+    own DB-level CHECK/FK constraints. A table whose real invariants live in
+    Python -- not the DDL -- must not be a ``SecondaryTable`` target without
+    an explicit pre-write validation hook (not yet built; this dataclass has
+    none). The known instance: ``system_design_geometry``. Its writer,
+    ``nce/vertical_modules/system_design/geometry.py``'s ``validate_geometry()``,
+    enforces half-U ``rack_position`` granularity, an exact-precision
+    float-max bound, and ``rack_face``/``cable_type`` vocabularies that no
+    CHECK constraint captures, and that function's own docstring states the
+    intent outright: validation lives in exactly one place "so a caller that
+    reaches this function directly ... cannot route around it. One place,
+    not two." Routing ``rack_position``/``cable_length_m``/etc. through this
+    class would be a second, unvalidated path into that same table -- add a
+    validation hook to this dataclass first, wire it, and only then target
+    ``system_design_geometry`` here.
     """
 
     table_name: str
@@ -117,7 +135,7 @@ class ResourceSpec:
                             true for specs whose engine has no ``_guard.py`` at all.
         secondary_tables:   Tuple of ``SecondaryTable`` -- additional tables this
                             spec also reads and writes, each joined to the
-                            primary ``table_name`` row by identity value (see
+                            primary row by identity value (see
                             ``SecondaryTable``). Empty by default: most specs
                             are still 1:1 with a single table, and this changes
                             nothing for them. Generated ``get``/``upsert``
@@ -127,6 +145,18 @@ class ResourceSpec:
                             oversight -- listing with N joins and archiving N
                             tables independently are real features a future
                             wave can add if a real spec needs them).
+                            When ``table_name`` is ``None`` (a graph-primary
+                            spec, e.g. DEVICE/RACK/CABLE), the primary row
+                            lives in ``kg_nodes`` instead of a relational
+                            table -- an identity row only (label, entity_type,
+                            change_origin, timestamps; kg_nodes has no
+                            attribute column of its own). Every secondary
+                            table then joins on the node's ``label``, and the
+                            generated write path always creates/updates the
+                            ``kg_nodes`` row first, since every system_design
+                            satellite table (device_capabilities, node_state,
+                            geometry) carries a real FK to
+                            ``kg_nodes(label, namespace_id)``.
     """
 
     engine: str
@@ -176,16 +206,15 @@ class ResourceSpec:
         object.__setattr__(self, "tenant_scope", scope)
 
         if self.secondary_tables:
-            if self.table_name is None:
-                raise ValueError(
-                    f"Resource {self.engine}:{self.entity} declares secondary_tables "
-                    f"but no primary table_name -- a multi-table spec needs a primary "
-                    f"table to join the secondary ones against. (This also means "
-                    f"secondary_tables cannot yet help a graph-only/kg_nodes-backed "
-                    f"spec like DEVICE: resource_surface has no generated read/write "
-                    f"path for the graph storage_kind at all today -- a separate, "
-                    f"pre-existing gap this feature does not close by itself.)"
-                )
+            # table_name is None here always means scope == "graph" (see the
+            # elif chain above): kg_nodes IS the primary row (identity only --
+            # label, entity_type, change_origin, timestamps; kg_nodes itself
+            # has no attribute column). Every real field this spec declares
+            # routes to a secondary table instead, joined on the node's label.
+            # This is deliberately thin, not a limitation to work around: it
+            # matches what DEVICE/RACK/CABLE's satellite tables' own
+            # COMMENT ON TABLE already says ("kg_nodes has no payload column;
+            # typed/queryable ... fields live here").
             seen_fields: dict[str, str] = {}
             for sec in self.secondary_tables:
                 for f in sec.fields:
