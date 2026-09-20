@@ -58,6 +58,14 @@ ASSET_SPEC = ResourceSpec(
             "updated_at",
         ),
     },
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column (rest.py:524/1174/1270) that "assets"
+    # does not have -- no alternate soft-delete-shaped column either
+    # (lifecycle_state is a free-form non-blank TEXT field, no enumerated
+    # CHECK, not an archived/inactive state) and no hand-written archive
+    # path anywhere in this engine. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description="Physical installed equipment register with lifecycle state, serials, and room locations.",
 )
 register_resource(ASSET_SPEC)

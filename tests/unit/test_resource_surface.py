@@ -201,7 +201,20 @@ def test_rest_patch_and_concurrency():
 
 
 def test_rest_archive_and_restore():
-    client = _client_for_spec(STOCK_LOCATION_SPEC)
+    # Archive wave (2026-09-20): STOCK_LOCATION_SPEC now excludes "archive"
+    # (stock_locations has no is_archived column and no real soft-delete
+    # need -- see ARCHIVE_COLUMN_SWEEP.md). This test exists to exercise the
+    # generic archive/restore MECHANISM against the in-memory mock store
+    # (admin_state.engine is None throughout this file, so no real SQL is
+    # ever touched here regardless of spec) -- not to claim inventory needs
+    # archiving. A synthetic variant with the exclusion cleared is the
+    # correct fixture now, not a claim about the real spec's behavior.
+    import dataclasses
+
+    synthetic_spec = dataclasses.replace(STOCK_LOCATION_SPEC, excluded_verbs=frozenset())
+    unregister_resource(synthetic_spec.engine, synthetic_spec.entity)
+    register_resource(synthetic_spec)
+    client = _client_for_spec(synthetic_spec)
     res = client.post(
         "/api/inventory/stock-locations",
         json={"namespace_id": _NS_A, "name": "Temp Bin", "kind": "bin"},
@@ -673,12 +686,49 @@ async def test_mcp_tool_twins_execution():
     assert "error" in conflict_res
     assert conflict_res["status_code"] == 409
 
-    # 5. Archive tool soft-archives the item
-    archive_fn = TOOL_REGISTRY["inventory_archive_stock_locations"].handler
-    archive_args = {"namespace_id": _NS_A, "id": item_id, "reason": "Testing archive"}
-    archive_raw = await archive_fn(mock_engine, archive_args)
-    archive_res = json.loads(archive_raw)
-    assert archive_res["archived"] is True
+
+@pytest.mark.asyncio
+async def test_mcp_archive_tool_soft_archives_the_item():
+    """Archive wave (2026-09-20): split out of test_mcp_tool_twins_execution.
+    STOCK_LOCATION_SPEC now excludes "archive" (no is_archived column, no
+    real soft-delete need -- see ARCHIVE_COLUMN_SWEEP.md), so
+    inventory_archive_stock_locations no longer exists in TOOL_REGISTRY.
+    This test exercises the generic archive MCP-tool MECHANISM against the
+    in-memory mock store via a synthetic variant of the same spec with the
+    exclusion cleared -- it is not a claim that inventory needs archiving.
+    """
+    import dataclasses
+
+    from nce.vertical_modules.inventory.resources import STOCK_LOCATION_SPEC
+
+    mock_engine = MagicMock()
+    mock_engine.pg_pool = None  # Use in-memory store for unit execution
+
+    synthetic_spec = dataclasses.replace(STOCK_LOCATION_SPEC, excluded_verbs=frozenset())
+    unregister_resource(synthetic_spec.engine, synthetic_spec.entity)
+    register_resource(synthetic_spec)
+    try:
+        tool_specs = build_mcp_tool_specs(synthetic_spec)
+        upsert_fn = tool_specs[f"{synthetic_spec.engine}_upsert_{synthetic_spec.mcp_slug}"].handler
+        archive_fn = tool_specs[
+            f"{synthetic_spec.engine}_archive_{synthetic_spec.mcp_slug}"
+        ].handler
+
+        upsert_raw = await upsert_fn(
+            mock_engine,
+            {"namespace_id": _NS_A, "name": "MCP Warehouse", "kind": "warehouse"},
+        )
+        item_id = json.loads(upsert_raw)["id"]
+
+        archive_raw = await archive_fn(
+            mock_engine,
+            {"namespace_id": _NS_A, "id": item_id, "reason": "Testing archive"},
+        )
+        archive_res = json.loads(archive_raw)
+        assert archive_res["archived"] is True
+    finally:
+        unregister_resource(synthetic_spec.engine, synthetic_spec.entity)
+        register_resource(STOCK_LOCATION_SPEC)
 
 
 # ===========================================================================

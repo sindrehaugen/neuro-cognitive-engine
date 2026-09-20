@@ -104,19 +104,26 @@ def test_ticket_not_in_exempt_resources():
 
 
 def test_c12_generated_support_tools_in_registry():
-    """C12 generated tools for tickets and ticket-actions must exist in TOOL_REGISTRY."""
+    """C12 generated tools for tickets and ticket-actions must exist in TOOL_REGISTRY.
+
+    archive removed 2026-09-20 (archive wave): neither service_tickets nor
+    support_ticket_actions has an is_archived column; see
+    ARCHIVE_COLUMN_SWEEP.md.
+    """
     expected_generated_tools = {
         "support_list_tickets",
         "support_get_tickets",
         "support_upsert_tickets",
-        "support_archive_tickets",
         "support_list_ticket_actions",
         "support_get_ticket_actions",
         "support_upsert_ticket_actions",
-        "support_archive_ticket_actions",
     }
     for tool_name in expected_generated_tools:
         assert tool_name in TOOL_REGISTRY, f"C12 tool {tool_name} missing from TOOL_REGISTRY"
+    for removed_tool in ("support_archive_tickets", "support_archive_ticket_actions"):
+        assert removed_tool not in TOOL_REGISTRY, (
+            f"{removed_tool} should not exist -- archive is excluded for this spec"
+        )
 
 
 # ===========================================================================

@@ -82,6 +82,15 @@ TICKET_SPEC = ResourceSpec(
             "resolved_at",
         ),
     },
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column that service_tickets does not have.
+    # status's own CHECK enum (open/in_progress/waiting_customer/
+    # waiting_parts/resolved/closed/cancelled) already covers ticket
+    # lifecycle termination ("closed"/"cancelled") and is already writable
+    # via generic PATCH -- not a hidden soft-delete gap, and no
+    # hand-written archive path either. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description="Service tickets: status/priority lifecycle, SLA profile, and AI diagnosis payload.",
     enabled_guard=require_support_enabled,
 )
@@ -107,6 +116,11 @@ SLA_SPEC = ResourceSpec(
         "breach_type",
         "paused_intervals",
     ),
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column that sla_clocks does not have; no
+    # alternate soft-delete column or hand-written archive path either. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description="Per-ticket SLA countdown and breach state, keyed 1:1 on ticket_id.",
     enabled_guard=require_support_enabled,
 )
@@ -125,6 +139,11 @@ SUPPORT_HEALTH_SCORE_SPEC = ResourceSpec(
     filterable_fields=("churn_risk",),
     searchable_fields=("customer_id",),
     writable_fields=("score", "trend", "churn_risk", "drivers", "last_touchpoint_at"),
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column that customer_health does not have; no
+    # alternate soft-delete column or hand-written archive path either. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description="Rolling per-customer health score, churn risk, and contributing drivers.",
     enabled_guard=require_support_enabled,
 )
@@ -175,6 +194,17 @@ TICKET_ACTION_SPEC = ResourceSpec(
             "performed_at",
         ),
     },
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column that support_ticket_actions does not
+    # have; no alternate soft-delete column either. NOT investigated here:
+    # this spec's own description says "append-only" (ADR 0042), which is
+    # the same shape POSTING_SPEC's WORM-ledger finding started from --
+    # whether "upsert" should also be excluded (and whether the DB grant
+    # actually enforces append-only the way economy_postings' does) is a
+    # separate question from the archive-column defect this wave fixes, out
+    # of scope here, flagged for whoever looks at this spec next. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description="Append-only ticket action log tracking interventions (tiltak) and outcomes (utfall) per ticket per ADR 0042.",
     enabled_guard=require_support_enabled,
 )

@@ -75,6 +75,14 @@ BUSINESS_INSIGHTS_KPI_SNAPSHOT_SPEC = ResourceSpec(
         "business_insights_source_id",
         "raw",
     ),
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column (rest.py:524/1174/1270) that
+    # business_insights_kpi_snapshots does not have -- no alternate
+    # soft-delete-shaped column and no hand-written archive path in this
+    # engine. Point-in-time snapshots (this spec's own description) are not
+    # a thing that gets "archived" in place anyway. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description=(
         "C12 cached point-in-time KPI roll-ups and trend history; no updated_at column, "
         "so no version_field -- rows are point-in-time snapshots, not mutated in place."

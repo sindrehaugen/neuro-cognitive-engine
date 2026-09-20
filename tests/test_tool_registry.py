@@ -341,15 +341,13 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "inventory_release_kit",
         # Wave IN-3 -- Inventory restock PO creation (Actor mutation)
         "inventory_create_restock_po",
-        # Wave A-1 -- C12 Inventory resource surface mutations (upsert + archive)
+        # Wave A-1 -- C12 Inventory resource surface mutations: archive removed
+        # 2026-09-20 (archive wave -- none of the 4 tables has an is_archived
+        # column; see ARCHIVE_COLUMN_SWEEP.md)
         "inventory_upsert_stock_locations",
-        "inventory_archive_stock_locations",
         "inventory_upsert_inventory_items",
-        "inventory_archive_inventory_items",
         "inventory_upsert_goods_receipts",
-        "inventory_archive_goods_receipts",
         "inventory_upsert_inventory_rma",
-        "inventory_archive_inventory_rma",
         # Wave A-3 -- C12 Notifications resource surface mutations (upsert + archive)
         "notifications_upsert_notifications",
         "notifications_archive_notifications",
@@ -358,11 +356,11 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # Lane A Wave A-4 -- C14 Document Register resource surface mutations (upsert + archive)
         "documents_upsert_documents",
         "documents_archive_documents",
-        # Lane E Wave E-6 -- C12 Resources ALLOCATION/TRAVEL_LEG resource surface mutations
+        # Lane E Wave E-6 -- C12 Resources ALLOCATION/TRAVEL_LEG resource surface
+        # mutations: archive removed 2026-09-20 (archive wave -- neither table
+        # has an is_archived column; see ARCHIVE_COLUMN_SWEEP.md)
         "resources_upsert_allocations",
-        "resources_archive_allocations",
         "resources_upsert_travel_legs",
-        "resources_archive_travel_legs",
         # Lane E Wave E-2 -- C12 Product resource surface mutations (upsert + archive)
         "product_upsert_product_skus",
         "product_archive_product_skus",
@@ -379,24 +377,22 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "geodata_import_place_names",
         # Lane F Wave F-9 -- C17 Site Master Data address-registry enrichment
         "sites_enrich_address_from_registry",
-        # Lane E Wave E-8 -- C12 Support TICKET/SLA/SUPPORT_HEALTH_SCORE resource surface mutations
+        # Lane E Wave E-8 -- C12 Support TICKET/SLA/SUPPORT_HEALTH_SCORE resource
+        # surface mutations: archive removed 2026-09-20 (archive wave -- none of
+        # the 3 tables has an is_archived column; see ARCHIVE_COLUMN_SWEEP.md)
         "support_upsert_tickets",
-        "support_archive_tickets",
         "support_upsert_sla_clocks",
-        "support_archive_sla_clocks",
         "support_upsert_customer_health",
-        "support_archive_customer_health",
         # Lane E Wave E-7 -- C12 Economy POSTING resource surface mutations: both
         # removed 2026-09-20 (POSTING_SPEC now excludes upsert/archive -- WORM
         # ledger, schema.sql:1899-1914 revokes UPDATE/DELETE; see
         # nce/vertical_modules/economy/resources.py's POSTING_SPEC comment).
-        # Lane E Wave E-10 -- C12 Field Tech WORK_ORDER/TIME_ENTRY/CHECKLIST resource surface mutations
+        # Lane E Wave E-10 -- C12 Field Tech WORK_ORDER/TIME_ENTRY/CHECKLIST resource
+        # surface mutations: archive removed 2026-09-20 (archive wave -- none of
+        # the 3 tables has an is_archived column; see ARCHIVE_COLUMN_SWEEP.md)
         "field_tech_upsert_work_orders",
-        "field_tech_archive_work_orders",
         "field_tech_upsert_time_entries",
-        "field_tech_archive_time_entries",
         "field_tech_upsert_checklists",
-        "field_tech_archive_checklists",
         # Wave C-1 -- FUNCTIONAL_LOCATION tree mutations (3 tools)
         # Wave C-2 -- Room Categories & FL Metadata mutations (3 tools)
         # Wave C-3 -- DESIGN versions & Room Specifications mutations (4 tools)

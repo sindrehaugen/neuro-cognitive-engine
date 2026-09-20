@@ -26,6 +26,11 @@ STOCK_LOCATION_SPEC = ResourceSpec(
     filterable_fields=("kind", "parent_id", "level"),
     searchable_fields=("name", "vehicle_ref"),
     writable_fields=("kind", "name", "parent_id", "level", "vehicle_ref", "raw"),
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column that stock_locations does not have; no
+    # alternate soft-delete column or hand-written archive path either. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description="Stock locations hierarchy (warehouses, vans, zones, bins).",
     enabled_guard=require_inventory_enabled,
 )
@@ -70,6 +75,11 @@ INVENTORY_ITEM_SPEC = ResourceSpec(
             "updated_at",
         ),
     },
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column that inventory_items does not have; no
+    # alternate soft-delete column or hand-written archive path either. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description="Per-SKU inventory on hand, reserved, and reorder thresholds.",
     enabled_guard=require_inventory_enabled,
 )
@@ -96,6 +106,11 @@ GOODS_RECEIPT_SPEC = ResourceSpec(
         "match_result",
         "receipt_hash",
     ),
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column that goods_receipts does not have; no
+    # alternate soft-delete column or hand-written archive path either. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description="Physical inbound goods receipts with line matching and package verification.",
     enabled_guard=require_inventory_enabled,
 )
@@ -114,6 +129,11 @@ INVENTORY_RMA_SPEC = ResourceSpec(
     filterable_fields=("rma_ref", "sku", "location_id", "reason"),
     searchable_fields=("rma_ref", "sku", "serial", "reason"),
     writable_fields=("rma_ref", "sku", "serial", "location_id", "qty", "reason"),
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column that inventory_rma does not have; no
+    # alternate soft-delete column or hand-written archive path either. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description="Return Merchandise Authorizations for defective or quarantined stock.",
     enabled_guard=require_inventory_enabled,
 )

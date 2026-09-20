@@ -327,7 +327,12 @@ def test_every_registered_inventory_tool_is_advertised() -> None:
     registered = {n for n in _registered() if n.startswith("inventory_")}
     missing = sorted(registered - _advertised())
     assert not missing, "registered inventory tools still hidden: " + ", ".join(missing)
-    assert len(registered) == 33, sorted(registered)
+    # 33 -> 29 (2026-09-20, archive wave): the 4 C12 inventory specs each lost
+    # their "archive" tool (none of the 4 tables has an is_archived column;
+    # see ARCHIVE_COLUMN_SWEEP.md). A hand-maintained pin, not derived --
+    # update by measurement (len(registered) at the time of a real change),
+    # not by arithmetic against the old number.
+    assert len(registered) == 29, sorted(registered)
 
 
 def test_inventory_quantities_never_force_a_float() -> None:

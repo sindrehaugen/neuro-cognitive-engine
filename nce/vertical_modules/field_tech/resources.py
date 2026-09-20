@@ -53,6 +53,15 @@ WORK_ORDER_SPEC = ResourceSpec(
         "due_at",
         "partner_scope_id",
     ),
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column that work_orders does not have. status's
+    # own CHECK enum (draft/scheduled/dispatched/in_progress/completed/
+    # cancelled) already covers work-order lifecycle termination
+    # ("cancelled") and is already writable via PATCH -- not a hidden
+    # soft-delete gap, a workflow state this spec already exposes. No
+    # hand-written archive path either. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description="Field service work orders: install/service kind, dispatch status, and assignment.",
     enabled_guard=require_field_tech_enabled,
 )
@@ -84,6 +93,11 @@ FIELD_TECH_TIME_ENTRY_SPEC = ResourceSpec(
         "source",
         "partner_scope_id",
     ),
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column that time_entries does not have; no
+    # alternate soft-delete column or hand-written archive path either. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description=(
         "Technician time entries against a work order, GPS- or manually-sourced. "
         "Approval is governed: POST /{id}/approve, not PATCH."
@@ -105,6 +119,11 @@ FIELD_TECH_CHECKLIST_SPEC = ResourceSpec(
     filterable_fields=("work_order_id", "partner_scope_id"),
     searchable_fields=("template_id",),
     writable_fields=("work_order_id", "template_id", "items", "completed_at", "partner_scope_id"),
+    # archive wave (2026-09-20): soft_delete_field=None falls back to a
+    # literal "is_archived" column that checklists does not have; no
+    # alternate soft-delete column or hand-written archive path either. See
+    # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+    excluded_verbs=frozenset({"archive"}),
     description="ISO9001 compliance checklists against a work order, with templated items.",
     enabled_guard=require_field_tech_enabled,
 )
