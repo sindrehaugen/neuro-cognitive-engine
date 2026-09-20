@@ -19675,6 +19675,10 @@
       },
       "Tool_system_design_list_cables_Input": {
         "properties": {
+          "change_origin": {
+            "description": "Filter by change_origin.",
+            "type": "string"
+          },
           "cursor": {
             "description": "Pagination cursor from previous response.",
             "type": "string"
@@ -19691,10 +19695,6 @@
           },
           "q": {
             "description": "Full-text search term.",
-            "type": "string"
-          },
-          "status": {
-            "description": "Filter by status.",
             "type": "string"
           }
         },
@@ -19779,12 +19779,12 @@
       },
       "Tool_system_design_list_devices_Input": {
         "properties": {
-          "cursor": {
-            "description": "Pagination cursor from previous response.",
+          "change_origin": {
+            "description": "Filter by change_origin.",
             "type": "string"
           },
-          "device_category": {
-            "description": "Filter by device_category.",
+          "cursor": {
+            "description": "Pagination cursor from previous response.",
             "type": "string"
           },
           "limit": {
@@ -19793,24 +19793,12 @@
             "minimum": 1,
             "type": "integer"
           },
-          "manufacturer": {
-            "description": "Filter by manufacturer.",
-            "type": "string"
-          },
           "namespace_id": {
             "description": "Caller namespace UUID.",
             "type": "string"
           },
           "q": {
             "description": "Full-text search term.",
-            "type": "string"
-          },
-          "redundancy_role": {
-            "description": "Filter by redundancy_role.",
-            "type": "string"
-          },
-          "status": {
-            "description": "Filter by status.",
             "type": "string"
           }
         },
@@ -19876,6 +19864,10 @@
       },
       "Tool_system_design_list_ports_Input": {
         "properties": {
+          "change_origin": {
+            "description": "Filter by change_origin.",
+            "type": "string"
+          },
           "cursor": {
             "description": "Pagination cursor from previous response.",
             "type": "string"
@@ -19890,16 +19882,8 @@
             "description": "Caller namespace UUID.",
             "type": "string"
           },
-          "port_direction": {
-            "description": "Filter by port_direction.",
-            "type": "string"
-          },
           "q": {
             "description": "Full-text search term.",
-            "type": "string"
-          },
-          "signal_format": {
-            "description": "Filter by signal_format.",
             "type": "string"
           }
         },
@@ -19908,12 +19892,12 @@
       },
       "Tool_system_design_list_racks_Input": {
         "properties": {
-          "cursor": {
-            "description": "Pagination cursor from previous response.",
+          "change_origin": {
+            "description": "Filter by change_origin.",
             "type": "string"
           },
-          "device_category": {
-            "description": "Filter by device_category.",
+          "cursor": {
+            "description": "Pagination cursor from previous response.",
             "type": "string"
           },
           "limit": {
@@ -19922,20 +19906,12 @@
             "minimum": 1,
             "type": "integer"
           },
-          "manufacturer": {
-            "description": "Filter by manufacturer.",
-            "type": "string"
-          },
           "namespace_id": {
             "description": "Caller namespace UUID.",
             "type": "string"
           },
           "q": {
             "description": "Full-text search term.",
-            "type": "string"
-          },
-          "status": {
-            "description": "Filter by status.",
             "type": "string"
           }
         },
@@ -110117,9 +110093,9 @@
             }
           },
           {
-            "description": "Equality filter on status",
+            "description": "Equality filter on change_origin",
             "in": "query",
-            "name": "status",
+            "name": "change_origin",
             "required": false,
             "schema": {
               "type": "string"
@@ -110792,9 +110768,9 @@
             }
           },
           {
-            "description": "Equality filter on status",
+            "description": "Equality filter on change_origin",
             "in": "query",
-            "name": "status",
+            "name": "change_origin",
             "required": false,
             "schema": {
               "type": "string"
@@ -111473,45 +111449,9 @@
             }
           },
           {
-            "description": "Full-text search query across: model_number",
+            "description": "Equality filter on change_origin",
             "in": "query",
-            "name": "q",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Equality filter on device_category",
-            "in": "query",
-            "name": "device_category",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Equality filter on manufacturer",
-            "in": "query",
-            "name": "manufacturer",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Equality filter on redundancy_role",
-            "in": "query",
-            "name": "redundancy_role",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Equality filter on status",
-            "in": "query",
-            "name": "status",
+            "name": "change_origin",
             "required": false,
             "schema": {
               "type": "string"
@@ -112184,45 +112124,9 @@
             }
           },
           {
-            "description": "Full-text search query across: model_number",
+            "description": "Equality filter on change_origin",
             "in": "query",
-            "name": "q",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Equality filter on device_category",
-            "in": "query",
-            "name": "device_category",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Equality filter on manufacturer",
-            "in": "query",
-            "name": "manufacturer",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Equality filter on redundancy_role",
-            "in": "query",
-            "name": "redundancy_role",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Equality filter on status",
-            "in": "query",
-            "name": "status",
+            "name": "change_origin",
             "required": false,
             "schema": {
               "type": "string"
@@ -112901,18 +112805,9 @@
             }
           },
           {
-            "description": "Equality filter on signal_format",
+            "description": "Equality filter on change_origin",
             "in": "query",
-            "name": "signal_format",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Equality filter on port_direction",
-            "in": "query",
-            "name": "port_direction",
+            "name": "change_origin",
             "required": false,
             "schema": {
               "type": "string"
@@ -113585,18 +113480,9 @@
             }
           },
           {
-            "description": "Equality filter on signal_format",
+            "description": "Equality filter on change_origin",
             "in": "query",
-            "name": "signal_format",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Equality filter on port_direction",
-            "in": "query",
-            "name": "port_direction",
+            "name": "change_origin",
             "required": false,
             "schema": {
               "type": "string"
@@ -114275,36 +114161,9 @@
             }
           },
           {
-            "description": "Full-text search query across: model_number",
+            "description": "Equality filter on change_origin",
             "in": "query",
-            "name": "q",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Equality filter on device_category",
-            "in": "query",
-            "name": "device_category",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Equality filter on manufacturer",
-            "in": "query",
-            "name": "manufacturer",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Equality filter on status",
-            "in": "query",
-            "name": "status",
+            "name": "change_origin",
             "required": false,
             "schema": {
               "type": "string"
@@ -114977,36 +114836,9 @@
             }
           },
           {
-            "description": "Full-text search query across: model_number",
+            "description": "Equality filter on change_origin",
             "in": "query",
-            "name": "q",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Equality filter on device_category",
-            "in": "query",
-            "name": "device_category",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Equality filter on manufacturer",
-            "in": "query",
-            "name": "manufacturer",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Equality filter on status",
-            "in": "query",
-            "name": "status",
+            "name": "change_origin",
             "required": false,
             "schema": {
               "type": "string"

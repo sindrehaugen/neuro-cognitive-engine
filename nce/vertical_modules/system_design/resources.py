@@ -146,6 +146,38 @@ REST ROUTE COLLISIONS: none. Grepped admin_app.py for
 any of these paths; the existing system_design surface (topology authoring,
 signal-flow inspection, capability sync, FL tree, designs, room specs) all do
 more than generic CRUD and target different paths entirely.
+
+FILTERABLE_FIELDS/SEARCHABLE_FIELDS FIX (dispatched separately, closing this
+wave's own defect)
+------------------------------------------------------------------------------
+The four specs below originally declared filterable_fields/searchable_fields
+naming secondary-table columns (device_category, manufacturer, model_number,
+signal_format, port_direction, redundancy_role, status) that do not exist on
+kg_nodes. The generated graph-primary list/search handler queries kg_nodes
+directly and never joins secondary tables for filtering (rest.py's own
+comment states the contract: "Filters and search apply to kg_nodes' own real
+columns ... not the secondary tables") -- so a caller who actually used one
+of those filters against a live Postgres-backed deployment would hit an
+undefined-column SQL error, not a working filter. Invisible in CI because
+the memory-store fallback (no pg_pool configured) does `.get(field, "")` and
+silently fails to match instead of erroring, so no test ever ran a
+graph-primary filter against real Postgres.
+
+Trimmed to kg_nodes' own real columns (change_origin only -- the same set
+CONTACT (sales/resources.py, #314) already uses correctly) rather than
+adding a join, because the "no join" behaviour is the documented design
+(rest.py:387-388), not an oversight: the graph get-by-id path already merges
+every secondary row on read (rest.py's static get-by-id SQL), so satellite
+data IS reachable -- filtering and searching on it, specifically, is not.
+Declaring that gap correctly (an empty/minimal filter surface) is not the
+same as silently deleting a working feature; each spec below states outright
+that satellite fields are readable via get-by-id but not filterable, so a
+future reader does not "fix" this by re-adding the same bad declarations.
+
+spec.py's ``__post_init__`` now enforces this for every graph-scoped spec
+(``tenant_scope == "graph"``), the same place table_name typos are already
+caught -- a spec naming an unqueryable field fails at import, not at a
+caller's first live filter.
 """
 
 from __future__ import annotations
@@ -164,8 +196,16 @@ DEVICE_SPEC = ResourceSpec(
     id_field="node_label",
     version_field="updated_at",
     soft_delete_field=None,
-    filterable_fields=("device_category", "manufacturer", "redundancy_role", "status"),
-    searchable_fields=("model_number",),
+    # Trimmed to kg_nodes' own real columns -- see the module docstring's
+    # "FILTERABLE_FIELDS/SEARCHABLE_FIELDS FIX" section. device_category,
+    # manufacturer, redundancy_role, status and model_number are all
+    # system_design_device_capabilities / system_design_node_state columns,
+    # not kg_nodes columns; they were reachable through get-by-id (still
+    # are) but not through a working list filter or search. change_origin
+    # is the only kg_nodes column this spec has anything meaningful to
+    # filter on.
+    filterable_fields=("change_origin",),
+    searchable_fields=(),
     writable_fields=(
         "change_origin",
         "device_category",
@@ -226,7 +266,12 @@ PORT_SPEC = ResourceSpec(
     id_field="node_label",
     version_field="updated_at",
     soft_delete_field=None,
-    filterable_fields=("signal_format", "port_direction"),
+    # Trimmed to kg_nodes' own real columns -- see the module docstring's
+    # "FILTERABLE_FIELDS/SEARCHABLE_FIELDS FIX" section. signal_format and
+    # port_direction are system_design_device_capabilities columns, not
+    # kg_nodes columns -- reachable through get-by-id, not through a
+    # working list filter.
+    filterable_fields=("change_origin",),
     searchable_fields=(),
     writable_fields=(
         "change_origin",
@@ -279,8 +324,14 @@ RACK_SPEC = ResourceSpec(
     id_field="node_label",
     version_field="updated_at",
     soft_delete_field=None,
-    filterable_fields=("device_category", "manufacturer", "status"),
-    searchable_fields=("model_number",),
+    # Trimmed to kg_nodes' own real columns -- see the module docstring's
+    # "FILTERABLE_FIELDS/SEARCHABLE_FIELDS FIX" section. device_category,
+    # manufacturer, status and model_number are all
+    # system_design_device_capabilities / system_design_node_state
+    # columns, not kg_nodes columns -- reachable through get-by-id, not
+    # through a working list filter or search.
+    filterable_fields=("change_origin",),
+    searchable_fields=(),
     writable_fields=(
         "change_origin",
         "device_category",
@@ -331,7 +382,11 @@ CABLE_SPEC = ResourceSpec(
     id_field="node_label",
     version_field="updated_at",
     soft_delete_field=None,
-    filterable_fields=("status",),
+    # Trimmed to kg_nodes' own real columns -- see the module docstring's
+    # "FILTERABLE_FIELDS/SEARCHABLE_FIELDS FIX" section. status is a
+    # system_design_node_state column, not a kg_nodes column -- reachable
+    # through get-by-id, not through a working list filter.
+    filterable_fields=("change_origin",),
     searchable_fields=(),
     writable_fields=(
         "change_origin",
