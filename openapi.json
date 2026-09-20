@@ -16685,6 +16685,71 @@
         ],
         "type": "object"
       },
+      "Tool_sales_import_quote_lines_Input": {
+        "properties": {
+          "lines": {
+            "description": "Non-empty, max 500 entries. Each entry shaped like sales_add_quote_line's own arguments.",
+            "items": {
+              "properties": {
+                "currency": {
+                  "description": "Optional ISO-4217 code; defaults to NOK.",
+                  "type": "string"
+                },
+                "line_ref": {
+                  "description": "Line reference, unique within the quote.",
+                  "type": "string"
+                },
+                "line_total": {
+                  "description": "Optional; defaults to qty * unit_price.",
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                "origin_ref": {
+                  "description": "Optional pointer to the external source.",
+                  "type": "string"
+                },
+                "qty": {
+                  "description": "Quantity; NUMERIC(18,3). Send a decimal string to stay exact.",
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                "unit_price": {
+                  "description": "Unit price; NUMERIC. Send a decimal string to stay exact.",
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                }
+              },
+              "required": [
+                "line_ref",
+                "qty",
+                "unit_price"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "quote_id": {
+            "description": "The Sales QUOTE identifier.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "quote_id",
+          "lines"
+        ],
+        "type": "object"
+      },
       "Tool_sales_list_contacts_Input": {
         "properties": {
           "change_origin": {
@@ -24944,6 +25009,17 @@
         "migration": false,
         "mutation": false,
         "name": "sales_get_signed_baselines"
+      },
+      "sales_import_quote_lines": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Bulk-import externally-sourced lines onto a Sales quote, in one call. The external-import origination path for BOM_LINE: writes N rows through the sales-owned content:create:external transition. Provenance is NOT caller-writable -- the stored origin_kind comes from the writer module's own mapping, so a flow/origin_kind argument is never read. Idempotent per line on (quote_id, line_ref).",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_sales_import_quote_lines_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "sales_import_quote_lines"
       },
       "sales_list_contacts": {
         "admin_only": false,
