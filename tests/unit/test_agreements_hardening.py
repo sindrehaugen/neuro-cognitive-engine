@@ -42,6 +42,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from asyncpg.exceptions import DataError as _PgDataError
+from tests.tool_pins import NAME_PINS
 
 # ---------------------------------------------------------------------------
 # Shared constants
@@ -252,25 +253,8 @@ def test_lookup_sql_never_selects_reviewer_or_secret_columns() -> None:
 # 2. Exact Agreements tool-count assertion
 # ---------------------------------------------------------------------------
 
-_AGREEMENTS_TOOLS: frozenset[str] = frozenset(
-    {
-        "agreements_lookup_terms",
-        "agreements_coverage_matrix",
-        "agreements_reconcile_kickback",
-        "agreements_run_compliance_audit",
-        "agreements_extract",
-        "agreements_create",
-        "agreements_suggest_revision",
-        "agreements_request_signature",
-        "agreements_record_signature",
-        "agreements_review_extraction",
-        # Wave B-10: Price Rules & Index Series (Config-as-IP)
-        "agreements_get_index_series",
-        "agreements_calculate_index_adjustment",
-        "agreements_get_price_rules",
-        "agreements_evaluate_price_rule",
-    }
-)
+# Pin lives in tests/tool_pins.py (NAME_PINS["agreements"]) -- edit there.
+_AGREEMENTS_TOOLS: frozenset[str] = NAME_PINS["agreements"]
 
 
 def test_exact_agreements_tool_count() -> None:

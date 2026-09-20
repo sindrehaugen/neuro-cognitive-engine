@@ -18,6 +18,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from tests.tool_pins import FLAG_PINS
 
 from nce.admin_app import build_admin_routes
 from nce.mcp_errors import McpError
@@ -187,26 +188,8 @@ async def test_mcp_handlers_success() -> None:
 
 
 def test_mcp_tools_registered_with_correct_flags() -> None:
-    expected_tools = {
-        "vendors_get_vendor": {"cacheable": True, "admin_only": False, "mutation": False},
-        "vendors_compute_scorecard": {"cacheable": True, "admin_only": False, "mutation": False},
-        "vendors_get_tier_status": {"cacheable": True, "admin_only": False, "mutation": False},
-        "vendors_detect_reliability_degradation": {
-            "cacheable": True,
-            "admin_only": False,
-            "mutation": False,
-        },
-        "vendors_check_tier_at_risk": {"cacheable": True, "admin_only": False, "mutation": False},
-        "vendors_match_contractor": {"cacheable": True, "admin_only": False, "mutation": False},
-        "vendors_compute_performance": {"cacheable": True, "admin_only": False, "mutation": False},
-        "vendors_recall_similar_jobs": {"cacheable": True, "admin_only": False, "mutation": False},
-        "vendors_reliability_radar": {"cacheable": True, "admin_only": False, "mutation": False},
-        "vendors_calibrate_weights": {"cacheable": True, "admin_only": False, "mutation": False},
-        "vendors_upsert_vendor": {"cacheable": False, "admin_only": True, "mutation": True},
-        "vendors_upsert_contractor": {"cacheable": False, "admin_only": True, "mutation": True},
-        "vendors_get_contractor": {"cacheable": True, "admin_only": False, "mutation": False},
-        "vendors_upsert_cert": {"cacheable": False, "admin_only": True, "mutation": True},
-    }
+    # Pin lives in tests/tool_pins.py (FLAG_PINS["vendors"]) -- edit there.
+    expected_tools = FLAG_PINS["vendors"]
 
     for tool_name, flags in expected_tools.items():
         assert tool_name in TOOL_REGISTRY, f"'{tool_name}' not registered in TOOL_REGISTRY"

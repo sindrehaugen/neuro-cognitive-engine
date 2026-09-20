@@ -26,6 +26,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from tests.tool_pins import FLAG_PINS
 
 from nce.admin_app import create_admin_app
 from nce.admin_handlers import economy as economy_admin_handlers
@@ -113,12 +114,8 @@ def _make_rest_request(
 
 
 def test_wave_e2_tools_registered_in_registry() -> None:
-    expected_tools = {
-        "economy_generate_kid": {"cacheable": True, "admin_only": False, "mutation": False},
-        "economy_validate_kid": {"cacheable": True, "admin_only": False, "mutation": False},
-        "economy_generate_ehf": {"cacheable": False, "admin_only": True, "mutation": False},
-        "economy_validate_contract": {"cacheable": True, "admin_only": False, "mutation": False},
-    }
+    # Pin lives in tests/tool_pins.py (FLAG_PINS["economy_peppol"]) -- edit there.
+    expected_tools = FLAG_PINS["economy_peppol"]
 
     for name, flags in expected_tools.items():
         assert name in TOOL_REGISTRY, f"{name} missing from TOOL_REGISTRY"

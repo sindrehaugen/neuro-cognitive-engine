@@ -24,6 +24,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from asyncpg.exceptions import DataError as _PgDataError
+from tests.tool_pins import NAME_PINS
 
 # ---------------------------------------------------------------------------
 # Shared constants
@@ -37,23 +38,8 @@ _FORBIDDEN: frozenset[str] = frozenset(
 )
 
 # Exact set of Product MCP tool names (Waves 3–7 + Waves P-2/P-3).
-_PRODUCT_TOOLS: frozenset[str] = frozenset(
-    {
-        "product_search",
-        "product_get",
-        "product_price",
-        "product_related",
-        "product_match_bom_line",
-        "product_enrich",
-        "product_ingest_spec",
-        "product_golden_record",
-        # Lane E Wave E-2 -- C12 PRODUCT_SKU resource surface (list/get/upsert/archive)
-        "product_list_product_skus",
-        "product_get_product_skus",
-        "product_upsert_product_skus",
-        "product_archive_product_skus",
-    }
-)
+# Pin lives in tests/tool_pins.py (NAME_PINS["product"]) -- edit there.
+_PRODUCT_TOOLS: frozenset[str] = NAME_PINS["product"]
 
 
 # ---------------------------------------------------------------------------

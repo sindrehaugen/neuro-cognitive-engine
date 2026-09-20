@@ -34,6 +34,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from asyncpg.exceptions import DataError as _PgDataError
+from tests.tool_pins import NAME_PINS
 
 # ---------------------------------------------------------------------------
 # Shared constants
@@ -41,30 +42,8 @@ from asyncpg.exceptions import DataError as _PgDataError
 
 _NAMESPACE_ID = "00000000-0000-4000-8000-000000000099"
 
-_ECONOMY_TOOLS: frozenset[str] = frozenset(
-    {
-        "economy_approve_invoice",
-        "economy_match_invoice",
-        "economy_compute_periodisering",
-        "economy_emit_event",
-        "economy_forecast_cashflow",
-        "economy_snapshot_mrr_arr_churn",
-        "economy_compute_dunning",
-        "economy_compute_recognition_schedule",
-        "economy_gl_sync_status",
-        "economy_generate_close_narrative",
-        "economy_generate_kid",
-        "economy_validate_kid",
-        "economy_generate_ehf",
-        "economy_validate_contract",
-        "economy_get_gl_records",
-        # Lane E Wave E-7 -- C12 POSTING resource surface (list/get/upsert/archive)
-        "economy_list_postings",
-        "economy_get_postings",
-        "economy_upsert_postings",
-        "economy_archive_postings",
-    }
-)
+# Pin lives in tests/tool_pins.py (NAME_PINS["economy"]) -- edit there.
+_ECONOMY_TOOLS: frozenset[str] = NAME_PINS["economy"]
 
 _INVOICE: dict[str, Any] = {
     "supplier_orgnr": "987654321",
@@ -89,15 +68,18 @@ _BALANCED_EVENT: dict[str, Any] = {
 
 
 def test_exact_economy_tool_count() -> None:
-    """Economy tools registered in TOOL_REGISTRY must be exactly the 15 listed
-    tools, plus any C12 resource-surface tools this engine has registered.
+    """Economy tools registered in TOOL_REGISTRY must be exactly the tools
+    listed in ``NAME_PINS["economy"]`` (tests/tool_pins.py), plus any
+    additional C12 resource-surface tools this engine has registered.
 
-    Since Wave A-1b, a C12 ResourceSpec registered for this engine would add
+    Since Wave A-1b, a C12 ResourceSpec registered for this engine adds
     4 tools (list/get/upsert/archive) to TOOL_REGISTRY with no edit to any
     tool file (janitor pass 7, K-H4 -- same exposure that made
     tests/test_tool_registry.py's frozenset pins break on every C12
-    registration). None is registered for "economy" today, but this union
-    means a future one won't turn this exact-match assertion red.
+    registration). Wave E-7's POSTING resource is already in the pinned
+    list above rather than relying on this union; the union guards only
+    against a FUTURE C12 registration turning this exact-match assertion
+    red before the pin is updated.
     """
     from nce.resource_surface import build_all_resource_tool_specs
     from nce.tool_registry import TOOL_REGISTRY
