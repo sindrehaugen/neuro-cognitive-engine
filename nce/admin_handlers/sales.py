@@ -36,8 +36,7 @@ from nce.admin_handlers._shared import (
     admin_state,
     bump_mcp_cache_generation,
 )
-from nce.db_utils import scoped_pg_session
-from nce.source_mode.divergence import flip_blocked
+from nce.admin_handlers.source_mode import get_source_modes, put_source_mode
 from nce.vertical_modules.sales.ai import do_draft_quote, do_score_lead
 from nce.vertical_modules.sales.commission import do_calculate_commission
 from nce.vertical_modules.sales.dealroom import do_open_dealroom
@@ -91,7 +90,11 @@ def _validate_namespace_query_param(namespace_id: str) -> JSONResponse | None:
 async def api_sales_source_mode_get(request) -> JSONResponse:
     """GET /api/admin/sales/source-mode
 
-    Retrieve the configured source modes for engine="sales".
+    Retrieve the configured source modes for engine="sales". Thin,
+    ``engine="sales"`` wrapper over the generic
+    ``nce.admin_handlers.source_mode.get_source_modes`` (Wave D-9,
+    2026-09-20) -- same query params (minus ``engine``, pinned here), same
+    response shape.
 
     Query parameters:
         namespace_id (str, required): Active namespace UUID.
@@ -113,34 +116,7 @@ async def api_sales_source_mode_get(request) -> JSONResponse:
     if err_resp := _validate_namespace_query_param(namespace_id):
         return err_resp
 
-    try:
-        ns_uuid = uuid.UUID(namespace_id)
-        async with scoped_pg_session(admin_state.engine.pg_pool, ns_uuid) as conn:
-            rows = await conn.fetch(
-                """
-                SELECT function, mode
-                  FROM source_mode_config
-                 WHERE namespace_id = $1
-                   AND engine = $2
-                """,
-                ns_uuid,
-                "sales",
-            )
-        modes = {row["function"]: row["mode"] for row in rows}
-        return JSONResponse(
-            {
-                "namespace_id": namespace_id,
-                "engine": "sales",
-                "modes": modes,
-            }
-        )
-    except Exception as exc:
-        return admin_error_response(
-            "Sales source-mode GET error",
-            exc,
-            status_code=500,
-            log_event="api_sales_source_mode_get",
-        )
+    return await get_source_modes(admin_state.engine.pg_pool, namespace_id, "sales")
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +127,14 @@ async def api_sales_source_mode_get(request) -> JSONResponse:
 async def api_sales_source_mode_put(request) -> JSONResponse:
     """PUT /api/admin/sales/source-mode
 
-    Configure the source mode for a given sales function.
+    Configure the source mode for a given sales function. Thin,
+    ``engine="sales"`` wrapper over the generic
+    ``nce.admin_handlers.source_mode.put_source_mode`` (Wave D-9,
+    2026-09-20) -- the sales-specific ``valid_functions`` check below is a
+    content decision (which function names are legitimate for sales) that
+    stays here rather than moving to the generic module; the gate decision
+    itself (flip_blocked/flip_function) and the upsert are the shared
+    mechanism, delegated.
 
     Request body (JSON):
         namespace_id (str, required): Active namespace UUID.
@@ -207,65 +190,15 @@ async def api_sales_source_mode_put(request) -> JSONResponse:
         )
 
     mode = str(body.get("mode") or "").strip()
-    if mode not in ("d365", "both", "nce"):
-        return JSONResponse(
-            {"error": f"Invalid mode: {mode}. Must be one of ('d365', 'both', 'nce')"},
-            status_code=422,
-        )
 
-    ns_uuid = uuid.UUID(namespace_id)
-
-    if mode == "nce":
-        try:
-            blocked = await flip_blocked(
-                admin_state.engine.pg_pool,
-                namespace_id=ns_uuid,
-                engine="sales",
-                window_seconds=3600.0,
-            )
-            if blocked:
-                return JSONResponse(
-                    {"error": "Flip to nce mode is blocked due to recent divergences"},
-                    status_code=400,
-                )
-        except Exception as exc:
-            return admin_error_response(
-                "Sales source-mode check flip-blocked error",
-                exc,
-                status_code=500,
-                log_event="api_sales_source_mode_put_check",
-            )
-
-    try:
-        async with scoped_pg_session(admin_state.engine.pg_pool, ns_uuid) as conn:
-            await conn.execute(
-                """
-                INSERT INTO source_mode_config (namespace_id, engine, function, mode, updated_at)
-                VALUES ($1, $2, $3, $4, now())
-                ON CONFLICT (namespace_id, engine, function)
-                DO UPDATE SET mode = EXCLUDED.mode, updated_at = EXCLUDED.updated_at
-                """,
-                ns_uuid,
-                "sales",
-                func_name,
-                mode,
-            )
-        return JSONResponse(
-            {
-                "namespace_id": namespace_id,
-                "engine": "sales",
-                "function": func_name,
-                "mode": mode,
-                "status": "updated",
-            }
-        )
-    except Exception as exc:
-        return admin_error_response(
-            "Sales source-mode PUT error",
-            exc,
-            status_code=500,
-            log_event="api_sales_source_mode_put",
-        )
+    # 3600.0 (one hour), not the generic route's default (flip_function's own
+    # seven days): this is sales's pre-existing, deliberately narrower window
+    # -- its own content decision, same category as valid_functions above --
+    # preserved explicitly rather than inherited by accident from whatever
+    # the shared mechanism defaults to.
+    return await put_source_mode(
+        admin_state.engine.pg_pool, namespace_id, "sales", func_name, mode, 3600.0
+    )
 
 
 # ---------------------------------------------------------------------------

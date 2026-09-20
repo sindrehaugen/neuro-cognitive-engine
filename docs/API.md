@@ -91,6 +91,8 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/admin/signing-credentials/status` | `api_admin_signing_credentials_status` |
 | POST | `/api/admin/signing/mark-signed` | `api_admin_signing_mark_signed` |
 | GET | `/api/admin/signing/status` | `api_admin_signing_status` |
+| GET | `/api/admin/source-mode` | `api_source_mode_get` |
+| PUT | `/api/admin/source-mode` | `api_source_mode_put` |
 | GET | `/api/admin/tools` | `api_admin_tools` |
 | POST | `/api/admin/tools/toggle` | `api_admin_tools_toggle` |
 | GET | `/api/admin/verify-chain/{namespace_id}` | `api_admin_verify_chain` |
@@ -1598,4 +1600,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 1063 REST endpoints, 517 MCP tools._
+_Totals: 1065 REST endpoints, 517 MCP tools._

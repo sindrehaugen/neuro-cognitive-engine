@@ -583,6 +583,7 @@ jobs:
           tests/test_outbox_idempotency.py
           tests/test_pg_trgm_extension.py
           tests/test_principal_sessions.py
+          tests/test_generic_source_mode_endpoint.py
           tests/test_schema_contract.py
           tests/test_source_mode_flip.py
           tests/test_source_mode_resolver.py
