@@ -949,6 +949,7 @@ async def test_malformed_expected_version_is_a_validation_error_not_a_conflict(
     is advisory — which is exactly why this has to discriminate.
     """
     monkeypatch.setattr("nce.quotas.cfg.NCE_QUOTAS_ENABLED", False)
+    monkeypatch.delenv("NCE_MCP_NAMESPACE_ID", raising=False)
 
     from nce.mcp_errors import MCP_INVALID_PARAMS
     from nce.vertical_modules.system_design.geometry import VersionConflictError
@@ -1005,6 +1006,7 @@ async def test_expected_version_null_is_absence_not_a_token(
     ``TestExpectedVersionIsLive::test_a_null_token_writes_normally_and_still_bumps``.
     """
     monkeypatch.setattr("nce.quotas.cfg.NCE_QUOTAS_ENABLED", False)
+    monkeypatch.delenv("NCE_MCP_NAMESPACE_ID", raising=False)
 
     from nce.mcp_errors import MCP_INTERNAL_ERROR
     from nce.vertical_modules.system_design.geometry import VersionConflictError
