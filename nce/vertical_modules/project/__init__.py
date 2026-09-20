@@ -22,9 +22,11 @@ from nce.vertical_modules.project.recall import (
     do_record_project_outcome,
     do_suggest_pl,
 )
+from nce.vertical_modules.project.resources import PROJECT_SPEC
 from nce.vertical_modules.project.tasks import do_sync_bom_tasks
 
 __all__ = [
+    "PROJECT_SPEC",
     "do_advance_phase",
     "do_capacity",
     "do_convert_signed_quote",

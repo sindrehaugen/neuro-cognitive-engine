@@ -28,6 +28,8 @@ from nce.admin_handlers._shared import (
     admin_state,
     bump_mcp_cache_generation,
 )
+from nce.bom_lines import list_bom_lines_for_quote
+from nce.db_utils import scoped_pg_session
 from nce.vertical_modules.project.advance import do_advance_phase, read_current_phase
 from nce.vertical_modules.project.case_study import do_generate_case_study_edge
 from nce.vertical_modules.project.convert import do_convert_signed_quote
@@ -139,6 +141,69 @@ async def api_project_get_phase(request) -> JSONResponse:
             exc,
             status_code=500,
             log_event="api_project_get_phase",
+        )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/project/{id}/bom-lines
+# ---------------------------------------------------------------------------
+
+_PROJECT_LABEL_PREFIX = "PROJECT:"
+
+
+async def api_project_get_bom_lines(request) -> JSONResponse:
+    """GET /api/project/{id}/bom-lines
+
+    Wave C-6: exposes ``list_bom_lines_for_quote`` (``nce/bom_lines.py``),
+    which existed with no route before this. A project's own label IS its
+    quote_id, uppercased and prefixed (``project/convert.py``'s
+    ``_project_label``: ``f"PROJECT:{quote_id.upper()}"`` -- the same
+    prefix-strip convention ``project/case_study.py`` already uses to
+    recover a quote_id from a project label), so no new project<->quote
+    mapping is needed: the id in the path IS the key.
+
+    Path parameters:
+        id (str): Project label, e.g. ``PROJECT:Q123``.
+
+    Query parameters:
+        namespace_id (str, required): Active namespace UUID.
+
+    Response (JSON):
+        {"project_id": str, "quote_id": str, "bom_lines": [...]}
+        (each line's shape: ``nce.bom_lines._as_row_dict``)
+    """
+    if not admin_state.engine:
+        return JSONResponse({"error": "Engine not connected"}, status_code=503)
+
+    project_id = request.path_params.get("id", "").strip()
+    if not project_id:
+        return JSONResponse({"error": "Missing path parameter: id"}, status_code=422)
+
+    namespace_id, ns_err = _require_namespace_id(
+        request.query_params.get("namespace_id"),
+        missing_error=_MISSING_NAMESPACE_QUERY_PARAM,
+    )
+    if ns_err is not None:
+        return ns_err
+
+    assert namespace_id is not None  # narrowing for type-checkers
+
+    quote_id = (
+        project_id[len(_PROJECT_LABEL_PREFIX) :]
+        if project_id.upper().startswith(_PROJECT_LABEL_PREFIX)
+        else project_id
+    )
+
+    try:
+        async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+            lines = await list_bom_lines_for_quote(conn, namespace_id, quote_id=quote_id)
+        return JSONResponse({"project_id": project_id, "quote_id": quote_id, "bom_lines": lines})
+    except Exception as exc:
+        return admin_error_response(
+            "Project get-bom-lines error",
+            exc,
+            status_code=500,
+            log_event="api_project_get_bom_lines",
         )
 
 

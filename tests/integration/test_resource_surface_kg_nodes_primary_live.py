@@ -206,7 +206,7 @@ CABLE_PROBE_SPEC = ResourceSpec(
 async def engine(pg_pool: asyncpg.Pool, namespace_id: uuid.UUID) -> NCEEngine:
     """Real NCEEngine over the live pool, with the ownership registry seeded.
 
-    Wave (2026-09-20): kg_nodes-primary create/patch now calls assert_owner
+    Fixed 2026-09-20: kg_nodes-primary create/patch now calls assert_owner
     (deny-by-default) before writing, matching every hand-written kg_nodes
     writer (system_design/devices.py, project/convert.py, ...) -- a real
     gap found and closed after Wave 3(b) shipped without it. DEVICE/PORT/
