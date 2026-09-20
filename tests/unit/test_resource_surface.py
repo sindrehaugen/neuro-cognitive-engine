@@ -21,6 +21,7 @@ from unittest.mock import MagicMock
 import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
+from tests._verified_tier_middleware import VERIFIED_TIER_TEST_MIDDLEWARE
 
 from nce import admin_state
 from nce.resource_surface import (
@@ -62,7 +63,7 @@ def _reset_env():
 
 
 def _client_for_spec(spec: ResourceSpec) -> TestClient:
-    app = Starlette(routes=make_resource_routes(spec))
+    app = Starlette(routes=make_resource_routes(spec), middleware=VERIFIED_TIER_TEST_MIDDLEWARE)
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -88,7 +89,10 @@ def test_rest_create_and_get():
     assert created["name"] == "Central Depot"
 
     # Get
-    get_resp = client.get(f"/api/inventory/stock-locations/{item_id}?namespace_id={_NS_A}")
+    get_resp = client.get(
+        f"/api/inventory/stock-locations/{item_id}?namespace_id={_NS_A}",
+        headers={"X-NCE-Principal-Tier": "employee"},
+    )
     assert get_resp.status_code == 200, get_resp.text
     fetched = get_resp.json()
     assert fetched["id"] == item_id
@@ -105,6 +109,7 @@ def test_rest_get_fields_projection_matches_list() -> None:
     returns exactly the requested subset, nothing more and nothing less.
     """
     client = _client_for_spec(STOCK_LOCATION_SPEC)
+    emp = {"X-NCE-Principal-Tier": "employee"}
     created = client.post(
         "/api/inventory/stock-locations",
         json={"namespace_id": _NS_A, "name": "Central Depot", "kind": "warehouse", "level": 1},
@@ -112,7 +117,7 @@ def test_rest_get_fields_projection_matches_list() -> None:
     item_id = created["id"]
 
     # No fields= -- unchanged, full-object behavior.
-    full = client.get(f"/api/inventory/stock-locations/{item_id}?namespace_id={_NS_A}")
+    full = client.get(f"/api/inventory/stock-locations/{item_id}?namespace_id={_NS_A}", headers=emp)
     assert full.status_code == 200
     full_body = full.json()
     assert "kind" in full_body
@@ -120,7 +125,8 @@ def test_rest_get_fields_projection_matches_list() -> None:
 
     # fields= -- exactly the requested subset.
     light = client.get(
-        f"/api/inventory/stock-locations/{item_id}?namespace_id={_NS_A}&fields=id,name"
+        f"/api/inventory/stock-locations/{item_id}?namespace_id={_NS_A}&fields=id,name",
+        headers=emp,
     )
     assert light.status_code == 200
     light_body = light.json()
@@ -140,8 +146,10 @@ def test_rest_list_with_filters():
         json={"namespace_id": _NS_A, "name": "Van 42", "kind": "van"},
     )
 
+    emp = {"X-NCE-Principal-Tier": "employee"}
+
     # List all
-    all_resp = client.get(f"/api/inventory/stock-locations?namespace_id={_NS_A}")
+    all_resp = client.get(f"/api/inventory/stock-locations?namespace_id={_NS_A}", headers=emp)
     assert all_resp.status_code == 200
     all_data = all_resp.json()
     assert all_data["total"] == 2
@@ -149,7 +157,7 @@ def test_rest_list_with_filters():
 
     # List filtered by kind
     filtered_resp = client.get(
-        f"/api/inventory/stock-locations?namespace_id={_NS_A}&kind=warehouse"
+        f"/api/inventory/stock-locations?namespace_id={_NS_A}&kind=warehouse", headers=emp
     )
     assert filtered_resp.status_code == 200
     filtered_data = filtered_resp.json()
@@ -487,13 +495,18 @@ def test_global_scope_read_without_namespace_id():
     item_id = item["id"]
 
     # Read without namespace_id query param or header
-    get_resp = client.get(f"/api/product/global-read-parts/{item_id}")
+    get_resp = client.get(
+        f"/api/product/global-read-parts/{item_id}",
+        headers={"X-NCE-Principal-Tier": "employee"},
+    )
     assert get_resp.status_code == 200, get_resp.text
     assert get_resp.json()["id"] == item_id
     assert get_resp.json()["part_number"] == "PN-100"
 
     # List without namespace_id query param or header
-    list_resp = client.get("/api/product/global-read-parts")
+    list_resp = client.get(
+        "/api/product/global-read-parts", headers={"X-NCE-Principal-Tier": "employee"}
+    )
     assert list_resp.status_code == 200, list_resp.text
     assert list_resp.json()["total"] >= 1
     assert any(it["id"] == item_id for it in list_resp.json()["items"])

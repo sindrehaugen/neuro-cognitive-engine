@@ -19,6 +19,7 @@ import uuid
 import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
+from tests._verified_tier_middleware import VERIFIED_TIER_TEST_MIDDLEWARE
 
 from nce import admin_state
 from nce.entity_resolution.legal_entity_hook import (
@@ -63,7 +64,7 @@ def _reset_env():
 
 
 def _client_for_spec(spec: ResourceSpec) -> TestClient:
-    app = Starlette(routes=make_resource_routes(spec))
+    app = Starlette(routes=make_resource_routes(spec), middleware=VERIFIED_TIER_TEST_MIDDLEWARE)
     return TestClient(app, raise_server_exceptions=False)
 
 

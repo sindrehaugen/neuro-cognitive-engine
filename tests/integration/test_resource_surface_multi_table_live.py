@@ -83,6 +83,7 @@ from nce.orchestrator import NCEEngine
 from nce.resource_surface.mcp import build_mcp_tool_specs
 from nce.resource_surface.rest import make_resource_routes
 from nce.resource_surface.spec import ResourceSpec, SecondaryTable
+from tests._verified_tier_middleware import VERIFIED_TIER_TEST_MIDDLEWARE
 
 pytestmark = pytest.mark.integration
 
@@ -306,7 +307,10 @@ async def test_mcp_upsert_twice_updates_secondary_table_in_place(
 
 
 def _probe_rest_app() -> Starlette:
-    return Starlette(routes=make_resource_routes(MULTI_TABLE_PROBE_SPEC))
+    return Starlette(
+        routes=make_resource_routes(MULTI_TABLE_PROBE_SPEC),
+        middleware=VERIFIED_TIER_TEST_MIDDLEWARE,
+    )
 
 
 @pytest.fixture
@@ -349,6 +353,7 @@ async def test_rest_create_then_get_merges_both_tables(
         r2 = await client.get(
             f"/api/system_design/devices-multitable-probe/{node_label}",
             params={"namespace_id": str(namespace_id)},
+            headers={"X-NCE-Principal-Tier": "employee"},
         )
     assert r2.status_code == 200, r2.text
     body = r2.json()

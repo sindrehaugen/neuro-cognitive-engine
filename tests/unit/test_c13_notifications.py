@@ -20,6 +20,7 @@ from uuid import UUID, uuid4
 import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
+from tests._verified_tier_middleware import VERIFIED_TIER_TEST_MIDDLEWARE
 
 from nce import admin_state
 from nce.event_log import EXPECTED_TENANT_RLS_TABLES
@@ -63,7 +64,7 @@ def _reset_env():
 
 
 def _client_for_spec(spec: ResourceSpec) -> TestClient:
-    app = Starlette(routes=make_resource_routes(spec))
+    app = Starlette(routes=make_resource_routes(spec), middleware=VERIFIED_TIER_TEST_MIDDLEWARE)
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -526,6 +527,7 @@ def test_c12_resource_specs_registered():
 def test_negative_rls_isolation_between_tenants():
     """Tenant B cannot read or access Tenant A's notifications."""
     client = _client_for_spec(NOTIFICATION_SPEC)
+    emp = {"X-NCE-Principal-Tier": "employee"}
 
     # 1. Tenant A creates a notification
     res_a = client.post(
@@ -537,21 +539,26 @@ def test_negative_rls_isolation_between_tenants():
             "body": "Secret info",
             "severity": "high",
         },
+        headers=emp,
     )
     assert res_a.status_code == 201
     item_id = res_a.json()["id"]
 
     # 2. Tenant A can read it
-    read_a = client.get(f"/api/notifications/notifications/{item_id}?namespace_id={_NS_A}")
+    read_a = client.get(
+        f"/api/notifications/notifications/{item_id}?namespace_id={_NS_A}", headers=emp
+    )
     assert read_a.status_code == 200
     assert read_a.json()["title"] == "Confidential A"
 
     # 3. Tenant B querying the same ID receives 404 (strictly isolated)
-    read_b = client.get(f"/api/notifications/notifications/{item_id}?namespace_id={_NS_B}")
+    read_b = client.get(
+        f"/api/notifications/notifications/{item_id}?namespace_id={_NS_B}", headers=emp
+    )
     assert read_b.status_code == 404
 
     # 4. Tenant B list does not leak Tenant A's notification
-    list_b = client.get(f"/api/notifications/notifications?namespace_id={_NS_B}")
+    list_b = client.get(f"/api/notifications/notifications?namespace_id={_NS_B}", headers=emp)
     assert list_b.status_code == 200
     items_b = list_b.json()["items"]
     assert not any(item["id"] == item_id for item in items_b)
@@ -608,6 +615,7 @@ def test_notifications_rest_crud_lifecycle():
 def test_reminders_rest_crud_lifecycle():
     """Verify standard REST lifecycle for reminders."""
     client = _client_for_spec(REMINDER_SPEC)
+    emp = {"X-NCE-Principal-Tier": "employee"}
 
     remind_time = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
     create_resp = client.post(
@@ -622,12 +630,15 @@ def test_reminders_rest_crud_lifecycle():
             "remind_at": remind_time,
             "status": "pending",
         },
+        headers=emp,
     )
     assert create_resp.status_code == 201
     rem_id = create_resp.json()["id"]
 
     # Get
-    get_resp = client.get(f"/api/notifications/reminders/{rem_id}?namespace_id={_NS_A}")
+    get_resp = client.get(
+        f"/api/notifications/reminders/{rem_id}?namespace_id={_NS_A}", headers=emp
+    )
     assert get_resp.status_code == 200
     assert get_resp.json()["title"] == "Calibrate Sensor"
     assert get_resp.json()["status"] == "pending"

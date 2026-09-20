@@ -45,6 +45,7 @@ from nce.orchestrator import NCEEngine
 from nce.resource_surface.mcp import build_mcp_tool_specs
 from nce.resource_surface.rest import make_resource_routes
 from nce.vertical_modules.sales.resources import CONTACT_SPEC
+from tests._verified_tier_middleware import VERIFIED_TIER_TEST_MIDDLEWARE
 
 pytestmark = pytest.mark.integration
 
@@ -63,7 +64,9 @@ async def engine(pg_pool: asyncpg.Pool, namespace_id: uuid.UUID) -> NCEEngine:
 
 def _rest_client(engine: NCEEngine) -> httpx.AsyncClient:
     admin_state.engine = engine
-    app = Starlette(routes=make_resource_routes(CONTACT_SPEC))
+    app = Starlette(
+        routes=make_resource_routes(CONTACT_SPEC), middleware=VERIFIED_TIER_TEST_MIDDLEWARE
+    )
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
 
 
@@ -86,6 +89,7 @@ async def test_rest_create_then_get(engine: NCEEngine, namespace_id: uuid.UUID) 
         r2 = await client.get(
             f"/api/sales/contacts/{node_label}",
             params={"namespace_id": str(namespace_id)},
+            headers={"X-NCE-Principal-Tier": "employee"},
         )
     assert r2.status_code == 200, r2.text
     body = r2.json()

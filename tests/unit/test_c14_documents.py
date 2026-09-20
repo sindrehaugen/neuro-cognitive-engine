@@ -20,6 +20,7 @@ from unittest.mock import MagicMock
 import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
+from tests._verified_tier_middleware import VERIFIED_TIER_TEST_MIDDLEWARE
 
 from nce import admin_state
 from nce.resource_surface import ResourceSpec, register_resource
@@ -55,7 +56,7 @@ def _reset_env():
 
 
 def _client_for_spec(spec: ResourceSpec) -> TestClient:
-    app = Starlette(routes=make_resource_routes(spec))
+    app = Starlette(routes=make_resource_routes(spec), middleware=VERIFIED_TIER_TEST_MIDDLEWARE)
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -66,6 +67,7 @@ def _client_for_spec(spec: ResourceSpec) -> TestClient:
 
 def test_document_crud_lifecycle():
     client = _client_for_spec(DOCUMENT_SPEC)
+    emp = {"X-NCE-Principal-Tier": "employee"}
 
     # 1. Create document
     payload = {
@@ -81,7 +83,7 @@ def test_document_crud_lifecycle():
         "tags": ["architecture", "core"],
         "metadata": {"confidentiality": "internal", "version": "1.0"},
     }
-    create_resp = client.post("/api/documents/documents", json=payload)
+    create_resp = client.post("/api/documents/documents", json=payload, headers=emp)
     assert create_resp.status_code == 201, create_resp.text
     created = create_resp.json()
     assert "id" in created
@@ -91,7 +93,7 @@ def test_document_crud_lifecycle():
     assert created["archived"] is False
 
     # 2. Detail GET
-    get_resp = client.get(f"/api/documents/documents/{doc_id}?namespace_id={_NS_A}")
+    get_resp = client.get(f"/api/documents/documents/{doc_id}?namespace_id={_NS_A}", headers=emp)
     assert get_resp.status_code == 200, get_resp.text
     fetched = get_resp.json()
     assert fetched["id"] == doc_id
@@ -103,23 +105,29 @@ def test_document_crud_lifecycle():
         "title": "System Architecture Overview v1.1",
         "namespace_id": _NS_A,
     }
-    patch_resp = client.patch(f"/api/documents/documents/{doc_id}", json=patch_payload)
+    patch_resp = client.patch(f"/api/documents/documents/{doc_id}", json=patch_payload, headers=emp)
     assert patch_resp.status_code == 200, patch_resp.text
     updated = patch_resp.json()
     assert updated["title"] == "System Architecture Overview v1.1"
 
     # 4. Soft Archive
-    archive_resp = client.post(f"/api/documents/documents/{doc_id}/archive?namespace_id={_NS_A}")
+    archive_resp = client.post(
+        f"/api/documents/documents/{doc_id}/archive?namespace_id={_NS_A}", headers=emp
+    )
     assert archive_resp.status_code == 200, archive_resp.text
     archived_doc = archive_resp.json()
     assert archived_doc["archived"] is True
 
     # Check that archive flag is reflected in GET
-    get_archived = client.get(f"/api/documents/documents/{doc_id}?namespace_id={_NS_A}")
+    get_archived = client.get(
+        f"/api/documents/documents/{doc_id}?namespace_id={_NS_A}", headers=emp
+    )
     assert get_archived.json()["archived"] is True
 
     # 5. Soft Restore
-    restore_resp = client.post(f"/api/documents/documents/{doc_id}/restore?namespace_id={_NS_A}")
+    restore_resp = client.post(
+        f"/api/documents/documents/{doc_id}/restore?namespace_id={_NS_A}", headers=emp
+    )
     assert restore_resp.status_code == 200, restore_resp.text
     restored_doc = restore_resp.json()
     assert restored_doc["archived"] is False
@@ -132,6 +140,7 @@ def test_document_crud_lifecycle():
 
 def test_document_listing_and_filtering():
     client = _client_for_spec(DOCUMENT_SPEC)
+    emp = {"X-NCE-Principal-Tier": "employee"}
 
     docs = [
         {
@@ -154,23 +163,27 @@ def test_document_listing_and_filtering():
         },
     ]
     for d in docs:
-        resp = client.post("/api/documents/documents", json=d)
+        resp = client.post("/api/documents/documents", json=d, headers=emp)
         assert resp.status_code == 201
 
     # List all
-    list_all = client.get(f"/api/documents/documents?namespace_id={_NS_A}")
+    list_all = client.get(f"/api/documents/documents?namespace_id={_NS_A}", headers=emp)
     assert list_all.status_code == 200
     assert list_all.json()["total"] == 3
 
     # Filter by document_kind
-    filter_resp = client.get(f"/api/documents/documents?namespace_id={_NS_A}&document_kind=manual")
+    filter_resp = client.get(
+        f"/api/documents/documents?namespace_id={_NS_A}&document_kind=manual", headers=emp
+    )
     assert filter_resp.status_code == 200
     res = filter_resp.json()
     assert res["total"] == 1
     assert res["items"][0]["title"] == "Amplifier Hardware User Manual"
 
     # Search by q
-    search_resp = client.get(f"/api/documents/documents?namespace_id={_NS_A}&q=crossover")
+    search_resp = client.get(
+        f"/api/documents/documents?namespace_id={_NS_A}&q=crossover", headers=emp
+    )
     assert search_resp.status_code == 200
     s_res = search_resp.json()
     assert s_res["total"] == 1
@@ -186,11 +199,13 @@ def test_entity_document_verbs_lifecycle():
     # Test entity endpoints on STOCK_LOCATION_SPEC
     loc_client = _client_for_spec(STOCK_LOCATION_SPEC)
     doc_client = _client_for_spec(DOCUMENT_SPEC)
+    emp = {"X-NCE-Principal-Tier": "employee"}
 
     # 1. Create a stock location entity
     loc_resp = loc_client.post(
         "/api/inventory/stock-locations",
         json={"namespace_id": _NS_A, "name": "Warehouse Alpha", "kind": "warehouse"},
+        headers=emp,
     )
     assert loc_resp.status_code == 201
     loc_id = loc_resp.json()["id"]
@@ -204,6 +219,7 @@ def test_entity_document_verbs_lifecycle():
             "document_ref": "https://storage.internal/plans/evac.pdf",
             "document_kind": "compliance",
         },
+        headers=emp,
     )
     assert doc_resp.status_code == 201
     doc_id = doc_resp.json()["id"]
@@ -212,6 +228,7 @@ def test_entity_document_verbs_lifecycle():
     attach_resp = loc_client.post(
         f"/api/inventory/stock-locations/{loc_id}/documents",
         json={"namespace_id": _NS_A, "document_id": doc_id, "relation": "compliance"},
+        headers=emp,
     )
     assert attach_resp.status_code == 201, attach_resp.text
     att_data = attach_resp.json()
@@ -229,13 +246,14 @@ def test_entity_document_verbs_lifecycle():
             "document_kind": "checklist",
             "relation": "operation",
         },
+        headers=emp,
     )
     assert inline_resp.status_code == 201, inline_resp.text
     inline_doc_id = inline_resp.json()["document_id"]
 
     # 5. List documents for entity
     list_docs = loc_client.get(
-        f"/api/inventory/stock-locations/{loc_id}/documents?namespace_id={_NS_A}"
+        f"/api/inventory/stock-locations/{loc_id}/documents?namespace_id={_NS_A}", headers=emp
     )
     assert list_docs.status_code == 200, list_docs.text
     data = list_docs.json()
@@ -246,14 +264,15 @@ def test_entity_document_verbs_lifecycle():
 
     # 6. Detach first document
     detach_resp = loc_client.delete(
-        f"/api/inventory/stock-locations/{loc_id}/documents/{doc_id}?namespace_id={_NS_A}"
+        f"/api/inventory/stock-locations/{loc_id}/documents/{doc_id}?namespace_id={_NS_A}",
+        headers=emp,
     )
     assert detach_resp.status_code == 200, detach_resp.text
     assert detach_resp.json()["unlinked"] is True
 
     # 7. List documents now shows only 1
     list_docs_after = loc_client.get(
-        f"/api/inventory/stock-locations/{loc_id}/documents?namespace_id={_NS_A}"
+        f"/api/inventory/stock-locations/{loc_id}/documents?namespace_id={_NS_A}", headers=emp
     )
     assert list_docs_after.status_code == 200
     assert list_docs_after.json()["count"] == 1

@@ -14,6 +14,7 @@ import uuid
 import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
+from tests._verified_tier_middleware import VERIFIED_TIER_TEST_MIDDLEWARE
 
 from nce import admin_state
 from nce.resource_surface import (
@@ -42,7 +43,7 @@ def _reset_env():
 
 
 def _client_for_spec(spec) -> TestClient:
-    app = Starlette(routes=make_resource_routes(spec))
+    app = Starlette(routes=make_resource_routes(spec), middleware=VERIFIED_TIER_TEST_MIDDLEWARE)
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -97,8 +98,10 @@ def test_customer_resource_crud_lifecycle():
     assert item["name"] == "Acme Corp"
     assert item["tier"] == "enterprise"
 
+    emp = {"X-NCE-Principal-Tier": "employee"}
+
     # 2. Get single item
-    get_resp = client.get(f"/api/sales/customers/{cust_id}?namespace_id={_NS_A}")
+    get_resp = client.get(f"/api/sales/customers/{cust_id}?namespace_id={_NS_A}", headers=emp)
     assert get_resp.status_code == 200
     assert get_resp.json()["id"] == cust_id
 
@@ -122,7 +125,7 @@ def test_customer_resource_crud_lifecycle():
     assert patched["tier"] == "vip"
 
     # 4. Filtered List
-    list_resp = client.get(f"/api/sales/customers?namespace_id={_NS_A}&status=active")
+    list_resp = client.get(f"/api/sales/customers?namespace_id={_NS_A}&status=active", headers=emp)
     assert list_resp.status_code == 200
     data = list_resp.json()
     assert len(data["items"]) == 1

@@ -3,7 +3,9 @@
 Phase A Wave A-1:
 Generates declarative MCP tools and executable handlers for any ResourceSpec:
   - {engine}_list_{entity}: collection query with filters, q search, and cursor pagination
-  - {engine}_get_{entity}: single item fetch with tier redaction
+  - {engine}_get_{entity}: single item fetch (no tier redaction on this
+    surface -- redact_item/resolve_principal_tier/tier_allowlists are a
+    rest.py-only mechanism today, not implemented for MCP tools)
   - {engine}_upsert_{entity}: create or update with concurrency protection
   - {engine}_archive_{entity}: soft archive
 

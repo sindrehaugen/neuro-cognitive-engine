@@ -335,11 +335,12 @@ CONTACT_SPEC = ResourceSpec(
             fields=("name", "email", "phone"),
         ),
     ),
-    # Explicitly empty, not omitted -- an absent key is fail-OPEN on
-    # redact_item's live X-NCE-Principal-Tier header path (see DEVICE_SPEC's
-    # comment, system_design/resources.py, for the full mechanism). A
-    # contact's email/phone are exactly the kind of PII an external-customer
-    # or contractor caller must not see by default.
+    # Explicitly empty. Was written when an absent key was fail-OPEN on
+    # redact_item's header path (see DEVICE_SPEC's comment, system_design/
+    # resources.py) -- that path is now fail-closed by default, so this is
+    # redundant with omission, kept as documentation: a contact's email/phone
+    # are exactly the kind of PII an external-customer or contractor caller
+    # must not see by default.
     tier_allowlists={"external-customer": (), "contractor": ()},
     description=(
         "C12 contact: graph identity (label, entity_type, change_origin, "
