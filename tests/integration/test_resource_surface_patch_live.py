@@ -23,33 +23,39 @@ seeding ``tests/test_agreements_sla.py`` uses for a kg_nodes writer, a
 materially different and harder fixture than any of the 39 relational
 specs below. Sizing that population is a separate task, not done here.
 
-Of the remaining **39 relational specs**, 3 cannot create a row through
-the generated surface AT ALL, for a reason that has nothing to do with
-this file's job (found while building this fixture, not part of the
-dispatch): ``field_tech:checklists``/``time-entries``/``work-orders`` each
-have a real, human-readable identifier column
-(``checklist_id``/``time_entry_id``/``work_order_id``) that is ``NOT
-NULL`` with no default and is **not in the spec's own ``writable_fields``**
--- no caller, ever, through any interface, can set it. Reproduced live:
-POSTing a valid ``field_tech:checklists`` payload 500s with
-``NotNullViolationError: null value in column "checklist_id"``. These 3
-are skipped below with a cited reason, not dropped from the parametrize
-list -- the same discipline as ``notifications:reminders`` in
-``test_resource_surface_archive_restore_live.py``. This is a real,
-separate, unreported defect (a create route that can never succeed,
-independent of the type-coercion bug #378 fixed); flagged upstream, not
-fixed here, since it needs a ``ResourceSpec`` edit (adding the missing
-field to ``writable_fields``) outside this file's read-only-by-convention
-scope for a live-test PR.
+Of the remaining **39 relational specs** (40 before ADR-0008 dropped
+``support:ticket-actions`` out of this population entirely by excluding
+``upsert`` and clearing its ``writable_fields`` -- it is gone from
+``_PATCH_ELIGIBLE`` via the same filter condition every other spec is
+measured by, not a manually-maintained exclusion), ``field_tech:
+checklists``/``time-entries``/``work-orders`` originally could not create
+a row through the generated surface AT ALL (found while building this
+fixture, not part of the dispatch): each had a real, human-readable
+identifier column (``checklist_id``/``time_entry_id``/``work_order_id``)
+that was ``NOT NULL`` with no default and **absent from the spec's own
+``writable_fields``** -- no caller, ever, through any interface, could
+set it. Reproduced live: POSTing a valid ``field_tech:checklists``
+payload 500'd with ``NotNullViolationError: null value in column
+"checklist_id"``. Filed in ``UNCREATABLE_SPECS.md`` and fixed in PR #390
+(the identifier added to each spec's ``writable_fields``, matching
+``hr:absences.absence_id``'s already-shipped precedent for the identical
+real-writer shape) -- all three are re-enabled here as of that fix, no
+longer in ``_KNOWN_BLOCKED``. ``checklists``/``time-entries`` also each
+need a real ``work_orders`` row created first via the composite FK their
+hand-written writers already check (``_TEXT_FK_TARGETS``, reusing the same
+FK-parent-creation #390's own acceptance test built, not rebuilt here).
 
-**36 relational specs are exercised for real.** ``expected_version``: each
-spec's own PATCH is asserted with a correct ``expected_version`` (proves
-the per-spec ``version_field`` wiring, not just a shared mechanism --
-version_field names and response shapes differ per spec). The STALE-version
-409 rejection itself is asserted only once (a second, dedicated test on one
-representative spec) -- #379 already proved that mechanism is spec-generic
-(shared ``handle_patch`` code, not per-spec logic), so repeating it 36
-times would prove the same fact 36 times, not 36 different facts.
+**All 39 relational specs are exercised for real** (measured by running
+this file after rebasing onto ADR-0008, not assumed: 41 collected items =
+1 discovery-floor test + 39 parametrized specs + 1 shared positive
+control). ``expected_version``: each spec's own PATCH is asserted with a
+correct ``expected_version`` (proves the per-spec ``version_field``
+wiring, not just a shared mechanism -- version_field names and response
+shapes differ per spec). The STALE-version 409 rejection itself is
+asserted only once (a second, dedicated test on one representative spec)
+-- #379 already proved that mechanism is spec-generic (shared
+``handle_patch`` code, not per-spec logic), so repeating it 39 times would
+prove the same fact 39 times, not 39 different facts.
 """
 
 from __future__ import annotations
@@ -80,23 +86,14 @@ _PATCH_ELIGIBLE = [
 ]
 _SPEC_IDS = [f"{s.engine}:{s.entity}" for s in _PATCH_ELIGIBLE]
 
-_KNOWN_BLOCKED: dict[str, str] = {
-    "field_tech:checklists": (
-        "checklist_id TEXT NOT NULL has no default and is not in writable_fields "
-        "-- no caller can ever set it. Reproduced live: create 500s with "
-        "NotNullViolationError. Not a PATCH defect; create itself is broken."
-    ),
-    "field_tech:time-entries": (
-        "time_entry_id TEXT NOT NULL has no default and is not in writable_fields "
-        "-- same shape as field_tech:checklists, inferred from identical schema "
-        "pattern (not independently reproduced live)."
-    ),
-    "field_tech:work-orders": (
-        "work_order_id TEXT NOT NULL has no default and is not in writable_fields "
-        "-- same shape as field_tech:checklists, inferred from identical schema "
-        "pattern (not independently reproduced live)."
-    ),
-}
+# Was field_tech:checklists/time-entries/work-orders (checklist_id/
+# time_entry_id/work_order_id absent from writable_fields -- see
+# UNCREATABLE_SPECS.md). Fixed by PR #390 (writable_fields addition,
+# matching hr:absences.absence_id's precedent); cleared here now that
+# create succeeds, re-enabling all three for live PATCH. Kept as an empty
+# dict, not removed, since the skip-with-cited-reason mechanism is
+# reusable infrastructure, not single-use.
+_KNOWN_BLOCKED: dict[str, str] = {}
 
 _ENUM_CHECK_SKIP: dict[str, set[str]] = {
     "procurement_deal_registrations": {"status"},
@@ -113,6 +110,8 @@ _ENUM_CHECK_SKIP: dict[str, set[str]] = {
     "customer_health": {"churn_risk"},
     "resources": {"kind"},
     "sla_clocks": {"breach_type"},
+    "work_orders": {"kind", "source_kind", "status", "priority", "assignee_kind"},
+    "time_entries": {"source"},
 }
 
 # A text-typed writable column that is really a foreign key -- the generic
@@ -123,6 +122,21 @@ _TEXT_FK_OVERRIDE: dict[str, dict[str, str]] = {
     "absences": {"employee_id": "EMP-PATCH-LIVE"},
     "certifications": {"employee_id": "EMP-PATCH-LIVE"},
     "skills": {"employee_id": "EMP-PATCH-LIVE"},
+}
+
+# A text-typed writable column that is a real FK to another table's own
+# TEXT business key (not its UUID id_field) -- unlike _TEXT_FK_OVERRIDE
+# above (a fixed, pre-seeded value), this needs a FRESH real parent row
+# per test case, since the target column is the parent's own business
+# identifier, not a reusable static seed. checklists/time_entries both
+# carry a real composite FK to work_orders(work_order_id, namespace_id)
+# (verified against information_schema, not assumed) -- reuses the same
+# FK-parent-creation this population needed for
+# test_field_tech_identifier_writable_fields_live.py's create acceptance
+# test, not rebuilt here.
+_TEXT_FK_TARGETS: dict[tuple[str, str], tuple[str, str]] = {
+    ("checklists", "work_order_id"): ("work_orders", "work_order_id"),
+    ("time_entries", "work_order_id"): ("work_orders", "work_order_id"),
 }
 
 # A numeric column whose CHECK demands more than ">= 0" (the generic
@@ -261,6 +275,23 @@ async def _create_minimal_row(
     return created[spec.id_field]
 
 
+async def _create_minimal_row_business_key(
+    engine: NCEEngine,
+    conn: asyncpg.Connection,
+    table_name: str,
+    namespace_id: uuid.UUID,
+    business_key_column: str,
+) -> str:
+    """Like `_create_minimal_row`, but returns the parent's own real
+    business-key column (e.g. work_orders.work_order_id) instead of
+    spec.id_field -- for a child whose FK references that business key,
+    not the parent's UUID primary key."""
+    spec = next(s for s in _ALL_SPECS.values() if s.table_name == table_name)
+    payload = await _typed_sample_payload(engine, conn, spec, namespace_id)
+    created = await _create(engine, spec, payload)
+    return created[business_key_column]
+
+
 async def _typed_sample_payload(
     engine: NCEEngine, conn: asyncpg.Connection, spec: ResourceSpec, namespace_id: uuid.UUID
 ) -> dict[str, object]:
@@ -272,6 +303,13 @@ async def _typed_sample_payload(
     for f in spec.writable_fields:
         if f in text_fk_override:
             payload[f] = text_fk_override[f]
+            continue
+        text_fk_target = _TEXT_FK_TARGETS.get((spec.table_name, f))
+        if text_fk_target is not None:
+            target_table, target_column = text_fk_target
+            payload[f] = await _create_minimal_row_business_key(
+                engine, conn, target_table, namespace_id, target_column
+            )
             continue
         if f in skip:
             continue
