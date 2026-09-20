@@ -44,11 +44,36 @@ _SURFACE_ROOT_PATTERNS = frozenset(
         "admin_handlers/",
         "cron.py",
         "webhook_receiver/",
-        "a2a.py",
+        # Anchored to the shared A2A module's own path, not the bare
+        # filename: "a2a.py" alone also substring-matches
+        # nce/vertical_modules/hr/a2a.py and .../product/a2a.py, which use
+        # "a2a" as an unrelated internal cross-module-call naming
+        # convention (hr/a2a.py: other engines calling into HR in-process;
+        # product/a2a.py: a fire-and-forget background-task trigger) --
+        # neither is dispatched by the real A2A protocol surface
+        # (a2a_server.py's _dispatch_skill). Found while adding
+        # customer_portal/app.py and me_app.py below (2026-09-20): verified
+        # harmless today (the do_* functions those two files call directly
+        # -- do_capacity, do_cert_status, do_enrich_product, do_match_skills
+        # -- are not in internal-cores.json), but a bare "a2a.py" would
+        # silently absolve a future entry the same way an accidental
+        # "tasks.py" pattern briefly did for do_sync_bom_tasks below.
+        "nce/a2a.py",
         "a2a_server.py",
         "watchers.py",
         "triggers.py",
         "subscribers.py",
+        # customer_portal and me_app are real, independently deployed
+        # Starlette services (docker-compose: nce-customer-portal port
+        # 8005; me_app.py is live per docs/host_parity_seed.yaml F-something
+        # verified_evidence) that were never in this list. Found 2026-09-20:
+        # customer_portal/documents.py::do_get_document had a real, wired
+        # route (app.py:718, since 2026-09-07) that this scanner could not
+        # see for 13 days -- a live shrink-only violation with no mechanism
+        # watching it. me_app.py adds a root that currently reaches zero
+        # allowlisted cores (no internal-cores.json entry is me_app-owned).
+        "customer_portal/app.py",
+        "me_app.py",
     }
 )
 
