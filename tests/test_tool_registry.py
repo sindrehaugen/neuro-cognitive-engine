@@ -22,6 +22,7 @@ from nce.tool_registry import (
     MUTATION_TOOLS,
     TOOL_REGISTRY,
 )
+from tests.tool_pins import FLAG_PINS
 
 # ---------------------------------------------------------------------------
 # Cardinality
@@ -56,11 +57,56 @@ from nce.tool_registry import (
 # live (already-mutated) TOOL_REGISTRY object, because by the time any test
 # here runs, a real collision would already have silently happened and the
 # losing entry would simply be gone from the object these tests inspect.
+#
+# Second tangle, closed here (filed as K8 during the tool-pin consolidation
+# wave, 2026-09-20): tests/tool_pins.py became the single source of truth for
+# ~172 per-engine tool name+flag pins, replacing 12 files that used to
+# hardcode them -- but the estate-wide category frozensets below (mutation/
+# cacheable/admin_only) ALSO hand-listed a subset of those same names, purely
+# because each engine tool's category membership is a direct function of the
+# same flags tool_pins.py already carries. An engine tool's flags were
+# therefore still asserted twice: once in tool_pins.py's FLAG_PINS, once by
+# hand in whichever frozenset below happened to also list it. _TOOL_PINS_*
+# below derives each category's tool_pins-covered contribution the same way
+# _C12_* derives the C12 contribution, and the redundant hand-written entries
+# were removed from _EXPECTED_MUTATION_TOOLS/_EXPECTED_CACHEABLE/
+# _EXPECTED_ADMIN_ONLY below (not just left in "harmless" -- leaving them in
+# would have kept the tax this fix exists to remove: whoever changes an
+# engine tool's flag in tool_pins.py would still need to remember this file
+# exists and edit it too). NAME_PINS-covered tools (agreements/economy/
+# product, name-only, no flags) are NOT touched -- tool_pins.py carries no
+# flag data for them, so their category membership here remains the only
+# source and is correctly NOT redundant.
+#
+# This also closes a real, separate gap while it was open: _EXPECTED_ADMIN_ONLY
+# had no C12-derived union at all (unlike mutation/cacheable), so a future C12
+# ResourceSpec registered with admin_only=True would have broken this file's
+# exact-match assertion with no path to fix it by import. _C12_ADMIN_ONLY_TOOLS
+# closes that the same way _C12_MUTATION_TOOLS/_C12_CACHEABLE_TOOLS already do
+# (currently empty -- zero live C12 specs are admin_only -- so this is
+# preventive, not a live bug fix).
 
 _C12_TOOL_SPECS = build_all_resource_tool_specs()
 _C12_TOOL_NAMES = frozenset(_C12_TOOL_SPECS)
 _C12_MUTATION_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.mutation)
 _C12_CACHEABLE_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.cacheable)
+_C12_ADMIN_ONLY_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.admin_only)
+
+_TOOL_PINS_MUTATION_TOOLS = frozenset(
+    name for engine in FLAG_PINS.values() for name, flags in engine.items() if flags.get("mutation")
+)
+_TOOL_PINS_CACHEABLE_TOOLS = frozenset(
+    name
+    for engine in FLAG_PINS.values()
+    for name, flags in engine.items()
+    if flags.get("cacheable")
+)
+_TOOL_PINS_ADMIN_ONLY_TOOLS = frozenset(
+    name
+    for engine in FLAG_PINS.values()
+    for name, flags in engine.items()
+    if flags.get("admin_only")
+)
 _EXPECTED_STATIC_TOTAL = 344  # 292 hand-written tools + 8 FUNCTIONAL_LOCATION tree tools (Lane C Wave C-1) + 1 C17 site master data address-registry feed (Lane F Wave F-9) + 2 support action/timeline tools (Lane D Wave D-5) + 1 support on-call rota (Lane D Wave D-7) + 1 assets service history (Lane D Wave D-3) + 8 room cat & FL metadata tools (Lane C Wave C-2) + 6 assets person/subcomponent tools (Lane D Wave D-2) + 8 design versions & room spec tools (Lane C Wave C-3) + 4 agreements price rules & index series tools (Lane B Wave B-10) + 3 support summary/links tools (Lane D Wave D-6) + 7 design requests tools (Lane C Wave C-4) + 1 external-import BOM_LINE origination (Lane B Wave B-5) + 1 DealRoom MCP tool, sales_open_dealroom (Lane H Wave B-4) + 1 sales_clone_quote (Lane E Wave B-5 remainder); see _C12_TOOL_NAMES above
 
 # Re-exported for tests/unit/test_{assets,economy,inventory}_surface.py and
@@ -161,7 +207,6 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # M2.W7 — on-demand product enrichment (governed confirm-only mutation)
         "product_enrich",
         # M6.W11 — Lucid export (external publish is a mutation)
-        "system_design_publish_design_docs",
         # M7.W4 — Sales→Project bridge (Actor: mutation=True, admin_only=True)
         "project_convert_signed_quote",
         # M7.W4a — phase-transition Actor (mutation=True, admin_only=True)
@@ -174,17 +219,11 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # Batch 131 (M11.W3) — Inventory Actor mutations (2): transfer moves
         # stock between two locations, record_consumption decrements it at
         # one; both are admin_only.
-        "inventory_transfer_stock",
-        "inventory_record_consumption",
         # Batch 143 (M9.W3) — Assets Actor mutation: advance-lifecycle writes
         # assets.lifecycle_state on a legal transition. NOT admin_only — the
         # MCP tools table in docs/vertical_engines/09-assets-engine.md
         # specifies cacheable=N, admin_only=N, mutation=Y for this tool.
-        "assets_advance_lifecycle",
         # ML9b-P1/P2: Assets tools
-        "assets_seed_from_bom",
-        "assets_pull_telemetry",
-        "assets_attach_sla",
         "assets_compute_health",
         # Batch 067c (M6.W13b) — System Design authoring: the first external
         # write path into the design graph. mutation=True is what makes the
@@ -193,15 +232,12 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # pre-write data for MCP_CACHE_TTL_S. Neither is admin_only — Copper
         # calls them as a tenant, and the guard is assert_owner + the SQL
         # namespace predicate, not an admin key.
-        "system_design_author_topology",
-        "system_design_author_functional_location",
         # Batch 067h (M6.W17) — the System Design retire tool, and the module's
         # FIRST delete path. mutation=True for the same cache reason as the two
         # above, and more sharply: without the generation bump the cacheable
         # system_design_get_topology entry keeps serving a device the caller
         # just removed. Unlike the two above it is ALSO admin_only — see
         # _EXPECTED_ADMIN_ONLY.
-        "system_design_delete_planned",
         # Batch 138a (M11.W10a) — Inventory surface completion (7 mutations).
         # The Actor cores Batch 131's single surface wave predated: a goods
         # receipt and the receipt+three-way-match composition (two contracts,
@@ -221,15 +257,8 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # only reads. enrich_design_lines writes no graph row itself but QUEUES
         # enrichment work, and a caller must be able to tell that invoking it
         # causes something to happen.
-        "system_design_from_quote",
-        "system_design_to_quote",
-        "system_design_enrich_design_lines",
         # Wave C-5 (System Design capability sync from product ETIM specs)
-        "system_design_sync_device_capabilities",
         # Wave C-1 (System Design FUNCTIONAL_LOCATION tree mutations)
-        "system_design_move_functional_location",
-        "system_design_merge_functional_locations",
-        "system_design_promote_functional_location",
         # M5.W15 (Batch 132d) -- manual-pick BOM_LINE origination
         "sales_add_quote_line",
         # Charter Wave B-5 -- external-import BOM_LINE origination
@@ -237,32 +266,14 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # Charter Wave B-5 remainder (Lane E) -- clone a quote + its BOM_LINE content
         "sales_clone_quote",
         # ML10-B5 (M10.W5) -- Support Engine mutations (Actor, admin_only)
-        "support_open_ticket",
-        "support_resolve_ticket",
         # ML12-B5 (M12.W5) -- Field Tech Engine mutations (8 tools)
-        "field_tech_create_work_order",
-        "field_tech_assign",
-        "field_tech_complete_checklist",
-        "field_tech_scan_serial",
-        "field_tech_log_time",
-        "field_tech_attach_photo",
-        "field_tech_sync",
-        "field_tech_record_outcome",
         # ML13-B3 (M13.W3) -- HR Engine mutations (3 tools)
         "hr_register_absence",
         "hr_build_onboarding_quest",
         "hr_log_one_on_one",
         # ML14-B3 (M14.W3) -- Marketing Engine mutations (5 tools)
-        "marketing_draft_case_study",
-        "marketing_request_testimonial",
-        "marketing_capture_testimonial",
-        "marketing_approve_content",
-        "marketing_publish_content",
         # ML10b-P1 -- Support Engine touchpoint record mutation
-        "support_record_touchpoint",
         # ML10b-P2/P3 -- Support Engine dispatch and sync mutations
-        "support_dispatch_work_order",
-        "support_sync_now",
         # Wave SU-3 -- Support ecosystem mutations (2 tools)
         "support_failure_pattern",
         "support_upsell_signal",
@@ -287,9 +298,6 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "agreements_record_signature",
         "agreements_review_extraction",
         # MLV15D-V1 -- Vendors master-data mutations (3 tools)
-        "vendors_upsert_vendor",
-        "vendors_upsert_contractor",
-        "vendors_upsert_cert",
         # MLV15D-HR2 -- HR surface completion Actor mutations (2 tools)
         "hr_record_skill",
         "hr_update_absence_compliance",
@@ -311,7 +319,6 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # MLV15B-E3 -- Economy invoice approval cascade (Wave E-3)
         "economy_approve_invoice",
         # MLV15D-MK2 -- Marketing retract testimonial (Wave MK-2)
-        "marketing_retract_testimonial",
         # MLV15D-S1 -- Sales native write path mutations (4 tools)
         "sales_create_customer",
         "sales_create_lead",
@@ -390,28 +397,13 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "field_tech_upsert_checklists",
         "field_tech_archive_checklists",
         # Wave C-1 -- FUNCTIONAL_LOCATION tree mutations (3 tools)
-        "system_design_move_functional_location",
-        "system_design_merge_functional_locations",
-        "system_design_promote_functional_location",
         # Wave C-2 -- Room Categories & FL Metadata mutations (3 tools)
-        "system_design_set_fl_room_category",
-        "system_design_assign_fl_responsible",
-        "system_design_unassign_fl_responsible",
         # Wave C-3 -- DESIGN versions & Room Specifications mutations (4 tools)
-        "system_design_create_design",
-        "system_design_update_design",
-        "system_design_set_active_design",
-        "system_design_set_room_spec",
         # Lane D Wave D-5 -- support_log_ticket_action
         "support_log_ticket_action",
         # Lane D Wave D-6 -- support_link_ticket
         "support_link_ticket",
         # Wave C-4 -- Solution Design Intake Queue mutations (5 tools)
-        "system_design_create_design_request",
-        "system_design_update_design_request",
-        "system_design_assign_design_request",
-        "system_design_complete_design_request",
-        "system_design_fulfill_request_from_quote",
         # Lane B Wave B-1 -- C12 Sales resource surface mutations (upsert + archive)
         "sales_upsert_customers",
         "sales_archive_customers",
@@ -430,8 +422,10 @@ def test_mutation_tools_exact_match():
     of C12 additions predates this fix and is harmless to leave in -- union
     is idempotent). The live C12 contribution is unioned in fresh each run,
     so a newly registered ResourceSpec's tools appear on both sides
-    automatically and never require editing this frozenset again."""
-    expected = _EXPECTED_MUTATION_TOOLS | _C12_MUTATION_TOOLS
+    automatically and never require editing this frozenset again. The
+    tool_pins.py contribution is unioned the same way -- an engine tool's
+    mutation flag changes in FLAG_PINS, not here (K8)."""
+    expected = _EXPECTED_MUTATION_TOOLS | _C12_MUTATION_TOOLS | _TOOL_PINS_MUTATION_TOOLS
     assert MUTATION_TOOLS == expected, (
         f"Extra: {MUTATION_TOOLS - expected}  Missing: {expected - MUTATION_TOOLS}"
     )
@@ -489,16 +483,6 @@ def test_mutation_tools_count():
 
 _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
     {
-        "vendors_get_vendor",
-        "vendors_compute_scorecard",
-        "vendors_get_tier_status",
-        "vendors_detect_reliability_degradation",
-        "vendors_check_tier_at_risk",
-        "vendors_match_contractor",
-        "vendors_compute_performance",
-        "vendors_recall_similar_jobs",
-        "vendors_reliability_radar",
-        "vendors_calibrate_weights",
         "semantic_search",
         "search_codebase",
         "graph_search",
@@ -526,18 +510,9 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "procurement_recommend_move_spend",
         "procurement_whatif_spend",
         # System Design vertical module (M6.W1) — skeleton ping, cacheable
-        "system_design_ping",
         # System Design vertical module (M6.W13a) — topology read, cacheable
-        "system_design_get_topology",
         # Wave C-5 (System Design standards & signals)
-        "system_design_get_standards",
-        "system_design_get_signal_rules",
         # Wave C-1 (System Design FUNCTIONAL_LOCATION tree reads)
-        "system_design_list_functional_locations",
-        "system_design_get_functional_location",
-        "system_design_get_fl_children",
-        "system_design_get_fl_ancestors",
-        "system_design_get_fl_path",
         # Sales vertical module (Batch 080) — skeleton ping, cacheable
         "sales_ping",
         # Project vertical module (M7.W3) — phase-gate readiness check, cacheable
@@ -566,12 +541,9 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "economy_gl_sync_status",
         "economy_generate_close_narrative",
         # Inventory vertical module (Batch 131, M11.W3) — Watcher read, cacheable
-        "inventory_stock_levels",
         # Assets vertical module (Batch 141, M9.W1) — skeleton ping, cacheable
         "assets_ping",
         # Assets vertical module (Batch 143, M9.W3) — Watcher reads, cacheable
-        "assets_get",
-        "assets_list",
         # Inventory vertical module (Batch 138a, M11.W10a) — the only two
         # cacheable tools of the eleven the surface-completion wave added. Both
         # cores write nothing and derive from data that does not change per
@@ -582,13 +554,7 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "inventory_recommend_restock",
         "inventory_forecast_demand",
         # ML10-B5 (M10.W5) -- Support Engine Watcher reads (cacheable)
-        "support_query_ticket",
-        "support_sla_clock",
-        "support_health_score",
-        "support_troubleshoot",
         # ML12-B5 (M12.W5) -- Field Tech Engine Advisor reads (cacheable)
-        "field_tech_dispatch",
-        "field_tech_partner_view",
         # ML13-B3 (M13.W3) -- HR Engine Advisor/Watcher reads (5 cacheable tools)
         "hr_get_employee",
         "hr_match_skills",
@@ -596,11 +562,7 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "hr_cert_status",
         "hr_coach",
         # ML14-B3 (M14.W3) -- Marketing Engine cacheable reads (3 tools)
-        "marketing_find_case_study_candidates",
-        "marketing_suggest_content",
-        "marketing_audit_seo",
         # ML10b-P1 -- Support Engine triage advisor (cacheable)
-        "support_triage_ticket",
         # Wave SU-3 -- Support ecosystem read-only aggregate (1 tool)
         "support_at_risk_aggregate",
         # Wave D-7 -- Support on-call rota and active responder routing (1 tool)
@@ -618,15 +580,11 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "customer_portal_sla_status",
         "customer_portal_list_invoices",
         # ML16 (Business Insights Engine) -- executive watcher reads (3 cacheable tools)
-        "business_insights_morning_brief",
-        "business_insights_risk_radar",
-        "business_insights_kpi_dashboard",
         # MLV15D-AG2 -- Agreements surface completion cacheable reads (3 tools)
         "agreements_coverage_matrix",
         "agreements_reconcile_kickback",
         "agreements_run_compliance_audit",
         # MLV15D-V1 -- Vendors cacheable read (1 tool)
-        "vendors_get_contractor",
         # MLV15D-HR2 -- HR surface completion cacheable reads (3 tools)
         "hr_query_absences",
         "hr_compliance_deadlines",
@@ -641,9 +599,6 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         # Wave S-6 -- Sales commission calculation Advisor tool (cacheable)
         "sales_calculate_commission",
         # MLV15D-E2 -- Economy PEPPOL and validation cacheable reads (3 tools)
-        "economy_generate_kid",
-        "economy_validate_kid",
-        "economy_validate_contract",
         # Wave B-AG1 / B-E2 -- Economy GL records retrieval (cacheable read)
         "economy_get_gl_records",
         # Wave S-7 -- Sales divergence log parity window reader (cacheable read)
@@ -664,11 +619,9 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "project_detect_scope_creep",
         "project_status_report",
         # Wave SD-6 -- System Design procurement view (cacheable read)
-        "system_design_procurement_view",
         # Wave A-3 -- Assets warranty/EOL watcher (cacheable read)
         "assets_check_warranty_eol",
         # Wave A-4 -- Assets QR generator (cacheable read)
-        "assets_generate_qr",
         # Wave D-3 -- Assets service history reader (cacheable read)
         "assets_service_history",
         # Wave D-2 -- Assets person assignment & sub-components (cacheable reads)
@@ -732,22 +685,8 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "pricing_get_fx_rates",
         "geodata_get_weather",
         # Wave C-1 -- FUNCTIONAL_LOCATION tree cacheable reads (5 tools)
-        "system_design_list_functional_locations",
-        "system_design_get_functional_location",
-        "system_design_get_fl_children",
-        "system_design_get_fl_ancestors",
-        "system_design_get_fl_path",
         # Wave C-2 -- Room Categories & FL Metadata cacheable reads (5 tools)
-        "system_design_list_room_categories",
-        "system_design_get_room_category",
-        "system_design_get_fl_room_category",
-        "system_design_list_fl_responsible",
-        "system_design_list_my_responsible_fls",
         # Wave C-3 -- DESIGN Versions & Room Specifications cacheable reads (4 tools)
-        "system_design_list_designs",
-        "system_design_get_design",
-        "system_design_get_active_design",
-        "system_design_get_room_spec",
         # Lane D Wave D-5 -- Support ticket timeline reader (cacheable read)
         "support_ticket_timeline",
         # Lane D Wave D-7 -- Support on-call rota reader (cacheable read)
@@ -756,8 +695,6 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "support_summarise_ticket",
         "support_get_ticket_links",
         # Wave C-4 -- Solution Design Intake Queue cacheable reads (2 tools)
-        "system_design_get_design_request",
-        "system_design_list_design_requests",
         # Lane B Wave B-1 -- C12 Sales resource surface cacheable reads (list + get)
         "sales_list_customers",
         "sales_get_customers",
@@ -774,8 +711,9 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
 def test_cacheable_tools_exact_match():
     """Same treatment as test_mutation_tools_exact_match above: the live C12
     contribution is unioned in fresh each run, so a newly registered
-    ResourceSpec's list/get tools never require editing this frozenset."""
-    expected = _EXPECTED_CACHEABLE | _C12_CACHEABLE_TOOLS
+    ResourceSpec's list/get tools never require editing this frozenset. Same
+    for the tool_pins.py contribution (K8)."""
+    expected = _EXPECTED_CACHEABLE | _C12_CACHEABLE_TOOLS | _TOOL_PINS_CACHEABLE_TOOLS
     assert CACHEABLE_TOOLS == expected, (
         f"Extra: {CACHEABLE_TOOLS - expected}  Missing: {expected - CACHEABLE_TOOLS}"
     )
@@ -832,14 +770,11 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         # Batch 120 (rl) — causal-dag admin tool for cycle detection.
         "detect_causal_cycles",
         # Batch 131 (M11.W3) — Inventory Actor mutations are admin_only.
-        "inventory_transfer_stock",
-        "inventory_record_consumption",
         # Batch 067h (M6.W17) — System Design retire. THE ONLY TOOL IN THE
         # MODULE THAT CAN REMOVE ANYTHING, and the codebase's first delete
         # path. The two W13b authoring tools are deliberately NOT admin_only —
         # Copper calls them as a tenant — and this one deliberately IS: adding
         # and updating is a canvas operation, taking away is not.
-        "system_design_delete_planned",
         # Batch 138a (M11.W10a) — Inventory surface completion. NINE of the
         # eleven tools are admin_only: the seven Actor mutations, plus two
         # read-only tools that are admin_only for their DATA rather than their
@@ -858,38 +793,19 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "inventory_valuation",
         "inventory_reconcile_dead_stock",
         # ML10-B5 (M10.W5) -- Support Engine mutations (admin_only)
-        "support_open_ticket",
-        "support_resolve_ticket",
         # ML12-B5 (M12.W5) -- Field Tech Engine admin_only tools (3 tools)
-        "field_tech_create_work_order",
-        "field_tech_assign",
-        "field_tech_record_outcome",
         # ML13-B3 (M13.W3) -- HR Engine admin_only tools (2 tools)
         "hr_build_onboarding_quest",
         "hr_log_one_on_one",
         # ML14-B3 (M14.W3) -- Marketing Engine admin_only tools (5 tools)
-        "marketing_draft_case_study",
-        "marketing_request_testimonial",
-        "marketing_capture_testimonial",
-        "marketing_approve_content",
-        "marketing_publish_content",
         # ML10b-P2/P3 -- Support Engine dispatch and sync mutations
-        "support_dispatch_work_order",
-        "support_sync_now",
         # Wave SU-3 -- Support ecosystem admin-only tools (2 tools)
         "support_failure_pattern",
         "support_upsell_signal",
         # ML15-B7 (M15.W7) -- Resources Engine admin_only tools (1 tool)
         "resources_plan_material_flow",
         # ML16 (Business Insights Engine) -- executive/board admin-only tools (6 tools)
-        "business_insights_morning_brief",
-        "business_insights_risk_radar",
-        "business_insights_run_scenario",
-        "business_insights_generate_board_pack",
-        "business_insights_kpi_dashboard",
-        "business_insights_ask_business",
         # ML9b-P1 -- Assets Engine admin_only tools (operator/cron telemetry pull)
-        "assets_pull_telemetry",
         # MLV15B-S2a -- Sales quote signing request Actor tool
         "sales_request_signature",
         # Wave PR-1 -- Procurement PO lifecycle Actor tools (2 tools)
@@ -903,9 +819,6 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "agreements_record_signature",
         "agreements_review_extraction",
         # MLV15D-V1 -- Vendors master-data admin tools (3 tools)
-        "vendors_upsert_vendor",
-        "vendors_upsert_contractor",
-        "vendors_upsert_cert",
         # MLV15D-HR2 -- HR surface completion admin tools (2 tools)
         "hr_record_skill",
         "hr_update_absence_compliance",
@@ -925,14 +838,12 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         # MLV15B-E3 -- Economy invoice approval cascade (Wave E-3)
         "economy_approve_invoice",
         # MLV15D-MK2 -- Marketing retract testimonial (Wave MK-2)
-        "marketing_retract_testimonial",
         # MLV15D-S1 -- Sales native write path admin tools (4 tools)
         "sales_create_customer",
         "sales_create_lead",
         "sales_create_deal",
         "sales_edit_deal",
         # MLV15D-E2 -- Economy outbound EHF generation ([ADMIN])
-        "economy_generate_ehf",
         # Wave T-6 / Estate Review -- Customer Portal Engine internal MCP admin tools (9 tools)
         "customer_portal_room_tracker",
         "customer_portal_room_overview",
@@ -978,9 +889,16 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
 
 
 def test_admin_only_tools_exact_match():
-    assert ADMIN_ONLY_TOOLS == _EXPECTED_ADMIN_ONLY, (
-        f"Extra: {ADMIN_ONLY_TOOLS - _EXPECTED_ADMIN_ONLY}  "
-        f"Missing: {_EXPECTED_ADMIN_ONLY - ADMIN_ONLY_TOOLS}"
+    """Same treatment as test_mutation_tools_exact_match above -- this used to
+    be a bare equality against _EXPECTED_ADMIN_ONLY with no derived
+    contribution at all (unlike mutation/cacheable), so a future C12
+    ResourceSpec registered admin_only=True would have broken this with no
+    fix-by-import path; and an engine tool's admin_only flag was separately
+    hand-listed here even though tool_pins.py's FLAG_PINS already carries it
+    (K8). Both are now unioned in fresh each run."""
+    expected = _EXPECTED_ADMIN_ONLY | _C12_ADMIN_ONLY_TOOLS | _TOOL_PINS_ADMIN_ONLY_TOOLS
+    assert ADMIN_ONLY_TOOLS == expected, (
+        f"Extra: {ADMIN_ONLY_TOOLS - expected}  Missing: {expected - ADMIN_ONLY_TOOLS}"
     )
 
 
