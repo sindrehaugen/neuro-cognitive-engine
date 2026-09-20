@@ -119,6 +119,9 @@ async def _seed_contract(
         )
 
 
+_COUNTER_ACCOUNT = "2400"  # matches test_economy_finago.py's own balancing-account precedent
+
+
 async def _seed_posting(
     pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
     namespace_id: uuid.UUID,
@@ -127,19 +130,29 @@ async def _seed_posting(
     amount: str,
     period_id: str,
 ) -> None:
+    """Write a balanced two-line posting event: `account` gets `amount`, a
+    counter account gets the exact negative offset. economy_postings
+    enforces double-entry (sum=0 per event_id) at the database level via a
+    trigger -- a single unbalanced line is refused outright, not silently
+    accepted (see test_economy_finago.py's own `lines=[(acct, amt), (ctr,
+    -amt)]` convention, followed here rather than invented)."""
     async with pg_pool.acquire() as conn, conn.transaction():
         await set_namespace_context(conn, namespace_id)
+        event_id = f"evt-{uuid.uuid4().hex[:12]}"
         await conn.execute(
             """
             INSERT INTO economy_postings
                 (namespace_id, event_id, event_type, line_no, account, amount, period_id)
-            VALUES ($1::uuid, $2, 'test.b11_reconcile', 0, $3, $4, $5)
+            VALUES
+                ($1::uuid, $2, 'test.b11_reconcile', 0, $3, $4::numeric, $5),
+                ($1::uuid, $2, 'test.b11_reconcile', 1, $6, -($4::numeric), $5)
             """,
             str(namespace_id),
-            f"evt-{uuid.uuid4().hex[:12]}",
+            event_id,
             account,
             amount,
             period_id,
+            _COUNTER_ACCOUNT,
         )
 
 
@@ -188,6 +201,10 @@ async def test_matched_period_logs_no_divergence(
     assert result["materiality"] is None
     assert result["material"] is False
     assert result["contracts_due"] == 1
+    # The aggregate-scope caveat is present on every call, not only diverged
+    # ones -- a caller must never have to guess the scope from field names.
+    assert result["comparison_scope"] == "aggregate"
+    assert "cannot attribute" in result["attribution_caveat"].lower()
 
     assert await _divergence_count(pg_pool, namespace_id) == 0
 
@@ -224,6 +241,8 @@ async def test_diverged_period_writes_one_divergence_row(
     assert result["delta"] == pytest.approx(20.00)
     assert result["materiality"] is not None
     assert result["materiality"] == pytest.approx(20.00 / 100.00)
+    assert result["comparison_scope"] == "aggregate"
+    assert "cannot attribute" in result["attribution_caveat"].lower()
 
     assert await _divergence_count(pg_pool, namespace_id) == 1
 
@@ -236,7 +255,10 @@ async def test_diverged_period_writes_one_divergence_row(
         )
     assert row is not None
     assert row["entity"] == "agreement_gl:2026-02:3900"
-    assert row["field"] == "recognized_revenue"
+    # The field name itself states the aggregate scope -- a reader querying
+    # divergence_log directly, with no access to this module's source, must
+    # not be able to mistake this for a per-contract finding.
+    assert row["field"] == "recognized_revenue_aggregate_not_attributable_to_contract"
     assert row["nce_value"] == "100.00"
     assert row["ext_value"] == "80.00"
     assert row["materiality"] == pytest.approx(20.00 / 100.00)

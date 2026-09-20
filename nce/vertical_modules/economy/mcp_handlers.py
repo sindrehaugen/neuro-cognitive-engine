@@ -961,18 +961,23 @@ async def handle_economy_reconcile_agreements(engine: NCEEngine, arguments: dict
     """MCP tool: economy_reconcile_agreements — compare posted GL revenue against the
     recognition schedule for one period (charter Wave B-11).
 
+    AGGREGATE ONLY -- CANNOT ATTRIBUTE A DISCREPANCY TO A SPECIFIC CONTRACT.
+    Sums the recognition schedule's expected amount across every contract
+    due this period (do_compute_recognition_schedule) and compares it
+    against the sum of posted GL revenue for a caller-specified account/
+    period (do_get_gl_records). economy_postings has no contract_id column,
+    so no per-contract mapping rule exists (B11_DESIGN_BRIEF.md's still-open
+    question #2) -- see
+    nce.vertical_modules.economy.reconcile_agreements's own module docstring
+    for the full reasoning. A non-zero delta means the two TOTALS disagree,
+    never that any one named contract is wrong; the response's
+    "comparison_scope"/"attribution_caveat" and the divergence_log row's
+    field name both restate this for a reader with no access to this
+    docstring.
+
     Not read-only: a non-zero delta is written to divergence_log via
     record_divergence (see below) -- an incidental side effect of an
     otherwise advisory comparison, not this tool's primary purpose.
-
-    Aggregate comparison, not per-contract: sums the recognition schedule's
-    expected amount across every contract due this period
-    (do_compute_recognition_schedule) and compares it against the sum of
-    posted GL revenue for a caller-specified account/period
-    (do_get_gl_records). Delegates every decision to
-    nce.vertical_modules.economy.reconcile_agreements.do_reconcile_agreements
-    — see that module's own docstring for the full reasoning, including why
-    this does not attempt a per-contract GL-account mapping.
 
     A non-zero delta is recorded via the shared record_divergence/
     alert_threshold machinery (same knob finago.py's GL parity pairing
@@ -987,7 +992,8 @@ async def handle_economy_reconcile_agreements(engine: NCEEngine, arguments: dict
 
     Returns JSON string with {"ok": true, "namespace_id", "period", "gl_account",
     "expected_recognized_total", "actual_gl_total", "delta", "materiality",
-    "material", "contracts_due", "not_due"}.
+    "material", "contracts_due", "not_due", "comparison_scope",
+    "attribution_caveat"}.
     """
     try:
         await _check_economy_enabled(engine, arguments)

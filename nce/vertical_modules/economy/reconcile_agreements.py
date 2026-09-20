@@ -31,6 +31,17 @@ and the comparison is SUM(expected recognition across every contract due
 this period) vs SUM(posted GL amount for that account/period) -- an
 aggregate check, not a claim about which GL row belongs to which contract.
 
+This is not just documentation: every response carries a literal
+``"comparison_scope": "aggregate"`` plus an ``attribution_caveat`` string,
+and the ``divergence_log`` row a non-zero delta writes uses the ``field``
+value ``recognized_revenue_aggregate_not_attributable_to_contract`` rather
+than a bare ``"recognized_revenue"`` -- both so a reader with no access to
+this docstring (a caller inspecting the JSON response, or someone querying
+``divergence_log`` directly months later) cannot mistake the aggregate for
+a per-contract finding (ML-orch review, 2026-09-20: "otherwise the next
+person adds per-contract reporting on top of an aggregate that cannot
+support it").
+
 No new node type, no new table, no migration
 -----------------------------------------------
 Every table this module reads already exists and is already RLS-enforced:
@@ -83,6 +94,27 @@ _MATERIALITY_FLOOR = Decimal("1")
 
 _ENGINE_KEY = "economy"
 
+# Recorded on every divergence_log row this module writes (via `field`, the
+# only free-text column available on that table -- see schema.sql,
+# divergence_log has no separate notes column) so a reader who finds the row
+# later, with no access to this module's source, still sees that the value
+# is an aggregate and cannot be read as "contract X is wrong". See the
+# module docstring's "aggregate, not per-contract" section for the full
+# reasoning (ML-orch review, 2026-09-20).
+_DIVERGENCE_FIELD = "recognized_revenue_aggregate_not_attributable_to_contract"
+
+# Echoed verbatim in every response so a caller never has to infer the scope
+# from field names alone (ML-orch review, 2026-09-20: "the output must say
+# it is an aggregate").
+_ATTRIBUTION_CAVEAT = (
+    "This compares SUM(expected recognition across every contract due this "
+    "period) against SUM(posted GL for the named account/period). It cannot "
+    "attribute a discrepancy to any specific contract: economy_postings has "
+    "no contract_id column, so no per-contract mapping rule exists (see "
+    "B11_DESIGN_BRIEF.md's still-open question #2). A non-zero delta means "
+    "the totals disagree, not that any named contract is wrong."
+)
+
 # `_materiality_threshold` IS `nce.source_mode.divergence.alert_threshold` --
 # the same function object, not a wrapper. See finago.py's own precedent for
 # why a reimplementation, even byte-identical, is the actual smell.
@@ -114,6 +146,18 @@ def _materiality(expected_value: Decimal, actual_value: Decimal) -> float:
 
 async def do_reconcile_agreements(engine: NCEEngine, params: dict[str, Any]) -> dict[str, Any]:
     """Compare posted GL revenue against the recognition schedule for one period.
+
+    AGGREGATE ONLY -- CANNOT ATTRIBUTE A DISCREPANCY TO A SPECIFIC CONTRACT.
+    This compares SUM(expected recognition across every contract due this
+    period) against SUM(posted GL for the named account/period).
+    ``economy_postings`` has no ``contract_id`` column, so no per-contract
+    mapping rule exists (``B11_DESIGN_BRIEF.md``'s still-open question #2) --
+    see the module docstring's "aggregate, not per-contract" section for the
+    full reasoning. A non-zero ``delta`` means the two TOTALS disagree, never
+    that any one named contract is wrong. Both the response
+    (``attribution_caveat``) and the ``divergence_log`` row this writes
+    (``field``) restate this, so a reader with no access to this docstring
+    still sees the scope.
 
     Parameters
     ----------
@@ -153,6 +197,8 @@ async def do_reconcile_agreements(engine: NCEEngine, params: dict[str, Any]) -> 
             "material": bool,                     # materiality > alert_threshold(); False when delta == 0
             "contracts_due": int,                 # count of contracts whose schedule covers this period
             "not_due": list[str],                 # contract_ids not yet due / already past their window
+            "comparison_scope": "aggregate",      # always this literal -- see the AGGREGATE ONLY notice above
+            "attribution_caveat": str,             # the same notice, as prose, echoed on every call
         }``
 
     Raises
@@ -216,7 +262,7 @@ async def do_reconcile_agreements(engine: NCEEngine, params: dict[str, Any]) -> 
             namespace_id=ns_uuid,
             engine=_ENGINE_KEY,
             entity=f"agreement_gl:{period}:{gl_account or gl_account_prefix}",
-            field="recognized_revenue",
+            field=_DIVERGENCE_FIELD,
             nce_value=str(expected_total),
             ext_value=str(actual_total),
             materiality=materiality,
@@ -234,4 +280,6 @@ async def do_reconcile_agreements(engine: NCEEngine, params: dict[str, Any]) -> 
         "material": material,
         "contracts_due": contracts_due,
         "not_due": not_due,
+        "comparison_scope": "aggregate",
+        "attribution_caveat": _ATTRIBUTION_CAVEAT,
     }

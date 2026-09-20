@@ -5606,10 +5606,13 @@ TOOLS = [
         name="economy_reconcile_agreements",
         description=(
             "Compare posted GL revenue against the recognition schedule for one period (charter "
-            "Wave B-11). Aggregate comparison, not per-contract: sums the expected recognized "
-            "amount across every contract due this period against the sum of posted GL revenue "
-            "for a caller-specified account/period. A non-zero delta writes divergence_log via "
-            "the shared record_divergence/alert_threshold machinery; a zero delta is never logged."
+            "Wave B-11). AGGREGATE ONLY -- CANNOT ATTRIBUTE A DISCREPANCY TO A SPECIFIC CONTRACT: "
+            "sums the expected recognized amount across every contract due this period against "
+            "the sum of posted GL revenue for a caller-specified account/period. "
+            "economy_postings has no contract_id column, so a non-zero delta means the two "
+            "totals disagree, never that any one named contract is wrong. Writes divergence_log "
+            "via the shared record_divergence/alert_threshold machinery on a non-zero delta; a "
+            "zero delta is never logged."
         ),
         inputSchema={
             "type": "object",
