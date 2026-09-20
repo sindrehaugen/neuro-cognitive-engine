@@ -420,9 +420,7 @@ async def test_get_returns_not_found_for_missing_node(
     tools = build_mcp_tool_specs(DEVICE_PROBE_SPEC)
     get_tool = tools[f"system_design_get_{DEVICE_PROBE_SPEC.mcp_slug}"]
     fetched = json.loads(
-        await get_tool.handler(
-            engine, {"namespace_id": str(namespace_id), "id": "does-not-exist"}
-        )
+        await get_tool.handler(engine, {"namespace_id": str(namespace_id), "id": "does-not-exist"})
     )
     assert "error" in fetched
 
