@@ -1882,14 +1882,22 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             {"status": "ok", "count": len(created_ids), "ids": created_ids}, status_code=201
         )
 
-    return [
-        Route(prefix, endpoint=handle_list, methods=["GET"]),
-        Route(prefix, endpoint=handle_create, methods=["POST"]),
-        Route(f"{prefix}/bulk", endpoint=handle_bulk, methods=["POST"]),
-        Route(f"{prefix}/{{id}}", endpoint=handle_get, methods=["GET"]),
-        Route(f"{prefix}/{{id}}", endpoint=handle_patch, methods=["PATCH"]),
-        Route(f"{prefix}/{{id}}/archive", endpoint=handle_archive, methods=["POST"]),
-        Route(f"{prefix}/{{id}}/restore", endpoint=handle_restore, methods=["POST"]),
+    # Verb-tagged so a spec can opt a verb out (spec.excluded_verbs) -- see
+    # ResourceSpec.excluded_verbs's docstring for the REST-side grouping:
+    # "upsert" covers create+patch+bulk, "archive" covers archive+restore,
+    # mirroring MCP's single upsert/archive tools. Sub-resource routes
+    # (events/comments/tags/documents) carry no verb tag and are never
+    # excluded -- they do not depend on which core verbs exist.
+    core_routes: list[tuple[str, Route]] = [
+        ("list", Route(prefix, endpoint=handle_list, methods=["GET"])),
+        ("upsert", Route(prefix, endpoint=handle_create, methods=["POST"])),
+        ("upsert", Route(f"{prefix}/bulk", endpoint=handle_bulk, methods=["POST"])),
+        ("get", Route(f"{prefix}/{{id}}", endpoint=handle_get, methods=["GET"])),
+        ("upsert", Route(f"{prefix}/{{id}}", endpoint=handle_patch, methods=["PATCH"])),
+        ("archive", Route(f"{prefix}/{{id}}/archive", endpoint=handle_archive, methods=["POST"])),
+        ("archive", Route(f"{prefix}/{{id}}/restore", endpoint=handle_restore, methods=["POST"])),
+    ]
+    sub_resource_routes: list[Route] = [
         Route(f"{prefix}/{{id}}/events", endpoint=handle_events, methods=["GET"]),
         Route(f"{prefix}/{{id}}/comments", endpoint=handle_list_comments, methods=["GET"]),
         Route(f"{prefix}/{{id}}/comments", endpoint=handle_add_comment, methods=["POST"]),
@@ -1904,3 +1912,6 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             methods=["DELETE"],
         ),
     ]
+    return [
+        route for verb, route in core_routes if verb not in spec.excluded_verbs
+    ] + sub_resource_routes

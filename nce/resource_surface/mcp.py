@@ -66,7 +66,8 @@ def _version_str(value: Any) -> str:
 
 
 def build_mcp_tool_definitions(spec: ResourceSpec) -> list[Tool]:
-    """Generate the 4 mcp.types.Tool objects for a ResourceSpec."""
+    """Generate the mcp.types.Tool objects for a ResourceSpec (4 minus any
+    verb named in ``spec.excluded_verbs``)."""
     prefix = f"{spec.engine}"
     slug = spec.mcp_slug
     entity_title = spec.node_type.replace("_", " ").title()
@@ -133,32 +134,34 @@ def build_mcp_tool_definitions(spec: ResourceSpec) -> list[Tool]:
         "required": ["namespace_id", "id"] if is_tenant else ["id"],
     }
 
-    return [
-        Tool(
+    all_tools = {
+        "list": Tool(
             name=list_tool_name,
             description=f"List and query {entity_title} resources for {spec.engine}.",
             inputSchema=list_schema,
         ),
-        Tool(
+        "get": Tool(
             name=get_tool_name,
             description=f"Fetch a single {entity_title} resource by ID.",
             inputSchema=get_schema,
         ),
-        Tool(
+        "upsert": Tool(
             name=upsert_tool_name,
             description=f"Create or update a {entity_title} resource.",
             inputSchema=upsert_schema,
         ),
-        Tool(
+        "archive": Tool(
             name=archive_tool_name,
             description=f"Soft-archive a {entity_title} resource.",
             inputSchema=archive_schema,
         ),
-    ]
+    }
+    return [tool for verb, tool in all_tools.items() if verb not in spec.excluded_verbs]
 
 
 def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
-    """Generate execution handlers and ToolSpec entries for TOOL_REGISTRY."""
+    """Generate execution handlers and ToolSpec entries for TOOL_REGISTRY
+    (4 minus any verb named in ``spec.excluded_verbs``)."""
     from nce.tool_registry import ToolSpec
 
     prefix = f"{spec.engine}"
@@ -796,9 +799,26 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
     handle_upsert.__name__ = f"handle_{upsert_tool_name}"
     handle_archive.__name__ = f"handle_{archive_tool_name}"
 
+    all_specs = {
+        "list": (
+            list_tool_name,
+            ToolSpec(mcp_handler(handle_list), cacheable=True, engine=spec.engine),
+        ),
+        "get": (
+            get_tool_name,
+            ToolSpec(mcp_handler(handle_get), cacheable=True, engine=spec.engine),
+        ),
+        "upsert": (
+            upsert_tool_name,
+            ToolSpec(mcp_handler(handle_upsert), mutation=True, engine=spec.engine),
+        ),
+        "archive": (
+            archive_tool_name,
+            ToolSpec(mcp_handler(handle_archive), mutation=True, engine=spec.engine),
+        ),
+    }
     return {
-        list_tool_name: ToolSpec(mcp_handler(handle_list), cacheable=True, engine=spec.engine),
-        get_tool_name: ToolSpec(mcp_handler(handle_get), cacheable=True, engine=spec.engine),
-        upsert_tool_name: ToolSpec(mcp_handler(handle_upsert), mutation=True, engine=spec.engine),
-        archive_tool_name: ToolSpec(mcp_handler(handle_archive), mutation=True, engine=spec.engine),
+        name: tool_spec
+        for verb, (name, tool_spec) in all_specs.items()
+        if verb not in spec.excluded_verbs
     }

@@ -411,9 +411,69 @@ CABLE_SPEC = ResourceSpec(
 )
 register_resource(CABLE_SPEC)
 
+# ---------------------------------------------------------------------------
+# 5. FUNCTIONAL_LOCATION
+# ---------------------------------------------------------------------------
+# Charter's C-1 asks for "kinds site|building|floor|room|desk|vessel" and an
+# "as-built vs intent flag." Neither is a stored column, and neither can be
+# routed through a SecondaryTable -- fl_tree.py's own module docstring
+# ("Backed strictly by kg_nodes and kg_edges (no synthetic attribute tables
+# invented). Kind derivation ... inferred from depth and naming.") and its
+# actual code (fl_tree.py:100-104) confirm both are DERIVED at read time:
+# `kind = row.get("kind") or derive_fl_kind(label, depth)` (label parsing +
+# tree depth, not a column -- nothing populates a stored `kind` today, so it
+# always falls to the derivation), and `as_built = change_origin ==
+# "operator"`, a pure function of the one real column below. Declaring
+# either as a satellite field would give the same fact a second, silently-
+# divergent home -- the identical failure shape system_design_geometry's
+# SecondaryTable exclusion already guards against ("cannot route around it.
+# One place, not two."). A real functional_locations-equivalent attribute
+# table (CONTACT's #314 pattern) does not exist under any name (grepped
+# schema.sql and every migration) -- but that is not why this spec is thin;
+# even if such a table existed, kind/as_built would still need exactly one
+# home, and that home is fl_tree.py's own derivation, not a duplicate column.
+#
+# Second, independent blocker, now closed: entity="functional-locations"
+# generates MCP tool system_design_list_functional_locations, which already
+# exists as a hand-written tool (tree listing with recursion,
+# admin_handlers/system_design.py). excluded_verbs={"list"} closes this the
+# same way RESOURCE_SPEC does -- only list collides (hand-written get is
+# singular system_design_get_functional_location).
+#
+# The existing hand-written tree-op routes (children/ancestors/path/move/
+# merge) already serve kind/as_built correctly via fl_tree.py's real
+# derivation logic and are NOT replaced or duplicated by this spec.
+FUNCTIONAL_LOCATION_SPEC = ResourceSpec(
+    engine="system_design",
+    entity="functional-locations",
+    node_type="FUNCTIONAL_LOCATION",
+    table_name=None,
+    id_field="label",
+    version_field="updated_at",
+    soft_delete_field=None,
+    filterable_fields=("change_origin",),
+    searchable_fields=(),
+    writable_fields=("change_origin",),
+    excluded_verbs=frozenset({"list"}),
+    # Explicitly empty, not omitted -- see DEVICE_SPEC's comment above.
+    tier_allowlists={"external-customer": (), "contractor": ()},
+    description=(
+        "C12 functional location: graph identity only (label, entity_type, "
+        "change_origin, timestamps). kind and as_built are derived at read "
+        "time by fl_tree.py, not stored, and are not exposed here -- see "
+        "the comment above this spec for why. list is excluded -- the "
+        "existing hand-written system_design_list_functional_locations tool "
+        "(tree-aware recursive listing) stays authoritative; this spec adds "
+        "get/upsert/archive only. Tree navigation (children/ancestors/path/"
+        "move/merge) stays on its own hand-written routes."
+    ),
+)
+register_resource(FUNCTIONAL_LOCATION_SPEC)
+
 __all__ = [
     "DEVICE_SPEC",
     "PORT_SPEC",
     "RACK_SPEC",
     "CABLE_SPEC",
+    "FUNCTIONAL_LOCATION_SPEC",
 ]
