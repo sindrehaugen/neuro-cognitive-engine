@@ -38,9 +38,13 @@ PROJECT_SPEC = ResourceSpec(
     filterable_fields=("change_origin",),
     writable_fields=("change_origin",),
     description=(
-        "Thin kg_nodes-primary identity for PROJECT_PROJECT. Phase gates, "
-        "capacity, my-day, and reports are served by nce/admin_handlers/"
-        "project.py's own routes, not by this generic surface."
+        "Identity only: label, entity_type, change_origin, timestamps. "
+        "kg_nodes has no attribute storage of its own and none exists for "
+        "PROJECT_PROJECT elsewhere either (Q-47, open) -- no project data "
+        "(name, value, dates, status) is queryable through this surface. "
+        "Phase gates, capacity, my-day, and reports are served by "
+        "nce/admin_handlers/project.py's own routes, not by this generic "
+        "surface, and are not replaced or duplicated by registering this spec."
     ),
 )
 
