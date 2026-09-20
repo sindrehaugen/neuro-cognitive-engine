@@ -367,6 +367,64 @@ async def test_device_rest_patch_updates_change_origin_and_secondary(
 
 
 @pytest.mark.asyncio
+async def test_device_rest_patch_first_touch_of_secondary_table(
+    engine: NCEEngine, namespace_id: uuid.UUID
+) -> None:
+    """GRAPH branch (`if is_graph:`, DEVICE_PROBE_SPEC has table_name=None).
+    A separate test exercises the relational branch with the same shape:
+    tests/integration/test_resource_surface_multi_table_live.py::
+    test_rest_patch_first_touch_of_secondary_table_still_satisfies_node_type_not_null
+    -- the two share the same underlying bug but are genuinely different
+    code paths (`if is_graph:` vs `elif spec.table_name:` inside
+    handle_patch), each needing its own fix and its own proof. An earlier
+    version of this fix was verified only against the relational test
+    above and shipped believing it covered both; it did not -- this test
+    exists specifically because the failure at that mismatch produced a
+    500 on `main` that would have gone uncaught.
+
+    A PATCH that is the FIRST write ever to touch node_state (CREATE
+    supplies no node_state-routed field, so no row exists yet) must still
+    succeed, not 500 on node_state.node_type's NOT NULL constraint.
+    test_device_rest_patch_updates_change_origin_and_secondary above
+    always creates with `status` already set, so its own PATCH only ever
+    UPDATEs an existing node_state row -- node_type staying stale there
+    is never observable, since UPDATE only touches listed columns. This
+    test's CREATE deliberately supplies neither `status` nor any other
+    node_state field, forcing the PATCH below to be node_state's first
+    INSERT.
+    """
+    node_label = f"probe-kg-device-first-touch-{uuid.uuid4().hex[:8]}"
+    async with _rest_client(engine, DEVICE_PROBE_SPEC) as client:
+        r1 = await client.post(
+            "/api/system_design/devices-kgprimary-probe",
+            json={
+                "namespace_id": str(namespace_id),
+                "node_label": node_label,
+                "signal_format": "DisplayPort",
+                # No status/revision/salience -- node_state gets no row here.
+            },
+        )
+        assert r1.status_code == 201, r1.text
+
+        r2 = await client.patch(
+            f"/api/system_design/devices-kgprimary-probe/{node_label}",
+            json={"namespace_id": str(namespace_id), "status": "planned"},
+        )
+    assert r2.status_code == 200, r2.text
+
+    async with engine.pg_pool.acquire() as conn:
+        state_row = await conn.fetchrow(
+            "SELECT node_type, status FROM system_design_node_state "
+            "WHERE namespace_id = $1 AND node_label = $2",
+            namespace_id,
+            node_label,
+        )
+    assert state_row is not None
+    assert state_row["node_type"] == "DEVICE"
+    assert state_row["status"] == "planned"
+
+
+@pytest.mark.asyncio
 async def test_port_upsert_writes_capabilities_only(
     engine: NCEEngine, namespace_id: uuid.UUID
 ) -> None:

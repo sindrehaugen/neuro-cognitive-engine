@@ -953,6 +953,19 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                         if secondary_field_names
                         else data
                     )
+                    # node_type is never in spec.writable_fields (derived
+                    # from the spec's own identity, never client-supplied --
+                    # see the graph branch's identical injection above), so
+                    # raw `data` never carries it. No real relational spec
+                    # has a node_type-bearing secondary_tables entry today
+                    # (every one that does is graph-primary), so this is
+                    # currently unreachable in production -- fixed for
+                    # parity with the graph branch and the CREATE verb's own
+                    # unconditional-injection precedent there, not because a
+                    # live caller hits it.
+                    sec_data = {k: v for k, v in data.items() if k in secondary_field_names}
+                    if "node_type" in secondary_field_names:
+                        sec_data["node_type"] = spec.node_type
                     session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                     async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
                         try:
@@ -980,11 +993,12 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                         # handle_upsert and this module's own handle_patch --
                         # see upsert_secondary_tables' own docstring for why
                         # this is not a blind ON CONFLICT.
-                        created.update(
-                            await upsert_secondary_tables(
-                                conn, spec, item_id, ns_uuid, is_global, data
+                        if sec_data:
+                            created.update(
+                                await upsert_secondary_tables(
+                                    conn, spec, item_id, ns_uuid, is_global, sec_data
+                                )
                             )
-                        )
                 except Exception as exc:
                     return admin_error_response(
                         f"Failed to create {spec.entity}: {exc}", exc, status_code=500
@@ -1324,12 +1338,25 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
 
                         # Multi-table spec: shared with handle_create and
                         # mcp.py's handle_upsert -- see upsert_secondary_tables'
-                        # own docstring.
-                        updated.update(
-                            await upsert_secondary_tables(
-                                conn, spec, item_id, ns_uuid, is_global, updates
+                        # own docstring. node_type re-injection matches the
+                        # graph branch's identical fix above (same reasoning,
+                        # same NOT NULL risk on a first-ever secondary write
+                        # via PATCH) -- currently unreachable in production
+                        # (no real relational spec declares a node_type-
+                        # bearing secondary_tables entry; every one that does
+                        # is graph-primary), fixed for parity rather than a
+                        # live report.
+                        sec_updates = {
+                            k: v for k, v in updates.items() if k in secondary_field_names
+                        }
+                        if sec_updates and "node_type" in secondary_field_names:
+                            sec_updates["node_type"] = spec.node_type
+                        if sec_updates:
+                            updated.update(
+                                await upsert_secondary_tables(
+                                    conn, spec, item_id, ns_uuid, is_global, sec_updates
+                                )
                             )
-                        )
             except OwnershipError as exc:
                 return ownership_denied_response(exc)
             except Exception as exc:
