@@ -22,7 +22,6 @@ Ratchet Contract:
 
 from __future__ import annotations
 
-import copy
 from uuid import uuid4
 
 import pytest
@@ -54,13 +53,21 @@ class MockEngine:
 # ---------------------------------------------------------------------------
 
 
-def test_every_composed_slice_resolves_to_registered_read_tool() -> None:
-    """Ratchet: Every composed slice in COMPOSED_SLICES must exist in TOOL_REGISTRY as a read."""
-    assert len(COMPOSED_SLICES) >= 6, (
-        "Expected at least 6 canonical composed slices in COMPOSED_SLICES"
-    )
+def _assert_composed_slices_have_registered_producers(
+    slices: dict[str, ComposedSliceSpec],
+) -> None:
+    """Shared enforcement mechanism for the Producer Registry Ratchet.
 
-    for slice_id, spec in sorted(COMPOSED_SLICES.items()):
+    Both the real-registry ratchet test and its positive control call this
+    exact function. That is deliberate: the positive control below mutates
+    the real, live COMPOSED_SLICES dict (a copy of it plus one phantom entry)
+    and passes it through this same validator, proving the *mechanism* itself
+    fires against production data -- not merely that Python's `assert x in
+    dict` raises on a string nobody registered, which would be true
+    regardless of whether this validator, or anything wired to it, actually
+    runs anywhere.
+    """
+    for slice_id, spec in sorted(slices.items()):
         assert isinstance(spec, ComposedSliceSpec)
         assert spec.slice_id == slice_id
         assert spec.tool_name, f"Slice {slice_id} has empty tool_name"
@@ -82,6 +89,14 @@ def test_every_composed_slice_resolves_to_registered_read_tool() -> None:
         assert callable(tool_spec.handler), (
             f"Composed slice {slice_id!r} producer {spec.tool_name!r} handler is not callable"
         )
+
+
+def test_every_composed_slice_resolves_to_registered_read_tool() -> None:
+    """Ratchet: Every composed slice in COMPOSED_SLICES must exist in TOOL_REGISTRY as a read."""
+    assert len(COMPOSED_SLICES) >= 6, (
+        "Expected at least 6 canonical composed slices in COMPOSED_SLICES"
+    )
+    _assert_composed_slices_have_registered_producers(COMPOSED_SLICES)
 
 
 def test_composed_slices_cover_all_canonical_charter_producers() -> None:
@@ -106,22 +121,43 @@ def test_composed_slices_cover_all_canonical_charter_producers() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_ratchet_fails_when_composed_slice_has_no_producer() -> None:
-    """Positive Control: Proves that an unproduced or unregistered slice fails the ratchet."""
-    bogus_slices = copy.copy(COMPOSED_SLICES)
-    bogus_slices["phantom_telemetry_slice"] = ComposedSliceSpec(
+def test_ratchet_fails_when_composed_slice_has_no_producer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Positive Control: Proves the real ratchet mechanism fails on real production data.
+
+    Fixed 2026-09-20 (inert-instrument audit): the previous version built a
+    throwaway local dict and re-ran a hand-copied `assert x in TOOL_REGISTRY`
+    inline, on a slice_id/tool_name it invented itself. That is trivially true
+    by construction -- no string called "unregistered_phantom_hardware_probe"
+    was ever going to be in TOOL_REGISTRY, so the test could not have told us
+    anything about whether the real ratchet, or anything wired to it, would
+    actually catch this. It never touched the real COMPOSED_SLICES module
+    object or the shared validation logic.
+
+    This version monkeypatches the real, live
+    ``nce.vertical_modules.business_insights.slices.COMPOSED_SLICES`` module
+    attribute -- a copy of the actual production registry plus one phantom
+    entry -- and feeds it through ``_assert_composed_slices_have_registered_producers``,
+    the exact same function the real ratchet test above calls against the
+    unmutated registry. That proves the shared mechanism itself fires against
+    (mutated) production data, not just that Python's `in` operator works.
+    """
+    import nce.vertical_modules.business_insights.slices as slices_module
+
+    phantom_spec = ComposedSliceSpec(
         slice_id="phantom_telemetry_slice",
         engine="telemetry",
         tool_name="unregistered_phantom_hardware_probe",
         description="Phantom probe with no registered producer tool",
         cacheable=False,
     )
+    mutated_slices = dict(slices_module.COMPOSED_SLICES)
+    mutated_slices["phantom_telemetry_slice"] = phantom_spec
+    monkeypatch.setattr(slices_module, "COMPOSED_SLICES", mutated_slices)
 
     with pytest.raises(AssertionError) as exc:
-        for slice_id, spec in bogus_slices.items():
-            assert spec.tool_name in TOOL_REGISTRY, (
-                f"Composed slice {slice_id!r} producer tool {spec.tool_name!r} is missing from TOOL_REGISTRY"
-            )
+        _assert_composed_slices_have_registered_producers(slices_module.COMPOSED_SLICES)
 
     assert "phantom_telemetry_slice" in str(exc.value)
     assert "unregistered_phantom_hardware_probe" in str(exc.value)
