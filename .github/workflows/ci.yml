@@ -1195,6 +1195,28 @@ jobs:
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/integration/test_resource_surface_list_live.py -m integration -q --tb=short
 
+      # MCP's handle_archive (mcp.py:736-813) had zero live coverage --
+      # REST's own handle_archive has a full sibling
+      # (test_resource_surface_archive_restore_live.py), MCP's had never
+      # been run against Postgres at all. Its only failure detection is
+      # `res.endswith("0")` on the raw UPDATE command tag, so every test
+      # here reads the actual column back from Postgres rather than
+      # trusting the {"status":"ok","archived":true} envelope, which
+      # carries no information about which row (if any) actually changed.
+      # Covers both the tenant and the one global-scope archive-eligible
+      # spec (product:product-skus), the "wrong row" class (archive one of
+      # two rows, confirm the other is untouched), the not-found case, and
+      # the graph-primary 501 asserted by name (MCP's had never been
+      # pinned, matching REST's own). All four mechanisms deliberately
+      # broken locally and confirmed to fail their own test before being
+      # reverted.
+      - name: Integration — MCP resource-surface ARCHIVE (tests/integration/test_resource_surface_mcp_archive_live.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/integration/test_resource_surface_mcp_archive_live.py -m integration -q --tb=short
+
       # Wave C-6: PROJECT_PROJECT C12 resource declaration (thin kg_nodes-
       # primary identity only -- kg_nodes has no attribute storage for any
       # PROJECT_* node type, Q-47, still open) plus
