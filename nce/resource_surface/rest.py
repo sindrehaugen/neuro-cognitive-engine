@@ -1844,32 +1844,63 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         import uuid
 
         session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
-        for it in items_to_insert:
-            if not isinstance(it, dict):
-                continue
+
+        def _prepare_item(it: dict[str, Any]) -> tuple[str, dict[str, Any]]:
             item_id = str(it.get(spec.id_field) or uuid.uuid4())
             data = {k: it[k] for k in spec.writable_fields if k in it}
             data[spec.id_field] = item_id
             if not is_global or "namespace_id" in spec.writable_fields:
                 if ns_uuid:
                     data["namespace_id"] = str(ns_uuid)
-            if (
-                admin_state.engine
-                and getattr(admin_state.engine, "pg_pool", None)
-                and spec.table_name
-            ):
+            return item_id, data
+
+        if admin_state.engine and getattr(admin_state.engine, "pg_pool", None) and spec.table_name:
+            # All-or-nothing (Q-48 follow-on): one shared transaction for the
+            # whole batch, not one scoped_pg_session per item. scoped_pg_session
+            # already wraps its yielded block in conn.transaction() -- opening
+            # it once per item meant item N's own INSERT committed on its own
+            # before item N+1 was ever attempted, so a mid-batch failure left
+            # whatever had already committed in place and silently dropped the
+            # rest. That was never a chosen semantics, it was the absence of
+            # one: nothing decided "roll back all" or "report partial", the
+            # per-item transaction boundary just made a crash look like a
+            # partial success. This restores the guarantee every caller of a
+            # bulk-create endpoint already assumes -- it succeeded or it
+            # didn't -- without deciding the SEPARATE, still-open question of
+            # whether a future version should report per-item results (Q-48).
+            try:
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
-                    cols = list(data.keys())
-                    vals = [data[c] for c in cols]
-                    placeholders = [f"${i + 1}" for i in range(len(cols))]
-                    await conn.execute(
-                        f"INSERT INTO {spec.table_name} ({', '.join(cols)}) VALUES ({', '.join(placeholders)})",
-                        *vals,
-                    )
-            else:
+                    for it in items_to_insert:
+                        if not isinstance(it, dict):
+                            continue
+                        item_id, data = _prepare_item(it)
+                        cols = list(data.keys())
+                        vals = [data[c] for c in cols]
+                        placeholders = [f"${i + 1}" for i in range(len(cols))]
+                        await conn.execute(
+                            f"INSERT INTO {spec.table_name} ({', '.join(cols)}) VALUES ({', '.join(placeholders)})",
+                            *vals,
+                        )
+                        created_ids.append(item_id)
+            except Exception as exc:
+                return admin_error_response(
+                    f"Bulk create failed for {spec.entity}: no items were created "
+                    f"(all-or-nothing -- the batch that was in progress was rolled back)",
+                    exc,
+                    status_code=500,
+                )
+        else:
+            # In-memory mock bucket (no real pg_pool, e.g. unit tests): no
+            # transaction exists to roll back, and nothing here can partially
+            # persist across a process crash the way a real INSERT sequence
+            # could -- unaffected by this fix.
+            for it in items_to_insert:
+                if not isinstance(it, dict):
+                    continue
+                item_id, data = _prepare_item(it)
                 mem = _get_mem_bucket(spec, str(ns_uuid) if ns_uuid else None)
                 mem[item_id] = dict(data)
-            created_ids.append(item_id)
+                created_ids.append(item_id)
 
         if admin_state.engine:
             await bump_mcp_cache_generation(
