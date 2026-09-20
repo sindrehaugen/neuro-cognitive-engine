@@ -1006,6 +1006,32 @@ jobs:
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/integration/test_resource_surface_archive_restore_live.py -m integration -q --tb=short
 
+      # C12 resource-surface write-path type coercion: neither rest.py's
+      # handle_create/handle_patch nor mcp.py's handle_upsert parsed a
+      # request value into the real Python type its target Postgres column
+      # needed before binding via asyncpg -- only version_field got that
+      # treatment. Found live building the archive/restore sibling (PR #375).
+      # 6 of 56 registered specs could not create a row AT ALL (a NOT NULL,
+      # no-default date/timestamp column); 25 more silently 500 if a caller
+      # set an otherwise-optional one; 41 writable jsonb columns across
+      # ~30 specs 500 whenever a client sends the field the only way that
+      # makes sense to (a real JSON object/array, which asyncpg's default
+      # codec refuses as a Python dict/list). Fixed via one shared
+      # coerce_writable_values(), imported by both generated backends.
+      # This file proves the 6-cannot-create list now succeeds and a jsonb
+      # object round-trips, on BOTH surfaces (REST and MCP) -- a unit-level
+      # test would be worthless here, the in-memory path a mocked test uses
+      # applies no type checking at all. Also proves an unparseable value
+      # is a 400 naming the field, never a 500 or a silent wrong-value
+      # accept, and a positive control confirms the original DataError-
+      # shaped 500 returns if the fix is disabled.
+      - name: Integration — C12 resource-surface write-path type coercion (tests/integration/test_resource_surface_write_coercion_live.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/integration/test_resource_surface_write_coercion_live.py -m integration -q --tb=short
+
       # C12 resource-surface multi-table support (SecondaryTable): a spec whose
       # primary identity spreads across two tables (e.g. system_design's DEVICE
       # capability/state split). Found live building this: an undocumented FK

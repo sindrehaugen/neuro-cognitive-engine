@@ -29,7 +29,13 @@ from nce.db_utils import scoped_pg_session
 from nce.entity_resolution.ownership import assert_owner
 from nce.events.emit import emit_graph_write
 from nce.mcp_errors import mcp_handler
-from nce.resource_surface.rest import _get_mem_bucket, row_to_dict, upsert_secondary_tables
+from nce.resource_surface.rest import (
+    WriteCoercionError,
+    _get_mem_bucket,
+    coerce_writable_values,
+    row_to_dict,
+    upsert_secondary_tables,
+)
 from nce.resource_surface.spec import ResourceSpec
 
 if TYPE_CHECKING:
@@ -638,6 +644,17 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                 )
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(engine.pg_pool, session_ns) as conn:
+                    try:
+                        primary_data = await coerce_writable_values(
+                            conn, spec.table_name, primary_data
+                        )
+                    except WriteCoercionError as exc:
+                        return json.dumps(
+                            {
+                                "error": f"Invalid value for {spec.entity}.{exc.field}: {exc.reason}",
+                                "status_code": 400,
+                            }
+                        )
                     # Check for existing
                     if is_global:
                         existing_row = await conn.fetchrow(
