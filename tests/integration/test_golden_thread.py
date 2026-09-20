@@ -10,7 +10,7 @@ customer → design → quote → sign → **baseline frozen** → project → P
 → portal request → **ticket** → outcome recorded → design recall returns the project
 
 H-9 Golden Thread v2 extension (charter §9, 2026-09-19), steps 29-37: address →
-**SITE** → FL tree (children/ancestors/move real; **merge broken**, break-h9a) →
+**SITE** → FL tree (children/ancestors/move real; merge real, break-h9a closed) →
 room category + responsible employee → **deal with participants (not built,
 break-h9b)** → **agreement with parties (graph/relational customer-identity
 split, break-h9c)** → **billing run
@@ -79,6 +79,7 @@ from nce.vertical_modules.field_tech.work_orders import do_create_work_order
 from nce.vertical_modules.fl_tree import (
     get_fl_ancestors,
     get_fl_children,
+    get_fl_node,
     merge_fl_nodes,
     move_fl_node,
 )
@@ -414,15 +415,14 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         index=31,
         name="fl_tree_merge",
         canonical_label="FL tree (merge)",
-        is_broken=True,
-        review_break="break-h9a",
-        phase1_wave="C-1-fix",
+        is_broken=False,
+        review_break=None,
+        phase1_wave=None,
         description=(
-            "merge_fl_nodes sets change_origin='merged' on the absorbed node, but the real "
-            "kg_nodes_change_origin_chk constraint only allows "
-            "('sync','webhook','agent','operator','consolidation','replay','unknown') -- "
-            "every real-Postgres merge fails with CheckViolationError. The in-memory test "
-            "path has no such constraint, so nothing but a live write ever caught it."
+            "merge_fl_nodes previously set change_origin='merged' on the absorbed node, "
+            "which is not in the real kg_nodes_change_origin_chk constraint -- every "
+            "real-Postgres merge failed with CheckViolationError (break-h9a). Fixed to "
+            "'consolidation' (landed via #282); verified live against real Postgres."
         ),
     ),
     BurndownStep(
@@ -1768,23 +1768,23 @@ class TestGoldenThreadSteps:
                 )
                 assert back_res["moved"] is True
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "break-h9a: merge_fl_nodes sets "
-            "change_origin='merged' on the absorbed node (fl_tree.py:608 real-Postgres path, "
-            ":635 in-memory), which is not in the real kg_nodes_change_origin_chk constraint "
-            "('sync','webhook','agent','operator','consolidation','replay','unknown'). Every "
-            "real-Postgres merge fails with CheckViolationError. Ruling (ML-orch, 2026-09-19): "
-            "the correct value is 'consolidation', not 'operator' -- 'operator' would silently "
-            "mark the absorbed node as_built (fl_tree.py:102), which is true for a human-moved "
-            "location but not for two duplicate records being consolidated. Fix dispatched to "
-            "Lane C; this seam stays xfail until it lands on main, not removed on the strength "
-            "of the ruling alone."
-        ),
-    )
     async def test_step_31_fl_tree_merge(self, scenario: GoldenThreadScenarioContext) -> None:
-        """Step 31: C-1 FL tree -- merge two duplicate room records."""
+        """Step 31: C-1 FL tree -- merge two duplicate room records.
+
+        break-h9a (closed): merge_fl_nodes used to set change_origin='merged'
+        on the absorbed node, which is not in the real
+        kg_nodes_change_origin_chk constraint ('sync','webhook','agent',
+        'operator','consolidation','replay','unknown') -- every real-Postgres
+        merge failed with CheckViolationError. The in-memory test path had no
+        such constraint, so nothing but a live write ever caught it. Fixed to
+        'consolidation' (landed via #282, not 'operator' -- 'operator' would
+        silently mark the absorbed node as_built per fl_tree.py:102, which is
+        true for a human-moved location but not for two duplicate records
+        being consolidated). merge_fl_nodes returns pre-merge snapshots for
+        survivor/absorbed (audit purposes), so the real assertion re-fetches
+        the absorbed node after the transaction commits to confirm the write
+        actually landed.
+        """
         ctx = scenario
         await self._ensure_prereqs(ctx, 30)
         async with ctx.pool.acquire() as conn:
@@ -1804,7 +1804,14 @@ class TestGoldenThreadSteps:
                     reversible=True,
                     actor="golden-thread-h9",
                 )
-        assert merge_res["merged"] is True
+        assert merge_res["survivor"]["label"] == ctx.fl_room_label
+        assert merge_res["absorbed"]["label"] == dup_label
+        async with ctx.pool.acquire() as conn:
+            await set_namespace_context(conn, ctx.namespace_id)
+            absorbed_after = await get_fl_node(conn, ctx.namespace_id, dup_label)
+        assert absorbed_after["change_origin"] == "consolidation", (
+            f"Absorbed node's change_origin was not persisted as 'consolidation': {absorbed_after}"
+        )
 
     async def test_step_32_responsible_assigned(
         self, scenario: GoldenThreadScenarioContext
@@ -2578,17 +2585,17 @@ class TestGoldenThreadPositiveControls:
 
         The original 28 steps still execute with zero broken steps. H-9 (2026-09-19)
         added 5 genuine breaks alongside 4 new working steps: break-h9a (fl_tree_merge,
-        a real bug in Lane C's merge_fl_nodes, fix dispatched), break-h9b
-        (deal_participants, not built), break-h9c (agreement_parties: resource_surface
-        fix landed in #284, but re-verification surfaced a distinct, unbridged
-        graph-vs-relational customer-identity gap), break-h9d/e (billing_run/
+        a real bug in Lane C's merge_fl_nodes -- fixed via #282, closed this wave),
+        break-h9b (deal_participants, not built), break-h9c (agreement_parties:
+        resource_surface fix landed in #284, but re-verification surfaced a distinct,
+        unbridged graph-vs-relational customer-identity gap), break-h9d/e (billing_run/
         customer_invoice, Wave B-12, not started). A stated partial per S7, not a
         silent one.
         """
         broken_steps = [s for s in GOLDEN_THREAD_STEPS if s.is_broken]
-        assert len(broken_steps) == 5, f"Expected 5 broken steps, found: {broken_steps}"
+        assert len(broken_steps) == 4, f"Expected 4 broken steps, found: {broken_steps}"
         broken_indices = {s.index for s in broken_steps}
-        assert broken_indices == {31, 33, 34, 35, 36}
+        assert broken_indices == {33, 34, 35, 36}
 
     def test_positive_control_broken_steps_have_remediation_waves(self) -> None:
         """Verify every broken step specifies a responsible Phase 1 remediation wave."""
