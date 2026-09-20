@@ -2416,15 +2416,24 @@ CREATE POLICY tenant_isolation_policy ON economy_customer_invoices
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
-        REVOKE ALL ON TABLE system_design_design_requests FROM nce_app;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE system_design_design_requests TO nce_app;
+        REVOKE ALL ON TABLE economy_customer_invoices FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE economy_customer_invoices TO nce_app;
     END IF;
 END $$;
+
+ALTER TABLE sales_deal_participants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sales_deal_participants FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON sales_deal_participants;
+CREATE POLICY tenant_isolation_policy ON sales_deal_participants
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
 
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
-        REVOKE ALL ON TABLE economy_customer_invoices FROM nce_app;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE economy_customer_invoices TO nce_app;
+        REVOKE ALL ON TABLE sales_deal_participants FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE sales_deal_participants TO nce_app;
     END IF;
 END $$;
