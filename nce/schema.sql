@@ -6570,49 +6570,51 @@ CREATE POLICY tenant_isolation_policy ON economy_customer_invoices
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
-        REVOKE ALL ON TABLE system_design_design_requests FROM nce_app;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE system_design_design_requests TO nce_app;
+        REVOKE ALL ON TABLE economy_customer_invoices FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE economy_customer_invoices TO nce_app;
     END IF;
 END $$;
 
--- Backfill (see migration 104's own header for the full reasoning): a
--- no-op on any database with zero pre-existing DESIGN_REQUEST rows under
--- the old system_design_geometry.meta scheme, and the real cutover path
--- for one that has some.
-INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)
-SELECT node_label, 'DESIGN_REQUEST', namespace_id, 'operator'
-FROM system_design_geometry
-WHERE node_label LIKE 'DESIGN_REQUEST:%'
-ON CONFLICT (label, namespace_id) DO NOTHING;
+-- ============================================================================
+-- C12 DEAL_PARTICIPANT resource (charter Wave B-3, sub-resource half)
+-- Migration 107_sales_deal_participants.sql
+-- ============================================================================
 
-INSERT INTO system_design_design_requests
-    (namespace_id, node_label, title, description, quote_id,
-     functional_location_id, status, priority, owner_id, design_id,
-     room_spec, metadata, completed_at, created_at, updated_at)
-SELECT
-    namespace_id,
-    node_label,
-    COALESCE(meta->>'title', ''),
-    COALESCE(meta->>'description', ''),
-    meta->>'quote_id',
-    meta->>'functional_location_id',
-    COALESCE(meta->>'status', 'pending'),
-    COALESCE(meta->>'priority', 'normal'),
-    meta->>'owner_id',
-    meta->>'design_id',
-    COALESCE(meta->'room_spec', '{}'::jsonb),
-    COALESCE(meta->'metadata', '{}'::jsonb),
-    NULLIF(meta->>'completed_at', '')::timestamptz,
-    created_at,
-    updated_at
-FROM system_design_geometry
-WHERE node_label LIKE 'DESIGN_REQUEST:%'
-ON CONFLICT (namespace_id, node_label) DO NOTHING;
+CREATE TABLE IF NOT EXISTS sales_deal_participants (
+    id                  UUID        NOT NULL DEFAULT gen_random_uuid(),
+    deal_id             UUID        NOT NULL REFERENCES sales_deals(id) ON DELETE CASCADE,
+    namespace_id        UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    participant_name    TEXT        NOT NULL,
+    participant_email   TEXT,
+    role                TEXT        NOT NULL DEFAULT 'stakeholder',
+    is_archived         BOOLEAN     NOT NULL DEFAULT FALSE,
+    metadata            JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (id),
+    CONSTRAINT sales_deal_participants_name_not_blank
+        CHECK (btrim(participant_name) <> '')
+);
+
+CREATE INDEX IF NOT EXISTS idx_sales_deal_participants_lookup
+    ON sales_deal_participants (namespace_id, deal_id, is_archived);
+
+CREATE INDEX IF NOT EXISTS idx_sales_deal_participants_email
+    ON sales_deal_participants (namespace_id, participant_email);
+
+ALTER TABLE sales_deal_participants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sales_deal_participants FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON sales_deal_participants;
+CREATE POLICY tenant_isolation_policy ON sales_deal_participants
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
 
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
-        REVOKE ALL ON TABLE economy_customer_invoices FROM nce_app;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE economy_customer_invoices TO nce_app;
+        REVOKE ALL ON TABLE sales_deal_participants FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE sales_deal_participants TO nce_app;
     END IF;
 END $$;

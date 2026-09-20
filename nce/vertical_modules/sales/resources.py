@@ -382,6 +382,51 @@ QUOTE_TEMPLATE_SPEC = ResourceSpec(
 )
 register_resource(QUOTE_TEMPLATE_SPEC)
 
+# Wave B-3 sub-resource half (2026-09-20 night): DEAL_PARTICIPANT, a
+# genuinely new node type -- grepped node-ownership.json/sales/resources.py/
+# schema.sql first, zero hits anywhere. Plain relational child table
+# (sales_deal_participants, migration 107), modeled on AGREEMENT_PARTY_SPEC
+# (agreements/resources.py) rather than PO_LINE: sales_deals has a real UUID
+# `id`, so a straightforward FK is the right shape, not PO_LINE's
+# natural-key-no-FK design (which exists because PO lines key off
+# po_number/line_ref text identifiers). No kg_nodes involvement, same as
+# DEAL/AGREEMENT_PARTY/PO_LINE -- table-backed C12 resources never write
+# kg_nodes, so no assert_owner guard applies here.
+#
+# B-3's sibling ask, DEAL_TAG, is declined as already satisfied: the generic
+# `/api/{entity}/{id}/tags` sub-resource route (nce/resource_surface/rest.py)
+# already serves every registered spec, including DEAL, and is verified
+# namespace-scoped (v3_cognitive_ledger forced RLS + an explicit namespace_id
+# predicate in the replay query). Not rebuilt here -- see
+# CHARTER_WAVE_AUDIT.md's B-3 row for the full evidence.
+DEAL_PARTICIPANT_SPEC = ResourceSpec(
+    engine="sales",
+    entity="deal-participants",
+    node_type="DEAL_PARTICIPANT",
+    table_name="sales_deal_participants",
+    id_field="id",
+    version_field="updated_at",
+    soft_delete_field="is_archived",
+    filterable_fields=("deal_id", "role", "is_archived"),
+    searchable_fields=("participant_name", "participant_email"),
+    writable_fields=(
+        "deal_id",
+        "participant_name",
+        "participant_email",
+        "role",
+        "metadata",
+    ),
+    tier_allowlists={
+        "contractor": (),
+        "external-customer": (),
+    },
+    description=(
+        "C12 deal participants -- stakeholders (decision makers, champions, "
+        "signatories) associated with a sales deal, keyed by deal_id."
+    ),
+)
+register_resource(DEAL_PARTICIPANT_SPEC)
+
 __all__ = [
     "CUSTOMER_SPEC",
     "LEAD_SPEC",
@@ -390,4 +435,5 @@ __all__ = [
     "SIGNED_BASELINE_SPEC",
     "CONTACT_SPEC",
     "QUOTE_TEMPLATE_SPEC",
+    "DEAL_PARTICIPANT_SPEC",
 ]

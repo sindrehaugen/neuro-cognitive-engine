@@ -41,15 +41,15 @@ USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
 WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
 ```
 
-### 2a. Authoritative Source of Truth: `EXPECTED_TENANT_RLS_TABLES` (117 Tables)
+### 2a. Authoritative Source of Truth: `EXPECTED_TENANT_RLS_TABLES` (118 Tables)
 
-**The definitive source of truth for RLS-protected tables across NCE is `EXPECTED_TENANT_RLS_TABLES` defined in [`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py) (117 tables), rather than the partial `schema.sql` loop (41 tables) or the initial migration 001 seed (14 tables).**
+**The definitive source of truth for RLS-protected tables across NCE is `EXPECTED_TENANT_RLS_TABLES` defined in [`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py) (118 tables), rather than the partial `schema.sql` loop (41 tables) or the initial migration 001 seed (14 tables).**
 
-At runtime, NCE executes `verify_rls_catalog_consistency()` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py)) during server startup, inspecting PostgreSQL's `pg_tables`, `pg_class.relrowsecurity`, and `pg_policies` catalogs to strictly validate all 117 tenant tables against the active schema.
+At runtime, NCE executes `verify_rls_catalog_consistency()` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py)) during server startup, inspecting PostgreSQL's `pg_tables`, `pg_class.relrowsecurity`, and `pg_policies` catalogs to strictly validate all 118 tenant tables against the active schema.
 
 The catalog consistency validator categorizes all tables in the engine into three exhaustive sets:
 
-1. **`EXPECTED_TENANT_RLS_TABLES` (117 tables)**: All standard tenant-isolated tables where rows belong to a single tenant and are partitioned by a `namespace_id` column.
+1. **`EXPECTED_TENANT_RLS_TABLES` (118 tables)**: All standard tenant-isolated tables where rows belong to a single tenant and are partitioned by a `namespace_id` column.
 2. **`EXPECTED_SPECIAL_RLS_TABLES` (1 table)**: `a2a_grants`, which enforces a dual-namespace ownership policy (`owner_namespace_id` and `target_namespace_id`).
 3. **`EXPECTED_GLOBAL_TABLES` (6 tables)**: Shared tables intentionally without RLS across all tenants (`embedding_models`, `kg_node_embeddings`, `reembedding_runs`, `event_sequences`, `applied_migrations`, `product_catalog`). A table in `EXPECTED_GLOBAL_TABLES` carries no `namespace_id` and no RLS by design. `product_catalog` is the first business table to sit here (the existing five are platform/infrastructure). `applied_migrations` is deployment state — which migration files this database has applied — not tenant data, which is why it carries no `namespace_id` (see `nce/migration_ledger.py`).
 
@@ -66,7 +66,7 @@ The catalog consistency validator categorizes all tables in the engine into thre
                      ▼                                     ▼                                     ▼
         ┌─────────────────────────┐           ┌─────────────────────────┐           ┌─────────────────────────┐
         │EXPECTED_TENANT_RLS_TABLES│          │EXPECTED_SPECIAL_RLS_TBLS│           │ EXPECTED_GLOBAL_TABLES  │
-        │       (117 Tables)      │           │        (1 Table)        │           │       (6 Tables)        │
+        │       (118 Tables)      │           │        (1 Table)        │           │       (6 Tables)        │
         │ Single namespace_id RLS │           │  a2a_grants (Dual-NS)   │           │ Intentionally Global    │
         └─────────────────────────┘           └─────────────────────────┘           └─────────────────────────┘
 ```
@@ -76,12 +76,12 @@ The catalog consistency validator categorizes all tables in the engine into thre
 | Surface Definition | Table Count | Scope / Description | Why It Is Not the Source of Truth |
 | :--- | :---: | :--- | :--- |
 | **Migration [`001_enable_rls.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/001_enable_rls.sql)** | 14 | Initial baseline seed (`memories`, `kg_nodes`, `kg_edges`, `pii_redactions`, `memory_salience`, `contradictions`, `snapshots`, `event_log`, `resource_quotas`, `consolidation_runs`, `bridge_subscriptions`, `dead_letter_queue`, `embedding_migrations`, `memory_embeddings`) + `a2a_grants`. | Only seeds initial v1 tables; omits post-v1 migrations ([`002`–`050`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/)). |
-| **[`schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) `tenant_tables` loop** | 41 | Dynamic PL/pgSQL array loop in `nce/schema.sql`. Additional tables (`replay_runs`, `outbox_events`, `saga_execution_log`, `topology_graph`, `economy_contracts`, `stock_locations`, `inventory_items`, etc.) receive policy statements inline outside the loop. | Incomplete as a standalone list; lacks 76 tables (117 − 41) handled inline or in newer vertical engine migrations. |
-| **`EXPECTED_TENANT_RLS_TABLES` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py))** | **117** | Authoritative programmatic specification covering all core, cognitive, governance, diagnostics, shared-core, and vertical-engine tables. Validated by `verify_rls_catalog_consistency()` at startup. | **Definitive source of truth**: Enforced by automated runtime assertions against live database catalog metadata. |
+| **[`schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) `tenant_tables` loop** | 41 | Dynamic PL/pgSQL array loop in `nce/schema.sql`. Additional tables (`replay_runs`, `outbox_events`, `saga_execution_log`, `topology_graph`, `economy_contracts`, `stock_locations`, `inventory_items`, etc.) receive policy statements inline outside the loop. | Incomplete as a standalone list; lacks 77 tables (118 − 41) handled inline or in newer vertical engine migrations. |
+| **`EXPECTED_TENANT_RLS_TABLES` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py))** | **118** | Authoritative programmatic specification covering all core, cognitive, governance, diagnostics, shared-core, and vertical-engine tables. Validated by `verify_rls_catalog_consistency()` at startup. | **Definitive source of truth**: Enforced by automated runtime assertions against live database catalog metadata. |
 
-### 2c. Complete Inventory of the 117 Tenant RLS Tables
+### 2c. Complete Inventory of the 118 Tenant RLS Tables
 
-The 117 tables in `EXPECTED_TENANT_RLS_TABLES` span all 32 functional domains of NCE:
+The 118 tables in `EXPECTED_TENANT_RLS_TABLES` span all 32 functional domains of NCE:
 
 | Subsystem Domain | Count | Table Names | Description |
 | :--- | :---: | :--- | :--- |
@@ -96,7 +96,7 @@ The 117 tables in `EXPECTED_TENANT_RLS_TABLES` span all 32 functional domains of
 | **Product Engine** | 4 | `product_prices`, `product_match_feedback`, `product_enrichment_log`, `product_packages` | PIM catalog entries, price tiers, distributor matching feedback, supplier enrichment review audit, and package catalog definitions expanded via inventory kitting's reserve_kit (Wave B-7). |
 | **Procurement Engine** | 3 | `procurement_bid_prices`, `procurement_po_lines`, `procurement_deal_registrations` | Consumer projection cache for Product BID and supplier pricing models; purchase order lines and status state machine (PR-2); supplier deal registrations protecting pricing/terms for a specific opportunity (Wave B-15). |
 | **System Design Engine** | 4 | `system_design_device_capabilities`, `system_design_geometry`, `system_design_node_state`, `system_design_design_requests` | Device capability attributes, functional location models, and design BOM constraints; canvas geometry (x/y in grid units, origin top-left, y-down; rack `position`/`face` in NetBox's vocabulary) plus the per-DESIGN optimistic-concurrency version row; per-node lifecycle state (NetBox status/revision/salience for DEVICE, RACK and CABLE); and the C12 DESIGN_REQUEST satellite (Wave C-4), replacing the prior `system_design_geometry.meta` JSONB scheme. `system_design_geometry` deliberately holds **two key grains** under one natural key — geometry rows keyed by a node label (`version IS NULL`) and one version row keyed by the design label (`version IS NOT NULL`). In `system_design_node_state` a row exists only where somebody declared something, so absence stays meaningful. |
-| **Sales Engine** | 9 | `sales_read_model`, `sales_targets`, `sales_signed_baselines`, `sales_customers`, `sales_leads`, `sales_deals`, `sales_quotes`, `sales_contacts`, `sales_quote_templates` | Pipeline read models, sales quotas/targets, immutable signed quote baselines, C12 relational resources for customers, leads, deals, quotes, and contacts, and reusable quote starting-point templates (Wave B-7). |
+| **Sales Engine** | 10 | `sales_read_model`, `sales_targets`, `sales_signed_baselines`, `sales_customers`, `sales_leads`, `sales_deals`, `sales_quotes`, `sales_contacts`, `sales_quote_templates`, `sales_deal_participants` | Pipeline read models, sales quotas/targets, immutable signed quote baselines, C12 relational resources for customers, leads, deals, quotes, and contacts, reusable quote starting-point templates (Wave B-7), and deal stakeholders (Wave B-3). |
 | **Vendors & Contractors** | 2 | `vendor_scorecards`, `contractor_profiles` | Partner contractor profiles (external scoped) and supplier performance scorecards. |
 | **Agreements Engine** | 5 | `agreement_review_queue`, `agreement_extraction_runs`, `agreements`, `agreement_parties`, `agreement_templates` | OCR contract extraction runs, legal/financial human review queue, and C12 relational resources for agreements, parties/signatures, and contract templates. |
 | **Economy Engine** | 7 | `economy_bom_actual_costs`, `economy_postings`, `economy_contracts`, `economy_billing_runs`, `economy_billing_candidates`, `economy_billing_candidate_lines`, `economy_customer_invoices` | BOM line actual cost cascades, balanced general ledger postings (`sum=0`), recurring contract stores, C12 BILLING_RUN/BILLING_CANDIDATE resources (Wave B-12) with their priced line items, and the C12 CUSTOMER_INVOICE resource (Wave B-13, proposal transition). |

@@ -819,6 +819,22 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/sales/customers/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/sales/customers/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/sales/dashboard` | `api_admin_sales_dashboard` |
+| GET | `/api/sales/deal-participants` | `handle_list` |
+| POST | `/api/sales/deal-participants` | `handle_create` |
+| POST | `/api/sales/deal-participants/bulk` | `handle_bulk` |
+| GET | `/api/sales/deal-participants/{id}` | `handle_get` |
+| PATCH | `/api/sales/deal-participants/{id}` | `handle_patch` |
+| POST | `/api/sales/deal-participants/{id}/archive` | `handle_archive` |
+| GET | `/api/sales/deal-participants/{id}/comments` | `handle_list_comments` |
+| POST | `/api/sales/deal-participants/{id}/comments` | `handle_add_comment` |
+| GET | `/api/sales/deal-participants/{id}/documents` | `handle_list_documents` |
+| POST | `/api/sales/deal-participants/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/sales/deal-participants/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/sales/deal-participants/{id}/events` | `handle_events` |
+| POST | `/api/sales/deal-participants/{id}/restore` | `handle_restore` |
+| GET | `/api/sales/deal-participants/{id}/tags` | `handle_list_tags` |
+| POST | `/api/sales/deal-participants/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/sales/deal-participants/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/sales/dealroom` | `api_admin_sales_dealroom` |
 | GET | `/api/sales/deals` | `handle_list` |
 | POST | `/api/sales/deals` | `api_admin_sales_create_deal` |
@@ -1553,6 +1569,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_add_quote_line` |  | yes |  |  |
 | `sales_archive_contacts` |  | yes |  |  |
 | `sales_archive_customers` |  | yes |  |  |
+| `sales_archive_deal_participants` |  | yes |  |  |
 | `sales_archive_deals` |  | yes |  |  |
 | `sales_archive_leads` |  | yes |  |  |
 | `sales_archive_quote_templates` |  | yes |  |  |
@@ -1568,6 +1585,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_edit_deal` | yes | yes |  |  |
 | `sales_get_contacts` |  |  | yes |  |
 | `sales_get_customers` |  |  | yes |  |
+| `sales_get_deal_participants` |  |  | yes |  |
 | `sales_get_deals` |  |  | yes |  |
 | `sales_get_leads` |  |  | yes |  |
 | `sales_get_quote_lines` |  |  |  |  |
@@ -1578,6 +1596,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_import_quote_lines` |  | yes |  |  |
 | `sales_list_contacts` |  |  | yes |  |
 | `sales_list_customers` |  |  | yes |  |
+| `sales_list_deal_participants` |  |  | yes |  |
 | `sales_list_deals` |  |  | yes |  |
 | `sales_list_leads` |  |  | yes |  |
 | `sales_list_quote_templates` |  |  | yes |  |
@@ -1590,6 +1609,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_score_lead` |  |  | yes |  |
 | `sales_upsert_contacts` |  | yes |  |  |
 | `sales_upsert_customers` |  | yes |  |  |
+| `sales_upsert_deal_participants` |  | yes |  |  |
 | `sales_upsert_deals` |  | yes |  |  |
 | `sales_upsert_leads` |  | yes |  |  |
 | `sales_upsert_quote_templates` |  | yes |  |  |
@@ -1737,4 +1757,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 1174 REST endpoints, 545 MCP tools._
+_Totals: 1190 REST endpoints, 549 MCP tools._

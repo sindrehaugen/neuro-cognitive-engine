@@ -31,6 +31,7 @@
     { "node_type": "SIGNED_BASELINE",      "owner_engine": "sales",         "transition": null },
     { "node_type": "CONTACT",              "owner_engine": "sales",         "transition": null },
     { "node_type": "QUOTE_TEMPLATE",       "owner_engine": "sales",         "transition": null },
+    { "node_type": "DEAL_PARTICIPANT",     "owner_engine": "sales",         "transition": null },
     { "node_type": "VENDOR",               "owner_engine": "vendors",       "transition": null },
     { "node_type": "CONTRACTOR",           "owner_engine": "vendors",       "transition": null },
     { "node_type": "CERT",                 "owner_engine": "vendors",       "transition": null },
