@@ -97,22 +97,49 @@ NO enabled_guard: system_design has no ``_guard.py`` anywhere in
 nce/vertical_modules/system_design/ (confirmed) -- no per-namespace opt-in
 check exists for this engine, so #296's engine-guard ratchet does not apply.
 
-NO tier_allowlists: admin_app.py (the ONLY place ``build_all_resource_routes()``
-is mounted -- confirmed, single call site) is documented HMAC+mTLS,
-employee/agent-only ("External principals (contractor, external-customer)
-are never authenticated here", admin_app.py:55-57). ``ADMIN_PRINCIPAL_KIND``
-is declared "employee" but never actually assigned to ``request.state``
+tier_allowlists EXPLICITLY EMPTY, NOT OMITTED -- an omitted entry is fail-OPEN
+------------------------------------------------------------------------------
+admin_app.py (the ONLY place ``build_all_resource_routes()`` is mounted --
+confirmed, single call site) is documented HMAC+mTLS, employee/agent-only
+("External principals (contractor, external-customer) are never
+authenticated here", admin_app.py:55-57). ``ADMIN_PRINCIPAL_KIND`` is
+declared "employee" but never actually assigned to ``request.state``
 anywhere in admin_app.py, and admin_app never imports nce.jwt_auth (the only
-module that ever constructs a non-"employee" ``principal_kind``, used by the
-separate a2a/portal-facing servers). ``resolve_principal_tier()``
-(resource_surface/rest.py) therefore always falls through to its "employee"
-default for every request reaching these routes -- a ``tier_allowlists``
-entry for "contractor"/"external-customer" would be inert configuration for
-a code path no legitimate request can reach, not a real redaction boundary.
-The existing hand-written system_design surface (admin_handlers/
-system_design.py, 2756 lines, grepped for tier/role/redact/external-customer/
-contractor: zero matches) has no precedent for tier-based field redaction
-either, consistent with this reading. Left empty rather than guessed.
+module that ever constructs a non-"employee" ``principal_kind`` from a
+verified claim). That is the ``request.state`` path, and it is dead here --
+but it is only HALF of ``resolve_principal_tier()`` (resource_surface/
+rest.py), checked SECOND. The FIRST check is a raw, caller-supplied header
+(``X-NCE-Principal-Tier`` / ``X-NCE-Principal-Kind``) with no verification
+and no dependency on ``request.state`` at all: any caller already
+authenticated to admin_app can set it to "external-customer" and get that
+tier back. Missed this on the first pass of this wave -- caught on review,
+verified directly against ``resolve_principal_tier()``'s source before
+accepting the correction.
+
+That live header path matters because of how ``redact_item`` (resource_surface/
+rest.py) treats an ABSENT tier: ``spec.tier_allowlists.get(principal_tier)``
+returns ``None`` when the key is missing, and ``if tier_allowed is not None
+and k not in tier_allowed: continue`` short-circuits to False on ``None`` --
+meaning NO field is filtered. Omitting ``tier_allowlists`` (the dataclass
+default, an empty dict) is therefore fail-OPEN: a caller who sends that
+header gets every field on these four specs -- ``salience``, ``revision``,
+every capability column -- not the caution "leave it out until someone
+decides" was meant to express. An explicit empty TUPLE closes this:
+``.get("external-customer")`` then returns ``()``, ``tier_allowed is not
+None`` is True, and ``k not in ()`` is True for every field, so everything
+is filtered -- fail-CLOSED. Declared explicitly empty below for exactly this
+reason: nobody has decided what an external caller should see for these node
+types (the existing hand-written system_design surface has no tier-redaction
+precedent to derive an answer from -- admin_handlers/system_design.py, 2756
+lines, grepped for tier/role/redact/external-customer/contractor: zero
+matches), and an explicit empty allowlist says "undecided, therefore
+nothing" where an absent one silently said "unfiltered" and reads
+identically in a diff.
+
+This same gap -- any ResourceSpec that omits tier_allowlists is fail-open on
+the live header path -- almost certainly applies to some of the other ~30
+already-declared specs across the estate. Not audited here; out of this
+wave's scope, filed separately.
 
 REST ROUTE COLLISIONS: none. Grepped admin_app.py for
 /api/system-design/{devices,ports,racks,cables} -- no hand-written route at
@@ -180,6 +207,10 @@ DEVICE_SPEC = ResourceSpec(
             fields=("node_type", "status", "revision", "salience"),
         ),
     ),
+    # Explicitly empty, not omitted -- see the module docstring's
+    # "tier_allowlists EXPLICITLY EMPTY" section: an absent entry is
+    # fail-open on redact_item's live X-NCE-Principal-Tier header path.
+    tier_allowlists={"external-customer": (), "contractor": ()},
     description="C12 AV device: graph identity plus capability and lifecycle state.",
 )
 register_resource(DEVICE_SPEC)
@@ -231,6 +262,8 @@ PORT_SPEC = ResourceSpec(
         # states a port carrying a lifecycle key "is REFUSED rather than
         # silently ignored."
     ),
+    # Explicitly empty, not omitted -- see DEVICE_SPEC's comment above.
+    tier_allowlists={"external-customer": (), "contractor": ()},
     description="C12 AV signal port: graph identity plus per-port capability, no lifecycle state.",
 )
 register_resource(PORT_SPEC)
@@ -281,6 +314,8 @@ RACK_SPEC = ResourceSpec(
             fields=("node_type", "status", "revision", "salience"),
         ),
     ),
+    # Explicitly empty, not omitted -- see DEVICE_SPEC's comment above.
+    tier_allowlists={"external-customer": (), "contractor": ()},
     description="C12 rack enclosure: graph identity plus AVIXA capability and lifecycle state.",
 )
 register_resource(RACK_SPEC)
@@ -315,6 +350,8 @@ CABLE_SPEC = ResourceSpec(
         # devices.py's _upsert_capability (grep confirmed); AV capability
         # columns describe devices/ports/racks, never a cable run.
     ),
+    # Explicitly empty, not omitted -- see DEVICE_SPEC's comment above.
+    tier_allowlists={"external-customer": (), "contractor": ()},
     description="C12 cable run: graph identity plus lifecycle state, no AV capability data.",
 )
 register_resource(CABLE_SPEC)
