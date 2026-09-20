@@ -652,7 +652,16 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                 status_code=404,
             )
 
+        # Apply tier redactions and fields projection -- same generic
+        # ?fields=a,b,c mechanism handle_list already offers (charter Wave
+        # B-5's "light" quote view: GET .../quotes/{id}?fields=<curated-list>
+        # rather than a new named-view concept on ResourceSpec itself).
+        fields_filter = request.query_params.get("fields")
+        allowed_fields = [f.strip() for f in fields_filter.split(",")] if fields_filter else None
+
         redacted = redact_item(item, spec, tier)
+        if allowed_fields:
+            redacted = {k: v for k, v in redacted.items() if k in allowed_fields}
         return JSONResponse(redacted)
 
     async def handle_create(request: Request) -> Response:

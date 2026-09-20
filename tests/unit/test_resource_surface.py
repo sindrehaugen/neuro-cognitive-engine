@@ -96,6 +96,38 @@ def test_rest_create_and_get():
     assert fetched["kind"] == "warehouse"
 
 
+def test_rest_get_fields_projection_matches_list() -> None:
+    """GET now honours the same ``?fields=a,b,c`` projection LIST already had
+    (charter Wave B-5's "light" quote view -- see rest.py's ``handle_get``).
+
+    Proven by mutation, not just read as correct: without ``fields=``, GET
+    returns every field LIST would show for the same item; with it, GET
+    returns exactly the requested subset, nothing more and nothing less.
+    """
+    client = _client_for_spec(STOCK_LOCATION_SPEC)
+    created = client.post(
+        "/api/inventory/stock-locations",
+        json={"namespace_id": _NS_A, "name": "Central Depot", "kind": "warehouse", "level": 1},
+    ).json()
+    item_id = created["id"]
+
+    # No fields= -- unchanged, full-object behavior.
+    full = client.get(f"/api/inventory/stock-locations/{item_id}?namespace_id={_NS_A}")
+    assert full.status_code == 200
+    full_body = full.json()
+    assert "kind" in full_body
+    assert "level" in full_body
+
+    # fields= -- exactly the requested subset.
+    light = client.get(
+        f"/api/inventory/stock-locations/{item_id}?namespace_id={_NS_A}&fields=id,name"
+    )
+    assert light.status_code == 200
+    light_body = light.json()
+    assert set(light_body.keys()) == {"id", "name"}
+    assert light_body["name"] == "Central Depot"
+
+
 def test_rest_list_with_filters():
     client = _client_for_spec(STOCK_LOCATION_SPEC)
     # Insert two items
