@@ -410,6 +410,80 @@ async def test_rest_patch_updates_secondary_table(
 
 
 @pytest.mark.asyncio
+async def test_rest_patch_first_touch_of_secondary_table_still_satisfies_node_type_not_null(
+    probe_rest_client: httpx.AsyncClient, namespace_id: uuid.UUID, pg_pool: asyncpg.Pool
+) -> None:
+    """RELATIONAL branch (MULTI_TABLE_PROBE_SPEC has table_name set, so
+    handle_patch's `elif spec.table_name:` branch runs here, not
+    `if is_graph:`). A separate test exercises the graph-primary branch
+    with the same shape:
+    tests/integration/test_resource_surface_kg_nodes_primary_live.py::
+    test_device_rest_patch_first_touch_of_secondary_table -- the two share
+    the same underlying bug but are genuinely different code paths, each
+    needing their own fix and their own proof.
+
+    A PATCH that is the FIRST write ever to touch node_state (created
+    with no node_state-routed fields, so no row exists yet) must still
+    succeed, not 500 on node_state.node_type's NOT NULL constraint.
+
+    node_type is never in spec.writable_fields on any REAL registered
+    spec with this shape (derived from the spec's own identity, never
+    client-supplied) -- MULTI_TABLE_PROBE_SPEC is the one exception,
+    declaring it writable for its own test convenience elsewhere in this
+    file, but this test's PATCH body deliberately omits it regardless, so
+    it still exercises the real gap: handle_patch's `updates` dict never
+    carries node_type unless the caller explicitly sends it, and without
+    re-injecting it alongside whatever secondary field IS being patched,
+    upsert_secondary_tables' INSERT branch (no existing row to UPDATE)
+    would be missing a NOT NULL column. Distinct from
+    test_rest_patch_updates_secondary_table above, which patches a row
+    that already has a node_state row from its own CREATE -- that case
+    never observably breaks, since UPDATE only touches listed columns,
+    leaving a correct pre-existing node_type alone either way.
+
+    No real relational spec has this shape today (every registered spec
+    with a node_type-bearing secondary_tables entry is graph-primary,
+    confirmed via get_all_resource_specs()) -- this branch is fixed for
+    parity with the graph branch, not because a live caller hits it.
+    """
+    node_label = f"probe-device-rest-first-touch-{uuid.uuid4().hex[:8]}"
+    await _create_kg_node(pg_pool, namespace_id, node_label)
+    async with probe_rest_client as client:
+        r1 = await client.post(
+            "/api/system_design/devices-multitable-probe",
+            json={
+                "namespace_id": str(namespace_id),
+                "node_label": node_label,
+                "signal_format": "HDMI",
+                # No node_type/status/revision -- node_state gets no row here.
+            },
+        )
+        assert r1.status_code == 201, r1.text
+        version1 = r1.json()["version"]
+
+        r2 = await client.patch(
+            f"/api/system_design/devices-multitable-probe/{node_label}",
+            json={
+                "namespace_id": str(namespace_id),
+                "expected_version": version1,
+                "status": "planned",
+            },
+        )
+    assert r2.status_code == 200, r2.text
+
+    async with pg_pool.acquire() as conn:
+        secondary_row = await conn.fetchrow(
+            "SELECT node_type, status FROM system_design_node_state "
+            "WHERE namespace_id = $1 AND node_label = $2",
+            namespace_id,
+            node_label,
+        )
+    assert secondary_row is not None
+    assert secondary_row["node_type"] == "DEVICE"
+    assert secondary_row["status"] == "planned"
+
+
+@pytest.mark.asyncio
 async def test_positive_control_field_collision_is_rejected_at_construction() -> None:
     """Proves the spec.py validation added this wave actually fires -- a
     field routed to two secondary tables must be refused at ResourceSpec

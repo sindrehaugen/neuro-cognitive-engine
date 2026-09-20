@@ -81,6 +81,26 @@ class SecondaryTable:
                     ``SecondaryTable`` (validated) -- routing would be
                     ambiguous.
 
+                    ``"node_type"`` is a documented exception to "routed
+                    from ``writable_fields``": it is never client-supplied
+                    (the caller cannot set a graph-primary node to a type
+                    other than the spec's own ``node_type``), so it is
+                    deliberately absent from every spec's
+                    ``writable_fields`` that declares it here. `handle_create`,
+                    `mcp.py`'s `handle_upsert`, and `handle_patch` (when
+                    already writing another field on this table) each
+                    inject ``spec.node_type`` directly rather than reading
+                    it from the request body -- the same "derived from the
+                    spec's own identity" reasoning as ``namespace_id`` and
+                    ``join_field``'s value, not a gap in this field's
+                    write-routing story. Declare it here anyway (rather
+                    than omitting it from ``fields`` entirely) because
+                    ``upsert_secondary_tables()`` still needs it present in
+                    its own per-table filter to write the column at all --
+                    a table with a ``NOT NULL node_type`` column being
+                    written for the first time via a PATCH to one of its
+                    OTHER fields would otherwise violate that constraint.
+
     WARNING -- do not target a table with application-level write validation.
     ``upsert_secondary_tables()`` (``nce/resource_surface/rest.py``) is a
     plain SELECT-then-branch: it enforces nothing beyond the target table's
