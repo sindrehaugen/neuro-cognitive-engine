@@ -107,7 +107,7 @@ _TOOL_PINS_ADMIN_ONLY_TOOLS = frozenset(
     for name, flags in engine.items()
     if flags.get("admin_only")
 )
-_EXPECTED_STATIC_TOTAL = 344  # 292 hand-written tools + 8 FUNCTIONAL_LOCATION tree tools (Lane C Wave C-1) + 1 C17 site master data address-registry feed (Lane F Wave F-9) + 2 support action/timeline tools (Lane D Wave D-5) + 1 support on-call rota (Lane D Wave D-7) + 1 assets service history (Lane D Wave D-3) + 8 room cat & FL metadata tools (Lane C Wave C-2) + 6 assets person/subcomponent tools (Lane D Wave D-2) + 8 design versions & room spec tools (Lane C Wave C-3) + 4 agreements price rules & index series tools (Lane B Wave B-10) + 3 support summary/links tools (Lane D Wave D-6) + 7 design requests tools (Lane C Wave C-4) + 1 external-import BOM_LINE origination (Lane B Wave B-5) + 1 DealRoom MCP tool, sales_open_dealroom (Lane H Wave B-4) + 1 sales_clone_quote (Lane E Wave B-5 remainder); see _C12_TOOL_NAMES above
+_EXPECTED_STATIC_TOTAL = 345  # 292 hand-written tools + 8 FUNCTIONAL_LOCATION tree tools (Lane C Wave C-1) + 1 C17 site master data address-registry feed (Lane F Wave F-9) + 2 support action/timeline tools (Lane D Wave D-5) + 1 support on-call rota (Lane D Wave D-7) + 1 assets service history (Lane D Wave D-3) + 8 room cat & FL metadata tools (Lane C Wave C-2) + 6 assets person/subcomponent tools (Lane D Wave D-2) + 8 design versions & room spec tools (Lane C Wave C-3) + 4 agreements price rules & index series tools (Lane B Wave B-10) + 3 support summary/links tools (Lane D Wave D-6) + 7 design requests tools (Lane C Wave C-4) + 1 external-import BOM_LINE origination (Lane B Wave B-5) + 1 DealRoom MCP tool, sales_open_dealroom (Lane H Wave B-4) + 1 sales_clone_quote (Lane E Wave B-5 remainder) + 1 economy_reconcile_agreements (Lane E Wave B-11); see _C12_TOOL_NAMES above
 
 # Re-exported for tests/unit/test_{assets,economy,inventory}_surface.py and
 # test_sales_skeleton.py, which each do `from tests.test_tool_registry import
@@ -265,6 +265,9 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "sales_import_quote_lines",
         # Charter Wave B-5 remainder (Lane E) -- clone a quote + its BOM_LINE content
         "sales_clone_quote",
+        # Charter Wave B-11 (Lane E) -- Agreements<->GL reconciliation; writes
+        # divergence_log on a non-zero delta, not read-only
+        "economy_reconcile_agreements",
         # ML10-B5 (M10.W5) -- Support Engine mutations (Actor, admin_only)
         # ML12-B5 (M12.W5) -- Field Tech Engine mutations (8 tools)
         # ML13-B3 (M13.W3) -- HR Engine mutations (3 tools)
@@ -459,17 +462,18 @@ def test_mutation_tools_count():
     +1 Lane D Wave D-6 support_link_ticket -> 144.
     +5 Wave C-4 Solution Design Intake Queue mutations -> 149.
     +1 Wave B-5 sales_import_quote_lines (external BOM_LINE origination) -> 150.
-    +1 Wave B-5 remainder (Lane E) sales_clone_quote -> 151."""
+    +1 Wave B-5 remainder (Lane E) sales_clone_quote -> 151.
+    +1 Wave B-11 (Lane E) economy_reconcile_agreements -> 152."""
     c12_mutation_tools = frozenset(
         n for n, s in build_all_resource_tool_specs().items() if s.mutation
     )
     hand_written_mutation_tools = MUTATION_TOOLS - c12_mutation_tools
 
-    assert len(MUTATION_TOOLS) >= 151, (
-        f"Sanity floor: expected at least 151 mutation tools, got {len(MUTATION_TOOLS)}."
+    assert len(MUTATION_TOOLS) >= 152, (
+        f"Sanity floor: expected at least 152 mutation tools, got {len(MUTATION_TOOLS)}."
     )
-    assert len(hand_written_mutation_tools) == 151, (
-        "Hand-written (non-C12) mutation tool count changed: expected 151, "
+    assert len(hand_written_mutation_tools) == 152, (
+        "Hand-written (non-C12) mutation tool count changed: expected 152, "
         f"got {len(hand_written_mutation_tools)}. If you added/removed a "
         "hand-written mutation tool, update this pin by import. If you only "
         "registered a new C12 ResourceSpec, this number should not move -- "

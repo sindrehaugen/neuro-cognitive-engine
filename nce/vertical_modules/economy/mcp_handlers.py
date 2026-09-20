@@ -53,6 +53,7 @@ from nce.vertical_modules.economy.peppol import (
     do_generate_kid,
     do_validate_kid,
 )
+from nce.vertical_modules.economy.reconcile_agreements import do_reconcile_agreements
 from nce.vertical_modules.economy.recurring import (
     do_compute_recognition_schedule,
     do_snapshot_mrr_arr_churn,
@@ -949,6 +950,67 @@ async def handle_economy_get_gl_records(engine: NCEEngine, arguments: dict[str, 
                 "error": (
                     f"economy_get_gl_records: result contains a non-finite value and cannot "
                     f"be serialized ({exc})"
+                )
+            },
+            default=str,
+        )
+
+
+@mcp_handler
+async def handle_economy_reconcile_agreements(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: economy_reconcile_agreements — compare posted GL revenue against the
+    recognition schedule for one period (charter Wave B-11).
+
+    Not read-only: a non-zero delta is written to divergence_log via
+    record_divergence (see below) -- an incidental side effect of an
+    otherwise advisory comparison, not this tool's primary purpose.
+
+    Aggregate comparison, not per-contract: sums the recognition schedule's
+    expected amount across every contract due this period
+    (do_compute_recognition_schedule) and compares it against the sum of
+    posted GL revenue for a caller-specified account/period
+    (do_get_gl_records). Delegates every decision to
+    nce.vertical_modules.economy.reconcile_agreements.do_reconcile_agreements
+    — see that module's own docstring for the full reasoning, including why
+    this does not attempt a per-contract GL-account mapping.
+
+    A non-zero delta is recorded via the shared record_divergence/
+    alert_threshold machinery (same knob finago.py's GL parity pairing
+    uses); a zero delta is never logged at all.
+
+    Required arguments:
+        namespace_id (str, UUID)
+        period       (str) — "YYYY-MM", the period to reconcile
+    One of the following is required (gl_account wins if both given):
+        gl_account        (str) — exact GL account code for recurring revenue
+        gl_account_prefix (str) — account prefix, alternative to an exact match
+
+    Returns JSON string with {"ok": true, "namespace_id", "period", "gl_account",
+    "expected_recognized_total", "actual_gl_total", "delta", "materiality",
+    "material", "contracts_due", "not_due"}.
+    """
+    try:
+        await _check_economy_enabled(engine, arguments)
+        result = await do_reconcile_agreements(engine, arguments)
+    except McpError:
+        raise
+    except (ValueError, KeyError, TypeError) as exc:
+        return json.dumps({"error": str(exc)}, default=str)
+    except Exception as exc:
+        log.exception("[economy] handle_economy_reconcile_agreements unexpected error")
+        return json.dumps({"error": str(exc)}, default=str)
+
+    try:
+        return json.dumps(result, default=str, allow_nan=False)
+    except ValueError as exc:
+        log.error(
+            "[economy] handle_economy_reconcile_agreements result not JSON-serializable: %s", exc
+        )
+        return json.dumps(
+            {
+                "error": (
+                    f"economy_reconcile_agreements: result contains a non-finite value and "
+                    f"cannot be serialized ({exc})"
                 )
             },
             default=str,
