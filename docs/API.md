@@ -653,6 +653,22 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/procurement/sync/status` | `api_procurement_sync_status` |
 | POST | `/api/procurement/tco` | `api_procurement_calculate_tco` |
 | GET | `/api/product/enrichment/review` | `api_product_enrichment_review` |
+| GET | `/api/product/packages` | `handle_list` |
+| POST | `/api/product/packages` | `handle_create` |
+| POST | `/api/product/packages/bulk` | `handle_bulk` |
+| GET | `/api/product/packages/{id}` | `handle_get` |
+| PATCH | `/api/product/packages/{id}` | `handle_patch` |
+| POST | `/api/product/packages/{id}/archive` | `handle_archive` |
+| GET | `/api/product/packages/{id}/comments` | `handle_list_comments` |
+| POST | `/api/product/packages/{id}/comments` | `handle_add_comment` |
+| GET | `/api/product/packages/{id}/documents` | `handle_list_documents` |
+| POST | `/api/product/packages/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/product/packages/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/product/packages/{id}/events` | `handle_events` |
+| POST | `/api/product/packages/{id}/restore` | `handle_restore` |
+| GET | `/api/product/packages/{id}/tags` | `handle_list_tags` |
+| POST | `/api/product/packages/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/product/packages/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/product/product-skus` | `handle_list` |
 | POST | `/api/product/product-skus` | `handle_create` |
 | POST | `/api/product/product-skus/bulk` | `handle_bulk` |
@@ -845,6 +861,22 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/sales/morning-brief` | `api_admin_sales_morning_brief_slice` |
 | GET | `/api/sales/overview` | `api_admin_sales_overview` |
 | POST | `/api/sales/quote-draft` | `api_admin_sales_quote_draft` |
+| GET | `/api/sales/quote-templates` | `handle_list` |
+| POST | `/api/sales/quote-templates` | `handle_create` |
+| POST | `/api/sales/quote-templates/bulk` | `handle_bulk` |
+| GET | `/api/sales/quote-templates/{id}` | `handle_get` |
+| PATCH | `/api/sales/quote-templates/{id}` | `handle_patch` |
+| POST | `/api/sales/quote-templates/{id}/archive` | `handle_archive` |
+| GET | `/api/sales/quote-templates/{id}/comments` | `handle_list_comments` |
+| POST | `/api/sales/quote-templates/{id}/comments` | `handle_add_comment` |
+| GET | `/api/sales/quote-templates/{id}/documents` | `handle_list_documents` |
+| POST | `/api/sales/quote-templates/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/sales/quote-templates/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/sales/quote-templates/{id}/events` | `handle_events` |
+| POST | `/api/sales/quote-templates/{id}/restore` | `handle_restore` |
+| GET | `/api/sales/quote-templates/{id}/tags` | `handle_list_tags` |
+| POST | `/api/sales/quote-templates/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/sales/quote-templates/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/sales/quotes` | `handle_list` |
 | POST | `/api/sales/quotes` | `handle_create` |
 | POST | `/api/sales/quotes/bulk` | `handle_bulk` |
@@ -1437,17 +1469,21 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `procurement_upsert_deal_registrations` |  | yes |  |  |
 | `procurement_upsert_po_lines` |  | yes |  |  |
 | `procurement_whatif_spend` |  |  | yes |  |
+| `product_archive_packages` |  | yes |  |  |
 | `product_archive_product_skus` |  | yes |  |  |
 | `product_enrich` |  | yes |  |  |
 | `product_get` |  |  | yes |  |
+| `product_get_packages` |  |  | yes |  |
 | `product_get_product_skus` |  |  | yes |  |
 | `product_golden_record` |  |  | yes |  |
 | `product_ingest_spec` |  | yes |  |  |
+| `product_list_packages` |  |  | yes |  |
 | `product_list_product_skus` |  |  | yes |  |
 | `product_match_bom_line` |  |  |  |  |
 | `product_price` |  |  | yes |  |
 | `product_related` |  |  | yes |  |
 | `product_search` |  |  | yes |  |
+| `product_upsert_packages` |  | yes |  |  |
 | `product_upsert_product_skus` |  | yes |  |  |
 | `project_advance_phase` | yes | yes |  |  |
 | `project_archive_projects` |  | yes |  |  |
@@ -1503,6 +1539,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_archive_customers` |  | yes |  |  |
 | `sales_archive_deals` |  | yes |  |  |
 | `sales_archive_leads` |  | yes |  |  |
+| `sales_archive_quote_templates` |  | yes |  |  |
 | `sales_archive_quotes` |  | yes |  |  |
 | `sales_archive_signed_baselines` |  | yes |  |  |
 | `sales_calculate_commission` |  |  | yes |  |
@@ -1518,6 +1555,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_get_deals` |  |  | yes |  |
 | `sales_get_leads` |  |  | yes |  |
 | `sales_get_quote_lines` |  |  |  |  |
+| `sales_get_quote_templates` |  |  | yes |  |
 | `sales_get_quotes` |  |  | yes |  |
 | `sales_get_signed_baseline` |  |  |  |  |
 | `sales_get_signed_baselines` |  |  | yes |  |
@@ -1526,6 +1564,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_list_customers` |  |  | yes |  |
 | `sales_list_deals` |  |  | yes |  |
 | `sales_list_leads` |  |  | yes |  |
+| `sales_list_quote_templates` |  |  | yes |  |
 | `sales_list_quotes` |  |  | yes |  |
 | `sales_list_signed_baselines` |  |  | yes |  |
 | `sales_morning_brief_slice` |  |  | yes |  |
@@ -1537,6 +1576,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_upsert_customers` |  | yes |  |  |
 | `sales_upsert_deals` |  | yes |  |  |
 | `sales_upsert_leads` |  | yes |  |  |
+| `sales_upsert_quote_templates` |  | yes |  |  |
 | `sales_upsert_quotes` |  | yes |  |  |
 | `sales_upsert_signed_baselines` |  | yes |  |  |
 | `search_codebase` |  |  | yes |  |
@@ -1678,4 +1718,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 1127 REST endpoints, 533 MCP tools._
+_Totals: 1159 REST endpoints, 541 MCP tools._

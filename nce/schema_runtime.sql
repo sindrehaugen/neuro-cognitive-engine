@@ -2262,6 +2262,30 @@ BEGIN
     END IF;
 END $$;
 
+ALTER TABLE procurement_deal_registrations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE procurement_deal_registrations FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON procurement_deal_registrations;
+CREATE POLICY tenant_isolation_policy ON procurement_deal_registrations
+    FOR ALL TO nce_app
+    USING  (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE procurement_deal_registrations FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE procurement_deal_registrations TO nce_app;
+    END IF;
+END $$;
+
+COMMENT ON TABLE procurement_deal_registrations IS
+'Supplier deal registrations (Wave B-15), Procurement-owned. A registered deal
+protects pricing/terms for a specific opportunity with a named supplier.
+`supplier` is plain TEXT (no suppliers table exists anywhere in this schema --
+every other procurement table references suppliers the same way). Isolates
+per tenant namespace via FORCE RLS, mirrors migration 097''s policy shape.';
+
 ALTER TABLE sales_quote_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sales_quote_templates FORCE ROW LEVEL SECURITY;
 
