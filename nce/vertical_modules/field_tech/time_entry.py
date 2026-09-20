@@ -18,6 +18,9 @@ import logging
 from typing import Any
 from uuid import UUID, uuid4
 
+import asyncpg  # type: ignore[import-untyped]
+
+from nce.autonomy.governor import governed
 from nce.db_utils import scoped_pg_session
 from nce.entity_resolution.ownership import assert_owner
 
@@ -216,4 +219,86 @@ async def do_log_time(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
         res["ended_at"] = res["ended_at"].isoformat()
     res["deduplicated"] = False
     res["status"] = "logged"
+    return res
+
+
+class TimeEntryNotFoundError(ValueError, KeyError):
+    """Raised when the referenced time entry does not exist in this namespace."""
+
+
+def _time_entry_idempotency_key(namespace_id: Any, time_entry_id: Any) -> str:
+    """Deterministic default idempotency key: approving the same entry twice
+    (no caller-supplied key) is the same governed action, not two."""
+    return f"field_tech_approve_time_entry:{namespace_id}:{time_entry_id}"
+
+
+@governed(action_type="field_tech_approve_time_entry")
+async def do_approve_time_entry(
+    conn: asyncpg.Connection,  # type: ignore[type-arg]
+    namespace_id: Any,
+    *,
+    idempotency_key: str,
+    confirm: bool = False,
+    engine: Any = None,
+    time_entry_id: Any,
+) -> dict[str, Any]:
+    """Governed confirm-first approval of one time entry (C-7).
+
+    Charter C-7 asked for "POST /{id}/approve (governed) -> Economy labour
+    cost". Before this, ``approved`` was a plain ``writable_fields`` entry on
+    FIELD_TECH_TIME_ENTRY_SPEC -- any caller with PATCH access could flip it
+    with no confirmation and no audit trail, which is not what "governed"
+    means. This is the confirm-first replacement; ``approved`` is removed
+    from ``writable_fields`` in the same change (resources.py) so PATCH can
+    no longer walk around this gate -- a governed front door beside an
+    unlocked window guards nothing.
+
+    Modelled on ``procurement/po.py``'s ``do_generate_po`` -- the caller
+    (the admin route) opens ``scoped_pg_session`` and passes ``conn`` in;
+    ``@governed`` requires ``conn`` already inside that transaction (see its
+    own "Transaction guard"), never opens one itself.
+
+    Without ``confirm=True``, ``@governed`` returns
+    ``{"status": "pending_approval", ...}`` and this body never runs.
+    Idempotent on ``idempotency_key``: a defaulted key
+    (``_time_entry_idempotency_key``) makes a second confirm of the same
+    entry a no-op replay rather than a second audited action, the same
+    idempotency shape ``do_log_time`` already gives op_id-keyed logging.
+
+    Raises
+    ------
+    TimeEntryNotFoundError
+        No time entry with this id exists in this namespace.
+    ValueError
+        ``time_entry_id`` missing or unparseable.
+    """
+    ns_uuid = _parse_uuid(namespace_id, "namespace_id")
+    te_uuid = _parse_uuid(time_entry_id, "time_entry_id")
+
+    row = await conn.fetchrow(
+        """
+        UPDATE time_entries
+        SET approved = TRUE, updated_at = NOW()
+        WHERE id = $1 AND namespace_id = $2::uuid
+        RETURNING id, time_entry_id, work_order_id, namespace_id, partner_scope_id,
+                  started_at, ended_at, source, approved, op_id, created_at, updated_at
+        """,
+        te_uuid,
+        ns_uuid,
+    )
+    if row is None:
+        raise TimeEntryNotFoundError(
+            f"Time entry {time_entry_id} not found in namespace {namespace_id}"
+        )
+
+    res = dict(row)
+    res["id"] = str(res["id"])
+    res["namespace_id"] = str(res["namespace_id"])
+    if res.get("partner_scope_id"):
+        res["partner_scope_id"] = str(res["partner_scope_id"])
+    if res.get("started_at"):
+        res["started_at"] = res["started_at"].isoformat()
+    if res.get("ended_at"):
+        res["ended_at"] = res["ended_at"].isoformat()
+    res["status"] = "approved"
     return res

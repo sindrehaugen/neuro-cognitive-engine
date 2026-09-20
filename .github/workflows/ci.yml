@@ -877,12 +877,18 @@ jobs:
 
       # M12 Field Tech Engine (Module 12, Wave 8). Proves work order lifecycle,
       # tenant isolation, ISO9001 checklists, offline sync, and Contract-A node ownership.
+      # C-7 (2026-09-20) added test_field_tech_approve_time_entry.py's integration
+      # tier here rather than leaving it @pytest.mark.integration with no workflow
+      # to run it -- an unwired integration file gates nothing (test_ci_integration_
+      # coverage.py's own ratchet caught exactly this on the first push).
       - name: Integration — M12 Field Tech Engine (tests/test_field_tech_hardening.py)
         env:
           PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
           NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
-        run: pytest tests/test_field_tech_hardening.py -m integration -q --tb=short
+        run: >-
+          pytest tests/test_field_tech_hardening.py tests/test_field_tech_approve_time_entry.py
+          -m integration -q --tb=short
 
       # M13 HR Engine (Module 13, Wave 8). Proves employee profiles, skills matching,
       # tenant isolation, RL-1 never-ranking, certifications, and absences.

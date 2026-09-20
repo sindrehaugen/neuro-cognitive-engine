@@ -1297,7 +1297,7 @@
         "type": "object"
       },
       "Field_tech_time_entries": {
-        "description": "Technician time entries against a work order, GPS- or manually-sourced.",
+        "description": "Technician time entries against a work order, GPS- or manually-sourced. Approval is governed: POST /{id}/approve, not PATCH.",
         "properties": {
           "approved": {
             "description": "Field approved",
@@ -1340,9 +1340,6 @@
       "Field_tech_time_entries_Create": {
         "description": "Payload for creating a field_tech time-entries",
         "properties": {
-          "approved": {
-            "type": "string"
-          },
           "ended_at": {
             "type": "string"
           },
@@ -1387,9 +1384,6 @@
       "Field_tech_time_entries_Update": {
         "description": "Payload for updating a field_tech time-entries",
         "properties": {
-          "approved": {
-            "type": "string"
-          },
           "ended_at": {
             "type": "string"
           },
@@ -10459,9 +10453,6 @@
       },
       "Tool_field_tech_upsert_time_entries_Input": {
         "properties": {
-          "approved": {
-            "description": "Value for approved."
-          },
           "ended_at": {
             "description": "Value for ended_at."
           },
@@ -49558,6 +49549,93 @@
           }
         },
         "summary": "POST /api/field-tech/time-entries \u2014 log labor time entry.",
+        "tags": [
+          "field-tech"
+        ]
+      }
+    },
+    "/api/field-tech/time-entries/{id}/approve": {
+      "post": {
+        "description": "C-7: ``approved`` was previously a plain writable field on\nFIELD_TECH_TIME_ENTRY_SPEC's generic PATCH -- no confirmation, no audit.\nThis route replaces that: @governed (do_approve_time_entry) requires\nconfirm=True to actually flip the flag, and every confirmed call is\naudited to event_log. ``approved`` is removed from writable_fields in\nthe same change so PATCH can no longer set it directly.\nBody: ``{\"namespace_id\": str, \"confirm\"?: bool, \"idempotency_key\"?: str}``.\nWithout ``confirm: true``, returns the @governed \"pending_approval\" shape\nwithout approving anything -- same contract as every other governed\naction in this estate (see procurement's generate_po route).",
+        "operationId": "post_api_field_tech_time_entries_id_approve",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "POST /api/field-tech/time-entries/{id}/approve \u2014 governed confirm-first approval.",
         "tags": [
           "field-tech"
         ]

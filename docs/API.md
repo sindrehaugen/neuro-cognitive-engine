@@ -285,6 +285,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/field-tech/scans` | `api_field_tech_scan_serial` |
 | POST | `/api/field-tech/sync` | `api_field_tech_sync` |
 | POST | `/api/field-tech/time-entries` | `api_field_tech_log_time` |
+| POST | `/api/field-tech/time-entries/{id}/approve` | `api_field_tech_approve_time_entry` |
 | GET | `/api/field-tech/work-orders` | `api_field_tech_query_work_orders` |
 | POST | `/api/field-tech/work-orders` | `api_field_tech_create_work_order` |
 | GET | `/api/field-tech/work-orders/{id}` | `api_field_tech_work_order` |
@@ -1638,4 +1639,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 1095 REST endpoints, 525 MCP tools._
+_Totals: 1096 REST endpoints, 525 MCP tools._

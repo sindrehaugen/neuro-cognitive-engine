@@ -1752,6 +1752,11 @@ def build_admin_routes() -> list[Route]:
             methods=["POST"],
         ),
         Route(
+            "/api/field-tech/time-entries/{id}/approve",
+            endpoint=field_tech_handlers.api_field_tech_approve_time_entry,
+            methods=["POST"],
+        ),
+        Route(
             "/api/field-tech/photos",
             endpoint=field_tech_handlers.api_field_tech_attach_photo,
             methods=["POST"],
