@@ -1810,8 +1810,7 @@ class TestGoldenThreadSteps:
             await set_namespace_context(conn, ctx.namespace_id)
             absorbed_after = await get_fl_node(conn, ctx.namespace_id, dup_label)
         assert absorbed_after["change_origin"] == "consolidation", (
-            f"Absorbed node's change_origin was not persisted as 'consolidation': "
-            f"{absorbed_after}"
+            f"Absorbed node's change_origin was not persisted as 'consolidation': {absorbed_after}"
         )
 
     async def test_step_32_responsible_assigned(
