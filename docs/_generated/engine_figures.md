@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `2259bd8d` (public `main`) · **Last-audited:** generated
+> **Status:** shipped · **Verified-against:** `a0d8938` (public `main`) · **Last-audited:** generated
 
 # NCE Engine Figures — Inventory & Counters
 
@@ -70,7 +70,7 @@
 | `diagnostics` | 5 |
 | `documents` | 4 |
 | `dynamics365` | 6 |
-| `economy` | 28 |
+| `economy` | 26 |
 | `field_tech` | 22 |
 | `geodata` | 7 |
 | `hr` | 29 |
@@ -79,7 +79,7 @@
 | `marketing` | 21 |
 | `netbox` | 1 |
 | `notifications` | 8 |
-| `procurement` | 16 |
+| `procurement` | 18 |
 | `product` | 16 |
 | `project` | 15 |
 | `resources` | 25 |
