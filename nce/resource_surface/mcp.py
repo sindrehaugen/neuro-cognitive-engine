@@ -568,17 +568,72 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                     # above, so it is not caught here either.
                     await assert_owner(conn, session_ns, spec.node_type, spec.engine)
 
+                    # Lenient on purpose, matching rest.py's handle_get/
+                    # handle_patch: a caller's own GET response hands back
+                    # kg_nodes' real identifying column (`label`) alongside
+                    # an "id" key -- and a strict `label = $3` here made the
+                    # ordinary GET-then-upsert-with-that-id sequence
+                    # silently create a second, disconnected kg_nodes row
+                    # instead of updating the one the caller meant -- no
+                    # error, "status": "ok", the real row untouched.
+                    # Confirmed live before this fix.
                     existing_row = await conn.fetchrow(
                         """
                         SELECT id, label, entity_type, namespace_id, change_origin,
                                created_at, updated_at
                         FROM kg_nodes
-                        WHERE entity_type = $1 AND namespace_id = $2 AND label = $3
+                        WHERE entity_type = $1 AND namespace_id = $2
+                          AND (label = $3 OR id::text = $3)
                         """,
                         spec.node_type,
                         ns_uuid,
                         node_label,
                     )
+                    if not existing_row:
+                        # The caller's "id" is often not kg_nodes.id at all:
+                        # GET's response merges each secondary table's own
+                        # row over kg_nodes' (`item.update(row_to_dict(sec_row))`),
+                        # and a secondary table with its own "id" column
+                        # (every one of them has one) silently shadows
+                        # kg_nodes.id in what a caller actually receives --
+                        # the same shadowing shape #389 fixed for the
+                        # create/patch envelope, deliberately left as-is
+                        # there for GET's response on graph-primary specs.
+                        # Resolve against each secondary table's own id,
+                        # mapping back through its join_field (whose value
+                        # IS the real label) to the row this upsert must
+                        # target. Safe to check every secondary table in
+                        # turn without ambiguity: each one's "id" column is
+                        # independently `gen_random_uuid()`'d (verified by
+                        # reading every secondary table's column
+                        # definition, not assumed from probability), so a
+                        # given value can structurally match at most one of
+                        # them -- DEVICE and RACK are the only specs with
+                        # two secondary tables, and neither shares an id
+                        # sequence with the other.
+                        for sec in spec.secondary_tables:
+                            sec_row = await conn.fetchrow(
+                                f"SELECT {sec.join_field} FROM {sec.table_name} "
+                                f"WHERE namespace_id = $1 AND id::text = $2",
+                                ns_uuid,
+                                node_label,
+                            )
+                            if sec_row:
+                                existing_row = await conn.fetchrow(
+                                    """
+                                    SELECT id, label, entity_type, namespace_id,
+                                           change_origin, created_at, updated_at
+                                    FROM kg_nodes
+                                    WHERE entity_type = $1 AND namespace_id = $2
+                                      AND label = $3
+                                    """,
+                                    spec.node_type,
+                                    ns_uuid,
+                                    sec_row[sec.join_field],
+                                )
+                                break
+                    if existing_row:
+                        node_label = existing_row["label"]
                     if existing_row and expected_version and spec.version_field:
                         existing = row_to_dict(existing_row)
                         actual = _version_str(existing.get(spec.version_field, ""))
