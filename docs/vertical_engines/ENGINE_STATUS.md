@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `bf4d1ad` (public `main`) · **Last-audited:** 2026-09-20
+> **Status:** shipped · **Verified-against:** `a535607` (public `main`) · **Last-audited:** 2026-09-20
 
 # NCE Vertical Engines — Build & Production Status
 
