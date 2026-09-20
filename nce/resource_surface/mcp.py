@@ -176,7 +176,16 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
     # refused, not silently treated as "no namespace to gate," matching the
     # hand-written boundary (e.g. nce/admin_handlers/product.py) which
     # already requires namespace_id unconditionally for a gated engine.
-    requires_namespace = is_tenant or spec.enabled_guard is not None
+    #
+    # is_graph is included for the same reason: kg_nodes rows are namespace-
+    # scoped (UNIQUE(label, namespace_id), schema.sql), so a graph-primary
+    # spec is exactly as namespace-bound as a tenant one. Before Wave 3
+    # (2026-09-20) this never mattered -- storage_kind="kg_nodes" was an
+    # unconditional 501, so no graph-primary spec ever reached a real query.
+    # Once it does, omitting namespace_id must not silently bind
+    # `WHERE namespace_id = NULL` and return zero rows -- it must 422, same
+    # as every other namespace-scoped spec.
+    requires_namespace = is_tenant or is_graph or spec.enabled_guard is not None
 
     async def handle_list(engine: Any, arguments: dict[str, Any]) -> str:
         ns_raw = arguments.get("namespace_id")
@@ -229,14 +238,65 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
         next_cursor: str | None = None
 
         if hasattr(engine, "pg_pool") and engine.pg_pool:
-            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+            if spec.storage_kind == "mongo":
                 return json.dumps(
                     {
                         "error": f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
                         "status_code": 501,
                     }
                 )
-            if spec.table_name:
+            if is_graph:
+                # kg_nodes-primary list: primary (identity) rows only, same
+                # documented limitation as a postgres-primary multi-table
+                # spec's own list -- see SecondaryTable's docstring.
+                session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                async with scoped_pg_session(engine.pg_pool, session_ns) as conn:
+                    where_clauses = ["entity_type = $1", "namespace_id = $2"]
+                    params: list[Any] = [spec.node_type, ns_uuid]
+                    idx = 3
+
+                    for f_col, f_val in active_filters.items():
+                        where_clauses.append(f"{f_col} = ${idx}")
+                        params.append(f_val)
+                        idx += 1
+
+                    if q and spec.searchable_fields:
+                        q_clauses = [
+                            f"{s_col}::text ILIKE ${idx}" for s_col in spec.searchable_fields
+                        ]
+                        where_clauses.append(f"({' OR '.join(q_clauses)})")
+                        params.append(f"%{q}%")
+                        idx += 1
+
+                    if cursor:
+                        try:
+                            dec = base64.b64decode(cursor).decode("utf-8")
+                            where_clauses.append(f"label < ${idx}")
+                            params.append(dec)
+                            idx += 1
+                        except Exception:
+                            pass
+
+                    params.append(limit + 1)
+                    limit_idx = idx
+                    where_sql = f"WHERE {' AND '.join(where_clauses)}"
+                    query = f"""
+                        SELECT id, label, entity_type, namespace_id, change_origin,
+                               created_at, updated_at
+                        FROM kg_nodes
+                        {where_sql}
+                        ORDER BY label DESC
+                        LIMIT ${limit_idx}
+                    """
+                    rows = await conn.fetch(query, *params)
+                    has_more = len(rows) > limit
+                    page_rows = rows[:limit]
+                    for r in page_rows:
+                        items.append(row_to_dict(r))
+                    if has_more and page_rows:
+                        last_label = str(page_rows[-1]["label"])
+                        next_cursor = base64.b64encode(last_label.encode("utf-8")).decode("utf-8")
+            elif spec.table_name:
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(engine.pg_pool, session_ns) as conn:
                     if is_global:
@@ -358,14 +418,37 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
 
         item: dict[str, Any] | None = None
         if hasattr(engine, "pg_pool") and engine.pg_pool:
-            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+            if spec.storage_kind == "mongo":
                 return json.dumps(
                     {
                         "error": f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
                         "status_code": 501,
                     }
                 )
-            if spec.table_name:
+            if is_graph:
+                session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                async with scoped_pg_session(engine.pg_pool, session_ns) as conn:
+                    query = """
+                        SELECT id, label, entity_type, namespace_id, change_origin,
+                               created_at, updated_at
+                        FROM kg_nodes
+                        WHERE entity_type = $1 AND namespace_id = $2
+                          AND (label = $3 OR id::text = $3)
+                        LIMIT 1
+                    """
+                    row = await conn.fetchrow(query, spec.node_type, ns_uuid, item_id)
+                    if row:
+                        item = row_to_dict(row)
+                        node_label = item["label"]
+                        for sec in spec.secondary_tables:
+                            sec_row = await conn.fetchrow(
+                                f"SELECT * FROM {sec.table_name} WHERE namespace_id = $1 AND {sec.join_field} = $2",
+                                ns_uuid,
+                                node_label,
+                            )
+                            if sec_row:
+                                item.update(row_to_dict(sec_row))
+            elif spec.table_name:
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(engine.pg_pool, session_ns) as conn:
                     if is_global:
@@ -450,14 +533,70 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
             data[spec.version_field] = now
 
         if hasattr(engine, "pg_pool") and engine.pg_pool:
-            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+            if spec.storage_kind == "mongo":
                 return json.dumps(
                     {
                         "error": f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
                         "status_code": 501,
                     }
                 )
-            if spec.table_name:
+            if is_graph:
+                node_label = item_id
+                session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
+                async with scoped_pg_session(engine.pg_pool, session_ns) as conn:
+                    existing_row = await conn.fetchrow(
+                        """
+                        SELECT id, label, entity_type, namespace_id, change_origin,
+                               created_at, updated_at
+                        FROM kg_nodes
+                        WHERE entity_type = $1 AND namespace_id = $2 AND label = $3
+                        """,
+                        spec.node_type,
+                        ns_uuid,
+                        node_label,
+                    )
+                    if existing_row and expected_version and spec.version_field:
+                        existing = row_to_dict(existing_row)
+                        actual = _version_str(existing.get(spec.version_field, ""))
+                        if actual != str(expected_version):
+                            return json.dumps(
+                                {
+                                    "error": f"Version conflict: expected {expected_version}, got {actual}",
+                                    "reason": "version_conflict",
+                                    "status_code": 409,
+                                }
+                            )
+
+                    # kg_nodes identity row first -- every system_design
+                    # satellite table carries a real FK to
+                    # kg_nodes(label, namespace_id), so this must land before
+                    # any secondary-table write, not after.
+                    cols = ["label", "entity_type", "namespace_id"]
+                    vals_id: list[Any] = [node_label, spec.node_type, ns_uuid]
+                    if "change_origin" in data:
+                        cols.append("change_origin")
+                        vals_id.append(data["change_origin"])
+                    placeholders = [f"${i + 1}" for i in range(len(cols))]
+                    set_items = [f"{c} = EXCLUDED.{c}" for c in cols if c != "label"]
+                    await conn.execute(
+                        f"""
+                        INSERT INTO kg_nodes ({", ".join(cols)})
+                        VALUES ({", ".join(placeholders)})
+                        ON CONFLICT (label, namespace_id) DO UPDATE
+                            SET {", ".join(set_items)}, updated_at = NOW()
+                        """,
+                        *vals_id,
+                    )
+
+                    secondary_field_names = {f for sec in spec.secondary_tables for f in sec.fields}
+                    sec_data = {k: v for k, v in data.items() if k in secondary_field_names}
+                    if "node_type" in secondary_field_names:
+                        sec_data["node_type"] = spec.node_type
+                    if sec_data:
+                        await upsert_secondary_tables(
+                            conn, spec, node_label, ns_uuid, is_global, sec_data
+                        )
+            elif spec.table_name:
                 # Multi-table spec: route each secondary table's own fields
                 # out of the primary column list first -- the primary
                 # INSERT/UPDATE below must never reference a column that
@@ -588,10 +727,21 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
 
         field_name = spec.soft_delete_field or "is_archived"
         if hasattr(engine, "pg_pool") and engine.pg_pool:
-            if spec.storage_kind in ("mongo", "kg_nodes") or is_graph:
+            if spec.storage_kind == "mongo":
                 return json.dumps(
                     {
                         "error": f"{spec.storage_kind} backend storage is not supported yet for {spec.entity}",
+                        "status_code": 501,
+                    }
+                )
+            if is_graph:
+                # kg_nodes and every system_design satellite table have no
+                # generic soft-delete/is_archived column -- inventing one is
+                # a system_design content decision, not a mechanical gap.
+                return json.dumps(
+                    {
+                        "error": f"Archive is not supported for {spec.entity}: kg_nodes-primary "
+                        f"specs have no generic soft-delete column",
                         "status_code": 501,
                     }
                 )
