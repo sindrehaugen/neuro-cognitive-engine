@@ -52,8 +52,24 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     "FUNCTIONAL_LOCATION": ResourceExemption(
         owner_engine="system_design",
         reason=(
-            "kg_nodes stub today; kind/address/coordinates await C17 SITE master data "
-            "(A-9). Tree operations (children, ancestors, path) scheduled for Wave C-1."
+            "Two independent blockers, both verified directly, neither the prior "
+            "reason's claim (C17 SITE landed; this was never actually about SITE). "
+            "(1) kind/as_built are DERIVED at read time by fl_tree.py -- kind from "
+            "label parsing + tree depth (nothing populates a stored kind column), "
+            "as_built as `change_origin == 'operator'` -- not stored columns, so "
+            "declaring either as a satellite field would give the same fact a second, "
+            "silently-divergent home (the exact class system_design_geometry's "
+            "SecondaryTable exclusion already guards against). A thin, identity-only "
+            "spec (PROJECT_PROJECT's pattern) is possible for the derived-fields "
+            "reason alone. (2) But it collides: entity='functional-locations' "
+            "generates MCP tool system_design_list_functional_locations, which "
+            "already exists as a hand-written tool (admin_handlers/system_design.py, "
+            "tree listing with recursion) -- get/upsert/archive do not collide "
+            "(hand-written get is singular system_design_get_functional_location), "
+            "only list does, same shape as RESOURCE's collision below. Needs the "
+            "same naming decision RESOURCE needs before declaring even the thin "
+            "identity-only version; Lane E Wave E-15 found this via the collision "
+            "ratchet raising RuntimeError at import, not a silent overwrite."
         ),
     ),
     "DESIGN": ResourceExemption(
