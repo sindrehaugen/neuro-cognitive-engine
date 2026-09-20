@@ -423,6 +423,10 @@ async def do_generate_billing_run(
         candidate_label = f"{_NODE_TYPE_BILLING_CANDIDATE}:{candidate_id}"
         total_amount = Decimal(str(pricing["total_monthly_amount"]))
 
+        # kg_nodes row must exist before the FK'd economy_billing_candidates
+        # insert below (fk_economy_billing_candidates_kg_nodes).
+        await _upsert_billing_candidate_node(conn, ns_uuid, candidate_label, run_label)
+
         await conn.execute(
             """
             INSERT INTO economy_billing_candidates
@@ -459,8 +463,6 @@ async def do_generate_billing_run(
                 Decimal(str(line["total_monthly"])),
                 json.dumps(fl_labels_by_tier[tier]),
             )
-
-        await _upsert_billing_candidate_node(conn, ns_uuid, candidate_label, run_label)
 
         candidates.append(
             {
