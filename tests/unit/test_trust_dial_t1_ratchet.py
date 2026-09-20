@@ -222,7 +222,18 @@ async def test_rule2_coverage_summary_with_adequate_samples():
 
 @pytest.mark.asyncio
 async def test_rule3_eu_ai_act_compliance_structure():
-    """Constraint 3: Inspectable reasoning, article citation, and human oversight mode."""
+    """Constraint 3: Inspectable reasoning, article citation, and human oversight mode.
+
+    current_tier defaults to 3 (empty metadata). 6 "held" decisions (all
+    POSITIVE_DECISIONS) give precision_rate=1.0, sample_size=6 -> candidate_tier=2
+    (0.80 <= precision < 0.95 or sample_size < 10) -> since 2 < 3, this is the
+    promotion_proposed branch, so effective_tier is HELD at current_tier=3
+    (never self-raised — see Rule 1). effective_tier=3 > 1, so
+    human_oversight_mode is deterministically "human_in_the_loop" for this
+    scenario, not merely "one of the two valid values" (tightened 2026-09-20:
+    the prior `in (a, b)` form could never fail regardless of which branch the
+    tier logic actually took).
+    """
     mock_engine = MagicMock()
     mock_conn = AsyncMock()
     mock_conn.fetchrow.return_value = {"metadata": "{}"}
@@ -235,12 +246,43 @@ async def test_rule3_eu_ai_act_compliance_structure():
 
         res = await get_trust_dial_status(mock_engine, ns_id, engine="resources")
 
+        assert res["effective_tier"] == 3
         compliance = res["eu_ai_act_compliance"]
         assert "Article 14" in compliance["article"]
         assert compliance["transparency_level"] == "high"
-        assert compliance["human_oversight_mode"] in ("human_in_the_loop", "human_on_the_loop")
+        assert compliance["human_oversight_mode"] == "human_in_the_loop"
         assert compliance["override_history_verified"] is True
         assert "Empirical precision" in compliance["inspectable_reasoning"]
+
+
+@pytest.mark.asyncio
+async def test_rule3_eu_ai_act_compliance_reflects_zero_decision_history():
+    """transparency_level and override_history_verified must be computed from
+    actual recorded decision-feedback state, not hardcoded literals.
+
+    With zero decision_feedback rows ever recorded, status is
+    "insufficient_signal" (0 < MIN_SAMPLE_SIZE) and there is no override
+    history to inspect at all, so both fields must reflect that -- proving
+    they are not the same always-True/"high" constants asserted regardless
+    of state (2026-09-20 estate audit finding: 4 of 5 assertions in this
+    test's original form could never fail).
+    """
+    mock_engine = MagicMock()
+    mock_conn = AsyncMock()
+    mock_conn.fetchrow.return_value = {"metadata": "{}"}
+    mock_conn.fetch.return_value = []  # zero decisions ever recorded
+
+    ns_id = uuid4()
+
+    with patch("nce.trust_dial.scoped_pg_session") as mock_scoped:
+        mock_scoped.return_value.__aenter__.return_value = mock_conn
+
+        res = await get_trust_dial_status(mock_engine, ns_id, engine="resources")
+
+        assert res["status"] == "insufficient_signal"
+        compliance = res["eu_ai_act_compliance"]
+        assert compliance["transparency_level"] == "limited"
+        assert compliance["override_history_verified"] is False
 
 
 # ===========================================================================

@@ -307,11 +307,19 @@ async def get_trust_dial_status(
         },
         "eu_ai_act_compliance": {
             "article": "EU AI Act Article 14 (Human Oversight) & Article 13 (Transparency)",
-            "transparency_level": "high",
+            # "high" only when there is an actual decision-feedback trail behind
+            # the figures above (status != "insufficient_signal" means
+            # sample_size >= MIN_SAMPLE_SIZE); otherwise the transparency claim
+            # would be citing a precision computed from too little (or zero)
+            # recorded history to back it.
+            "transparency_level": "high" if status != "insufficient_signal" else "limited",
             "human_oversight_mode": (
                 "human_in_the_loop" if effective_tier > 1 else "human_on_the_loop"
             ),
-            "override_history_verified": True,
+            # True only when there is at least one recorded decision_feedback
+            # row to verify against for this tenant/engine -- with zero rows
+            # there is no override history to inspect, so nothing was verified.
+            "override_history_verified": sample_size > 0,
             "inspectable_reasoning": reasoning,
         },
     }

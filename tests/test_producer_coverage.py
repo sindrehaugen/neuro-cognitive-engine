@@ -275,10 +275,38 @@ def _unproduced_event_types() -> list[str]:
     return sorted(t for t in _declared_event_types() if t not in literals)
 
 
-def _sql_writers_of(table: str) -> list[str]:
-    """Modules under ``nce/`` containing an INSERT/UPDATE against ``table``."""
+def _file_writes_table_ast(tree: ast.Module, table: str) -> bool:
+    """True if ``tree`` contains an actual (non-docstring) string constant that
+    is an INSERT INTO / UPDATE against ``table``.
+
+    AST-based, like Dimension A's ``_code_string_literals`` -- reuses
+    ``_docstring_node_ids`` so a docstring (or, since ``ast`` never sees
+    comments at all, a ``#`` comment either) mentioning the same SQL verb and
+    table name in prose is never mistaken for a real write. A 2026-09-20
+    mutation audit found the prior whole-file-text-regex version of this check
+    could be satisfied by exactly such a prose mention (see
+    ``test_sql_writers_of_ignores_docstring_only_mentions`` below for the
+    reproduction).
+    """
     pattern = re.compile(rf"\b(?:INSERT\s+INTO|UPDATE)\s+{re.escape(table)}\b", re.IGNORECASE)
-    return sorted(rel for rel, text, _tree in _producer_sources() if pattern.search(text))
+    skip = _docstring_node_ids(tree)
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and id(node) not in skip
+            and pattern.search(node.value)
+        ):
+            return True
+    return False
+
+
+def _sql_writers_of(table: str) -> list[str]:
+    """Modules under ``nce/`` containing an actual (non-docstring) INSERT/UPDATE
+    against ``table``."""
+    return sorted(
+        rel for rel, _text, tree in _producer_sources() if _file_writes_table_ast(tree, table)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -394,6 +422,58 @@ def test_pending_approval_status_is_persisted() -> None:
     assert writers, (
         "governor.py returns 'pending_approval' but no module under nce/ writes "
         "action_approval_queue — the deferred action is announced and then lost."
+    )
+
+
+def test_sql_writers_of_ignores_docstring_only_mentions() -> None:
+    """Regression for a 2026-09-20 mutation-audit finding on
+    ``test_pending_approval_status_is_persisted``.
+
+    ``_sql_writers_of`` used to regex the WHOLE FILE TEXT, so a bare docstring
+    mentioning ``INSERT INTO <table>`` in prose (governor.py's own
+    ``_record_pending_approval``-style docstring did exactly this) was
+    indistinguishable from a real write. Proven by mutation: renaming every
+    actual ``INSERT``/``UPDATE`` string against ``action_approval_queue`` in
+    both ``nce/autonomy/governor.py`` and ``nce/admin_handlers/muscles.py``
+    still left the old check green, because the docstring sentence alone
+    satisfied the raw-text regex.
+
+    This test locks in the AST-based fix (``_file_writes_table_ast``, reusing
+    Dimension A's ``_docstring_node_ids`` exclusion): a docstring-only mention
+    must NOT count as a writer, and a real write (a string literal actually
+    passed to a call, not a bare docstring statement) still must.
+    """
+    docstring_only_src = '''
+def f():
+    """Mentions INSERT INTO mutation_probe_table in prose only, never executes it."""
+    return 1
+'''
+    tree_docstring_only = ast.parse(docstring_only_src)
+
+    real_write_src = '''
+async def f(conn):
+    await conn.execute("INSERT INTO mutation_probe_table (x) VALUES ($1)", 1)
+'''
+    tree_real_write = ast.parse(real_write_src)
+
+    # Premise check: the OLD whole-file-text-regex approach WOULD have matched
+    # the docstring-only source -- this is the exact bug, reproduced structurally.
+    old_raw_text_pattern = re.compile(
+        r"\b(?:INSERT\s+INTO|UPDATE)\s+mutation_probe_table\b", re.IGNORECASE
+    )
+    assert old_raw_text_pattern.search(docstring_only_src), (
+        "premise check failed: the old regex-over-raw-text approach was expected "
+        "to (incorrectly) match this docstring-only source"
+    )
+
+    # The FIXED, AST-based helper must not repeat that mistake.
+    assert _file_writes_table_ast(tree_docstring_only, "mutation_probe_table") is False, (
+        "a bare docstring mention of the SQL verb+table must NOT count as a real "
+        "writer -- the ast-based exclusion regressed"
+    )
+    assert _file_writes_table_ast(tree_real_write, "mutation_probe_table") is True, (
+        "a real INSERT/UPDATE string literal used as a value must still be "
+        "detected -- the ast-based rewrite must not undercount real writers"
     )
 
 

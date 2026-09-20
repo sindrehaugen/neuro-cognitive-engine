@@ -413,7 +413,14 @@ def test_cores_removed_from_internal_cores_allowlist() -> None:
 
     assert "nce/vertical_modules/product/ingestion.py::do_ingest_spec" not in allowlist
     assert "nce/vertical_modules/product/golden_record.py::do_golden_record" not in allowlist
-    assert len(allowlist) <= 69  # Shrink-only allowlist (68 after Wave RS-3)
+    # Shrink-only allowlist. Tightened 2026-09-20 (inert-instrument audit) from
+    # <= 69 to <= 20, the actual current count: git history showed the ceiling
+    # was never vacuous (== 69 when introduced at commit 6ed5c1c6, tightened to
+    # <= 69 at commit 146d5493 when the file held exactly 68 entries), but by
+    # today it had shrunk to 20 real entries while the ceiling stayed at 69,
+    # so it could only have caught a regression of 49+ entries. Retightening
+    # restores the instrument's intended sensitivity.
+    assert len(allowlist) <= 20
 
 
 def _callee_name(call: ast.Call) -> str | None:

@@ -227,34 +227,91 @@ async def test_proposals_never_match_synthetic_template() -> None:
     assert "price" not in conn.updated_specs, "§9.3: price must NEVER be auto-merged"
 
 
+def _find_synthetic_template_literals(source: str) -> list[tuple[int, str]]:
+    """Scan Python source for string-literal fragments containing the legacy
+    synthetic enrichment template marker "_enriched_for_".
+
+    This walks real ast.Constant string nodes -- including the literal text
+    fragments of an f-string (an f-string's static text between placeholders
+    is itself an ast.Constant child of its ast.JoinedStr), so
+    f"{field}_enriched_for_{mfr_part_no}" is caught the same way a plain
+    string literal would be.
+
+    Shared by the real AST ratchet (`test_no_synthetic_enrichment_template_in_source_ast`,
+    which scans the actual enrich.py source) and its positive control
+    (`test_ratchet_detects_synthetic_template_violation`, which scans synthetic
+    enrich.py-shaped source), so the positive control proves this exact
+    scanning mechanism -- not a hand-rolled stand-in -- actually flags the
+    historical defect pattern.
+    """
+    tree = ast.parse(source)
+    violations: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if "_enriched_for_" in node.value:
+                violations.append((getattr(node, "lineno", 0), node.value))
+    return violations
+
+
 # ---------------------------------------------------------------------------
 # 2. Ratchet Falsification Test
 # ---------------------------------------------------------------------------
 
 
 def test_ratchet_detects_synthetic_template_violation() -> None:
-    """Proves the ratchet is falsifiable:
+    """Proves the ratchet is falsifiable, using the REAL scanner on real-shaped source.
 
-    A helper function checking proposal values against the synthetic template
-    must detect and reject the legacy pattern.
+    Fixed 2026-09-20 (inert-instrument audit): the previous version built its
+    own throwaway `synthetic_value` from the exact template it was about to
+    check for, then defined a private `assert_not_synthetic` helper that
+    existed only in this test, and proved that helper caught the string it
+    had just been handed. It never called `ast.parse`, never touched
+    `nce/vertical_modules/product/enrich.py`, and never exercised the scanner
+    the real ratchet test below actually runs -- entirely self-contained and
+    true by construction regardless of whether the real scanner worked at all.
+
+    This version parses actual enrich.py-shaped Python source (a standalone
+    function reproducing the historical pre-fix `_build_proposals` defect,
+    kept here only as a fixture -- never imported or executed) through
+    `_find_synthetic_template_literals`, the exact function the real ratchet
+    calls against the live file, and confirms it is flagged. It also proves
+    the same scanner does NOT flag a real, non-synthetic value, so the
+    control isn't just "always report a violation" either.
     """
     mfr_part_no = "PART-XYZ"
     field = "dimensions"
     synthetic_value = f"{field}_enriched_for_{mfr_part_no}"
+    assert re.search(r"_enriched_for_", synthetic_value) is not None  # sanity on the fixture itself
 
-    # Falsification check: regex and equality must catch the synthetic pattern
-    assert re.search(r"_enriched_for_", synthetic_value) is not None
-    assert synthetic_value == f"{field}_enriched_for_{mfr_part_no}"
+    synthetic_enrich_py_shaped_source = (
+        "async def _build_proposals(provider, missing_fields, product_row, trigger_context):\n"
+        '    """Historical (pre-fix) synthetic enrichment template, kept only as a\n'
+        '    positive-control fixture for the real AST scanner. Never imported or run."""\n'
+        '    mfr_part_no = product_row["mfr_part_no"]\n'
+        "    proposals = []\n"
+        "    for field in missing_fields:\n"
+        '        value = f"{field}_enriched_for_{mfr_part_no}"\n'
+        "        proposals.append(value)\n"
+        "    return proposals\n"
+    )
 
-    def assert_not_synthetic(val: str, field_name: str, part_no: str) -> None:
-        if val == f"{field_name}_enriched_for_{part_no}" or "_enriched_for_" in val:
-            raise AssertionError(f"Detected synthetic template in proposal: {val}")
+    violations = _find_synthetic_template_literals(synthetic_enrich_py_shaped_source)
+    assert violations, (
+        "The real AST scanner (_find_synthetic_template_literals) failed to flag "
+        "the historical synthetic template pattern in synthetic enrich.py-shaped source"
+    )
+    assert any("_enriched_for_" in val for _, val in violations)
 
-    with pytest.raises(AssertionError, match="Detected synthetic template"):
-        assert_not_synthetic(synthetic_value, field, mfr_part_no)
-
-    # Real value passes cleanly
-    assert_not_synthetic("440 x 44 x 257 mm", field, mfr_part_no)
+    # Falsification: the same scanner must NOT flag a real, non-synthetic value.
+    clean_enrich_py_shaped_source = (
+        "async def _build_proposals(provider, missing_fields, product_row, trigger_context):\n"
+        "    proposals = []\n"
+        "    for field in missing_fields:\n"
+        '        value = "440 x 44 x 257 mm"\n'
+        "        proposals.append(value)\n"
+        "    return proposals\n"
+    )
+    assert _find_synthetic_template_literals(clean_enrich_py_shaped_source) == []
 
 
 # ---------------------------------------------------------------------------
@@ -282,15 +339,12 @@ def test_no_synthetic_enrichment_template_in_source_ast() -> None:
     source = enrich_path.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(enrich_path))
 
-    # 1. No AST string constant or f-string may contain "_enriched_for_"
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            assert "_enriched_for_" not in node.value, (
-                f"AST RATCHET FAILED: String literal {node.value!r} contains '_enriched_for_' "
-                f"at line {getattr(node, 'lineno', '?')}"
-            )
-        elif isinstance(node, ast.FormattedValue):
-            pass
+    # 1. No AST string constant or f-string may contain "_enriched_for_" --
+    # uses the same scanner the positive control above exercises.
+    violations = _find_synthetic_template_literals(source)
+    assert not violations, (
+        f"AST RATCHET FAILED: string literal(s) contain '_enriched_for_': {violations}"
+    )
 
     # 2. _call_product_enrichment function must be defined
     func_names = {

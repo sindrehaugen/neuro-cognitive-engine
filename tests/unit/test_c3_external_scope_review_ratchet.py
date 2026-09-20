@@ -370,8 +370,20 @@ def test_wholesale_dict_forwarding_ratchet_is_shrink_only() -> None:
         )
         assert data.get("owner"), f"Allowlist entry '{key}' must have an owner"
 
-    # Baseline match verification
-    assert len(found_sites) == 5, f"Expected exactly 5 known sites, found {len(found_sites)}"
+    # Baseline match verification (shrink-only, audit fix 2026-09-20): this was
+    # `== 5`, which fires the moment any ONE of the 5 allowlisted sites is
+    # legitimately fixed (removed from KNOWN_WHOLESALE_FORWARDING_SITES) without
+    # this literal also being hand-edited in the same change -- exact-equality
+    # on a shrink-only ratchet punishes remediation instead of only blocking
+    # growth. KNOWN_WHOLESALE_FORWARDING_SITES is already the mechanism that
+    # blocks growth (see the `unallowlisted` assertion above); this count only
+    # needs to guard against silent over-shrinkage of the tracked set itself.
+    assert len(found_sites) <= 5, (
+        f"Expected at most 5 known wholesale-forwarding sites, found {len(found_sites)}. "
+        "This ratchet is shrink-only: fixing one of the 5 allowlisted "
+        "field_tech.py sites (and removing it from KNOWN_WHOLESALE_FORWARDING_SITES) "
+        "should make this number go down without needing this literal updated."
+    )
 
 
 # ---------------------------------------------------------------------------

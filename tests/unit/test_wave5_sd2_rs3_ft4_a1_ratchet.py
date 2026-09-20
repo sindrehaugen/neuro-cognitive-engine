@@ -393,8 +393,55 @@ def test_a1_ymcs_timeout_enforcement():
 
 
 def test_a1_cron_scheduled_in_async_main():
-    """Verify _assets_telemetry_tick is defined and referenced in cron.py."""
+    """Verify _assets_telemetry_tick is actually wired into async_main's scheduler.
+
+    Inert-instrument fix (audit finding, 2026-09-20): the previous version of
+    this test only checked ``hasattr(cron_mod, "_assets_telemetry_tick")`` and
+    ``callable(...)`` -- both true regardless of whether the function is ever
+    scheduled. Mutation-verified: deleting the entire
+    ``scheduler.add_job(_assets_telemetry_tick, ...)`` block from
+    ``async_main()`` in ``nce/cron.py`` (leaving the function definition
+    itself untouched) left the old assertions green. This AST-walks
+    ``async_main`` for a real ``scheduler.add_job(_assets_telemetry_tick, ...)``
+    call -- the same static-analysis style already used by this batch's other
+    ratchets (e.g. ``test_ownership_ratchet.py``, ``test_engine_guard_ratchet.py``)
+    -- rather than invoking ``async_main`` itself, which opens a real database
+    pool and is not something a unit test should do.
+    """
+    import ast
+    import inspect
+
     import nce.cron as cron_mod
 
     assert hasattr(cron_mod, "_assets_telemetry_tick")
     assert callable(cron_mod._assets_telemetry_tick)
+
+    source = inspect.getsource(cron_mod)
+    tree = ast.parse(source)
+
+    async_main_fn = next(
+        (
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == "async_main"
+        ),
+        None,
+    )
+    assert async_main_fn is not None, "nce/cron.py must define an async_main() function"
+
+    scheduled_tick_names: set[str] = set()
+    for node in ast.walk(async_main_fn):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "add_job"
+            and node.args
+            and isinstance(node.args[0], ast.Name)
+        ):
+            scheduled_tick_names.add(node.args[0].id)
+
+    assert "_assets_telemetry_tick" in scheduled_tick_names, (
+        "_assets_telemetry_tick is defined but never passed to a "
+        "scheduler.add_job(...) call inside async_main() -- it is not "
+        f"actually scheduled. Jobs found wired: {sorted(scheduled_tick_names)}"
+    )
