@@ -18,6 +18,9 @@ Public entry-points:
   ``sales.external_lines.do_import_quote_lines``.
   ``handle_sales_get_quote_lines`` — the cross-engine READ of a quote's
   BOM_LINE rows (Batch 132f); the seam System Design's from_quote flow uses.
+  ``handle_sales_open_dealroom`` -- Wave B-4: MCP tool side of the DealRoom
+  materialise-quote operation; the REST route and ``do_open_dealroom``
+  itself (Wave S-3) already existed, delegates unchanged.
 
 Registered in ``nce/tool_registry.py`` via:
   ``_h(sales_mcp_handlers, "handle_sales_ping")``
@@ -25,6 +28,7 @@ Registered in ``nce/tool_registry.py`` via:
   ``_h(sales_mcp_handlers, "handle_sales_add_quote_line")``
   ``_h(sales_mcp_handlers, "handle_sales_import_quote_lines")``
   ``_h(sales_mcp_handlers, "handle_sales_get_quote_lines")``
+  ``_h(sales_mcp_handlers, "handle_sales_open_dealroom")``
 """
 
 from __future__ import annotations
@@ -40,6 +44,7 @@ from nce.mcp_errors import mcp_handler
 from nce.vertical_modules.sales.ai import do_draft_quote, do_score_lead
 from nce.vertical_modules.sales.baseline import get_signed_baseline
 from nce.vertical_modules.sales.commission import do_calculate_commission
+from nce.vertical_modules.sales.dealroom import do_open_dealroom
 from nce.vertical_modules.sales.external_lines import do_import_quote_lines
 from nce.vertical_modules.sales.flip import (
     do_morning_brief_slice,
@@ -616,4 +621,44 @@ async def handle_sales_draft_quote(engine: NCEEngine, arguments: dict[str, Any])
         params["description"] = str(arguments["description"]).strip()
 
     result = await do_draft_quote(engine, params)
+    return json.dumps(result)
+
+
+@mcp_handler
+async def handle_sales_open_dealroom(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: sales_open_dealroom — materialise a live web quote (DealRoom).
+
+    Wave B-4 (2026-09-20): the REST route (POST /api/sales/dealroom,
+    admin_handlers/sales.py::api_admin_sales_dealroom) and the underlying
+    do_open_dealroom (dealroom.py, Wave S-3) both already existed; only the
+    MCP tool side was missing. Delegates every decision to
+    nce.vertical_modules.sales.dealroom.do_open_dealroom -- this handler is
+    argument extraction and nothing else, same shape as the REST route's own
+    param passthrough.
+
+    Arguments
+    ---------
+    namespace_id    : str (required)
+    quote_id        : str (required)
+    toggled_options : dict[str, bool] (optional) -- toggle states by line
+                       label or ref; defaults to {} (no toggles applied).
+
+    Returns
+    -------
+    JSON body: the DealRoom payload do_open_dealroom returns (quote_id, name,
+    description, total_price_nok, unpriced_line_count, lines).
+
+    The ``@mcp_handler`` decorator maps do_open_dealroom's missing/invalid-
+    argument ``ValueError`` (namespace_id or quote_id absent) to an
+    ``McpError(-32602)`` at the call-site -- no local validation duplicated
+    here, matching handle_sales_draft_quote's pattern.
+    """
+    ns = require_namespace_id(arguments)
+    params: dict[str, Any] = {
+        "namespace_id": ns,
+        "quote_id": arguments.get("quote_id"),
+        "toggled_options": arguments.get("toggled_options") or {},
+    }
+
+    result = await do_open_dealroom(engine, params)
     return json.dumps(result)

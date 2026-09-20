@@ -794,7 +794,8 @@ jobs:
         # which would have kept all nine ungated to avoid running eight of them.
         run: >-
           pytest tests/test_sales_lines_manual.py tests/test_sales_get_quote_lines.py
-          tests/test_sales_dealroom.py -m integration -q --tb=short
+          tests/test_sales_dealroom.py tests/test_sales_open_dealroom_mcp.py
+          -m integration -q --tb=short
           --deselect 'tests/test_sales_dealroom.py::TestSalesDealRoom::test_open_dealroom_prices_correctly_and_handles_toggles'
 
       # M9 Assets (tests/test_assets_*.py). FIRST integration job for Module 9;

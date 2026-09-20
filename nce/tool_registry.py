@@ -1175,6 +1175,16 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # DealRoom (Wave B-4): the REST route and do_open_dealroom itself
+    # (Wave S-3) already existed; only the MCP tool side was missing.
+    # Read-only (materialises/recomputes, never writes) -- same cacheable
+    # shape as the advisor tools above.
+    "sales_open_dealroom": ToolSpec(
+        _h(sales_mcp_handlers, "handle_sales_open_dealroom"),
+        cacheable=True,
+        admin_only=False,
+        mutation=False,
+    ),
     # ------------------------------------------------------------------
     # Vendors vertical module tools (Batch 096)
     # ------------------------------------------------------------------
