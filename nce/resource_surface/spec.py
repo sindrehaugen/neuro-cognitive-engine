@@ -46,6 +46,8 @@ _KG_NODES_REAL_COLUMNS: frozenset[str] = frozenset(
     }
 )
 
+_KNOWN_VERBS: frozenset[str] = frozenset({"list", "get", "upsert", "archive"})
+
 
 @dataclass(frozen=True)
 class SecondaryTable:
@@ -191,6 +193,32 @@ class ResourceSpec:
                             satellite table (device_capabilities, node_state,
                             geometry) carries a real FK to
                             ``kg_nodes(label, namespace_id)``.
+        excluded_verbs:     Frozenset of generated verbs to OMIT from both the
+                            REST routes and the MCP tool surface for this spec:
+                            any subset of ``{"list", "get", "upsert", "archive"}``.
+                            Empty by default: every spec still gets all four
+                            unless it opts out here. Exists for exactly one
+                            reason -- a spec whose ``entity`` happens to
+                            produce a generated tool name that collides with
+                            an existing hand-written tool (verified: every
+                            handler for every verb is an independent closure
+                            in rest.py/mcp.py with zero cross-calls between
+                            them, and build_all_resource_routes/
+                            build_all_resource_tool_specs just extend a flat
+                            list/dict over whatever each spec returns -- so
+                            omitting one verb changes nothing else). Do NOT
+                            use this to hide a verb you simply have not
+                            implemented validation for; that is what
+                            ``governed_verbs`` and hand-written retirement are
+                            for. On the REST side the mapping is:
+                            ``"list"`` -> the list route only; ``"get"`` ->
+                            the get-by-id route only; ``"upsert"`` -> create +
+                            patch + bulk (mirrors MCP's single upsert tool
+                            covering both create and update); ``"archive"``
+                            -> archive + restore together. Sub-resource routes
+                            (events/comments/tags/documents) are never
+                            affected by this field -- they do not depend on
+                            which core verbs exist.
     """
 
     engine: str
@@ -209,6 +237,7 @@ class ResourceSpec:
     storage_kind: str = "postgres"
     enabled_guard: Callable[[Any, str], Awaitable[None]] | None = None
     secondary_tables: tuple[SecondaryTable, ...] = ()
+    excluded_verbs: frozenset[str] = frozenset()
     tenant_scope: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -289,6 +318,16 @@ class ResourceSpec:
                             f"-- a field must belong to exactly one table."
                         )
                     seen_fields[f] = sec.table_name
+
+        if self.excluded_verbs - _KNOWN_VERBS:
+            raise ValueError(
+                f"Resource {self.engine}:{self.entity} declares excluded_verbs="
+                f"{sorted(self.excluded_verbs)}, which contains a name outside "
+                f"the known set {sorted(_KNOWN_VERBS)}. A typo here silently "
+                f"excludes nothing (the caller meant to omit a real verb) or "
+                f"means a fifth verb needs adding to _KNOWN_VERBS -- either "
+                f"way, deny rather than guess."
+            )
 
     @property
     def rest_slug(self) -> str:

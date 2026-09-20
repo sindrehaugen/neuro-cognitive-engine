@@ -713,6 +713,21 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/resources/pulse` | `api_resources_capacity_pulse` |
 | POST | `/api/resources/release` | `api_resources_release` |
 | POST | `/api/resources/reserve` | `api_resources_reserve` |
+| POST | `/api/resources/resources` | `handle_create` |
+| POST | `/api/resources/resources/bulk` | `handle_bulk` |
+| GET | `/api/resources/resources/{id}` | `handle_get` |
+| PATCH | `/api/resources/resources/{id}` | `handle_patch` |
+| POST | `/api/resources/resources/{id}/archive` | `handle_archive` |
+| GET | `/api/resources/resources/{id}/comments` | `handle_list_comments` |
+| POST | `/api/resources/resources/{id}/comments` | `handle_add_comment` |
+| GET | `/api/resources/resources/{id}/documents` | `handle_list_documents` |
+| POST | `/api/resources/resources/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/resources/resources/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/resources/resources/{id}/events` | `handle_events` |
+| POST | `/api/resources/resources/{id}/restore` | `handle_restore` |
+| GET | `/api/resources/resources/{id}/tags` | `handle_list_tags` |
+| POST | `/api/resources/resources/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/resources/resources/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/resources/travel` | `api_resources_plan_travel` |
 | GET | `/api/resources/travel-legs` | `handle_list` |
 | POST | `/api/resources/travel-legs` | `handle_create` |
@@ -1033,6 +1048,21 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/system_design/devices/{id}/tags` | `handle_list_tags` |
 | POST | `/api/system_design/devices/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/system_design/devices/{id}/tags/{tag}` | `handle_remove_tag` |
+| POST | `/api/system_design/functional-locations` | `handle_create` |
+| POST | `/api/system_design/functional-locations/bulk` | `handle_bulk` |
+| GET | `/api/system_design/functional-locations/{id}` | `handle_get` |
+| PATCH | `/api/system_design/functional-locations/{id}` | `handle_patch` |
+| POST | `/api/system_design/functional-locations/{id}/archive` | `handle_archive` |
+| GET | `/api/system_design/functional-locations/{id}/comments` | `handle_list_comments` |
+| POST | `/api/system_design/functional-locations/{id}/comments` | `handle_add_comment` |
+| GET | `/api/system_design/functional-locations/{id}/documents` | `handle_list_documents` |
+| POST | `/api/system_design/functional-locations/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/system_design/functional-locations/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/system_design/functional-locations/{id}/events` | `handle_events` |
+| POST | `/api/system_design/functional-locations/{id}/restore` | `handle_restore` |
+| GET | `/api/system_design/functional-locations/{id}/tags` | `handle_list_tags` |
+| POST | `/api/system_design/functional-locations/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/system_design/functional-locations/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/system_design/ports` | `handle_list` |
 | POST | `/api/system_design/ports` | `handle_create` |
 | POST | `/api/system_design/ports/bulk` | `handle_bulk` |
@@ -1407,6 +1437,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `resolve` |  |  | yes |  |
 | `resolve_contradiction` |  | yes |  |  |
 | `resources_archive_allocations` |  | yes |  |  |
+| `resources_archive_resources` |  | yes |  |  |
 | `resources_archive_travel_legs` |  | yes |  |  |
 | `resources_create` | yes | yes |  |  |
 | `resources_detect_conflicts` |  |  | yes |  |
@@ -1414,6 +1445,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `resources_forecast_demand` |  |  | yes |  |
 | `resources_get_allocations` |  |  | yes |  |
 | `resources_get_resource` |  |  | yes |  |
+| `resources_get_resources` |  |  | yes |  |
 | `resources_get_travel_legs` |  |  | yes |  |
 | `resources_list_allocations` |  |  | yes |  |
 | `resources_list_resources` |  |  | yes |  |
@@ -1427,6 +1459,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `resources_resolve_capacity` |  |  | yes |  |
 | `resources_update` | yes | yes |  |  |
 | `resources_upsert_allocations` |  | yes |  |  |
+| `resources_upsert_resources` |  | yes |  |  |
 | `resources_upsert_travel_legs` |  | yes |  |  |
 | `rotate_signing_key` |  | yes |  |  |
 | `sales_add_quote_line` |  | yes |  |  |
@@ -1519,6 +1552,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `support_upsert_tickets` |  | yes |  |  |
 | `system_design_archive_cables` |  | yes |  |  |
 | `system_design_archive_devices` |  | yes |  |  |
+| `system_design_archive_functional_locations` |  | yes |  |  |
 | `system_design_archive_ports` |  | yes |  |  |
 | `system_design_archive_racks` |  | yes |  |  |
 | `system_design_assign_design_request` |  | yes |  |  |
@@ -1543,6 +1577,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `system_design_get_fl_path` |  |  | yes |  |
 | `system_design_get_fl_room_category` |  |  | yes |  |
 | `system_design_get_functional_location` |  |  | yes |  |
+| `system_design_get_functional_locations` |  |  | yes |  |
 | `system_design_get_ports` |  |  | yes |  |
 | `system_design_get_racks` |  |  | yes |  |
 | `system_design_get_room_category` |  |  | yes |  |
@@ -1578,6 +1613,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `system_design_update_design_request` |  | yes |  |  |
 | `system_design_upsert_cables` |  | yes |  |  |
 | `system_design_upsert_devices` |  | yes |  |  |
+| `system_design_upsert_functional_locations` |  | yes |  |  |
 | `system_design_upsert_ports` |  | yes |  |  |
 | `system_design_upsert_racks` |  | yes |  |  |
 | `system_design_validate_design_graph` |  |  |  |  |
@@ -1602,4 +1638,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 1065 REST endpoints, 519 MCP tools._
+_Totals: 1095 REST endpoints, 525 MCP tools._

@@ -30,6 +30,7 @@ from nce.resource_surface import (
     register_resource,
     unregister_resource,
 )
+from nce.resource_surface.mcp import build_mcp_tool_definitions, build_mcp_tool_specs
 from nce.resource_surface.rest import _clear_mem_store, make_resource_routes
 from nce.tool_registry import TOOL_REGISTRY
 from nce.vertical_modules.inventory.resources import (
@@ -636,3 +637,88 @@ def test_positive_control_dynamic_unmount():
     restored_routes = build_all_resource_routes()
     restored_paths = [r.path for r in restored_routes]
     assert "/api/inventory/stock-locations" in restored_paths
+
+
+# ---------------------------------------------------------------------------
+# excluded_verbs -- built for the RESOURCE (E-6) / FUNCTIONAL_LOCATION (C-1)
+# tool-name-collision class, where a spec's entity happens to generate a
+# verb's tool/route name that already exists as a hand-written tool. Proven
+# by mutation (register/unregister a synthetic spec), not just read as
+# correct: a positive-control probe checks the excluded verb is genuinely
+# gone, not merely that the OTHER three still exist (which a no-op filter
+# would also pass).
+# ---------------------------------------------------------------------------
+
+
+def test_excluded_verbs_rejects_unknown_name():
+    with pytest.raises(ValueError, match="excluded_verbs"):
+        ResourceSpec(
+            engine="k_h_probe",
+            entity="k-h-excluded-verbs-typo-probe",
+            node_type="K_H_EXCLUDED_VERBS_TYPO_PROBE",
+            storage_kind="kg_nodes",
+            writable_fields=("label",),
+            excluded_verbs=frozenset({"delete"}),  # not a real verb name
+        )
+
+
+def test_excluded_verbs_list_removes_list_route_and_tool_only():
+    """Excluding 'list' removes exactly the list route/tool; get/upsert/archive
+    and every sub-resource route are unaffected."""
+    probe = ResourceSpec(
+        engine="k_h_probe",
+        entity="k-h-excluded-verbs-list-probe",
+        node_type="K_H_EXCLUDED_VERBS_LIST_PROBE",
+        storage_kind="kg_nodes",
+        writable_fields=("label",),
+        excluded_verbs=frozenset({"list"}),
+    )
+
+    routes = make_resource_routes(probe)
+    paths_and_methods = {(r.path, m) for r in routes for m in r.methods}
+    assert (probe.rest_collection_path, "GET") not in paths_and_methods, (
+        "list route (GET on the collection path) must be excluded"
+    )
+    # get/upsert(create+patch+bulk)/archive+restore all still present.
+    assert (probe.rest_item_path, "GET") in paths_and_methods
+    assert (probe.rest_collection_path, "POST") in paths_and_methods
+    assert (f"{probe.rest_collection_path}/bulk", "POST") in paths_and_methods
+    assert (probe.rest_item_path, "PATCH") in paths_and_methods
+    assert (f"{probe.rest_item_path}/archive", "POST") in paths_and_methods
+    assert (f"{probe.rest_item_path}/restore", "POST") in paths_and_methods
+    # Sub-resource routes are never affected by excluded_verbs.
+    assert (f"{probe.rest_item_path}/events", "GET") in paths_and_methods
+    assert (f"{probe.rest_item_path}/comments", "GET") in paths_and_methods
+
+    tool_specs = build_mcp_tool_specs(probe)
+    assert f"{probe.engine}_list_{probe.mcp_slug}" not in tool_specs
+    assert f"{probe.engine}_get_{probe.mcp_slug}" in tool_specs
+    assert f"{probe.engine}_upsert_{probe.mcp_slug}" in tool_specs
+    assert f"{probe.engine}_archive_{probe.mcp_slug}" in tool_specs
+
+    tool_defs = build_mcp_tool_definitions(probe)
+    tool_names = {t.name for t in tool_defs}
+    assert f"{probe.engine}_list_{probe.mcp_slug}" not in tool_names
+    assert len(tool_defs) == 3
+
+
+def test_excluded_verbs_empty_default_generates_all_four():
+    """Positive control for the two tests above: the default (excluded_verbs
+    empty) still generates all four MCP tools and the list route -- proves the
+    exclusion logic actually branches on the field rather than always
+    dropping 'list', which would make the test above pass for the wrong
+    reason."""
+    probe = ResourceSpec(
+        engine="k_h_probe",
+        entity="k-h-excluded-verbs-default-probe",
+        node_type="K_H_EXCLUDED_VERBS_DEFAULT_PROBE",
+        storage_kind="kg_nodes",
+        writable_fields=("label",),
+    )
+    routes = make_resource_routes(probe)
+    paths_and_methods = {(r.path, m) for r in routes for m in r.methods}
+    assert (probe.rest_collection_path, "GET") in paths_and_methods
+
+    tool_specs = build_mcp_tool_specs(probe)
+    assert len(tool_specs) == 4
+    assert f"{probe.engine}_list_{probe.mcp_slug}" in tool_specs

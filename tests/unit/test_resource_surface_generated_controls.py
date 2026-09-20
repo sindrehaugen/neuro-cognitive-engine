@@ -173,6 +173,8 @@ def test_generated_create_and_get(spec: ResourceSpec) -> None:
 
 @pytest.mark.parametrize("spec", _SPECS, ids=_SPEC_IDS)
 def test_generated_list(spec: ResourceSpec) -> None:
+    if "list" in spec.excluded_verbs:
+        pytest.skip(f"{spec.engine}:{spec.entity} excludes list -- see spec.excluded_verbs")
     client = _client_for_spec(spec)
     client.post(spec.rest_collection_path, json=_sample_payload(spec, _NS_A))
     list_resp = client.get(f"{spec.rest_collection_path}?namespace_id={_NS_A}")
@@ -229,7 +231,12 @@ def test_generated_negative_rls_tenant_scoped(spec: ResourceSpec) -> None:
     """tenant_scope == 'tenant': cross-namespace read is NOT FOUND, and
     cross-namespace write fails. Every spec registered today is this shape
     (Inventory, Notifications) -- see the module docstring for why 'global'
-    and 'graph' need their own tests instead of a variant of this one."""
+    and 'graph' need their own tests instead of a variant of this one.
+
+    The cross-namespace LIST leg is skipped for a spec that excludes "list"
+    (spec.excluded_verbs) -- there is no list route to call. GET and PATCH
+    negative-RLS checks still run unconditionally; excluded_verbs never
+    touches those."""
     client = _client_for_spec(spec)
     created = client.post(spec.rest_collection_path, json=_sample_payload(spec, _NS_A)).json()
     item_id = created[spec.id_field]
@@ -240,9 +247,12 @@ def test_generated_negative_rls_tenant_scoped(spec: ResourceSpec) -> None:
         f"returned {cross_get.status_code}, not 404."
     )
 
-    cross_list = client.get(f"{spec.rest_collection_path}?namespace_id={_NS_B}")
-    assert cross_list.status_code == 200
-    assert created[spec.id_field] not in {i.get(spec.id_field) for i in cross_list.json()["items"]}
+    if "list" not in spec.excluded_verbs:
+        cross_list = client.get(f"{spec.rest_collection_path}?namespace_id={_NS_B}")
+        assert cross_list.status_code == 200
+        assert created[spec.id_field] not in {
+            i.get(spec.id_field) for i in cross_list.json()["items"]
+        }
 
     if spec.writable_fields:
         cross_patch = client.patch(

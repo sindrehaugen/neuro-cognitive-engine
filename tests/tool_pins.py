@@ -357,6 +357,24 @@ FLAG_PINS: dict[str, dict[str, dict[str, bool]]] = {
         "system_design_get_cables": {"cacheable": True, "admin_only": False, "mutation": False},
         "system_design_upsert_cables": {"cacheable": False, "admin_only": False, "mutation": True},
         "system_design_archive_cables": {"cacheable": False, "admin_only": False, "mutation": True},
+        # Wave E-19 (charter's ResourceSpec.excluded_verbs) -- FUNCTIONAL_LOCATION.
+        # list is excluded (see FUNCTIONAL_LOCATION_SPEC's own comment); the
+        # hand-written system_design_list_functional_locations stays authoritative.
+        "system_design_get_functional_locations": {
+            "cacheable": True,
+            "admin_only": False,
+            "mutation": False,
+        },
+        "system_design_upsert_functional_locations": {
+            "cacheable": False,
+            "admin_only": False,
+            "mutation": True,
+        },
+        "system_design_archive_functional_locations": {
+            "cacheable": False,
+            "admin_only": False,
+            "mutation": True,
+        },
     },
     # -----------------------------------------------------------------------
     # vendors -- Wave V-1 (tests/unit/test_vendors_surface.py)

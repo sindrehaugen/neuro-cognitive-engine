@@ -50,6 +50,7 @@ os.environ.setdefault("NCE_MASTER_KEY", "x" * 32)
 
 from nce.resource_surface import (
     build_all_resource_tool_specs,
+    get_resource_spec,
     register_resource,
     unregister_resource,
 )
@@ -100,12 +101,29 @@ def test_collision_check_fires_on_a_synthetic_collision() -> None:
     """Positive control (K-H5): proves the check above is not vacuous by
     reproducing the exact collision Lane E found and avoided (RESOURCE
     entity="resources" -> resources_list_resources, colliding with the real
-    hand-written tool of the same name) and confirming it would be caught."""
+    hand-written tool of the same name) and confirming it would be caught.
+
+    RESOURCE is now a REAL registered ResourceSpec (excluded_verbs={"list"}
+    closes this exact collision, Wave E-19) occupying the same (engine,
+    entity)=("resources", "resources") registry key this probe also uses --
+    register_resource keys on that pair, so registering the synthetic here
+    overwrites the real spec at that key, not adds alongside it. Save and
+    restore it explicitly rather than a bare unregister, which would
+    otherwise delete a real, currently-shipping spec's registration for the
+    rest of the test session (found by this exact failure: a later file's
+    test_all_owned_node_types_accounted_for went red because this test ran
+    first and left RESOURCE unregistered)."""
     hand_written = _hand_written_tool_names()
     assert "resources_list_resources" in hand_written, (
         "Positive-control precondition failed: the known hand-written "
         "collision target no longer exists in TOOL_REGISTRY -- pick a "
         "different, currently-real collision target for this control."
+    )
+
+    real_spec = get_resource_spec("resources", "resources")
+    assert real_spec is not None, (
+        "Positive-control precondition failed: RESOURCE is expected to be a "
+        "real registered spec now (Wave E-19) -- nothing to save/restore."
     )
 
     synthetic = ResourceSpec(
@@ -131,3 +149,4 @@ def test_collision_check_fires_on_a_synthetic_collision() -> None:
         assert "resources_archive_resources" not in hand_written
     finally:
         unregister_resource("resources", "resources")
+        register_resource(real_spec)

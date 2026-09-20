@@ -199,40 +199,53 @@ def extract_tool_registry_stats(repo: str, baseline: str) -> dict[str, Any]:
                     ):
                         eng = engine
                         ent = None
+                        excluded: set[str] = set()
                         for kw in rnode.keywords:
                             if kw.arg == "engine" and isinstance(kw.value, ast.Constant):
                                 eng = str(kw.value.value)
                             elif kw.arg == "entity" and isinstance(kw.value, ast.Constant):
                                 ent = str(kw.value.value)
+                            elif kw.arg == "excluded_verbs":
+                                # Wave E-19: a spec may omit a verb (e.g.
+                                # RESOURCE/FUNCTIONAL_LOCATION exclude "list"
+                                # to avoid a hand-written tool-name collision,
+                                # nce/resource_surface/exemptions.py) -- not
+                                # accounting for this here is the exact class
+                                # of drift this simulation block already
+                                # exists to catch, just for a field added
+                                # after this loop was written. Only handles a
+                                # literal frozenset({...})/frozenset()/set
+                                # literal, the only shape any real spec uses.
+                                value = kw.value
+                                if isinstance(value, ast.Call) and getattr(
+                                    value.func, "id", None
+                                ) in ("frozenset", "set"):
+                                    inner = value.args[0] if value.args else None
+                                else:
+                                    inner = value
+                                if isinstance(inner, ast.Set):
+                                    excluded = {
+                                        elt.value
+                                        for elt in inner.elts
+                                        if isinstance(elt, ast.Constant)
+                                        and isinstance(elt.value, str)
+                                    }
                         slug = (ent or "resource").replace("-", "_")
-                        tools.append(
-                            {
-                                "name": f"{eng}_list_{slug}",
-                                "engine": eng,
-                                "flags": ["cacheable"],
-                            }
-                        )
-                        tools.append(
-                            {
-                                "name": f"{eng}_get_{slug}",
-                                "engine": eng,
-                                "flags": ["cacheable"],
-                            }
-                        )
-                        tools.append(
-                            {
-                                "name": f"{eng}_upsert_{slug}",
-                                "engine": eng,
-                                "flags": ["mutation"],
-                            }
-                        )
-                        tools.append(
-                            {
-                                "name": f"{eng}_archive_{slug}",
-                                "engine": eng,
-                                "flags": ["mutation"],
-                            }
-                        )
+                        for op, flag in (
+                            ("list", "cacheable"),
+                            ("get", "cacheable"),
+                            ("upsert", "mutation"),
+                            ("archive", "mutation"),
+                        ):
+                            if op in excluded:
+                                continue
+                            tools.append(
+                                {
+                                    "name": f"{eng}_{op}_{slug}",
+                                    "engine": eng,
+                                    "flags": [flag],
+                                }
+                            )
 
     test_code = git_show(repo, baseline, "tests/test_tool_registry.py")
     test_tree = ast.parse(test_code)
