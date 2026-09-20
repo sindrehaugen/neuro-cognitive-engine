@@ -1173,6 +1173,28 @@ jobs:
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/integration/test_resource_surface_kg_nodes_primary_live.py -m integration -q --tb=short
 
+      # BRANCH_COVERAGE_MAP.md found handle_list's relational branch
+      # (rest.py's `elif spec.table_name:`) had zero live coverage with a
+      # real assertion -- every existing list test either hit the graph
+      # branch or was refused at the guard stage (422) before the branch
+      # ran. Covers cursor pagination across a page boundary (exact-set
+      # reconstruction, not a count), include_archived both ways plus one
+      # deliberately-odd input, and active_filters excluding non-matching
+      # rows. Each of the three mechanisms was deliberately broken locally
+      # and confirmed to fail its own test before being reverted, per
+      # ORCH_DISCIPLINE's verify-before-shipping standard for this family
+      # of siblings. Also folds in one line for handle_restore's graph-
+      # primary 501 (test_resource_surface_kg_nodes_primary_live.py),
+      # asserted by name for the first time -- archive's had been, twice;
+      # restore's never had, despite being the identical shape one
+      # function down.
+      - name: Integration — C12 resource-surface relational LIST (tests/integration/test_resource_surface_list_live.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/integration/test_resource_surface_list_live.py -m integration -q --tb=short
+
       # Wave C-6: PROJECT_PROJECT C12 resource declaration (thin kg_nodes-
       # primary identity only -- kg_nodes has no attribute storage for any
       # PROJECT_* node type, Q-47, still open) plus

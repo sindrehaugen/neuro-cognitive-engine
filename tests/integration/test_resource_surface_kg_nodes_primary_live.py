@@ -591,6 +591,27 @@ async def test_archive_refused_with_specific_reason_not_generic_501(
 
 
 @pytest.mark.asyncio
+async def test_restore_refused_with_specific_reason_not_generic_501(
+    engine: NCEEngine, namespace_id: uuid.UUID
+) -> None:
+    """Same shape as archive's own refusal test above -- restore is the
+    identical 501 one function down (`rest.py`'s `handle_restore`), but
+    nothing had ever pinned its message by name; only archive's had been
+    asserted. Found while building BRANCH_COVERAGE_MAP.md.
+    """
+    async with _rest_client(engine, DEVICE_PROBE_SPEC) as client:
+        r = await client.post(
+            "/api/system_design/devices-kgprimary-probe/some-label/restore",
+            json={"namespace_id": str(namespace_id)},
+        )
+    assert r.status_code == 501
+    assert "soft-delete" in r.text, r.text
+    assert "not supported yet for" not in r.text, (
+        "must not fall back to the generic (and now false) storage-kind message"
+    )
+
+
+@pytest.mark.asyncio
 async def test_bulk_refused_with_specific_reason(
     engine: NCEEngine, namespace_id: uuid.UUID
 ) -> None:
