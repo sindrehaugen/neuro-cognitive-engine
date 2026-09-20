@@ -58,9 +58,7 @@ def test_signed_baseline_generates_no_write_rest_routes() -> None:
     routes (events/comments/tags/documents), which excluded_verbs never
     touches."""
     routes = build_all_resource_routes()
-    baseline_routes = [
-        r for r in routes if "/signed-baselines" in r.path
-    ]
+    baseline_routes = [r for r in routes if "/signed-baselines" in r.path]
     core_paths = {"/api/sales/signed-baselines", "/api/sales/signed-baselines/{id}"}
     for route in baseline_routes:
         if route.path in core_paths:

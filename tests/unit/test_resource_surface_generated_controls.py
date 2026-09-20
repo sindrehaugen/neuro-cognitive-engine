@@ -253,9 +253,7 @@ def test_generated_negative_rls_tenant_scoped(spec: ResourceSpec) -> None:
     touches those. The whole test is skipped for a spec that excludes
     "upsert" -- there is no route to create the row every leg below needs."""
     if "upsert" in spec.excluded_verbs:
-        pytest.skip(
-            f"{spec.engine}:{spec.entity} excludes upsert -- no route to seed a row"
-        )
+        pytest.skip(f"{spec.engine}:{spec.entity} excludes upsert -- no route to seed a row")
     client = _client_for_spec(spec)
     created = client.post(spec.rest_collection_path, json=_sample_payload(spec, _NS_A)).json()
     item_id = created[spec.id_field]
