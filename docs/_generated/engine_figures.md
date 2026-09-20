@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `f6ff835` (public `main`) · **Last-audited:** generated
+> **Status:** shipped · **Verified-against:** `b5d7d28` (public `main`) · **Last-audited:** generated
 
 # NCE Engine Figures — Inventory & Counters
 
@@ -14,11 +14,11 @@
 
 | Counter | Value | Source of Truth |
 |---|---|---|
-| `TOOL_REGISTRY` entries | **529** MCP tools (70 shared + 459 across 25 engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = 529` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |
-| SQL migrations | 97 files (+1 optional), `001` → `103` — gaps at `002`, `009`, `010`, `059`, `100`, `101` | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |
+| `TOOL_REGISTRY` entries | **533** MCP tools (70 shared + 463 across 25 engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = 533` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |
+| SQL migrations | 98 files (+1 optional), `001` → `102` — gaps at `002`, `009`, `010`, `059` | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |
 | Golden Thread seam burndown | **4 of 37** lifecycle steps broken (4 distinct seams) | Generated in [`docs/_generated/golden_thread_seams.md`](golden_thread_seams.md) from [`tests/integration/test_golden_thread.py`](../../tests/integration/test_golden_thread.py) |
 | v1.6 C12 resource-surface registrations | **19 of 25** engines have `resources.py` | AST of `nce/vertical_modules/<engine>/resources.py` per engine — see the v1.6 section below |
-| `EXPECTED_TENANT_RLS_TABLES` | **112** | AST of [`nce/event_log.py`](../../nce/event_log.py) |
+| `EXPECTED_TENANT_RLS_TABLES` | **113** | AST of [`nce/event_log.py`](../../nce/event_log.py) |
 
 ## v1.6 — C12 Resource Surface Registration (Lane E)
 
@@ -45,7 +45,7 @@
 | `marketing` | ✅ | 3 |
 | `netbox` | ⬜ | 0 |
 | `notifications` | ✅ | 2 |
-| `procurement` | ✅ | 1 |
+| `procurement` | ✅ | 2 |
 | `product` | ✅ | 1 |
 | `project` | ✅ | 1 |
 | `resources` | ✅ | 3 |
@@ -57,9 +57,9 @@
 
 ## Tool Registry Breakdown
 
-- **Total Registered Tools:** 529
+- **Total Registered Tools:** 533
 - **Shared Core Tools:** 70
-- **Vertical Engine Tools:** 459 across 25 engine packages
+- **Vertical Engine Tools:** 463 across 25 engine packages
 
 | Engine Package | Tool Count |
 |---|---:|
@@ -79,7 +79,7 @@
 | `marketing` | 21 |
 | `netbox` | 1 |
 | `notifications` | 8 |
-| `procurement` | 14 |
+| `procurement` | 18 |
 | `product` | 12 |
 | `project` | 15 |
 | `resources` | 25 |
@@ -91,10 +91,10 @@
 
 ## SQL Migration Census
 
-- **Base Migrations:** 97 files (`001` → `103`)
+- **Base Migrations:** 98 files (`001` → `102`)
 - **Optional Migrations:** 1 files (`010_citus_sharding.sql`)
-- **Unallocated / Skipped Prefixes in Base:** `002`, `009`, `010`, `059`, `100`, `101`
-- **Total SQL Migration Files:** 98
+- **Unallocated / Skipped Prefixes in Base:** `002`, `009`, `010`, `059`
+- **Total SQL Migration Files:** 99
 
 ## Golden Thread Seam Status
 
