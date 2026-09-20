@@ -382,16 +382,30 @@ async def test_device_rest_patch_first_touch_of_secondary_table(
     exists specifically because the failure at that mismatch produced a
     500 on `main` that would have gone uncaught.
 
-    A PATCH that is the FIRST write ever to touch node_state (CREATE
-    supplies no node_state-routed field, so no row exists yet) must still
-    succeed, not 500 on node_state.node_type's NOT NULL constraint.
-    test_device_rest_patch_updates_change_origin_and_secondary above
-    always creates with `status` already set, so its own PATCH only ever
-    UPDATEs an existing node_state row -- node_type staying stale there
-    is never observable, since UPDATE only touches listed columns. This
-    test's CREATE deliberately supplies neither `status` nor any other
-    node_state field, forcing the PATCH below to be node_state's first
-    INSERT.
+    IMPORTANT -- what this test actually proves, verified against a real
+    container: NOT that handle_patch's graph-branch gate is load-bearing.
+    handle_create's own node_type injection (rest.py, `if is_graph:` branch)
+    is unconditional whenever "node_type" is in ANY of the spec's
+    secondary_tables' `fields`, regardless of which table the caller's real
+    data actually routes to -- it is not scoped per-table. DEVICE_PROBE_SPEC
+    declares node_type on its node_state secondary table, so the CREATE
+    below (which supplies only `signal_format`, routed to the
+    *capabilities* table) still pre-seeds a `system_design_node_state` row
+    containing `node_type="DEVICE"` and nothing else. By the time the PATCH
+    runs, node_state already exists -- the PATCH is an UPDATE, not the
+    first-ever INSERT this test's name and (now-corrected) comment below
+    describe, and it would pass identically with the graph-branch PATCH
+    gate reverted (confirmed empirically).
+
+    This test is kept as a parity/regression tripwire, not proof of the
+    PATCH-side guard: it documents the graph branch's current end-to-end
+    behavior (create-then-patch succeeds, node_type ends up right) and
+    would catch a *future* change that removes CREATE's pre-seeding for
+    this shape -- e.g. a node_state row cleared out-of-band, or a new
+    writer that reaches handle_patch without going through handle_create
+    first. The actual first-touch-via-PATCH proof for the graph branch
+    does not exist yet; it would need a way to reach PATCH on a node whose
+    secondary tables were never touched by CREATE at all.
     """
     node_label = f"probe-kg-device-first-touch-{uuid.uuid4().hex[:8]}"
     async with _rest_client(engine, DEVICE_PROBE_SPEC) as client:
@@ -401,7 +415,9 @@ async def test_device_rest_patch_first_touch_of_secondary_table(
                 "namespace_id": str(namespace_id),
                 "node_label": node_label,
                 "signal_format": "DisplayPort",
-                # No status/revision/salience -- node_state gets no row here.
+                # No status/revision/salience supplied -- but see the
+                # docstring above: node_state still gets a node_type-only
+                # row here anyway, via CREATE's unconditional injection.
             },
         )
         assert r1.status_code == 201, r1.text
