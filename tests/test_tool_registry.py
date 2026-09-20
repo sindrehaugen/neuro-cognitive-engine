@@ -61,7 +61,7 @@ _C12_TOOL_SPECS = build_all_resource_tool_specs()
 _C12_TOOL_NAMES = frozenset(_C12_TOOL_SPECS)
 _C12_MUTATION_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.mutation)
 _C12_CACHEABLE_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.cacheable)
-_EXPECTED_STATIC_TOTAL = 341  # 292 hand-written tools + 8 FUNCTIONAL_LOCATION tree tools (Lane C Wave C-1) + 1 C17 site master data address-registry feed (Lane F Wave F-9) + 2 support action/timeline tools (Lane D Wave D-5) + 1 support on-call rota (Lane D Wave D-7) + 1 assets service history (Lane D Wave D-3) + 8 room cat & FL metadata tools (Lane C Wave C-2) + 6 assets person/subcomponent tools (Lane D Wave D-2) + 8 design versions & room spec tools (Lane C Wave C-3) + 4 agreements price rules & index series tools (Lane B Wave B-10) + 3 support summary/links tools (Lane D Wave D-6) + 7 design requests tools (Lane C Wave C-4); see _C12_TOOL_NAMES above
+_EXPECTED_STATIC_TOTAL = 342  # 292 hand-written tools + 8 FUNCTIONAL_LOCATION tree tools (Lane C Wave C-1) + 1 C17 site master data address-registry feed (Lane F Wave F-9) + 2 support action/timeline tools (Lane D Wave D-5) + 1 support on-call rota (Lane D Wave D-7) + 1 assets service history (Lane D Wave D-3) + 8 room cat & FL metadata tools (Lane C Wave C-2) + 6 assets person/subcomponent tools (Lane D Wave D-2) + 8 design versions & room spec tools (Lane C Wave C-3) + 4 agreements price rules & index series tools (Lane B Wave B-10) + 3 support summary/links tools (Lane D Wave D-6) + 7 design requests tools (Lane C Wave C-4) + 1 external-import BOM_LINE origination (Lane B Wave B-5); see _C12_TOOL_NAMES above
 
 # Re-exported for tests/unit/test_{assets,economy,inventory}_surface.py and
 # test_sales_skeleton.py, which each do `from tests.test_tool_registry import
@@ -232,6 +232,8 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "system_design_promote_functional_location",
         # M5.W15 (Batch 132d) -- manual-pick BOM_LINE origination
         "sales_add_quote_line",
+        # Charter Wave B-5 -- external-import BOM_LINE origination
+        "sales_import_quote_lines",
         # ML10-B5 (M10.W5) -- Support Engine mutations (Actor, admin_only)
         "support_open_ticket",
         "support_resolve_ticket",
@@ -459,17 +461,18 @@ def test_mutation_tools_count():
     +3 Wave C-2 Room Categories & FL Metadata mutations -> 135.
     +4 Wave C-3 DESIGN versions & Room Specifications mutations -> 143.
     +1 Lane D Wave D-6 support_link_ticket -> 144.
-    +5 Wave C-4 Solution Design Intake Queue mutations -> 149."""
+    +5 Wave C-4 Solution Design Intake Queue mutations -> 149.
+    +1 Wave B-5 sales_import_quote_lines (external BOM_LINE origination) -> 150."""
     c12_mutation_tools = frozenset(
         n for n, s in build_all_resource_tool_specs().items() if s.mutation
     )
     hand_written_mutation_tools = MUTATION_TOOLS - c12_mutation_tools
 
-    assert len(MUTATION_TOOLS) >= 149, (
-        f"Sanity floor: expected at least 149 mutation tools, got {len(MUTATION_TOOLS)}."
+    assert len(MUTATION_TOOLS) >= 150, (
+        f"Sanity floor: expected at least 150 mutation tools, got {len(MUTATION_TOOLS)}."
     )
-    assert len(hand_written_mutation_tools) == 149, (
-        "Hand-written (non-C12) mutation tool count changed: expected 149, "
+    assert len(hand_written_mutation_tools) == 150, (
+        "Hand-written (non-C12) mutation tool count changed: expected 150, "
         f"got {len(hand_written_mutation_tools)}. If you added/removed a "
         "hand-written mutation tool, update this pin by import. If you only "
         "registered a new C12 ResourceSpec, this number should not move -- "

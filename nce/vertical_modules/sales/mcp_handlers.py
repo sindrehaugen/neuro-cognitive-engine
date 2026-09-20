@@ -13,6 +13,9 @@ Public entry-points:
   signed baseline for a quote (the A2A seam that Project consumes).
   ``handle_sales_add_quote_line`` — the MANUAL-PICK origination path for
   BOM_LINE (Batch 132d); delegates to ``sales.lines.do_add_quote_line``.
+  ``handle_sales_import_quote_lines`` — the EXTERNAL-IMPORT origination path
+  for BOM_LINE (charter Wave B-5); delegates to
+  ``sales.external_lines.do_import_quote_lines``.
   ``handle_sales_get_quote_lines`` — the cross-engine READ of a quote's
   BOM_LINE rows (Batch 132f); the seam System Design's from_quote flow uses.
 
@@ -20,6 +23,7 @@ Registered in ``nce/tool_registry.py`` via:
   ``_h(sales_mcp_handlers, "handle_sales_ping")``
   ``_h(sales_mcp_handlers, "handle_sales_get_signed_baseline")``
   ``_h(sales_mcp_handlers, "handle_sales_add_quote_line")``
+  ``_h(sales_mcp_handlers, "handle_sales_import_quote_lines")``
   ``_h(sales_mcp_handlers, "handle_sales_get_quote_lines")``
 """
 
@@ -36,6 +40,7 @@ from nce.mcp_errors import mcp_handler
 from nce.vertical_modules.sales.ai import do_draft_quote, do_score_lead
 from nce.vertical_modules.sales.baseline import get_signed_baseline
 from nce.vertical_modules.sales.commission import do_calculate_commission
+from nce.vertical_modules.sales.external_lines import do_import_quote_lines
 from nce.vertical_modules.sales.flip import (
     do_morning_brief_slice,
     do_read_sales_divergence,
@@ -165,6 +170,57 @@ async def handle_sales_add_quote_line(engine: NCEEngine, arguments: dict[str, An
         )
 
     return json.dumps(row)
+
+
+@mcp_handler
+async def handle_sales_import_quote_lines(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: sales_import_quote_lines — bulk-import externally-sourced lines onto a quote.
+
+    The EXTERNAL-IMPORT origination path for BOM_LINE (charter Wave B-5):
+    writes N rows through the sales-owned ``content:create:external``
+    transition in one call. Delegates every decision to
+    ``nce.vertical_modules.sales.external_lines.do_import_quote_lines`` --
+    this handler is argument extraction and nothing else, matching
+    ``handle_sales_add_quote_line``'s own convention.
+
+    Provenance is NOT caller-writable, same trust boundary as
+    ``sales_add_quote_line``: there is no ``flow``/``origin_kind`` argument;
+    a key of either name in *arguments* is never read and cannot reach the
+    store. The writer module's own ``FLOW`` constant is the only producer.
+
+    Idempotent per line on ``(quote_id, line_ref)``: re-importing the same
+    ``line_ref`` returns the existing row instead of creating a second one.
+
+    Arguments
+    ---------
+    namespace_id (str): Required. Caller namespace UUID.
+    quote_id (str): Required. The Sales QUOTE identifier.
+    lines (list[object]): Required, non-empty, max 500 entries. Each entry:
+        line_ref (str, required), qty (str, required), unit_price
+        (str, required), line_total (str, optional, defaults to qty *
+        unit_price), currency (str, optional, defaults to NOK), origin_ref
+        (str, optional).
+
+    Returns
+    -------
+    JSON body: ``{"quote_id", "imported", "lines"}`` exactly as
+    ``nce.vertical_modules.sales.external_lines.do_import_quote_lines`` returns it.
+
+    The ``@mcp_handler`` decorator maps a missing/invalid-argument ``ValueError``
+    to an ``McpError(-32602)`` at the call-site.
+    """
+    ns = require_namespace_id(arguments)
+    ns_uuid = UUID(ns)
+
+    async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
+        result = await do_import_quote_lines(
+            conn,
+            ns_uuid,
+            quote_id=arguments.get("quote_id"),
+            lines=arguments.get("lines"),
+        )
+
+    return json.dumps(result)
 
 
 @mcp_handler
