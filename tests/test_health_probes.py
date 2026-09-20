@@ -73,7 +73,6 @@ async def test_check_health_unit_basic(monkeypatch):
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-@pytest.mark.signing_isolation
 async def test_check_health_integration_healthy(pg_pool, make_namespace, monkeypatch):
     """Integration test: with a valid master key and healthy DBs every probe
     reports valid, and the only thing keeping the overall status off "ok" is
@@ -140,7 +139,6 @@ async def test_check_health_integration_healthy(pg_pool, make_namespace, monkeyp
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-@pytest.mark.signing_isolation
 async def test_check_health_integration_broken_master_key(pg_pool, monkeypatch):
     """Integration test verifying that with a broken/wrong master key,
     health check reports status='degraded' and signing_key_decryption='failed'
@@ -165,7 +163,6 @@ async def test_check_health_integration_broken_master_key(pg_pool, monkeypatch):
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-@pytest.mark.signing_isolation
 async def test_check_health_integration_corrupted_chain(pg_pool, make_namespace, monkeypatch):
     """Integration test verifying that a corrupted Merkle chain causes the health check
     to report status='degraded', bounded_chain_sample='corrupted', and sets
