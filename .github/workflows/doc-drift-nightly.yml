@@ -19,21 +19,30 @@ name: Nightly doc-drift check (independent scheduled re-check)
 # substitute for them -- both check the same 4 files against the same
 # source, so agreement is the expected, unremarkable case.
 #
-# KNOWN, UNCLOSED GAPS AFTER ALL OF THIS -- stated, not fixed here, none are
-# a regression from tonight's incident:
-#   - docs/vertical_engines/ENGINE_STATUS.md has no byte-for-byte check
+# KNOWN GAPS AT THE TIME OF THIS INCIDENT (2026-09-19) -- TWO SINCE CLOSED,
+# stated here for history, not because they are still open:
+#   - docs/vertical_engines/ENGINE_STATUS.md had no byte-for-byte check
 #     anywhere (ci.yml's D-GEN step never passed --update-status to check
 #     it; tests/unit/test_config_docs_ratchet.py cross-validates its NUMBERS
 #     independently of the generator, which is a different, narrower
-#     guarantee than "matches a fresh regen").
-#   - docs/_generated/golden_thread_seams.md has no --check mode and no
-#     pytest gates it, by any mechanism, today.
+#     guarantee than "matches a fresh regen"). CLOSED 2026-09-20 (PR #306):
+#     tests/test_engine_status_current.py calls update_engine_status() and
+#     normalize_volatile() directly against the committed file, is
+#     doc_gate-marked, and runs in the "pytest -m doc_gate" step below.
+#   - docs/_generated/golden_thread_seams.md had no --check mode and no
+#     pytest gated it, by any mechanism. CLOSED 2026-09-20 (PR #306):
+#     tests/test_golden_thread_seams_current.py regenerates against
+#     --baseline HEAD and compares, is doc_gate-marked, and runs in the same
+#     step. The generator itself still ships no --check mode of its own --
+#     the gate regenerates-and-compares in the test instead, per that test's
+#     own docstring.
 #   - docs/_generated/waves_landed.md has a pytest counterpart but it is
 #     DELIBERATELY advisory (Q-17: the byte-comparison goes red on every
 #     unrelated merge because wave stamps move independently of wave
-#     landings).
-# All three were true before tonight and remain true after; none of the
-# incidents this file documents changed their status.
+#     landings). Still true, still deliberate -- not a gap to close.
+# The regen-job deletion and the workflow-removal-from-ci.yml decisions
+# above are unaffected by this update; only the two ENGINE_STATUS.md /
+# golden_thread_seams.md claims had gone stale.
 #
 # §10.5b, second correction (ORCH_PROTOCOL.md, 2026-09-19): the four doc-drift
 # checks (docs/API.md, openapi.json, docs/_generated/surface.md,
