@@ -1244,22 +1244,10 @@
         "type": "object"
       },
       "Economy_postings": {
-        "description": "Balanced general-ledger posting lines behind the POSTING node; append-only, no version/soft-delete field.",
+        "description": "Read-only view of balanced general-ledger posting lines behind the POSTING node; append-only WORM ledger (schema.sql:1899-1914 revokes UPDATE/DELETE), corrections go through compensating reversal postings, never PATCH or archive.",
         "properties": {
           "account": {
             "description": "Field account",
-            "type": "string"
-          },
-          "amount": {
-            "description": "Field amount",
-            "type": "string"
-          },
-          "change_origin": {
-            "description": "Field change_origin",
-            "type": "string"
-          },
-          "economy_source_id": {
-            "description": "Field economy_source_id",
             "type": "string"
           },
           "event_id": {
@@ -1274,10 +1262,6 @@
             "format": "uuid",
             "type": "string"
           },
-          "line_no": {
-            "description": "Field line_no",
-            "type": "string"
-          },
           "period_id": {
             "description": "Field period_id",
             "type": "string"
@@ -1290,32 +1274,7 @@
       },
       "Economy_postings_Create": {
         "description": "Payload for creating a economy postings",
-        "properties": {
-          "account": {
-            "type": "string"
-          },
-          "amount": {
-            "type": "string"
-          },
-          "change_origin": {
-            "type": "string"
-          },
-          "economy_source_id": {
-            "type": "string"
-          },
-          "event_id": {
-            "type": "string"
-          },
-          "event_type": {
-            "type": "string"
-          },
-          "line_no": {
-            "type": "string"
-          },
-          "period_id": {
-            "type": "string"
-          }
-        },
+        "properties": {},
         "type": "object"
       },
       "Economy_postings_List": {
@@ -1343,32 +1302,7 @@
       },
       "Economy_postings_Update": {
         "description": "Payload for updating a economy postings",
-        "properties": {
-          "account": {
-            "type": "string"
-          },
-          "amount": {
-            "type": "string"
-          },
-          "change_origin": {
-            "type": "string"
-          },
-          "economy_source_id": {
-            "type": "string"
-          },
-          "event_id": {
-            "type": "string"
-          },
-          "event_type": {
-            "type": "string"
-          },
-          "line_no": {
-            "type": "string"
-          },
-          "period_id": {
-            "type": "string"
-          }
-        },
+        "properties": {},
         "type": "object"
       },
       "EntityComment": {
@@ -10119,27 +10053,6 @@
         ],
         "type": "object"
       },
-      "Tool_economy_archive_postings_Input": {
-        "properties": {
-          "id": {
-            "description": "ID of Posting to archive.",
-            "type": "string"
-          },
-          "namespace_id": {
-            "description": "Caller namespace UUID.",
-            "type": "string"
-          },
-          "reason": {
-            "description": "Audit reason for archiving.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "namespace_id",
-          "id"
-        ],
-        "type": "object"
-      },
       "Tool_economy_compute_dunning_Input": {
         "properties": {
           "customer": {
@@ -10762,50 +10675,6 @@
           "namespace_id": {
             "description": "Caller namespace UUID.",
             "type": "string"
-          }
-        },
-        "required": [
-          "namespace_id"
-        ],
-        "type": "object"
-      },
-      "Tool_economy_upsert_postings_Input": {
-        "properties": {
-          "account": {
-            "description": "Value for account."
-          },
-          "amount": {
-            "description": "Value for amount."
-          },
-          "change_origin": {
-            "description": "Value for change_origin."
-          },
-          "economy_source_id": {
-            "description": "Value for economy_source_id."
-          },
-          "event_id": {
-            "description": "Value for event_id."
-          },
-          "event_type": {
-            "description": "Value for event_type."
-          },
-          "expected_version": {
-            "description": "Concurrency check version.",
-            "type": "string"
-          },
-          "id": {
-            "description": "Optional ID of existing Posting to update.",
-            "type": "string"
-          },
-          "line_no": {
-            "description": "Value for line_no."
-          },
-          "namespace_id": {
-            "description": "Caller namespace UUID.",
-            "type": "string"
-          },
-          "period_id": {
-            "description": "Value for period_id."
           }
         },
         "required": [
@@ -24088,17 +23957,6 @@
         "mutation": true,
         "name": "economy_approve_invoice"
       },
-      "economy_archive_postings": {
-        "admin_only": false,
-        "cacheable": false,
-        "description": "Soft-archive a Posting resource.",
-        "inputSchema": {
-          "$ref": "#/components/schemas/Tool_economy_archive_postings_Input"
-        },
-        "migration": false,
-        "mutation": true,
-        "name": "economy_archive_postings"
-      },
       "economy_compute_dunning": {
         "admin_only": false,
         "cacheable": true,
@@ -24351,17 +24209,6 @@
         "migration": false,
         "mutation": false,
         "name": "economy_snapshot_mrr_arr_churn"
-      },
-      "economy_upsert_postings": {
-        "admin_only": false,
-        "cacheable": false,
-        "description": "Create or update a Posting resource.",
-        "inputSchema": {
-          "$ref": "#/components/schemas/Tool_economy_upsert_postings_Input"
-        },
-        "migration": false,
-        "mutation": true,
-        "name": "economy_upsert_postings"
       },
       "economy_validate_contract": {
         "admin_only": false,
@@ -53521,161 +53368,6 @@
         "tags": [
           "economy"
         ]
-      },
-      "post": {
-        "description": "handle_create (/api/economy/postings)",
-        "operationId": "post_api_economy_postings",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Economy_postings_Create"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Economy_postings"
-                }
-              }
-            },
-            "description": "Successful operation"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Validation failure or malformed input"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Missing, expired, or invalid authentication credentials"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Principal tier refusal or cross-tenant boundary violation"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Resource or endpoint not found"
-          }
-        },
-        "summary": "handle_create (/api/economy/postings)",
-        "tags": [
-          "economy"
-        ]
-      }
-    },
-    "/api/economy/postings/bulk": {
-      "post": {
-        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
-        "operationId": "post_api_economy_postings_bulk",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "items": {
-                    "items": {
-                      "$ref": "#/components/schemas/Economy_postings_Create"
-                    },
-                    "type": "array"
-                  }
-                },
-                "required": [
-                  "items"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Economy_postings"
-                }
-              }
-            },
-            "description": "Successful operation"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Validation failure or malformed input"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Missing, expired, or invalid authentication credentials"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Principal tier refusal or cross-tenant boundary violation"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Resource or endpoint not found"
-          }
-        },
-        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
-        "tags": [
-          "economy"
-        ]
       }
     },
     "/api/economy/postings/{id}": {
@@ -53747,172 +53439,6 @@
           }
         },
         "summary": "handle_get (/api/economy/postings/{id})",
-        "tags": [
-          "economy"
-        ]
-      },
-      "patch": {
-        "description": "handle_patch (/api/economy/postings/{id})",
-        "operationId": "patch_api_economy_postings_id",
-        "parameters": [
-          {
-            "description": "URL path parameter id",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Economy_postings_Update"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Economy_postings"
-                }
-              }
-            },
-            "description": "Successful operation"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Validation failure or malformed input"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Missing, expired, or invalid authentication credentials"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Principal tier refusal or cross-tenant boundary violation"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Resource or endpoint not found"
-          }
-        },
-        "summary": "handle_patch (/api/economy/postings/{id})",
-        "tags": [
-          "economy"
-        ]
-      }
-    },
-    "/api/economy/postings/{id}/archive": {
-      "post": {
-        "description": "handle_archive (/api/economy/postings/{id}/archive)",
-        "operationId": "post_api_economy_postings_id_archive",
-        "parameters": [
-          {
-            "description": "URL path parameter id",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Economy_postings_Create"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Economy_postings"
-                }
-              }
-            },
-            "description": "Successful operation"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Validation failure or malformed input"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Missing, expired, or invalid authentication credentials"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Principal tier refusal or cross-tenant boundary violation"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Resource or endpoint not found"
-          }
-        },
-        "summary": "handle_archive (/api/economy/postings/{id}/archive)",
         "tags": [
           "economy"
         ]
@@ -54472,90 +53998,6 @@
           }
         },
         "summary": "handle_events (/api/economy/postings/{id}/events)",
-        "tags": [
-          "economy"
-        ]
-      }
-    },
-    "/api/economy/postings/{id}/restore": {
-      "post": {
-        "description": "handle_restore (/api/economy/postings/{id}/restore)",
-        "operationId": "post_api_economy_postings_id_restore",
-        "parameters": [
-          {
-            "description": "URL path parameter id",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Economy_postings_Create"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Economy_postings"
-                }
-              }
-            },
-            "description": "Successful operation"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Validation failure or malformed input"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Missing, expired, or invalid authentication credentials"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Principal tier refusal or cross-tenant boundary violation"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Resource or endpoint not found"
-          }
-        },
-        "summary": "handle_restore (/api/economy/postings/{id}/restore)",
         "tags": [
           "economy"
         ]

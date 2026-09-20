@@ -386,9 +386,10 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "support_archive_sla_clocks",
         "support_upsert_customer_health",
         "support_archive_customer_health",
-        # Lane E Wave E-7 -- C12 Economy POSTING resource surface mutations (upsert + archive)
-        "economy_upsert_postings",
-        "economy_archive_postings",
+        # Lane E Wave E-7 -- C12 Economy POSTING resource surface mutations: both
+        # removed 2026-09-20 (POSTING_SPEC now excludes upsert/archive -- WORM
+        # ledger, schema.sql:1899-1914 revokes UPDATE/DELETE; see
+        # nce/vertical_modules/economy/resources.py's POSTING_SPEC comment).
         # Lane E Wave E-10 -- C12 Field Tech WORK_ORDER/TIME_ENTRY/CHECKLIST resource surface mutations
         "field_tech_upsert_work_orders",
         "field_tech_archive_work_orders",
