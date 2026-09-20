@@ -1786,7 +1786,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `trust_dial_set_tier` | yes | yes |  |  |
 | `unredact_memory` | yes | yes |  |  |
 | `validate_migration` |  |  |  | yes |
-| `vendors_calibrate_weights` |  |  | yes |  |
+| `vendors_calibrate_weights` | yes |  | yes |  |
 | `vendors_check_tier_at_risk` |  |  | yes |  |
 | `vendors_compute_performance` |  |  | yes |  |
 | `vendors_compute_scorecard` |  |  | yes |  |
