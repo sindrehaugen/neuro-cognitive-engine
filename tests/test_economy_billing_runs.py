@@ -30,7 +30,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from nce.auth import set_namespace_context
 from nce.db_utils import scoped_pg_session
+from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
 from nce.vertical_modules.economy.billing_runs import (
     AgreementNotFoundError,
     do_generate_billing_run,
@@ -86,6 +88,22 @@ async def test_generate_without_confirm_is_pending_and_does_not_run() -> None:
 # ---------------------------------------------------------------------------
 # Integration tier -- real Postgres via pg_pool/namespace_id fixtures.
 # ---------------------------------------------------------------------------
+
+
+async def _seed_ownership(pg_pool: Any, namespace_id: uuid.UUID) -> None:
+    """Seed node_ownership_registry for this test namespace.
+
+    The ``namespace_id`` fixture only inserts a bare row into ``namespaces``
+    -- it does not go through the orchestrator path that seeds ownership on
+    namespace creation. Without this, ``assert_owner`` denies BILLING_RUN/
+    BILLING_CANDIDATE writes by default even though node-ownership.json
+    registers them, exactly as ``tests/test_agreements_sla.py`` does for its
+    own namespace fixture.
+    """
+    async with pg_pool.acquire() as conn:
+        async with conn.transaction():
+            await set_namespace_context(conn, namespace_id)
+            await seed_node_ownership_registry(conn, namespace_id)
 
 
 async def _seed_customer_and_agreement(
@@ -186,6 +204,7 @@ async def test_generate_billing_run_unknown_agreement_raises(
 async def test_generate_billing_run_skips_agreement_with_no_coverage(
     pg_pool: Any, namespace_id: uuid.UUID
 ) -> None:
+    await _seed_ownership(pg_pool, namespace_id)
     _customer_id, agreement_id = await _seed_customer_and_agreement(pg_pool, namespace_id)
 
     async with scoped_pg_session(pg_pool, namespace_id) as conn:
@@ -213,6 +232,7 @@ async def test_generate_billing_run_skips_agreement_with_no_coverage(
 async def test_generate_billing_run_happy_path_prices_from_real_rates(
     pg_pool: Any, namespace_id: uuid.UUID
 ) -> None:
+    await _seed_ownership(pg_pool, namespace_id)
     customer_id, agreement_id = await _seed_customer_and_agreement(pg_pool, namespace_id)
     await _seed_covered_fl(pg_pool, namespace_id, agreement_id, category_id="HUDDLE")
     await _seed_covered_fl(pg_pool, namespace_id, agreement_id, category_id="HUDDLE")
@@ -279,6 +299,7 @@ async def test_generate_billing_run_happy_path_prices_from_real_rates(
 async def test_generate_billing_run_refuses_whole_run_on_unpriced_room(
     pg_pool: Any, namespace_id: uuid.UUID
 ) -> None:
+    await _seed_ownership(pg_pool, namespace_id)
     _customer_id, priceable_agreement_id = await _seed_customer_and_agreement(pg_pool, namespace_id)
     await _seed_covered_fl(pg_pool, namespace_id, priceable_agreement_id, category_id="HUDDLE")
 

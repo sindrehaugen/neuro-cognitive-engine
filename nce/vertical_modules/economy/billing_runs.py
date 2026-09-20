@@ -76,7 +76,10 @@ _NODE_TYPE_BILLING_RUN = "BILLING_RUN"
 _NODE_TYPE_BILLING_CANDIDATE = "BILLING_CANDIDATE"
 _OWNER_ENGINE = "economy"
 _PRED_HAS_CANDIDATE = "has_candidate"
-_PRICE_RULE_ID = "sla_room_pricing"
+# The rule's rule_id in price-rules.json -- NOT its rule_type ("sla_room_pricing",
+# the string evaluate_price_rule() branches on internally). get_price_rules()
+# looks up by rule_id.
+_PRICE_RULE_ID = "RULE_SLA_ROOM_CATEGORY"
 # Mirrors agreements/sla.py's own _PRED_COVERS -- not imported (private
 # cross-module symbol); both name the same kg_edges predicate by convention.
 _PRED_COVERS = "covers"
