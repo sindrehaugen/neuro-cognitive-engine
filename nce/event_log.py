@@ -325,6 +325,8 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     # Procurement engine (Module 1): consumer cache for Product's BID projections (W5) + PO lines (PR-2).
     "procurement_bid_prices": "namespace_id",
     "procurement_po_lines": "namespace_id",
+    # Procurement engine Wave B-15: supplier deal registrations.
+    "procurement_deal_registrations": "namespace_id",
     # System Design engine (Module 6) Phase-2: device capability attributes (W12).
     "system_design_device_capabilities": "namespace_id",
     # System Design engine (Module 6) W14: canvas geometry + the per-DESIGN

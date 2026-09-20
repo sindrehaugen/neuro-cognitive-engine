@@ -55,6 +55,11 @@ _KNOWN_GAPS: dict[int, str] = {
     # its own tree shows them as gaps rather than filled numbers. Owners
     # per ML-orch's collision ruling: 87 -> Lane D (PR #242,
     # assets_shell_product), 88 -> Lane B (PR #245, sales_resource_tables).
+    # 99 -> Lane E (PR #330, sales_quote_billing_method), not yet merged onto
+    # this branch's base at the time this wave (Lane F, B-15, migration 100)
+    # was built -- ML-orch allocated 099 to E and 100-101 to F concurrently,
+    # per its numbering-range ruling (S8: ask, never take the next free one).
+    99: "reserved by open PR #330 (Lane E, sales_quote_billing_method), not yet merged",
 }
 
 
