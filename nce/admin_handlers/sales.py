@@ -191,7 +191,14 @@ async def api_sales_source_mode_put(request) -> JSONResponse:
 
     mode = str(body.get("mode") or "").strip()
 
-    return await put_source_mode(admin_state.engine.pg_pool, namespace_id, "sales", func_name, mode)
+    # 3600.0 (one hour), not the generic route's default (flip_function's own
+    # seven days): this is sales's pre-existing, deliberately narrower window
+    # -- its own content decision, same category as valid_functions above --
+    # preserved explicitly rather than inherited by accident from whatever
+    # the shared mechanism defaults to.
+    return await put_source_mode(
+        admin_state.engine.pg_pool, namespace_id, "sales", func_name, mode, 3600.0
+    )
 
 
 # ---------------------------------------------------------------------------

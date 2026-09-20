@@ -160,6 +160,56 @@ async def test_generic_source_mode_get_and_put_for_an_arbitrary_engine(
             assert mode == "nce"
 
 
+async def test_generic_put_route_defaults_to_the_mechanism_seven_day_window(
+    pg_pool: asyncpg.Pool, make_namespace: Any
+) -> None:
+    """A real defect ML-orch caught on the first review of this route:
+    put_source_mode hardcoded window_seconds=3600.0 (one hour), copied
+    verbatim from sales's own pre-existing literal, silently narrowing the
+    gate to 168x tighter than nce.source_mode.flip's own default (seven
+    days) for every OTHER engine -- the exact "content decision leaking
+    into the generic mechanism" mistake this wave's own docstring warns
+    against for `valid_functions`. Proves the fix: a divergence 2 days old
+    (older than sales's 1-hour window, younger than the real 7-day default)
+    must still block a generic PUT that passes no window_seconds at all.
+    """
+    ns_id: UUID = await make_namespace()
+    engine = _make_engine_stub(pg_pool)
+    key = cfg.NCE_API_KEY or "test-key"
+
+    async with pg_pool.acquire() as conn:
+        await set_namespace_context(conn, ns_id)
+        await conn.execute(
+            """
+            INSERT INTO divergence_log (namespace_id, engine, entity, field, nce_value, ext_value, materiality, detected_at)
+            VALUES ($1, 'widgets_sync', 'widget:div-2days', 'sku', 'W-1', 'W-1-OLD', 1.0, now() - interval '2 days')
+            """,
+            ns_id,
+        )
+
+    with (
+        patch("nce.admin_state.engine", engine),
+        patch("nce.config.cfg.NCE_ADMIN_MTLS_ENABLED", False),
+    ):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            put_body = {
+                "namespace_id": str(ns_id),
+                "engine": "widgets_sync",
+                "function": "read_widgets",
+                "mode": "nce",
+            }
+            body_bytes = json.dumps(put_body).encode("utf-8")
+            headers = _valid_headers(key, "PUT", "/api/admin/source-mode", body_bytes)
+            r = await client.put("/api/admin/source-mode", content=body_bytes, headers=headers)
+    assert r.status_code == 400, (
+        "a 2-day-old divergence must still block the flip under the real "
+        "7-day default -- 200 here would mean the 1-hour hardcode is back"
+    )
+    assert "blocked" in r.json()["error"].lower()
+
+
 async def test_generic_put_route_uses_the_shared_flip_function(
     pg_pool: asyncpg.Pool, make_namespace: Any
 ) -> None:
