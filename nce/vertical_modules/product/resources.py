@@ -9,6 +9,16 @@ nce/migrations/064_product_catalog_global.sql): it carries no namespace_id and R
 disabled, so ResourceSpec.tenant_scope resolves to "global" via EXPECTED_GLOBAL_TABLES
 rather than a hand-set flag. Per-tenant commercial data (list/cost price) lives in the
 separate, tenant-scoped product_prices table and is out of scope for this spec.
+
+Wave B-7 (2026-09-20):
+  - PACKAGE (product_packages table, migration 101). Genuinely new -- grepped
+    first, zero existing package-catalog infrastructure anywhere in nce/.
+    Tenant-scoped, unlike PRODUCT_SKU: a package is a tenant's own commercial
+    bundling of parts, not a universal shared parts fact. "components" is
+    JSONB, a static list -- expanding a package into a live stock reservation
+    is do_reserve_kit's job (inventory kitting, IN-2), unchanged by this
+    wave; the charter's "expansion = reserve_kit" note describes a future
+    wiring point, not something built here.
 """
 
 from __future__ import annotations
@@ -49,3 +59,25 @@ PRODUCT_SKU_SPEC = ResourceSpec(
     enabled_guard=require_product_enabled,
 )
 register_resource(PRODUCT_SKU_SPEC)
+
+
+# 2. PACKAGE
+PACKAGE_SPEC = ResourceSpec(
+    engine="product",
+    entity="packages",
+    node_type="PACKAGE",
+    table_name="product_packages",
+    id_field="id",
+    version_field="updated_at",
+    soft_delete_field="is_archived",
+    filterable_fields=("is_archived",),
+    searchable_fields=("name", "description"),
+    writable_fields=("name", "description", "components"),
+    description=(
+        "Package catalog definitions -- a named bundle of parts a tenant "
+        "sells together, expanded into a stock reservation via the existing "
+        "inventory kitting reserve_kit path."
+    ),
+    enabled_guard=require_product_enabled,
+)
+register_resource(PACKAGE_SPEC)

@@ -2,6 +2,7 @@
   "_comment": "Contract A (§9.1) node ownership map. Each future engine's graph wave appends its node types. node_type strings are the CODE-LEVEL strings passed to assert_owner, not spec labels.",
   "ownership": [
     { "node_type": "PRODUCT_SKU",          "owner_engine": "product",       "transition": null },
+    { "node_type": "PACKAGE",              "owner_engine": "product",       "transition": null },
     { "node_type": "PO",                   "owner_engine": "procurement",   "transition": null },
     { "node_type": "PO_LINE",              "owner_engine": "procurement",   "transition": "status:draft" },
     { "node_type": "PO_LINE",              "owner_engine": "procurement",   "transition": "status:ordered" },
@@ -28,6 +29,7 @@
     { "node_type": "QUOTE",                "owner_engine": "sales",         "transition": null },
     { "node_type": "SIGNED_BASELINE",      "owner_engine": "sales",         "transition": null },
     { "node_type": "CONTACT",              "owner_engine": "sales",         "transition": null },
+    { "node_type": "QUOTE_TEMPLATE",       "owner_engine": "sales",         "transition": null },
     { "node_type": "VENDOR",               "owner_engine": "vendors",       "transition": null },
     { "node_type": "CONTRACTOR",           "owner_engine": "vendors",       "transition": null },
     { "node_type": "CERT",                 "owner_engine": "vendors",       "transition": null },

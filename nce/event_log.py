@@ -322,6 +322,10 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "product_prices": "namespace_id",
     "product_match_feedback": "namespace_id",
     "product_enrichment_log": "namespace_id",
+    # Product engine, Wave B-7: package catalog definitions. Tenant-scoped,
+    # unlike product_catalog -- a package is a tenant's own commercial
+    # bundling, not a universal shared parts fact.
+    "product_packages": "namespace_id",
     # Procurement engine (Module 1): consumer cache for Product's BID projections (W5) + PO lines (PR-2).
     "procurement_bid_prices": "namespace_id",
     "procurement_po_lines": "namespace_id",
@@ -344,6 +348,8 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     # identity, name/email/phone here -- joined by label, FK'd to kg_nodes
     # same as system_design's satellite tables, migration 097).
     "sales_contacts": "namespace_id",
+    # Sales engine, Wave B-7: reusable quote starting-point templates.
+    "sales_quote_templates": "namespace_id",
     "vendor_scorecards": "namespace_id",
     "contractor_profiles": "namespace_id",
     # Agreements Engine (Module 3): review queue (W2) & extraction runs (W2).

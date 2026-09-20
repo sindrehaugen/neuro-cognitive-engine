@@ -4870,3 +4870,57 @@ BEGIN
         GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE procurement_deal_registrations TO nce_app;
     END IF;
 END $$;
+
+-- ============================================================================
+-- Migration 101_quote_templates_and_packages.sql
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS sales_quote_templates (
+    id             UUID          NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id   UUID          NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    name           TEXT          NOT NULL,
+    description    TEXT,
+    template_lines JSONB         NOT NULL DEFAULT '[]'::jsonb,
+    is_archived    BOOLEAN       NOT NULL DEFAULT FALSE,
+    created_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    CONSTRAINT sales_quote_templates_name_not_blank
+        CHECK (btrim(name) <> '')
+);
+
+CREATE INDEX IF NOT EXISTS idx_sales_quote_templates_ns_name
+    ON sales_quote_templates (namespace_id, name);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE sales_quote_templates FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE sales_quote_templates TO nce_app;
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS product_packages (
+    id             UUID          NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id   UUID          NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    name           TEXT          NOT NULL,
+    description    TEXT,
+    components     JSONB         NOT NULL DEFAULT '[]'::jsonb,
+    is_archived    BOOLEAN       NOT NULL DEFAULT FALSE,
+    created_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    CONSTRAINT product_packages_name_not_blank
+        CHECK (btrim(name) <> '')
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_packages_ns_name
+    ON product_packages (namespace_id, name);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE product_packages FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE product_packages TO nce_app;
+    END IF;
+END $$;
