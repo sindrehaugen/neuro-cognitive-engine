@@ -236,6 +236,11 @@ def setup_server_engine(mock_engine):
 @pytest.fixture(autouse=True)
 def disable_quotas(monkeypatch):
     monkeypatch.setattr("nce.quotas.cfg.NCE_QUOTAS_ENABLED", False)
+    # live_mcp_namespace_id() reads NCE_MCP_NAMESPACE_ID straight from the
+    # process env on every call, so an operator's ambient tenant pin leaks
+    # into these tests and rejects their namespace_id fixtures with
+    # MCP_SCOPE_FORBIDDEN before the code under test ever runs.
+    monkeypatch.delenv("NCE_MCP_NAMESPACE_ID", raising=False)
 
 
 # ---- tests ----
