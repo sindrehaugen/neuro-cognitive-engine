@@ -14,6 +14,7 @@ from pathlib import Path
 from uuid import UUID
 
 from starlette.testclient import TestClient
+from tests.expected_tenant_rls_table_count import EXPECTED_TENANT_RLS_TABLE_COUNT
 
 from nce.event_log import EXPECTED_TENANT_RLS_TABLES
 
@@ -42,9 +43,11 @@ def test_customer_portal_tables_registered_in_expected_tenant_rls_tables():
 
 
 def test_expected_tenant_rls_tables_total_count():
-    """Total count of tenant RLS tables after C17 Sites, Wave D-5 support_ticket_actions, C12 Sales, and Wave B-9 agreements resource additions, Wave B-2 CONTACT (sales_contacts), the D-9 flip-gate heartbeat (source_mode_heartbeat), Wave B-15 procurement_deal_registrations, and Wave B-7 (sales_quote_templates, product_packages), Wave B-12 (economy_billing_runs/economy_billing_candidates/economy_billing_candidate_lines), and Wave C-4 (system_design_design_requests), must be 117."""
-    assert len(EXPECTED_TENANT_RLS_TABLES) == 117, (
-        f"Expected 117 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
+    """Total tenant RLS table count -- see tests/expected_tenant_rls_table_count.py
+    for the single source of truth this pin defers to (K-consolidation)."""
+    assert len(EXPECTED_TENANT_RLS_TABLES) == EXPECTED_TENANT_RLS_TABLE_COUNT, (
+        f"Expected {EXPECTED_TENANT_RLS_TABLE_COUNT} tenant RLS tables, "
+        f"got {len(EXPECTED_TENANT_RLS_TABLES)}"
     )
 
 
