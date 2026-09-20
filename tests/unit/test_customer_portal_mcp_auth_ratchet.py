@@ -25,7 +25,7 @@ import pytest
 from nce.auth import resolve_customer_scope
 from nce.mcp_errors import MCP_INVALID_PARAMS, McpError
 from nce.mcp_stdio_tools import TOOLS
-from nce.tool_registry import ADMIN_ONLY_TOOLS
+from nce.tool_registry import ADMIN_ONLY_TOOLS, TOOL_REGISTRY
 from nce.vertical_modules.customer_portal.auth import (
     NIL_UUID,
     enforce_customer_scope,
@@ -97,9 +97,30 @@ class DummyRequest:
 
 
 def test_customer_portal_tools_in_admin_only_registry() -> None:
-    """All 9 customer_portal_* tools must be registered as admin_only=True."""
-    assert _NINE_CUSTOMER_PORTAL_TOOLS <= ADMIN_ONLY_TOOLS, (
-        f"Missing admin_only tools: {_NINE_CUSTOMER_PORTAL_TOOLS - ADMIN_ONLY_TOOLS}"
+    """All customer_portal_* tools must be registered as admin_only=True.
+
+    Inert-instrument fix (2026-09-20): the original assertion checked only
+    ``_NINE_CUSTOMER_PORTAL_TOOLS <= ADMIN_ONLY_TOOLS`` -- a subset check
+    against a hardcoded name list. That can never see a NEW customer_portal
+    tool that was never added to the list: mutation-verified by inserting a
+    fake non-admin-only ``customer_portal_fake_new_tool`` into an in-memory
+    copy of TOOL_REGISTRY and confirming the old assertion still passed.
+    The equality check below discovers the live set from TOOL_REGISTRY
+    itself first, so an unlisted tool fails loud here rather than silently
+    skipping the admin_only check entirely.
+    """
+    live_customer_portal_tools = frozenset(
+        name for name in TOOL_REGISTRY if name.startswith("customer_portal_")
+    )
+    assert live_customer_portal_tools == _NINE_CUSTOMER_PORTAL_TOOLS, (
+        f"customer_portal_* tools in TOOL_REGISTRY no longer match this test's tracked set -- "
+        f"new={live_customer_portal_tools - _NINE_CUSTOMER_PORTAL_TOOLS!r}, "
+        f"removed={_NINE_CUSTOMER_PORTAL_TOOLS - live_customer_portal_tools!r}. "
+        f"Update _NINE_CUSTOMER_PORTAL_TOOLS and verify the new/changed tools also satisfy "
+        f"admin_only + customer_scope_id requirements before widening this set."
+    )
+    assert live_customer_portal_tools <= ADMIN_ONLY_TOOLS, (
+        f"Missing admin_only tools: {live_customer_portal_tools - ADMIN_ONLY_TOOLS}"
     )
 
 
