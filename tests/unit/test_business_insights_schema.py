@@ -24,9 +24,9 @@ def test_business_insights_tables_registered_in_expected_tenant_rls_tables():
 
 
 def test_expected_tenant_rls_tables_total_count():
-    """Verify total count of tenant RLS tables after C17 sites, Wave D-5 support_ticket_actions, C12 sales, Wave B-9 agreements additions, Wave B-15 procurement_deal_registrations, and Wave B-7 (sales_quote_templates, product_packages) is 112."""
-    assert len(EXPECTED_TENANT_RLS_TABLES) == 112, (
-        f"Expected 112 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
+    """Verify total count of tenant RLS tables after C17 sites, Wave D-5 support_ticket_actions, C12 sales, Wave B-9 agreements additions, Wave B-15 procurement_deal_registrations, and Wave B-7 (sales_quote_templates, product_packages), and Wave B-12 (economy_billing_runs/economy_billing_candidates/economy_billing_candidate_lines) is 115."""
+    assert len(EXPECTED_TENANT_RLS_TABLES) == 115, (
+        f"Expected 115 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
     )
 
 

@@ -2332,3 +2332,54 @@ reservation is do_reserve_kit''s job (inventory kitting, IN-2), unchanged by
 this migration. Isolates per tenant via FORCE RLS, unlike the global
 product_catalog table: a package is a tenant''s own commercial bundling, not a
 universal shared parts fact.';
+
+ALTER TABLE economy_billing_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE economy_billing_runs FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON economy_billing_runs;
+CREATE POLICY tenant_isolation_policy ON economy_billing_runs
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE economy_billing_runs FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE economy_billing_runs TO nce_app;
+    END IF;
+END $$;
+
+ALTER TABLE economy_billing_candidates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE economy_billing_candidates FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON economy_billing_candidates;
+CREATE POLICY tenant_isolation_policy ON economy_billing_candidates
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE economy_billing_candidates FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE economy_billing_candidates TO nce_app;
+    END IF;
+END $$;
+
+ALTER TABLE economy_billing_candidate_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE economy_billing_candidate_lines FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON economy_billing_candidate_lines;
+CREATE POLICY tenant_isolation_policy ON economy_billing_candidate_lines
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE economy_billing_candidate_lines FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE economy_billing_candidate_lines TO nce_app;
+    END IF;
+END $$;

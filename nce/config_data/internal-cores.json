@@ -4,6 +4,11 @@
     "owner": "MLV15B-CP2",
     "reason": "Expiring customer document token access core; scheduled for customer portal API route in Wave CP-2."
   },
+  "nce/vertical_modules/economy/billing_runs.py::do_generate_billing_run": {
+    "engine": "economy",
+    "owner": "MLV16G-B12",
+    "reason": "Governed billing-run generation core (Wave B-12); REST/MCP surface registration deferred to Lane E (mechanical, matches the D-8 precedent)."
+  },
   "nce/vertical_modules/economy/contracts.py::do_upsert_contract": {
     "engine": "economy",
     "owner": "MLV15D-E1",
