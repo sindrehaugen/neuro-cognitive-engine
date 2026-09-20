@@ -356,6 +356,31 @@ CONTACT_SPEC = ResourceSpec(
 )
 register_resource(CONTACT_SPEC)
 
+
+# Wave B-7 (2026-09-20): QUOTE_TEMPLATE, a genuinely new node type -- grepped
+# for any existing quote-template infrastructure first, zero hits anywhere in
+# nce/. Plain relational table (sales_quote_templates, migration 101), not
+# kg_nodes-primary: a template is a static catalog record, not a graph
+# identity. template_lines is JSONB (a draft's line items have no lifecycle
+# of their own, unlike a live QUOTE's).
+QUOTE_TEMPLATE_SPEC = ResourceSpec(
+    engine="sales",
+    entity="quote-templates",
+    node_type="QUOTE_TEMPLATE",
+    table_name="sales_quote_templates",
+    id_field="id",
+    version_field="updated_at",
+    soft_delete_field="is_archived",
+    filterable_fields=("is_archived",),
+    searchable_fields=("name", "description"),
+    writable_fields=("name", "description", "template_lines"),
+    description=(
+        "Reusable quote starting-point templates -- a named set of default "
+        "line items a rep can start a new quote from."
+    ),
+)
+register_resource(QUOTE_TEMPLATE_SPEC)
+
 __all__ = [
     "CUSTOMER_SPEC",
     "LEAD_SPEC",
@@ -363,4 +388,5 @@ __all__ = [
     "QUOTE_SPEC",
     "SIGNED_BASELINE_SPEC",
     "CONTACT_SPEC",
+    "QUOTE_TEMPLATE_SPEC",
 ]

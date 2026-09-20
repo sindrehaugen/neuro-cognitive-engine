@@ -4831,42 +4831,55 @@ BEGIN
 END $$;
 
 -- ============================================================================
--- Migration 100_procurement_deal_registrations.sql
+-- Migration 101_quote_templates_and_packages.sql
 -- ============================================================================
 
-CREATE TABLE IF NOT EXISTS procurement_deal_registrations (
-    id                UUID          NOT NULL DEFAULT gen_random_uuid(),
-    namespace_id      UUID          NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
-    supplier          TEXT          NOT NULL,
-    deal_name         TEXT          NOT NULL,
-    status            TEXT          NOT NULL DEFAULT 'submitted',
-    estimated_value   NUMERIC(18,2),
-    registered_by     TEXT,
-    valid_from        TIMESTAMPTZ,
-    valid_to          TIMESTAMPTZ,
-    notes             TEXT,
-    is_archived       BOOLEAN       NOT NULL DEFAULT FALSE,
-    created_at        TIMESTAMPTZ   NOT NULL DEFAULT now(),
-    updated_at        TIMESTAMPTZ   NOT NULL DEFAULT now(),
+CREATE TABLE IF NOT EXISTS sales_quote_templates (
+    id             UUID          NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id   UUID          NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    name           TEXT          NOT NULL,
+    description    TEXT,
+    template_lines JSONB         NOT NULL DEFAULT '[]'::jsonb,
+    is_archived    BOOLEAN       NOT NULL DEFAULT FALSE,
+    created_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
     PRIMARY KEY (id),
-    CONSTRAINT procurement_deal_registrations_status_check
-        CHECK (status IN ('submitted', 'approved', 'rejected', 'expired')),
-    CONSTRAINT procurement_deal_registrations_supplier_not_blank
-        CHECK (btrim(supplier) <> ''),
-    CONSTRAINT procurement_deal_registrations_deal_name_not_blank
-        CHECK (btrim(deal_name) <> '')
+    CONSTRAINT sales_quote_templates_name_not_blank
+        CHECK (btrim(name) <> '')
 );
 
-CREATE INDEX IF NOT EXISTS idx_procurement_deal_registrations_ns_supplier
-    ON procurement_deal_registrations (namespace_id, supplier);
-
-CREATE INDEX IF NOT EXISTS idx_procurement_deal_registrations_ns_status
-    ON procurement_deal_registrations (namespace_id, status);
+CREATE INDEX IF NOT EXISTS idx_sales_quote_templates_ns_name
+    ON sales_quote_templates (namespace_id, name);
 
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
-        REVOKE ALL ON TABLE procurement_deal_registrations FROM nce_app;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE procurement_deal_registrations TO nce_app;
+        REVOKE ALL ON TABLE sales_quote_templates FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE sales_quote_templates TO nce_app;
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS product_packages (
+    id             UUID          NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id   UUID          NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    name           TEXT          NOT NULL,
+    description    TEXT,
+    components     JSONB         NOT NULL DEFAULT '[]'::jsonb,
+    is_archived    BOOLEAN       NOT NULL DEFAULT FALSE,
+    created_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    CONSTRAINT product_packages_name_not_blank
+        CHECK (btrim(name) <> '')
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_packages_ns_name
+    ON product_packages (namespace_id, name);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE product_packages FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE product_packages TO nce_app;
     END IF;
 END $$;
