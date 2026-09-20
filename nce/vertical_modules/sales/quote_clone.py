@@ -135,7 +135,17 @@ async def do_clone_quote(
         new_quote_number = f"{source['quote_number']}-COPY"
         new_title = f"{source['title']} (Copy)"[:_MAX_TITLE_LEN]
 
-        metadata = dict(source["metadata"] or {})
+        # asyncpg returns jsonb columns as str, not dict, unless a codec is
+        # registered -- same read pattern design_versions.py already uses for
+        # its own meta column. dict(source["metadata"]) on the raw string
+        # would iterate its characters, not its keys, and fail on the first
+        # one -- exactly the bug the mock-backed unit tier could not catch
+        # (a mock returns a real dict; only a live Postgres returns str).
+        raw_metadata = source["metadata"]
+        metadata = (
+            raw_metadata if isinstance(raw_metadata, dict) else json.loads(raw_metadata or "{}")
+        )
+        metadata = dict(metadata)
         metadata["cloned_from"] = source_id
 
         await conn.execute(
