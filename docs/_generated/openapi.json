@@ -31149,7 +31149,7 @@
     },
     "/api/admin/sales/source-mode": {
       "get": {
-        "description": "Retrieve the configured source modes for engine=\"sales\".\nQuery parameters:\nnamespace_id (str, required): Active namespace UUID.\nResponse (JSON):\n{\n\"namespace_id\": str,\n\"engine\": \"sales\",\n\"modes\": {\n\"list_customers\": \"d365\" | \"both\" | \"nce\",\n...\n}\n}",
+        "description": "Retrieve the configured source modes for engine=\"sales\". Thin,\n``engine=\"sales\"`` wrapper over the generic\n``nce.admin_handlers.source_mode.get_source_modes`` (Wave D-9,\n2026-09-20) -- same query params (minus ``engine``, pinned here), same\nresponse shape.\nQuery parameters:\nnamespace_id (str, required): Active namespace UUID.\nResponse (JSON):\n{\n\"namespace_id\": str,\n\"engine\": \"sales\",\n\"modes\": {\n\"list_customers\": \"d365\" | \"both\" | \"nce\",\n...\n}\n}",
         "operationId": "get_api_admin_sales_source_mode",
         "parameters": [],
         "responses": {
@@ -31211,7 +31211,7 @@
         ]
       },
       "put": {
-        "description": "Configure the source mode for a given sales function.\nRequest body (JSON):\nnamespace_id (str, required): Active namespace UUID.\nfunction     (str, required): Function key (e.g. \"list_customers\").\nmode         (str, required): Target mode (\"d365\", \"both\", or \"nce\").\nResponse (JSON):\n{\n\"namespace_id\": str,\n\"engine\": \"sales\",\n\"function\": str,\n\"mode\": str,\n\"status\": \"updated\"\n}",
+        "description": "Configure the source mode for a given sales function. Thin,\n``engine=\"sales\"`` wrapper over the generic\n``nce.admin_handlers.source_mode.put_source_mode`` (Wave D-9,\n2026-09-20) -- the sales-specific ``valid_functions`` check below is a\ncontent decision (which function names are legitimate for sales) that\nstays here rather than moving to the generic module; the gate decision\nitself (flip_blocked/flip_function) and the upsert are the shared\nmechanism, delegated.\nRequest body (JSON):\nnamespace_id (str, required): Active namespace UUID.\nfunction     (str, required): Function key (e.g. \"list_customers\").\nmode         (str, required): Target mode (\"d365\", \"both\", or \"nce\").\nResponse (JSON):\n{\n\"namespace_id\": str,\n\"engine\": \"sales\",\n\"function\": str,\n\"mode\": str,\n\"status\": \"updated\"\n}",
         "operationId": "put_api_admin_sales_source_mode",
         "parameters": [],
         "requestBody": {
@@ -32548,6 +32548,144 @@
           }
         },
         "summary": "GET /api/admin/signing/status \u2014 non-secret signing key rotation summary.",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/source-mode": {
+      "get": {
+        "description": "Retrieve the configured source modes for any ``(namespace_id, engine)``\npair. Generic sibling of ``api_sales_source_mode_get`` -- same response\nshape, ``engine`` taken from a query param instead of hardcoded.\nQuery parameters:\nnamespace_id (str, required): Active namespace UUID.\nengine       (str, required): Engine key, e.g. \"sales\".\nResponse (JSON):\n{\n\"namespace_id\": str,\n\"engine\": str,\n\"modes\": {\n\"<function>\": \"d365\" | \"both\" | \"nce\",\n...\n}\n}",
+        "operationId": "get_api_admin_source_mode",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "GET /api/admin/source-mode",
+        "tags": [
+          "admin"
+        ]
+      },
+      "put": {
+        "description": "Configure the source mode for a given ``(engine, function)`` pair. See\n:func:`put_source_mode` for the gating logic.\nRequest body (JSON):\nnamespace_id (str, required): Active namespace UUID.\nengine       (str, required): Engine key, e.g. \"sales\".\nfunction     (str, required): Function key (e.g. \"list_customers\").\nmode         (str, required): Target mode (\"d365\", \"both\", or \"nce\").\nNo ``window_seconds`` override over HTTP, deliberately: which parity\nwindow gates a flip is a per-engine content decision made by that\nengine's own wrapper (in code, reviewable -- see ``sales.py``'s\n``3600.0``), never a value any caller of this admin endpoint can supply\nper request. Exposing it here would turn a fixed safety gate into an\narbitrarily weakenable one (a caller could pass a near-zero window and\nflip past any real divergence) -- worse than the fixed-but-wrong\nhardcode this wave replaced, not better. ML-orch's review caught this\non the first pass; see :func:`put_source_mode` for the code-level\nparameter this route intentionally does not surface.\nResponse (JSON):\n{\n\"namespace_id\": str,\n\"engine\": str,\n\"function\": str,\n\"mode\": str,\n\"status\": \"updated\"\n}\nOn a blocked flip: 400 with {\"error\": \"...\"} naming the divergence count.",
+        "operationId": "put_api_admin_source_mode",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "PUT /api/admin/source-mode",
         "tags": [
           "admin"
         ]

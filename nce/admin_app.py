@@ -29,6 +29,7 @@ from nce.admin_handlers import project as project_handlers
 from nce.admin_handlers import resources as resources_handlers
 from nce.admin_handlers import sales as sales_handlers
 from nce.admin_handlers import sales_public as sales_public_handlers
+from nce.admin_handlers import source_mode as source_mode_handlers
 from nce.admin_handlers import support as support_handlers
 from nce.admin_handlers import system_design as system_design_handlers
 from nce.admin_handlers import vendors as vendors_handlers
@@ -559,6 +560,20 @@ def build_admin_routes() -> list[Route]:
             "/api/admin/d365/netbox-bridge/sync",
             endpoint=h.api_admin_d365_netbox_bridge_sync,
             methods=["POST"],
+        ),
+        # ------------------------------------------------------------------
+        # Generic C5 source-mode / flip-gate admin endpoints (Wave D-9,
+        # 2026-09-20) -- any (namespace_id, engine) pair, not just sales.
+        # ------------------------------------------------------------------
+        Route(
+            "/api/admin/source-mode",
+            endpoint=source_mode_handlers.api_source_mode_get,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/admin/source-mode",
+            endpoint=source_mode_handlers.api_source_mode_put,
+            methods=["PUT"],
         ),
         # ------------------------------------------------------------------
         # Sales source-mode admin endpoints
