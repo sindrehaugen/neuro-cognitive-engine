@@ -712,7 +712,27 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                     # Multi-table spec: shared with rest.py's handle_create
                     # and handle_patch -- see upsert_secondary_tables' own
                     # docstring for why this is not a blind ON CONFLICT.
-                    await upsert_secondary_tables(conn, spec, item_id, ns_uuid, is_global, data)
+                    #
+                    # node_type is never in spec.writable_fields (derived
+                    # from the spec's own identity, never client-supplied),
+                    # so raw `data` never carries it -- re-injecting it here
+                    # matches rest.py's relational handle_create/handle_patch
+                    # fix (#394). Gated on sec_data already non-empty from
+                    # real caller-supplied content, the same conservative
+                    # rule as that PATCH fix, not CREATE's unconditional one:
+                    # this one function handles both insert and update, so
+                    # an unconditional injection would make node_type alone
+                    # trigger a phantom secondary-table row on every bare
+                    # upsert with zero real secondary fields supplied --
+                    # exactly the shape test_mcp_get_with_no_secondary_row_
+                    # still_returns_primary already asserts does NOT happen.
+                    sec_data = {k: v for k, v in data.items() if k in secondary_field_names}
+                    if sec_data and "node_type" in secondary_field_names:
+                        sec_data["node_type"] = spec.node_type
+                    if sec_data:
+                        await upsert_secondary_tables(
+                            conn, spec, item_id, ns_uuid, is_global, sec_data
+                        )
         else:
             mem = _get_mem_bucket(spec, str(ns_uuid) if ns_uuid else None)
             existing = mem.get(item_id)
