@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `1a2241b6` (public `main`) · **Last-audited:** 2026-09-20
+> **Status:** shipped · **Verified-against:** `b58fa883` (public `main`) · **Last-audited:** 2026-09-20
 
 # NCE Vertical Engines — Build & Production Status
 
@@ -26,11 +26,11 @@
 | Instrument | Value |
 |---|---|
 | Module packages under `nce/vertical_modules/` | **21** (17 engines + `diagnostics`, `dynamics365`, `netbox`, `legal_entities`) |
-| `TOOL_REGISTRY` entries | **542** MCP tools (70 shared + 472 engine) — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
+| `TOOL_REGISTRY` entries | **545** MCP tools (70 shared + 475 engine) — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 | REST routes on the admin app | measured per-engine in [`docs/_generated/surface.md`](../_generated/surface.md) (+12 on the Customer Portal's own app shell) — regenerate for a total, do not hand-add the column |
 | `do_*` domain cores | **228** distinct names across the 17 engines |
-| SQL migrations | 99 files (+1 optional), `001` → `103` — gaps at `002`, `009`, `059` (never allocated); `010` exists only under `nce/migrations/optional/`. — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
-| `EXPECTED_TENANT_RLS_TABLES` | **115** |
+| SQL migrations | 100 files (+1 optional), `001` → `104` — gaps at `002`, `009`, `059` (never allocated); `010` exists only under `nce/migrations/optional/`. — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
+| `EXPECTED_TENANT_RLS_TABLES` | **116** |
 | Tests | **6,430** `def test_` across 529 files |
 | Golden Thread seam burndown | **4 of 37** lifecycle steps broken (4 distinct seams) — mirrored from [`docs/_generated/golden_thread_seams.md`](../_generated/golden_thread_seams.md); see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 | v1.6 C12 resource-surface registrations | **19 of 25** engines have `resources.py` — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |

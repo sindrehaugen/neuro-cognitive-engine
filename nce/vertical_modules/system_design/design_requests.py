@@ -5,7 +5,17 @@ Solution Design intake queue (losningsdesign-ko / DESIGN_REQUEST) management.
 
 Charter §13 line 332 (Wave C-4) & Operations Backend §3.1 line 115 / §3.3 line 143:
 - Replaces: losningsdesign-ko (3 routes in host portal)
-- Backing: system_design_geometry (node_label='DESIGN_REQUEST:<id>') + kg_edges
+- Backing (2026-09-20, migration 104): kg_nodes identity row
+  (entity_type='DESIGN_REQUEST', label='DESIGN_REQUEST:<id>') plus real
+  fields on the system_design_design_requests satellite table, joined by
+  node_label -- following the exact CONTACT/097 pattern. Previously ran
+  entirely on system_design_geometry's meta JSONB column keyed by
+  node_label; that table is reserved for actual geometry payloads
+  validated by validate_geometry()'s single choke point (same restriction
+  DEVICE/RACK/CABLE and DESIGN both hit), and DESIGN_REQUEST had no
+  kg_nodes row at all -- it was neither a real node type nor safely
+  routable through SecondaryTable. Relationships (for_quote/targets_fl/
+  assigned_to/realized_as) still live on kg_edges, unchanged.
 - Manages: design request queue items with owner, status, priority, room_spec,
   and realization link to resulting DESIGN versions.
 - Consumed by: from_quote.py (do_design_from_quote / fulfill_design_request_from_quote).
@@ -19,12 +29,14 @@ import logging
 from typing import Any
 from uuid import UUID, uuid4
 
+from nce.entity_resolution.ownership import assert_owner
 from nce.events.emit import emit_graph_write
 
 log = logging.getLogger("nce.vertical_modules.system_design.design_requests")
 
 # Node type
 _NODE_TYPE_DESIGN_REQUEST = "DESIGN_REQUEST"
+_SYSTEM_DESIGN_ENGINE: str = "system_design"
 
 # Edge predicates
 _PRED_FOR_QUOTE = "for_quote"
@@ -201,20 +213,53 @@ async def create_design_request(
     }
 
     if conn is not None:
-        meta_json = json.dumps(meta_payload)
+        await assert_owner(conn, ns_uuid, _NODE_TYPE_DESIGN_REQUEST, _SYSTEM_DESIGN_ENGINE)
+
         await conn.execute(
             """
-            INSERT INTO system_design_geometry
-                (namespace_id, node_label, version, meta)
-            VALUES ($1::uuid, $2, $3, $4::jsonb)
-            ON CONFLICT (namespace_id, node_label) DO UPDATE
-                SET meta = EXCLUDED.meta,
+            INSERT INTO kg_nodes
+                (label, entity_type, namespace_id, change_origin)
+            VALUES ($1, $2, $3::uuid, 'operator')
+            ON CONFLICT (label, namespace_id) DO UPDATE
+                SET entity_type = EXCLUDED.entity_type,
                     updated_at = NOW()
+            """,
+            req_lbl,
+            _NODE_TYPE_DESIGN_REQUEST,
+            ns_str,
+        )
+
+        await conn.execute(
+            """
+            INSERT INTO system_design_design_requests
+                (namespace_id, node_label, title, description, quote_id,
+                 functional_location_id, status, priority, owner_id,
+                 design_id, room_spec, metadata)
+            VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb)
+            ON CONFLICT (namespace_id, node_label) DO UPDATE
+                SET title                  = EXCLUDED.title,
+                    description            = EXCLUDED.description,
+                    quote_id               = EXCLUDED.quote_id,
+                    functional_location_id = EXCLUDED.functional_location_id,
+                    status                 = EXCLUDED.status,
+                    priority               = EXCLUDED.priority,
+                    owner_id               = EXCLUDED.owner_id,
+                    room_spec              = EXCLUDED.room_spec,
+                    metadata               = EXCLUDED.metadata,
+                    updated_at             = NOW()
             """,
             ns_str,
             req_lbl,
-            1,
-            meta_json,
+            meta_payload["title"],
+            meta_payload["description"],
+            meta_payload["quote_id"],
+            meta_payload["functional_location_id"],
+            meta_payload["status"],
+            meta_payload["priority"],
+            meta_payload["owner_id"],
+            meta_payload["design_id"],
+            json.dumps(meta_payload["room_spec"]),
+            json.dumps(meta_payload["metadata"]),
         )
 
         if quote_lbl:
@@ -314,6 +359,54 @@ async def create_design_request(
     return dict(meta_payload)
 
 
+def _row_to_dict(raw_id: str, row: Any) -> dict[str, Any]:
+    """Map one system_design_design_requests row to the public dict shape.
+
+    Kept as a single conversion point so ``get_design_request`` and
+    ``list_design_requests`` can never independently drift on field names --
+    exactly the class of bug a second implementation invites.
+    """
+    room_spec = row["room_spec"]
+    if not isinstance(room_spec, dict):
+        room_spec = json.loads(room_spec or "{}")
+    metadata = row["metadata"]
+    if not isinstance(metadata, dict):
+        metadata = json.loads(metadata or "{}")
+
+    created_at_iso = (
+        row["created_at"].isoformat()
+        if hasattr(row["created_at"], "isoformat")
+        else str(row["created_at"])
+    )
+    updated_at_iso = (
+        row["updated_at"].isoformat()
+        if hasattr(row["updated_at"], "isoformat")
+        else str(row["updated_at"])
+    )
+    completed_at = row["completed_at"]
+    completed_at_iso = (
+        completed_at.isoformat() if hasattr(completed_at, "isoformat") else completed_at
+    )
+
+    return {
+        "id": raw_id,
+        "label": row["node_label"],
+        "title": row["title"],
+        "description": row["description"],
+        "quote_id": row["quote_id"],
+        "functional_location_id": row["functional_location_id"],
+        "status": row["status"],
+        "priority": row["priority"],
+        "owner_id": row["owner_id"],
+        "design_id": row["design_id"],
+        "room_spec": room_spec,
+        "metadata": metadata,
+        "created_at": created_at_iso,
+        "updated_at": updated_at_iso,
+        "completed_at": completed_at_iso,
+    }
+
+
 async def get_design_request(
     conn: Any,
     namespace_id: UUID | str,
@@ -328,8 +421,11 @@ async def get_design_request(
     if conn is not None:
         row = await conn.fetchrow(
             """
-            SELECT node_label, version, meta, created_at, updated_at
-            FROM system_design_geometry
+            SELECT node_label, title, description, quote_id,
+                   functional_location_id, status, priority, owner_id,
+                   design_id, room_spec, metadata, completed_at,
+                   created_at, updated_at
+            FROM system_design_design_requests
             WHERE namespace_id = $1::uuid
               AND node_label = $2
             """,
@@ -341,35 +437,7 @@ async def get_design_request(
                 f"Design request {raw_id!r} not found in namespace {ns_str}"
             )
 
-        meta = row["meta"] if isinstance(row["meta"], dict) else json.loads(row["meta"] or "{}")
-        created_at_iso = (
-            row["created_at"].isoformat()
-            if hasattr(row["created_at"], "isoformat")
-            else str(row["created_at"])
-        )
-        updated_at_iso = (
-            row["updated_at"].isoformat()
-            if hasattr(row["updated_at"], "isoformat")
-            else str(row["updated_at"])
-        )
-
-        return {
-            "id": raw_id,
-            "label": req_lbl,
-            "title": meta.get("title", ""),
-            "description": meta.get("description", ""),
-            "quote_id": meta.get("quote_id"),
-            "functional_location_id": meta.get("functional_location_id"),
-            "status": meta.get("status", STATUS_PENDING),
-            "priority": meta.get("priority", PRIORITY_NORMAL),
-            "owner_id": meta.get("owner_id"),
-            "design_id": meta.get("design_id"),
-            "room_spec": meta.get("room_spec") or {},
-            "metadata": meta.get("metadata") or {},
-            "created_at": created_at_iso,
-            "updated_at": updated_at_iso,
-            "completed_at": meta.get("completed_at"),
-        }
+        return _row_to_dict(raw_id, row)
 
     bucket = _MEM_DESIGN_REQUESTS.get(ns_str, {})
     if raw_id not in bucket:
@@ -398,36 +466,38 @@ async def list_design_requests(
 
     if conn is not None:
         sql = """
-            SELECT node_label, version, meta, created_at, updated_at
-            FROM system_design_geometry
+            SELECT node_label, title, description, quote_id,
+                   functional_location_id, status, priority, owner_id,
+                   design_id, room_spec, metadata, completed_at,
+                   created_at, updated_at
+            FROM system_design_design_requests
             WHERE namespace_id = $1::uuid
-              AND node_label LIKE 'DESIGN_REQUEST:%'
         """
         params: list[Any] = [ns_str]
         idx = 2
 
         if status:
-            sql += f" AND meta->>'status' = ${idx}"
+            sql += f" AND status = ${idx}"
             params.append(status.strip().lower())
             idx += 1
         if owner_id:
-            sql += f" AND meta->>'owner_id' = ${idx}"
+            sql += f" AND owner_id = ${idx}"
             params.append(owner_id.strip())
             idx += 1
         if quote_id:
-            sql += f" AND meta->>'quote_id' = ${idx}"
+            sql += f" AND quote_id = ${idx}"
             params.append(quote_id.strip())
             idx += 1
         if fl_lbl:
-            sql += f" AND meta->>'functional_location_id' = ${idx}"
+            sql += f" AND functional_location_id = ${idx}"
             params.append(fl_lbl)
             idx += 1
         if priority:
-            sql += f" AND meta->>'priority' = ${idx}"
+            sql += f" AND priority = ${idx}"
             params.append(priority.strip().lower())
             idx += 1
         if query:
-            sql += f" AND (meta->>'title' ILIKE ${idx} OR meta->>'description' ILIKE ${idx})"
+            sql += f" AND (title ILIKE ${idx} OR description ILIKE ${idx})"
             params.append(f"%{query.strip()}%")
             idx += 1
 
@@ -435,40 +505,7 @@ async def list_design_requests(
         params.extend([max(1, limit), max(0, offset)])
 
         rows = await conn.fetch(sql, *params)
-        results: list[dict[str, Any]] = []
-        for r in rows:
-            meta = r["meta"] if isinstance(r["meta"], dict) else json.loads(r["meta"] or "{}")
-            raw_id = clean_request_id(r["node_label"])
-            created_at_iso = (
-                r["created_at"].isoformat()
-                if hasattr(r["created_at"], "isoformat")
-                else str(r["created_at"])
-            )
-            updated_at_iso = (
-                r["updated_at"].isoformat()
-                if hasattr(r["updated_at"], "isoformat")
-                else str(r["updated_at"])
-            )
-            results.append(
-                {
-                    "id": raw_id,
-                    "label": r["node_label"],
-                    "title": meta.get("title", ""),
-                    "description": meta.get("description", ""),
-                    "quote_id": meta.get("quote_id"),
-                    "functional_location_id": meta.get("functional_location_id"),
-                    "status": meta.get("status", STATUS_PENDING),
-                    "priority": meta.get("priority", PRIORITY_NORMAL),
-                    "owner_id": meta.get("owner_id"),
-                    "design_id": meta.get("design_id"),
-                    "room_spec": meta.get("room_spec") or {},
-                    "metadata": meta.get("metadata") or {},
-                    "created_at": created_at_iso,
-                    "updated_at": updated_at_iso,
-                    "completed_at": meta.get("completed_at"),
-                }
-            )
-        return results
+        return [_row_to_dict(clean_request_id(r["node_label"]), r) for r in rows]
 
     bucket = _MEM_DESIGN_REQUESTS.get(ns_str, {})
     items: list[dict[str, Any]] = []
@@ -550,10 +587,13 @@ async def update_design_request(
     if metadata is not None:
         updated_meta.update(metadata)
 
-    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    now = datetime.datetime.now(datetime.timezone.utc)
+    now_iso = now.isoformat()
     completed_at = existing.get("completed_at")
+    completed_at_dt: datetime.datetime | None = None
     if updated_status == STATUS_COMPLETED and not completed_at:
         completed_at = now_iso
+        completed_at_dt = now
 
     meta_payload = {
         "id": raw_id,
@@ -573,16 +613,29 @@ async def update_design_request(
     }
 
     if conn is not None:
-        meta_json = json.dumps(meta_payload)
         await conn.execute(
             """
-            UPDATE system_design_geometry
-            SET meta = $1::jsonb,
-                updated_at = NOW()
-            WHERE namespace_id = $2::uuid
-              AND node_label = $3
+            UPDATE system_design_design_requests
+            SET title       = $1,
+                description = $2,
+                status      = $3,
+                priority    = $4,
+                owner_id    = $5,
+                room_spec   = $6::jsonb,
+                metadata    = $7::jsonb,
+                completed_at = COALESCE(completed_at, $8),
+                updated_at  = NOW()
+            WHERE namespace_id = $9::uuid
+              AND node_label = $10
             """,
-            meta_json,
+            updated_title,
+            updated_desc,
+            updated_status,
+            updated_priority,
+            updated_owner,
+            json.dumps(updated_room_spec),
+            json.dumps(updated_meta),
+            completed_at_dt,
             ns_str,
             req_lbl,
         )
@@ -698,7 +751,8 @@ async def complete_design_request(
     ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
     ns_str = str(ns_uuid)
 
-    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    now = datetime.datetime.now(datetime.timezone.utc)
+    now_iso = now.isoformat()
     meta_payload = dict(existing)
     meta_payload["status"] = STATUS_COMPLETED
     meta_payload["design_id"] = d_clean
@@ -706,16 +760,19 @@ async def complete_design_request(
     meta_payload["updated_at"] = now_iso
 
     if conn is not None:
-        meta_json = json.dumps(meta_payload)
         await conn.execute(
             """
-            UPDATE system_design_geometry
-            SET meta = $1::jsonb,
-                updated_at = NOW()
-            WHERE namespace_id = $2::uuid
-              AND node_label = $3
+            UPDATE system_design_design_requests
+            SET status       = $1,
+                design_id    = $2,
+                completed_at = COALESCE(completed_at, $3),
+                updated_at   = NOW()
+            WHERE namespace_id = $4::uuid
+              AND node_label = $5
             """,
-            meta_json,
+            STATUS_COMPLETED,
+            d_clean,
+            now,
             ns_str,
             req_lbl,
         )
