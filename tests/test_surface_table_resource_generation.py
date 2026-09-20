@@ -89,26 +89,40 @@ def routes():
 def test_every_registered_spec_contributes_exactly_four_tools(registered_specs, tools):
     """Each ResourceSpec mounts 4 MCP tools (list/get/upsert/archive) --
     see nce/resource_surface/mcp.py::build_mcp_tool_definitions. The
-    generator's simulation must find exactly len(specs) * 4 of them."""
+    generator's simulation must find exactly that many.
+
+    NOT a uniform len(specs) * 4 since Wave E-19's ``excluded_verbs`` field:
+    a spec may omit a verb (e.g. RESOURCE/FUNCTIONAL_LOCATION exclude "list"
+    to avoid a hand-written tool-name collision -- see
+    ``nce/resource_surface/exemptions.py``), so the expected total is summed
+    per spec from each spec's own ``excluded_verbs``, not multiplied
+    uniformly. A hardcoded ``* 4`` here would repeat the exact class of drift
+    this fix was written to catch, just for a newer field."""
     resource_surface_tools = [
         t for t in tools if t["resolved_module"] == "nce.resource_surface.mcp"
     ]
-    assert len(resource_surface_tools) == len(registered_specs) * 4
+    expected = sum(4 - len(s.excluded_verbs) for s in registered_specs)
+    assert len(resource_surface_tools) == expected
 
 
 def test_every_registered_spec_contributes_the_real_route_count(registered_specs, routes):
-    """Cross-check against the real function, not a hardcoded literal: the
-    routes-per-spec count is read fresh from make_resource_routes itself (16
-    as of Wave A-4; was 13 before A-4 added generic document-attachment
-    routes to every spec). A hardcoded number here would repeat the exact
-    drift this fix was written to catch."""
+    """Cross-check against the real function, not a hardcoded literal: each
+    spec's own route count is read fresh from make_resource_routes itself (16
+    as of Wave A-4, was 13 before A-4 added generic document-attachment
+    routes to every spec; a spec with excluded_verbs, Wave E-19, has fewer).
+
+    NOT ``len(specs) * routes_per_spec(specs[0])`` -- since Wave E-19, specs
+    can genuinely differ in their own route count, so specs[0] is no longer
+    representative of every spec. Summed per spec instead. A hardcoded/
+    uniform count here would repeat the exact class of drift this fix was
+    written to catch, just for a newer field."""
     from nce.resource_surface.rest import make_resource_routes
 
-    routes_per_spec = len(make_resource_routes(registered_specs[0]))
+    expected = sum(len(make_resource_routes(s)) for s in registered_specs)
     resource_surface_routes = [
         r for r in routes if r["resolved_mod"] == "nce.resource_surface.rest"
     ]
-    assert len(resource_surface_routes) == len(registered_specs) * routes_per_spec
+    assert len(resource_surface_routes) == expected
 
 
 def test_derived_route_total_matches_live_registry(registered_specs, routes):

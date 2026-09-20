@@ -49,29 +49,13 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     # ---------------------------------------------------------------------------
     # System Design Engine (Lane C Waves C-1, C-3 / Lane E)
     # ---------------------------------------------------------------------------
-    "FUNCTIONAL_LOCATION": ResourceExemption(
-        owner_engine="system_design",
-        reason=(
-            "Two independent blockers, both verified directly, neither the prior "
-            "reason's claim (C17 SITE landed; this was never actually about SITE). "
-            "(1) kind/as_built are DERIVED at read time by fl_tree.py -- kind from "
-            "label parsing + tree depth (nothing populates a stored kind column), "
-            "as_built as `change_origin == 'operator'` -- not stored columns, so "
-            "declaring either as a satellite field would give the same fact a second, "
-            "silently-divergent home (the exact class system_design_geometry's "
-            "SecondaryTable exclusion already guards against). A thin, identity-only "
-            "spec (PROJECT_PROJECT's pattern) is possible for the derived-fields "
-            "reason alone. (2) But it collides: entity='functional-locations' "
-            "generates MCP tool system_design_list_functional_locations, which "
-            "already exists as a hand-written tool (admin_handlers/system_design.py, "
-            "tree listing with recursion) -- get/upsert/archive do not collide "
-            "(hand-written get is singular system_design_get_functional_location), "
-            "only list does, same shape as RESOURCE's collision below. Needs the "
-            "same naming decision RESOURCE needs before declaring even the thin "
-            "identity-only version; Lane E Wave E-15 found this via the collision "
-            "ratchet raising RuntimeError at import, not a silent overwrite."
-        ),
-    ),
+    # FUNCTIONAL_LOCATION: registered (Wave E-19, 2026-09-20) --
+    # nce/vertical_modules/system_design/resources.py. Thin, identity-only
+    # (kind/as_built are derived at read time by fl_tree.py, not stored --
+    # exposing them would give the same fact a second home). excluded_verbs=
+    # {"list"} closes the system_design_list_functional_locations collision
+    # the same way RESOURCE_SPEC does. See FUNCTIONAL_LOCATION_SPEC's own
+    # comment for the full reasoning.
     "DESIGN": ResourceExemption(
         owner_engine="system_design",
         reason=(
@@ -138,21 +122,11 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     # ---------------------------------------------------------------------------
     # Staff & Resources Engine (Lane E / Resources wave)
     # ---------------------------------------------------------------------------
-    "RESOURCE": ResourceExemption(
-        owner_engine="resources",
-        reason=(
-            "Real attribute table (resources, tenant-scoped) but node_type name "
-            "equals the engine name: entity='resources' generates MCP tool "
-            "resources_list_resources, which collides with and silently overwrites "
-            "(via TOOL_REGISTRY.update()) the existing hand-written tool of that "
-            "exact name (handle_resources_list_resources). get/upsert/archive do "
-            "not collide (hand-written tools use singular resources_get_resource "
-            "etc.), only list does. Needs a naming decision (rename the entity, "
-            "which also changes the REST path, or fix collision detection in "
-            "resource_surface/__init__.py) before declaring; Lane E Wave E-6 found "
-            "this by diffing the exact TOOL_REGISTRY key set before/after."
-        ),
-    ),
+    # RESOURCE: registered (Wave E-19, 2026-09-20) --
+    # nce/vertical_modules/resources/resources.py. excluded_verbs={"list"}
+    # closes the resources_list_resources collision without renaming the
+    # entity or touching collision detection -- see RESOURCE_SPEC's own
+    # comment for the full reasoning.
     # ---------------------------------------------------------------------------
     # Sales Engine (Lane B Waves B-1, B-4 / Lane E)
     # ---------------------------------------------------------------------------

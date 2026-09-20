@@ -4069,6 +4069,102 @@
         },
         "type": "object"
       },
+      "Resources_resources": {
+        "description": "Schedulable resource master data (employee/contractor/vehicle/tool). list is excluded -- the existing hand-written resources_list_resources tool (kind filter, pagination) stays authoritative; this spec adds get/upsert/archive only.",
+        "properties": {
+          "attrs": {
+            "description": "Field attrs",
+            "type": "string"
+          },
+          "display_name": {
+            "description": "Field display_name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Field kind",
+            "type": "string"
+          },
+          "ref_id": {
+            "description": "Field ref_id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "Resources_resources_Create": {
+        "description": "Payload for creating a resources resources",
+        "properties": {
+          "attrs": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "ref_id": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Resources_resources_List": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Resources_resources"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Cursor token for fetching the next page",
+            "nullable": true,
+            "type": "string"
+          },
+          "total": {
+            "description": "Total matching count if requested",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "Resources_resources_Update": {
+        "description": "Payload for updating a resources resources",
+        "properties": {
+          "attrs": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "expected_version": {
+            "description": "Optimistic concurrency lock version",
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "ref_id": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "Resources_travel_legs": {
         "description": "Travel route legs (flight/train/car) associated with an allocation.",
         "properties": {
@@ -6051,6 +6147,72 @@
             "type": "string"
           },
           "status": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "System_design_functional_locations": {
+        "description": "C12 functional location: graph identity only (label, entity_type, change_origin, timestamps). kind and as_built are derived at read time by fl_tree.py, not stored, and are not exposed here -- see the comment above this spec for why. list is excluded -- the existing hand-written system_design_list_functional_locations tool (tree-aware recursive listing) stays authoritative; this spec adds get/upsert/archive only. Tree navigation (children/ancestors/path/move/merge) stays on its own hand-written routes.",
+        "properties": {
+          "change_origin": {
+            "description": "Field change_origin",
+            "type": "string"
+          },
+          "label": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "type": "object"
+      },
+      "System_design_functional_locations_Create": {
+        "description": "Payload for creating a system_design functional-locations",
+        "properties": {
+          "change_origin": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "System_design_functional_locations_List": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/System_design_functional_locations"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Cursor token for fetching the next page",
+            "nullable": true,
+            "type": "string"
+          },
+          "total": {
+            "description": "Total matching count if requested",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "System_design_functional_locations_Update": {
+        "description": "Payload for updating a system_design functional-locations",
+        "properties": {
+          "change_origin": {
+            "type": "string"
+          },
+          "expected_version": {
+            "description": "Optimistic concurrency lock version",
             "type": "string"
           }
         },
@@ -15458,6 +15620,27 @@
         ],
         "type": "object"
       },
+      "Tool_resources_archive_resources_Input": {
+        "properties": {
+          "id": {
+            "description": "ID of Resource to archive.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Audit reason for archiving.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "id"
+        ],
+        "type": "object"
+      },
       "Tool_resources_archive_travel_legs_Input": {
         "properties": {
           "id": {
@@ -15622,6 +15805,23 @@
         "required": [
           "namespace_id",
           "resource_id"
+        ],
+        "type": "object"
+      },
+      "Tool_resources_get_resources_Input": {
+        "properties": {
+          "id": {
+            "description": "Unique identifier of the Resource.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "id"
         ],
         "type": "object"
       },
@@ -16088,6 +16288,38 @@
           },
           "status": {
             "description": "Value for status."
+          }
+        },
+        "required": [
+          "namespace_id"
+        ],
+        "type": "object"
+      },
+      "Tool_resources_upsert_resources_Input": {
+        "properties": {
+          "attrs": {
+            "description": "Value for attrs."
+          },
+          "display_name": {
+            "description": "Value for display_name."
+          },
+          "expected_version": {
+            "description": "Concurrency check version.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Optional ID of existing Resource to update.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Value for kind."
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "ref_id": {
+            "description": "Value for ref_id."
           }
         },
         "required": [
@@ -18935,6 +19167,26 @@
         ],
         "type": "object"
       },
+      "Tool_system_design_archive_functional_locations_Input": {
+        "properties": {
+          "id": {
+            "description": "ID of Functional Location to archive.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Audit reason for archiving.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
       "Tool_system_design_archive_ports_Input": {
         "properties": {
           "id": {
@@ -19572,6 +19824,22 @@
         "required": [
           "namespace_id",
           "node_id"
+        ],
+        "type": "object"
+      },
+      "Tool_system_design_get_functional_locations_Input": {
+        "properties": {
+          "id": {
+            "description": "Unique identifier of the Functional Location.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
         ],
         "type": "object"
       },
@@ -20501,6 +20769,27 @@
           },
           "status": {
             "description": "Value for status."
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "Tool_system_design_upsert_functional_locations_Input": {
+        "properties": {
+          "change_origin": {
+            "description": "Value for change_origin."
+          },
+          "expected_version": {
+            "description": "Concurrency check version.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Optional ID of existing Functional Location to update.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
           }
         },
         "required": [],
@@ -24538,6 +24827,17 @@
         "mutation": true,
         "name": "resources_archive_allocations"
       },
+      "resources_archive_resources": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Soft-archive a Resource resource.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_resources_archive_resources_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "resources_archive_resources"
+      },
       "resources_archive_travel_legs": {
         "admin_only": false,
         "cacheable": false,
@@ -24614,6 +24914,17 @@
         "migration": false,
         "mutation": false,
         "name": "resources_get_resource"
+      },
+      "resources_get_resources": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Fetch a single Resource resource by ID.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_resources_get_resources_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "resources_get_resources"
       },
       "resources_get_travel_legs": {
         "admin_only": false,
@@ -24757,6 +25068,17 @@
         "migration": false,
         "mutation": true,
         "name": "resources_upsert_allocations"
+      },
+      "resources_upsert_resources": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Create or update a Resource resource.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_resources_upsert_resources_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "resources_upsert_resources"
       },
       "resources_upsert_travel_legs": {
         "admin_only": false,
@@ -25770,6 +26092,17 @@
         "mutation": true,
         "name": "system_design_archive_devices"
       },
+      "system_design_archive_functional_locations": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Soft-archive a Functional Location resource.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_system_design_archive_functional_locations_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "system_design_archive_functional_locations"
+      },
       "system_design_archive_ports": {
         "admin_only": false,
         "cacheable": false,
@@ -26033,6 +26366,17 @@
         "migration": false,
         "mutation": false,
         "name": "system_design_get_functional_location"
+      },
+      "system_design_get_functional_locations": {
+        "admin_only": false,
+        "cacheable": true,
+        "description": "Fetch a single Functional Location resource by ID.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_system_design_get_functional_locations_Input"
+        },
+        "migration": false,
+        "mutation": false,
+        "name": "system_design_get_functional_locations"
       },
       "system_design_get_ports": {
         "admin_only": false,
@@ -26418,6 +26762,17 @@
         "migration": false,
         "mutation": true,
         "name": "system_design_upsert_devices"
+      },
+      "system_design_upsert_functional_locations": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Create or update a Functional Location resource.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_system_design_upsert_functional_locations_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "system_design_upsert_functional_locations"
       },
       "system_design_upsert_ports": {
         "admin_only": false,
@@ -86367,6 +86722,1271 @@
         ]
       }
     },
+    "/api/resources/resources": {
+      "post": {
+        "description": "handle_create (/api/resources/resources)",
+        "operationId": "post_api_resources_resources",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Resources_resources_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resources_resources"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_create (/api/resources/resources)",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/api/resources/resources/bulk": {
+      "post": {
+        "description": "handle_bulk (/api/resources/resources/bulk)",
+        "operationId": "post_api_resources_resources_bulk",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "items": {
+                    "items": {
+                      "$ref": "#/components/schemas/Resources_resources_Create"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resources_resources"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_bulk (/api/resources/resources/bulk)",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/api/resources/resources/{id}": {
+      "get": {
+        "description": "handle_get (/api/resources/resources/{id})",
+        "operationId": "get_api_resources_resources_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resources_resources"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_get (/api/resources/resources/{id})",
+        "tags": [
+          "resources"
+        ]
+      },
+      "patch": {
+        "description": "handle_patch (/api/resources/resources/{id})",
+        "operationId": "patch_api_resources_resources_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Resources_resources_Update"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resources_resources"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_patch (/api/resources/resources/{id})",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/api/resources/resources/{id}/archive": {
+      "post": {
+        "description": "handle_archive (/api/resources/resources/{id}/archive)",
+        "operationId": "post_api_resources_resources_id_archive",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Resources_resources_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resources_resources"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_archive (/api/resources/resources/{id}/archive)",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/api/resources/resources/{id}/comments": {
+      "get": {
+        "description": "handle_list_comments (/api/resources/resources/{id}/comments)",
+        "operationId": "get_api_resources_resources_id_comments",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EntityComment"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_comments (/api/resources/resources/{id}/comments)",
+        "tags": [
+          "resources"
+        ]
+      },
+      "post": {
+        "description": "handle_add_comment (/api/resources/resources/{id}/comments)",
+        "operationId": "post_api_resources_resources_id_comments",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityCommentInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resources_resources"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_add_comment (/api/resources/resources/{id}/comments)",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/api/resources/resources/{id}/documents": {
+      "get": {
+        "description": "handle_list_documents (/api/resources/resources/{id}/documents)",
+        "operationId": "get_api_resources_resources_id_documents",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum number of records to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque pagination cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort column with optional +/- prefix",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated list of projected fields",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Full-text search query across: display_name",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on kind",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on ref_id",
+            "in": "query",
+            "name": "ref_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resources_resources_List"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_documents (/api/resources/resources/{id}/documents)",
+        "tags": [
+          "resources"
+        ]
+      },
+      "post": {
+        "description": "handle_attach_document (/api/resources/resources/{id}/documents)",
+        "operationId": "post_api_resources_resources_id_documents",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Resources_resources_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resources_resources"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_attach_document (/api/resources/resources/{id}/documents)",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/api/resources/resources/{id}/documents/{doc_id}": {
+      "delete": {
+        "description": "handle_detach_document (/api/resources/resources/{id}/documents/{doc_id})",
+        "operationId": "delete_api_resources_resources_id_documents_doc_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL path parameter doc_id",
+            "in": "path",
+            "name": "doc_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resources_resources"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_detach_document (/api/resources/resources/{id}/documents/{doc_id})",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/api/resources/resources/{id}/events": {
+      "get": {
+        "description": "handle_events (/api/resources/resources/{id}/events)",
+        "operationId": "get_api_resources_resources_id_events",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EntityTimelineEvent"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_events (/api/resources/resources/{id}/events)",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/api/resources/resources/{id}/restore": {
+      "post": {
+        "description": "handle_restore (/api/resources/resources/{id}/restore)",
+        "operationId": "post_api_resources_resources_id_restore",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Resources_resources_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resources_resources"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_restore (/api/resources/resources/{id}/restore)",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/api/resources/resources/{id}/tags": {
+      "get": {
+        "description": "handle_list_tags (/api/resources/resources/{id}/tags)",
+        "operationId": "get_api_resources_resources_id_tags",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_tags (/api/resources/resources/{id}/tags)",
+        "tags": [
+          "resources"
+        ]
+      },
+      "post": {
+        "description": "handle_add_tag (/api/resources/resources/{id}/tags)",
+        "operationId": "post_api_resources_resources_id_tags",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityTagInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resources_resources"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_add_tag (/api/resources/resources/{id}/tags)",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/api/resources/resources/{id}/tags/{tag}": {
+      "delete": {
+        "description": "handle_remove_tag (/api/resources/resources/{id}/tags/{tag})",
+        "operationId": "delete_api_resources_resources_id_tags_tag",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL path parameter tag",
+            "in": "path",
+            "name": "tag",
+            "required": true,
+            "schema": {
+              "format": "string",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resources_resources"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_remove_tag (/api/resources/resources/{id}/tags/{tag})",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
     "/api/resources/travel": {
       "post": {
         "description": "POST /api/resources/travel \u2014 plan/book travel behind Contract-B spend gate (RS-5).",
@@ -112942,6 +114562,1253 @@
           }
         },
         "summary": "handle_remove_tag (/api/system_design/devices/{id}/tags/{tag})",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/functional-locations": {
+      "post": {
+        "description": "handle_create (/api/system_design/functional-locations)",
+        "operationId": "post_api_system_design_functional_locations",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/System_design_functional_locations_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/System_design_functional_locations"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_create (/api/system_design/functional-locations)",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/functional-locations/bulk": {
+      "post": {
+        "description": "handle_bulk (/api/system_design/functional-locations/bulk)",
+        "operationId": "post_api_system_design_functional_locations_bulk",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "items": {
+                    "items": {
+                      "$ref": "#/components/schemas/System_design_functional_locations_Create"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/System_design_functional_locations"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_bulk (/api/system_design/functional-locations/bulk)",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/functional-locations/{id}": {
+      "get": {
+        "description": "handle_get (/api/system_design/functional-locations/{id})",
+        "operationId": "get_api_system_design_functional_locations_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/System_design_functional_locations"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_get (/api/system_design/functional-locations/{id})",
+        "tags": [
+          "system_design"
+        ]
+      },
+      "patch": {
+        "description": "handle_patch (/api/system_design/functional-locations/{id})",
+        "operationId": "patch_api_system_design_functional_locations_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/System_design_functional_locations_Update"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/System_design_functional_locations"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_patch (/api/system_design/functional-locations/{id})",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/functional-locations/{id}/archive": {
+      "post": {
+        "description": "handle_archive (/api/system_design/functional-locations/{id}/archive)",
+        "operationId": "post_api_system_design_functional_locations_id_archive",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/System_design_functional_locations_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/System_design_functional_locations"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_archive (/api/system_design/functional-locations/{id}/archive)",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/functional-locations/{id}/comments": {
+      "get": {
+        "description": "handle_list_comments (/api/system_design/functional-locations/{id}/comments)",
+        "operationId": "get_api_system_design_functional_locations_id_comments",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EntityComment"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_comments (/api/system_design/functional-locations/{id}/comments)",
+        "tags": [
+          "system_design"
+        ]
+      },
+      "post": {
+        "description": "handle_add_comment (/api/system_design/functional-locations/{id}/comments)",
+        "operationId": "post_api_system_design_functional_locations_id_comments",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityCommentInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/System_design_functional_locations"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_add_comment (/api/system_design/functional-locations/{id}/comments)",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/functional-locations/{id}/documents": {
+      "get": {
+        "description": "handle_list_documents (/api/system_design/functional-locations/{id}/documents)",
+        "operationId": "get_api_system_design_functional_locations_id_documents",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum number of records to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque pagination cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort column with optional +/- prefix",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated list of projected fields",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on change_origin",
+            "in": "query",
+            "name": "change_origin",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/System_design_functional_locations_List"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_documents (/api/system_design/functional-locations/{id}/documents)",
+        "tags": [
+          "system_design"
+        ]
+      },
+      "post": {
+        "description": "handle_attach_document (/api/system_design/functional-locations/{id}/documents)",
+        "operationId": "post_api_system_design_functional_locations_id_documents",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/System_design_functional_locations_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/System_design_functional_locations"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_attach_document (/api/system_design/functional-locations/{id}/documents)",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/functional-locations/{id}/documents/{doc_id}": {
+      "delete": {
+        "description": "handle_detach_document (/api/system_design/functional-locations/{id}/documents/{doc_id})",
+        "operationId": "delete_api_system_design_functional_locations_id_documents_doc_id",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL path parameter doc_id",
+            "in": "path",
+            "name": "doc_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/System_design_functional_locations"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_detach_document (/api/system_design/functional-locations/{id}/documents/{doc_id})",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/functional-locations/{id}/events": {
+      "get": {
+        "description": "handle_events (/api/system_design/functional-locations/{id}/events)",
+        "operationId": "get_api_system_design_functional_locations_id_events",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EntityTimelineEvent"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_events (/api/system_design/functional-locations/{id}/events)",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/functional-locations/{id}/restore": {
+      "post": {
+        "description": "handle_restore (/api/system_design/functional-locations/{id}/restore)",
+        "operationId": "post_api_system_design_functional_locations_id_restore",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/System_design_functional_locations_Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/System_design_functional_locations"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_restore (/api/system_design/functional-locations/{id}/restore)",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/functional-locations/{id}/tags": {
+      "get": {
+        "description": "handle_list_tags (/api/system_design/functional-locations/{id}/tags)",
+        "operationId": "get_api_system_design_functional_locations_id_tags",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_list_tags (/api/system_design/functional-locations/{id}/tags)",
+        "tags": [
+          "system_design"
+        ]
+      },
+      "post": {
+        "description": "handle_add_tag (/api/system_design/functional-locations/{id}/tags)",
+        "operationId": "post_api_system_design_functional_locations_id_tags",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityTagInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/System_design_functional_locations"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_add_tag (/api/system_design/functional-locations/{id}/tags)",
+        "tags": [
+          "system_design"
+        ]
+      }
+    },
+    "/api/system_design/functional-locations/{id}/tags/{tag}": {
+      "delete": {
+        "description": "handle_remove_tag (/api/system_design/functional-locations/{id}/tags/{tag})",
+        "operationId": "delete_api_system_design_functional_locations_id_tags_tag",
+        "parameters": [
+          {
+            "description": "URL path parameter id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL path parameter tag",
+            "in": "path",
+            "name": "tag",
+            "required": true,
+            "schema": {
+              "format": "string",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/System_design_functional_locations"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "handle_remove_tag (/api/system_design/functional-locations/{id}/tags/{tag})",
         "tags": [
           "system_design"
         ]

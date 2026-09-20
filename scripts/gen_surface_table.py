@@ -41,6 +41,41 @@ def git_show(repo, baseline, path):
     return result.stdout
 
 
+def get_excluded_verbs(spec_call_node):
+    """Extract the ``excluded_verbs`` frozenset literal from a ``ResourceSpec(...)``
+    AST call node, if declared. Returns a set of verb-name strings (``"list"``,
+    ``"get"``, ``"upsert"``, ``"archive"``), or an empty set if the keyword is
+    absent -- matching ``ResourceSpec.excluded_verbs``'s own default.
+
+    Only handles a literal ``frozenset({...})`` / ``frozenset()`` call or a bare
+    set/frozenset literal, which is the only shape any real spec uses (see
+    ``ResourceSpec.excluded_verbs``'s own docstring) -- a spec computing this
+    value dynamically would need a source read this static walker cannot do,
+    same limitation the rest of this generator already has for every other
+    field.
+    """
+    for kw in spec_call_node.keywords:
+        if kw.arg != "excluded_verbs":
+            continue
+        value = kw.value
+        if isinstance(value, ast.Call) and getattr(value.func, "id", None) in (
+            "frozenset",
+            "set",
+        ):
+            if not value.args:
+                return set()
+            arg = value.args[0]
+        else:
+            arg = value
+        if isinstance(arg, ast.Set):
+            return {
+                elt.value
+                for elt in arg.elts
+                if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+            }
+    return set()
+
+
 def get_import_map(code):
     tree = ast.parse(code)
     import_map = {}
@@ -143,12 +178,15 @@ def extract_tools(repo, baseline):
                     elif kw.arg == "entity" and isinstance(kw.value, ast.Constant):
                         spec_entity = str(kw.value.value)
                 mcp_slug = (spec_entity or "resource").replace("-", "_").strip("_")
+                excluded = get_excluded_verbs(rnode)
                 for op, flag in (
                     ("list", "cacheable"),
                     ("get", "cacheable"),
                     ("upsert", "mutation"),
                     ("archive", "mutation"),
                 ):
+                    if op in excluded:
+                        continue
                     tools.append(
                         {
                             "name": f"{spec_engine}_{op}_{mcp_slug}",
@@ -251,24 +289,33 @@ def extract_routes(repo, baseline):
                         spec_entity = str(kw.value.value)
                 rest_slug = (spec_entity or "resource").replace("_", "-").strip("-")
                 prefix = f"/api/{spec_engine}/{rest_slug}"
-                for path, op in (
-                    (prefix, "handle_list"),
-                    (prefix, "handle_create"),
-                    (f"{prefix}/bulk", "handle_bulk"),
-                    (f"{prefix}/{{id}}", "handle_get"),
-                    (f"{prefix}/{{id}}", "handle_patch"),
-                    (f"{prefix}/{{id}}/archive", "handle_archive"),
-                    (f"{prefix}/{{id}}/restore", "handle_restore"),
-                    (f"{prefix}/{{id}}/events", "handle_events"),
-                    (f"{prefix}/{{id}}/comments", "handle_list_comments"),
-                    (f"{prefix}/{{id}}/comments", "handle_add_comment"),
-                    (f"{prefix}/{{id}}/tags", "handle_list_tags"),
-                    (f"{prefix}/{{id}}/tags", "handle_add_tag"),
-                    (f"{prefix}/{{id}}/tags/{{tag}}", "handle_remove_tag"),
-                    (f"{prefix}/{{id}}/documents", "handle_list_documents"),
-                    (f"{prefix}/{{id}}/documents", "handle_attach_document"),
-                    (f"{prefix}/{{id}}/documents/{{doc_id}}", "handle_detach_document"),
+                excluded = get_excluded_verbs(rnode)
+                # verb grouping mirrors ResourceSpec.excluded_verbs' own docstring
+                # (nce/resource_surface/spec.py) and make_resource_routes'
+                # core_routes list (nce/resource_surface/rest.py) exactly: "upsert"
+                # covers create+patch+bulk, "archive" covers archive+restore. The
+                # nine sub-resource routes (events/comments/tags/documents) carry
+                # no verb and are never excluded.
+                for path, op, verb in (
+                    (prefix, "handle_list", "list"),
+                    (prefix, "handle_create", "upsert"),
+                    (f"{prefix}/bulk", "handle_bulk", "upsert"),
+                    (f"{prefix}/{{id}}", "handle_get", "get"),
+                    (f"{prefix}/{{id}}", "handle_patch", "upsert"),
+                    (f"{prefix}/{{id}}/archive", "handle_archive", "archive"),
+                    (f"{prefix}/{{id}}/restore", "handle_restore", "archive"),
+                    (f"{prefix}/{{id}}/events", "handle_events", None),
+                    (f"{prefix}/{{id}}/comments", "handle_list_comments", None),
+                    (f"{prefix}/{{id}}/comments", "handle_add_comment", None),
+                    (f"{prefix}/{{id}}/tags", "handle_list_tags", None),
+                    (f"{prefix}/{{id}}/tags", "handle_add_tag", None),
+                    (f"{prefix}/{{id}}/tags/{{tag}}", "handle_remove_tag", None),
+                    (f"{prefix}/{{id}}/documents", "handle_list_documents", None),
+                    (f"{prefix}/{{id}}/documents", "handle_attach_document", None),
+                    (f"{prefix}/{{id}}/documents/{{doc_id}}", "handle_detach_document", None),
                 ):
+                    if verb is not None and verb in excluded:
+                        continue
                     routes.append(
                         {
                             "path": path,

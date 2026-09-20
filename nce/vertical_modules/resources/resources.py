@@ -2,22 +2,29 @@
 
 Lane E Wave E-6:
 Registers C12 ResourceSpecs for Resources' owned node types in
-node-ownership.json that have a real, tenant-scoped, single-table DDL and no
-naming collision with an existing tool:
+node-ownership.json that have a real, tenant-scoped, single-table DDL:
   - ALLOCATION (allocations table)
   - TRAVEL_LEG (travel_legs table)
 
-RESOURCE stays exempted (see resource_surface/exemptions.py): its node type
-name equals the engine name, so entity="resources" would generate an MCP
-tool named resources_list_resources -- which collides with, and silently
-overwrites via TOOL_REGISTRY.update(), the existing hand-written tool of
-that exact name (nce/tool_registry.py, handle_resources_list_resources).
-Found by diffing the exact TOOL_REGISTRY key set before/after registering
-the spec, not by assuming the usual +4 delta. get/upsert/archive for this
-node type would NOT collide (the existing hand-written tools use the
-singular "resources_get_resource" etc.), only list does; reported rather
-than silently renaming the entity to dodge it, since that also changes
-REST paths and isn't this lane's call to make alone.
+Wave E-19 (charter's ResourceSpec.excluded_verbs mechanism) closes the third:
+  - RESOURCE (resources table)
+
+RESOURCE's node type name equals the engine name, so entity="resources"
+would generate an MCP tool named resources_list_resources -- which collides
+with the existing hand-written tool of that exact name
+(nce/tool_registry.py, handle_resources_list_resources). get/upsert/archive
+do NOT collide (the existing hand-written tools use the singular
+"resources_get_resource" etc.), only list does -- found originally (Wave
+E-6) by diffing the exact TOOL_REGISTRY key set before/after registering a
+naive spec. RESOURCE_SPEC below declares excluded_verbs=frozenset({"list"}):
+the hand-written resources_list_resources stays authoritative for listing
+(kind filter, pagination -- do_list_resources), and this spec adds
+get/upsert/archive only. Renaming the entity to dodge the collision instead
+was considered and rejected (changes the REST path, a bigger decision than
+this wave); excluding one verb changes nothing else, verified directly
+against rest.py/mcp.py before building the mechanism (every verb is an
+independent closure, combined into a flat list/dict at the very end of
+make_resource_routes/build_mcp_tool_specs -- zero cross-calls between them).
 """
 
 from __future__ import annotations
@@ -123,3 +130,32 @@ TRAVEL_LEG_SPEC = ResourceSpec(
     enabled_guard=_require_resources_enabled_via_pool,
 )
 register_resource(TRAVEL_LEG_SPEC)
+
+
+# 3. RESOURCE
+RESOURCE_SPEC = ResourceSpec(
+    engine="resources",
+    entity="resources",
+    node_type="RESOURCE",
+    table_name="resources",
+    id_field="id",
+    version_field="updated_at",
+    soft_delete_field=None,
+    filterable_fields=("kind", "ref_id"),
+    searchable_fields=("display_name",),
+    writable_fields=(
+        "kind",
+        "ref_id",
+        "display_name",
+        "attrs",
+    ),
+    excluded_verbs=frozenset({"list"}),
+    description=(
+        "Schedulable resource master data (employee/contractor/vehicle/tool). "
+        "list is excluded -- the existing hand-written resources_list_resources "
+        "tool (kind filter, pagination) stays authoritative; this spec adds "
+        "get/upsert/archive only."
+    ),
+    enabled_guard=_require_resources_enabled_via_pool,
+)
+register_resource(RESOURCE_SPEC)
