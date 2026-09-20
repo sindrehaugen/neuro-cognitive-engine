@@ -4887,6 +4887,10 @@
       "Sales_quotes": {
         "description": "C12 customer quotes with versioning, currency, VAT totals, and validity windows.",
         "properties": {
+          "billing_method": {
+            "description": "Field billing_method",
+            "type": "string"
+          },
           "currency": {
             "description": "Field currency",
             "type": "string"
@@ -4951,6 +4955,9 @@
       "Sales_quotes_Create": {
         "description": "Payload for creating a sales quotes",
         "properties": {
+          "billing_method": {
+            "type": "string"
+          },
           "currency": {
             "type": "string"
           },
@@ -5013,6 +5020,9 @@
       "Sales_quotes_Update": {
         "description": "Payload for updating a sales quotes",
         "properties": {
+          "billing_method": {
+            "type": "string"
+          },
           "currency": {
             "type": "string"
           },
@@ -16653,6 +16663,23 @@
         ],
         "type": "object"
       },
+      "Tool_sales_clone_quote_Input": {
+        "properties": {
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "quote_id": {
+            "description": "The SOURCE Sales QUOTE identifier to clone.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "quote_id"
+        ],
+        "type": "object"
+      },
       "Tool_sales_create_customer_Input": {
         "properties": {
           "customer_id": {
@@ -17195,6 +17222,10 @@
       },
       "Tool_sales_list_quotes_Input": {
         "properties": {
+          "billing_method": {
+            "description": "Filter by billing_method.",
+            "type": "string"
+          },
           "cursor": {
             "description": "Pagination cursor from previous response.",
             "type": "string"
@@ -17550,6 +17581,9 @@
       },
       "Tool_sales_upsert_quotes_Input": {
         "properties": {
+          "billing_method": {
+            "description": "Value for billing_method."
+          },
           "currency": {
             "description": "Value for currency."
           },
@@ -25312,6 +25346,17 @@
         "migration": false,
         "mutation": false,
         "name": "sales_calculate_commission"
+      },
+      "sales_clone_quote": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Clone a Sales quote and its BOM_LINE content into a new draft quote. The new quote is always status=draft, version=1, with its own quote_number (source number + -COPY suffix). Cloned lines are written through the sales-owned content:create:external transition, not the source line's own original flow -- provenance is a copy-into-new-container operation, not a new origination path.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_sales_clone_quote_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "sales_clone_quote"
       },
       "sales_create_customer": {
         "admin_only": true,
@@ -96425,6 +96470,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Equality filter on billing_method",
+            "in": "query",
+            "name": "billing_method",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -97132,6 +97186,15 @@
             "description": "Equality filter on is_archived",
             "in": "query",
             "name": "is_archived",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Equality filter on billing_method",
+            "in": "query",
+            "name": "billing_method",
             "required": false,
             "schema": {
               "type": "string"

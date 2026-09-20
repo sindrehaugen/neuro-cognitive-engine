@@ -1486,6 +1486,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_archive_quotes` |  | yes |  |  |
 | `sales_archive_signed_baselines` |  | yes |  |  |
 | `sales_calculate_commission` |  |  | yes |  |
+| `sales_clone_quote` |  | yes |  |  |
 | `sales_create_customer` | yes | yes |  |  |
 | `sales_create_deal` | yes | yes |  |  |
 | `sales_create_lead` | yes | yes |  |  |
@@ -1657,4 +1658,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 1111 REST endpoints, 528 MCP tools._
+_Totals: 1111 REST endpoints, 529 MCP tools._
