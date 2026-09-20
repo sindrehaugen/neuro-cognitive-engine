@@ -708,6 +708,56 @@ async def _setup_live_context() -> AsyncGenerator[GoldenThreadScenarioContext, N
     engine.pg_pool = pool
     populate_engine_modules(engine)
 
+    # Found 2026-09-20 while closing break-h9a: step 22 (cert_expiry) failed
+    # standalone in the full sequential run, unrelated to that seam.
+    # nce.events.bus.publish() drops an event with no consumer registered in
+    # OUTBOX_HANDLERS instead of inserting it into outbox_events (own
+    # docstring: "the event is dropped with a debug log ... rather than
+    # being inserted into outbox_events (Wave B-R2)"). This fixture never
+    # registered any outbox subscriber, so CERTIFICATION.EXPIRED (and every
+    # other C4/C13 selector) was dropped silently for every Golden Thread
+    # run -- nightly-golden-thread.yml collects this file alone against a
+    # fresh container, so nothing else ever calls the registrars either.
+    # This is the exact production wiring order from mcp_stdio_main.py
+    # (engine registrations first -- some subscribers read one at delivery
+    # time and raise EngineNotRegisteredError without it -- then the
+    # subscribers themselves), and the same import list
+    # tests/test_outbox_selectors_have_consumers.py uses for its own static
+    # check. All of these are documented idempotent-per-process, so running
+    # them once per test class (this fixture's scope) is safe.
+    from nce.read_model_subscribers import register_read_model_subscribers
+    from nce.vertical_modules.field_tech.work_orders import (
+        register_field_tech_subscribers,
+    )
+    from nce.vertical_modules.hr.compliance import (
+        register_hr_compliance_subscribers,
+    )
+    from nce.vertical_modules.notifications.subscribers import (
+        register_notifications_subscribers,
+    )
+    from nce.vertical_modules.project import automation as project_automation
+    from nce.vertical_modules.project import tasks as project_tasks
+    from nce.vertical_modules.resources import watcher as resources_watcher
+    from nce.vertical_modules.resources.watcher import (
+        register_resources_event_subscribers,
+    )
+    from nce.vertical_modules.system_design.subscribers import (
+        register_system_design_subscribers,
+    )
+
+    resources_watcher.register_engine(engine)
+    project_tasks.register_engine(engine)
+    project_automation.register_engine(engine)
+
+    register_system_design_subscribers()
+    register_read_model_subscribers()
+    register_field_tech_subscribers()
+    register_resources_event_subscribers()
+    register_hr_compliance_subscribers()
+    register_notifications_subscribers()
+    project_tasks.register_bom_task_subscriber()
+    project_automation.register_automation_subscribers()
+
     ctx = GoldenThreadScenarioContext(
         pool=pool,
         engine=engine,
