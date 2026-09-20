@@ -306,6 +306,63 @@ async def test_mcp_upsert_twice_updates_secondary_table_in_place(
     assert secondary_row["status"] == "active"
 
 
+@pytest.mark.asyncio
+async def test_mcp_upsert_first_touch_of_secondary_table_still_satisfies_node_type_not_null(
+    engine: NCEEngine, namespace_id: uuid.UUID, probe_mcp_tools, pg_pool: asyncpg.Pool
+) -> None:
+    """mcp.py's handle_upsert relational branch (`elif spec.table_name:`) had
+    zero node_type re-injection at all before this fix -- it called
+    upsert_secondary_tables() with raw `data`, which never carries node_type
+    (not in any real spec's writable_fields, since it is derived from the
+    spec's own identity, never client-supplied). A first-ever write to
+    node_state via this path (some node_state field supplied, node_type
+    absent) would 500 on node_state.node_type's NOT NULL constraint --
+    the exact bug class #394 fixed in rest.py's handle_create/handle_patch,
+    found here as a third, separate, still-live call site while mapping
+    MCP test coverage for that PR.
+
+    Every existing MCP-upsert test against MULTI_TABLE_PROBE_SPEC sidesteps
+    this: they either supply node_type explicitly (this probe spec, unlike
+    every real spec, has node_type in its OWN writable_fields --
+    test_mcp_upsert_then_get_merges_both_tables /
+    test_mcp_upsert_twice_updates_secondary_table_in_place) or supply zero
+    node_state fields at all (test_mcp_get_with_no_secondary_row_still_
+    returns_primary -- sec_data ends up empty, the table is skipped
+    entirely). This test supplies `status` (a node_state field) while
+    deliberately omitting node_type -- the one combination none of the
+    others exercise, and the one a real client is free to send since
+    nothing requires supplying every writable field.
+    """
+    node_label = f"probe-device-mcp-first-touch-{uuid.uuid4().hex[:8]}"
+    await _create_kg_node(pg_pool, namespace_id, node_label)
+    upsert = probe_mcp_tools[f"system_design_upsert_{MULTI_TABLE_PROBE_SPEC.mcp_slug}"]
+
+    result = json.loads(
+        await upsert.handler(
+            engine,
+            {
+                "namespace_id": str(namespace_id),
+                "id": node_label,
+                "signal_format": "HDMI 2.1",
+                "status": "planned",
+                # node_type deliberately omitted -- see docstring.
+            },
+        )
+    )
+    assert result["status"] == "ok", result
+
+    async with pg_pool.acquire() as conn:
+        secondary_row = await conn.fetchrow(
+            "SELECT node_type, status FROM system_design_node_state "
+            "WHERE namespace_id = $1 AND node_label = $2",
+            namespace_id,
+            node_label,
+        )
+    assert secondary_row is not None, "node_state row was not written at all"
+    assert secondary_row["node_type"] == "DEVICE"
+    assert secondary_row["status"] == "planned"
+
+
 def _probe_rest_app() -> Starlette:
     return Starlette(
         routes=make_resource_routes(MULTI_TABLE_PROBE_SPEC),
