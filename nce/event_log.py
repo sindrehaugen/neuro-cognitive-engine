@@ -333,6 +333,10 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "sales_read_model": "namespace_id",
     "sales_targets": "namespace_id",
     "sales_signed_baselines": "namespace_id",
+    # Sales engine, Wave B-2: CONTACT satellite table (kg_nodes-primary
+    # identity, name/email/phone here -- joined by label, FK'd to kg_nodes
+    # same as system_design's satellite tables, migration 097).
+    "sales_contacts": "namespace_id",
     "vendor_scorecards": "namespace_id",
     "contractor_profiles": "namespace_id",
     # Agreements Engine (Module 3): review queue (W2) & extraction runs (W2).

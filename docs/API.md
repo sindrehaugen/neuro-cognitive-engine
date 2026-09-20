@@ -733,6 +733,22 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/sales/agreements` | `api_admin_sales_agreements` |
 | GET | `/api/sales/agreements/{id}` | `api_admin_sales_agreement_detail` |
 | GET | `/api/sales/commission` | `api_admin_sales_calculate_commission` |
+| GET | `/api/sales/contacts` | `handle_list` |
+| POST | `/api/sales/contacts` | `handle_create` |
+| POST | `/api/sales/contacts/bulk` | `handle_bulk` |
+| GET | `/api/sales/contacts/{id}` | `handle_get` |
+| PATCH | `/api/sales/contacts/{id}` | `handle_patch` |
+| POST | `/api/sales/contacts/{id}/archive` | `handle_archive` |
+| GET | `/api/sales/contacts/{id}/comments` | `handle_list_comments` |
+| POST | `/api/sales/contacts/{id}/comments` | `handle_add_comment` |
+| GET | `/api/sales/contacts/{id}/documents` | `handle_list_documents` |
+| POST | `/api/sales/contacts/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/sales/contacts/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/sales/contacts/{id}/events` | `handle_events` |
+| POST | `/api/sales/contacts/{id}/restore` | `handle_restore` |
+| GET | `/api/sales/contacts/{id}/tags` | `handle_list_tags` |
+| POST | `/api/sales/contacts/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/sales/contacts/{id}/tags/{tag}` | `handle_remove_tag` |
 | GET | `/api/sales/customers` | `api_admin_sales_customers` |
 | GET | `/api/sales/customers` | `handle_list` |
 | POST | `/api/sales/customers` | `api_admin_sales_create_customer` |
@@ -1412,6 +1428,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `resources_upsert_travel_legs` |  | yes |  |  |
 | `rotate_signing_key` |  | yes |  |  |
 | `sales_add_quote_line` |  | yes |  |  |
+| `sales_archive_contacts` |  | yes |  |  |
 | `sales_archive_customers` |  | yes |  |  |
 | `sales_archive_deals` |  | yes |  |  |
 | `sales_archive_leads` |  | yes |  |  |
@@ -1424,6 +1441,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_divergence_log` |  |  | yes |  |
 | `sales_draft_quote` |  |  | yes |  |
 | `sales_edit_deal` | yes | yes |  |  |
+| `sales_get_contacts` |  |  | yes |  |
 | `sales_get_customers` |  |  | yes |  |
 | `sales_get_deals` |  |  | yes |  |
 | `sales_get_leads` |  |  | yes |  |
@@ -1431,6 +1449,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_get_quotes` |  |  | yes |  |
 | `sales_get_signed_baseline` |  |  |  |  |
 | `sales_get_signed_baselines` |  |  | yes |  |
+| `sales_list_contacts` |  |  | yes |  |
 | `sales_list_customers` |  |  | yes |  |
 | `sales_list_deals` |  |  | yes |  |
 | `sales_list_leads` |  |  | yes |  |
@@ -1440,6 +1459,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `sales_ping` |  |  | yes |  |
 | `sales_request_signature` | yes | yes |  |  |
 | `sales_score_lead` |  |  | yes |  |
+| `sales_upsert_contacts` |  | yes |  |  |
 | `sales_upsert_customers` |  | yes |  |  |
 | `sales_upsert_deals` |  | yes |  |  |
 | `sales_upsert_leads` |  | yes |  |  |
@@ -1578,4 +1598,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 1047 REST endpoints, 513 MCP tools._
+_Totals: 1063 REST endpoints, 517 MCP tools._
