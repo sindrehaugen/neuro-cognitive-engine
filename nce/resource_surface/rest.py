@@ -922,8 +922,38 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                         secondary_field_names = {
                             f for sec in spec.secondary_tables for f in sec.fields
                         }
+                        # node_type is never in spec.writable_fields (derived
+                        # from the spec's own identity, never client-supplied),
+                        # so raw `data` never carries it -- this loop would
+                        # otherwise leave a NOT NULL node_type column
+                        # unpopulated on a fresh secondary-table row.
+                        #
+                        # Gated on sec_data already non-empty from real
+                        # caller-supplied content, matching handle_patch's
+                        # conservative injection (see its own comment) --
+                        # NOT the unconditional form this branch used before.
+                        # read.py's _fetch_node_state_by_labels documents why
+                        # unconditional is wrong for system_design_node_state
+                        # specifically: "no row" and "row, status NULL" are
+                        # two distinguishable, separately-consumed facts (its
+                        # own module docstring's three-facts paragraph, cited
+                        # in full there), observed independently by
+                        # do_get_topology (GET /api/system-design/topology,
+                        # the system_design_get_topology MCP tool, and
+                        # Copper) and by this generic surface's own
+                        # handle_get (row_to_dict emits every column key even
+                        # when NULL, so a secondary row's mere existence is
+                        # itself observable). A bare create with no state key
+                        # supplied must leave a node with NO row -- the "no
+                        # row" fact -- not a node_type-only row that silently
+                        # asserts "row, status NULL" about a node nobody
+                        # declared anything about. Devices.py's own
+                        # hand-written author path already follows this rule
+                        # (writes a state row only when the node is new to
+                        # the call or a state key is supplied); this generic
+                        # surface had not adopted it until now.
                         sec_data = {k: v for k, v in data.items() if k in secondary_field_names}
-                        if "node_type" in secondary_field_names:
+                        if sec_data and "node_type" in secondary_field_names:
                             sec_data["node_type"] = spec.node_type
                         if sec_data:
                             created.update(
@@ -960,11 +990,10 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                     # has a node_type-bearing secondary_tables entry today
                     # (every one that does is graph-primary), so this is
                     # currently unreachable in production -- fixed for
-                    # parity with the graph branch and the CREATE verb's own
-                    # unconditional-injection precedent there, not because a
-                    # live caller hits it.
+                    # parity with the graph branch's conservative gate, not
+                    # because a live caller hits it.
                     sec_data = {k: v for k, v in data.items() if k in secondary_field_names}
-                    if "node_type" in secondary_field_names:
+                    if sec_data and "node_type" in secondary_field_names:
                         sec_data["node_type"] = spec.node_type
                     session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                     async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:

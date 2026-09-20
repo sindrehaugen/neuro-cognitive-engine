@@ -668,8 +668,19 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                     )
 
                     secondary_field_names = {f for sec in spec.secondary_tables for f in sec.fields}
+                    # node_type is never in spec.writable_fields (derived
+                    # from the spec's own identity, never client-supplied).
+                    # Gated on sec_data already non-empty from real
+                    # caller-supplied content, matching this file's own
+                    # relational upsert branch and rest.py's handle_patch --
+                    # NOT the unconditional form this branch used before.
+                    # See rest.py's handle_create graph branch for the full
+                    # reasoning (read.py's three-facts paragraph: "no row"
+                    # and "row, status NULL" are distinguishable, separately
+                    # observed facts for system_design_node_state, and a bare
+                    # upsert with no state key supplied must leave "no row").
                     sec_data = {k: v for k, v in data.items() if k in secondary_field_names}
-                    if "node_type" in secondary_field_names:
+                    if sec_data and "node_type" in secondary_field_names:
                         sec_data["node_type"] = spec.node_type
                     if sec_data:
                         await upsert_secondary_tables(

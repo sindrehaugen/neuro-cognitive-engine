@@ -382,30 +382,21 @@ async def test_device_rest_patch_first_touch_of_secondary_table(
     exists specifically because the failure at that mismatch produced a
     500 on `main` that would have gone uncaught.
 
-    IMPORTANT -- what this test actually proves, verified against a real
-    container: NOT that handle_patch's graph-branch gate is load-bearing.
-    handle_create's own node_type injection (rest.py, `if is_graph:` branch)
-    is unconditional whenever "node_type" is in ANY of the spec's
-    secondary_tables' `fields`, regardless of which table the caller's real
-    data actually routes to -- it is not scoped per-table. DEVICE_PROBE_SPEC
-    declares node_type on its node_state secondary table, so the CREATE
-    below (which supplies only `signal_format`, routed to the
-    *capabilities* table) still pre-seeds a `system_design_node_state` row
-    containing `node_type="DEVICE"` and nothing else. By the time the PATCH
-    runs, node_state already exists -- the PATCH is an UPDATE, not the
-    first-ever INSERT this test's name and (now-corrected) comment below
-    describe, and it would pass identically with the graph-branch PATCH
-    gate reverted (confirmed empirically).
-
-    This test is kept as a parity/regression tripwire, not proof of the
-    PATCH-side guard: it documents the graph branch's current end-to-end
-    behavior (create-then-patch succeeds, node_type ends up right) and
-    would catch a *future* change that removes CREATE's pre-seeding for
-    this shape -- e.g. a node_state row cleared out-of-band, or a new
-    writer that reaches handle_patch without going through handle_create
-    first. The actual first-touch-via-PATCH proof for the graph branch
-    does not exist yet; it would need a way to reach PATCH on a node whose
-    secondary tables were never touched by CREATE at all.
+    UPDATED -- what this test proves changed with the phantom-row fix
+    (handle_create's graph branch is now gated the same conservative way
+    as handle_patch's, see rest.py's own comment there). Before that fix,
+    handle_create injected node_type unconditionally whenever it was
+    declared on any secondary table, so the CREATE below (only
+    `signal_format` supplied, routed to the *capabilities* table) would
+    have pre-seeded a `system_design_node_state` row anyway, making the
+    PATCH below an UPDATE rather than the first-ever INSERT this test's
+    name describes -- this test could not have told the difference, and
+    an earlier version of this docstring said so. Now that CREATE only
+    writes a state row when a real state key is supplied, the CREATE below
+    (no status/revision/salience) leaves NO row at all, so the PATCH IS
+    genuinely the first write -- this test now proves what its name always
+    claimed. See test_device_rest_create_gates_node_state_on_a_real_state_key
+    below for the direct create-side proof of the same fix.
     """
     node_label = f"probe-kg-device-first-touch-{uuid.uuid4().hex[:8]}"
     async with _rest_client(engine, DEVICE_PROBE_SPEC) as client:
@@ -415,9 +406,9 @@ async def test_device_rest_patch_first_touch_of_secondary_table(
                 "namespace_id": str(namespace_id),
                 "node_label": node_label,
                 "signal_format": "DisplayPort",
-                # No status/revision/salience supplied -- but see the
-                # docstring above: node_state still gets a node_type-only
-                # row here anyway, via CREATE's unconditional injection.
+                # No status/revision/salience -- leaves no node_state row at
+                # all now (see docstring above), so the PATCH below really
+                # is node_state's first-ever write for this node.
             },
         )
         assert r1.status_code == 201, r1.text
@@ -503,6 +494,142 @@ async def test_rest_patch_by_true_kg_nodes_id_resolves_to_the_correct_row(
     )
     assert rows[0]["id"] == true_id
     assert rows[0]["label"] == node_label
+
+
+@pytest.mark.asyncio
+async def test_device_rest_create_gates_node_state_on_a_real_state_key(
+    engine: NCEEngine, namespace_id: uuid.UUID
+) -> None:
+    """A bare create -- no status/revision/salience supplied -- must leave
+    the node with NO system_design_node_state row at all, not a
+    node_type-only row.
+
+    Before this fix, handle_create's graph branch injected node_type
+    unconditionally whenever it was declared on any of the spec's
+    secondary tables, regardless of whether the caller supplied any other
+    node_state field -- creating exactly the row read.py's own module
+    docstring says must never happen by other means: a node silently
+    moved from "no row" (nothing declared) to "row, status NULL" (data
+    held, no lifecycle declared), the two facts do_get_topology is built
+    and tested to keep apart. Two independent surfaces would have observed
+    it: do_get_topology's own `state` map (a present key with null values
+    instead of an absent key) and this generic surface's own handle_get
+    (row_to_dict emits every column, so the secondary row's mere existence
+    changes the response shape).
+
+    A create that DOES supply a state key must still get a real row, with
+    node_type populated -- this is the half that keeps #394/#396's NOT
+    NULL fix from regressing: node_type is never in writable_fields, so it
+    must still be injected whenever a real write to node_state happens.
+    """
+    bare_label = f"probe-kg-device-bare-create-{uuid.uuid4().hex[:8]}"
+    stated_label = f"probe-kg-device-stated-create-{uuid.uuid4().hex[:8]}"
+    async with _rest_client(engine, DEVICE_PROBE_SPEC) as client:
+        r_bare = await client.post(
+            "/api/system_design/devices-kgprimary-probe",
+            json={
+                "namespace_id": str(namespace_id),
+                "node_label": bare_label,
+                "signal_format": "DisplayPort",
+                # No status/revision/salience -- must leave node_state untouched.
+            },
+        )
+        assert r_bare.status_code == 201, r_bare.text
+
+        r_stated = await client.post(
+            "/api/system_design/devices-kgprimary-probe",
+            json={
+                "namespace_id": str(namespace_id),
+                "node_label": stated_label,
+                "signal_format": "HDMI 2.1",
+                "status": "planned",
+            },
+        )
+        assert r_stated.status_code == 201, r_stated.text
+
+    async with engine.pg_pool.acquire() as conn:
+        bare_row = await conn.fetchrow(
+            "SELECT 1 FROM system_design_node_state WHERE namespace_id = $1 AND node_label = $2",
+            namespace_id,
+            bare_label,
+        )
+        stated_row = await conn.fetchrow(
+            "SELECT node_type, status FROM system_design_node_state "
+            "WHERE namespace_id = $1 AND node_label = $2",
+            namespace_id,
+            stated_label,
+        )
+    assert bare_row is None, (
+        "a bare create (no state key supplied) wrote a system_design_node_state "
+        "row anyway -- the exact phantom-row shape this fix removes"
+    )
+    assert stated_row is not None, "a create supplying a state key wrote no row at all"
+    assert stated_row["node_type"] == "DEVICE"
+    assert stated_row["status"] == "planned"
+
+
+@pytest.mark.asyncio
+async def test_device_mcp_upsert_gates_node_state_on_a_real_state_key(
+    engine: NCEEngine, namespace_id: uuid.UUID
+) -> None:
+    """MCP counterpart of test_device_rest_create_gates_node_state_on_a_real_state_key
+    above -- same gate, same shared reasoning, but a genuinely independent
+    code path: mcp.py's handle_upsert graph branch builds its own
+    INSERT/UPDATE against system_design_node_state, never sharing SQL
+    construction with rest.py's handle_create (established while mapping
+    archive/restore coverage for #394/#396 -- a fix or a regression on one
+    side says nothing about the other).
+    """
+    tools = build_mcp_tool_specs(DEVICE_PROBE_SPEC)
+    upsert = tools[f"system_design_upsert_{DEVICE_PROBE_SPEC.mcp_slug}"]
+    bare_label = f"probe-kg-device-mcp-bare-{uuid.uuid4().hex[:8]}"
+    stated_label = f"probe-kg-device-mcp-stated-{uuid.uuid4().hex[:8]}"
+
+    bare_result = json.loads(
+        await upsert.handler(
+            engine,
+            {
+                "namespace_id": str(namespace_id),
+                "id": bare_label,
+                "signal_format": "DisplayPort",
+                # No status/revision/salience -- must leave node_state untouched.
+            },
+        )
+    )
+    assert bare_result["status"] == "ok", bare_result
+
+    stated_result = json.loads(
+        await upsert.handler(
+            engine,
+            {
+                "namespace_id": str(namespace_id),
+                "id": stated_label,
+                "signal_format": "HDMI 2.1",
+                "status": "planned",
+            },
+        )
+    )
+    assert stated_result["status"] == "ok", stated_result
+
+    async with engine.pg_pool.acquire() as conn:
+        bare_row = await conn.fetchrow(
+            "SELECT 1 FROM system_design_node_state WHERE namespace_id = $1 AND node_label = $2",
+            namespace_id,
+            bare_label,
+        )
+        stated_row = await conn.fetchrow(
+            "SELECT node_type, status FROM system_design_node_state "
+            "WHERE namespace_id = $1 AND node_label = $2",
+            namespace_id,
+            stated_label,
+        )
+    assert bare_row is None, (
+        "a bare upsert (no state key supplied) wrote a system_design_node_state "
+        "row anyway -- the exact phantom-row shape this fix removes"
+    )
+    assert stated_row is not None, "an upsert supplying a state key wrote no row at all"
+    assert stated_row["node_type"] == "DEVICE"
+    assert stated_row["status"] == "planned"
 
 
 @pytest.mark.asyncio

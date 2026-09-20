@@ -429,6 +429,77 @@ async def test_rest_create_then_get_merges_both_tables(
 
 
 @pytest.mark.asyncio
+async def test_rest_create_gates_node_state_on_a_real_state_key(
+    probe_rest_client: httpx.AsyncClient, namespace_id: uuid.UUID, pg_pool: asyncpg.Pool
+) -> None:
+    """RELATIONAL branch (`elif spec.table_name:` inside handle_create) --
+    the create-side counterpart of #396's relational upsert fix, and the
+    same conservative gate as the graph branch's own create-side fix
+    (test_device_rest_create_gates_node_state_on_a_real_state_key in
+    test_resource_surface_kg_nodes_primary_live.py).
+
+    Currently unreachable in production the same way #394/#396's relational
+    fixes are (no real relational spec has a node_type-bearing
+    secondary_tables entry today; every one that does is graph-primary) --
+    proven here against MULTI_TABLE_PROBE_SPEC for parity, not a live
+    report. A bare create (no node_state-routed field at all) must leave
+    NO row; a create supplying a node_state field (`status`) but omitting
+    `node_type` -- the shape a real client is free to send, since nothing
+    requires supplying every writable field even on a spec where node_type
+    happens to be client-writable -- must still get a row with node_type
+    correctly populated by injection.
+    """
+    bare_label = f"probe-device-rest-bare-{uuid.uuid4().hex[:8]}"
+    stated_label = f"probe-device-rest-stated-{uuid.uuid4().hex[:8]}"
+    await _create_kg_node(pg_pool, namespace_id, bare_label)
+    await _create_kg_node(pg_pool, namespace_id, stated_label)
+
+    async with probe_rest_client as client:
+        r_bare = await client.post(
+            "/api/system_design/devices-multitable-probe",
+            json={
+                "namespace_id": str(namespace_id),
+                "node_label": bare_label,
+                "signal_format": "DisplayPort",
+                # No node_type/status/revision -- must leave node_state untouched.
+            },
+        )
+        assert r_bare.status_code == 201, r_bare.text
+
+        r_stated = await client.post(
+            "/api/system_design/devices-multitable-probe",
+            json={
+                "namespace_id": str(namespace_id),
+                "node_label": stated_label,
+                "signal_format": "HDMI 2.1",
+                "status": "planned",
+                # node_type deliberately omitted -- see docstring.
+            },
+        )
+        assert r_stated.status_code == 201, r_stated.text
+
+    async with pg_pool.acquire() as conn:
+        bare_row = await conn.fetchrow(
+            "SELECT 1 FROM system_design_node_state WHERE namespace_id = $1 AND node_label = $2",
+            namespace_id,
+            bare_label,
+        )
+        stated_row = await conn.fetchrow(
+            "SELECT node_type, status FROM system_design_node_state "
+            "WHERE namespace_id = $1 AND node_label = $2",
+            namespace_id,
+            stated_label,
+        )
+    assert bare_row is None, (
+        "a bare create (no state key supplied) wrote a system_design_node_state "
+        "row anyway -- the exact phantom-row shape this fix removes"
+    )
+    assert stated_row is not None, "a create supplying a state key wrote no row at all"
+    assert stated_row["node_type"] == "DEVICE"
+    assert stated_row["status"] == "planned"
+
+
+@pytest.mark.asyncio
 async def test_rest_patch_updates_secondary_table(
     probe_rest_client: httpx.AsyncClient, namespace_id: uuid.UUID, pg_pool: asyncpg.Pool
 ) -> None:
