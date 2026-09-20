@@ -285,6 +285,26 @@ register_resource(QUOTE_SPEC)
 # ---------------------------------------------------------------------------
 # 5. SIGNED_BASELINE
 # ---------------------------------------------------------------------------
+# excluded_verbs (2026-09-20 measurement, reason (2) in ResourceSpec's own
+# docstring -- storage permanently forbids the verb, cited by exact line, not
+# a policy choice): nce/schema.sql's tenant-RLS grant loop restricts
+# sales_signed_baselines to `GRANT SELECT, INSERT` only (no UPDATE/DELETE),
+# permanently, alongside event_log/event_parents/divergence_log -- see the
+# `IF t IN ('event_log', 'event_parents', 'divergence_log',
+# 'sales_signed_baselines') THEN` branch, nce/schema.sql:2400-2403.
+# "archive" (archive+restore) needs UPDATE and is cleanly grant-forbidden.
+# "upsert" (create+patch+bulk, one grouped verb -- see this field's own
+# mapping below) is excluded as a whole because patch's UPDATE is
+# grant-forbidden; create alone would only need the granted INSERT, but the
+# generated create path fabricates a UUID string for spec.id_field
+# unconditionally (_prepare_item / the inline equivalent in handle_create),
+# and sales_signed_baselines.id is BIGSERIAL, not UUID -- confirmed the only
+# registered spec anywhere with a non-UUID primary key, confirmed never
+# exercised (do_freeze_baseline, sales/baseline.py, uses its own hand-written
+# INSERT and never touches this route), confirmed no caller wants it. Not
+# fixing the shared id-fabrication code for a route being removed in the same
+# change. id_field stays "id" -- get-by-id (the only surviving write-adjacent
+# verb that reads it) works fine against a bigint.
 SIGNED_BASELINE_SPEC = ResourceSpec(
     engine="sales",
     entity="signed_baselines",
@@ -301,10 +321,13 @@ SIGNED_BASELINE_SPEC = ResourceSpec(
         "signed_total_nok",
         "signed_at",
     ),
+    excluded_verbs=frozenset({"upsert", "archive"}),
     description=(
         "Legally signed, immutable quote baseline (margin and total at signing time); "
         "append-only, no version/soft-delete field -- the database grants this table "
-        "only SELECT and INSERT."
+        "only SELECT and INSERT. list/get only -- upsert/archive excluded because the "
+        "storage permanently forbids them (schema.sql:2400-2403), not because they are "
+        "unimplemented."
     ),
 )
 register_resource(SIGNED_BASELINE_SPEC)

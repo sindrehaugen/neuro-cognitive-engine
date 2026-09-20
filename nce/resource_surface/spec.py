@@ -206,20 +206,60 @@ class ResourceSpec:
                             REST routes and the MCP tool surface for this spec:
                             any subset of ``{"list", "get", "upsert", "archive"}``.
                             Empty by default: every spec still gets all four
-                            unless it opts out here. Exists for exactly one
-                            reason -- a spec whose ``entity`` happens to
-                            produce a generated tool name that collides with
-                            an existing hand-written tool (verified: every
+                            unless it opts out here. Exactly two legitimate
+                            reasons, and no others:
+                            (1) a spec whose ``entity`` happens to produce a
+                            generated tool name that collides with an
+                            existing hand-written tool (verified: every
                             handler for every verb is an independent closure
                             in rest.py/mcp.py with zero cross-calls between
                             them, and build_all_resource_routes/
                             build_all_resource_tool_specs just extend a flat
                             list/dict over whatever each spec returns -- so
-                            omitting one verb changes nothing else). Do NOT
-                            use this to hide a verb you simply have not
-                            implemented validation for; that is what
-                            ``governed_verbs`` and hand-written retirement are
-                            for. On the REST side the mapping is:
+                            omitting one verb changes nothing else);
+                            (2) the storage itself permanently forbids the
+                            verb -- a database GRANT or constraint that makes
+                            it impossible, not a policy choice or an
+                            unfinished validation. The test for (2): can you
+                            cite the exact schema.sql line that makes the
+                            verb impossible? If yes, this reason applies. If
+                            you are pointing at an intention ("we don't want
+                            to expose this yet") rather than a mechanism, it
+                            does not -- that is reason (1)'s absence, not a
+                            new reason, and the verb stays advertised.
+                            SIGNED_BASELINE_SPEC (sales/resources.py) is the
+                            precedent for (2): schema.sql's tenant-RLS grant
+                            loop restricts ``sales_signed_baselines`` to
+                            ``GRANT SELECT, INSERT`` only (no UPDATE/DELETE),
+                            permanently, alongside ``event_log``/
+                            ``event_parents``/``divergence_log`` -- cite that
+                            exact IF-branch, not a paraphrase of it, when
+                            using reason (2).
+                            KNOWN LIMITATION, not to be fixed speculatively:
+                            reason (2)'s verb granularity is coarser than
+                            what a grant can express. ``"upsert"`` bundles
+                            create+patch+bulk as one unit (see the REST
+                            mapping below); a grant that forbids UPDATE but
+                            allows INSERT makes only ``patch`` impossible,
+                            not ``create`` -- but the verb can only be
+                            excluded as a whole. SIGNED_BASELINE_SPEC's own
+                            comment is explicit about this: ``"upsert"`` is
+                            excluded there because ``patch`` is
+                            grant-forbidden and ``create`` alone has no named
+                            caller, not because the grant forbids create too
+                            -- do not let a future reason-(2) citation claim
+                            more than the grant actually says. If a spec ever
+                            needs create excluded while patch stays (or vice
+                            versa), this field cannot express that; splitting
+                            ``"upsert"`` into separate verbs is the fix, and
+                            it is out of scope until a second spec actually
+                            needs it -- one affected spec today, no named
+                            caller wanting the split.
+                            Do NOT use this field to hide a
+                            verb you simply have not implemented validation
+                            for; that is what ``governed_verbs`` and
+                            hand-written retirement are for. On the REST side
+                            the mapping is:
                             ``"list"`` -> the list route only; ``"get"`` ->
                             the get-by-id route only; ``"upsert"`` -> create +
                             patch + bulk (mirrors MCP's single upsert tool
