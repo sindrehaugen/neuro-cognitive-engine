@@ -234,7 +234,28 @@ class ResourceSpec:
                             permanently, alongside ``event_log``/
                             ``event_parents``/``divergence_log`` -- cite that
                             exact IF-branch, not a paraphrase of it, when
-                            using reason (2). Do NOT use this field to hide a
+                            using reason (2).
+                            KNOWN LIMITATION, not to be fixed speculatively:
+                            reason (2)'s verb granularity is coarser than
+                            what a grant can express. ``"upsert"`` bundles
+                            create+patch+bulk as one unit (see the REST
+                            mapping below); a grant that forbids UPDATE but
+                            allows INSERT makes only ``patch`` impossible,
+                            not ``create`` -- but the verb can only be
+                            excluded as a whole. SIGNED_BASELINE_SPEC's own
+                            comment is explicit about this: ``"upsert"`` is
+                            excluded there because ``patch`` is
+                            grant-forbidden and ``create`` alone has no named
+                            caller, not because the grant forbids create too
+                            -- do not let a future reason-(2) citation claim
+                            more than the grant actually says. If a spec ever
+                            needs create excluded while patch stays (or vice
+                            versa), this field cannot express that; splitting
+                            ``"upsert"`` into separate verbs is the fix, and
+                            it is out of scope until a second spec actually
+                            needs it -- one affected spec today, no named
+                            caller wanting the split.
+                            Do NOT use this field to hide a
                             verb you simply have not implemented validation
                             for; that is what ``governed_verbs`` and
                             hand-written retirement are for. On the REST side
