@@ -318,6 +318,27 @@ _EXPECTED_TOOLS: dict[str, dict[str, bool]] = {
         "admin_only": False,
         "mutation": True,
     },
+    # Lane E Wave E-11 (PR #311) -- C12 kg_nodes-primary resource surface for
+    # DEVICE/PORT/RACK/CABLE (nce/vertical_modules/system_design/resources.py).
+    # list/get are cacheable reads; upsert/archive are mutations. Flags read
+    # directly off the live TOOL_REGISTRY entries before pinning them here,
+    # not assumed from the list/get/upsert/archive naming convention.
+    "system_design_list_devices": {"cacheable": True, "admin_only": False, "mutation": False},
+    "system_design_get_devices": {"cacheable": True, "admin_only": False, "mutation": False},
+    "system_design_upsert_devices": {"cacheable": False, "admin_only": False, "mutation": True},
+    "system_design_archive_devices": {"cacheable": False, "admin_only": False, "mutation": True},
+    "system_design_list_ports": {"cacheable": True, "admin_only": False, "mutation": False},
+    "system_design_get_ports": {"cacheable": True, "admin_only": False, "mutation": False},
+    "system_design_upsert_ports": {"cacheable": False, "admin_only": False, "mutation": True},
+    "system_design_archive_ports": {"cacheable": False, "admin_only": False, "mutation": True},
+    "system_design_list_racks": {"cacheable": True, "admin_only": False, "mutation": False},
+    "system_design_get_racks": {"cacheable": True, "admin_only": False, "mutation": False},
+    "system_design_upsert_racks": {"cacheable": False, "admin_only": False, "mutation": True},
+    "system_design_archive_racks": {"cacheable": False, "admin_only": False, "mutation": True},
+    "system_design_list_cables": {"cacheable": True, "admin_only": False, "mutation": False},
+    "system_design_get_cables": {"cacheable": True, "admin_only": False, "mutation": False},
+    "system_design_upsert_cables": {"cacheable": False, "admin_only": False, "mutation": True},
+    "system_design_archive_cables": {"cacheable": False, "admin_only": False, "mutation": True},
 }
 
 

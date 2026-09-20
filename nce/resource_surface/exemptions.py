@@ -71,39 +71,11 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
             "Scheduled for Wave C-3 along with design versioning."
         ),
     ),
-    "DEVICE": ResourceExemption(
-        owner_engine="system_design",
-        reason=(
-            "Multi-table spread across device_capabilities, node_state, and geometry. "
-            "Spec is not 1:1 with a table; scheduled for System Design resource wave."
-        ),
-    ),
-    "PORT": ResourceExemption(
-        owner_engine="system_design",
-        reason=(
-            "Multi-table spread sharing device capabilities with DEVICE and barred by "
-            "CHECK constraint from standalone 1:1 table; pending System Design wave."
-        ),
-    ),
     "SIGNAL_CHAIN": ResourceExemption(
         owner_engine="system_design",
         reason=(
             "Retired in Batch 067i as a virtual connected_to walk over PORT; retained "
             "in node-ownership as an inert reservation with no table anywhere."
-        ),
-    ),
-    "RACK": ResourceExemption(
-        owner_engine="system_design",
-        reason=(
-            "Multi-table spread covering physical cabinet placement, rack units, and "
-            "geometry; scheduled for System Design physical layout resource wave."
-        ),
-    ),
-    "CABLE": ResourceExemption(
-        owner_engine="system_design",
-        reason=(
-            "Multi-table spread covering physical cable runs, wire gauge, and topology "
-            "endpoints; scheduled for System Design infrastructure resource wave."
         ),
     ),
     "BOM_LINE": ResourceExemption(

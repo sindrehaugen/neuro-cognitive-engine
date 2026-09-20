@@ -966,6 +966,70 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | GET | `/api/system-design/topology` | `api_system_design_get_topology` |
 | POST | `/api/system-design/topology` | `api_system_design_author_topology` |
 | POST | `/api/system-design/validate` | `api_system_design_validate_design_graph` |
+| GET | `/api/system_design/cables` | `handle_list` |
+| POST | `/api/system_design/cables` | `handle_create` |
+| POST | `/api/system_design/cables/bulk` | `handle_bulk` |
+| GET | `/api/system_design/cables/{id}` | `handle_get` |
+| PATCH | `/api/system_design/cables/{id}` | `handle_patch` |
+| POST | `/api/system_design/cables/{id}/archive` | `handle_archive` |
+| GET | `/api/system_design/cables/{id}/comments` | `handle_list_comments` |
+| POST | `/api/system_design/cables/{id}/comments` | `handle_add_comment` |
+| GET | `/api/system_design/cables/{id}/documents` | `handle_list_documents` |
+| POST | `/api/system_design/cables/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/system_design/cables/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/system_design/cables/{id}/events` | `handle_events` |
+| POST | `/api/system_design/cables/{id}/restore` | `handle_restore` |
+| GET | `/api/system_design/cables/{id}/tags` | `handle_list_tags` |
+| POST | `/api/system_design/cables/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/system_design/cables/{id}/tags/{tag}` | `handle_remove_tag` |
+| GET | `/api/system_design/devices` | `handle_list` |
+| POST | `/api/system_design/devices` | `handle_create` |
+| POST | `/api/system_design/devices/bulk` | `handle_bulk` |
+| GET | `/api/system_design/devices/{id}` | `handle_get` |
+| PATCH | `/api/system_design/devices/{id}` | `handle_patch` |
+| POST | `/api/system_design/devices/{id}/archive` | `handle_archive` |
+| GET | `/api/system_design/devices/{id}/comments` | `handle_list_comments` |
+| POST | `/api/system_design/devices/{id}/comments` | `handle_add_comment` |
+| GET | `/api/system_design/devices/{id}/documents` | `handle_list_documents` |
+| POST | `/api/system_design/devices/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/system_design/devices/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/system_design/devices/{id}/events` | `handle_events` |
+| POST | `/api/system_design/devices/{id}/restore` | `handle_restore` |
+| GET | `/api/system_design/devices/{id}/tags` | `handle_list_tags` |
+| POST | `/api/system_design/devices/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/system_design/devices/{id}/tags/{tag}` | `handle_remove_tag` |
+| GET | `/api/system_design/ports` | `handle_list` |
+| POST | `/api/system_design/ports` | `handle_create` |
+| POST | `/api/system_design/ports/bulk` | `handle_bulk` |
+| GET | `/api/system_design/ports/{id}` | `handle_get` |
+| PATCH | `/api/system_design/ports/{id}` | `handle_patch` |
+| POST | `/api/system_design/ports/{id}/archive` | `handle_archive` |
+| GET | `/api/system_design/ports/{id}/comments` | `handle_list_comments` |
+| POST | `/api/system_design/ports/{id}/comments` | `handle_add_comment` |
+| GET | `/api/system_design/ports/{id}/documents` | `handle_list_documents` |
+| POST | `/api/system_design/ports/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/system_design/ports/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/system_design/ports/{id}/events` | `handle_events` |
+| POST | `/api/system_design/ports/{id}/restore` | `handle_restore` |
+| GET | `/api/system_design/ports/{id}/tags` | `handle_list_tags` |
+| POST | `/api/system_design/ports/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/system_design/ports/{id}/tags/{tag}` | `handle_remove_tag` |
+| GET | `/api/system_design/racks` | `handle_list` |
+| POST | `/api/system_design/racks` | `handle_create` |
+| POST | `/api/system_design/racks/bulk` | `handle_bulk` |
+| GET | `/api/system_design/racks/{id}` | `handle_get` |
+| PATCH | `/api/system_design/racks/{id}` | `handle_patch` |
+| POST | `/api/system_design/racks/{id}/archive` | `handle_archive` |
+| GET | `/api/system_design/racks/{id}/comments` | `handle_list_comments` |
+| POST | `/api/system_design/racks/{id}/comments` | `handle_add_comment` |
+| GET | `/api/system_design/racks/{id}/documents` | `handle_list_documents` |
+| POST | `/api/system_design/racks/{id}/documents` | `handle_attach_document` |
+| DELETE | `/api/system_design/racks/{id}/documents/{doc_id}` | `handle_detach_document` |
+| GET | `/api/system_design/racks/{id}/events` | `handle_events` |
+| POST | `/api/system_design/racks/{id}/restore` | `handle_restore` |
+| GET | `/api/system_design/racks/{id}/tags` | `handle_list_tags` |
+| POST | `/api/system_design/racks/{id}/tags` | `handle_add_tag` |
+| DELETE | `/api/system_design/racks/{id}/tags/{tag}` | `handle_remove_tag` |
 | POST | `/api/vendors/certs/upsert` | `api_vendors_upsert_cert` |
 | POST | `/api/vendors/contractors/upsert` | `api_vendors_upsert_contractor` |
 | GET | `/api/vendors/contractors/{id}` | `api_vendors_get_contractor` |
@@ -1408,6 +1472,10 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `support_upsert_sla_clocks` |  | yes |  |  |
 | `support_upsert_ticket_actions` |  | yes |  |  |
 | `support_upsert_tickets` |  | yes |  |  |
+| `system_design_archive_cables` |  | yes |  |  |
+| `system_design_archive_devices` |  | yes |  |  |
+| `system_design_archive_ports` |  | yes |  |  |
+| `system_design_archive_racks` |  | yes |  |  |
 | `system_design_assign_design_request` |  | yes |  |  |
 | `system_design_assign_fl_responsible` |  | yes |  |  |
 | `system_design_author_functional_location` |  | yes |  |  |
@@ -1421,24 +1489,32 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `system_design_fulfill_request_from_quote` |  | yes |  |  |
 | `system_design_generate_sow` |  |  |  |  |
 | `system_design_get_active_design` |  |  | yes |  |
+| `system_design_get_cables` |  |  | yes |  |
 | `system_design_get_design` |  |  | yes |  |
 | `system_design_get_design_request` |  |  | yes |  |
+| `system_design_get_devices` |  |  | yes |  |
 | `system_design_get_fl_ancestors` |  |  | yes |  |
 | `system_design_get_fl_children` |  |  | yes |  |
 | `system_design_get_fl_path` |  |  | yes |  |
 | `system_design_get_fl_room_category` |  |  | yes |  |
 | `system_design_get_functional_location` |  |  | yes |  |
+| `system_design_get_ports` |  |  | yes |  |
+| `system_design_get_racks` |  |  | yes |  |
 | `system_design_get_room_category` |  |  | yes |  |
 | `system_design_get_room_spec` |  |  | yes |  |
 | `system_design_get_signal_rules` |  |  | yes |  |
 | `system_design_get_standards` |  |  | yes |  |
 | `system_design_get_topology` |  |  | yes |  |
 | `system_design_inspect_signal_flow` |  |  |  |  |
+| `system_design_list_cables` |  |  | yes |  |
 | `system_design_list_design_requests` |  |  | yes |  |
 | `system_design_list_designs` |  |  | yes |  |
+| `system_design_list_devices` |  |  | yes |  |
 | `system_design_list_fl_responsible` |  |  | yes |  |
 | `system_design_list_functional_locations` |  |  | yes |  |
 | `system_design_list_my_responsible_fls` |  |  | yes |  |
+| `system_design_list_ports` |  |  | yes |  |
+| `system_design_list_racks` |  |  | yes |  |
 | `system_design_list_room_categories` |  |  | yes |  |
 | `system_design_merge_functional_locations` |  | yes |  |  |
 | `system_design_move_functional_location` |  | yes |  |  |
@@ -1455,6 +1531,10 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `system_design_unassign_fl_responsible` |  | yes |  |  |
 | `system_design_update_design` |  | yes |  |  |
 | `system_design_update_design_request` |  | yes |  |  |
+| `system_design_upsert_cables` |  | yes |  |  |
+| `system_design_upsert_devices` |  | yes |  |  |
+| `system_design_upsert_ports` |  | yes |  |  |
+| `system_design_upsert_racks` |  | yes |  |  |
 | `system_design_validate_design_graph` |  |  |  |  |
 | `trigger_consolidation` |  | yes |  |  |
 | `trust_dial_get_status` |  |  | yes |  |
@@ -1477,4 +1557,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 966 REST endpoints, 493 MCP tools._
+_Totals: 1030 REST endpoints, 509 MCP tools._
