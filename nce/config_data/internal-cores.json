@@ -12,7 +12,7 @@
   "nce/vertical_modules/economy/contracts.py::do_upsert_contract": {
     "engine": "economy",
     "owner": "MLV15D-E1",
-    "reason": "Financial contract graph mutation core; scheduled for REST route and MCP tool exposure in MLV15D Wave E-1."
+    "reason": "Financial contract graph mutation core. Checked by function, not by wave name, against every exposure mechanism this estate uses (cron.py, all subscribe() sites, getattr dispatch, TOOL_REGISTRY, a2a.py/a2a_server.py, webhook_receiver/, admin_handlers/economy.py, economy/mcp_handlers.py) -- zero hits (Lane F, CORE_REASON_SWEEP_ADDENDUM_F.md). admin_handlers/economy.py imports a same-named-sounding neighbor, do_validate_contract, a validation-only function, not this one. Genuinely unshipped by any mechanism, not merely an unconfirmed wave citation -- no wave is currently scheduled."
   },
   "nce/vertical_modules/economy/finago.py::do_reconcile_gl": {
     "engine": "economy",
@@ -22,17 +22,17 @@
   "nce/vertical_modules/economy/ingestion.py::do_get_invoice_watermark": {
     "engine": "economy",
     "owner": "MLV15D-E1",
-    "reason": "Ingestion sync watermark reader; internal helper awaiting ingestion cron wiring in MLV15D Wave E-1."
+    "reason": "Ingestion sync watermark reader. Checked by function against every exposure mechanism (cron.py has zero references to this function or its module by name; also checked subscribe() sites, getattr dispatch, TOOL_REGISTRY, a2a.py/a2a_server.py, webhook_receiver/ -- Lane F, CORE_REASON_SWEEP_ADDENDUM_F.md). Genuinely unshipped, not merely a wave citation nobody could confirm -- no wave is currently scheduled."
   },
   "nce/vertical_modules/economy/ingestion.py::do_ingest_invoice": {
     "engine": "economy",
     "owner": "MLV15D-E1",
-    "reason": "Inbound invoice parsing and registration core; scheduled for webhook and tool exposure in MLV15D Wave E-1."
+    "reason": "Inbound invoice parsing and registration core. Checked by function against every exposure mechanism (nce/webhook_receiver/ has zero references; also checked cron.py, subscribe() sites, getattr dispatch, TOOL_REGISTRY, a2a.py/a2a_server.py -- Lane F, CORE_REASON_SWEEP_ADDENDUM_F.md). Genuinely unshipped, not merely a wave citation nobody could confirm -- no wave is currently scheduled."
   },
   "nce/vertical_modules/economy/recalibration.py::do_recalibrate_supplier": {
     "engine": "economy",
     "owner": "MLV15D-PR6",
-    "reason": "Supplier credit and payment term recalibration pure core; scheduled for surface in MLV15D Wave PR-6."
+    "reason": "Supplier credit and payment term recalibration pure core. Checked by function against every exposure mechanism this estate uses (cron.py has zero references to 'recalibrat' anywhere; also checked all subscribe() sites, getattr dispatch, TOOL_REGISTRY, a2a.py/a2a_server.py, webhook_receiver/ -- Lane F, CORE_REASON_SWEEP_ADDENDUM_F.md). Genuinely unshipped by any mechanism, not merely an unconfirmed wave citation -- no wave is currently scheduled."
   },
   "nce/vertical_modules/hr/skills.py::do_record_certification": {
     "engine": "hr",
@@ -52,7 +52,7 @@
   "nce/vertical_modules/procurement/recalibration.py::do_recalibrate_supplier": {
     "engine": "procurement",
     "owner": "MLV15D-PR6",
-    "reason": "Supplier reliability recalibration engine; scheduled for background cron wiring in MLV15D Wave PR-6."
+    "reason": "Supplier reliability recalibration engine. Sibling of economy/recalibration.py::do_recalibrate_supplier (same function name, different engine) -- same result, independently checked by function against every exposure mechanism (cron.py, subscribe() sites, getattr dispatch, TOOL_REGISTRY, a2a.py/a2a_server.py, webhook_receiver/ -- Lane F, CORE_REASON_SWEEP_ADDENDUM_F.md). Genuinely unshipped, not merely an unconfirmed wave citation -- no wave is currently scheduled."
   },
   "nce/vertical_modules/project/tasks.py::do_sync_bom_tasks": {
     "engine": "project",
