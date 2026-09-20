@@ -2030,9 +2030,7 @@ class TestGoldenThreadSteps:
         # A substring predicate over the live TOOL_REGISTRY, not a guessed exact
         # key -- see the xfail reason for why an exact name is the wrong check.
         matching = [name for name in TOOL_REGISTRY if "billing_run" in name]
-        assert matching, (
-            "BILLING_RUN has no tool registered under any name -- seam h9d still open"
-        )
+        assert matching, "BILLING_RUN has no tool registered under any name -- seam h9d still open"
         result = json.loads(
             await TOOL_REGISTRY[matching[0]].handler(
                 ctx.engine,
