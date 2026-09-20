@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.tool_pins import FLAG_PINS
+
 from nce.mcp_stdio_tools import TOOLS
 from nce.tool_registry import (
     ADMIN_ONLY_TOOLS,
@@ -10,21 +12,8 @@ from nce.tool_registry import (
     TOOL_REGISTRY,
 )
 
-EXPECTED_MARKETING_TOOLS = {
-    "marketing_find_case_study_candidates": {
-        "cacheable": True,
-        "admin_only": False,
-        "mutation": False,
-    },
-    "marketing_draft_case_study": {"cacheable": False, "admin_only": True, "mutation": True},
-    "marketing_request_testimonial": {"cacheable": False, "admin_only": True, "mutation": True},
-    "marketing_capture_testimonial": {"cacheable": False, "admin_only": True, "mutation": True},
-    "marketing_suggest_content": {"cacheable": True, "admin_only": False, "mutation": False},
-    "marketing_audit_seo": {"cacheable": True, "admin_only": False, "mutation": False},
-    "marketing_approve_content": {"cacheable": False, "admin_only": True, "mutation": True},
-    "marketing_publish_content": {"cacheable": False, "admin_only": True, "mutation": True},
-    "marketing_retract_testimonial": {"cacheable": False, "admin_only": True, "mutation": True},
-}
+# Pin lives in tests/tool_pins.py (FLAG_PINS["marketing"]) -- edit there.
+EXPECTED_MARKETING_TOOLS = FLAG_PINS["marketing"]
 
 
 def test_marketing_tools_registered_in_tool_registry():

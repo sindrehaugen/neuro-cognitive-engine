@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from tests.tool_pins import FLAG_PINS
 
 from nce.mcp_errors import MCP_SCOPE_FORBIDDEN, McpError
 from nce.tool_registry import (
@@ -63,75 +64,14 @@ def mock_engine():
 
 
 def test_all_support_tools_registered():
-    expected_tools = {
-        "support_query_ticket",
-        "support_open_ticket",
-        "support_sla_clock",
-        "support_health_score",
-        "support_troubleshoot",
-        "support_resolve_ticket",
-        "support_triage_ticket",
-        "support_record_touchpoint",
-        "support_dispatch_work_order",
-        "support_sync_now",
-    }
+    # Pin lives in tests/tool_pins.py (FLAG_PINS["support"]) -- edit there.
+    expected_tools = FLAG_PINS["support"]
     for tool_name in expected_tools:
         assert tool_name in TOOL_REGISTRY, f"Tool {tool_name} missing from TOOL_REGISTRY"
 
 
 def test_support_tools_flags():
-    expected_specs = {
-        "support_query_ticket": {
-            "cacheable": True,
-            "admin_only": False,
-            "mutation": False,
-        },
-        "support_open_ticket": {
-            "cacheable": False,
-            "admin_only": True,
-            "mutation": True,
-        },
-        "support_sla_clock": {
-            "cacheable": True,
-            "admin_only": False,
-            "mutation": False,
-        },
-        "support_health_score": {
-            "cacheable": True,
-            "admin_only": False,
-            "mutation": False,
-        },
-        "support_troubleshoot": {
-            "cacheable": True,
-            "admin_only": False,
-            "mutation": False,
-        },
-        "support_resolve_ticket": {
-            "cacheable": False,
-            "admin_only": True,
-            "mutation": True,
-        },
-        "support_triage_ticket": {
-            "cacheable": True,
-            "admin_only": False,
-            "mutation": False,
-        },
-        "support_record_touchpoint": {
-            "cacheable": False,
-            "admin_only": False,
-            "mutation": True,
-        },
-        "support_dispatch_work_order": {
-            "cacheable": False,
-            "admin_only": True,
-            "mutation": True,
-        },
-        "support_sync_now": {
-            "cacheable": False,
-            "admin_only": True,
-            "mutation": True,
-        },
-    }
+    expected_specs = FLAG_PINS["support"]
 
     for tool_name, expected in expected_specs.items():
         spec = TOOL_REGISTRY[tool_name]

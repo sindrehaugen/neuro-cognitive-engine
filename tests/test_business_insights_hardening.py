@@ -60,22 +60,13 @@ from nce.vertical_modules.business_insights.mcp_handlers import (
     handle_business_insights_risk_radar,
     handle_business_insights_run_scenario,
 )
+from tests.tool_pins import FLAG_PINS
 
 _NAMESPACE_A = "00000000-0000-4000-8000-000000000001"
 _NAMESPACE_B = "00000000-0000-4000-8000-000000000002"
 
-EXPECTED_BI_TOOLS = {
-    "business_insights_morning_brief": {"cacheable": True, "admin_only": True, "mutation": False},
-    "business_insights_risk_radar": {"cacheable": True, "admin_only": True, "mutation": False},
-    "business_insights_run_scenario": {"cacheable": False, "admin_only": True, "mutation": False},
-    "business_insights_generate_board_pack": {
-        "cacheable": False,
-        "admin_only": True,
-        "mutation": False,
-    },
-    "business_insights_kpi_dashboard": {"cacheable": True, "admin_only": True, "mutation": False},
-    "business_insights_ask_business": {"cacheable": False, "admin_only": True, "mutation": False},
-}
+# Pin lives in tests/tool_pins.py (FLAG_PINS["business_insights"]) -- edit there.
+EXPECTED_BI_TOOLS = FLAG_PINS["business_insights"]
 
 
 @pytest_asyncio.fixture

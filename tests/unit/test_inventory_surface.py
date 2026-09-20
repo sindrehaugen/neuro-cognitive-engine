@@ -37,6 +37,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from tests.tool_pins import FLAG_PINS
 
 from nce.vertical_modules.inventory.stock import InsufficientStockError
 
@@ -141,21 +142,9 @@ def test_package_imports() -> None:
 
 
 @pytest.mark.parametrize(
+    # Pin lives in tests/tool_pins.py (FLAG_PINS["inventory"]) -- edit there.
     "tool_name,expected_flags",
-    [
-        (
-            "inventory_stock_levels",
-            {"cacheable": True, "admin_only": False, "mutation": False, "migration": False},
-        ),
-        (
-            "inventory_transfer_stock",
-            {"cacheable": False, "admin_only": True, "mutation": True, "migration": False},
-        ),
-        (
-            "inventory_record_consumption",
-            {"cacheable": False, "admin_only": True, "mutation": True, "migration": False},
-        ),
-    ],
+    list(FLAG_PINS["inventory"].items()),
 )
 def test_inventory_tools_registered_with_correct_flags(
     tool_name: str, expected_flags: dict[str, bool]

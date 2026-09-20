@@ -17,6 +17,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from tests.tool_pins import FLAG_PINS
 
 from nce.mcp_errors import MCP_SCOPE_FORBIDDEN, McpError
 from nce.tool_registry import (
@@ -47,18 +48,8 @@ _NAMESPACE_ID = "00000000-0000-4000-8000-000000000001"
 _PARTNER_SCOPE_ID = "11111111-1111-4000-8000-111111111111"
 _WO_ID = "WO-2026-TEST-001"
 
-EXPECTED_FIELD_TECH_TOOLS = {
-    "field_tech_dispatch": {"cacheable": True, "admin_only": False, "mutation": False},
-    "field_tech_partner_view": {"cacheable": True, "admin_only": False, "mutation": False},
-    "field_tech_create_work_order": {"cacheable": False, "admin_only": True, "mutation": True},
-    "field_tech_assign": {"cacheable": False, "admin_only": True, "mutation": True},
-    "field_tech_complete_checklist": {"cacheable": False, "admin_only": False, "mutation": True},
-    "field_tech_scan_serial": {"cacheable": False, "admin_only": False, "mutation": True},
-    "field_tech_log_time": {"cacheable": False, "admin_only": False, "mutation": True},
-    "field_tech_attach_photo": {"cacheable": False, "admin_only": False, "mutation": True},
-    "field_tech_sync": {"cacheable": False, "admin_only": False, "mutation": True},
-    "field_tech_record_outcome": {"cacheable": False, "admin_only": True, "mutation": True},
-}
+# Pin lives in tests/tool_pins.py (FLAG_PINS["field_tech"]) -- edit there.
+EXPECTED_FIELD_TECH_TOOLS = FLAG_PINS["field_tech"]
 
 
 @pytest.fixture
