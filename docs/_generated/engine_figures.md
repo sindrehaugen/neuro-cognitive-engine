@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `559f35c` (public `main`) · **Last-audited:** generated
+> **Status:** shipped · **Verified-against:** `ba2e17a` (public `main`) · **Last-audited:** generated
 
 # NCE Engine Figures — Inventory & Counters
 
@@ -15,7 +15,7 @@
 | Counter | Value | Source of Truth |
 |---|---|---|
 | `TOOL_REGISTRY` entries | **545** MCP tools (70 shared + 475 across 25 engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = 545` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |
-| SQL migrations | 101 files (+1 optional), `001` → `105` — gaps at `002`, `009`, `059` (never allocated); `010` exists only under `nce/migrations/optional/` | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |
+| SQL migrations | 102 files (+1 optional), `001` → `106` — gaps at `002`, `009`, `059` (never allocated); `010` exists only under `nce/migrations/optional/` | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |
 | Golden Thread seam burndown | **4 of 37** lifecycle steps broken (4 distinct seams) | Generated in [`docs/_generated/golden_thread_seams.md`](golden_thread_seams.md) from [`tests/integration/test_golden_thread.py`](../../tests/integration/test_golden_thread.py) |
 | v1.6 C12 resource-surface registrations | **19 of 25** engines have `resources.py` | AST of `nce/vertical_modules/<engine>/resources.py` per engine — see the v1.6 section below |
 | `EXPECTED_TENANT_RLS_TABLES` | **117** | AST of [`nce/event_log.py`](../../nce/event_log.py) |
@@ -91,10 +91,10 @@
 
 ## SQL Migration Census
 
-- **Base Migrations:** 101 files (`001` → `105`)
+- **Base Migrations:** 102 files (`001` → `106`)
 - **Optional Migrations:** 1 files (`010_citus_sharding.sql`)
 - **Unallocated / Skipped Prefixes in Base:** `002`, `009`, `010`, `059`
-- **Total SQL Migration Files:** 102
+- **Total SQL Migration Files:** 103
 
 ## Golden Thread Seam Status
 
