@@ -5120,3 +5120,97 @@ SELECT
 FROM system_design_geometry
 WHERE node_label LIKE 'DESIGN_REQUEST:%'
 ON CONFLICT (namespace_id, node_label) DO NOTHING;
+
+-- ============================================================================
+-- C12 CUSTOMER_INVOICE resource (B-13)
+-- Migration 104_customer_invoices.sql
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS economy_customer_invoices (
+    id                    UUID          NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id          UUID          NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    node_label            TEXT          NOT NULL,
+    billing_candidate_id  UUID          NOT NULL REFERENCES economy_billing_candidates(id) ON DELETE CASCADE,
+    customer_id           UUID          REFERENCES sales_customers(id) ON DELETE SET NULL,
+    issue_date            DATE          NOT NULL,
+    due_date              DATE          NOT NULL,
+    currency              TEXT          NOT NULL DEFAULT 'NOK',
+    subtotal_amount       NUMERIC(18,2) NOT NULL CHECK (subtotal_amount >= 0),
+    vat_rate_pct          NUMERIC(5,2)  NOT NULL DEFAULT 25.00 CHECK (vat_rate_pct >= 0),
+    vat_amount            NUMERIC(18,2) NOT NULL CHECK (vat_amount >= 0),
+    total_amount          NUMERIC(18,2) NOT NULL CHECK (total_amount >= 0),
+    status                TEXT          NOT NULL DEFAULT 'proposal'
+                          CHECK (status IN ('proposal', 'approved', 'exported', 'paid')),
+    invoice_number        TEXT,
+    kid                   TEXT,
+    exported_at           TIMESTAMPTZ,
+    paid_at               TIMESTAMPTZ,
+    created_at            TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at            TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    UNIQUE (namespace_id, node_label),
+    UNIQUE (namespace_id, billing_candidate_id),
+    CONSTRAINT fk_economy_customer_invoices_kg_nodes
+        FOREIGN KEY (node_label, namespace_id)
+        REFERENCES kg_nodes (label, namespace_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_economy_customer_invoices_namespace_node_label
+    ON economy_customer_invoices (namespace_id, node_label);
+
+CREATE INDEX IF NOT EXISTS idx_economy_customer_invoices_candidate
+    ON economy_customer_invoices (billing_candidate_id);
+
+CREATE INDEX IF NOT EXISTS idx_economy_customer_invoices_customer
+    ON economy_customer_invoices (namespace_id, customer_id);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE system_design_design_requests FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE system_design_design_requests TO nce_app;
+    END IF;
+END $$;
+
+-- Backfill (see migration 104's own header for the full reasoning): a
+-- no-op on any database with zero pre-existing DESIGN_REQUEST rows under
+-- the old system_design_geometry.meta scheme, and the real cutover path
+-- for one that has some.
+INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)
+SELECT node_label, 'DESIGN_REQUEST', namespace_id, 'operator'
+FROM system_design_geometry
+WHERE node_label LIKE 'DESIGN_REQUEST:%'
+ON CONFLICT (label, namespace_id) DO NOTHING;
+
+INSERT INTO system_design_design_requests
+    (namespace_id, node_label, title, description, quote_id,
+     functional_location_id, status, priority, owner_id, design_id,
+     room_spec, metadata, completed_at, created_at, updated_at)
+SELECT
+    namespace_id,
+    node_label,
+    COALESCE(meta->>'title', ''),
+    COALESCE(meta->>'description', ''),
+    meta->>'quote_id',
+    meta->>'functional_location_id',
+    COALESCE(meta->>'status', 'pending'),
+    COALESCE(meta->>'priority', 'normal'),
+    meta->>'owner_id',
+    meta->>'design_id',
+    COALESCE(meta->'room_spec', '{}'::jsonb),
+    COALESCE(meta->'metadata', '{}'::jsonb),
+    NULLIF(meta->>'completed_at', '')::timestamptz,
+    created_at,
+    updated_at
+FROM system_design_geometry
+WHERE node_label LIKE 'DESIGN_REQUEST:%'
+ON CONFLICT (namespace_id, node_label) DO NOTHING;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE economy_customer_invoices FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE economy_customer_invoices TO nce_app;
+    END IF;
+END $$;

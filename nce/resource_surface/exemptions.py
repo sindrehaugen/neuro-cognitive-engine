@@ -198,7 +198,7 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
         ),
     ),
     # ---------------------------------------------------------------------------
-    # Economy Engine (Lane B Waves B-13, B-14 / Lane E)
+    # Economy Engine (Lane B Wave B-14 / Lane E)
     # ---------------------------------------------------------------------------
     "INVOICE": ResourceExemption(
         owner_engine="economy",
@@ -206,8 +206,12 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
             "kg_nodes-only stub -- no economy_invoices table exists in nce/schema.sql "
             "(grep -n \"CREATE TABLE IF NOT EXISTS.*invoice\" nce/schema.sql returns "
             "nothing). The prior exemption text claiming a real table was wrong; "
-            "corrected by Lane E Wave E-7. Scheduled for Wave B-13 CUSTOMER_INVOICE "
-            "once that table is built."
+            "corrected by Lane E Wave E-7. This is the supplier-side node "
+            "(economy/graph.py's upsert_invoice_from_procurement, the "
+            "PO -[posted_to]-> INVOICE boundary edge) -- distinct from CUSTOMER_INVOICE "
+            "(migration 104, Wave B-13), which answers the customer-facing half of "
+            "this exemption's original forward reference. Still unbuilt on its own "
+            "terms; no wave currently scheduled."
         ),
     ),
     "PERIOD": ResourceExemption(
@@ -343,6 +347,21 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
             "kg_nodes-primary satellite (economy_billing_candidates, migration 103) "
             "exists and is real; same deferral as BILLING_RUN -- REST/MCP surface "
             "registration is Lane E's mechanical follow-on, not a persistence gap."
+        ),
+    ),
+    # ---------------------------------------------------------------------------
+    # Economy Engine (Wave B-13)
+    # ---------------------------------------------------------------------------
+    "CUSTOMER_INVOICE": ResourceExemption(
+        owner_engine="economy",
+        reason=(
+            "kg_nodes-primary satellite (economy_customer_invoices, migration 104) "
+            "exists and is real; same deferral as BILLING_RUN/BILLING_CANDIDATE -- "
+            "REST/MCP surface registration is Lane E's mechanical follow-on. Written "
+            "exclusively through do_propose_customer_invoice (customer_invoices.py) "
+            "for the 'proposal' transition this wave ships; approved/exported/paid "
+            "are real CHECK-constrained states with no writer yet, same shape as "
+            "BILLING_CANDIDATE's own still-unused status enum."
         ),
     ),
 }

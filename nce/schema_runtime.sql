@@ -2400,3 +2400,28 @@ BEGIN
         GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE system_design_design_requests TO nce_app;
     END IF;
 END $$;
+
+ALTER TABLE economy_customer_invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE economy_customer_invoices FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON economy_customer_invoices;
+CREATE POLICY tenant_isolation_policy ON economy_customer_invoices
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE system_design_design_requests FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE system_design_design_requests TO nce_app;
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE economy_customer_invoices FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE economy_customer_invoices TO nce_app;
+    END IF;
+END $$;
