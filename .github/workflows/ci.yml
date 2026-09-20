@@ -1091,6 +1091,28 @@ jobs:
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/integration/test_resource_surface_graph_patch_live.py -m integration -q --tb=short
 
+      # CREATE sibling for the same 9 graph/kg_nodes-primary specs.
+      # Nothing exercised graph-primary CREATE against real Postgres in
+      # its own right before this -- the PATCH sibling above calls create
+      # only as setup and never verifies fields supplied AT CREATE TIME
+      # actually land in the secondary tables (it immediately PATCHes a
+      # different field). assert_owner (deny-by-default ownership) is the
+      # ONE place in the whole generated surface this gate fires; checked
+      # all 9 node types directly against node-ownership.json for the
+      # per-transition split shape PO_LINE/MARGIN/BOM_LINE use (none of
+      # the 9 have it -- each has exactly one plain transition:null row,
+      # so seed_node_ownership_registry alone is sufficient). Also pins
+      # the response-key quirk #388 found (identity always keyed as
+      # literal "label", never spec.id_field's declared name) and includes
+      # a positive control: an unowned node_type is denied (403) on
+      # create even with the registry fully seeded.
+      - name: Integration — C12 resource-surface graph-primary CREATE (tests/integration/test_resource_surface_graph_create_live.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/integration/test_resource_surface_graph_create_live.py -m integration -q --tb=short
+
       # field_tech:checklists/time-entries/work-orders each had a real
       # identifier column (checklist_id/time_entry_id/work_order_id) that
       # was NOT NULL with no default and absent from the spec's own
