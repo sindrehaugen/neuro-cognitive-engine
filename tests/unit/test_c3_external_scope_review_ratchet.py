@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import ast
 import os
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -121,19 +122,32 @@ class SimulatedPooledConnection:
         return self._TxContext(self)
 
     async def execute(self, query: str, *args: Any) -> None:
-        # Emulate SELECT set_config('nce.external_scope_id', $1, true)
+        # Emulate SELECT set_config('nce.external_scope_id', $1, true|false).
+        # Postgres's set_config() takes is_local as a literal third argument,
+        # not a bind parameter, so it must be read out of the SQL text itself
+        # -- inspecting only `self.in_transaction` (as this mock used to)
+        # cannot distinguish a correct `true` (transaction-local, SET LOCAL
+        # semantics) from a regressed `false` (session-scoped, persists on
+        # the pooled connection across transactions/requests). That blind
+        # spot is exactly the leak this test exists to catch.
         if "set_config" in query and "nce.external_scope_id" in query:
             val = str(args[0])
-            if self.in_transaction:
-                self.local_gucs["nce.external_scope_id"] = val
+            is_local = re.search(r",\s*true\s*\)", query, re.IGNORECASE) is not None
+            if is_local:
+                if self.in_transaction:
+                    self.local_gucs["nce.external_scope_id"] = val
+                # else: SET LOCAL outside a transaction is a no-op in Postgres.
             else:
-                # autocommit statement-local resets immediately
-                pass
+                # Session-scoped (is_local=false): persists on the physical
+                # connection regardless of transaction boundaries, and is
+                # deliberately NOT cleared by __aexit__ below -- this is the
+                # cross-request leak a pooled connection would suffer.
+                self.session_gucs["nce.external_scope_id"] = val
 
     async def fetchval(self, query: str, *args: Any) -> str | None:
         if "current_setting('nce.external_scope_id'" in query:
-            if self.in_transaction:
-                return self.local_gucs.get("nce.external_scope_id") or ""
+            if "nce.external_scope_id" in self.local_gucs:
+                return self.local_gucs["nce.external_scope_id"]
             return self.session_gucs.get("nce.external_scope_id") or ""
         return ""
 
@@ -170,9 +184,27 @@ async def test_set_external_scope_transaction_locality_simulated() -> None:
     assert after_b == ""
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_set_external_scope_live_postgres_if_available() -> None:
-    """Test transaction-local GUC behavior against live PostgreSQL if reachable."""
+    """Test transaction-local GUC behavior against live PostgreSQL if reachable.
+
+    Marked ``integration`` (audit finding, 2026-09-20): before this marker, this
+    was the ONLY instrument that could catch a real cross-request GUC leak (the
+    ``test_set_external_scope_transaction_locality_simulated`` sibling's mock
+    could not tell ``is_local=true`` from ``is_local=false`` -- see that test's
+    docstring), yet it carried no ``@pytest.mark.integration`` marker and was
+    named in no CI workflow step. The unit job (`.github/workflows/ci.yml`'s
+    "Pytest (exclude integration)" step) runs `tests/` with no Postgres service
+    and no ``PG_DSN``/``NCE_INTEGRATION_PG_DSN`` set, so in CI this test always
+    hit its own `except Exception: pytest.skip(...)` branch against the
+    unreachable default DSN -- it only ever executed for real in a sandbox that
+    happened to have a live Postgres at the same default address. Wired into
+    the "Integration — security controls (ML-CI1)" step in ci.yml, which
+    already runs the closely related ``tests/test_c3_adversarial.py`` and
+    ``tests/test_external_scope_rls.py`` against a real Postgres service and
+    sets ``PG_DSN`` accordingly.
+    """
     import asyncpg
 
     dsn = os.getenv(
