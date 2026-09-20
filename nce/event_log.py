@@ -306,6 +306,11 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "entity_merge_queue": "namespace_id",
     "source_mode_config": "namespace_id",
     "divergence_log": "namespace_id",
+    # C5 flip-gate staleness heartbeat (migration 098) -- one row per
+    # (namespace_id, engine), upserted on every "both"-mode resolve() call,
+    # so "a comparison ran" is observable independent of whether it found
+    # a divergence (divergence_log only ever writes on a real mismatch).
+    "source_mode_heartbeat": "namespace_id",
     # Module 0, Wave 31 (Batch 132a): shared, top-level BOM_LINE content
     # store -- written by both system_design and sales, never engine-prefixed.
     "bom_line_content": "namespace_id",

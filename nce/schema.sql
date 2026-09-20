@@ -6079,3 +6079,39 @@ BEGIN
     END IF;
 END $$;
 
+-- ============================================================================
+-- C5 flip-gate staleness heartbeat
+-- Migration 098_source_mode_heartbeat.sql
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS source_mode_heartbeat (
+    namespace_id     UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    engine           TEXT        NOT NULL,
+    last_checked_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- SAMPLED, not exact -- see migration 098's own comment: the write is
+    -- throttled, so this increments at most once per throttle window, not
+    -- once per actual comparison.
+    check_count      BIGINT      NOT NULL DEFAULT 1,
+    PRIMARY KEY (namespace_id, engine)
+);
+
+CREATE INDEX IF NOT EXISTS idx_source_mode_heartbeat_last_checked
+    ON source_mode_heartbeat (namespace_id, engine, last_checked_at);
+
+ALTER TABLE source_mode_heartbeat ENABLE ROW LEVEL SECURITY;
+ALTER TABLE source_mode_heartbeat FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON source_mode_heartbeat;
+CREATE POLICY tenant_isolation_policy ON source_mode_heartbeat
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE source_mode_heartbeat FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE source_mode_heartbeat TO nce_app;
+    END IF;
+END $$;
+

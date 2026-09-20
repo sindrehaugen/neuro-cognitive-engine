@@ -586,6 +586,7 @@ jobs:
           tests/test_generic_source_mode_endpoint.py
           tests/test_schema_contract.py
           tests/test_source_mode_flip.py
+          tests/test_source_mode_heartbeat.py
           tests/test_source_mode_resolver.py
           tests/test_source_mode_table.py
           -m integration -q --tb=short

@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `a4d7d69` (public `main`) · **Last-audited:** 2026-09-20
+> **Status:** shipped · **Verified-against:** `18616ab` (public `main`) · **Last-audited:** 2026-09-20
 
 # NCE Vertical Engines — Build & Production Status
 
@@ -29,8 +29,8 @@
 | `TOOL_REGISTRY` entries | **518** MCP tools (70 shared + 448 engine) — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 | REST routes on the admin app | measured per-engine in [`docs/_generated/surface.md`](../_generated/surface.md) (+12 on the Customer Portal's own app shell) — regenerate for a total, do not hand-add the column |
 | `do_*` domain cores | **228** distinct names across the 17 engines |
-| SQL migrations | 93 files (+1 optional), `001` → `097` — gaps at `002`, `009`, `059` (never allocated); `010` exists only under `nce/migrations/optional/`. — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
-| `EXPECTED_TENANT_RLS_TABLES` | **108** |
+| SQL migrations | 94 files (+1 optional), `001` → `098` — gaps at `002`, `009`, `059` (never allocated); `010` exists only under `nce/migrations/optional/`. — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
+| `EXPECTED_TENANT_RLS_TABLES` | **109** |
 | Tests | **6,430** `def test_` across 529 files |
 | Golden Thread seam burndown | **4 of 37** lifecycle steps broken (4 distinct seams) — mirrored from [`docs/_generated/golden_thread_seams.md`](../_generated/golden_thread_seams.md); see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 | v1.6 C12 resource-surface registrations | **19 of 25** engines have `resources.py` — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |

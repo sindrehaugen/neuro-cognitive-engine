@@ -38,34 +38,46 @@ reconciliation as if it were a transitional Dynamics-365 migration like
 Sales's. If economy ever needs a flip gate for some other reason, that is
 its own design decision, not a side effect of this generalization existing.
 
-STATED LIMITATION: A STALE COMPARISON READS IDENTICALLY TO A CLEAN ONE
--------------------------------------------------------------------------
-:func:`flip_blocked` (and this module's own :func:`flip_status`) answer
-"were there zero divergence rows in the window" -- they cannot distinguish
-that from "nothing has compared anything in the window at all," because
-both produce a `COUNT(*) = 0`. Pre-existing in ``main``'s original
-``sales/flip.py`` (this generalization carried it forward faithfully, not
-introduced it), but worth stating plainly here because of what this gate
-now authorizes: a ``both -> nce`` cutover to single-source. "Zero
+PARTIALLY CLOSED: A STALE COMPARISON NO LONGER READS IDENTICALLY TO A CLEAN ONE
+---------------------------------------------------------------------------------
+:func:`flip_blocked`'s own gate decision answers "were there zero divergence
+rows in the window" -- it still cannot distinguish that from "nothing has
+compared anything in the window at all," because both produce a
+`COUNT(*) = 0`, and this wave deliberately did NOT change that decision (see
+below for why). What changed: :func:`nce.source_mode.divergence.
+record_comparison_heartbeat` now records, independently of whether a
+divergence was found, that a "both"-mode comparison ran --
+:func:`nce.source_mode.resolver.resolve` calls it on every "both" resolution,
+which ``read_through``'s own dispatch table guarantees always runs
+``parity_check`` right after. :func:`flip_status` now surfaces this as
+``last_compared_at`` / ``heartbeat_stale`` in its response, so "zero
 divergences because parity held" and "zero divergences because the parity
-check silently stopped running" are indistinguishable inputs to the same
-gate, and only the first one should ever authorize a flip. A dead
-comparison job is therefore the one failure mode this gate cannot catch --
-it would read as maximally clean. Filed as a follow-on, not built here: a
-heartbeat requiring at least N comparisons to have actually run in the
-window (not merely zero divergences among however many ran), so an idle
-comparator blocks the flip instead of silently permitting it.
+check silently stopped running" are now DISTINGUISHABLE to a caller reading
+the status -- they were not before.
+
+STILL A DELIBERATE DECISION, NOT YET MADE: should :func:`flip_function`
+REFUSE a flip when the heartbeat is stale, the way it already refuses one on
+a dirty divergence log? Not built here. Every currently-configured "both"
+mode function has been flipping successfully without ever writing a
+heartbeat row (the mechanism did not exist until this wave), so making
+staleness a hard refusal would be a behavior change for every existing flip
+caller on its first call after this ships -- exactly the kind of "flipping a
+default changes behavior across the whole surface; land it with the
+measurement of what it breaks, not ahead of it" caution this session applied
+to the tier-redaction fail-open finding. Observability ships now;
+enforcement is a separate, explicit decision for whoever owns that call.
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
 import asyncpg  # type: ignore[import-untyped]
 
 from nce.db_utils import scoped_pg_session
-from nce.source_mode.divergence import alert_threshold, flip_blocked
+from nce.source_mode.divergence import alert_threshold, flip_blocked, last_comparison_at
 
 _DEFAULT_WINDOW_SECONDS: float = 7.0 * 86400.0
 
@@ -209,6 +221,11 @@ async def flip_status(
                 }
             )
 
+    last_checked = await last_comparison_at(pool, namespace_id=ns_uuid, engine=engine)
+    heartbeat_stale = last_checked is None or last_checked < datetime.now(timezone.utc) - timedelta(
+        seconds=window_seconds
+    )
+
     return {
         "ok": True,
         "namespace_id": str(ns_uuid),
@@ -219,6 +236,13 @@ async def flip_status(
         "divergences_count": total_count,
         "material_divergences_count": material_count,
         "alert_threshold": threshold_mat,
+        # Flip-gate staleness heartbeat (informational, not gating -- see
+        # this module's own docstring for why authorization is unchanged):
+        # last_compared_at is None / heartbeat_stale is True means "clean"
+        # above may mean nothing has compared anything in the window, not
+        # that parity held.
+        "last_compared_at": last_checked.isoformat() if last_checked else None,
+        "heartbeat_stale": heartbeat_stale,
         "items": items,
     }
 

@@ -158,6 +158,11 @@ KNOWN_SWALLOWED_DB_WRITE_SITES: Final[dict[str, dict[str, str]]] = {
         "reason": "Scenario simulation audit logging via record_ledger_audit catches write error and logs warning while returning simulation model.",
         "remediation": "Scenario simulation engine prioritizes returning computed predictive scenario results over secondary audit event logging.",
     },
+    "nce/source_mode/divergence.py::record_comparison_heartbeat": {
+        "owner": "source-mode",
+        "reason": "Flip-gate staleness heartbeat upsert runs on the hottest read path in the estate (every both-mode resolve()); a write failure here must not fail the caller's actual read, so it is caught and logged at warning rather than propagated.",
+        "remediation": "A missed heartbeat write already reads as staleness on flip_status() (heartbeat_stale=True), which is exactly the signal this feature exists to produce -- no further remediation needed, this is the intended terminal behavior, not a gap to close.",
+    },
 }
 
 _DB_WRITE_CALL_NAMES: Final[frozenset[str]] = frozenset(
