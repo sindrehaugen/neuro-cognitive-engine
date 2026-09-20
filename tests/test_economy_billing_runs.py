@@ -20,6 +20,10 @@ Integration tier proves, against a real database:
      it's in the same run as the unpriced room, and the run row alone
      records the refusal (module docstring: "refuse-and-name, at the run
      level").
+  5. A room whose category is CUSTOM_PROJECT (CONFERENCE_MEDIUM/
+     CONFERENCE_LARGE, Sindre's follow-up ruling on the three-way collapse)
+     is skipped, not billed and NOT a refusal -- distinct from case 4's
+     true-orphan refusal, proving the two outcomes aren't conflated.
 """
 
 from __future__ import annotations
@@ -341,3 +345,78 @@ async def test_generate_billing_run_refuses_whole_run_on_unpriced_room(
     assert "ALL_HANDS" in run_row["failure_reason"]
     # The whole run refuses -- the priceable agreement gets NO candidate either.
     assert len(candidate_rows) == 0
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_generate_billing_run_skips_custom_project_room_without_refusing(
+    pg_pool: Any, namespace_id: uuid.UUID
+) -> None:
+    """CONFERENCE_MEDIUM/CONFERENCE_LARGE (Sindre's three-way-collapse ruling,
+    2026-09-20) resolve to CUSTOM_PROJECT -- priced elsewhere, not a gap.
+    Distinct from test_..._refuses_whole_run_on_unpriced_room: a
+    custom-project room must never trigger a refusal, and a HUDDLE room in
+    the SAME agreement must still be billed."""
+    await _seed_ownership(pg_pool, namespace_id)
+    customer_id, agreement_id = await _seed_customer_and_agreement(pg_pool, namespace_id)
+    await _seed_covered_fl(pg_pool, namespace_id, agreement_id, category_id="HUDDLE")
+    await _seed_covered_fl(pg_pool, namespace_id, agreement_id, category_id="CONFERENCE_MEDIUM")
+
+    async with scoped_pg_session(pg_pool, namespace_id) as conn:
+        outer = await do_generate_billing_run(
+            conn,
+            namespace_id,
+            idempotency_key=f"billing-run-custom-project-{agreement_id}",
+            confirm=True,
+            engine=None,
+            period_start="2026-09-01",
+            period_end="2026-09-30",
+            agreement_ids=[str(agreement_id)],
+        )
+
+    assert outer["status"] == "executed"
+    result = outer["result"]
+    assert result["status"] == "confirmed"
+    assert result["candidate_count"] == 1
+    assert result["skipped_agreements"] == []
+
+    candidate = result["candidates"][0]
+    assert len(candidate["lines"]) == 1
+    assert candidate["lines"][0]["room_category"] == "huddle_space"
+    assert candidate["lines"][0]["count"] == 1
+
+    custom_project_labels = result["custom_project_fl_labels"]
+    assert len(custom_project_labels) == 1
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_generate_billing_run_skips_agreement_that_is_entirely_custom_project(
+    pg_pool: Any, namespace_id: uuid.UUID
+) -> None:
+    """An agreement covering ONLY custom-project rooms has nothing for
+    sla_room_pricing to bill -- skipped like a no-coverage agreement, not a
+    refusal and not a candidate with zero lines."""
+    await _seed_ownership(pg_pool, namespace_id)
+    _customer_id, agreement_id = await _seed_customer_and_agreement(pg_pool, namespace_id)
+    await _seed_covered_fl(pg_pool, namespace_id, agreement_id, category_id="CONFERENCE_LARGE")
+
+    async with scoped_pg_session(pg_pool, namespace_id) as conn:
+        outer = await do_generate_billing_run(
+            conn,
+            namespace_id,
+            idempotency_key=f"billing-run-all-custom-project-{agreement_id}",
+            confirm=True,
+            engine=None,
+            period_start="2026-09-01",
+            period_end="2026-09-30",
+            agreement_ids=[str(agreement_id)],
+        )
+
+    assert outer["status"] == "executed"
+    result = outer["result"]
+    assert result["status"] == "confirmed"
+    assert result["candidate_count"] == 0
+    assert result["candidates"] == []
+    assert result["skipped_agreements"] == [str(agreement_id)]
+    assert result["custom_project_fl_labels"] != []

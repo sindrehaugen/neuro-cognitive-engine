@@ -7,16 +7,33 @@ assigned per-FL via kg_edges) and ``price_rules.py``'s ``sla_room_pricing``
 rule (B-10's 6 priceable tiers, real NOK/month rates). Full analysis and the
 proposed mapping: ``C:\\Claude\\ROOM_CATEGORY_PRICE_MAPPING.md``.
 
-Sindre's ruling (2026-09-20), from that file:
-  - The 5 CONFIDENT mappings ship as proposed.
+Sindre's rulings (2026-09-20), from that file and the follow-up collapse
+question:
+  - The 5 original CONFIDENT mappings ship as proposed.
   - ``ALL_HANDS`` / ``WAR_ROOM`` / ``OPERATIONS_CENTER`` (no price tier
     exists at all): REFUSE, never zero-rate, never default to another
-    tier's rate.
-  - The three-way collapse (``MEETING_SMALL`` / ``CONFERENCE_MEDIUM`` /
-    ``CONFERENCE_LARGE`` -> ``standard_meeting_room``) was flagged as ONE
-    decision needing Sindre's ruling. He ruled on the orphans, not this.
-    Treated identically to the orphans until he rules on the collapse
-    specifically -- refuse and name, not quietly resolved by shipping it.
+    tier's rate. Not extended to custom-project (below) without a further
+    ruling -- refusing is the safe default and stays shipped for these
+    three until Sindre says otherwise.
+  - The three-way collapse question (``MEETING_SMALL`` / ``CONFERENCE_MEDIUM``
+    / ``CONFERENCE_LARGE``) resolved as THREE outcomes, not two: "meeting
+    small is a meetroom, the others is custom project." ``MEETING_SMALL``
+    collapses into ``standard_meeting_room`` (a sixth CONFIDENT mapping).
+    ``CONFERENCE_MEDIUM``/``CONFERENCE_LARGE`` are ``CUSTOM_PROJECT`` --
+    priced per project, outside this rule entirely.
+
+Three outcomes, not two -- named explicitly, not conflated
+-------------------------------------------------------------
+An unpriced category (the true orphans) is a GAP: something is wrong and a
+human must fix the price list. A ``CUSTOM_PROJECT`` category is a deliberate
+business model: the room IS priced, just not by ``sla_room_pricing``.
+Conflating the two would make a billing run refuse on rooms that are
+correctly priced elsewhere -- the exact false-positive failure mode the
+whole B-11/B-12 refuse-and-name design exists to avoid. Callers MUST check
+for the ``CUSTOM_PROJECT`` sentinel and treat it as "skip this room, it
+bills elsewhere" -- never as a price tier (it is not one; passing it
+through to ``price_rules.py`` unchecked would silently zero-rate the room,
+``rates.get(room_cat, 0.0)``) and never as a reason to refuse the run.
 
 Refusal must name WHICH category and WHICH room (``fl_label``) -- the whole
 argument for refusing over zero-rating is that it is loud; a vague refusal
@@ -25,25 +42,33 @@ throws that away.
 
 from __future__ import annotations
 
-# The 5 CONFIDENT mappings only. Every other C-2 category (the 3 true
-# orphans plus the 3 BLOCKED-pending-Sindre collapse categories) is
-# deliberately absent from this dict -- resolve_price_tier() refuses on
-# anything not listed here, which is the point.
+# Sentinel returned by resolve_price_tier() for a category that IS priced,
+# just not by this rule (Sindre ruling, 2026-09-20). Uppercase, unlike every
+# real B-10 tier id (all lowercase_snake, e.g. "huddle_space") -- the casing
+# convention itself makes the two kinds of return value visually distinct,
+# on top of the identity check callers must do.
+CUSTOM_PROJECT = "CUSTOM_PROJECT"
+
+# The 6 CONFIDENT mappings (5 original + MEETING_SMALL). Every other C-2
+# category (the 3 true orphans, the 2 CUSTOM_PROJECT categories) is
+# deliberately absent from this dict -- resolve_price_tier() refuses or
+# returns CUSTOM_PROJECT for anything not listed here, which is the point.
 CATEGORY_TO_PRICE_TIER: dict[str, str] = {
     "HUDDLE": "huddle_space",
     "BOARDROOM": "large_boardroom",
     "TRAINING_ROOM": "training_room",
     "AUDITORIUM": "auditorium",
     "FLEX_SPACE": "collaboration_space",
+    "MEETING_SMALL": "standard_meeting_room",
 }
 
 # Named separately from "true orphans" so a refusal message and any future
 # audit can distinguish "no price tier exists at all" from "a decision is
 # pending" -- both refuse today, but they are not the same kind of gap.
 _TRUE_ORPHAN_CATEGORIES: frozenset[str] = frozenset({"ALL_HANDS", "WAR_ROOM", "OPERATIONS_CENTER"})
-_BLOCKED_PENDING_COLLAPSE_RULING: frozenset[str] = frozenset(
-    {"MEETING_SMALL", "CONFERENCE_MEDIUM", "CONFERENCE_LARGE"}
-)
+# Priced, just not by sla_room_pricing -- resolve_price_tier() returns
+# CUSTOM_PROJECT for these, it does not raise.
+_CUSTOM_PROJECT_CATEGORIES: frozenset[str] = frozenset({"CONFERENCE_MEDIUM", "CONFERENCE_LARGE"})
 
 
 class UnpricedRoomCategoryError(ValueError):
@@ -64,7 +89,8 @@ class UnpricedRoomCategoryError(ValueError):
 
 
 def resolve_price_tier(category: str, *, fl_label: str | None = None) -> str:
-    """Return the B-10 price tier for a C-2 room category, or refuse loudly.
+    """Return the B-10 price tier for a C-2 room category, the CUSTOM_PROJECT
+    sentinel, or refuse loudly.
 
     Parameters
     ----------
@@ -78,33 +104,34 @@ def resolve_price_tier(category: str, *, fl_label: str | None = None) -> str:
         not just which category. Optional because some callers (e.g. a
         dry-run over a bare category list) have no room context yet.
 
+    Returns
+    -------
+    str
+        Either a real B-10 tier id (lowercase_snake, e.g.
+        ``"huddle_space"``), or the ``CUSTOM_PROJECT`` sentinel -- callers
+        MUST check ``result == CUSTOM_PROJECT`` before using the return
+        value as a tier (see module docstring: "three outcomes, not two").
+
     Raises
     ------
     UnpricedRoomCategoryError
-        The category is a true orphan (no price tier exists), is one of
-        the three categories still blocked on Sindre's collapse ruling, or
-        is not a recognised C-2 category at all.
+        The category is a true orphan (no price tier exists anywhere,
+        including no custom-project arrangement) or is not a recognised
+        C-2 category at all.
     """
     cat = category.strip().upper()
     tier = CATEGORY_TO_PRICE_TIER.get(cat)
     if tier is not None:
         return tier
 
+    if cat in _CUSTOM_PROJECT_CATEGORIES:
+        return CUSTOM_PROJECT
+
     if cat in _TRUE_ORPHAN_CATEGORIES:
         raise UnpricedRoomCategoryError(
             cat,
             fl_label=fl_label,
             reason="refusing rather than zero-rating or defaulting (Sindre ruling 2026-09-20)",
-        )
-    if cat in _BLOCKED_PENDING_COLLAPSE_RULING:
-        raise UnpricedRoomCategoryError(
-            cat,
-            fl_label=fl_label,
-            reason=(
-                "the MEETING_SMALL/CONFERENCE_MEDIUM/CONFERENCE_LARGE -> "
-                "standard_meeting_room collapse is still awaiting Sindre's ruling "
-                "(ROOM_CATEGORY_PRICE_MAPPING.md) -- not shipped by assuming it"
-            ),
         )
     raise UnpricedRoomCategoryError(
         cat,

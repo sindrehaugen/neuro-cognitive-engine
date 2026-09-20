@@ -27,6 +27,19 @@ written; if any room fails to resolve a tier, nothing is written except a
 single ``economy_billing_runs`` row with ``status='failed'`` naming the
 category and the room (``failure_reason``) — no partial candidates.
 
+CUSTOM_PROJECT rooms never trigger a refusal
+-----------------------------------------------
+Sindre's follow-up ruling (2026-09-20) on the three-way collapse question
+introduced a third outcome alongside "priced" and "refuse": CONFERENCE_MEDIUM/
+CONFERENCE_LARGE are ``CUSTOM_PROJECT`` -- priced per project, outside
+``sla_room_pricing`` entirely. This module treats that as "skip this room,
+it bills elsewhere," never as a reason to refuse the run -- conflating the
+two would make a billing run refuse on rooms that are correctly priced,
+which is exactly the false-positive failure mode refuse-and-name exists to
+avoid. Skipped custom-project rooms are named in ``custom_project_fl_labels``
+on the return value (both the confirmed and failed shapes) so they stay
+visible without being mistaken for an unpriced gap.
+
 Explicit scope, not inferred
 -----------------------------
 ``agreements.status`` is a free-text column with no enum or CHECK
@@ -66,6 +79,7 @@ from nce.autonomy.governor import governed
 from nce.entity_resolution.ownership import assert_owner
 from nce.vertical_modules.agreements.price_rules import evaluate_price_rule
 from nce.vertical_modules.agreements.room_category_pricing import (
+    CUSTOM_PROJECT,
     UnpricedRoomCategoryError,
     resolve_price_tier,
 )
@@ -185,9 +199,14 @@ async def _price_agreement(
     """Compute (never write) one agreement's priced candidate, or ``None`` if uncovered.
 
     Raises ``UnpricedRoomCategoryError`` (a covered room's C-2 category has
-    no B-10 tier) or ``ValueError`` (a covered room has no C-2 category
-    assigned at all) — both propagate to the caller, which treats either as
-    "the whole run refuses."
+    no B-10 tier at all) or ``ValueError`` (a covered room has no C-2
+    category assigned at all) — both propagate to the caller, which treats
+    either as "the whole run refuses." A room whose category resolves to
+    ``CUSTOM_PROJECT`` (Sindre ruling, 2026-09-20: CONFERENCE_MEDIUM/
+    CONFERENCE_LARGE are priced per project, outside ``sla_room_pricing``)
+    is neither an error nor billed by this rule -- it is skipped and named
+    in ``custom_project_fl_labels`` so it is visible without being mistaken
+    for an unpriced gap.
     """
     fl_labels = await _get_covered_fl_labels(conn, namespace_id, agreement_id)
     if not fl_labels:
@@ -195,6 +214,7 @@ async def _price_agreement(
 
     room_counts: dict[str, int] = {}
     fl_labels_by_tier: dict[str, list[str]] = {}
+    custom_project_fl_labels: list[str] = []
     for fl_label in fl_labels:
         category_info = await get_fl_room_category(conn, namespace_id, fl_id_or_label=fl_label)
         category_id = category_info.get("category_id")
@@ -205,14 +225,32 @@ async def _price_agreement(
                 "before billing this agreement)"
             )
         tier = resolve_price_tier(category_id, fl_label=fl_label)
+        if tier == CUSTOM_PROJECT:
+            # Priced elsewhere, not a gap -- skip, never pass CUSTOM_PROJECT
+            # into room_counts (price_rules.py would silently zero-rate it).
+            custom_project_fl_labels.append(fl_label)
+            continue
         room_counts[tier] = room_counts.get(tier, 0) + 1
         fl_labels_by_tier.setdefault(tier, []).append(fl_label)
+
+    if not room_counts:
+        # Every covered room was custom-project (or there were none) --
+        # nothing for sla_room_pricing to price. Not billed by this rule,
+        # not an error either; the caller's skipped_agreements list already
+        # exists for exactly this "nothing to bill here" shape.
+        return {
+            "agreement_id": agreement_id,
+            "fl_labels_by_tier": {},
+            "pricing": None,
+            "custom_project_fl_labels": custom_project_fl_labels,
+        }
 
     pricing = evaluate_price_rule(_PRICE_RULE_ID, {"room_counts": room_counts, "on_site": on_site})
     return {
         "agreement_id": agreement_id,
         "fl_labels_by_tier": fl_labels_by_tier,
         "pricing": pricing,
+        "custom_project_fl_labels": custom_project_fl_labels,
     }
 
 
@@ -351,10 +389,17 @@ async def do_generate_billing_run(
     # ------------------------------------------------------------------
     priced: list[dict[str, Any]] = []
     skipped_agreements: list[str] = []
+    custom_project_fl_labels: list[str] = []
     try:
         for agreement_uuid in agreement_uuids:
             result = await _price_agreement(conn, ns_uuid, agreement_uuid, on_site=on_site)
             if result is None:
+                skipped_agreements.append(str(agreement_uuid))
+                continue
+            custom_project_fl_labels.extend(result.get("custom_project_fl_labels", []))
+            if result["pricing"] is None:
+                # Every covered room was custom-project -- nothing for
+                # sla_room_pricing to bill, same as no coverage at all.
                 skipped_agreements.append(str(agreement_uuid))
                 continue
             priced.append(result)
@@ -391,6 +436,7 @@ async def do_generate_billing_run(
             "candidate_count": 0,
             "candidates": [],
             "skipped_agreements": skipped_agreements,
+            "custom_project_fl_labels": custom_project_fl_labels,
         }
 
     # ------------------------------------------------------------------
@@ -495,4 +541,5 @@ async def do_generate_billing_run(
         "candidate_count": len(candidates),
         "candidates": candidates,
         "skipped_agreements": skipped_agreements,
+        "custom_project_fl_labels": custom_project_fl_labels,
     }
