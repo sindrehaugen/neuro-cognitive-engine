@@ -104,8 +104,14 @@ _MOUNT_TOKENS: frozenset[str] = frozenset(
     {"MOUNT", "RACK", "BRACKET", "TRAY", "RAIL", "KIT", "RKMNT"}
 )
 
-#: Lifecycle values that signal a product is at end-of-life.
-_EOL_STATUSES: frozenset[str] = frozenset({"eol", "discontinued", "obsolete"})
+#: Lifecycle values that signal a product is at end-of-life. "eos" added
+#: alongside the closed product_catalog.lifecycle_status vocabulary
+#: (migration 106, Q-49) -- an end-of-sale product should trigger the same
+#: replacement search an end-of-life one does. "discontinued"/"obsolete"
+#: kept for callers passing a status this function was already written to
+#: recognise; they can no longer come from product_catalog itself post-106,
+#: but this is a pure function, not exclusively DB-fed.
+_EOL_STATUSES: frozenset[str] = frozenset({"eol", "eos", "discontinued", "obsolete"})
 
 # Business weights loaded from config_data/product-relation-weights.json (config-as-IP).
 #: Minimum shared model tokens for an accessory or replacement match.
