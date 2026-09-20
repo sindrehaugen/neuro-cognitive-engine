@@ -4208,7 +4208,6 @@
             "type": "string"
           },
           "label": {
-            "format": "uuid",
             "type": "string"
           },
           "updated_at": {
@@ -4676,7 +4675,6 @@
             "type": "string"
           },
           "label": {
-            "format": "uuid",
             "type": "string"
           },
           "name": {
@@ -6371,7 +6369,6 @@
             "type": "string"
           },
           "label": {
-            "format": "uuid",
             "type": "string"
           },
           "revision": {
@@ -6479,7 +6476,6 @@
             "type": "string"
           },
           "label": {
-            "format": "uuid",
             "type": "string"
           },
           "metadata": {
@@ -6633,7 +6629,6 @@
             "type": "string"
           },
           "label": {
-            "format": "uuid",
             "type": "string"
           },
           "updated_at": {
@@ -6719,7 +6714,6 @@
             "type": "string"
           },
           "label": {
-            "format": "uuid",
             "type": "string"
           },
           "manufacturer": {
@@ -6905,7 +6899,6 @@
             "type": "string"
           },
           "label": {
-            "format": "uuid",
             "type": "string"
           },
           "updated_at": {
@@ -6979,7 +6972,6 @@
             "type": "string"
           },
           "label": {
-            "format": "uuid",
             "type": "string"
           },
           "manufacturer": {
@@ -7139,7 +7131,6 @@
             "type": "string"
           },
           "label": {
-            "format": "uuid",
             "type": "string"
           },
           "manufacturer": {

@@ -224,10 +224,19 @@ def generate_openapi_spec() -> dict[str, Any]:
         # concern, the CREATE request body's input key (rest.py:718).
         # See OPENAPI_RESPONSE_SCHEMA_SWEEP.md, Finding 3.
         identity_prop = "label" if spec.tenant_scope == "graph" else spec.id_field
+        # kg_nodes.label is TEXT (schema.sql:207), not a UUID -- the surrogate
+        # UUID lives in kg_nodes.id, a column no graph-primary spec exposes
+        # as its identity property. "format": "uuid" is only accurate for
+        # the non-graph, real-UUID-primary-key case.
+        identity_schema: dict[str, Any] = (
+            {"type": "string"}
+            if spec.tenant_scope == "graph"
+            else {"type": "string", "format": "uuid"}
+        )
         item_schema: dict[str, Any] = {
             "type": "object",
             "properties": {
-                identity_prop: {"type": "string", "format": "uuid"},
+                identity_prop: identity_schema,
             },
             "required": [identity_prop],
             "description": spec.description or f"{spec.engine} {spec.entity} resource",
