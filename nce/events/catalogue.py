@@ -786,7 +786,7 @@ EVENT_CATALOGUE: Mapping[str, EventContract] = {
         declared_producers=(),
         declared_consumers=("nce/vertical_modules/notifications/subscribers.py",),
         status="UNPRODUCED",
-        reason="Future asset health transition emitter scheduled for Lane D Wave D-9 asset telemetry; subscribed now for C13 notification inbox delivery.",
+        reason="Future asset health transition emitter, not yet produced by any function. The 'D-9' this once cited no longer identifies this work: the current charter's D-9 is flip gates (PRs #310/#315/#318), unrelated to asset telemetry, so the citation is dropped rather than corrected to a wave that could not be established. No wave is currently scheduled; subscribed now for C13 notification inbox delivery.",
         description="Emitted when an installed asset hardware telemetry status or health degrades.",
     ),
 }
