@@ -19,6 +19,18 @@ silent omissions from grep-based or sync-only scanning.
    ``async def do_*`` naming convention are outside this census.
 3. *Dead branches in reached cores*: Function-level AST reachability proves entry points
    can reach a core, but does not assert line-level execution of inner branches.
+4. *Registration-based dispatch*: ``nce.events.bus.subscribe(key, handler)`` and
+   ``getattr(module, "do_...")``-style resolution pass the target function as a value
+   rather than calling it directly, so a ``do_*`` core reached only this way has no AST
+   call node either -- the same blind spot as (1), a different call shape. Surveyed
+   2026-09-20 (``_internal/work-docs/mlv16-orchestration/
+   SURFACE_PARITY_DYNAMIC_DISPATCH_GAP.md``): 17 ``subscribe()`` sites and 1 live
+   ``getattr`` site across the tree, exactly one core affected (``do_sync_bom_tasks``,
+   reachable through two independent such paths -- a direct subscription and an
+   RQ-job-queue handoff). Accepted as a standing manual check rather than an AST-walker
+   extension: when adding a new ``subscribe(...)`` or ``getattr(module, "do_...")`` call,
+   check the resolved target against ``internal-cores.json`` by hand -- if listed, remove
+   the entry; if not, no action needed.
 """
 
 from __future__ import annotations
