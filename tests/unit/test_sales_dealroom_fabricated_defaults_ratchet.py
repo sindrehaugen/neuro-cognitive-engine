@@ -100,6 +100,12 @@ def _scan_file_for_fabricated_defaults(file_path: Path) -> list[tuple[int, str, 
                         and node.value.value is True
                     ):
                         violations.append((node.lineno, "is_optional_assignment", node.value.value))
+                    elif (
+                        var_name == "toggled"
+                        and isinstance(node.value, ast.Constant)
+                        and node.value.value is True
+                    ):
+                        violations.append((node.lineno, "toggled_assignment", node.value.value))
 
     return violations
 
@@ -122,6 +128,7 @@ def bad_function(doc):
     manufacturer = "Unknown"
     model = "Unknown"
     is_optional = True
+    toggled = True
     v1 = doc.get("dg_pct", 0.3)
     v2 = doc.get("manufacturer", "Unknown")
 """
@@ -129,12 +136,13 @@ def bad_function(doc):
     test_file.write_text(bad_code, encoding="utf-8")
 
     violations = _scan_file_for_fabricated_defaults(test_file)
-    assert len(violations) == 6, f"Expected 6 violations, got {len(violations)}: {violations}"
+    assert len(violations) == 7, f"Expected 7 violations, got {len(violations)}: {violations}"
 
     violation_keys = {(v[1], v[2]) for v in violations}
     assert ("dg_pct_assignment", 0.3) in violation_keys
     assert ("manufacturer_assignment", "Unknown") in violation_keys
     assert ("model_assignment", "Unknown") in violation_keys
     assert ("is_optional_assignment", True) in violation_keys
+    assert ("toggled_assignment", True) in violation_keys
     assert (".get(dg_pct)", 0.3) in violation_keys
     assert (".get(manufacturer)", "Unknown") in violation_keys
