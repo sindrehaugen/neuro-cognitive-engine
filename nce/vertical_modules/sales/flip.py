@@ -17,7 +17,7 @@ from uuid import UUID
 
 from nce.db_utils import scoped_pg_session
 from nce.orchestrator import NCEEngine
-from nce.source_mode.divergence import alert_threshold
+from nce.source_mode.flip import flip_function, flip_status
 
 log = logging.getLogger("nce.vertical_modules.sales.flip")
 
@@ -31,6 +31,11 @@ async def do_read_sales_divergence(
     Evaluates discrepancies logged during C5 'both' mode synchronization
     between D365 and NCE. Returns parity metrics, whether a cutover flip to
     'nce' mode is blocked, and paginated divergence log items.
+
+    Thin ``engine="sales"`` wrapper over the generic
+    :func:`nce.source_mode.flip.flip_status` (Wave D-9) -- this function's
+    own params/validation/return shape are unchanged; only the underlying
+    query moved to the shared implementation.
 
     Params:
       - namespace_id: str | UUID (required)
@@ -51,116 +56,19 @@ async def do_read_sales_divergence(
         win_days = float(params.get("window_days", 7.0))
         win_seconds = win_days * 86400.0
 
-    threshold_delta = datetime.timedelta(seconds=win_seconds)
-    threshold_mat = alert_threshold()
-
     limit = min(max(1, int(params.get("limit", 100))), 500)
     offset = max(0, int(params.get("offset", 0)))
     entity_filter = str(params["entity"]).strip() if params.get("entity") else None
 
-    async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
-        if entity_filter:
-            count_row = await conn.fetchrow(
-                """
-                SELECT COUNT(*)::int AS total_count,
-                       COUNT(*) FILTER (WHERE materiality > $3)::int AS material_count
-                  FROM divergence_log
-                 WHERE namespace_id = $1::uuid
-                   AND engine = 'sales'
-                   AND detected_at >= NOW() - $2::interval
-                   AND entity = $4
-                """,
-                ns_uuid,
-                threshold_delta,
-                threshold_mat,
-                entity_filter,
-            )
-            rows = await conn.fetch(
-                """
-                SELECT id, entity, field, nce_value, ext_value, materiality, detected_at
-                  FROM divergence_log
-                 WHERE namespace_id = $1::uuid
-                   AND engine = 'sales'
-                   AND detected_at >= NOW() - $2::interval
-                   AND entity = $3
-                 ORDER BY detected_at DESC, id DESC
-                 LIMIT $4 OFFSET $5
-                """,
-                ns_uuid,
-                threshold_delta,
-                entity_filter,
-                limit,
-                offset,
-            )
-        else:
-            count_row = await conn.fetchrow(
-                """
-                SELECT COUNT(*)::int AS total_count,
-                       COUNT(*) FILTER (WHERE materiality > $3)::int AS material_count
-                  FROM divergence_log
-                 WHERE namespace_id = $1::uuid
-                   AND engine = 'sales'
-                   AND detected_at >= NOW() - $2::interval
-                """,
-                ns_uuid,
-                threshold_delta,
-                threshold_mat,
-            )
-            rows = await conn.fetch(
-                """
-                SELECT id, entity, field, nce_value, ext_value, materiality, detected_at
-                  FROM divergence_log
-                 WHERE namespace_id = $1::uuid
-                   AND engine = 'sales'
-                   AND detected_at >= NOW() - $2::interval
-                 ORDER BY detected_at DESC, id DESC
-                 LIMIT $3 OFFSET $4
-                """,
-                ns_uuid,
-                threshold_delta,
-                limit,
-                offset,
-            )
-
-        total_count = (
-            int(count_row["total_count"])
-            if count_row and count_row["total_count"] is not None
-            else 0
-        )
-        material_count = (
-            int(count_row["material_count"])
-            if count_row and count_row["material_count"] is not None
-            else 0
-        )
-
-        items = []
-        for r in rows:
-            mat_val = float(r["materiality"]) if r["materiality"] is not None else 0.0
-            items.append(
-                {
-                    "id": r["id"],
-                    "entity": r["entity"],
-                    "field": r["field"],
-                    "nce_value": r["nce_value"],
-                    "ext_value": r["ext_value"],
-                    "materiality": mat_val,
-                    "is_material": mat_val > threshold_mat,
-                    "detected_at": (r["detected_at"].isoformat() if r["detected_at"] else None),
-                }
-            )
-
-    return {
-        "ok": True,
-        "namespace_id": str(ns_uuid),
-        "engine": "sales",
-        "window_seconds": win_seconds,
-        "clean": total_count == 0,
-        "flip_blocked": total_count > 0,
-        "divergences_count": total_count,
-        "material_divergences_count": material_count,
-        "alert_threshold": threshold_mat,
-        "items": items,
-    }
+    return await flip_status(
+        engine.pg_pool,
+        namespace_id=ns_uuid,
+        engine="sales",
+        window_seconds=win_seconds,
+        entity=entity_filter,
+        limit=limit,
+        offset=offset,
+    )
 
 
 async def do_flip_function(
@@ -170,6 +78,11 @@ async def do_flip_function(
     """Flip a Sales function's source mode to 'nce'.
 
     Blocked if there are unresolved divergence logs in the configured parity window.
+
+    Thin ``engine="sales"`` wrapper over the generic
+    :func:`nce.source_mode.flip.flip_function` (Wave D-9) -- this function's
+    own params/validation/return shape are unchanged; only the underlying
+    gate check and write moved to the shared implementation.
 
     Params:
       - namespace_id: str | UUID (required)
@@ -186,47 +99,15 @@ async def do_flip_function(
         raise ValueError("function is required")
 
     window_days = int(params.get("window_days", 7))
-    threshold = datetime.timedelta(days=window_days)
+    window_seconds = window_days * 86400.0
 
-    async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
-        # Check divergence log for 'sales' engine
-        divergences = await conn.fetchval(
-            """
-            SELECT COUNT(*)
-            FROM divergence_log
-            WHERE namespace_id = $1::uuid
-              AND engine = 'sales'
-              AND detected_at >= NOW() - $2::interval
-            """,
-            ns_uuid,
-            threshold,
-        )
-
-        if divergences > 0:
-            return {
-                "ok": False,
-                "reason": f"Refused: {divergences} divergence(s) detected in the last {window_days} days.",
-                "divergences_count": divergences,
-            }
-
-        # Update source_mode_config to 'nce'
-        await conn.execute(
-            """
-            INSERT INTO source_mode_config (namespace_id, engine, function, mode, updated_at)
-            VALUES ($1::uuid, 'sales', $2, 'nce', NOW())
-            ON CONFLICT (namespace_id, engine, function) DO UPDATE
-                SET mode = 'nce',
-                    updated_at = NOW()
-            """,
-            ns_uuid,
-            function_name,
-        )
-
-    return {
-        "ok": True,
-        "function": function_name,
-        "mode": "nce",
-    }
+    return await flip_function(
+        engine.pg_pool,
+        namespace_id=ns_uuid,
+        engine="sales",
+        function=function_name,
+        window_seconds=window_seconds,
+    )
 
 
 async def do_stalled_deal_watcher(

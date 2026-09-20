@@ -13,6 +13,14 @@ Covers:
   4. Admin REST endpoint ``GET /api/sales/divergences`` (503 unconfigured, 422 validation, 200 OK).
   5. Tool registration in ``TOOL_REGISTRY`` and schema in ``mcp_stdio_tools.TOOLS``.
   6. Route mounted in admin app ``build_admin_routes()``.
+
+Wave D-9 (2026-09-20): ``do_read_sales_divergence``'s query logic moved to
+the generic ``nce.source_mode.flip.flip_status`` (do_read_sales_divergence
+is now a thin ``engine="sales"`` wrapper over it) -- the three tests below
+that mock the database connection now patch
+``nce.source_mode.flip.scoped_pg_session`` (where the call actually
+happens), not ``nce.vertical_modules.sales.flip.scoped_pg_session``. The
+assertions and this function's own params/return shape are unchanged.
 """
 
 from __future__ import annotations
@@ -78,7 +86,7 @@ async def test_do_read_sales_divergence_clean_window() -> None:
     mock_conn.fetch.return_value = []
 
     with patch(
-        "nce.vertical_modules.sales.flip.scoped_pg_session",
+        "nce.source_mode.flip.scoped_pg_session",
         return_value=AsyncMock(
             __aenter__=AsyncMock(return_value=mock_conn),
             __aexit__=AsyncMock(return_value=None),
@@ -128,7 +136,7 @@ async def test_do_read_sales_divergence_dirty_window() -> None:
     ]
 
     with patch(
-        "nce.vertical_modules.sales.flip.scoped_pg_session",
+        "nce.source_mode.flip.scoped_pg_session",
         return_value=AsyncMock(
             __aenter__=AsyncMock(return_value=mock_conn),
             __aexit__=AsyncMock(return_value=None),
@@ -174,7 +182,7 @@ async def test_do_read_sales_divergence_entity_filter() -> None:
     ]
 
     with patch(
-        "nce.vertical_modules.sales.flip.scoped_pg_session",
+        "nce.source_mode.flip.scoped_pg_session",
         return_value=AsyncMock(
             __aenter__=AsyncMock(return_value=mock_conn),
             __aexit__=AsyncMock(return_value=None),
