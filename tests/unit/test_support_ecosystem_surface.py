@@ -117,6 +117,11 @@ def test_internal_cores_allowlist_pruned():
     with open(_INTERNAL_CORES_PATH, encoding="utf-8") as f:
         cores = json.load(f)
 
+    # Discovery floor (inert-instrument audit, 2026-09-20): an empty or malformed
+    # internal-cores.json would satisfy all three "not in cores" assertions below
+    # vacuously.
+    assert cores, "internal-cores.json parsed empty -- the loader broke, not the estate"
+
     assert "nce/vertical_modules/support/ecosystem.py::do_record_failure_pattern" not in cores
     assert "nce/vertical_modules/support/ecosystem.py::do_record_upsell_signal" not in cores
     assert "nce/vertical_modules/support/ecosystem.py::do_support_at_risk_aggregate" not in cores

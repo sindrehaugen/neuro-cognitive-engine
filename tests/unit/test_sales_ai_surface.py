@@ -477,5 +477,9 @@ def test_sales_ai_cores_pruned_from_internal_cores_json() -> None:
     with open("nce/config_data/internal-cores.json", encoding="utf-8") as f:
         data = json.load(f)
 
+    # Discovery floor (inert-instrument audit, 2026-09-20): an empty or malformed
+    # internal-cores.json would satisfy both "not in data" assertions vacuously.
+    assert data, "internal-cores.json parsed empty -- the loader broke, not the estate"
+
     assert "nce/vertical_modules/sales/ai.py::do_score_lead" not in data
     assert "nce/vertical_modules/sales/ai.py::do_draft_quote" not in data
