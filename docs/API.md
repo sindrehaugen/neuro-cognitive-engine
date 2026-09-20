@@ -676,18 +676,13 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/procurement/frontier/whatif-spend` | `api_procurement_whatif_spend` |
 | POST | `/api/procurement/match` | `api_procurement_evaluate_match` |
 | GET | `/api/procurement/po-lines` | `handle_list` |
-| POST | `/api/procurement/po-lines` | `handle_create` |
-| POST | `/api/procurement/po-lines/bulk` | `handle_bulk` |
 | GET | `/api/procurement/po-lines/{id}` | `handle_get` |
-| PATCH | `/api/procurement/po-lines/{id}` | `handle_patch` |
-| POST | `/api/procurement/po-lines/{id}/archive` | `handle_archive` |
 | GET | `/api/procurement/po-lines/{id}/comments` | `handle_list_comments` |
 | POST | `/api/procurement/po-lines/{id}/comments` | `handle_add_comment` |
 | GET | `/api/procurement/po-lines/{id}/documents` | `handle_list_documents` |
 | POST | `/api/procurement/po-lines/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/procurement/po-lines/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/procurement/po-lines/{id}/events` | `handle_events` |
-| POST | `/api/procurement/po-lines/{id}/restore` | `handle_restore` |
 | GET | `/api/procurement/po-lines/{id}/tags` | `handle_list_tags` |
 | POST | `/api/procurement/po-lines/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/procurement/po-lines/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -1532,7 +1527,6 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `pricing_resolve` |  |  | yes |  |
 | `procurement_aggregate_savings` |  |  | yes |  |
 | `procurement_archive_deal_registrations` |  | yes |  |  |
-| `procurement_archive_po_lines` |  | yes |  |  |
 | `procurement_calculate_tco` |  |  | yes |  |
 | `procurement_evaluate_match` |  |  | yes |  |
 | `procurement_forecast_rebate` |  |  | yes |  |
@@ -1546,7 +1540,6 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `procurement_resolve_bids` |  |  | yes |  |
 | `procurement_submit_po` | yes | yes |  |  |
 | `procurement_upsert_deal_registrations` |  | yes |  |  |
-| `procurement_upsert_po_lines` |  | yes |  |  |
 | `procurement_whatif_spend` |  |  | yes |  |
 | `product_archive_packages` |  | yes |  |  |
 | `product_archive_product_skus` |  | yes |  |  |
@@ -1802,4 +1795,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 1229 REST endpoints, 555 MCP tools._
+_Totals: 1224 REST endpoints, 553 MCP tools._
