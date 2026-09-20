@@ -1071,6 +1071,26 @@ jobs:
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/integration/test_resource_surface_patch_live.py -m integration -q --tb=short
 
+      # PATCH sibling for the 9 graph/kg_nodes-primary specs excluded from
+      # the generic PATCH sibling above (#385, table_name is None). assert_owner
+      # gates every kg_nodes write and denies by default with no registry
+      # row -- the ONE place in the whole generated surface this ownership
+      # gate is live, so this file needs seed_node_ownership_registry,
+      # unlike any relational live sibling tonight. 3 of 9 write only
+      # change_origin (no secondary table); 6 of 9 route through the
+      # already-shared upsert_secondary_tables against a real secondary
+      # table (sales_contacts, system_design_node_state,
+      # system_design_design_requests, system_design_device_capabilities).
+      # Includes a positive control: an unowned node_type is denied (403)
+      # even with the registry fully seeded, proving deny-by-default is
+      # still real and not accidentally satisfied by seeding everything.
+      - name: Integration — C12 resource-surface graph-primary PATCH (tests/integration/test_resource_surface_graph_patch_live.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/integration/test_resource_surface_graph_patch_live.py -m integration -q --tb=short
+
       # C12 resource-surface multi-table support (SecondaryTable): a spec whose
       # primary identity spreads across two tables (e.g. system_design's DEVICE
       # capability/state split). Found live building this: an undocumented FK
