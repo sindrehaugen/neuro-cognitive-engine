@@ -38,6 +38,7 @@ Design constraints (uncle-bob-craft / §9.2):
 
 from __future__ import annotations
 
+import datetime
 import logging
 import os
 from decimal import Decimal
@@ -228,3 +229,73 @@ async def flip_blocked(
         blocked,
     )
     return blocked
+
+
+# ---------------------------------------------------------------------------
+# record_comparison_heartbeat / last_comparison_at
+# ---------------------------------------------------------------------------
+#
+# Follow-on from flip.py's own "STATED LIMITATION" docstring: flip_blocked()
+# answers "zero divergence rows in the window", which reads identically to
+# "nothing has compared anything in the window at all" -- record_divergence()
+# above only ever fires on a real mismatch, so a fully clean comparison run
+# writes nothing anywhere today. These two functions make "did a comparison
+# actually run" independently observable. Deliberately NOT wired into
+# flip_blocked/flip_function's authorization decision here -- whether a
+# stale heartbeat should BLOCK a flip (as opposed to merely being visible on
+# flip_status()) is its own decision with real consequences for every
+# already-configured "both"-mode function, and changing that gate's
+# behavior needs its own explicit review, not a side effect of adding
+# observability. Wired for real use in nce/source_mode/resolver.py::resolve()
+# (every "both"-mode call) and surfaced on flip_status()'s response.
+
+
+async def record_comparison_heartbeat(
+    pool: asyncpg.Pool,  # type: ignore[type-arg]
+    *,
+    namespace_id: str | UUID,
+    engine: str,
+) -> None:
+    """Record that a "both"-mode comparison ran for (namespace_id, engine) now.
+
+    Upserts one row per (namespace_id, engine) -- a liveness signal, not an
+    audit trail (divergence_log already is the audit trail for actual
+    mismatches). Called unconditionally, whether or not the comparison
+    found any divergence.
+    """
+    ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
+
+    async with scoped_pg_session(pool, namespace_id) as conn:
+        await conn.execute(
+            """
+            INSERT INTO source_mode_heartbeat (namespace_id, engine, last_checked_at, check_count)
+            VALUES ($1, $2, now(), 1)
+            ON CONFLICT (namespace_id, engine) DO UPDATE
+                SET last_checked_at = now(),
+                    check_count = source_mode_heartbeat.check_count + 1
+            """,
+            ns_uuid,
+            engine,
+        )
+
+
+async def last_comparison_at(
+    pool: asyncpg.Pool,  # type: ignore[type-arg]
+    *,
+    namespace_id: str | UUID,
+    engine: str,
+) -> datetime.datetime | None:
+    """Return the most recent comparison timestamp for (namespace_id, engine).
+
+    ``None`` when no "both"-mode comparison has ever run for this pair --
+    the exact case :func:`flip_blocked` cannot distinguish from a clean one.
+    """
+    async with scoped_pg_session(pool, namespace_id) as conn:
+        return await conn.fetchval(
+            """
+            SELECT last_checked_at FROM source_mode_heartbeat
+             WHERE namespace_id = $1 AND engine = $2
+            """,
+            UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id,
+            engine,
+        )

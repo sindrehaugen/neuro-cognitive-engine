@@ -21,6 +21,15 @@ that mock the database connection now patch
 ``nce.source_mode.flip.scoped_pg_session`` (where the call actually
 happens), not ``nce.vertical_modules.sales.flip.scoped_pg_session``. The
 assertions and this function's own params/return shape are unchanged.
+
+D-9 follow-on (flip-gate heartbeat, 2026-09-20): ``flip_status`` now also
+calls ``nce.source_mode.divergence.last_comparison_at``, which opens its
+own ``scoped_pg_session`` inside the ``divergence`` module -- a second call
+site the three mocked tests below did not previously need to patch. Each
+now also patches ``nce.source_mode.divergence.scoped_pg_session`` and sets
+``mock_conn.fetchval.return_value = None`` (no heartbeat ever recorded, the
+neutral default for tests that are not about heartbeat behavior --
+``tests/test_source_mode_heartbeat.py`` covers that directly).
 """
 
 from __future__ import annotations
@@ -84,12 +93,27 @@ async def test_do_read_sales_divergence_clean_window() -> None:
     mock_conn = AsyncMock()
     mock_conn.fetchrow.return_value = {"total_count": 0, "material_count": 0}
     mock_conn.fetch.return_value = []
+    mock_conn.fetchval.return_value = None
 
-    with patch(
-        "nce.source_mode.flip.scoped_pg_session",
-        return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_conn),
-            __aexit__=AsyncMock(return_value=None),
+    with (
+        patch(
+            "nce.source_mode.flip.scoped_pg_session",
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_conn),
+                __aexit__=AsyncMock(return_value=None),
+            ),
+        ),
+        # Wave D-9 follow-on (flip-gate heartbeat): flip_status now also
+        # calls last_comparison_at, which opens its own scoped_pg_session
+        # inside nce.source_mode.divergence -- a second call site, so it
+        # needs its own patch (patching flip's own binding does not reach
+        # divergence's), reusing the same mock_conn.
+        patch(
+            "nce.source_mode.divergence.scoped_pg_session",
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_conn),
+                __aexit__=AsyncMock(return_value=None),
+            ),
         ),
     ):
         result = await do_read_sales_divergence(
@@ -134,12 +158,22 @@ async def test_do_read_sales_divergence_dirty_window() -> None:
             "detected_at": now,
         },
     ]
+    mock_conn.fetchval.return_value = None
 
-    with patch(
-        "nce.source_mode.flip.scoped_pg_session",
-        return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_conn),
-            __aexit__=AsyncMock(return_value=None),
+    with (
+        patch(
+            "nce.source_mode.flip.scoped_pg_session",
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_conn),
+                __aexit__=AsyncMock(return_value=None),
+            ),
+        ),
+        patch(
+            "nce.source_mode.divergence.scoped_pg_session",
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_conn),
+                __aexit__=AsyncMock(return_value=None),
+            ),
         ),
     ):
         result = await do_read_sales_divergence(
@@ -180,12 +214,22 @@ async def test_do_read_sales_divergence_entity_filter() -> None:
             "detected_at": datetime.now(timezone.utc),
         }
     ]
+    mock_conn.fetchval.return_value = None
 
-    with patch(
-        "nce.source_mode.flip.scoped_pg_session",
-        return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_conn),
-            __aexit__=AsyncMock(return_value=None),
+    with (
+        patch(
+            "nce.source_mode.flip.scoped_pg_session",
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_conn),
+                __aexit__=AsyncMock(return_value=None),
+            ),
+        ),
+        patch(
+            "nce.source_mode.divergence.scoped_pg_session",
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_conn),
+                __aexit__=AsyncMock(return_value=None),
+            ),
         ),
     ):
         result = await do_read_sales_divergence(

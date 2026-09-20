@@ -100,6 +100,18 @@ async def resolve(
     if mode not in ("d365", "both", "nce"):  # pragma: no cover
         return _DEFAULT_MODE
 
+    if mode == "both":
+        # Flip-gate staleness heartbeat (follow-on from flip.py's own
+        # "STATED LIMITATION" docstring): _READ_DISPATCH below guarantees
+        # read_through() runs parity_check() unconditionally whenever mode
+        # is "both", so recording the heartbeat here -- the one place every
+        # "both"-mode caller already resolves through -- covers every real
+        # comparison without touching read_through()'s own signature or any
+        # of its callers.
+        from nce.source_mode.divergence import record_comparison_heartbeat
+
+        await record_comparison_heartbeat(pool, namespace_id=namespace_id, engine=engine)
+
     return mode  # type: ignore[return-value]
 
 
