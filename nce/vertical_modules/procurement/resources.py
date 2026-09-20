@@ -69,19 +69,13 @@ PO_LINE_SPEC = ResourceSpec(
     soft_delete_field=None,
     filterable_fields=("po_number", "line_ref", "project_id", "status"),
     searchable_fields=("po_number", "line_ref", "artnr", "description"),
-    writable_fields=(
-        "po_number",
-        "line_ref",
-        "project_id",
-        "bom_line_label",
-        "artnr",
-        "description",
-        "quantity",
-        "unit_price",
-        "line_total",
-        "currency",
-        "status",
-    ),
+    # writable_fields cleared to () because "upsert" is excluded: fail-safe,
+    # not cosmetic -- see ResourceSpec.excluded_verbs's own docstring. A
+    # populated list has no reader today, but if a future change un-excludes
+    # upsert, a stale populated list would make every field immediately
+    # writable with no review; an empty one forces someone to deliberately
+    # list fields instead.
+    writable_fields=(),
     description=(
         "Purchase-order lines, self-transitioning through draft/ordered/received/"
         "cancelled status, all owned by Procurement."

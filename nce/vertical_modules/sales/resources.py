@@ -315,12 +315,14 @@ SIGNED_BASELINE_SPEC = ResourceSpec(
     soft_delete_field=None,
     filterable_fields=("quote_id",),
     searchable_fields=("quote_id",),
-    writable_fields=(
-        "quote_id",
-        "signed_margin_pct",
-        "signed_total_nok",
-        "signed_at",
-    ),
+    # writable_fields cleared to () because "upsert" is excluded: fail-safe,
+    # not cosmetic -- see ResourceSpec.excluded_verbs's own docstring. A
+    # populated list has no reader today (every writable_fields consumer is
+    # on the create/patch path this spec never generates), but if a future
+    # change un-excludes upsert, a stale populated list would make every
+    # field immediately writable with no review; an empty one forces
+    # someone to deliberately list fields instead.
+    writable_fields=(),
     excluded_verbs=frozenset({"upsert", "archive"}),
     description=(
         "Legally signed, immutable quote baseline (margin and total at signing time); "
