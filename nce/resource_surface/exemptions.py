@@ -35,8 +35,14 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     "PO": ResourceExemption(
         owner_engine="procurement",
         reason=(
-            "kg_nodes-only spine node with no separate attribute table today. "
-            "Scheduled for Wave C-8 PURCHASE_ORDER resource declaration."
+            "kg_nodes-only spine node (label PO:<PO_NUMBER>, procurement/graph.py). "
+            "No purchase-order table exists anywhere in schema.sql or migration "
+            "history (grep -icE \"CREATE TABLE IF NOT EXISTS (purchase_orders|"
+            "procurement_purchase_orders)\\b\" nce/schema.sql -> 0). PO_LINE, the "
+            "priced line-item half, already has its own registered ResourceSpec. "
+            "Wave C-8 is declined as host-only: no host purchase-order concept "
+            "exists to adapt, so no wave is scheduled to add an attribute table "
+            "here (CHARTER_WAVE_AUDIT.md, 2026-09-20)."
         ),
     ),
     "PROCUREMENT_MATCH": ResourceExemption(
@@ -66,8 +72,14 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     "DESIGN_LINE": ResourceExemption(
         owner_engine="system_design",
         reason=(
-            "kg_nodes stub representing individual line items within a solution design. "
-            "Scheduled for Wave C-3 along with design versioning."
+            "kg_nodes-only identity/edge anchor (label DESIGN_LINE:<DESIGN_ID>:"
+            "<LINE_REF>, system_design/graph.py). kg_nodes has no qty/price "
+            "column for it -- a declared omission (D48, to_quote.py) -- so those "
+            "values live on the priced sibling, bom_line_content, via BOM_LINE "
+            "(its own exemption above), not on DESIGN_LINE itself. Wave C-3 "
+            "(#329) registered DESIGN identity-only and never touched "
+            "DESIGN_LINE; no wave is scheduled to add an attribute table here, "
+            "since there is no further data to expose."
         ),
     ),
     "SIGNAL_CHAIN": ResourceExemption(
@@ -100,15 +112,30 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     "PROJECT_GATE": ResourceExemption(
         owner_engine="project",
         reason=(
-            "kg_nodes-only stub representing project phase gates and approval criteria; "
-            "scheduled for Wave C-6 project sub-resources."
+            "kg_nodes-only identity/edge anchor. The current gate lives entirely "
+            "as an in_phase kg_edge from the project node to a gate node, whose "
+            "own created_at supplies dwell time (insights.py::do_status_report); "
+            "read live today by the existing hand-written status-report route, "
+            "not a stub. Measured and confirmed correct (Lane E, "
+            "PROJECT_ENGINE_DESIGN.md, Q-47, 2026-09-20). Wave C-6 (#313) "
+            "registered PROJECT_PROJECT identity-only and never touched "
+            "sub-resources; no further wave is scheduled."
         ),
     ),
     "PROJECT_TASK": ResourceExemption(
         owner_engine="project",
         reason=(
-            "kg_nodes-only stub representing work breakdown tasks and timeline items; "
-            "scheduled for Wave C-6 project sub-resources."
+            "kg_nodes-only identity/edge anchor. Task status (open/closed) is "
+            "edge-presence, not a stored column -- a generates edge from the "
+            "originating BOM_LINE marks it open, and closure is edge deletion "
+            "(tasks.py::_close_superseded_tasks); task properties "
+            "(gate_blocking/deadline/value) are themselves kg_edges predicates, "
+            "string-encoded and parsed on read (pl.py::do_my_day/do_capacity). "
+            "All of it is read live in the existing hand-written routes today, "
+            "not a stub. Measured and confirmed correct (Lane E, "
+            "PROJECT_ENGINE_DESIGN.md, Q-47, 2026-09-20). Wave C-6 (#313) "
+            "registered PROJECT_PROJECT identity-only and never touched "
+            "sub-resources; no further wave is scheduled."
         ),
     ),
     "PROJECT_CASE_STUDY": ResourceExemption(
@@ -193,8 +220,14 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     "AGREEMENT_TERM": ResourceExemption(
         owner_engine="agreements",
         reason=(
-            "Sub-resource for contract terms, index series, and SLA parameters; "
-            "scheduled for Wave B-10 agreement price rules and terms surfaces."
+            "kg_nodes has no attribute column, so AGREEMENT_TERM nodes are "
+            "identity/edge anchors only (agreements/authoring.py); the "
+            "structured term data lives in agreement_review_queue.extracted, "
+            "which lookup (B109), coverage (B108), and kickback (B110) already "
+            "read. Wave B-10 (#298) shipped price_rules.py/index_series.py, "
+            "neither of which touches AGREEMENT_TERM. A ResourceSpec here would "
+            "need to expose agreement_review_queue, not AGREEMENT_TERM itself; "
+            "no such surface is scheduled."
         ),
     ),
     # ---------------------------------------------------------------------------
@@ -217,8 +250,15 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     "PERIOD": ResourceExemption(
         owner_engine="economy",
         reason=(
-            "Financial period balance model. Scheduled for Wave B-14 ECONOMY_PERIOD_BALANCE "
-            "resource declaration."
+            "kg_nodes-only identity/edge anchor for accounting period/close "
+            "events (graph.py::upsert_period_node, close_narrative.py); no "
+            "balance-bearing table exists (grep -icE \"CREATE TABLE IF NOT "
+            "EXISTS.*period\" nce/schema.sql -> 0). The financial period "
+            "balance model a ResourceSpec would need is B-14's target, and "
+            "B-14 was struck by Sindre, 2026-09-20 ('ok strike it') -- the "
+            "remainder is the host's own local-mirror warehouse architecture, "
+            "not an NCE-adapter job, and out of scope for v1.6. No wave is "
+            "currently scheduled."
         ),
     ),
     "MARGIN": ResourceExemption(
