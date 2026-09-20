@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `6c94428` (public `main`) · **Last-audited:** generated
+> **Status:** shipped · **Verified-against:** `b62f123` (public `main`) · **Last-audited:** generated
 
 # NCE Engine Figures — Inventory & Counters
 
