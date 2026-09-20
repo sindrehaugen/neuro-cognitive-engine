@@ -356,7 +356,7 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     # Sales engine, Wave B-7: reusable quote starting-point templates.
     "sales_quote_templates": "namespace_id",
     # Sales engine, Wave B-3 sub-resource half: deal stakeholders (plain
-    # relational child table, FK'd to sales_deals(id), migration 106).
+    # relational child table, FK'd to sales_deals(id), migration 107).
     "sales_deal_participants": "namespace_id",
     "economy_billing_runs": "namespace_id",
     "economy_billing_candidates": "namespace_id",

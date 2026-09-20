@@ -385,7 +385,7 @@ register_resource(QUOTE_TEMPLATE_SPEC)
 # Wave B-3 sub-resource half (2026-09-20 night): DEAL_PARTICIPANT, a
 # genuinely new node type -- grepped node-ownership.json/sales/resources.py/
 # schema.sql first, zero hits anywhere. Plain relational child table
-# (sales_deal_participants, migration 106), modeled on AGREEMENT_PARTY_SPEC
+# (sales_deal_participants, migration 107), modeled on AGREEMENT_PARTY_SPEC
 # (agreements/resources.py) rather than PO_LINE: sales_deals has a real UUID
 # `id`, so a straightforward FK is the right shape, not PO_LINE's
 # natural-key-no-FK design (which exists because PO lines key off

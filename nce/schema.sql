@@ -6577,7 +6577,7 @@ END $$;
 
 -- ============================================================================
 -- C12 DEAL_PARTICIPANT resource (charter Wave B-3, sub-resource half)
--- Migration 106_sales_deal_participants.sql
+-- Migration 107_sales_deal_participants.sql
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS sales_deal_participants (
