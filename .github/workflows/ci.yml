@@ -1046,6 +1046,18 @@ jobs:
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/integration/test_sales_contact_resource_surface_live.py -m integration -q --tb=short
 
+      # Migration 106 (Q-49): product_catalog.lifecycle_status becomes a closed,
+      # checked vocabulary ('coming'|'active'|'EOL'|'EOS'). Live positive control
+      # for the CHECK constraint itself: a fifth value is rejected at the storage
+      # level, each of the four valid values is accepted, and the column's own
+      # DEFAULT ('active') still satisfies the constraint.
+      - name: Integration — Product lifecycle_status CHECK constraint (tests/integration/test_product_lifecycle_status_check.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/integration/test_product_lifecycle_status_check.py -m integration -q --tb=short
+
 
   # REST-surface mutations must invalidate the MCP response cache.
   # `bump_cache_generation` is called from the MCP dispatch loop only, so a
