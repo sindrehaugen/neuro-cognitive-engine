@@ -292,6 +292,31 @@ def test_rest_bulk():
     assert len(data["ids"]) == 3
 
 
+def test_rest_bulk_rejects_whole_batch_on_one_non_dict_item():
+    """Q-48: all-or-nothing is the contract, so a structurally invalid item
+    anywhere in the batch must refuse everything before any write -- not
+    silently skip the bad item and create the rest (the previous behavior,
+    which contradicted all-or-nothing without even surfacing as an error)."""
+    client = _client_for_spec(STOCK_LOCATION_SPEC)
+    bulk_payload = {
+        "namespace_id": _NS_A,
+        "items": [
+            {"name": "Valid Location", "kind": "bin"},
+            "not-a-dict",
+            {"name": "Another Valid Location", "kind": "bin"},
+        ],
+    }
+    resp = client.post("/api/inventory/stock-locations/bulk", json=bulk_payload)
+    assert resp.status_code == 400, resp.text
+
+    # Nothing from this batch was created -- not even the structurally valid items.
+    list_resp = client.get(
+        f"/api/inventory/stock-locations?namespace_id={_NS_A}",
+        headers={"X-NCE-Principal-Tier": "employee"},
+    )
+    assert list_resp.json()["total"] == 0
+
+
 # ===========================================================================
 # 2. C3/C8 Principal Tier Redaction
 # ===========================================================================

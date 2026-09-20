@@ -1793,6 +1793,34 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         return JSONResponse({"status": "ok", "unlinked": True})
 
     async def handle_bulk(request: Request) -> Response:
+        """Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.
+
+        A bulk-create call either creates every item or none of them --
+        there is no partial-success outcome and no per-item result
+        reporting. This is the single statement of that contract; nothing
+        else in this generator should restate it, only reference it.
+
+        Table-backed specs: every item is validated structurally (must be a
+        JSON object) before any write is attempted, refusing the whole
+        batch with 400 if one isn't. Constraint-level invalidity a table
+        enforces itself (a unique/check/not-null violation) is still caught
+        by the shared transaction around the write loop -- the loop aborts
+        and rolls back the whole batch, so the persisted end state is
+        identical to a pre-validated refusal (zero rows), even though the
+        mechanism is reactive rather than a dry run. Measured before
+        shipping: no table reachable through this route carries an INSERT
+        trigger with a side effect outside that transaction (grepped
+        schema.sql for AFTER INSERT -- one exists, on economy_postings, not
+        C12-registered), so this reactive rollback has no observable gap
+        against a true pre-write dry run today.
+
+        kg_nodes-primary specs: refused outright (501). The all-or-nothing
+        policy above answers the REPORTING semantics question; it does not
+        by itself define identity-plus-satellite partial-failure behaviour
+        for a spec with no table_name, and there is still no real caller
+        needing it built (Q-48 ruling: do not build bulk for these specs
+        speculatively).
+        """
         try:
             body = await request.json()
         except Exception as exc:
@@ -1839,22 +1867,46 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                 # this refusal a kg_nodes-primary spec would silently write
                 # bulk items to the mock store in production instead of
                 # kg_nodes -- a wrong-backend bug, not a redundant check.
-                # Bulk-creating a kg_nodes identity row PLUS N secondary-table
-                # rows per item also raises a real partial-failure question
-                # (item 3 of 10 fails: roll back all, or report partial?)
-                # with no existing precedent in this generator to follow --
-                # a decision for whoever builds this, not one to make here
-                # under this wave's time pressure.
+                #
+                # The REPORTING semantics question (all-or-nothing) is
+                # answered -- see this function's own docstring -- but that
+                # doesn't by itself define identity-plus-satellite
+                # partial-failure behaviour for a spec with no table_name
+                # (item 3 of 10 fails: which of the identity row and the
+                # already-written satellite rows for items 1-2 come back
+                # out?), and there is still no real caller needing this
+                # built (Q-48 ruling: unimplemented pending one, not
+                # unimplemented for lack of a decision).
                 exc = NotImplementedError(
                     f"Bulk create is not supported yet for kg_nodes-primary spec {spec.entity}"
                 )
                 return admin_error_response(
-                    f"Bulk create is not supported for {spec.entity}: kg_nodes-primary specs "
-                    f"need a defined partial-failure semantics for identity-plus-satellite "
-                    f"writes that this generator does not have yet",
+                    f"Bulk create is not implemented for {spec.entity}: reporting semantics "
+                    f"are all-or-nothing (Q-48), but kg_nodes-primary identity-plus-satellite "
+                    f"partial-failure behaviour has no implementation yet and no caller "
+                    f"requiring one",
                     exc,
                     status_code=501,
                 )
+
+        if any(not isinstance(it, dict) for it in items_to_insert):
+            # Structural pre-write validation: every item must be a JSON
+            # object before ANY item is written, table-backed or in-memory.
+            # Previously a non-dict item was silently skipped mid-loop --
+            # the batch still partially wrote, contradicting all-or-nothing
+            # without even surfacing as an error (the caller saw 201 with a
+            # count lower than what they sent). This is the one check this
+            # generic route can make generically, with no per-spec
+            # knowledge; a table's own constraints (unique/check/not-null)
+            # still can only be discovered by attempting the write, and
+            # remain covered by the transaction rollback below, not by a
+            # pre-write check here (see this function's own docstring).
+            return admin_error_response(
+                "Bulk payload rejected: every item in 'items' must be a JSON object "
+                "(all-or-nothing -- no items were created)",
+                ValueError("Validation error"),
+                status_code=400,
+            )
 
         created_ids: list[str] = []
         import uuid
@@ -1887,8 +1939,8 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             try:
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
                     for it in items_to_insert:
-                        if not isinstance(it, dict):
-                            continue
+                        # Every item is already confirmed a dict by the
+                        # structural pre-check above -- nothing to skip here.
                         item_id, data = _prepare_item(it)
                         cols = list(data.keys())
                         vals = [data[c] for c in cols]
@@ -1911,8 +1963,8 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             # persist across a process crash the way a real INSERT sequence
             # could -- unaffected by this fix.
             for it in items_to_insert:
-                if not isinstance(it, dict):
-                    continue
+                # Every item is already confirmed a dict by the structural
+                # pre-check above -- nothing to skip here.
                 item_id, data = _prepare_item(it)
                 mem = _get_mem_bucket(spec, str(ns_uuid) if ns_uuid else None)
                 mem[item_id] = dict(data)

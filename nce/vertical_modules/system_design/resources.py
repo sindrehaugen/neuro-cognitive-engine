@@ -90,8 +90,11 @@ geometry fields here would be a second, unvalidated path into that table.
 
 Archive/restore/bulk-create stay refused for all four (Lane H's #307,
 mcp.py/rest.py): no generic soft-delete column exists anywhere in this
-chain, and bulk-creating a kg_nodes identity row plus N secondary rows per
-item raises a partial-failure question with no precedent in this generator.
+chain, and while bulk create's REPORTING semantics are now decided
+(all-or-nothing, Q-48), bulk-creating a kg_nodes identity row plus N
+secondary rows per item still has no partial-failure implementation and no
+caller requiring one (see rest.py's handle_bulk docstring, the single home
+for this contract).
 
 NO enabled_guard: system_design has no ``_guard.py`` anywhere in
 nce/vertical_modules/system_design/ (confirmed) -- no per-namespace opt-in
@@ -587,8 +590,10 @@ DESIGN_REQUEST_SPEC = ResourceSpec(
         "table. list is excluded -- the existing hand-written "
         "system_design_list_design_requests tool stays authoritative; this "
         "spec adds get/upsert/archive only. Bulk create is refused, same as "
-        "every other kg_nodes-primary spec in this module: identity-plus-"
-        "satellite partial-failure semantics have no precedent here."
+        "every other kg_nodes-primary spec in this module: reporting "
+        "semantics are all-or-nothing (Q-48), but identity-plus-satellite "
+        "partial-failure behaviour has no implementation yet and no caller "
+        "requiring one."
     ),
 )
 register_resource(DESIGN_REQUEST_SPEC)
