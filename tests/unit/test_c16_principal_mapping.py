@@ -229,3 +229,120 @@ def test_api_me_context_endpoints(monkeypatch: pytest.MonkeyPatch):
     assert get_data["principal_id"] == user_id
     assert get_data["employee_id"] == "EMP-9001"
     assert get_data["roles"] == ["operations", "admin"]
+
+
+def _token_for(secret: str, *, namespace_id: UUID, principal_id: str, principal_kind: str) -> str:
+    return jwt.encode(
+        {
+            "namespace_id": str(namespace_id),
+            "agent_id": principal_id,
+            "principal_id": principal_id,
+            "principal_kind": principal_kind,
+            "exp": int(time.time()) + 3600,
+        },
+        secret,
+        algorithm="HS256",
+    )
+
+
+def test_put_me_context_binds_the_authenticated_caller_regardless_of_body_identity(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """PUT /api/me/context always writes the caller's own principal_bindings row,
+    keyed and tiered from the verified JWT context -- never from request-body
+    identity fields, even when the body names a different principal or tier."""
+    test_secret = "x" * 32
+    monkeypatch.setattr(cfg, "NCE_JWT_SECRET", test_secret)
+    monkeypatch.setattr(cfg, "NCE_JWT_ALGORITHM", "HS256")
+
+    client = TestClient(app)
+    ns_id = uuid4()
+    caller_id = "user-caller-1"
+    other_id = "user-other-2"
+
+    token = _token_for(
+        test_secret, namespace_id=ns_id, principal_id=caller_id, principal_kind="employee"
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+
+    put_resp = client.put(
+        "/api/me/context",
+        headers=headers,
+        json={"principal_id": other_id, "tier": "contractor", "roles": ["operations"]},
+    )
+    assert put_resp.status_code == 200
+    put_data = put_resp.json()
+    assert put_data["principal_id"] == caller_id
+    assert put_data["tier"] == "employee"
+
+    # The other principal's own view is unaffected by the call above.
+    other_token = _token_for(
+        test_secret, namespace_id=ns_id, principal_id=other_id, principal_kind="employee"
+    )
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+    other_get = client.get("/api/me/context", headers=other_headers)
+    assert other_get.status_code == 200
+    other_data = other_get.json()
+    assert other_data["principal_id"] == other_id
+    assert other_data["tier"] == "employee"
+    assert other_data["roles"] == []
+
+
+def test_put_me_context_self_binding_with_attributes_succeeds(monkeypatch: pytest.MonkeyPatch):
+    """The intended BFF-login flow -- an authenticated caller attaching their
+    own employee_id/roles/metadata -- keeps working exactly as before."""
+    test_secret = "x" * 32
+    monkeypatch.setattr(cfg, "NCE_JWT_SECRET", test_secret)
+    monkeypatch.setattr(cfg, "NCE_JWT_ALGORITHM", "HS256")
+
+    client = TestClient(app)
+    ns_id = uuid4()
+    user_id = "user-self-bind-1"
+
+    token = _token_for(
+        test_secret, namespace_id=ns_id, principal_id=user_id, principal_kind="employee"
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+
+    put_resp = client.put(
+        "/api/me/context",
+        headers=headers,
+        json={
+            "employee_id": "EMP-4200",
+            "roles": ["operations"],
+            "metadata": {"title": "Engineer"},
+        },
+    )
+    assert put_resp.status_code == 200
+    put_data = put_resp.json()
+    assert put_data["principal_id"] == user_id
+    assert put_data["employee_id"] == "EMP-4200"
+    assert put_data["roles"] == ["operations"]
+
+
+def test_put_me_context_accepts_caller_supplied_identity_fields_without_error(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A caller that (harmlessly) includes their own principal_id/tier in the
+    body -- matching their verified identity -- is not rejected; the fields
+    are simply superseded by the verified context, silently."""
+    test_secret = "x" * 32
+    monkeypatch.setattr(cfg, "NCE_JWT_SECRET", test_secret)
+    monkeypatch.setattr(cfg, "NCE_JWT_ALGORITHM", "HS256")
+
+    client = TestClient(app)
+    ns_id = uuid4()
+    user_id = "user-harmless-echo-1"
+
+    token = _token_for(
+        test_secret, namespace_id=ns_id, principal_id=user_id, principal_kind="employee"
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+
+    put_resp = client.put(
+        "/api/me/context",
+        headers=headers,
+        json={"principal_id": user_id, "tier": "employee", "roles": []},
+    )
+    assert put_resp.status_code == 200
+    assert put_resp.json()["principal_id"] == user_id
