@@ -1492,24 +1492,27 @@ CREATE POLICY tenant_isolation_policy ON support_ticket_actions
     USING  (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
     WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
 
+-- schema.sql runs on every connect (self-healing runtime state, see
+-- split_schema.py's own header) -- it states the CURRENT correct grant
+-- directly rather than replaying 091's original broad grant and 108's
+-- narrowing as two separate statements. That two-step form is what
+-- nce/migrations/091_support_ticket_actions.sql and
+-- 108_support_ticket_actions_append_only.sql each still show, correctly,
+-- since a migration is an incremental transition against a database that
+-- already ran 091 -- but schema.sql has no "already ran 091" to assume,
+-- so restating that intermediate step here only adds an ordering
+-- dependency (two statements that must stay adjacent) with no benefit.
+-- REVOKE ALL still comes first, matching every other grant block in this
+-- file: it self-heals from EITHER a fresh table (091 never ran) or an
+-- existing one already narrowed by 108, not just from 091's specific
+-- prior grant. ADR-0008 (docs/adr/0008-append-only-ticket-action-log.md):
+-- SELECT, INSERT only, matching event_log's shape (schema.sql:838), not
+-- its trigger -- this table carries no chain-hash dependency.
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
         REVOKE ALL ON TABLE support_ticket_actions FROM nce_app;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE support_ticket_actions TO nce_app;
-    END IF;
-END $$;
-
--- ---------------------------------------------------------------------------
--- 108_support_ticket_actions_append_only.sql mirror -- ADR 0008. Narrows the
--- original grant above to match the table's own documented append-only
--- invariant (event_log's shape, not its trigger -- see the migration's own
--- header for why grant-only is proportionate here).
--- ---------------------------------------------------------------------------
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
-        REVOKE UPDATE, DELETE ON TABLE support_ticket_actions FROM nce_app;
+        GRANT SELECT, INSERT ON TABLE support_ticket_actions TO nce_app;
     END IF;
 END $$;
 
