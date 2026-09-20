@@ -1051,7 +1051,14 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
 
         return JSONResponse(
             serialize_val(
-                {"status": "ok", "id": item_id, "version": now_iso, "item": created, **created}
+                # Envelope keys spread last so they always win over a same-
+                # named real column on `created` (e.g. sales_quotes' own
+                # "version" INT, unrelated to spec.version_field, would
+                # otherwise silently replace the concurrency token; a real
+                # "status" column would otherwise replace the "ok" success
+                # indicator). The full row is always available under "item"
+                # regardless of this precedence.
+                {**created, "status": "ok", "id": item_id, "version": now_iso, "item": created}
             ),
             status_code=201,
         )
@@ -1311,7 +1318,10 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             )
 
         return JSONResponse(
-            serialize_val({"status": "ok", "id": item_id, "item": updated, **updated})
+            # Envelope keys spread last -- see handle_create's identical
+            # comment. A real "status"/"id" column on `updated` must not
+            # shadow the envelope's own success indicator or identity value.
+            serialize_val({**updated, "status": "ok", "id": item_id, "item": updated})
         )
 
     async def handle_archive(request: Request) -> Response:
