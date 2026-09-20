@@ -9,6 +9,11 @@
     "owner": "MLV16G-B12",
     "reason": "Governed billing-run generation core (Wave B-12); REST/MCP surface registration deferred to Lane E (mechanical, matches the D-8 precedent)."
   },
+  "nce/vertical_modules/economy/customer_invoices.py::do_propose_customer_invoice": {
+    "engine": "economy",
+    "owner": "MLV16G-B13",
+    "reason": "Governed customer-invoice proposal core (Wave B-13, proposal transition only); REST/MCP surface registration deferred to Lane E, same as B-12's do_generate_billing_run."
+  },
   "nce/vertical_modules/economy/contracts.py::do_upsert_contract": {
     "engine": "economy",
     "owner": "MLV15D-E1",

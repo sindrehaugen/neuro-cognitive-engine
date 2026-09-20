@@ -58,7 +58,10 @@ _KNOWN_GAPS: dict[int, str] = {
     # 99 was reserved by PR #330 (Lane E) and 100 by this same lane's own
     # PR #332 (Wave B-15, procurement_deal_registrations) -- both have since
     # merged, so neither is a gap on this rebased branch. Removed per the
-    # shrink-only rule rather than left stale.
+    # shrink-only rule rather than left stale. 104 was reserved by PR #336
+    # (Lane E, system_design_design_requests) during the same collision that
+    # renumbered this lane's own migration to 105 -- also merged and removed
+    # the same way.
 }
 
 

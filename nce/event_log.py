@@ -358,6 +358,7 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "economy_billing_runs": "namespace_id",
     "economy_billing_candidates": "namespace_id",
     "economy_billing_candidate_lines": "namespace_id",
+    "economy_customer_invoices": "namespace_id",
     "vendor_scorecards": "namespace_id",
     "contractor_profiles": "namespace_id",
     # Agreements Engine (Module 3): review queue (W2) & extraction runs (W2).

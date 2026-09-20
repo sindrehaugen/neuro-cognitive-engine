@@ -118,7 +118,9 @@
     { "node_type": "BILLING_RUN",           "owner_engine": "economy",       "transition": null,
       "_note": "B-12 (2026-09-20), migration 102. Groups the BILLING_CANDIDATEs generated together for one namespace + billing period. Sindre's extended Q-5 carve-out: new node type, arrives with its own migration and owner engine." },
     { "node_type": "BILLING_CANDIDATE",     "owner_engine": "economy",       "transition": null,
-      "_note": "B-12 (2026-09-20), migration 103. One consolidated candidate invoice per customer per period, generated from Agreements' covers edges + room_category_pricing.py. Sindre's extended Q-5 carve-out." }
+      "_note": "B-12 (2026-09-20), migration 103. One consolidated candidate invoice per customer per period, generated from Agreements' covers edges + room_category_pricing.py. Sindre's extended Q-5 carve-out." },
+    { "node_type": "CUSTOMER_INVOICE",       "owner_engine": "economy",       "transition": null,
+      "_note": "B-13 (2026-09-20), migration 105. One outbound invoice per BILLING_CANDIDATE (F13 lifecycle: proposal -> approved -> exported -> paid). Deliberately NOT the existing INVOICE node type -- that one already means a supplier-side document (economy/graph.py's upsert_invoice_from_procurement); this is NCE's own customer-facing invoice, a distinct real-world entity. Q-5 carve-out." }
   ]
 }
 
