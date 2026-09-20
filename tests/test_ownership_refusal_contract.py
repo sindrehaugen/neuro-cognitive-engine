@@ -12,7 +12,9 @@ What these tests pin
    negative half is the point: it discriminates the new contract from the old
    one rather than merely asserting that *some* refusal happened.
 2. ``data.reason == "ownership_denied"`` — the same slug the REST surface
-   already returns (``admin_handlers/system_design.py::_ownership_denied_response``).
+   already returns (``admin_http_support.py::ownership_denied_response``,
+   shared by ``admin_handlers/system_design.py`` and
+   ``resource_surface/rest.py`` as of 2026-09-20).
 3. ``data`` survives a **plain** ``json.dumps`` with no ``default``. That is the
    crash path: ``nce/mcp_stdio_rpc.py`` serialises ``error.data`` with no
    ``default=str`` hook, so a stray ``UUID``/``Decimal`` would raise

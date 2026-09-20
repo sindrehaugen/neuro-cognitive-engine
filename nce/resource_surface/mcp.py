@@ -24,6 +24,8 @@ from mcp.types import Tool
 
 from nce.auth import NamespaceContext, set_namespace_context
 from nce.db_utils import scoped_pg_session
+from nce.entity_resolution.ownership import assert_owner
+from nce.events.emit import emit_graph_write
 from nce.mcp_errors import mcp_handler
 from nce.resource_surface.rest import _get_mem_bucket, row_to_dict, upsert_secondary_tables
 from nce.resource_surface.spec import ResourceSpec
@@ -544,6 +546,17 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                 node_label = item_id
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(engine.pg_pool, session_ns) as conn:
+                    # Same deny-by-default guard every hand-written kg_nodes
+                    # writer makes (system_design/devices.py, project/
+                    # convert.py, ...) before its own INSERT/UPDATE.
+                    # OwnershipError propagates uncaught -- the @mcp_handler
+                    # wrapper this function is registered under (see
+                    # build_mcp_tool_specs' own return dict) already
+                    # translates it to MCP_SCOPE_FORBIDDEN, the same
+                    # contract enabled_guard's EngineDisabledError uses
+                    # above, so it is not caught here either.
+                    await assert_owner(conn, session_ns, spec.node_type, spec.engine)
+
                     existing_row = await conn.fetchrow(
                         """
                         SELECT id, label, entity_type, namespace_id, change_origin,
@@ -596,6 +609,14 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                         await upsert_secondary_tables(
                             conn, spec, node_label, ns_uuid, is_global, sec_data
                         )
+
+                    await emit_graph_write(
+                        conn,
+                        namespace_id=session_ns,
+                        node_type=spec.node_type,
+                        op="upserted",
+                        node_id=node_label,
+                    )
             elif spec.table_name:
                 # Multi-table spec: route each secondary table's own fields
                 # out of the primary column list first -- the primary
