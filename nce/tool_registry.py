@@ -1092,6 +1092,17 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=True,
     ),
+    # The EXTERNAL-IMPORT origination path for BOM_LINE (charter Wave B-5),
+    # batched sibling of sales_add_quote_line above -- same rationale:
+    # mutation=True (bumps the MCP cache generation), admin_only=False (a
+    # salesperson or an integration triggers an import), cacheable=False
+    # (it writes).
+    "sales_import_quote_lines": ToolSpec(
+        _h(sales_mcp_handlers, "handle_sales_import_quote_lines"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
     # Sales quote signing orchestration via C7 SignTransport (Wave S-2a).
     # Actor tool: admin_only=True, mutation=True, cacheable=False.
     "sales_request_signature": ToolSpec(

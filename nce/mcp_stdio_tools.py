@@ -4734,6 +4734,65 @@ TOOLS = [
         },
     ),
     Tool(
+        name="sales_import_quote_lines",
+        description=(
+            "Bulk-import externally-sourced lines onto a Sales quote, in one call. The "
+            "external-import origination path for BOM_LINE: writes N rows through the "
+            "sales-owned content:create:external transition. Provenance is NOT "
+            "caller-writable -- the stored origin_kind comes from the writer module's own "
+            "mapping, so a flow/origin_kind argument is never read. Idempotent per line on "
+            "(quote_id, line_ref)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {"type": "string", "description": "Caller namespace UUID."},
+                "quote_id": {
+                    "type": "string",
+                    "description": "The Sales QUOTE identifier.",
+                },
+                "lines": {
+                    "type": "array",
+                    "description": "Non-empty, max 500 entries. Each entry shaped like "
+                    "sales_add_quote_line's own arguments.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "line_ref": {
+                                "type": "string",
+                                "description": "Line reference, unique within the quote.",
+                            },
+                            "qty": {
+                                "type": ["number", "string"],
+                                "description": "Quantity; NUMERIC(18,3). Send a decimal "
+                                "string to stay exact.",
+                            },
+                            "unit_price": {
+                                "type": ["number", "string"],
+                                "description": "Unit price; NUMERIC. Send a decimal string "
+                                "to stay exact.",
+                            },
+                            "line_total": {
+                                "type": ["number", "string"],
+                                "description": "Optional; defaults to qty * unit_price.",
+                            },
+                            "currency": {
+                                "type": "string",
+                                "description": "Optional ISO-4217 code; defaults to NOK.",
+                            },
+                            "origin_ref": {
+                                "type": "string",
+                                "description": "Optional pointer to the external source.",
+                            },
+                        },
+                        "required": ["line_ref", "qty", "unit_price"],
+                    },
+                },
+            },
+            "required": ["namespace_id", "quote_id", "lines"],
+        },
+    ),
+    Tool(
         name="sales_request_signature",
         description=(
             "Initiate an e-signature request for a sales quote via C7 SignTransport. "
