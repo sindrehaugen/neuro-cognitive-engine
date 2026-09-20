@@ -212,8 +212,25 @@ def _reset_governance_cache_initialized_empty() -> None:
 
 
 @pytest.fixture(autouse=True)
-def _reset_nce_cfg_singleton_after_test() -> None:
-    """Prevent order-dependent failures when tests patch ``nce.config.cfg``."""
+def _reset_nce_cfg_singleton_after_test(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prevent order-dependent failures when tests patch ``nce.config.cfg``.
+
+    Also clears ``NCE_MCP_NAMESPACE_ID`` from the process environment for the
+    duration of each test. ``nce.config.live_mcp_namespace_id()`` reads
+    ``os.environ`` directly on every call (deliberately, so a test's own
+    ``monkeypatch.setenv`` still works) rather than through ``cfg`` -- so a
+    developer's shell having this var set (pinning the server to one tenant
+    namespace) silently makes ``_bind_mcp_tenant_namespace`` reject every
+    test's own random namespace_id with ``MCP_SCOPE_FORBIDDEN``, before the
+    handler under test ever runs. Every test that legitimately needs this var
+    set already does so itself via ``monkeypatch.setenv``/an explicit env
+    dict (checked: tests/test_a2a_hardening.py, test_auth.py,
+    test_config_prod_hardening.py, test_secrets_provider_seam.py,
+    test_rest_cache_invalidation.py, unit/test_auth_file_secret_resolution.py
+    -- none rely on inheriting the ambient shell value), so a blanket clear
+    here is safe and a same-test ``monkeypatch.setenv`` still overrides it.
+    """
+    monkeypatch.delenv("NCE_MCP_NAMESPACE_ID", raising=False)
     _restore_nce_cfg_from_env()
     _restore_nce_temporal_datetime()
     _reset_governance_cache_initialized_empty()
