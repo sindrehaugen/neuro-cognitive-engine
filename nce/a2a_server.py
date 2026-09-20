@@ -854,12 +854,14 @@ async def _dispatch_skill(
 
         return await do_reliability_radar(_engine, {"namespace_id": ns_id})
 
-    if skill == "vendors_calibrate_weights":
-        ns_id = _require_param(params, "namespace_id")
-
-        from nce.vertical_modules.vendors.frontier import do_calibrate_weights
-
-        return await do_calibrate_weights(_engine, {"namespace_id": ns_id})
+    # vendors_calibrate_weights is deliberately NOT dispatchable here (Q-41,
+    # ruled 2026-09-20): it became an operator-only action on the MCP surface
+    # (admin_only=True, nce/tool_registry.py) because any caller could
+    # otherwise silently retune every namespace's vendor scoring. A2A's
+    # skill dispatch has no operator/admin distinction for "employee"-kind
+    # callers (only the contractor allowlist above), so exposing it here
+    # would reopen exactly the gap the MCP-side fix closes. It was never
+    # advertised in _AGENT_CARD's skills list.
 
     raise ValueError(f"Unknown A2A skill: {skill!r}")
 

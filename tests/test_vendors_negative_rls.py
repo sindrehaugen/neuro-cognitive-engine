@@ -44,9 +44,9 @@ file's author could not run against a live database to verify.
   ``performance_score is None`` / ``insufficient_data is True`` rather than a
   bare ``None`` return, since the function always returns a result dict.
 
-**Finding, not a fix (frontier.py ``do_calibrate_weights``):** this function
-reads namespace-scoped ledger data (late-delivery and defect counts filtered
-by ``namespace_id``) but writes its result to
+**Finding, ruled (frontier.py ``do_calibrate_weights``, Q-41, 2026-09-20):**
+this function reads namespace-scoped ledger data (late-delivery and defect
+counts filtered by ``namespace_id``) but writes its result to
 ``nce/config_data/vendor-scorecard-weights.json`` -- a single file on disk
 with no namespace column, read by ``scorecard.py::load_scorecard_weights()``
 for every namespace's subsequent vendor-scorecard computation. Namespace A
@@ -56,16 +56,20 @@ draft, which had filed this under "no fitting shape" alongside the truly
 namespace-wide functions -- it does not fit the write-then-cross-read
 template (there is no per-entity key), but it is not an absence of
 isolation to test; it is a proven cross-tenant write, of exactly the kind
-charter §10 rule 1 asks every wave to check for. Whether one shared global
-weighting model is the intended design, or every namespace should calibrate
-its own, is a product/security decision outside this lane's mandate --
-stated here as a finding, not resolved as a bug fix, and not asserted as
-correct. ``test_calibrate_weights_leaks_across_namespaces`` below proves the
-leak mechanically (patched to a throwaway config directory, never the real
-frozen one) and is marked ``xfail(strict=True)``: RED by design, documenting
-a real gap rather than a broken assertion, and it will XPASS (failing CI)
-the day someone namespaces the weights file, forcing a deliberate removal of
-the marker instead of a silent behaviour change.
+charter §10 rule 1 asks every wave to check for. Filed as Q-41 and ruled by
+Sindre: **option 3** -- not per-tenant state (option 2 is a migration for a
+function with no named consumer), the global weighting model stays exactly
+as this test proves it, but calibration becomes an operator action instead
+of a tenant-callable one (``admin_only=True`` on the ``vendors_calibrate_weights``
+tool, ``nce/tool_registry.py``). That closes the customer-visible half --
+one tenant silently steering another's rankings -- without touching this
+function's write shape, which is intended to be global.
+``test_calibrate_weights_leaks_across_namespaces`` below proves the shared
+write mechanically (patched to a throwaway config directory, never the real
+frozen one) and stays marked ``xfail(strict=True)``: RED by design,
+documenting the *ruled* global model rather than a bug, and it will XPASS
+(failing CI) the day someone namespaces the weights file, forcing a
+deliberate reopening of Q-41 instead of a silent behaviour change.
 
 **Explicitly left out, with reasons (verified by reading the source, not
 assumed):**
@@ -340,16 +344,18 @@ async def test_contractor_performance_cross_tenant_isolation(
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "K-H-vendors finding (2026-09-18, ML-orch review): do_calibrate_weights "
-        "reads namespace-scoped ledger data but writes the result to a single, "
-        "un-namespaced JSON file (nce/config_data/vendor-scorecard-weights.json) "
-        "that scorecard.py::load_scorecard_weights() serves to every namespace. "
-        "This is a real, proven cross-tenant write, not a hypothetical one. "
-        "Whether one shared global weighting model is intended, or every "
-        "namespace should calibrate its own, is a product/security decision "
-        "outside this lane's mandate -- documented here, not silently fixed or "
-        "silently accepted. XPASSes (fails CI) the day someone namespaces the "
-        "weights file, forcing a deliberate removal of this marker."
+        "Q-41 (filed 2026-09-18 as K-H-vendors, ruled 2026-09-20): "
+        "do_calibrate_weights reads namespace-scoped ledger data but writes "
+        "the result to a single, un-namespaced JSON file "
+        "(nce/config_data/vendor-scorecard-weights.json) that "
+        "scorecard.py::load_scorecard_weights() serves to every namespace. "
+        "Ruled option 3: the shared global model is intentional and stays "
+        "exactly as this test proves it; the customer-visible defect (any "
+        "tenant could trigger it) is closed by making the "
+        "vendors_calibrate_weights MCP tool admin_only, not by namespacing "
+        "this write. XPASSes (fails CI) the day someone namespaces the "
+        "weights file, forcing a deliberate reopening of Q-41 instead of a "
+        "silent behaviour change."
     ),
 )
 async def test_calibrate_weights_leaks_across_namespaces(

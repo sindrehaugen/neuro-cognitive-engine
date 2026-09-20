@@ -1536,6 +1536,41 @@ class TestEnforceMcpToolAuth:
         args = {"mcp_api_key": "mcp-secret"}
         enforce_mcp_tool_auth("semantic_search", args)
 
+    # Q-41 (ruled 2026-09-20): vendors_calibrate_weights became admin_only in
+    # the registry -- same shape as system_design_delete_planned above, not a
+    # new mechanism. Three tests per the instrument standard: refused without
+    # the gate, accepted with it, and a third proving the gate discriminates
+    # by tool rather than blanket-denying tenant callers (an unconditional
+    # admin-required check would also pass the first two).
+
+    def test_vendors_calibrate_weights_refused_with_only_mcp_key(self, monkeypatch) -> None:
+        monkeypatch.setenv("NCE_ADMIN_API_KEY", "admin-secret")
+        monkeypatch.setenv("NCE_MCP_API_KEY", "mcp-secret")
+        with pytest.raises(ScopeError, match="missing admin_api_key"):
+            enforce_mcp_tool_auth(
+                "vendors_calibrate_weights",
+                {"mcp_api_key": "mcp-secret", "namespace_id": "11111111-2222-4333-8444-555555555555"},
+            )
+
+    def test_vendors_calibrate_weights_accepted_with_admin_key(self, monkeypatch) -> None:
+        monkeypatch.setenv("NCE_ADMIN_API_KEY", "admin-secret")
+        monkeypatch.setenv("NCE_MCP_API_KEY", "tenant-secret")
+        args = {
+            "admin_api_key": "admin-secret",
+            "namespace_id": "11111111-2222-4333-8444-555555555555",
+        }
+        enforce_mcp_tool_auth("vendors_calibrate_weights", args)
+
+    def test_sibling_vendors_tool_stays_tenant_callable(self, monkeypatch) -> None:
+        """Proves the gate is specific to vendors_calibrate_weights, not a
+        blanket admin requirement swallowing the whole vendors module -- a
+        sibling tool with the identical ToolSpec shape (cacheable=True,
+        mutation=False) minus admin_only must still pass on a tenant key
+        alone."""
+        monkeypatch.setenv("NCE_MCP_API_KEY", "mcp-secret")
+        args = {"mcp_api_key": "mcp-secret", "namespace_id": "11111111-2222-4333-8444-555555555555"}
+        enforce_mcp_tool_auth("vendors_match_contractor", args)
+
 
 class TestRequireScopeDecorator:
     """@require_scope decorator — applied to async handler functions."""

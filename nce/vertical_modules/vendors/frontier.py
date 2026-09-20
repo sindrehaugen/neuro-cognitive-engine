@@ -271,6 +271,18 @@ async def do_calibrate_weights(
     """Recalibrate vendor scorecard weights dynamically based on ledger outcomes.
 
     Counts late deliveries vs defects to adjust relative weights.
+
+    ``namespace_id`` selects whose ledger history feeds the calibration, but
+    the result is written to one shared, un-namespaced config file
+    (``vendor-scorecard-weights.json``) that every namespace's subsequent
+    scorecard computation reads. That is a deliberate, ruled design (Q-41,
+    2026-09-20, option 3), not an unnamespaced oversight -- a single global
+    weighting model, tuned by an operator, is coherent; letting any tenant
+    silently tune it for every other tenant was the actual defect, and it is
+    closed by gating the MCP tool this function backs to ``admin_only``
+    (``nce/tool_registry.py``), not by namespacing this write. See
+    ``tests/test_vendors_negative_rls.py`` for the mechanical proof that the
+    write stays global by design.
     """
     ns_raw = params.get("namespace_id")
     if not ns_raw:
