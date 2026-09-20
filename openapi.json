@@ -4675,12 +4675,12 @@
             "description": "Field email",
             "type": "string"
           },
-          "name": {
-            "description": "Field name",
+          "label": {
+            "format": "uuid",
             "type": "string"
           },
-          "node_label": {
-            "format": "uuid",
+          "name": {
+            "description": "Field name",
             "type": "string"
           },
           "phone": {
@@ -4693,7 +4693,7 @@
           }
         },
         "required": [
-          "node_label"
+          "label"
         ],
         "type": "object"
       },
@@ -6370,7 +6370,7 @@
             "description": "Field change_origin",
             "type": "string"
           },
-          "node_label": {
+          "label": {
             "format": "uuid",
             "type": "string"
           },
@@ -6392,7 +6392,7 @@
           }
         },
         "required": [
-          "node_label"
+          "label"
         ],
         "type": "object"
       },
@@ -6478,12 +6478,12 @@
             "description": "Field functional_location_id",
             "type": "string"
           },
-          "metadata": {
-            "description": "Field metadata",
+          "label": {
+            "format": "uuid",
             "type": "string"
           },
-          "node_label": {
-            "format": "uuid",
+          "metadata": {
+            "description": "Field metadata",
             "type": "string"
           },
           "owner_id": {
@@ -6516,7 +6516,7 @@
           }
         },
         "required": [
-          "node_label"
+          "label"
         ],
         "type": "object"
       },
@@ -6718,16 +6718,16 @@
             "description": "Field heat_btu_hr",
             "type": "string"
           },
+          "label": {
+            "format": "uuid",
+            "type": "string"
+          },
           "manufacturer": {
             "description": "Field manufacturer",
             "type": "string"
           },
           "model_number": {
             "description": "Field model_number",
-            "type": "string"
-          },
-          "node_label": {
-            "format": "uuid",
             "type": "string"
           },
           "poe_class": {
@@ -6764,7 +6764,7 @@
           }
         },
         "required": [
-          "node_label"
+          "label"
         ],
         "type": "object"
       },
@@ -6978,16 +6978,16 @@
             "description": "Field dante_tx_channels",
             "type": "string"
           },
+          "label": {
+            "format": "uuid",
+            "type": "string"
+          },
           "manufacturer": {
             "description": "Field manufacturer",
             "type": "string"
           },
           "model_number": {
             "description": "Field model_number",
-            "type": "string"
-          },
-          "node_label": {
-            "format": "uuid",
             "type": "string"
           },
           "poe_class": {
@@ -7016,7 +7016,7 @@
           }
         },
         "required": [
-          "node_label"
+          "label"
         ],
         "type": "object"
       },
@@ -7138,16 +7138,16 @@
             "description": "Field heat_btu_hr",
             "type": "string"
           },
+          "label": {
+            "format": "uuid",
+            "type": "string"
+          },
           "manufacturer": {
             "description": "Field manufacturer",
             "type": "string"
           },
           "model_number": {
             "description": "Field model_number",
-            "type": "string"
-          },
-          "node_label": {
-            "format": "uuid",
             "type": "string"
           },
           "power_draw_watts": {
@@ -7176,7 +7176,7 @@
           }
         },
         "required": [
-          "node_label"
+          "label"
         ],
         "type": "object"
       },
