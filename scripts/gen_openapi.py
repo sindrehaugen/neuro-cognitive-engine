@@ -212,12 +212,24 @@ def generate_openapi_spec() -> dict[str, Any]:
     # 3. Schemas for C12 ResourceSpecs
     for spec in specs_list:
         model_name = f"{spec.engine.capitalize()}_{spec.entity.replace('-', '_')}"
+        # tenant_scope == "graph" (spec.py's derived storage_kind == "kg_nodes"
+        # or table_name is None branch -- the same test rest.py itself uses
+        # as `is_graph`): the response's real identifying column is always
+        # kg_nodes.label, regardless of what spec.id_field declares --
+        # confirmed by tracing rest.py's handle_get/handle_create response
+        # assembly (upsert_secondary_tables explicitly excludes join_field
+        # from what gets merged back, so a graph-primary response never
+        # contains an id_field-named key unless id_field already happens to
+        # be "label"). spec.id_field is untouched here: it is a separate
+        # concern, the CREATE request body's input key (rest.py:718).
+        # See OPENAPI_RESPONSE_SCHEMA_SWEEP.md, Finding 3.
+        identity_prop = "label" if spec.tenant_scope == "graph" else spec.id_field
         item_schema: dict[str, Any] = {
             "type": "object",
             "properties": {
-                spec.id_field: {"type": "string", "format": "uuid"},
+                identity_prop: {"type": "string", "format": "uuid"},
             },
-            "required": [spec.id_field],
+            "required": [identity_prop],
             "description": spec.description or f"{spec.engine} {spec.entity} resource",
         }
         if spec.version_field:
