@@ -355,9 +355,6 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "notifications_archive_notifications",
         "notifications_upsert_reminders",
         "notifications_archive_reminders",
-        # Lane E Wave E-3 -- C12 Procurement PO_LINE resource surface mutations (upsert + archive)
-        "procurement_upsert_po_lines",
-        "procurement_archive_po_lines",
         # Lane A Wave A-4 -- C14 Document Register resource surface mutations (upsert + archive)
         "documents_upsert_documents",
         "documents_archive_documents",

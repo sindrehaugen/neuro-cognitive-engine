@@ -30,6 +30,35 @@ from nce.resource_surface import register_resource
 from nce.resource_surface.spec import ResourceSpec
 
 # 1. PO_LINE
+#
+# excluded_verbs={"upsert", "archive"} -- two verbs, two unrelated reasons,
+# stated separately per ResourceSpec.excluded_verbs's own docstring:
+#
+# "upsert" -- reason (3): a governed writer already owns the write path.
+# upsert_po_line_node (po_line.py:110, assert_owner call at :137) and
+# update_po_line_status (po_line.py:266, assert_owner call at :319) are both
+# real, already-shipped writers that compute transition=f"status:{...}"
+# explicitly and call assert_owner directly. The generic route's create/
+# patch/bulk never do this: assert_owner is only reachable inside
+# rest.py/mcp.py's `if is_graph:` branches (rest.py:747/1043, mcp.py:563),
+# and is_graph = spec.tenant_scope == "graph" is structurally False for
+# every table-backed spec (spec.py's tenant_scope derivation), PO_LINE_SPEC
+# included. So enabling the generic upsert here would not add a second
+# equally-guarded writer -- it would add one with no ownership check at
+# all, bypassing both governed writers' per-transition discipline.
+#
+# "archive" -- fits none of the three documented reasons, stated plainly
+# rather than dressed as one. soft_delete_field=None falls back to
+# "is_archived" (rest.py:524/1174/1270), but procurement_po_lines has no
+# such column anywhere in schema.sql -- archive/restore would raise
+# asyncpg.UndefinedColumnError, caught by the generic handler's own
+# broad exception clause and returned as a 500. Measured as 1 of 25
+# registered specs with this exact shape (soft_delete_field=None,
+# table-backed, archive not excluded, target column absent) -- see
+# _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
+# Whether that pattern warrants a fourth excluded_verbs reason, or a
+# schema migration adding the column across all 25, is undecided; this
+# spec is excluded here only to stop it 500ing today, not as a precedent.
 PO_LINE_SPEC = ResourceSpec(
     engine="procurement",
     entity="po-lines",
@@ -57,6 +86,7 @@ PO_LINE_SPEC = ResourceSpec(
         "Purchase-order lines, self-transitioning through draft/ordered/received/"
         "cancelled status, all owned by Procurement."
     ),
+    excluded_verbs=frozenset({"upsert", "archive"}),
 )
 register_resource(PO_LINE_SPEC)
 
