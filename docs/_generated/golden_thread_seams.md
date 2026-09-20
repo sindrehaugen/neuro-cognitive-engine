@@ -1,8 +1,8 @@
-> **Status:** shipped · **Verified-against:** 594971a (main) · **Last-audited:** generated
+> **Status:** shipped · **Verified-against:** 660b9b9 (main) · **Last-audited:** generated
 
 # Golden Thread — Seam Burndown
 
-> **Status:** shipped · **Verified-against:** 594971a (main) · **Last-audited:** generated
+> **Status:** shipped · **Verified-against:** 660b9b9 (main) · **Last-audited:** generated
 
 **This page is generated from `tests/integration/test_golden_thread.py` — it cannot go stale.** A step is OPEN here if and only if its test carries `@pytest.mark.xfail(strict=True, reason="break-N: ...")` in that file; `strict=True` means the test SUITE fails (XPASS) the moment a seam closes while its marker is still on, forcing the marker's removal in the same commit. Regenerate with:
 ```
