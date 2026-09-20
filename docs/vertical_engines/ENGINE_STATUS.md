@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `ca789cd` (public `main`) · **Last-audited:** 2026-09-20
+> **Status:** shipped · **Verified-against:** `13bdef0` (public `main`) · **Last-audited:** 2026-09-20
 
 # NCE Vertical Engines — Build & Production Status
 
@@ -32,7 +32,7 @@
 | SQL migrations | 92 files (+1 optional), `001` → `096` — gaps at `002`, `009`, `059` (never allocated); `010` exists only under `nce/migrations/optional/`. — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 | `EXPECTED_TENANT_RLS_TABLES` | **107** |
 | Tests | **6,430** `def test_` across 529 files |
-| Golden Thread seam burndown | **5 of 37** lifecycle steps broken (5 distinct seams) — mirrored from [`docs/_generated/golden_thread_seams.md`](../_generated/golden_thread_seams.md); see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
+| Golden Thread seam burndown | **4 of 37** lifecycle steps broken (4 distinct seams) — mirrored from [`docs/_generated/golden_thread_seams.md`](../_generated/golden_thread_seams.md); see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 | v1.6 C12 resource-surface registrations | **17 of 25** engines have `resources.py` — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 
 **Status legend**
