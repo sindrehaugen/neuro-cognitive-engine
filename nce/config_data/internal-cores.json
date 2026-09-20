@@ -17,7 +17,7 @@
   "nce/vertical_modules/economy/finago.py::do_reconcile_gl": {
     "engine": "economy",
     "owner": "MLV15B-AG1",
-    "reason": "General ledger reconciliation engine with Finago ERP; awaiting integration in v1.5 Phase 1 Wave AG-1."
+    "reason": "General ledger reconciliation engine with Finago ERP. MLV15B's B-AG1 (PR #80) shipped a different GL capability -- GL-records query with C8 projection, economy/gl.py -- not this reconciliation core; do_reconcile_gl remains unwired. MLV15B's queue is fully closed with no waves outstanding, so no further work under this owner is scheduled."
   },
   "nce/vertical_modules/economy/ingestion.py::do_get_invoice_watermark": {
     "engine": "economy",
@@ -37,17 +37,17 @@
   "nce/vertical_modules/hr/skills.py::do_record_certification": {
     "engine": "hr",
     "owner": "MLV15B-HR1",
-    "reason": "Professional certification recorder; emits CERTIFICATION.CREATED when wired in MLV15B Wave HR-1."
+    "reason": "Professional certification recorder, would emit CERTIFICATION.CREATED if wired. Wave HR-1 (PR #53) shipped a different HR-1 deliverable -- CERTIFICATION.EXPIRED via hr/certs.py -- and never touched this function in hr/skills.py. No further wave is scheduled."
   },
   "nce/vertical_modules/inventory/triggers.py::do_advance_bom_line_to_delivered": {
     "engine": "inventory",
     "owner": "MLV15D-IN1",
-    "reason": "BOM line transition handler for goods receipt delivery; scheduled for wiring in MLV15D Wave IN-1."
+    "reason": "BOM line transition handler for goods receipt delivery. DELIBERATELY not registered on the MCP admin surface, by orchestrator ruling recorded at inventory/mcp_handlers.py: registering it would let an admin caller mark a BOM line delivered with no goods receipt behind it. Not a pending wave -- IN-1 (PR #41) shipped GOODS_RECEIPT.created via goods_receipt.py, a different core in this same engine, and never touched this function. No wave is scheduled to expose it; the exclusion is deliberate, not backlog."
   },
   "nce/vertical_modules/marketing/brief.py::do_query_marketing_a2a": {
     "engine": "marketing",
     "owner": "MLV15D-M1",
-    "reason": "A2A marketing intelligence query dispatcher; scheduled for A2A skill registration in MLV15D."
+    "reason": "A2A marketing intelligence query dispatcher. MLV15D, the lane this cites, is fully closed -- all assigned v1.5 candidate waves completed, queue empty -- and no marketing A2A skill registration was among them. The lane that was to deliver this no longer exists in that form; no wave is currently scheduled."
   },
   "nce/vertical_modules/procurement/recalibration.py::do_recalibrate_supplier": {
     "engine": "procurement",
@@ -57,27 +57,27 @@
   "nce/vertical_modules/project/tasks.py::do_sync_bom_tasks": {
     "engine": "project",
     "owner": "MLV15B-PJ5",
-    "reason": "Project task sync from BOM changes; scheduled for activation with parked automation in Wave PJ-5."
+    "reason": "Project task sync from BOM changes. Already wired and running, not pending: register_bom_task_subscriber() (this file, ~line 569) is called at startup from cron.py and mcp_stdio_main.py, and registers a real nce.events.bus.subscribe handler that calls this function directly. It reads as unreached to tests/test_surface_parity.py's reachability walk only because subscribe(key, handler) passes the handler as an argument rather than a direct AST call -- the 'dynamic dispatch' limitation that test file's own docstring already names as unobserved. This entry stays in the allowlist to document that scanner limitation at the one entry it is known to affect, not because a wave is outstanding."
   },
   "nce/vertical_modules/sales/ai.py::do_record_ai_decision": {
     "engine": "sales",
     "owner": "MLV15C-C10",
-    "reason": "Decision capture core for sales advisor recommendations; awaits C10 decision feedback keystone in MLV15C."
+    "reason": "Decision capture core for sales advisor recommendations. The C10 decision-feedback keystone this cited as a blocker now exists (nce/decision_feedback.py, migration 075_decision_feedback.sql, MCP tool decision_feedback_record) -- but this function calls none of it. The premise it was waiting on is resolved; the wiring itself was never done. No wave is scheduled."
   },
   "nce/vertical_modules/sales/ai.py::do_win_loss_recall": {
     "engine": "sales",
     "owner": "MLV15C-SD2",
-    "reason": "Historical win/loss recall core; dormant pending decision feedback loop integration in Phase 1."
+    "reason": "Historical win/loss recall core. Same situation as do_record_ai_decision above: the decision-feedback keystone it names as a blocker (nce/decision_feedback.py) now exists, and this function still calls none of it. No wave is scheduled."
   },
   "nce/vertical_modules/sales/commission.py::do_initiate_quote_flow": {
     "engine": "sales",
     "owner": "MLV15B-S2a",
-    "reason": "Quote flow initiation orchestrator; uncalled until quote workflow integration lands in Wave S-2a."
+    "reason": "Quote flow initiation orchestrator. Wave S-2a (PR #25) shipped signed-quote freeze, webhook receiver, and admin attestation directly in sales/signing.py and nce/webhook_receiver/, and did not wire this function. No further wave is scheduled."
   },
   "nce/vertical_modules/sales/commission.py::do_record_deal_loss_feedback": {
     "engine": "sales",
     "owner": "MLV15C-C10",
-    "reason": "Deal loss telemetry capture core; scheduled for wiring into C10 decision feedback table in MLV15C."
+    "reason": "Deal loss telemetry capture core. Same C10 situation as the two sales/ai.py entries above: nce/decision_feedback.py exists today and this function calls none of it. No wave is scheduled."
   },
   "nce/vertical_modules/sales/flip.py::do_flip_function": {
     "engine": "sales",
@@ -87,11 +87,11 @@
   "nce/vertical_modules/sales/signing.py::do_on_declined_callback": {
     "engine": "sales",
     "owner": "MLV15B-S2a",
-    "reason": "Callback handler for declined signature requests; activated by signing webhook endpoint in Wave S-2a."
+    "reason": "Callback handler for declined signature requests. Wave S-2a (PR #25) touched sales/signing.py directly -- signed-quote freeze, webhook receiver, admin attestation -- and still did not wire this specific callback. No further wave is scheduled."
   },
   "nce/vertical_modules/support/proactive.py::do_open_proactive_telemetry_ticket": {
     "engine": "support",
     "owner": "MLV15B-SU1",
-    "reason": "Automated ticket generation from IoT telemetry alerts; scheduled for watcher in Wave SU-1."
+    "reason": "Automated ticket generation from IoT telemetry alerts. Wave SU-1 (PR #46) shipped ticket-dispatch-to-work-order wiring in support/dispatch.py and field_tech/work_orders.py, not this proactive-alert generator in support/proactive.py. No further wave is scheduled."
   }
 }
