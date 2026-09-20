@@ -1470,6 +1470,16 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # Revenue-side Agreements<->GL reconciliation (charter Wave B-11).
+    # mutation=True/cacheable=False: a non-zero delta writes divergence_log
+    # (record_divergence), an incidental side effect of an advisory
+    # comparison, not read-only in the way economy_get_gl_records is.
+    "economy_reconcile_agreements": ToolSpec(
+        _h(economy_mcp_handlers, "handle_economy_reconcile_agreements"),
+        cacheable=False,
+        admin_only=False,
+        mutation=True,
+    ),
     # ------------------------------------------------------------------
     # Inventory vertical module tools (Batch 131, M11.W3) — stock-surface
     # ------------------------------------------------------------------

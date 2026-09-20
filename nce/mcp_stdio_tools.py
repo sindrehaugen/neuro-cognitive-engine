@@ -5603,6 +5603,43 @@ TOOLS = [
         },
     ),
     Tool(
+        name="economy_reconcile_agreements",
+        description=(
+            "Compare posted GL revenue against the recognition schedule for one period (charter "
+            "Wave B-11). AGGREGATE ONLY -- CANNOT ATTRIBUTE A DISCREPANCY TO A SPECIFIC CONTRACT: "
+            "sums the expected recognized amount across every contract due this period against "
+            "the sum of posted GL revenue for a caller-specified account/period. "
+            "economy_postings has no contract_id column, so a non-zero delta means the two "
+            "totals disagree, never that any one named contract is wrong. Writes divergence_log "
+            "via the shared record_divergence/alert_threshold machinery on a non-zero delta; a "
+            "zero delta is never logged."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Caller namespace UUID.",
+                },
+                "period": {
+                    "type": "string",
+                    "description": "The period to reconcile, 'YYYY-MM'.",
+                },
+                "gl_account": {
+                    "type": "string",
+                    "description": "Exact GL account code representing recurring revenue for "
+                    "this tenant's chart of accounts. One of gl_account/gl_account_prefix is "
+                    "required; gl_account wins if both given.",
+                },
+                "gl_account_prefix": {
+                    "type": "string",
+                    "description": "Account prefix, an alternative to an exact gl_account match.",
+                },
+            },
+            "required": ["namespace_id", "period"],
+        },
+    ),
+    Tool(
         name="detect_causal_cycles",
         description=(
             "[ADMIN] Detect cycles in the event_parents causal DAG for a namespace. "

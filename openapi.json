@@ -9925,6 +9925,31 @@
         ],
         "type": "object"
       },
+      "Tool_economy_reconcile_agreements_Input": {
+        "properties": {
+          "gl_account": {
+            "description": "Exact GL account code representing recurring revenue for this tenant's chart of accounts. One of gl_account/gl_account_prefix is required; gl_account wins if both given.",
+            "type": "string"
+          },
+          "gl_account_prefix": {
+            "description": "Account prefix, an alternative to an exact gl_account match.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "period": {
+            "description": "The period to reconcile, 'YYYY-MM'.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "period"
+        ],
+        "type": "object"
+      },
       "Tool_economy_snapshot_mrr_arr_churn_Input": {
         "properties": {
           "contracts": {
@@ -23366,6 +23391,17 @@
         "migration": false,
         "mutation": false,
         "name": "economy_match_invoice"
+      },
+      "economy_reconcile_agreements": {
+        "admin_only": false,
+        "cacheable": false,
+        "description": "Compare posted GL revenue against the recognition schedule for one period (charter Wave B-11). AGGREGATE ONLY -- CANNOT ATTRIBUTE A DISCREPANCY TO A SPECIFIC CONTRACT: sums the expected recognized amount across every contract due this period against the sum of posted GL revenue for a caller-specified account/period. economy_postings has no contract_id column, so a non-zero delta means the two totals disagree, never that any one named contract is wrong. Writes divergence_log via the shared record_divergence/alert_threshold machinery on a non-zero delta; a zero delta is never logged.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_economy_reconcile_agreements_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "economy_reconcile_agreements"
       },
       "economy_snapshot_mrr_arr_churn": {
         "admin_only": false,
