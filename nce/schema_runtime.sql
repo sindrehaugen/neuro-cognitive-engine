@@ -2262,20 +2262,20 @@ BEGIN
     END IF;
 END $$;
 
-ALTER TABLE procurement_deal_registrations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE procurement_deal_registrations FORCE ROW LEVEL SECURITY;
+ALTER TABLE system_design_design_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_design_design_requests FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS tenant_isolation_policy ON procurement_deal_registrations;
-CREATE POLICY tenant_isolation_policy ON procurement_deal_registrations
+DROP POLICY IF EXISTS tenant_isolation_policy ON system_design_design_requests;
+CREATE POLICY tenant_isolation_policy ON system_design_design_requests
     FOR ALL TO nce_app
-    USING  (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
     WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
 
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
-        REVOKE ALL ON TABLE procurement_deal_registrations FROM nce_app;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE procurement_deal_registrations TO nce_app;
+        REVOKE ALL ON TABLE system_design_design_requests FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE system_design_design_requests TO nce_app;
     END IF;
 END $$;
 

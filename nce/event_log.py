@@ -340,6 +340,11 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     # revision / salience) for DEVICE / RACK / CABLE. A node with no row here
     # has no state -- absence is meaningful and is never defaulted.
     "system_design_node_state": "namespace_id",
+    # System Design engine, charter Wave C-4: DESIGN_REQUEST satellite table
+    # (kg_nodes-primary identity, real fields here -- joined by node_label,
+    # FK'd to kg_nodes same as sales_contacts/097 and the DEVICE/PORT/RACK/
+    # CABLE satellites, migration 104).
+    "system_design_design_requests": "namespace_id",
     # Sales engine (Module 5): read model (W2) + targets (W2) + signed baselines (W8)
     "sales_read_model": "namespace_id",
     "sales_targets": "namespace_id",

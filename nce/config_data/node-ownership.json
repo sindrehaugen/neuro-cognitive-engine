@@ -13,6 +13,7 @@
     { "node_type": "FUNCTIONAL_LOCATION",  "owner_engine": "system_design", "transition": null },
     { "node_type": "DESIGN",               "owner_engine": "system_design", "transition": null },
     { "node_type": "DESIGN_LINE",          "owner_engine": "system_design", "transition": null },
+    { "node_type": "DESIGN_REQUEST",       "owner_engine": "system_design", "transition": null },
     { "node_type": "PROJECT_PROJECT",      "owner_engine": "project",       "transition": null },
     { "node_type": "PROJECT_GATE",         "owner_engine": "project",       "transition": null },
     { "node_type": "PROJECT_TASK",         "owner_engine": "project",       "transition": null },

@@ -6401,3 +6401,100 @@ BEGIN
         GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE economy_billing_candidate_lines TO nce_app;
     END IF;
 END $$;
+
+-- ============================================================================
+-- C12 DESIGN_REQUEST Resource Surface (Lane E, charter Wave C-4)
+-- Migration 104_system_design_design_requests.sql
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS system_design_design_requests (
+    id                      UUID        NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id            UUID        NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    node_label              TEXT        NOT NULL,
+    title                   TEXT        NOT NULL,
+    description             TEXT        NOT NULL DEFAULT '',
+    quote_id                TEXT,
+    functional_location_id  TEXT,
+    status                  TEXT        NOT NULL DEFAULT 'pending',
+    priority                TEXT        NOT NULL DEFAULT 'normal',
+    owner_id                TEXT,
+    design_id               TEXT,
+    room_spec               JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    metadata                JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    completed_at            TIMESTAMPTZ,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    UNIQUE (namespace_id, node_label),
+    CONSTRAINT fk_sddr_kg_nodes
+        FOREIGN KEY (node_label, namespace_id)
+        REFERENCES kg_nodes (label, namespace_id)
+        ON DELETE CASCADE,
+    CONSTRAINT system_design_design_requests_status_check
+        CHECK (status IN ('pending', 'assigned', 'in_progress', 'completed', 'cancelled', 'rejected')),
+    CONSTRAINT system_design_design_requests_priority_check
+        CHECK (priority IN ('low', 'normal', 'high', 'urgent'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_sddr_namespace_node_label
+    ON system_design_design_requests (namespace_id, node_label);
+
+CREATE INDEX IF NOT EXISTS idx_sddr_namespace_status
+    ON system_design_design_requests (namespace_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_sddr_namespace_owner
+    ON system_design_design_requests (namespace_id, owner_id);
+
+CREATE INDEX IF NOT EXISTS idx_sddr_namespace_quote
+    ON system_design_design_requests (namespace_id, quote_id);
+
+ALTER TABLE system_design_design_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_design_design_requests FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON system_design_design_requests;
+CREATE POLICY tenant_isolation_policy ON system_design_design_requests
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE system_design_design_requests FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE system_design_design_requests TO nce_app;
+    END IF;
+END $$;
+
+-- Backfill (see migration 104's own header for the full reasoning): a
+-- no-op on any database with zero pre-existing DESIGN_REQUEST rows under
+-- the old system_design_geometry.meta scheme, and the real cutover path
+-- for one that has some.
+INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)
+SELECT node_label, 'DESIGN_REQUEST', namespace_id, 'operator'
+FROM system_design_geometry
+WHERE node_label LIKE 'DESIGN_REQUEST:%'
+ON CONFLICT (label, namespace_id) DO NOTHING;
+
+INSERT INTO system_design_design_requests
+    (namespace_id, node_label, title, description, quote_id,
+     functional_location_id, status, priority, owner_id, design_id,
+     room_spec, metadata, completed_at, created_at, updated_at)
+SELECT
+    namespace_id,
+    node_label,
+    COALESCE(meta->>'title', ''),
+    COALESCE(meta->>'description', ''),
+    meta->>'quote_id',
+    meta->>'functional_location_id',
+    COALESCE(meta->>'status', 'pending'),
+    COALESCE(meta->>'priority', 'normal'),
+    meta->>'owner_id',
+    meta->>'design_id',
+    COALESCE(meta->'room_spec', '{}'::jsonb),
+    COALESCE(meta->'metadata', '{}'::jsonb),
+    NULLIF(meta->>'completed_at', '')::timestamptz,
+    created_at,
+    updated_at
+FROM system_design_geometry
+WHERE node_label LIKE 'DESIGN_REQUEST:%'
+ON CONFLICT (namespace_id, node_label) DO NOTHING;
