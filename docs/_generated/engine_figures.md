@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `6f8d827` (public `main`) · **Last-audited:** generated
+> **Status:** shipped · **Verified-against:** `61cbf8c` (public `main`) · **Last-audited:** generated
 
 # NCE Engine Figures — Inventory & Counters
 
@@ -14,7 +14,7 @@
 
 | Counter | Value | Source of Truth |
 |---|---|---|
-| `TOOL_REGISTRY` entries | **551** MCP tools (70 shared + 481 across 25 engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = 551` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |
+| `TOOL_REGISTRY` entries | **530** MCP tools (70 shared + 460 across 25 engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = 530` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |
 | SQL migrations | 103 files (+1 optional), `001` → `107` — gaps at `002`, `009`, `059` (never allocated); `010` exists only under `nce/migrations/optional/` | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |
 | Golden Thread seam burndown | **4 of 37** lifecycle steps broken (4 distinct seams) | Generated in [`docs/_generated/golden_thread_seams.md`](golden_thread_seams.md) from [`tests/integration/test_golden_thread.py`](../../tests/integration/test_golden_thread.py) |
 | v1.6 C12 resource-surface registrations | **19 of 25** engines have `resources.py` | AST of `nce/vertical_modules/<engine>/resources.py` per engine — see the v1.6 section below |
@@ -57,35 +57,35 @@
 
 ## Tool Registry Breakdown
 
-- **Total Registered Tools:** 551
+- **Total Registered Tools:** 530
 - **Shared Core Tools:** 70
-- **Vertical Engine Tools:** 481 across 25 engine packages
+- **Vertical Engine Tools:** 460 across 25 engine packages
 
 | Engine Package | Tool Count |
 |---|---:|
 | `agreements` | 26 |
-| `assets` | 23 |
-| `business_insights` | 10 |
+| `assets` | 22 |
+| `business_insights` | 9 |
 | `customer_portal` | 9 |
 | `diagnostics` | 5 |
 | `documents` | 4 |
 | `dynamics365` | 6 |
-| `economy` | 26 |
-| `field_tech` | 22 |
+| `economy` | 28 |
+| `field_tech` | 19 |
 | `geodata` | 7 |
-| `hr` | 29 |
-| `inventory` | 33 |
+| `hr` | 25 |
+| `inventory` | 29 |
 | `legal_entities` | 5 |
-| `marketing` | 21 |
+| `marketing` | 18 |
 | `netbox` | 1 |
 | `notifications` | 8 |
 | `procurement` | 16 |
 | `product` | 16 |
 | `project` | 15 |
-| `resources` | 25 |
+| `resources` | 22 |
 | `sales` | 47 |
 | `sites` | 5 |
-| `support` | 35 |
+| `support` | 31 |
 | `system_design` | 73 |
 | `vendors` | 14 |
 
