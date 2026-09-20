@@ -210,6 +210,57 @@ async def test_generic_put_route_defaults_to_the_mechanism_seven_day_window(
     assert "blocked" in r.json()["error"].lower()
 
 
+async def test_generic_put_route_ignores_a_client_supplied_window_override(
+    pg_pool: asyncpg.Pool, make_namespace: Any
+) -> None:
+    """Second round of the same review: ML-orch caught that an earlier fix
+    for the hardcode above briefly exposed window_seconds as an HTTP body
+    field -- a caller could pass a near-zero window and flip past any real
+    divergence, turning a fixed (if wrong) gate into an arbitrarily
+    weakenable one. There must be NO way, via the request body, to narrow
+    the parity window this route gates on. A divergence just 1 second old
+    must still block the flip even when the body claims
+    window_seconds=0.001 -- proving that field is not read at all, not
+    merely validated.
+    """
+    ns_id: UUID = await make_namespace()
+    engine = _make_engine_stub(pg_pool)
+    key = cfg.NCE_API_KEY or "test-key"
+
+    async with pg_pool.acquire() as conn:
+        await set_namespace_context(conn, ns_id)
+        await conn.execute(
+            """
+            INSERT INTO divergence_log (namespace_id, engine, entity, field, nce_value, ext_value, materiality, detected_at)
+            VALUES ($1, 'widgets_sync', 'widget:div-now', 'sku', 'W-1', 'W-1-OLD', 1.0, now())
+            """,
+            ns_id,
+        )
+
+    with (
+        patch("nce.admin_state.engine", engine),
+        patch("nce.config.cfg.NCE_ADMIN_MTLS_ENABLED", False),
+    ):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            put_body = {
+                "namespace_id": str(ns_id),
+                "engine": "widgets_sync",
+                "function": "read_widgets",
+                "mode": "nce",
+                "window_seconds": 0.001,
+            }
+            body_bytes = json.dumps(put_body).encode("utf-8")
+            headers = _valid_headers(key, "PUT", "/api/admin/source-mode", body_bytes)
+            r = await client.put("/api/admin/source-mode", content=body_bytes, headers=headers)
+    assert r.status_code == 400, (
+        "a near-zero window_seconds in the request body must not narrow the "
+        "gate -- 200 here would mean the body field is being honored again"
+    )
+    assert "blocked" in r.json()["error"].lower()
+
+
 async def test_generic_put_route_uses_the_shared_flip_function(
     pg_pool: asyncpg.Pool, make_namespace: Any
 ) -> None:

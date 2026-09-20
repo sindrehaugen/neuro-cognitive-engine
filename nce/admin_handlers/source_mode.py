@@ -232,16 +232,21 @@ async def api_source_mode_put(request) -> JSONResponse:
     :func:`put_source_mode` for the gating logic.
 
     Request body (JSON):
-        namespace_id   (str, required): Active namespace UUID.
-        engine         (str, required): Engine key, e.g. "sales".
-        function       (str, required): Function key (e.g. "list_customers").
-        mode           (str, required): Target mode ("d365", "both", or "nce").
-        window_seconds (float, optional): Parity-window override for the
-                        ``mode="nce"`` gate. Omitted by default, which lets
-                        :func:`nce.source_mode.flip.flip_function`'s own
-                        default (seven days) apply -- see
-                        :func:`put_source_mode`'s docstring for why this
-                        generic route does not invent its own value.
+        namespace_id (str, required): Active namespace UUID.
+        engine       (str, required): Engine key, e.g. "sales".
+        function     (str, required): Function key (e.g. "list_customers").
+        mode         (str, required): Target mode ("d365", "both", or "nce").
+
+    No ``window_seconds`` override over HTTP, deliberately: which parity
+    window gates a flip is a per-engine content decision made by that
+    engine's own wrapper (in code, reviewable -- see ``sales.py``'s
+    ``3600.0``), never a value any caller of this admin endpoint can supply
+    per request. Exposing it here would turn a fixed safety gate into an
+    arbitrarily weakenable one (a caller could pass a near-zero window and
+    flip past any real divergence) -- worse than the fixed-but-wrong
+    hardcode this wave replaced, not better. ML-orch's review caught this
+    on the first pass; see :func:`put_source_mode` for the code-level
+    parameter this route intentionally does not surface.
 
     Response (JSON):
         {
@@ -265,13 +270,5 @@ async def api_source_mode_put(request) -> JSONResponse:
     engine = str(body.get("engine") or "").strip()
     func_name = str(body.get("function") or "").strip()
     mode = str(body.get("mode") or "").strip()
-    window_seconds = body.get("window_seconds")
-    if window_seconds is not None:
-        try:
-            window_seconds = float(window_seconds)
-        except (TypeError, ValueError):
-            return admin_client_error("window_seconds must be a number", status_code=422)
 
-    return await put_source_mode(
-        admin_state.engine.pg_pool, namespace_id, engine, func_name, mode, window_seconds
-    )
+    return await put_source_mode(admin_state.engine.pg_pool, namespace_id, engine, func_name, mode)
