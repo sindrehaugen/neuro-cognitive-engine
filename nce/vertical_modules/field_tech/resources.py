@@ -41,6 +41,17 @@ WORK_ORDER_SPEC = ResourceSpec(
     ),
     searchable_fields=("summary", "source_ref"),
     writable_fields=(
+        # work_order_id: found live 2026-09-20 (UNCREATABLE_SPECS.md) -- was
+        # absent from writable_fields entirely, and the column is NOT NULL
+        # with no default, so the generated create route always
+        # NotNullViolationError'd, unconditionally. The real writer
+        # (field_tech/work_orders.py::do_create_work_order) treats it as
+        # caller-optional with a server-generated "WO-<hex>" fallback on
+        # omission; the generated surface has no mechanism to replicate
+        # that fallback (only id_field gets a uuid4() default), so this
+        # field is effectively required through REST/MCP -- the same,
+        # already-accepted asymmetry hr:absences.absence_id has.
+        "work_order_id",
         "kind",
         "source_kind",
         "source_ref",
@@ -87,6 +98,11 @@ FIELD_TECH_TIME_ENTRY_SPEC = ResourceSpec(
     # event_log). Re-adding "approved" here would reopen the exact gap the
     # governed route exists to close -- a front door beside an open window.
     writable_fields=(
+        # time_entry_id: same shape and same fix as work_order_id above
+        # (UNCREATABLE_SPECS.md) -- absent from writable_fields, NOT NULL
+        # no default, real writer (field_tech/time_entry.py) falls back to
+        # a server-generated "TE-<hex>" only outside the generated surface.
+        "time_entry_id",
         "work_order_id",
         "started_at",
         "ended_at",
@@ -118,7 +134,19 @@ FIELD_TECH_CHECKLIST_SPEC = ResourceSpec(
     soft_delete_field=None,
     filterable_fields=("work_order_id", "partner_scope_id"),
     searchable_fields=("template_id",),
-    writable_fields=("work_order_id", "template_id", "items", "completed_at", "partner_scope_id"),
+    writable_fields=(
+        # checklist_id: same shape and same fix as work_order_id/
+        # time_entry_id above (UNCREATABLE_SPECS.md) -- absent from
+        # writable_fields, NOT NULL no default, real writer
+        # (field_tech/checklist.py) falls back to a server-generated
+        # "CL-<hex>" only outside the generated surface.
+        "checklist_id",
+        "work_order_id",
+        "template_id",
+        "items",
+        "completed_at",
+        "partner_scope_id",
+    ),
     # archive wave (2026-09-20): soft_delete_field=None falls back to a
     # literal "is_archived" column that checklists does not have; no
     # alternate soft-delete column or hand-written archive path either. See
