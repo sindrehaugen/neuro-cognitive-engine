@@ -109,6 +109,11 @@ def test_c12_generated_support_tools_in_registry():
     archive removed 2026-09-20 (archive wave): neither service_tickets nor
     support_ticket_actions has an is_archived column; see
     ARCHIVE_COLUMN_SWEEP.md.
+
+    upsert removed from ticket-actions 2026-09-21 (ADR-0008): migration
+    108_support_ticket_actions_append_only.sql revokes UPDATE/DELETE on
+    support_ticket_actions, matching the table's own documented
+    append-only invariant.
     """
     expected_generated_tools = {
         "support_list_tickets",
@@ -116,13 +121,16 @@ def test_c12_generated_support_tools_in_registry():
         "support_upsert_tickets",
         "support_list_ticket_actions",
         "support_get_ticket_actions",
-        "support_upsert_ticket_actions",
     }
     for tool_name in expected_generated_tools:
         assert tool_name in TOOL_REGISTRY, f"C12 tool {tool_name} missing from TOOL_REGISTRY"
-    for removed_tool in ("support_archive_tickets", "support_archive_ticket_actions"):
+    for removed_tool in (
+        "support_archive_tickets",
+        "support_archive_ticket_actions",
+        "support_upsert_ticket_actions",
+    ):
         assert removed_tool not in TOOL_REGISTRY, (
-            f"{removed_tool} should not exist -- archive is excluded for this spec"
+            f"{removed_tool} should not exist -- excluded for this spec"
         )
 
 

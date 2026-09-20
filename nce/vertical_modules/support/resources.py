@@ -5,7 +5,7 @@ Registers C12 ResourceSpecs for Support's owned node types:
   - TICKET (service_tickets table)
   - SLA (sla_clocks table; PK is ticket_id, no id column)
   - SUPPORT_HEALTH_SCORE (customer_health table; PK is (namespace_id, customer_id), no id column)
-  - TICKET_ACTION (support_ticket_actions table, ADR 0042 append-only log)
+  - TICKET_ACTION (support_ticket_actions table, ADR 0008 append-only log)
 
 SUPPORT_DIAGNOSIS stays exempted: it is not a separate table at all -- the
 AI diagnosis payload lives in service_tickets.ai_diagnosis (JSONB), so there
@@ -161,17 +161,12 @@ TICKET_ACTION_SPEC = ResourceSpec(
     soft_delete_field=None,
     filterable_fields=("ticket_id", "action_type", "outcome", "performed_by"),
     searchable_fields=("action_summary", "outcome_notes", "action_details"),
-    writable_fields=(
-        "ticket_id",
-        "action_type",
-        "action_summary",
-        "action_details",
-        "outcome",
-        "outcome_notes",
-        "performed_by",
-        "performed_at",
-        "change_origin",
-    ),
+    # writable_fields cleared to () because "upsert" is excluded: fail-safe,
+    # not cosmetic -- see ResourceSpec.excluded_verbs's own docstring. A
+    # populated list has no reader today, but if a future change re-enables
+    # upsert, a stale populated list would make every field immediately
+    # writable with no review; an empty one forces a deliberate re-listing.
+    writable_fields=(),
     tier_allowlists={
         "external-customer": (
             "id",
@@ -196,16 +191,15 @@ TICKET_ACTION_SPEC = ResourceSpec(
     },
     # archive wave (2026-09-20): soft_delete_field=None falls back to a
     # literal "is_archived" column that support_ticket_actions does not
-    # have; no alternate soft-delete column either. NOT investigated here:
-    # this spec's own description says "append-only" (ADR 0042), which is
-    # the same shape POSTING_SPEC's WORM-ledger finding started from --
-    # whether "upsert" should also be excluded (and whether the DB grant
-    # actually enforces append-only the way economy_postings' does) is a
-    # separate question from the archive-column defect this wave fixes, out
-    # of scope here, flagged for whoever looks at this spec next. See
+    # have; no alternate soft-delete column either. See
     # _internal/work-docs/mlv16-orchestration/ARCHIVE_COLUMN_SWEEP.md.
-    excluded_verbs=frozenset({"archive"}),
-    description="Append-only ticket action log tracking interventions (tiltak) and outcomes (utfall) per ticket per ADR 0042.",
+    #
+    # upsert excluded per ADR-0008 (docs/adr/0008-append-only-ticket-action-log.md):
+    # excluded_verbs reason (2), storage itself permanently forbids the
+    # verb -- migration 108_support_ticket_actions_append_only.sql revokes
+    # UPDATE/DELETE on this table, matching event_log's own grant shape.
+    excluded_verbs=frozenset({"archive", "upsert"}),
+    description="Append-only ticket action log tracking interventions (tiltak) and outcomes (utfall) per ticket per ADR-0008.",
     enabled_guard=require_support_enabled,
 )
 register_resource(TICKET_ACTION_SPEC)
