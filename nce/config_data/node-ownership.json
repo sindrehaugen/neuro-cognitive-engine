@@ -8,6 +8,7 @@
     { "node_type": "PO_LINE",              "owner_engine": "procurement",   "transition": "status:received" },
     { "node_type": "PO_LINE",              "owner_engine": "procurement",   "transition": "status:cancelled" },
     { "node_type": "PROCUREMENT_MATCH",    "owner_engine": "procurement",   "transition": null },
+    { "node_type": "DEAL_REGISTRATION",    "owner_engine": "procurement",   "transition": null },
     { "node_type": "FUNCTIONAL_LOCATION",  "owner_engine": "system_design", "transition": null },
     { "node_type": "DESIGN",               "owner_engine": "system_design", "transition": null },
     { "node_type": "DESIGN_LINE",          "owner_engine": "system_design", "transition": null },

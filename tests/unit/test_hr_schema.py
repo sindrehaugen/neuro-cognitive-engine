@@ -23,7 +23,7 @@ def test_hr_tables_registered_in_expected_tenant_rls_tables():
 
 
 def test_expected_tenant_rls_tables_total_count():
-    """Verify total count of tenant RLS tables after C17 sites, Wave D-5 support_ticket_actions, C12 sales, and Wave B-9 agreements additions is 109 (Wave D-9 follow-on adds source_mode_heartbeat)."""
-    assert len(EXPECTED_TENANT_RLS_TABLES) == 109, (
-        f"Expected 109 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
+    """Verify total count of tenant RLS tables after C17 sites, Wave D-5 support_ticket_actions, C12 sales, and Wave B-9 agreements additions is 110 (Wave B-15 adds procurement_deal_registrations)."""
+    assert len(EXPECTED_TENANT_RLS_TABLES) == 110, (
+        f"Expected 110 tenant RLS tables, got {len(EXPECTED_TENANT_RLS_TABLES)}"
     )

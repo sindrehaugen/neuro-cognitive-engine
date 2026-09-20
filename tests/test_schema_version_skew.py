@@ -69,6 +69,18 @@ def _image_migrations() -> list[str]:
     return sorted(p.name for p in root.glob("*.sql"))
 
 
+def _synthetic_newer_migration() -> str:
+    """A migration the database has recorded that this image does not contain --
+    one version number past whatever the real image's highest migration currently
+    is, so the "newer than the image" premise stays true regardless of how many
+    real migrations exist. A hardcoded ``"099_from_a_newer_image.sql"`` broke the
+    instant a real migration 100 was added elsewhere (every lane adding a
+    migration trips this, the same way EXPECTED_TENANT_RLS_TABLES's literal count
+    does) -- derived instead, per K35's own lesson applied to a number, not a
+    count."""
+    return f"{highest_version(_image_migrations()) + 1:03d}_from_a_newer_image.sql"
+
+
 async def _check(recorded: list[str]) -> None:
     engine = NCEEngine.__new__(NCEEngine)
     engine.pg_pool = _FakePool(recorded)  # type: ignore[assignment]
@@ -123,7 +135,7 @@ class TestSkewDetection:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         with caplog.at_level(logging.CRITICAL, logger="nce-orchestrator"):
-            await _check([*_image_migrations(), "099_from_a_newer_image.sql"])
+            await _check([*_image_migrations(), _synthetic_newer_migration()])
         assert "schema skew" in caplog.text
 
     @pytest.mark.asyncio
@@ -142,21 +154,23 @@ class TestActionableMessage:
     @pytest.mark.asyncio
     async def test_it_names_the_missing_migrations(self, caplog: pytest.LogCaptureFixture) -> None:
         with caplog.at_level(logging.CRITICAL, logger="nce-orchestrator"):
-            await _check([*_image_migrations(), "099_from_a_newer_image.sql"])
-        assert "099_from_a_newer_image.sql" in caplog.text
+            await _check([*_image_migrations(), _synthetic_newer_migration()])
+        assert _synthetic_newer_migration() in caplog.text
 
     @pytest.mark.asyncio
     async def test_it_reports_both_versions(self, caplog: pytest.LogCaptureFixture) -> None:
         image_at = highest_version(_image_migrations())
+        synthetic = _synthetic_newer_migration()
+        db_at = migration_version(synthetic)
         with caplog.at_level(logging.CRITICAL, logger="nce-orchestrator"):
-            await _check([*_image_migrations(), "099_from_a_newer_image.sql"])
+            await _check([*_image_migrations(), synthetic])
         assert f"up to {image_at}" in caplog.text
-        assert "is at 99" in caplog.text
+        assert f"is at {db_at}" in caplog.text
 
     @pytest.mark.asyncio
     async def test_it_says_what_to_do(self, caplog: pytest.LogCaptureFixture) -> None:
         with caplog.at_level(logging.CRITICAL, logger="nce-orchestrator"):
-            await _check([*_image_migrations(), "099_from_a_newer_image.sql"])
+            await _check([*_image_migrations(), _synthetic_newer_migration()])
         assert "Rebuild" in caplog.text
 
     @pytest.mark.asyncio
@@ -165,7 +179,7 @@ class TestActionableMessage:
     ) -> None:
         """The whole point: stop the allowlist dump reading like the root cause."""
         with caplog.at_level(logging.CRITICAL, logger="nce-orchestrator"):
-            await _check([*_image_migrations(), "099_from_a_newer_image.sql"])
+            await _check([*_image_migrations(), _synthetic_newer_migration()])
         assert "symptom" in caplog.text
 
     @pytest.mark.asyncio
@@ -189,7 +203,7 @@ class TestProductionFailsClosed:
         monkeypatch.setattr(orchestrator_module.cfg, "IS_PROD", True)
         monkeypatch.delenv("NCE_ALLOW_SCHEMA_SKEW", raising=False)
         with pytest.raises(RuntimeError, match="schema skew"):
-            await _check([*_image_migrations(), "099_from_a_newer_image.sql"])
+            await _check([*_image_migrations(), _synthetic_newer_migration()])
 
     @pytest.mark.asyncio
     async def test_production_boots_when_the_skew_is_acknowledged(
@@ -197,7 +211,7 @@ class TestProductionFailsClosed:
     ) -> None:
         monkeypatch.setattr(orchestrator_module.cfg, "IS_PROD", True)
         monkeypatch.setenv("NCE_ALLOW_SCHEMA_SKEW", "true")
-        await _check([*_image_migrations(), "099_from_a_newer_image.sql"])
+        await _check([*_image_migrations(), _synthetic_newer_migration()])
 
     @pytest.mark.asyncio
     async def test_production_does_not_refuse_a_matching_database(
@@ -211,7 +225,7 @@ class TestProductionFailsClosed:
     @pytest.mark.asyncio
     async def test_dev_only_logs(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(orchestrator_module.cfg, "IS_PROD", False)
-        await _check([*_image_migrations(), "099_from_a_newer_image.sql"])
+        await _check([*_image_migrations(), _synthetic_newer_migration()])
 
 
 class TestCheckOrder:
@@ -275,7 +289,7 @@ class TestBuildStamp:
     ) -> None:
         monkeypatch.setenv("NCE_GIT_SHA", "deadbee")
         with caplog.at_level(logging.CRITICAL, logger="nce-orchestrator"):
-            await _check([*_image_migrations(), "099_from_a_newer_image.sql"])
+            await _check([*_image_migrations(), _synthetic_newer_migration()])
         assert "deadbee" in caplog.text
 
 

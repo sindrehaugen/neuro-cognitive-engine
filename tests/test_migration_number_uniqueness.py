@@ -55,6 +55,10 @@ _KNOWN_GAPS: dict[int, str] = {
     # its own tree shows them as gaps rather than filled numbers. Owners
     # per ML-orch's collision ruling: 87 -> Lane D (PR #242,
     # assets_shell_product), 88 -> Lane B (PR #245, sales_resource_tables).
+    # 99 was reserved by PR #330 (Lane E, sales_quote_billing_method) while
+    # this branch was rebased on an older main; #330 has since merged, so 99
+    # is no longer a gap -- removed per the shrink-only rule rather than left
+    # stale.
 }
 
 

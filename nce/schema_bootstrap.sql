@@ -4829,3 +4829,44 @@ BEGIN
         GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE source_mode_heartbeat TO nce_app;
     END IF;
 END $$;
+
+-- ============================================================================
+-- Migration 100_procurement_deal_registrations.sql
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS procurement_deal_registrations (
+    id                UUID          NOT NULL DEFAULT gen_random_uuid(),
+    namespace_id      UUID          NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    supplier          TEXT          NOT NULL,
+    deal_name         TEXT          NOT NULL,
+    status            TEXT          NOT NULL DEFAULT 'submitted',
+    estimated_value   NUMERIC(18,2),
+    registered_by     TEXT,
+    valid_from        TIMESTAMPTZ,
+    valid_to          TIMESTAMPTZ,
+    notes             TEXT,
+    is_archived       BOOLEAN       NOT NULL DEFAULT FALSE,
+    created_at        TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    CONSTRAINT procurement_deal_registrations_status_check
+        CHECK (status IN ('submitted', 'approved', 'rejected', 'expired')),
+    CONSTRAINT procurement_deal_registrations_supplier_not_blank
+        CHECK (btrim(supplier) <> ''),
+    CONSTRAINT procurement_deal_registrations_deal_name_not_blank
+        CHECK (btrim(deal_name) <> '')
+);
+
+CREATE INDEX IF NOT EXISTS idx_procurement_deal_registrations_ns_supplier
+    ON procurement_deal_registrations (namespace_id, supplier);
+
+CREATE INDEX IF NOT EXISTS idx_procurement_deal_registrations_ns_status
+    ON procurement_deal_registrations (namespace_id, status);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE procurement_deal_registrations FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE procurement_deal_registrations TO nce_app;
+    END IF;
+END $$;
