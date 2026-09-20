@@ -395,6 +395,44 @@ def test_global_scope_derivation_and_contract():
     assert "neither EXPECTED_TENANT_RLS_TABLES nor EXPECTED_GLOBAL_TABLES" in str(exc_info.value)
 
 
+def test_graph_scope_rejects_non_kg_nodes_filterable_field():
+    """#311: a graph-primary spec naming a secondary-table column as
+    filterable/searchable must fail at declaration, not at a caller's first
+    live filter. Guard-the-guard for the kg_nodes-real-columns check,
+    mirroring the unlisted-table-name check immediately above it."""
+    with pytest.raises(ValueError) as exc_info:
+        ResourceSpec(
+            engine="system_design",
+            entity="rogue-graph-resource",
+            node_type="ROGUE_DEVICE",
+            table_name=None,
+            filterable_fields=("device_category",),
+        )
+    assert "not real kg_nodes columns" in str(exc_info.value)
+
+    with pytest.raises(ValueError) as exc_info:
+        ResourceSpec(
+            engine="system_design",
+            entity="rogue-graph-resource-2",
+            node_type="ROGUE_DEVICE_2",
+            storage_kind="kg_nodes",
+            searchable_fields=("model_number",),
+        )
+    assert "not real kg_nodes columns" in str(exc_info.value)
+
+    # Positive: a graph-primary spec filtering only on a real kg_nodes
+    # column (the CONTACT/#314 pattern) must still construct cleanly --
+    # proves the check above is not simply refusing every graph spec.
+    ok_spec = ResourceSpec(
+        engine="system_design",
+        entity="well-behaved-graph-resource",
+        node_type="WELL_BEHAVED",
+        table_name=None,
+        filterable_fields=("change_origin",),
+    )
+    assert ok_spec.tenant_scope == "graph"
+
+
 def test_global_scope_read_without_namespace_id():
     """Reads on global-scoped resources do not require namespace_id."""
     global_spec = ResourceSpec(

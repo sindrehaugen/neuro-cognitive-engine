@@ -12,6 +12,40 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+# kg_nodes' own real columns (nce/schema.sql's CREATE TABLE plus every later
+# ALTER TABLE ADD COLUMN against it) -- the only columns a graph-primary
+# spec's generated list/search handler can filter or search on, because that
+# handler queries kg_nodes directly and never joins secondary_tables (see
+# resource_surface/rest.py's own comment at the graph-primary list branch:
+# "Filters and search apply to kg_nodes' own real columns ... not the
+# secondary tables"). Measured against `information_schema.columns` on a
+# live database, not grepped from schema.sql's CREATE TABLE block alone --
+# four of these (system_design/vendors/agreements/economy_source_id) are
+# ALTER-added and do not appear there. Verified 2026-09-20; a new kg_nodes
+# column added by a later migration must be added here too, same
+# obligation as EXPECTED_TENANT_RLS_TABLES in nce/event_log.py.
+_KG_NODES_REAL_COLUMNS: frozenset[str] = frozenset(
+    {
+        "id",
+        "label",
+        "entity_type",
+        "embedding",
+        "embedding_model_id",
+        "namespace_id",
+        "payload_ref",
+        "created_at",
+        "updated_at",
+        "change_origin",
+        "origin_event_id",
+        "d365_source_id",
+        "procurement_source_id",
+        "system_design_source_id",
+        "vendors_source_id",
+        "agreements_source_id",
+        "economy_source_id",
+    }
+)
+
 
 @dataclass(frozen=True)
 class SecondaryTable:
@@ -204,6 +238,36 @@ class ResourceSpec:
         else:
             scope = "graph"
         object.__setattr__(self, "tenant_scope", scope)
+
+        if scope == "graph":
+            # #311: a graph-primary spec declared filterable/searchable
+            # fields naming secondary-table columns (e.g. device_category,
+            # model_number) that do not exist on kg_nodes. The generated
+            # list/search handler queries kg_nodes directly and never joins
+            # secondary_tables for a filter or a search (rest.py's own
+            # comment states the contract), so such a field is not a working
+            # filter -- it is an undefined-column error against real
+            # Postgres, invisible against the memory-store fallback CI
+            # exercises (see resources.py's own account of why nothing
+            # caught it). Caught here, at declaration time, the same place
+            # an unknown table_name already is -- not at a caller's first
+            # live filter.
+            bad_filterable = [f for f in self.filterable_fields if f not in _KG_NODES_REAL_COLUMNS]
+            bad_searchable = [f for f in self.searchable_fields if f not in _KG_NODES_REAL_COLUMNS]
+            if bad_filterable or bad_searchable:
+                raise ValueError(
+                    f"Resource {self.engine}:{self.entity} is graph-primary "
+                    f"(table_name=None) but declares filterable_fields="
+                    f"{bad_filterable!r} / searchable_fields={bad_searchable!r} "
+                    f"naming fields that are not real kg_nodes columns. A "
+                    f"graph-primary spec's list/search handler queries "
+                    f"kg_nodes only and never joins secondary_tables -- such "
+                    f"a field would be a runtime SQL error against Postgres, "
+                    f"not a working filter. Satellite data is still readable "
+                    f"via get-by-id; it is filtering/searching on it that is "
+                    f"unsupported. Trim to real kg_nodes columns (see "
+                    f"_KG_NODES_REAL_COLUMNS in this module)."
+                )
 
         if self.secondary_tables:
             # table_name is None here always means scope == "graph" (see the
