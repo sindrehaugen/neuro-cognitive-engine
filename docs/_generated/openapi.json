@@ -4550,7 +4550,7 @@
         "type": "object"
       },
       "Sales_contacts": {
-        "description": "C12 contact: graph identity (label, entity_type, change_origin, timestamps) plus name/email/phone on the sales_contacts satellite table. C1-resolvable on email+phone (a property of the node type) -- this create path does NOT perform create-time resolution or deduplication; resolve() is read-only and never auto-merges, so a caller wanting a duplicate check must run it separately before calling create. Bulk create is refused, same as every other kg_nodes-primary spec (DEVICE/PORT/RACK/CABLE): identity-plus-satellite partial-failure semantics have no precedent in this generator. No customer_id/sales_customers link (Q-46, open).",
+        "description": "C12 contact: graph identity (label, entity_type, change_origin, timestamps) plus name/email/phone on the sales_contacts satellite table. C1-resolvable on email+phone (a property of the node type) -- this create path does NOT perform create-time resolution or deduplication; resolve() is read-only and never auto-merges, so a caller wanting a duplicate check must run it separately before calling create. Bulk create is refused, same as every other kg_nodes-primary spec (DEVICE/PORT/RACK/CABLE): the all-or-nothing reporting contract is decided (Q-48), but identity-plus-satellite partial-failure behaviour has no implementation yet and no caller requiring one. No customer_id/sales_customers link (Q-46, open).",
         "properties": {
           "change_origin": {
             "description": "Field change_origin",
@@ -6383,7 +6383,7 @@
         "type": "object"
       },
       "System_design_design_requests": {
-        "description": "C12 solution design intake queue request: graph identity (label, entity_type, change_origin, timestamps) plus title/description/quote_id/functional_location_id/status/priority/owner_id/design_id/room_spec/metadata on the system_design_design_requests satellite table. list is excluded -- the existing hand-written system_design_list_design_requests tool stays authoritative; this spec adds get/upsert/archive only. Bulk create is refused, same as every other kg_nodes-primary spec in this module: identity-plus-satellite partial-failure semantics have no precedent here.",
+        "description": "C12 solution design intake queue request: graph identity (label, entity_type, change_origin, timestamps) plus title/description/quote_id/functional_location_id/status/priority/owner_id/design_id/room_spec/metadata on the system_design_design_requests satellite table. list is excluded -- the existing hand-written system_design_list_design_requests tool stays authoritative; this spec adds get/upsert/archive only. Bulk create is refused, same as every other kg_nodes-primary spec in this module: reporting semantics are all-or-nothing (Q-48), but identity-plus-satellite partial-failure behaviour has no implementation yet and no caller requiring one.",
         "properties": {
           "change_origin": {
             "description": "Field change_origin",
@@ -35396,7 +35396,7 @@
     },
     "/api/agreements/agreements/bulk": {
       "post": {
-        "description": "handle_bulk (/api/agreements/agreements/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_agreements_agreements_bulk",
         "parameters": [],
         "requestBody": {
@@ -35472,7 +35472,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/agreements/agreements/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "agreements"
         ]
@@ -37425,7 +37425,7 @@
     },
     "/api/agreements/parties/bulk": {
       "post": {
-        "description": "handle_bulk (/api/agreements/parties/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_agreements_parties_bulk",
         "parameters": [],
         "requestBody": {
@@ -37501,7 +37501,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/agreements/parties/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "agreements"
         ]
@@ -39591,7 +39591,7 @@
     },
     "/api/agreements/templates/bulk": {
       "post": {
-        "description": "handle_bulk (/api/agreements/templates/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_agreements_templates_bulk",
         "parameters": [],
         "requestBody": {
@@ -39667,7 +39667,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/agreements/templates/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "agreements"
         ]
@@ -41243,7 +41243,7 @@
     },
     "/api/assets/assets/bulk": {
       "post": {
-        "description": "handle_bulk (/api/assets/assets/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_assets_assets_bulk",
         "parameters": [],
         "requestBody": {
@@ -41319,7 +41319,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/assets/assets/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "assets"
         ]
@@ -45031,7 +45031,7 @@
     },
     "/api/business_insights/kpi-snapshots/bulk": {
       "post": {
-        "description": "handle_bulk (/api/business_insights/kpi-snapshots/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_business_insights_kpi_snapshots_bulk",
         "parameters": [],
         "requestBody": {
@@ -45099,7 +45099,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/business_insights/kpi-snapshots/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "business_insights"
         ]
@@ -46384,7 +46384,7 @@
     },
     "/api/documents/documents/bulk": {
       "post": {
-        "description": "handle_bulk (/api/documents/documents/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_documents_documents_bulk",
         "parameters": [],
         "requestBody": {
@@ -46460,7 +46460,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/documents/documents/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "documents"
         ]
@@ -49158,7 +49158,7 @@
     },
     "/api/economy/postings/bulk": {
       "post": {
-        "description": "handle_bulk (/api/economy/postings/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_economy_postings_bulk",
         "parameters": [],
         "requestBody": {
@@ -49234,7 +49234,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/economy/postings/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "economy"
         ]
@@ -51689,7 +51689,7 @@
     },
     "/api/field_tech/checklists/bulk": {
       "post": {
-        "description": "handle_bulk (/api/field_tech/checklists/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_field_tech_checklists_bulk",
         "parameters": [],
         "requestBody": {
@@ -51765,7 +51765,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/field_tech/checklists/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "field_tech"
         ]
@@ -53090,7 +53090,7 @@
     },
     "/api/field_tech/time-entries/bulk": {
       "post": {
-        "description": "handle_bulk (/api/field_tech/time-entries/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_field_tech_time_entries_bulk",
         "parameters": [],
         "requestBody": {
@@ -53166,7 +53166,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/field_tech/time-entries/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "field_tech"
         ]
@@ -54527,7 +54527,7 @@
     },
     "/api/field_tech/work-orders/bulk": {
       "post": {
-        "description": "handle_bulk (/api/field_tech/work-orders/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_field_tech_work_orders_bulk",
         "parameters": [],
         "requestBody": {
@@ -54603,7 +54603,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/field_tech/work-orders/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "field_tech"
         ]
@@ -56241,7 +56241,7 @@
     },
     "/api/hr/absences/bulk": {
       "post": {
-        "description": "handle_bulk (/api/hr/absences/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_hr_absences_bulk",
         "parameters": [],
         "requestBody": {
@@ -56317,7 +56317,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/hr/absences/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "hr"
         ]
@@ -57788,7 +57788,7 @@
     },
     "/api/hr/certifications/bulk": {
       "post": {
-        "description": "handle_bulk (/api/hr/certifications/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_hr_certifications_bulk",
         "parameters": [],
         "requestBody": {
@@ -57864,7 +57864,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/hr/certifications/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "hr"
         ]
@@ -59423,7 +59423,7 @@
     },
     "/api/hr/employees/bulk": {
       "post": {
-        "description": "handle_bulk (/api/hr/employees/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_hr_employees_bulk",
         "parameters": [],
         "requestBody": {
@@ -59499,7 +59499,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/hr/employees/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "hr"
         ]
@@ -61153,7 +61153,7 @@
     },
     "/api/hr/skills/bulk": {
       "post": {
-        "description": "handle_bulk (/api/hr/skills/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_hr_skills_bulk",
         "parameters": [],
         "requestBody": {
@@ -61229,7 +61229,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/hr/skills/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "hr"
         ]
@@ -62931,7 +62931,7 @@
     },
     "/api/inventory/goods-receipts/bulk": {
       "post": {
-        "description": "handle_bulk (/api/inventory/goods-receipts/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_inventory_goods_receipts_bulk",
         "parameters": [],
         "requestBody": {
@@ -63007,7 +63007,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/inventory/goods-receipts/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "inventory"
         ]
@@ -64332,7 +64332,7 @@
     },
     "/api/inventory/inventory-items/bulk": {
       "post": {
-        "description": "handle_bulk (/api/inventory/inventory-items/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_inventory_inventory_items_bulk",
         "parameters": [],
         "requestBody": {
@@ -64408,7 +64408,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/inventory/inventory-items/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "inventory"
         ]
@@ -65742,7 +65742,7 @@
     },
     "/api/inventory/inventory-rma/bulk": {
       "post": {
-        "description": "handle_bulk (/api/inventory/inventory-rma/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_inventory_inventory_rma_bulk",
         "parameters": [],
         "requestBody": {
@@ -65818,7 +65818,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/inventory/inventory-rma/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "inventory"
         ]
@@ -68061,7 +68061,7 @@
     },
     "/api/inventory/stock-locations/bulk": {
       "post": {
-        "description": "handle_bulk (/api/inventory/stock-locations/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_inventory_stock_locations_bulk",
         "parameters": [],
         "requestBody": {
@@ -68137,7 +68137,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/inventory/stock-locations/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "inventory"
         ]
@@ -69540,7 +69540,7 @@
     },
     "/api/legal_entities/legal-entities/bulk": {
       "post": {
-        "description": "handle_bulk (/api/legal_entities/legal-entities/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_legal_entities_legal_entities_bulk",
         "parameters": [],
         "requestBody": {
@@ -69608,7 +69608,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/legal_entities/legal-entities/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "legal_entities"
         ]
@@ -71093,7 +71093,7 @@
     },
     "/api/marketing/case-studies/bulk": {
       "post": {
-        "description": "handle_bulk (/api/marketing/case-studies/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_marketing_case_studies_bulk",
         "parameters": [],
         "requestBody": {
@@ -71161,7 +71161,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/marketing/case-studies/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "marketing"
         ]
@@ -72366,7 +72366,7 @@
     },
     "/api/marketing/content-assets/bulk": {
       "post": {
-        "description": "handle_bulk (/api/marketing/content-assets/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_marketing_content_assets_bulk",
         "parameters": [],
         "requestBody": {
@@ -72434,7 +72434,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/marketing/content-assets/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "marketing"
         ]
@@ -73947,7 +73947,7 @@
     },
     "/api/marketing/testimonials/bulk": {
       "post": {
-        "description": "handle_bulk (/api/marketing/testimonials/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_marketing_testimonials_bulk",
         "parameters": [],
         "requestBody": {
@@ -74023,7 +74023,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/marketing/testimonials/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "marketing"
         ]
@@ -76088,7 +76088,7 @@
     },
     "/api/notifications/notifications/bulk": {
       "post": {
-        "description": "handle_bulk (/api/notifications/notifications/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_notifications_notifications_bulk",
         "parameters": [],
         "requestBody": {
@@ -76164,7 +76164,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/notifications/notifications/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "notifications"
         ]
@@ -77525,7 +77525,7 @@
     },
     "/api/notifications/reminders/bulk": {
       "post": {
-        "description": "handle_bulk (/api/notifications/reminders/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_notifications_reminders_bulk",
         "parameters": [],
         "requestBody": {
@@ -77601,7 +77601,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/notifications/reminders/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "notifications"
         ]
@@ -79858,7 +79858,7 @@
     },
     "/api/procurement/deal-registrations/bulk": {
       "post": {
-        "description": "handle_bulk (/api/procurement/deal-registrations/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_procurement_deal_registrations_bulk",
         "parameters": [],
         "requestBody": {
@@ -79934,7 +79934,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/procurement/deal-registrations/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "procurement"
         ]
@@ -81572,7 +81572,7 @@
     },
     "/api/procurement/po-lines/bulk": {
       "post": {
-        "description": "handle_bulk (/api/procurement/po-lines/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_procurement_po_lines_bulk",
         "parameters": [],
         "requestBody": {
@@ -81648,7 +81648,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/procurement/po-lines/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "procurement"
         ]
@@ -83467,7 +83467,7 @@
     },
     "/api/product/packages/bulk": {
       "post": {
-        "description": "handle_bulk (/api/product/packages/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_product_packages_bulk",
         "parameters": [],
         "requestBody": {
@@ -83543,7 +83543,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/product/packages/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "product"
         ]
@@ -84877,7 +84877,7 @@
     },
     "/api/product/product-skus/bulk": {
       "post": {
-        "description": "handle_bulk (/api/product/product-skus/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_product_product_skus_bulk",
         "parameters": [],
         "requestBody": {
@@ -84953,7 +84953,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/product/product-skus/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "product"
         ]
@@ -86685,7 +86685,7 @@
     },
     "/api/project/projects/bulk": {
       "post": {
-        "description": "handle_bulk (/api/project/projects/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_project_projects_bulk",
         "parameters": [],
         "requestBody": {
@@ -86761,7 +86761,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/project/projects/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "project"
         ]
@@ -89202,7 +89202,7 @@
     },
     "/api/resources/allocations/bulk": {
       "post": {
-        "description": "handle_bulk (/api/resources/allocations/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_resources_allocations_bulk",
         "parameters": [],
         "requestBody": {
@@ -89278,7 +89278,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/resources/allocations/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "resources"
         ]
@@ -91109,7 +91109,7 @@
     },
     "/api/resources/resources/bulk": {
       "post": {
-        "description": "handle_bulk (/api/resources/resources/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_resources_resources_bulk",
         "parameters": [],
         "requestBody": {
@@ -91185,7 +91185,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/resources/resources/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "resources"
         ]
@@ -92586,7 +92586,7 @@
     },
     "/api/resources/travel-legs/bulk": {
       "post": {
-        "description": "handle_bulk (/api/resources/travel-legs/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_resources_travel_legs_bulk",
         "parameters": [],
         "requestBody": {
@@ -92662,7 +92662,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/resources/travel-legs/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "resources"
         ]
@@ -94417,7 +94417,7 @@
     },
     "/api/sales/contacts/bulk": {
       "post": {
-        "description": "handle_bulk (/api/sales/contacts/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_sales_contacts_bulk",
         "parameters": [],
         "requestBody": {
@@ -94493,7 +94493,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/sales/contacts/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "sales"
         ]
@@ -95800,7 +95800,7 @@
     },
     "/api/sales/customers/bulk": {
       "post": {
-        "description": "handle_bulk (/api/sales/customers/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_sales_customers_bulk",
         "parameters": [],
         "requestBody": {
@@ -95876,7 +95876,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/sales/customers/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "sales"
         ]
@@ -97274,7 +97274,7 @@
     },
     "/api/sales/deal-participants/bulk": {
       "post": {
-        "description": "handle_bulk (/api/sales/deal-participants/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_sales_deal_participants_bulk",
         "parameters": [],
         "requestBody": {
@@ -97350,7 +97350,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/sales/deal-participants/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "sales"
         ]
@@ -98778,7 +98778,7 @@
     },
     "/api/sales/deals/bulk": {
       "post": {
-        "description": "handle_bulk (/api/sales/deals/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_sales_deals_bulk",
         "parameters": [],
         "requestBody": {
@@ -98854,7 +98854,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/sales/deals/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "sales"
         ]
@@ -100428,7 +100428,7 @@
     },
     "/api/sales/leads/bulk": {
       "post": {
-        "description": "handle_bulk (/api/sales/leads/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_sales_leads_bulk",
         "parameters": [],
         "requestBody": {
@@ -100504,7 +100504,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/sales/leads/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "sales"
         ]
@@ -102097,7 +102097,7 @@
     },
     "/api/sales/quote-templates/bulk": {
       "post": {
-        "description": "handle_bulk (/api/sales/quote-templates/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_sales_quote_templates_bulk",
         "parameters": [],
         "requestBody": {
@@ -102173,7 +102173,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/sales/quote-templates/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "sales"
         ]
@@ -103507,7 +103507,7 @@
     },
     "/api/sales/quotes/bulk": {
       "post": {
-        "description": "handle_bulk (/api/sales/quotes/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_sales_quotes_bulk",
         "parameters": [],
         "requestBody": {
@@ -103583,7 +103583,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/sales/quotes/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "sales"
         ]
@@ -104939,7 +104939,7 @@
     },
     "/api/sales/signed-baselines/bulk": {
       "post": {
-        "description": "handle_bulk (/api/sales/signed-baselines/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_sales_signed_baselines_bulk",
         "parameters": [],
         "requestBody": {
@@ -105007,7 +105007,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/sales/signed-baselines/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "sales"
         ]
@@ -106570,7 +106570,7 @@
     },
     "/api/sites/sites/bulk": {
       "post": {
-        "description": "handle_bulk (/api/sites/sites/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_sites_sites_bulk",
         "parameters": [],
         "requestBody": {
@@ -106646,7 +106646,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/sites/sites/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "sites"
         ]
@@ -108111,7 +108111,7 @@
     },
     "/api/support/customer-health/bulk": {
       "post": {
-        "description": "handle_bulk (/api/support/customer-health/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_support_customer_health_bulk",
         "parameters": [],
         "requestBody": {
@@ -108187,7 +108187,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/support/customer-health/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "support"
         ]
@@ -109624,7 +109624,7 @@
     },
     "/api/support/sla-clocks/bulk": {
       "post": {
-        "description": "handle_bulk (/api/support/sla-clocks/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_support_sla_clocks_bulk",
         "parameters": [],
         "requestBody": {
@@ -109700,7 +109700,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/support/sla-clocks/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "support"
         ]
@@ -111165,7 +111165,7 @@
     },
     "/api/support/ticket-actions/bulk": {
       "post": {
-        "description": "handle_bulk (/api/support/ticket-actions/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_support_ticket_actions_bulk",
         "parameters": [],
         "requestBody": {
@@ -111241,7 +111241,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/support/ticket-actions/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "support"
         ]
@@ -112620,7 +112620,7 @@
     },
     "/api/support/tickets/bulk": {
       "post": {
-        "description": "handle_bulk (/api/support/tickets/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_support_tickets_bulk",
         "parameters": [],
         "requestBody": {
@@ -112696,7 +112696,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/support/tickets/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "support"
         ]
@@ -119153,7 +119153,7 @@
     },
     "/api/system_design/cables/bulk": {
       "post": {
-        "description": "handle_bulk (/api/system_design/cables/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_system_design_cables_bulk",
         "parameters": [],
         "requestBody": {
@@ -119229,7 +119229,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/system_design/cables/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "system_design"
         ]
@@ -120403,7 +120403,7 @@
     },
     "/api/system_design/design-requests/bulk": {
       "post": {
-        "description": "handle_bulk (/api/system_design/design-requests/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_system_design_design_requests_bulk",
         "parameters": [],
         "requestBody": {
@@ -120471,7 +120471,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/system_design/design-requests/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "system_design"
         ]
@@ -121611,7 +121611,7 @@
     },
     "/api/system_design/designs/bulk": {
       "post": {
-        "description": "handle_bulk (/api/system_design/designs/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_system_design_designs_bulk",
         "parameters": [],
         "requestBody": {
@@ -121687,7 +121687,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/system_design/designs/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "system_design"
         ]
@@ -122967,7 +122967,7 @@
     },
     "/api/system_design/devices/bulk": {
       "post": {
-        "description": "handle_bulk (/api/system_design/devices/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_system_design_devices_bulk",
         "parameters": [],
         "requestBody": {
@@ -123043,7 +123043,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/system_design/devices/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "system_design"
         ]
@@ -124214,7 +124214,7 @@
     },
     "/api/system_design/functional-locations/bulk": {
       "post": {
-        "description": "handle_bulk (/api/system_design/functional-locations/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_system_design_functional_locations_bulk",
         "parameters": [],
         "requestBody": {
@@ -124290,7 +124290,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/system_design/functional-locations/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "system_design"
         ]
@@ -125570,7 +125570,7 @@
     },
     "/api/system_design/ports/bulk": {
       "post": {
-        "description": "handle_bulk (/api/system_design/ports/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_system_design_ports_bulk",
         "parameters": [],
         "requestBody": {
@@ -125646,7 +125646,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/system_design/ports/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "system_design"
         ]
@@ -126926,7 +126926,7 @@
     },
     "/api/system_design/racks/bulk": {
       "post": {
-        "description": "handle_bulk (/api/system_design/racks/bulk)",
+        "description": "A bulk-create call either creates every item or none of them --\nthere is no partial-success outcome and no per-item result\nreporting. This is the single statement of that contract; nothing\nelse in this generator should restate it, only reference it.\nTable-backed specs: every item is validated structurally (must be a\nJSON object) before any write is attempted, refusing the whole\nbatch with 400 if one isn't. Constraint-level invalidity a table\nenforces itself (a unique/check/not-null violation) is still caught\nby the shared transaction around the write loop -- the loop aborts\nand rolls back the whole batch, so the persisted end state is\nidentical to a pre-validated refusal (zero rows), even though the\nmechanism is reactive rather than a dry run. Measured before\nshipping, both halves: no table reachable through this route\ncarries an INSERT trigger with a side effect outside that\ntransaction (grepped schema.sql for AFTER INSERT -- one exists, on\neconomy_postings, not C12-registered), and this function's own only\nside effect outside the per-item loop (bump_mcp_cache_generation)\nruns once, after the loop, on the success path only -- a rolled-back\nbatch bumps nothing. One named, dismissed exception: Postgres\nsequences are non-transactional, so a serial/identity column whose\ndefault a failed batch touched keeps the gap the abort left behind.\nThat is not a correctness problem (nothing here depends on\ncontiguity) but it is the one real difference from a true\npre-write dry run, so it is named here rather than implied away.\nkg_nodes-primary specs: refused outright (501). The all-or-nothing\npolicy above answers the REPORTING semantics question; it does not\nby itself define identity-plus-satellite partial-failure behaviour\nfor a spec with no table_name, and there is still no real caller\nneeding it built (Q-48 ruling: do not build bulk for these specs\nspeculatively).",
         "operationId": "post_api_system_design_racks_bulk",
         "parameters": [],
         "requestBody": {
@@ -127002,7 +127002,7 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "handle_bulk (/api/system_design/racks/bulk)",
+        "summary": "Bulk create. Contract (Q-48, ruled 2026-09-20): all-or-nothing.",
         "tags": [
           "system_design"
         ]

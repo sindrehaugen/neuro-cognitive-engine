@@ -350,9 +350,10 @@ CONTACT_SPEC = ResourceSpec(
         "deduplication; resolve() is read-only and never auto-merges, so a "
         "caller wanting a duplicate check must run it separately before "
         "calling create. Bulk create is refused, same as every other "
-        "kg_nodes-primary spec (DEVICE/PORT/RACK/CABLE): identity-plus-"
-        "satellite partial-failure semantics have no precedent in this "
-        "generator. No customer_id/sales_customers link (Q-46, open)."
+        "kg_nodes-primary spec (DEVICE/PORT/RACK/CABLE): the all-or-nothing "
+        "reporting contract is decided (Q-48), but identity-plus-satellite "
+        "partial-failure behaviour has no implementation yet and no caller "
+        "requiring one. No customer_id/sales_customers link (Q-46, open)."
     ),
 )
 register_resource(CONTACT_SPEC)
