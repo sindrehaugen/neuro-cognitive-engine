@@ -327,45 +327,12 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
             "in memory only, zero kg_nodes writes anywhere in the module)."
         ),
     ),
-    # ---------------------------------------------------------------------------
-    # Economy Engine (Wave B-12)
-    # ---------------------------------------------------------------------------
-    "BILLING_RUN": ResourceExemption(
-        owner_engine="economy",
-        reason=(
-            "kg_nodes-primary satellite (economy_billing_runs, migration 102) exists "
-            "and is real, unlike the business_insights entries above -- only the "
-            "REST/MCP resource-surface registration is missing. Written exclusively "
-            "through the governed do_generate_billing_run core (billing_runs.py), "
-            "never via generic C12 PATCH; deferred to Lane E (mechanical, matches "
-            "the D-8 declare-specs-hand-to-lane-E precedent)."
-        ),
-    ),
-    "BILLING_CANDIDATE": ResourceExemption(
-        owner_engine="economy",
-        reason=(
-            "kg_nodes-primary satellite (economy_billing_candidates, migration 103) "
-            "exists and is real; same deferral as BILLING_RUN -- REST/MCP surface "
-            "registration is Lane E's mechanical follow-on, not a persistence gap."
-        ),
-    ),
-    # ---------------------------------------------------------------------------
-    # Economy Engine (Wave B-13)
-    # ---------------------------------------------------------------------------
-    "CUSTOMER_INVOICE": ResourceExemption(
-        owner_engine="economy",
-        reason=(
-            "kg_nodes-primary satellite (economy_customer_invoices, migration 105) "
-            "exists and is real; same deferral as BILLING_RUN/BILLING_CANDIDATE -- "
-            "REST/MCP surface registration is Lane E's mechanical follow-on. Written "
-            "exclusively through do_propose_customer_invoice (customer_invoices.py) "
-            "for the 'proposal' transition this wave ships; approved/exported/paid "
-            "are real CHECK-constrained states with no writer yet, same shape as "
-            "BILLING_CANDIDATE's own still-unused status enum. WHOEVER BUILDS THIS "
-            "SURFACE: vat_rate_assumed must be in the read/list response, not just "
-            "the stored row -- it exists specifically so a human reviewing a "
-            "proposal can tell which VAT rate was assumed vs. determined; a surface "
-            "that drops the column silently defeats the reason it was added."
-        ),
-    ),
+    # BILLING_RUN, BILLING_CANDIDATE, CUSTOMER_INVOICE (Waves B-12/B-13) were
+    # exempted here pending "Lane E's mechanical follow-on" -- registered for
+    # real as read-only ResourceSpecs in economy/resources.py by the economy
+    # resource-surface registration row (2026-09-20, unrelated to the struck
+    # B-14 warehouse-mirror wave; see
+    # _internal/work-docs/mlv16-orchestration/ECONOMY_SURFACE_DECISION.md),
+    # after confirming each has a real governed sole writer that must stay the
+    # only write path. No longer exempted.
 }
