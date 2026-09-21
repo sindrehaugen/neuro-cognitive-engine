@@ -546,11 +546,23 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # cacheable=False: was cacheable=True, mutation=False. mutation=True is
+    # the fix (this handler writes; see FILED_mutation_false_writers_2026-09-21.md).
+    # cacheable=False is a consequence, not an independent choice: the mutation
+    # branch in mcp_stdio_dispatch.py bumps the cache generation BEFORE the
+    # cacheable branch writes the response, so the write always lands under an
+    # already-superseded generation -- structurally unreachable by any future
+    # read. Keeping cacheable=True would leave a real Redis write + TTL cost
+    # with zero possible cache hit, and a flag claiming a behavior that never
+    # happens. Removed for that reason, not because reads of this tool are
+    # undesirable to cache -- if this is ever split into separate read/write
+    # tools (the honest long-term fix), the read half should get cacheable=True
+    # back.
     "procurement_rank_suppliers": ToolSpec(
         _h(procurement_mcp_handlers, "handle_procurement_rank_suppliers"),
-        cacheable=True,
+        cacheable=False,
         admin_only=False,
-        mutation=False,
+        mutation=True,
     ),
     "procurement_evaluate_match": ToolSpec(
         _h(procurement_mcp_handlers, "handle_procurement_evaluate_match"),
@@ -1017,11 +1029,12 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # Same fix, same reasoning as vendors_compute_scorecard above.
     "project_status_report": ToolSpec(
         _h(project_mcp_handlers, "handle_project_status_report"),
-        cacheable=True,
+        cacheable=False,
         admin_only=False,
-        mutation=False,
+        mutation=True,
     ),
     # ------------------------------------------------------------------
     # Diagnostic Log Digestion Engine vertical module tools (Batch 77)
@@ -1203,17 +1216,21 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # mutation=True (was False, a mis-declared writer); cacheable=False follows
+    # from that -- same reasoning as procurement_rank_suppliers above, full
+    # explanation there and in FILED_mutation_false_writers_2026-09-21.md.
     "vendors_compute_scorecard": ToolSpec(
         _h(vendors_mcp_handlers, "handle_vendors_compute_scorecard"),
-        cacheable=True,
+        cacheable=False,
         admin_only=False,
-        mutation=False,
+        mutation=True,
     ),
+    # Same fix, same reasoning as vendors_compute_scorecard above.
     "vendors_get_tier_status": ToolSpec(
         _h(vendors_mcp_handlers, "handle_vendors_get_tier_status"),
-        cacheable=True,
+        cacheable=False,
         admin_only=False,
-        mutation=False,
+        mutation=True,
     ),
     "vendors_detect_reliability_degradation": ToolSpec(
         _h(vendors_mcp_handlers, "handle_vendors_detect_reliability_degradation"),
@@ -1233,11 +1250,12 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # Same fix, same reasoning as vendors_compute_scorecard above.
     "vendors_compute_performance": ToolSpec(
         _h(vendors_mcp_handlers, "handle_vendors_compute_performance"),
-        cacheable=True,
+        cacheable=False,
         admin_only=False,
-        mutation=False,
+        mutation=True,
     ),
     "vendors_recall_similar_jobs": ToolSpec(
         _h(vendors_mcp_handlers, "handle_vendors_recall_similar_jobs"),
@@ -1737,17 +1755,19 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=True,
         mutation=True,
     ),
+    # Same fix, same reasoning as vendors_compute_scorecard above.
     "support_sla_clock": ToolSpec(
         _h(support_mcp_handlers, "handle_support_sla_clock"),
-        cacheable=True,
+        cacheable=False,
         admin_only=False,
-        mutation=False,
+        mutation=True,
     ),
+    # Same fix, same reasoning as vendors_compute_scorecard above.
     "support_health_score": ToolSpec(
         _h(support_mcp_handlers, "handle_support_health_score"),
-        cacheable=True,
+        cacheable=False,
         admin_only=False,
-        mutation=False,
+        mutation=True,
     ),
     "support_troubleshoot": ToolSpec(
         _h(support_mcp_handlers, "handle_support_troubleshoot"),
@@ -1824,11 +1844,12 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         mutation=False,
     ),
     # Support vertical module ticket summary and links (Wave D-6)
+    # Same fix, same reasoning as vendors_compute_scorecard above.
     "support_summarise_ticket": ToolSpec(
         _h(support_mcp_handlers, "handle_support_summarise_ticket"),
-        cacheable=True,
+        cacheable=False,
         admin_only=False,
-        mutation=False,
+        mutation=True,
     ),
     "support_get_ticket_links": ToolSpec(
         _h(support_mcp_handlers, "handle_support_get_ticket_links"),
@@ -2017,11 +2038,12 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=False,
     ),
+    # Same fix, same reasoning as vendors_compute_scorecard above.
     "marketing_audit_seo": ToolSpec(
         _h(marketing_mcp_handlers, "handle_marketing_audit_seo"),
-        cacheable=True,
+        cacheable=False,
         admin_only=False,
-        mutation=False,
+        mutation=True,
     ),
     "marketing_approve_content": ToolSpec(
         _h(marketing_mcp_handlers, "handle_marketing_approve_content"),
@@ -2221,11 +2243,12 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         mutation=False,
         engine="business_insights",
     ),
+    # Same fix, same reasoning as vendors_compute_scorecard above.
     "business_insights_kpi_dashboard": ToolSpec(
         _h(business_insights_mcp_handlers, "handle_business_insights_kpi_dashboard"),
-        cacheable=True,
+        cacheable=False,
         admin_only=True,
-        mutation=False,
+        mutation=True,
         engine="business_insights",
         engine_dependencies=(
             "business_insights",

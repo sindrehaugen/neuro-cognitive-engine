@@ -3,7 +3,10 @@ tests/unit/test_support_ticket_summary.py
 =========================================
 Wave D-6: Comprehensive unit test suite for Support Ticket Summary & Links:
   - Tool registry registration and contract flags:
-      * support_summarise_ticket: cacheable=True, mutation=False, admin_only=False
+      * support_summarise_ticket: cacheable=False, mutation=True, admin_only=False
+        (2026-09-21: was mis-declared mutation=False despite writing; see
+        FILED_mutation_false_writers_2026-09-21.md. cacheable dropped to False
+        because mutation=True makes a cache write structurally unreachable.)
       * support_get_ticket_links: cacheable=True, mutation=False, admin_only=False
       * support_link_ticket: cacheable=False, mutation=True, admin_only=True
   - MCP stdio tool schemas in TOOLS list
@@ -86,8 +89,12 @@ def test_tool_registry_registration():
     """Verify Wave D-6 tools are registered with precise contract flags."""
     assert "support_summarise_ticket" in TOOL_REGISTRY
     spec_summary = TOOL_REGISTRY["support_summarise_ticket"]
-    assert spec_summary.cacheable is True
-    assert spec_summary.mutation is False
+    # 2026-09-21: this tool writes kg_nodes/kg_edges (FILED_mutation_false_
+    # writers_2026-09-21.md); was mis-declared mutation=False, fixed to True.
+    # cacheable=False follows -- mutation=True makes a cache write
+    # unreachable (see module docstring).
+    assert spec_summary.cacheable is False
+    assert spec_summary.mutation is True
     assert spec_summary.admin_only is False
 
     assert "support_get_ticket_links" in TOOL_REGISTRY
