@@ -441,6 +441,71 @@ async def test_device_rest_patch_first_touch_of_secondary_table(
 
 
 @pytest.mark.asyncio
+async def test_rest_patch_by_true_kg_nodes_id_resolves_to_the_correct_row(
+    engine: NCEEngine, namespace_id: uuid.UUID
+) -> None:
+    """Pins REST's `(label = $3 OR id::text = $3)` leniency in `handle_get`/
+    `handle_patch` against kg_nodes' REAL surrogate id -- never exercised
+    before this test. Every other test in this file that supplies an
+    "id"-shaped value gets it from a GET response, and GET's own response
+    merges each secondary table's row over kg_nodes' (`item.update(
+    row_to_dict(sec_row))`), which for DEVICE_PROBE_SPEC silently replaces
+    kg_nodes' real `id` with `system_design_device_capabilities.id` instead
+    (found while measuring IDENTIFIER_ACCEPTANCE_MATRIX_F.md) -- so no
+    existing test could have exercised the leniency against a value known
+    to be correct. This one reads kg_nodes.id directly from the database,
+    bypassing GET entirely, to answer the question the matrix left open.
+
+    Measured live before writing this assertion: PATCHing by the true id
+    resolves to the single existing row (200, no duplicate created) -- the
+    leniency clause is correct, just never proven. If this regresses, the
+    correct fix is almost certainly in `handle_get`'s response (stop a
+    secondary table's own `id` column from shadowing kg_nodes' real one),
+    not in this clause.
+    """
+    node_label = f"probe-kg-device-trueid-{uuid.uuid4().hex[:8]}"
+    async with _rest_client(engine, DEVICE_PROBE_SPEC) as client:
+        r1 = await client.post(
+            "/api/system_design/devices-kgprimary-probe",
+            json={
+                "namespace_id": str(namespace_id),
+                "node_label": node_label,
+                "signal_format": "A",
+            },
+        )
+        assert r1.status_code == 201, r1.text
+
+        async with engine.pg_pool.acquire() as conn:
+            true_id = await conn.fetchval(
+                "SELECT id FROM kg_nodes WHERE namespace_id = $1 AND label = $2",
+                namespace_id,
+                node_label,
+            )
+        assert true_id is not None
+
+        r2 = await client.patch(
+            f"/api/system_design/devices-kgprimary-probe/{true_id}",
+            json={"namespace_id": str(namespace_id), "status": "planned"},
+        )
+    assert r2.status_code == 200, (
+        f"PATCH by kg_nodes' true surrogate id was refused: {r2.text} -- the "
+        f"(label = $3 OR id::text = $3) leniency did not find the row"
+    )
+
+    async with engine.pg_pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, label FROM kg_nodes WHERE namespace_id = $1 AND entity_type = 'DEVICE'",
+            namespace_id,
+        )
+    assert len(rows) == 1, (
+        f"expected exactly 1 kg_nodes row, found {len(rows)}: {[dict(r) for r in rows]} -- "
+        f"PATCH by true id must resolve to the SAME row, not create a second one"
+    )
+    assert rows[0]["id"] == true_id
+    assert rows[0]["label"] == node_label
+
+
+@pytest.mark.asyncio
 async def test_port_upsert_writes_capabilities_only(
     engine: NCEEngine, namespace_id: uuid.UUID
 ) -> None:
