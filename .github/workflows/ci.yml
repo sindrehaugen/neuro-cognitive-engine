@@ -1301,6 +1301,29 @@ jobs:
         run: pytest tests/integration/test_product_sku_global_scope_live.py -m integration -q --tb=short
 
       # No asyncpg jsonb codec is registered on this pool, so
+      # saga_execution_log.payload always arrives as a raw JSON string --
+      # the saga-recovery worker's isinstance(payload, dict) guard was
+      # always False against real data, so memory_id extraction always
+      # failed and the memory-exists verification never ran, on any saga,
+      # ever, in production. Found sweeping every hand-written jsonb
+      # writer/reader in the estate (JSONB_WRITER_CONVENTION_SWEEP.md).
+      - name: Integration — cron saga-recovery jsonb payload decode (tests/integration/test_cron_saga_recovery_live.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+          # _saga_recovery_tick takes a real Redis distributed lock
+          # (acquire_cron_lock -> cfg.REDIS_URL, set from this REDIS_URL env
+          # var by tests/conftest.py:126 -- NOT the NCE_TEST_REDIS_URL
+          # convention other steps in this job use, which only the M6/cache-
+          # invalidation tests read themselves). Without it cfg.REDIS_URL
+          # defaults to redis://localhost:6379/0, nothing listens there (this
+          # job's Redis is deliberately on 6380), the lock acquisition fails,
+          # and the tick returns before ever reaching the recovery branch the
+          # test is proving.
+          REDIS_URL: redis://localhost:6380/13
+        run: pytest tests/integration/test_cron_saga_recovery_live.py -m integration -q --tb=short
+
       # service_tickets.ai_diagnosis/.events/sla_clocks.paused_intervals
       # always arrive as raw JSON strings -- support/tickets.py's shared
       # _row_to_dict helper only ever converted UUID/datetime fields and
