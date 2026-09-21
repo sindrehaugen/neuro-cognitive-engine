@@ -280,7 +280,15 @@ async def get_run_status(
         "start_seq": row["start_seq"],
         "end_seq": row["end_seq"],
         "divergence_seq": row["divergence_seq"],
-        "config_overrides": (dict(row["config_overrides"]) if row["config_overrides"] else None),
+        # replay_runs.config_overrides is JSONB (nullable); asyncpg hands back a
+        # non-null value as the raw JSON string (this pool registers no jsonb
+        # codec), never a decoded dict. dict(a_json_string) doesn't parse it, it
+        # raises ValueError trying to treat the string as key-value pairs --
+        # reproduced live before this fix, for any run created with a real
+        # config_overrides value.
+        "config_overrides": (
+            json.loads(row["config_overrides"]) if row["config_overrides"] else None
+        ),
         "status": row["status"],
         "events_applied": row["events_applied"],
         "started_at": row["started_at"].isoformat() if row["started_at"] else None,
