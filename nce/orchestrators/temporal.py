@@ -247,7 +247,7 @@ class TemporalOrchestrator(OrchestratorBase):
 
         from nce.models import SnapshotRecord
 
-        return SnapshotRecord(**row)
+        return SnapshotRecord(**{**row, "metadata": _metadata_as_dict(row["metadata"])})
 
     async def list_snapshots(self, namespace_id: str) -> list:
         """[Phase 2.2] List snapshots for a namespace."""
@@ -258,7 +258,9 @@ class TemporalOrchestrator(OrchestratorBase):
                 "SELECT * FROM snapshots WHERE namespace_id = $1 ORDER BY created_at DESC",
                 UUID(namespace_id),
             )
-            return [SnapshotRecord(**r) for r in rows]
+            return [
+                SnapshotRecord(**{**r, "metadata": _metadata_as_dict(r["metadata"])}) for r in rows
+            ]
 
     async def delete_snapshot(self, snapshot_id: str, namespace_id: str) -> DeleteSnapshotResult:  # type: ignore[name-defined]  # noqa: F821
         """[Phase 2.2] Delete a point-in-time reference."""
