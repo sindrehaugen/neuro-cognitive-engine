@@ -898,3 +898,110 @@ def test_governed_verbs_empty_default_does_not_raise() -> None:
         writable_fields=("label",),
     )
     assert probe.governed_verbs == ()
+
+
+# ---------------------------------------------------------------------------
+# compute_secondary_write_data -- pure function, no DB, no admin_state.
+#
+# Extracted after PR #400's own CI caught a live bug this file's mocked
+# tests structurally cannot see: every hand-copied version of the node_type
+# gate (six call sites across rest.py/mcp.py, including #394's already-merged
+# PATCH branches) gated on whether the COMBINED secondary-fields dict was
+# non-empty, not on whether the caller touched the SPECIFIC secondary table
+# that declares node_type. DEVICE and RACK are the only two real specs with
+# more than one secondary table (capabilities + node_state) -- a caller
+# supplying only a capabilities field made the combined dict non-empty,
+# which then let node_type leak into a phantom node_state row the caller
+# never asked to create. A DB-backed integration test caught it live; these
+# unit tests exist so the exact defect class is pinned somewhere this
+# environment can actually execute (this session cannot run live-Postgres
+# integration tests at all).
+# ---------------------------------------------------------------------------
+
+from nce.resource_surface.rest import compute_secondary_write_data  # noqa: E402
+from nce.resource_surface.spec import SecondaryTable  # noqa: E402
+
+_TWO_TABLE_PROBE_SPEC = ResourceSpec(
+    engine="k_h_probe",
+    entity="k-h-two-secondary-table-probe",
+    node_type="K_H_TWO_TABLE_PROBE",
+    storage_kind="kg_nodes",
+    writable_fields=("signal_format", "manufacturer", "status", "revision", "salience"),
+    secondary_tables=(
+        # Real, RLS-registered table names -- SecondaryTable.__post_init__
+        # validates against the same EXPECTED_*_TABLES registry
+        # ResourceSpec.table_name uses, so a synthetic name is rejected at
+        # construction. compute_secondary_write_data is a pure function
+        # that never touches the DB, so reusing these real tables' shape
+        # (exactly DEVICE's own secondary_tables) is safe here.
+        SecondaryTable(
+            table_name="system_design_device_capabilities",
+            join_field="node_label",
+            fields=("signal_format", "manufacturer"),
+        ),
+        SecondaryTable(
+            table_name="system_design_node_state",
+            join_field="node_label",
+            fields=("node_type", "status", "revision", "salience"),
+        ),
+    ),
+)
+
+_ONE_TABLE_PROBE_SPEC = ResourceSpec(
+    engine="k_h_probe",
+    entity="k-h-one-secondary-table-probe",
+    node_type="K_H_ONE_TABLE_PROBE",
+    storage_kind="kg_nodes",
+    writable_fields=("status", "revision", "salience"),
+    secondary_tables=(
+        SecondaryTable(
+            table_name="system_design_node_state",
+            join_field="node_label",
+            fields=("node_type", "status", "revision", "salience"),
+        ),
+    ),
+)
+
+
+def test_compute_secondary_write_data_does_not_leak_node_type_across_tables() -> None:
+    """THE regression this function exists to close. A caller supplying
+    only a field routed to the OTHER secondary table (capabilities) must
+    not get node_type injected for node_state at all -- the combined dict
+    being non-empty (because of the capabilities field) is not evidence the
+    caller touched node_state."""
+    result = compute_secondary_write_data(_TWO_TABLE_PROBE_SPEC, {"signal_format": "HDMI"})
+    assert result == {"signal_format": "HDMI"}
+    assert "node_type" not in result
+
+
+def test_compute_secondary_write_data_injects_node_type_when_that_tables_field_is_present() -> None:
+    """The other half: a caller supplying a REAL node_state field (status)
+    alongside an unrelated capabilities field must get node_type injected --
+    this is what keeps the NOT NULL fix (#394/#396/#400) from regressing."""
+    result = compute_secondary_write_data(
+        _TWO_TABLE_PROBE_SPEC, {"signal_format": "HDMI", "status": "planned"}
+    )
+    assert result == {
+        "signal_format": "HDMI",
+        "status": "planned",
+        "node_type": "K_H_TWO_TABLE_PROBE",
+    }
+
+
+def test_compute_secondary_write_data_bare_call_writes_nothing() -> None:
+    """No secondary-routed field supplied at all -- the result must be
+    empty, so the caller's own `if sec_data:` gate skips the write
+    entirely (no phantom row on either table)."""
+    result = compute_secondary_write_data(_TWO_TABLE_PROBE_SPEC, {"unrelated_field": "x"})
+    assert result == {}
+
+
+def test_compute_secondary_write_data_single_table_spec_still_gates_correctly() -> None:
+    """A spec with exactly one secondary table (the common real-world case,
+    e.g. CABLE) never had the cross-table leak -- confirms the fix does not
+    change behavior for the case that was already correct."""
+    assert compute_secondary_write_data(_ONE_TABLE_PROBE_SPEC, {}) == {}
+    assert compute_secondary_write_data(_ONE_TABLE_PROBE_SPEC, {"status": "planned"}) == {
+        "status": "planned",
+        "node_type": "K_H_ONE_TABLE_PROBE",
+    }
