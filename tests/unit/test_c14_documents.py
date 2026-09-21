@@ -1,11 +1,42 @@
 """Unit test suite for C14 Document Register (Wave A-4).
 
+IN-MEMORY ONLY -- READ THIS BEFORE TRUSTING A GREEN RESULT HERE
+--------------------------------------------------------------------
+The autouse `_reset_env` fixture below sets `admin_state.engine = None`,
+so every test in this file runs the in-memory fallback branch exclusively
+-- no test here ever binds a value to, or reads a value from, a real
+asyncpg connection. That makes this file structurally incapable of
+proving anything about real-Postgres behavior for the areas it exercises
+by name below (in particular the CRUD lifecycle and RLS isolation items):
+a real jsonb column, a real RLS policy, and a real unique constraint do
+not exist in the in-memory dict this file's every assertion runs against.
+
+This is not hypothetical: two real bugs in exactly the functions this
+file claims to cover (register_document's jsonb metadata bind,
+list_entity_documents' jsonb metadata parse) shipped and stayed shipped
+because this file's own confident docstring read as coverage a mocked
+connection cannot provide. Found and fixed in
+tests/integration/test_documents_jsonb_metadata_live.py, the live
+sibling that never existed for this module before. See that file's own
+docstring for the two bugs, in full.
+
+What this file DOES prove, honestly: the generated REST verb wiring
+(routes exist, dispatch to the right service function, return the right
+status codes) and the in-memory fallback's OWN internal consistency --
+real, useful properties, just not "CRUD lifecycle" or "RLS isolation"
+against a real database.
+
 Tests:
-  1. C12 Document Register CRUD lifecycle (create, get, patch, archive, restore).
-  2. Document listing, kind filtering, and text search.
-  3. C12 Entity Document verbs (list, attach existing, attach inline, detach, 404 on missing link).
-  4. Share token operations (create, valid retrieval, expired token rejection, revoked token rejection).
-  5. Multi-tenant RLS isolation across namespaces.
+  1. C12 Document Register CRUD lifecycle (create, get, patch, archive, restore)
+     -- against the in-memory store only, not real Postgres.
+  2. Document listing, kind filtering, and text search -- in-memory only.
+  3. C12 Entity Document verbs (list, attach existing, attach inline, detach, 404 on missing link)
+     -- in-memory only.
+  4. Share token operations (create, valid retrieval, expired token rejection, revoked token rejection)
+     -- in-memory only.
+  5. Multi-tenant RLS isolation across namespaces -- the in-memory store's OWN
+     namespace-keyed dict separation, not Postgres RLS (admin_state.engine is
+     None throughout, so no RLS policy is ever evaluated by anything here).
   6. Principal tier redaction (employee, contractor, external-customer).
   7. ADR 0041 invariant: no code path deletes at the external storage source.
 """

@@ -9,6 +9,7 @@ Critical Invariant:
 
 from __future__ import annotations
 
+import json
 import secrets
 from datetime import datetime, timezone
 from typing import Any
@@ -24,6 +25,32 @@ from nce.vertical_modules.documents.models import (
 _MEM_DOCUMENTS: dict[str, dict[str, DocumentRecord]] = {}
 _MEM_LINKS: dict[str, list[DocumentLinkRecord]] = {}
 _MEM_SHARES: dict[str, dict[str, DocumentShareRecord]] = {}
+
+
+def _parse_metadata(value: Any) -> dict[str, Any]:
+    """Normalise a ``documents.metadata`` jsonb column's value to a dict.
+
+    This pool registers no jsonb codec (confirmed by
+    tests/test_semantic_search_metadata_text.py's own docstring), so
+    asyncpg hands back the RAW JSON TEXT for a jsonb column, never a
+    decoded dict -- ``dict(a_json_string)`` doesn't parse it, it tries to
+    treat the string as an iterable of key-value pairs and raises
+    ``ValueError: dictionary update sequence element #0 has length 1; 2
+    is required`` for every row, including the schema's own default empty
+    ``'{}'::jsonb``. Every real Postgres read of this column in this file
+    hit this before the fix; the in-memory fallback's own ``metadata``
+    value is already a native dict (never round-tripped through
+    Postgres), so it is returned as-is rather than re-parsed. Same
+    str-or-dict shape ``nce/resource_surface/comments.py``'s
+    ``fetch_entity_comments``/``fetch_entity_tags`` already use for their
+    own jsonb columns on the same pool.
+    """
+    if isinstance(value, str):
+        try:
+            return json.loads(value) if value else {}
+        except (TypeError, ValueError):
+            return {}
+    return dict(value or {})
 
 
 def _clear_mem_store() -> None:
@@ -86,7 +113,7 @@ async def register_document(
             file_size_bytes,
             sha256,
             list(tags),
-            meta,
+            json.dumps(meta),
             now,
         )
         return DocumentRecord(
@@ -101,7 +128,7 @@ async def register_document(
             file_size_bytes=row["file_size_bytes"],
             sha256=row["sha256"],
             tags=tuple(row["tags"] or ()),
-            metadata=dict(row["metadata"] or {}),
+            metadata=_parse_metadata(row["metadata"]),
             archived=row["archived"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
@@ -159,7 +186,7 @@ async def get_document(
             file_size_bytes=row["file_size_bytes"],
             sha256=row["sha256"],
             tags=tuple(row["tags"] or ()),
-            metadata=dict(row["metadata"] or {}),
+            metadata=_parse_metadata(row["metadata"]),
             archived=row["archived"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
@@ -364,7 +391,7 @@ async def list_entity_documents(
                 "file_size_bytes": r["file_size_bytes"],
                 "sha256": r["sha256"],
                 "tags": r["tags"] or [],
-                "metadata": dict(r["metadata"] or {}),
+                "metadata": _parse_metadata(r["metadata"]),
                 "archived": r["archived"],
                 "relation": r["relation"],
                 "linked_at": r["linked_at"].isoformat() if r["linked_at"] else None,
