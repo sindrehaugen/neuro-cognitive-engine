@@ -72,13 +72,13 @@ Mounted under `/api/sites/sites` by `nce.resource_surface.rest`:
 Backed by the `sites` table in PostgreSQL with multi-tenant row-level security (`tenant_isolation_policy`).
 `sites` is registered in `EXPECTED_TENANT_RLS_TABLES` (`nce/event_log.py`) and strictly partitioned by `namespace_id`.
 
-## 3. Entity Resolution & Functional Locations (C1 Hook)
+## 3. Entity Resolution & Functional Locations
 
-When functional location buildings or imported assets report cadastre identifiers,
-the C1 entity resolution hook (`nce/entity_resolution/site_hook.py::reconcile_fl_building_with_site`)
-verifies cadastre matches. In accordance with safety policies, when two buildings share the same
-cadastre ID, they are enqueued into `entity_merge_queue` with status `'pending'` for human review
-and are never automatically merged.
+A cadastre-ID reconciliation hook was built for this purpose (Wave A-9) but was never wired into
+any real request path — nothing in the codebase called it outside its own tests. Removed as dead
+code 2026-09-21 (`DEAD_HAND_WRITTEN_SERVICE_LAYERS_2026-09-21.md`). Functional-location buildings
+and imported assets do not currently get automatic cadastre-match reconciliation against
+`entity_merge_queue`; building this for real needs a live caller, not just the hook function.
 
 ## 4. Address Registry Feed (MLV16 Lane F, Wave F-9)
 
