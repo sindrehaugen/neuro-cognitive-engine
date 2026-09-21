@@ -14,6 +14,7 @@ None return cost, margin, or BID data (ADR-0017).
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from uuid import UUID
 
@@ -238,10 +239,20 @@ async def api_product_enrichment_review(request) -> JSONResponse:
                 """,
                 limit,
             )
-        items = [
-            {k: v for k, v in serialize_pg_row(row).items() if k not in _REVIEW_HIDDEN}
-            for row in rows
-        ]
+        items = []
+        for row in rows:
+            item = {k: v for k, v in serialize_pg_row(row).items() if k not in _REVIEW_HIDDEN}
+            # This pool has no jsonb codec (asyncpg hands back the raw JSON
+            # text) -- trigger_context round-trips through json.dumps() on
+            # write (enrich.py) but serialize_pg_row() passes strings
+            # through untouched, so without this it reaches JSONResponse as
+            # an escaped string instead of an object.
+            if isinstance(item.get("trigger_context"), str):
+                try:
+                    item["trigger_context"] = json.loads(item["trigger_context"])
+                except (TypeError, ValueError):
+                    pass
+            items.append(item)
         return JSONResponse({"status": "ok", "items": items, "total": len(items)})
     except Exception as exc:
         return admin_error_response(
