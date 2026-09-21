@@ -103,10 +103,13 @@ import uuid
 import asyncpg
 import httpx
 import pytest
+import pytest_asyncio
 from starlette.applications import Starlette
 
 from nce import admin_state
+from nce.auth import set_namespace_context
 from nce.engine_registry import populate_engine_modules
+from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
 from nce.orchestrator import NCEEngine
 from nce.resource_surface import get_all_resource_specs, load_all_engine_resources
 from nce.resource_surface.rest import make_resource_routes
@@ -397,4 +400,162 @@ async def test_positive_control_rest_stale_expected_version_is_still_rejected(
         )
     assert r3.status_code == 409, (
         f"A genuinely stale expected_version was NOT rejected over REST: {r3.text}"
+    )
+
+
+# ==============================================================================
+# A FOURTH DEFECT, DIFFERENT SHAPE, FOUND 2026-09-21 -- handle_upsert's graph
+# branch, not its relational one
+# ==============================================================================
+#
+# The three defects above are all in handle_upsert's RELATIONAL branch
+# (`elif spec.table_name:`). This one is in the GRAPH branch (`if is_graph:`),
+# the ~9 kg_nodes-primary specs (CONTACT, DEVICE, PORT, RACK, CABLE,
+# DESIGN_REQUEST, PROJECT_PROJECT, FUNCTIONAL_LOCATION, DESIGN).
+#
+# THE BUG, EXACTLY
+# ------------------
+# Before this fix, the "does this row already exist" lookup was
+# `WHERE entity_type = $1 AND namespace_id = $2 AND label = $3` -- strict on
+# `label` only. `rest.py`'s equivalent lookups (`handle_get`, `handle_patch`)
+# are deliberately lenient: `(label = $3 OR id::text = $3)`, because a GET
+# response hands the caller BOTH kg_nodes' real identifying column (`label`)
+# and its surrogate UUID (`id`) under keys that look equally plausible as
+# "the id" to pass back. The ordinary sequence -- upsert (create), GET,
+# upsert again with the `id` GET just handed back, intending an update --
+# supplied the surrogate UUID as `label` on the second upsert. The strict
+# lookup found nothing, so the code did not error; it INSERTed a brand-new,
+# disconnected kg_nodes row keyed by that UUID string as its `label`, and
+# reported `"status": "ok"`. The original row was never touched. No error
+# anywhere, and the response looked identical to a successful update.
+# Confirmed live against a real database before this fix, using exactly the
+# `sales:contacts` sequence the test below reproduces.
+#
+# THE FIX
+# ---------
+# The existing-row lookup is now lenient, matching rest.py:
+# `(label = $3 OR id::text = $3)`. When it finds a row (by either value),
+# `node_label` is reassigned to that row's REAL `label` before the
+# INSERT ... ON CONFLICT (label, namespace_id) -- so the write always targets
+# the row the caller meant, never a phantom keyed by whatever string was
+# passed as "id". When the lookup finds nothing, `node_label` is left as the
+# caller-supplied value: a genuinely new label still creates a fresh row,
+# unchanged from before this fix.
+
+
+@pytest_asyncio.fixture
+async def _seed_ownership_for_graph_upsert(pg_pool: asyncpg.Pool, namespace_id: uuid.UUID) -> None:
+    """Graph-primary writes are the one path in the generated surface gated
+    by assert_owner (deny-by-default) -- not needed by this file's other,
+    relational-spec tests, so scoped to only the tests below rather than
+    made autouse for the whole file."""
+    async with pg_pool.acquire() as conn:
+        async with conn.transaction():
+            await set_namespace_context(conn, namespace_id)
+            await seed_node_ownership_registry(conn, namespace_id)
+
+
+@pytest.mark.asyncio
+async def test_upsert_with_get_returned_id_updates_the_same_row_not_a_duplicate(
+    engine: NCEEngine,
+    namespace_id: uuid.UUID,
+    pg_pool: asyncpg.Pool,
+    _seed_ownership_for_graph_upsert: None,
+) -> None:
+    """The exact reproduction that found this bug: create, GET, upsert again
+    with GET's own "id" field. Asserting the response is not enough -- the
+    old code also returned "status": "ok" while corrupting data. The only
+    assertion that could have caught it is the row COUNT.
+    """
+    r1 = json.loads(
+        await TOOL_REGISTRY["sales_upsert_contacts"].handler(
+            engine,
+            {"namespace_id": str(namespace_id), "name": "Alice", "email": "alice@example.com"},
+        )
+    )
+    assert r1["status"] == "ok", f"create failed: {r1}"
+    real_label = r1["id"]
+
+    r2 = json.loads(
+        await TOOL_REGISTRY["sales_get_contacts"].handler(
+            engine, {"namespace_id": str(namespace_id), "id": real_label}
+        )
+    )
+    assert r2["email"] == "alice@example.com"
+    surrogate_id = r2["id"]
+    assert surrogate_id != real_label, (
+        "test fixture assumption broken: kg_nodes.id and .label must differ "
+        "for this reproduction to mean anything"
+    )
+
+    r3 = json.loads(
+        await TOOL_REGISTRY["sales_upsert_contacts"].handler(
+            engine,
+            {
+                "namespace_id": str(namespace_id),
+                "id": surrogate_id,
+                "name": "Alice Updated",
+            },
+        )
+    )
+    assert r3["status"] == "ok", f"update failed: {r3}"
+
+    async with pg_pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT label FROM kg_nodes WHERE namespace_id = $1 AND entity_type = $2",
+            namespace_id,
+            "CONTACT",
+        )
+    assert len(rows) == 1, (
+        f"expected exactly 1 kg_nodes row for this contact, found {len(rows)}: "
+        f"{[dict(r) for r in rows]} -- the surrogate-id upsert created a "
+        "duplicate instead of updating the original"
+    )
+    assert rows[0]["label"] == real_label, "the surviving row must be the original, not a phantom"
+
+    async with pg_pool.acquire() as conn:
+        sec_row = await conn.fetchrow(
+            "SELECT name FROM sales_contacts WHERE namespace_id = $1 AND node_label = $2",
+            namespace_id,
+            real_label,
+        )
+    assert sec_row is not None
+    assert sec_row["name"] == "Alice Updated", "the update must have landed on the original row"
+
+
+@pytest.mark.asyncio
+async def test_upsert_with_new_label_still_creates(
+    engine: NCEEngine,
+    namespace_id: uuid.UUID,
+    pg_pool: asyncpg.Pool,
+    _seed_ownership_for_graph_upsert: None,
+) -> None:
+    """Requirement this fix must not break: when the lenient lookup finds no
+    existing row -- a genuinely new label, whether caller-chosen or
+    server-generated -- create must still work exactly as before.
+    """
+    chosen_label = f"contact-{uuid.uuid4().hex[:8]}"
+    r1 = json.loads(
+        await TOOL_REGISTRY["sales_upsert_contacts"].handler(
+            engine,
+            {
+                "namespace_id": str(namespace_id),
+                "id": chosen_label,
+                "name": "Bob",
+                "email": "bob@example.com",
+            },
+        )
+    )
+    assert r1["status"] == "ok", f"create-by-chosen-label failed: {r1}"
+    assert r1["id"] == chosen_label
+
+    async with pg_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT label FROM kg_nodes WHERE namespace_id = $1 AND entity_type = $2 AND label = $3",
+            namespace_id,
+            "CONTACT",
+            chosen_label,
+        )
+    assert row is not None, (
+        "create-by-caller-chosen-label must still work after the lenient lookup fix"
     )
