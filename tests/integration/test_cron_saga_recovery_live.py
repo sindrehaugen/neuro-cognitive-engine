@@ -37,6 +37,7 @@ from nce.cron import _saga_recovery_tick
 pytestmark = pytest.mark.integration
 
 
+@pytest.mark.asyncio
 async def test_saga_recovery_finds_memory_id_from_real_jsonb_payload(
     pg_pool: asyncpg.Pool, namespace_id: uuid.UUID
 ) -> None:
@@ -96,6 +97,7 @@ async def test_saga_recovery_finds_memory_id_from_real_jsonb_payload(
     )
 
 
+@pytest.mark.asyncio
 async def test_saga_recovery_leaves_old_completed_sagas_untouched(
     pg_pool: asyncpg.Pool, namespace_id: uuid.UUID
 ) -> None:
