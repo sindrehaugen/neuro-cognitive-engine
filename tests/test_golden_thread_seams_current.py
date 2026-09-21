@@ -29,6 +29,19 @@ not add a ``--check`` mode to the generator (regenerate-and-compare here
 instead), and does not edit any ``.github/workflows/*.yml`` file (this test
 runs in ci.yml's existing unconditional ``pytest tests/`` sweep with no
 workflow change needed).
+
+TRAP FOR THE NEXT EDITOR OF test_golden_thread.py (found 2026-09-21, #408):
+this ratchet reads BOTH sides through ``git show HEAD:`` -- the test file
+via the generator's own ``git_show()``, and the committed doc straight off
+disk, which only reflects HEAD once you've committed. Before you commit an
+edit that shifts step line numbers (e.g. a module-docstring insertion),
+old-HEAD's test file and old-HEAD's doc are stale TOGETHER and still agree
+-- so this test passes locally on the un-regenerated doc and only goes red
+in CI, after the mismatched commit already landed. Regenerate
+docs/_generated/golden_thread_seams.md (command in the assertion message
+below) and commit it in the SAME commit as any edit to this file, before
+re-running this test to check your work -- running it pre-commit proves
+nothing about the commit you're about to make.
 """
 
 from __future__ import annotations
