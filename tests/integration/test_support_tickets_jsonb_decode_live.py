@@ -35,6 +35,7 @@ from nce.vertical_modules.support.tickets import do_open_ticket
 pytestmark = pytest.mark.integration
 
 
+@pytest.mark.asyncio
 async def test_open_ticket_returns_ai_diagnosis_as_a_real_dict(
     pg_pool: asyncpg.Pool, namespace_id: uuid.UUID
 ) -> None:
@@ -64,6 +65,7 @@ async def test_open_ticket_returns_ai_diagnosis_as_a_real_dict(
     assert ticket["ai_diagnosis"]["confidence"] == 0.8
 
 
+@pytest.mark.asyncio
 async def test_open_ticket_returns_events_as_a_real_list_not_the_string_default(
     pg_pool: asyncpg.Pool, namespace_id: uuid.UUID
 ) -> None:
@@ -87,6 +89,7 @@ async def test_open_ticket_returns_events_as_a_real_list_not_the_string_default(
     )
 
 
+@pytest.mark.asyncio
 async def test_open_ticket_sla_clock_paused_intervals_is_a_real_list(
     pg_pool: asyncpg.Pool, namespace_id: uuid.UUID
 ) -> None:
