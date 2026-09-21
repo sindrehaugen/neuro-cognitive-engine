@@ -22,14 +22,9 @@ from nce.vertical_modules.sites.models import (
 )
 from nce.vertical_modules.sites.resources import SITE_SPEC
 from nce.vertical_modules.sites.service import (
-    archive_site,
     get_site,
-    get_site_by_cadastre_id,
-    list_sites,
     normalize_cadastre_id,
-    register_site,
     update_site,
-    update_vessel_telemetry,
 )
 
 __all__ = [
@@ -38,13 +33,8 @@ __all__ = [
     "SiteCreate",
     "SiteItem",
     "SiteUpdate",
-    "archive_site",
     "do_enrich_site_from_address_registry",
     "get_site",
-    "get_site_by_cadastre_id",
-    "list_sites",
     "normalize_cadastre_id",
-    "register_site",
     "update_site",
-    "update_vessel_telemetry",
 ]
