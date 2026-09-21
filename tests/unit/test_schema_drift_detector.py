@@ -531,6 +531,37 @@ def test_not_null_inside_a_check_clause_is_not_mistaken_for_a_column_constraint(
     )
 
 
+def test_table_level_check_constraint_referencing_not_null_does_not_leak_into_column_parsing() -> (
+    None
+):
+    """The real case, not a synthetic one: `inventory_rma`'s own
+    `CONSTRAINT inventory_rma_disposed_requires_ref CHECK (weee_state <>
+    'disposed' OR disposal_ref IS NOT NULL)` (`schema.sql`) is a
+    table-level constraint clause containing `IS NOT NULL` text, sitting
+    inside the same `CREATE TABLE` body as `disposal_ref`'s own (nullable)
+    column definition. `_TABLE_LEVEL` must filter the whole constraint
+    clause out (it starts with `CONSTRAINT`) before `_is_not_null` ever
+    runs, so `disposal_ref` itself is unaffected by that clause's text."""
+    from check_schema_drift import _extract_create_table_defs
+
+    sql = """
+    CREATE TABLE inventory_rma (
+        id UUID NOT NULL,
+        weee_state TEXT NOT NULL,
+        disposal_ref TEXT,
+        CONSTRAINT inventory_rma_disposed_requires_ref
+            CHECK (weee_state <> 'disposed' OR disposal_ref IS NOT NULL)
+    );
+    """
+    defs = _extract_create_table_defs(sql)
+    assert "inventory_rma_disposed_requires_ref" not in defs["inventory_rma"], (
+        "the table-level CONSTRAINT clause was parsed as if it were a column"
+    )
+    assert _is_not_null(defs["inventory_rma"]["disposal_ref"]) is False, (
+        "the CONSTRAINT clause's own NOT NULL text leaked into disposal_ref's nullability"
+    )
+
+
 def test_strip_parens_removes_nested_groups() -> None:
     assert _strip_parens("NUMERIC(12, 2) DEFAULT f(a, g(b, c))") == "NUMERIC DEFAULT f"
 

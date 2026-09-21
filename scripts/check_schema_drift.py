@@ -223,11 +223,36 @@ def _strip_parens(text: str) -> str:
     ...(...)]``) -- stripping parens first means a `NOT NULL` appearing
     *inside* an inline `CHECK (col IS NOT NULL OR other IS NOT NULL)` or a
     typed precision like `NUMERIC(12, 2)` is never mistaken for the
-    column's own constraint. No such inline CHECK exists in `schema.sql`
-    today (checked: every `IS NOT NULL` on a `CHECK`-shaped line is inside
-    a `CREATE POLICY ... WITH CHECK (...)`, never a column definition), but
-    stripping unconditionally means this doesn't silently start lying the
-    day one is added.
+    column's own constraint.
+
+    Three shapes of ``IS NOT NULL``/``NOT NULL`` text near a `CHECK` exist
+    in `schema.sql` today, checked directly rather than assumed, and this
+    function's job differs for each:
+
+    - ``CREATE POLICY ... WITH CHECK (namespace_id IS NOT NULL AND ...)`` --
+      not inside any `CREATE TABLE` body at all, so `_extract_create_table_
+      defs`'s column walk (which only reads between a matched `CREATE
+      TABLE`'s own parens) never sees this text in the first place. Not a
+      risk to this function -- the wrong statement type entirely, not
+      filtered by anything here.
+    - A table-level ``CONSTRAINT ... CHECK (...)`` inside a `CREATE TABLE`
+      body -- real example, `inventory_rma_disposed_requires_ref`
+      (`schema.sql`, `CHECK (weee_state <> 'disposed' OR disposal_ref IS
+      NOT NULL)`). This one *is* inside the table body, but `_TABLE_LEVEL`
+      filters out any comma-split `part` that starts with `CONSTRAINT`/
+      `CHECK`/etc. before nullability parsing ever runs on it -- confirmed
+      `disposal_ref`'s own column definition (`disposal_ref TEXT,`, no
+      `NOT NULL`) still parses as nullable, unaffected by that constraint
+      clause's text. A different filter than this function, but the
+      combination is what makes the false positive impossible today.
+    - An inline, column-level `CHECK` inside a column's own definition
+      (e.g. ``col TEXT CHECK (col IS NOT NULL OR other IS NOT NULL)``) --
+      `_TABLE_LEVEL` would NOT filter this shape (`part` starts with the
+      column name, not `CHECK`), so this is the one case that reaches
+      `_is_not_null` unfiltered, and the actual reason this function
+      exists. None of this shape exists in `schema.sql` today (checked
+      directly), but stripping parens unconditionally means this doesn't
+      silently start lying the day one is added.
     """
     out: list[str] = []
     depth = 0
