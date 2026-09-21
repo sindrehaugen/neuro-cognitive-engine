@@ -2017,6 +2017,26 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
             try:
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                    # Write-time validation, same shape and same reason as
+                    # handle_add_comment's: document_links has a real
+                    # ON CONFLICT (namespace_id, document_id, entity_type,
+                    # entity_id) constraint but no FK to any resource
+                    # table, so a bogus, mistyped, or shadowed identifier
+                    # previously filed silently under a string a later
+                    # list-documents call by the real label would never
+                    # match. Store the RESOLVED value, not item_id, so a
+                    # shadowed-id attach conflicts correctly with a link
+                    # already filed under the real label instead of
+                    # creating a second, invisible one.
+                    canonical_id = await resolve_canonical_identifier(
+                        conn, spec, session_ns, str(item_id), is_global
+                    )
+                    if canonical_id is None:
+                        return admin_error_response(
+                            f"{spec.node_type} {item_id} not found",
+                            KeyError("Resource not found"),
+                            status_code=404,
+                        )
                     if doc_id_raw:
                         try:
                             doc_uuid = UUID(str(doc_id_raw))
@@ -2061,7 +2081,7 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                         session_ns,
                         doc_uuid,
                         spec.node_type,
-                        str(item_id),
+                        canonical_id,
                         relation=relation,
                     )
             except Exception as exc:
@@ -2169,8 +2189,24 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
             try:
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
-                    unlinked = await unlink_document(
-                        conn, session_ns, doc_uuid, spec.node_type, str(item_id)
+                    # Resolve to the same canonical value attach would have
+                    # stored the link under -- otherwise a caller detaching
+                    # via a valid-but-different identifier (e.g. the
+                    # shadowed id) for a link genuinely filed under the
+                    # real label gets a false "not found" instead of the
+                    # detach it asked for. `unlinked=False` still covers
+                    # the case where the identifier itself resolves to
+                    # nothing (canonical_id is None -> unlink_document is
+                    # never reached with a valid entity_id to match).
+                    canonical_id = await resolve_canonical_identifier(
+                        conn, spec, session_ns, str(item_id), is_global
+                    )
+                    unlinked = (
+                        await unlink_document(
+                            conn, session_ns, doc_uuid, spec.node_type, canonical_id
+                        )
+                        if canonical_id is not None
+                        else False
                     )
             except Exception as exc:
                 return admin_error_response(
