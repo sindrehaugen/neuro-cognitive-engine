@@ -69,11 +69,12 @@ async def test_open_ticket_returns_ai_diagnosis_as_a_real_dict(
 async def test_open_ticket_returns_events_as_a_real_list_not_the_string_default(
     pg_pool: asyncpg.Pool, namespace_id: uuid.UUID
 ) -> None:
-    """`service_tickets.events` defaults to `'[]'::jsonb` when no caller
-    ever sets it -- before this fix, a fresh ticket's `events` would come
-    back as the literal two-character string `"[]"`, not an empty list.
-    `"[]" == []` is `False` in Python, so this is a real, checkable
-    difference, not just a type-annotation nicety.
+    """`do_open_ticket` always seeds `events` with one `ticket_opened` entry
+    (`tickets.py:255`) -- a fresh ticket's `events` is never actually `[]`.
+    Before this fix, `events` would come back as the raw JSON-encoded
+    *string* of that one-element array, not a decoded list -- so
+    `isinstance(events, list)` is `False` and indexing it as a dict raises,
+    not just a type-annotation nicety.
     """
     result = await do_open_ticket(
         pg_pool,
@@ -83,10 +84,13 @@ async def test_open_ticket_returns_events_as_a_real_list_not_the_string_default(
         },
     )
     ticket = result["ticket"]
-    assert ticket["events"] == [], (
-        f"events was not decoded to an empty list, got {type(ticket['events'])}: "
-        f"{ticket['events']!r}"
+    events = ticket["events"]
+    assert isinstance(events, list), (
+        f"events was not decoded to a list, got {type(events)}: {events!r}"
     )
+    assert len(events) == 1
+    assert events[0]["type"] == "ticket_opened"
+    assert events[0]["event_type"] == "support_ticket_opened"
 
 
 @pytest.mark.asyncio
