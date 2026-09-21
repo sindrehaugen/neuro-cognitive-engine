@@ -665,7 +665,18 @@ async def do_validate_contract(engine: NCEEngine, params: dict[str, Any]) -> dic
                     f"do_validate_contract: no contract {contract_id!r} found in namespace {ns_uuid}"
                 )
             current_annual_amount = agr_row["annual_value"] or Decimal("0.00")
-            raw_cap = (agr_row["metadata"] or {}).get("cpi_cap", _CPI_CAP_CEILING)
+            # agreements.metadata is JSONB NOT NULL DEFAULT '{}'::jsonb -- against
+            # real Postgres, asyncpg hands it back as the raw JSON string (this
+            # pool registers no jsonb codec), never a decoded dict. A non-empty
+            # string is truthy, so `agr_row["metadata"] or {}` never fired and
+            # `.get()` on a str raised AttributeError -- reproduced live before
+            # this fix, for every row, since the column is NOT NULL. Accepts a
+            # real dict too, same defensive isinstance-guarded shape as
+            # assets/mcp_handlers.py::do_get_asset_merge_queue -- not required by
+            # any current caller, kept for the same reason that precedent has it.
+            raw = agr_row["metadata"]
+            raw_metadata = json.loads(raw) if isinstance(raw, str) else dict(raw or {})
+            raw_cap = raw_metadata.get("cpi_cap", _CPI_CAP_CEILING)
             cpi_cap = _quantise_cpi_cap(_as_fraction(raw_cap, "cpi_cap"), "cpi_cap")
 
     # Resolve proposed uplift from direct percentage, price rule, or index series

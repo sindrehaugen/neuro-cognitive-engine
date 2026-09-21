@@ -210,7 +210,10 @@ async def test_do_create_work_order() -> None:
         "assignee_kind": None,
         "status": "pending",
         "due_at": None,
-        "raw": {"customer": "Acme Corp"},
+        # raw is jsonb; real Postgres hands back the raw JSON string (this
+        # pool registers no jsonb codec), never a decoded dict -- a native
+        # dict here would mask the bug _decode_raw fixes.
+        "raw": '{"customer": "Acme Corp"}',
         "created_at": None,
         "updated_at": None,
     }
@@ -232,6 +235,7 @@ async def test_do_create_work_order() -> None:
 
     assert res["work_order_id"] == _WO_ID_1
     assert res["status"] == "pending"
+    assert res["raw"] == {"customer": "Acme Corp"}, f"raw was not decoded: {res['raw']!r}"
     # Verify graph edge creations
     exec_calls = [c[0][0] for c in conn.execute.call_args_list]
     assert any("INSERT INTO kg_nodes" in sql for sql in exec_calls)
@@ -254,16 +258,31 @@ async def test_do_get_and_query_work_order() -> None:
         "assignee_kind": "employee",
         "status": "assigned",
         "due_at": None,
-        "raw": {},
+        # raw is jsonb; real Postgres hands back the raw JSON string (this
+        # pool registers no jsonb codec), never a decoded dict -- a native
+        # dict here would mask the bug _decode_raw fixes.
+        "raw": '{"k": "v"}',
         "created_at": None,
         "updated_at": None,
     }
-    conn.fetch.return_value = [conn.fetchrow.return_value]
+    # Realistic per-call shapes, not one row reused for every table: an
+    # empty checklists/time_entries result for a fixture this test doesn't
+    # otherwise exercise, then the real work-order row for do_query_work_order's
+    # own list query. A single shared conn.fetch.return_value previously
+    # handed do_get_work_order's checklists query a work-orders-shaped row
+    # with no "items" key at all -- masked until the items decode fix made
+    # it a real KeyError instead of a silently-ignored one.
+    conn.fetch.side_effect = [
+        [],  # checklists (do_get_work_order)
+        [],  # time_entries (do_get_work_order)
+        [conn.fetchrow.return_value],  # do_query_work_order's own list
+    ]
     pool = _make_mock_pool(conn)
 
     # Single get
     res_get = await do_get_work_order(pool, {"namespace_id": _NS_A, "work_order_id": _WO_ID_1})
     assert res_get["work_order_id"] == _WO_ID_1
+    assert res_get["raw"] == {"k": "v"}, f"raw was not decoded: {res_get['raw']!r}"
 
     # Query list
     res_query = await do_query_work_order(pool, {"namespace_id": _NS_A, "status": "assigned"})
@@ -281,9 +300,11 @@ async def test_do_assign() -> None:
             "namespace_id": UUID(_NS_A),
             "partner_scope_id": None,
             "status": "pending",
-            "raw": {},
+            "raw": "{}",
         },
         # 2. Return from UPDATE
+        # raw is jsonb; real Postgres hands back the raw JSON string (this
+        # pool registers no jsonb codec), never a decoded dict.
         {
             "id": UUID("12345678-1234-5678-1234-567812345678"),
             "work_order_id": _WO_ID_1,
@@ -292,7 +313,7 @@ async def test_do_assign() -> None:
             "assignee_id": "cont-bob",
             "assignee_kind": "contractor",
             "status": "assigned",
-            "raw": {},
+            "raw": '{"note": "assigned"}',
         },
     ]
     conn.execute = AsyncMock(return_value="INSERT 1")
@@ -310,6 +331,7 @@ async def test_do_assign() -> None:
     )
     assert res["status"] == "assigned"
     assert res["assignee_id"] == "cont-bob"
+    assert res["raw"] == {"note": "assigned"}, f"raw was not decoded: {res['raw']!r}"
 
 
 # ============================================================================
@@ -331,9 +353,14 @@ async def test_do_complete_checklist_iso9001() -> None:
             "namespace_id": UUID(_NS_A),
             "partner_scope_id": None,
             "template_id": "install_standard",
-            "items": [],
+            # items/raw are jsonb; real Postgres hands back the raw JSON
+            # string (this pool registers no jsonb codec), never a decoded
+            # dict/list -- a native [] / {} here would mask the bug the
+            # decode fix closes.
+            "items": '[{"id": "c1", "label": "Mounting secure", "required": true, "ticked": true}, '
+            '{"id": "c2", "label": "Cables labeled", "required": true, "ticked": true}]',
             "completed_at": None,
-            "raw": {},
+            "raw": "{}",
             "created_at": None,
             "updated_at": None,
         },
@@ -357,6 +384,8 @@ async def test_do_complete_checklist_iso9001() -> None:
     )
     assert res["is_complete"] is True
     assert len(res["missing_required"]) == 0
+    assert res["items"] == items, f"items was not decoded: {res['items']!r}"
+    assert res["raw"] == {}, f"raw was not decoded: {res['raw']!r}"
 
 
 @pytest.mark.asyncio
@@ -595,11 +624,13 @@ async def test_do_partner_view_redaction_allowlist() -> None:
         # work_orders
         [wo_row],
         # checklists
+        # items is jsonb; real Postgres hands back the raw JSON string
+        # (this pool registers no jsonb codec), never a decoded list.
         [
             {
                 "checklist_id": "CL-01",
                 "template_id": "install",
-                "items": [],
+                "items": "[]",
                 "completed_at": None,
             }
         ],
@@ -620,6 +651,9 @@ async def test_do_partner_view_redaction_allowlist() -> None:
     partner_wo = res["work_order"]
     assert partner_wo["work_order_id"] == _WO_ID_1
     assert partner_wo["location_id"] == "LOC-1"
+    assert partner_wo["checklists"][0]["items"] == [], (
+        f"items was not decoded for the partner view: {partner_wo['checklists'][0]['items']!r}"
+    )
     # Verify strict allow-list redaction: NO margin, price, or cost leaked
     assert "secret_margin" not in partner_wo
     assert "internal_pricing" not in partner_wo

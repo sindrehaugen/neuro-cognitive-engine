@@ -33,6 +33,30 @@ Per ML-orch Charter §13:
 - Counts real database round trips and fails below a floor, so a run that stops
   touching the database cannot pass. Wall-clock is deliberately NOT used: it
   measures the hardware, not the behaviour.
+
+WHAT "GOLDEN THREAD GREEN" DOES NOT MEAN (measured 2026-09-21, not assumed)
+----------------------------------------------------------------------------
+No PASSING step in this file exercises the C12 generated resource-surface
+(``nce/resource_surface/rest.py`` + ``mcp.py``) successfully. Its only contact
+with that surface is five ``TOOL_REGISTRY[...]`` calls, and every one of them
+sits inside the four currently-broken ``xfail`` steps (33/34/35/36,
+break-h9b/h9c/h9d/h9e) -- the furthest of those (step 34,
+``agreements_upsert_agreements``/``agreements_upsert_parties``) dies on an
+unrelated FK violation before it would prove anything either way. Comments,
+tags, and the documents sub-resource (attach/detach/list) are never
+exercised anywhere in this file, under any step, passing or broken -- not a
+scoped-out corner of a broader C12 pass, there simply is no passing C12
+contact to be a corner of. A green Golden Thread run has never been evidence
+of correct C12 generated read/write behaviour, for any of the 56 specs it
+covers, including the two documents bugs #406 fixed. That coverage lives
+instead in the dedicated live sibling suites: e.g.
+``tests/integration/test_resource_surface_subresource_write_validation_live.py``
+(comments/tags/documents identifier resolution),
+``tests/integration/test_documents_jsonb_metadata_live.py`` (documents
+metadata jsonb round-trip), and
+``tests/integration/test_resource_surface_kg_nodes_primary_live.py``
+(graph-primary C12 read/write) -- check those, not this file's pass/fail, for
+anything C12-shaped.
 """
 
 from __future__ import annotations
