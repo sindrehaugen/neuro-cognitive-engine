@@ -31,6 +31,7 @@ from nce.vertical_modules.support.tickets import (
     InvalidTicketStatusError,
     TicketAlreadyResolvedError,
     TicketNotFoundError,
+    _row_to_dict,
     do_open_ticket,
     do_query_ticket,
     do_resolve_ticket,
@@ -517,3 +518,71 @@ async def test_cross_tenant_resolve_swap_mutant() -> None:
                 "resolution_text": "Tenant B trying to mutate Tenant A ticket",
             },
         )
+
+
+# ---------------------------------------------------------------------------
+# _row_to_dict -- pure function, no DB. Every mocked test above sets
+# ai_diagnosis/events on the row as already-parsed Python objects (see e.g.
+# line ~181), which is not what a real asyncpg connection ever returns (no
+# jsonb codec is registered anywhere in this codebase -- these columns
+# always arrive as raw JSON strings). These tests pin the actual decode
+# against a real JSON *string*, the shape every test above structurally
+# cannot see.
+# ---------------------------------------------------------------------------
+
+
+def test_row_to_dict_decodes_named_jsonb_columns_from_real_strings():
+    """The actual regression: a real connection hands these back as
+    strings, never dicts/lists."""
+    row = {
+        "ai_diagnosis": '{"root_cause": "flaky sensor"}',
+        "events": '[{"type": "opened"}]',
+        "paused_intervals": "[]",
+        "trend": '{"direction": "up"}',
+        "drivers": '["latency"]',
+        "summary": "unrelated text field",
+    }
+    result = _row_to_dict(row)
+    assert result["ai_diagnosis"] == {"root_cause": "flaky sensor"}
+    assert result["events"] == [{"type": "opened"}]
+    assert result["paused_intervals"] == []
+    assert result["trend"] == {"direction": "up"}
+    assert result["drivers"] == ["latency"]
+
+
+def test_row_to_dict_does_not_touch_unnamed_string_columns():
+    """The failure mode a blanket 'try json.loads on any string' decode
+    would introduce: a plain TEXT column whose value happens to be valid
+    JSON (a note, a title) must NOT be silently coerced to a different
+    Python type. `_row_to_dict` must only ever decode the five columns
+    named in `_JSONB_COLUMNS`, nothing else."""
+    row = {
+        "summary": "123",
+        "description": "true",
+        "customer_id": "null",
+        "sla_profile": '{"looks": "like json but is not a jsonb column"}',
+    }
+    result = _row_to_dict(row)
+    assert result["summary"] == "123"
+    assert result["description"] == "true"
+    assert result["customer_id"] == "null"
+    assert result["sla_profile"] == '{"looks": "like json but is not a jsonb column"}'
+
+
+def test_row_to_dict_handles_malformed_jsonb_string_without_raising():
+    row = {"ai_diagnosis": "{not valid json"}
+    result = _row_to_dict(row)
+    assert result["ai_diagnosis"] == "{not valid json"
+
+
+def test_row_to_dict_still_converts_uuid_and_datetime_fields():
+    """Positive control: the pre-existing UUID/datetime conversion this
+    function already did must survive the jsonb-decode addition
+    unchanged."""
+    ticket_id = UUID(_TICKET_ID_1)
+    now = datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
+    row = {"id": ticket_id, "created_at": now, "events": "[]"}
+    result = _row_to_dict(row)
+    assert result["id"] == str(ticket_id)
+    assert result["created_at"] == now.isoformat()
+    assert result["events"] == []
