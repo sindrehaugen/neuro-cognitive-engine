@@ -633,6 +633,115 @@ async def test_device_mcp_upsert_gates_node_state_on_a_real_state_key(
 
 
 @pytest.mark.asyncio
+async def test_device_rest_patch_capabilities_only_field_does_not_create_phantom_node_state(
+    engine: NCEEngine, namespace_id: uuid.UUID
+) -> None:
+    """THE regression that hid #394's own defect, found live by F while
+    verifying #400: a bare create (no state key, so no node_state row
+    exists), then a PATCH that touches ONLY a capabilities field
+    (`manufacturer`) -- never a node_state field. Before
+    compute_secondary_write_data existed, `sec_updates` was built from the
+    COMBINED dict across both of DEVICE's secondary tables (capabilities +
+    node_state); `manufacturer` alone made that combined dict non-empty,
+    the aggregate-level gate fired, node_type got injected into the same
+    combined dict, and upsert_secondary_tables' own per-table filter then
+    picked node_type back out for node_state -- writing a node_type-only
+    phantom row to a table this PATCH never touched at all. Confirmed live
+    on `main` with #394 merged and #400 not yet applied (F, 2026-09-21):
+    this exact PATCH reproduces the phantom row on today's `main`.
+
+    No prior test caught this because every existing PATCH test either
+    supplies a real node_state field (masking the leak, since node_state
+    would have gotten a row anyway) or supplies nothing at all (no leak to
+    have). This is the one combination in between.
+    """
+    node_label = f"probe-kg-device-caps-only-patch-{uuid.uuid4().hex[:8]}"
+    async with _rest_client(engine, DEVICE_PROBE_SPEC) as client:
+        r1 = await client.post(
+            "/api/system_design/devices-kgprimary-probe",
+            json={
+                "namespace_id": str(namespace_id),
+                "node_label": node_label,
+                "signal_format": "DisplayPort",
+                # No status/revision/salience -- leaves no node_state row.
+            },
+        )
+        assert r1.status_code == 201, r1.text
+
+        r2 = await client.patch(
+            f"/api/system_design/devices-kgprimary-probe/{node_label}",
+            json={"namespace_id": str(namespace_id), "manufacturer": "TestCorp"},
+        )
+    assert r2.status_code == 200, r2.text
+
+    async with engine.pg_pool.acquire() as conn:
+        state_row = await conn.fetchrow(
+            "SELECT 1 FROM system_design_node_state WHERE namespace_id = $1 AND node_label = $2",
+            namespace_id,
+            node_label,
+        )
+    assert state_row is None, (
+        "a PATCH touching only a capabilities field wrote a phantom "
+        "system_design_node_state row anyway -- the exact aggregate-"
+        "granularity defect this fix removes"
+    )
+
+
+@pytest.mark.asyncio
+async def test_device_mcp_upsert_capabilities_only_field_does_not_create_phantom_node_state(
+    engine: NCEEngine, namespace_id: uuid.UUID
+) -> None:
+    """MCP counterpart of test_device_rest_patch_capabilities_only_field_
+    does_not_create_phantom_node_state -- mcp.py's handle_upsert graph
+    branch shares compute_secondary_write_data with rest.py, but the
+    surrounding INSERT/UPDATE and existing-row lookup are independent code,
+    so this is proven on its own rather than assumed from the REST result.
+    """
+    tools = build_mcp_tool_specs(DEVICE_PROBE_SPEC)
+    upsert = tools[f"system_design_upsert_{DEVICE_PROBE_SPEC.mcp_slug}"]
+    node_label = f"probe-kg-device-mcp-caps-only-{uuid.uuid4().hex[:8]}"
+
+    bare_result = json.loads(
+        await upsert.handler(
+            engine,
+            {
+                "namespace_id": str(namespace_id),
+                "id": node_label,
+                "signal_format": "DisplayPort",
+                # No status/revision/salience -- leaves no node_state row.
+            },
+        )
+    )
+    assert bare_result["status"] == "ok", bare_result
+
+    caps_only_result = json.loads(
+        await upsert.handler(
+            engine,
+            {
+                "namespace_id": str(namespace_id),
+                "id": node_label,
+                "manufacturer": "TestCorp",
+                # Still no status/revision/salience -- a second upsert
+                # touching only capabilities must not create node_state.
+            },
+        )
+    )
+    assert caps_only_result["status"] == "ok", caps_only_result
+
+    async with engine.pg_pool.acquire() as conn:
+        state_row = await conn.fetchrow(
+            "SELECT 1 FROM system_design_node_state WHERE namespace_id = $1 AND node_label = $2",
+            namespace_id,
+            node_label,
+        )
+    assert state_row is None, (
+        "an upsert touching only a capabilities field wrote a phantom "
+        "system_design_node_state row anyway -- the exact aggregate-"
+        "granularity defect this fix removes"
+    )
+
+
+@pytest.mark.asyncio
 async def test_port_upsert_writes_capabilities_only(
     engine: NCEEngine, namespace_id: uuid.UUID
 ) -> None:

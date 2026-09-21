@@ -257,6 +257,46 @@ async def coerce_writable_values(
     return coerced
 
 
+def compute_secondary_write_data(spec: ResourceSpec, data: dict[str, Any]) -> dict[str, Any]:
+    """Filter caller-supplied ``data`` down to the fields any of
+    ``spec.secondary_tables`` route to, and re-inject ``node_type`` for a
+    table that declares it in its own ``fields`` -- but ONLY when ``data``
+    also supplies at least one of THAT SAME table's other fields.
+
+    ``node_type`` is never in ``spec.writable_fields`` (derived from the
+    spec's own identity, never client-supplied), so raw ``data`` never
+    carries it. Shared by every one of ``handle_create``/``handle_patch``
+    (this module, both branches) and ``mcp.py``'s ``handle_upsert`` (both
+    branches) -- six call sites, all needing the identical filter-and-inject
+    logic, previously hand-copied at each one. Two independent copy-paste
+    rounds (#394, then this fix) each got the injection right in isolation
+    but wrong in aggregate: checking whether the COMBINED filtered dict is
+    non-empty is not the same question as "did the caller touch THIS
+    table". A spec can have more than one secondary table -- DEVICE and
+    RACK each have two (``..._capabilities`` + ``..._node_state``) -- and a
+    caller who supplies only a capabilities field (e.g. ``signal_format``)
+    makes the combined dict non-empty even though they never touched
+    ``node_state`` at all. An aggregate-level gate then injects
+    ``node_type`` into that same combined dict, and
+    :func:`upsert_secondary_tables`'s own per-table filter picks it back
+    out for ``node_state`` -- writing a ``node_type``-only phantom row to a
+    table the caller never asked to touch, the exact defect this function
+    exists to close for good. Confirmed live in CI for CREATE (PR #400) and,
+    once checked, for PATCH already merged on `main` (#394) -- both had the
+    identical aggregate-granularity mistake, independently, because the
+    check was hand-copied instead of shared.
+
+    One function, one gate, six callers -- not six independently-maintained
+    copies of a rule that has already drifted wrong twice.
+    """
+    secondary_field_names = {f for sec in spec.secondary_tables for f in sec.fields}
+    sec_data = {k: v for k, v in data.items() if k in secondary_field_names}
+    for sec in spec.secondary_tables:
+        if "node_type" in sec.fields and any(f in sec_data for f in sec.fields if f != "node_type"):
+            sec_data["node_type"] = spec.node_type
+    return sec_data
+
+
 async def upsert_secondary_tables(
     conn: Any,
     spec: ResourceSpec,
@@ -919,42 +959,25 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                         row = await conn.fetchrow(query, *vals)
                         created = row_to_dict(row)
 
-                        secondary_field_names = {
-                            f for sec in spec.secondary_tables for f in sec.fields
-                        }
-                        # node_type is never in spec.writable_fields (derived
-                        # from the spec's own identity, never client-supplied),
-                        # so raw `data` never carries it -- this loop would
-                        # otherwise leave a NOT NULL node_type column
-                        # unpopulated on a fresh secondary-table row.
-                        #
-                        # Gated on sec_data already non-empty from real
-                        # caller-supplied content, matching handle_patch's
-                        # conservative injection (see its own comment) --
-                        # NOT the unconditional form this branch used before.
                         # read.py's _fetch_node_state_by_labels documents why
-                        # unconditional is wrong for system_design_node_state
-                        # specifically: "no row" and "row, status NULL" are
-                        # two distinguishable, separately-consumed facts (its
-                        # own module docstring's three-facts paragraph, cited
-                        # in full there), observed independently by
-                        # do_get_topology (GET /api/system-design/topology,
-                        # the system_design_get_topology MCP tool, and
-                        # Copper) and by this generic surface's own
-                        # handle_get (row_to_dict emits every column key even
-                        # when NULL, so a secondary row's mere existence is
-                        # itself observable). A bare create with no state key
-                        # supplied must leave a node with NO row -- the "no
-                        # row" fact -- not a node_type-only row that silently
-                        # asserts "row, status NULL" about a node nobody
-                        # declared anything about. Devices.py's own
-                        # hand-written author path already follows this rule
-                        # (writes a state row only when the node is new to
-                        # the call or a state key is supplied); this generic
-                        # surface had not adopted it until now.
-                        sec_data = {k: v for k, v in data.items() if k in secondary_field_names}
-                        if sec_data and "node_type" in secondary_field_names:
-                            sec_data["node_type"] = spec.node_type
+                        # a bare create must leave a node with NO
+                        # system_design_node_state row: "no row" and "row,
+                        # status NULL" are two distinguishable, separately-
+                        # consumed facts (its own module docstring's
+                        # three-facts paragraph, cited in full there),
+                        # observed independently by do_get_topology (GET
+                        # /api/system-design/topology, the
+                        # system_design_get_topology MCP tool, and Copper)
+                        # and by this generic surface's own handle_get
+                        # (row_to_dict emits every column key even when
+                        # NULL, so a secondary row's mere existence is
+                        # itself observable). Devices.py's own hand-written
+                        # author path already follows this rule; this
+                        # generic surface had not adopted it until now.
+                        # See compute_secondary_write_data's own docstring
+                        # for why the gate must be computed per secondary
+                        # table, not by checking the combined dict.
+                        sec_data = compute_secondary_write_data(spec, data)
                         if sec_data:
                             created.update(
                                 await upsert_secondary_tables(
@@ -983,18 +1006,14 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                         if secondary_field_names
                         else data
                     )
-                    # node_type is never in spec.writable_fields (derived
-                    # from the spec's own identity, never client-supplied --
-                    # see the graph branch's identical injection above), so
-                    # raw `data` never carries it. No real relational spec
-                    # has a node_type-bearing secondary_tables entry today
-                    # (every one that does is graph-primary), so this is
-                    # currently unreachable in production -- fixed for
-                    # parity with the graph branch's conservative gate, not
-                    # because a live caller hits it.
-                    sec_data = {k: v for k, v in data.items() if k in secondary_field_names}
-                    if sec_data and "node_type" in secondary_field_names:
-                        sec_data["node_type"] = spec.node_type
+                    # No real relational spec has a node_type-bearing
+                    # secondary_tables entry today (every one that does is
+                    # graph-primary), so this is currently unreachable in
+                    # production -- computed for parity with the graph
+                    # branch, not because a live caller hits it. See
+                    # compute_secondary_write_data's own docstring for why
+                    # the gate must be per secondary table.
+                    sec_data = compute_secondary_write_data(spec, data)
                     session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                     async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
                         try:
@@ -1273,40 +1292,25 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                         else:
                             updated = dict(existing)
 
-                        sec_updates = {
-                            k: v for k, v in updates.items() if k in secondary_field_names
-                        }
-                        # node_type is never in spec.writable_fields (it is
-                        # derived from the spec's own identity, never
-                        # client-supplied -- see handle_create's identical
-                        # injection above), so `updates` never carries it and
-                        # this loop would otherwise leave it silently stale on
-                        # every PATCH that touches another secondary field.
-                        #
-                        # Deliberately NOT unconditional the way handle_create's
-                        # and mcp.py's handle_upsert's injections are (`if
-                        # "node_type" in secondary_field_names: sec_data[...]
-                        # = ...` with no other gate): those two always write
-                        # the kg_nodes identity row first in the same call, so
-                        # an unconditional secondary write alongside it is
-                        # never the FIRST write for that node. A PATCH has no
-                        # such guarantee -- it may be the first call to ever
-                        # touch this node's secondary table. Injecting
-                        # node_type here unconditionally would make node_type
-                        # ALONE able to trigger upsert_secondary_tables, which
-                        # would create a fresh secondary row containing only
-                        # node_type and nothing else the caller asked to set --
-                        # a phantom write with no observable cause. Gating on
-                        # `sec_updates` already being non-empty keeps this
-                        # PATCH-only injection strictly additive: it only ever
-                        # rides along on a write that was going to happen
-                        # anyway -- which is also the exact scenario where
-                        # node_type must be present: an INSERT (no existing
-                        # secondary row yet) into a NOT NULL node_type column,
-                        # see test_rest_patch_first_touch_of_secondary_table_
+                        # A PATCH may be the first call to ever touch this
+                        # node's secondary table -- injecting node_type
+                        # unconditionally would make node_type ALONE able to
+                        # trigger upsert_secondary_tables, creating a fresh
+                        # secondary row containing only node_type and
+                        # nothing else the caller asked to set. See
+                        # compute_secondary_write_data's own docstring: the
+                        # gate is per secondary table, not "did this PATCH
+                        # touch anything" -- a DEVICE/RACK-shaped spec has a
+                        # second secondary table (capabilities), and a PATCH
+                        # that only touches that one must not also inject
+                        # node_type into node_state. When it DOES ride along
+                        # on a real node_state write, that is also the exact
+                        # scenario where node_type must be present: an
+                        # INSERT (no existing secondary row yet) into a NOT
+                        # NULL node_type column -- see
+                        # test_rest_patch_first_touch_of_secondary_table_
                         # still_satisfies_node_type_not_null.
-                        if sec_updates and "node_type" in secondary_field_names:
-                            sec_updates["node_type"] = spec.node_type
+                        sec_updates = compute_secondary_write_data(spec, updates)
                         if sec_updates:
                             updated.update(
                                 await upsert_secondary_tables(
@@ -1366,20 +1370,14 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                         updated = row_to_dict(row) if row else {**existing, **primary_updates}
 
                         # Multi-table spec: shared with handle_create and
-                        # mcp.py's handle_upsert -- see upsert_secondary_tables'
-                        # own docstring. node_type re-injection matches the
-                        # graph branch's identical fix above (same reasoning,
-                        # same NOT NULL risk on a first-ever secondary write
-                        # via PATCH) -- currently unreachable in production
-                        # (no real relational spec declares a node_type-
-                        # bearing secondary_tables entry; every one that does
-                        # is graph-primary), fixed for parity rather than a
-                        # live report.
-                        sec_updates = {
-                            k: v for k, v in updates.items() if k in secondary_field_names
-                        }
-                        if sec_updates and "node_type" in secondary_field_names:
-                            sec_updates["node_type"] = spec.node_type
+                        # mcp.py's handle_upsert -- see
+                        # compute_secondary_write_data's own docstring for
+                        # the per-table gating this needs. Currently
+                        # unreachable in production (no real relational spec
+                        # declares a node_type-bearing secondary_tables
+                        # entry; every one that does is graph-primary),
+                        # computed for parity rather than a live report.
+                        sec_updates = compute_secondary_write_data(spec, updates)
                         if sec_updates:
                             updated.update(
                                 await upsert_secondary_tables(

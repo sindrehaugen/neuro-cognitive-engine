@@ -33,6 +33,7 @@ from nce.resource_surface.rest import (
     WriteCoercionError,
     _get_mem_bucket,
     coerce_writable_values,
+    compute_secondary_write_data,
     row_to_dict,
     upsert_secondary_tables,
 )
@@ -667,21 +668,14 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                         *vals_id,
                     )
 
-                    secondary_field_names = {f for sec in spec.secondary_tables for f in sec.fields}
-                    # node_type is never in spec.writable_fields (derived
-                    # from the spec's own identity, never client-supplied).
-                    # Gated on sec_data already non-empty from real
-                    # caller-supplied content, matching this file's own
-                    # relational upsert branch and rest.py's handle_patch --
-                    # NOT the unconditional form this branch used before.
-                    # See rest.py's handle_create graph branch for the full
-                    # reasoning (read.py's three-facts paragraph: "no row"
-                    # and "row, status NULL" are distinguishable, separately
-                    # observed facts for system_design_node_state, and a bare
-                    # upsert with no state key supplied must leave "no row").
-                    sec_data = {k: v for k, v in data.items() if k in secondary_field_names}
-                    if sec_data and "node_type" in secondary_field_names:
-                        sec_data["node_type"] = spec.node_type
+                    # See rest.py's compute_secondary_write_data for the
+                    # full reasoning (read.py's three-facts paragraph: "no
+                    # row" and "row, status NULL" are distinguishable,
+                    # separately observed facts for system_design_node_state,
+                    # so a bare upsert with no state key supplied must leave
+                    # "no row") and for why the gate must be computed per
+                    # secondary table, not by checking the combined dict.
+                    sec_data = compute_secondary_write_data(spec, data)
                     if sec_data:
                         await upsert_secondary_tables(
                             conn, spec, node_label, ns_uuid, is_global, sec_data
@@ -777,24 +771,15 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
 
                     # Multi-table spec: shared with rest.py's handle_create
                     # and handle_patch -- see upsert_secondary_tables' own
-                    # docstring for why this is not a blind ON CONFLICT.
-                    #
-                    # node_type is never in spec.writable_fields (derived
-                    # from the spec's own identity, never client-supplied),
-                    # so raw `data` never carries it -- re-injecting it here
-                    # matches rest.py's relational handle_create/handle_patch
-                    # fix (#394). Gated on sec_data already non-empty from
-                    # real caller-supplied content, the same conservative
-                    # rule as that PATCH fix, not CREATE's unconditional one:
-                    # this one function handles both insert and update, so
-                    # an unconditional injection would make node_type alone
-                    # trigger a phantom secondary-table row on every bare
-                    # upsert with zero real secondary fields supplied --
-                    # exactly the shape test_mcp_get_with_no_secondary_row_
-                    # still_returns_primary already asserts does NOT happen.
-                    sec_data = {k: v for k, v in data.items() if k in secondary_field_names}
-                    if sec_data and "node_type" in secondary_field_names:
-                        sec_data["node_type"] = spec.node_type
+                    # docstring for why this is not a blind ON CONFLICT, and
+                    # compute_secondary_write_data's own docstring for the
+                    # per-table gating (this branch handles both insert and
+                    # update, so an unconditional injection would make
+                    # node_type alone trigger a phantom secondary-table row
+                    # on every bare upsert -- exactly the shape
+                    # test_mcp_get_with_no_secondary_row_still_returns_primary
+                    # already asserts does NOT happen).
+                    sec_data = compute_secondary_write_data(spec, data)
                     if sec_data:
                         await upsert_secondary_tables(
                             conn, spec, item_id, ns_uuid, is_global, sec_data
