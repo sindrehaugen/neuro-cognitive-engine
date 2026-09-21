@@ -68,6 +68,34 @@ threshold accessor.
 A zero delta is never logged at all (mirrors ``finago.py``'s own
 convention exactly) -- there is no divergence to record, and computing a
 materiality ratio for a zero numerator is pointless.
+
+Alerting is opt-in, off by default -- calibration has not happened
+------------------------------------------------------------------------
+Unlike the Sales/D365 and Finago pairings, this comparison's materiality
+rule has never been validated against real historical data. The design
+brief (``B11_DESIGN_BRIEF.md``, "Why this is a decision, not an
+engineering task") records direct evidence that this specific problem is
+hard even for people with real account access: the host's own equivalent
+routine, calibrated by its owners against 36 known loss keys, still
+produced 18 false positives -- a 50% false-positive rate. A rule invented
+here, without that same access, has no reason to do better. An alert
+channel with a 50% false-positive rate is worse than none: it trains
+everyone to ignore it, degrading it into an inert instrument with extra
+steps -- and because ``dispatch_alert`` and ``NCE_DIVERGENCE_ALERT_THRESHOLD``
+are shared with every other divergence pairing, a noisy channel here
+would train people to ignore alerts from Sales and Finago too.
+
+So this module computes the comparison and writes the ``divergence_log``
+row unconditionally (the data is useful and nobody should lose it), but
+only lets ``record_divergence`` actually page when
+:func:`alerts_enabled` returns ``True`` -- gated on
+``NCE_ECONOMY_RECONCILE_AGREEMENTS_ALERTS_ENABLED``, default **off**. This
+is a temporary gate, not a permanent policy: once someone with real
+agreement/GL data validates the false-positive rate and decides it is
+acceptable, flipping the env var on is the whole rollout. It does not
+touch, and is not a substitute for, the AGGREGATE-only attribution
+limitation above -- that limitation is architectural (``economy_postings``
+has no ``contract_id``) and remains regardless of how alerting is gated.
 """
 
 from __future__ import annotations
@@ -76,6 +104,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from nce import config as _config
 from nce.source_mode.divergence import alert_threshold, record_divergence
 from nce.vertical_modules.economy.contracts import fetch_contracts_for_recognition
 from nce.vertical_modules.economy.gl import do_get_gl_records
@@ -119,6 +148,26 @@ _ATTRIBUTION_CAVEAT = (
 # the same function object, not a wrapper. See finago.py's own precedent for
 # why a reimplementation, even byte-identical, is the actual smell.
 _materiality_threshold = alert_threshold
+
+# Whether a material divergence from this specific comparison is allowed to
+# page anyone. Default OFF -- see the module docstring's "Alerting is
+# opt-in" section for why: this rule has never been calibrated against real
+# data, unlike the Sales/D365 and Finago pairings that share the same
+# record_divergence/dispatch_alert machinery.
+ALERTS_ENABLED_ENV = "NCE_ECONOMY_RECONCILE_AGREEMENTS_ALERTS_ENABLED"
+
+
+def alerts_enabled() -> bool:
+    """Whether a material divergence here is allowed to dispatch an alert.
+
+    Default **False**. Read at call time (not bound onto a cached settings
+    object) so a reviewer only has to look at this one function to know the
+    default, and so no import-order accident can turn paging on -- same
+    reasoning as ``vertical_modules/system_design/archive.py``'s
+    ``sweep_enabled()``. The ``divergence_log`` row is written regardless of
+    this flag; only the page is gated.
+    """
+    return _config._bool_env(ALERTS_ENABLED_ENV, False)
 
 
 def _as_ns_uuid(namespace_id: Any) -> UUID:
@@ -199,6 +248,10 @@ async def do_reconcile_agreements(engine: NCEEngine, params: dict[str, Any]) -> 
             "not_due": list[str],                 # contract_ids not yet due / already past their window
             "comparison_scope": "aggregate",      # always this literal -- see the AGGREGATE ONLY notice above
             "attribution_caveat": str,             # the same notice, as prose, echoed on every call
+            "alerts_enabled": bool,                # alerts_enabled() at call time -- False means a
+                                                     # "material": true divergence below was still logged
+                                                     # but did NOT page anyone; see module docstring's
+                                                     # "Alerting is opt-in" section
         }``
 
     Raises
@@ -252,6 +305,7 @@ async def do_reconcile_agreements(engine: NCEEngine, params: dict[str, Any]) -> 
     delta = expected_total - actual_total
     materiality: float | None = None
     material = False
+    alerting_enabled = alerts_enabled()
 
     if delta != _ZERO:
         materiality = _materiality(expected_total, actual_total)
@@ -266,6 +320,7 @@ async def do_reconcile_agreements(engine: NCEEngine, params: dict[str, Any]) -> 
             nce_value=str(expected_total),
             ext_value=str(actual_total),
             materiality=materiality,
+            alert=alerting_enabled,
         )
 
     return {
@@ -282,4 +337,5 @@ async def do_reconcile_agreements(engine: NCEEngine, params: dict[str, Any]) -> 
         "not_due": not_due,
         "comparison_scope": "aggregate",
         "attribution_caveat": _ATTRIBUTION_CAVEAT,
+        "alerts_enabled": alerting_enabled,
     }
