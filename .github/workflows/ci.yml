@@ -1312,6 +1312,16 @@ jobs:
           PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
           NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+          # _saga_recovery_tick takes a real Redis distributed lock
+          # (acquire_cron_lock -> cfg.REDIS_URL, set from this REDIS_URL env
+          # var by tests/conftest.py:126 -- NOT the NCE_TEST_REDIS_URL
+          # convention other steps in this job use, which only the M6/cache-
+          # invalidation tests read themselves). Without it cfg.REDIS_URL
+          # defaults to redis://localhost:6379/0, nothing listens there (this
+          # job's Redis is deliberately on 6380), the lock acquisition fails,
+          # and the tick returns before ever reaching the recovery branch the
+          # test is proving.
+          REDIS_URL: redis://localhost:6380/13
         run: pytest tests/integration/test_cron_saga_recovery_live.py -m integration -q --tb=short
 
       # product_catalog.etim_specs is jsonb; no jsonb codec is registered on
