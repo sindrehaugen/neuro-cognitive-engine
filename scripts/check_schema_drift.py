@@ -68,6 +68,12 @@ existing databases, and this checker would not notice if they stopped. Named on 
 a checker that quietly claims more coverage than it has is the failure mode this whole row
 is about.
 
+(``expected_column_nullability()`` below extracts nullability from the same static text,
+but for a different consumer, ``gen_openapi.py`` -- this checker's own drift comparison
+above still never reads it and still does not compare nullability between schema.sql and a
+live database. The two are not the same claim: one is "what does schema.sql itself say",
+the other would be "does a live database match schema.sql", and only the first exists.)
+
 Usage::
 
     python scripts/check_schema_drift.py --dsn postgresql://user@host/db
@@ -195,6 +201,138 @@ def expected_columns(schema_path: Path = _SCHEMA) -> dict[str, set[str]]:
         # makes; record the table so the drift shows up rather than being skipped.
         tables.setdefault(table, set()).add(col)
     return {t: c for t, c in tables.items() if t not in _NOT_EXPECTED}
+
+
+# ---------------------------------------------------------------------------
+# Nullability -- NOT part of this script's own drift comparison (see the
+# module docstring's "Still NOT compared" list; that stays true, this
+# checker never reads the functions below). Added for a different consumer,
+# gen_openapi.py, which needs to know whether a documented response field
+# can be `null` and has no other static source for that. Extracted from the
+# exact same CREATE TABLE walk `_extract_create_table` already does --
+# `part` (the full column definition) is already in hand there and thrown
+# away down to just the name; this keeps it instead of a second, duplicate
+# parser.
+# ---------------------------------------------------------------------------
+
+
+def _strip_parens(text: str) -> str:
+    """Remove every parenthesized group, nesting-aware. A bare column-level
+    ``NOT NULL`` always sits outside any parens (Postgres column-constraint
+    grammar: ``name type [NOT NULL] [DEFAULT ...] [CHECK (...)] [REFERENCES
+    ...(...)]``) -- stripping parens first means a `NOT NULL` appearing
+    *inside* an inline `CHECK (col IS NOT NULL OR other IS NOT NULL)` or a
+    typed precision like `NUMERIC(12, 2)` is never mistaken for the
+    column's own constraint. No such inline CHECK exists in `schema.sql`
+    today (checked: every `IS NOT NULL` on a `CHECK`-shaped line is inside
+    a `CREATE POLICY ... WITH CHECK (...)`, never a column definition), but
+    stripping unconditionally means this doesn't silently start lying the
+    day one is added.
+    """
+    out: list[str] = []
+    depth = 0
+    for ch in text:
+        if ch == "(":
+            depth += 1
+            continue
+        if ch == ")":
+            depth = max(0, depth - 1)
+            continue
+        if depth == 0:
+            out.append(ch)
+    return "".join(out)
+
+
+_NOT_NULL_RE = re.compile(r"\bNOT\s+NULL\b", re.I)
+
+
+def _is_not_null(column_definition: str) -> bool:
+    """True if this column's own definition text declares ``NOT NULL`` as a
+    bare column constraint (not inside a type's precision or an inline
+    CHECK's parens -- see :func:`_strip_parens`)."""
+    return bool(_NOT_NULL_RE.search(_strip_parens(column_definition)))
+
+
+def _extract_create_table_defs(sql: str) -> dict[str, dict[str, str]]:
+    """Same walk as :func:`_extract_create_table`, keeping each column's
+    full definition text instead of discarding it down to just the name."""
+    out: dict[str, dict[str, str]] = {}
+    pattern = re.compile(r"CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+([\w.\"]+)\s*\(", re.I)
+    for m in pattern.finditer(sql):
+        table = m.group(1).strip('"').split(".")[-1].lower()
+        depth = 0
+        start = m.end() - 1
+        end = None
+        in_str = False
+        for i in range(start, len(sql)):
+            ch = sql[i]
+            if ch == "'":
+                in_str = not in_str
+            if in_str:
+                continue
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+        if end is None:
+            continue
+        body = sql[start + 1 : end]
+        cols = out.setdefault(table, {})
+        for part in _split_top_level_commas(body):
+            part = part.strip()
+            if not part or _TABLE_LEVEL.match(part):
+                continue
+            name = re.match(r'^\s*"?([A-Za-z_][\w]*)"?\s', part + " ")
+            if name:
+                cols[name.group(1).lower()] = part
+    return out
+
+
+def _extract_add_column_defs(sql: str) -> dict[tuple[str, str], str]:
+    """Same match as :func:`_extract_add_column`, keeping the rest of the
+    statement (up to the terminating ``;``) instead of discarding it.
+
+    Assumes the statement's own ``;`` is not inside a quoted string -- true
+    for every ``ADD COLUMN`` in `schema.sql` today (checked directly: none
+    of their ``DEFAULT`` clauses contain a literal semicolon), stated
+    rather than silently relied on.
+    """
+    pattern = re.compile(
+        r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?([\w.\"]+)\s+"
+        r"ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?\"?([A-Za-z_][\w]*)\"?"
+        r"([^;]*);",
+        re.I,
+    )
+    return {
+        (t.strip('"').split(".")[-1].lower(), c.lower()): rest
+        for t, c, rest in pattern.findall(sql)
+    }
+
+
+def expected_column_nullability(schema_path: Path = _SCHEMA) -> dict[str, dict[str, bool]]:
+    """Everything ``schema.sql`` says about whether a column can be
+    ``NULL``, as table -> {column: is_nullable}. A column is nullable
+    unless its own definition (or, for an ``ADD COLUMN``, the ``ADD
+    COLUMN`` statement itself) declares ``NOT NULL``.
+
+    Same source, same static read, same table-name normalisation as
+    :func:`expected_columns` -- this does not replace it or change its
+    behaviour, it answers a question that checker was never asked (see the
+    module docstring's "Still NOT compared" list, and the section comment
+    above this function).
+    """
+    sql = _strip_sql_comments(schema_path.read_text(encoding="utf-8", errors="replace"))
+    tables = _extract_create_table_defs(sql)
+    result: dict[str, dict[str, bool]] = {
+        table: {col: not _is_not_null(defn) for col, defn in cols.items()}
+        for table, cols in tables.items()
+    }
+    for (table, col), rest in _extract_add_column_defs(sql).items():
+        result.setdefault(table, {})[col] = not _is_not_null(rest)
+    return {t: c for t, c in result.items() if t not in _NOT_EXPECTED}
 
 
 async def actual_columns(dsn: str) -> dict[str, set[str]]:

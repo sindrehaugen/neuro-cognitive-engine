@@ -48,6 +48,20 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+
+# check_schema_drift.py's own drift comparison never reads nullability (its
+# module docstring names that explicitly) -- expected_column_nullability()
+# is a second, independent function in that file, extracted from the same
+# static schema.sql text this script has no other source for. Not a design
+# layering violation: both are standalone scripts in this same directory,
+# and tests already import reusable parsing primitives from that file the
+# same way (tests/unit/test_schema_drift_detector.py,
+# tests/unit/test_resource_surface_archive_column_exists.py).
+from check_schema_drift import expected_column_nullability  # noqa: E402
+
 _DOCS_OPENAPI = _ROOT / "docs" / "_generated" / "openapi.json"
 _ROOT_OPENAPI = _ROOT / "openapi.json"
 
@@ -66,6 +80,36 @@ def _clean_schema(obj: Any) -> Any:
     if isinstance(obj, list):
         return [_clean_schema(item) for item in obj]
     return obj
+
+
+def _writable_field_is_nullable(spec: Any, field: str, column_nullability: dict) -> bool | None:
+    """Resolve ``field`` (a ``writable_field``/``filterable_field`` on a
+    ``ResourceSpec``) to the real table that actually stores it, and look
+    up whether ``schema.sql`` declares that column ``NOT NULL``.
+
+    A graph-primary spec (``table_name is None``) routes each field through
+    whichever ``SecondaryTable`` declares it in its own ``fields`` --
+    checked first, since a graph-primary spec's ``table_name`` is `None`
+    and would otherwise resolve to nothing. A table-backed spec's fields
+    live on ``spec.table_name`` directly.
+
+    Returns `None` (not `True`) when the field can't be resolved to a real
+    column at all -- a field the spec declares that schema.sql doesn't
+    know about is a different, pre-existing problem (drift between the
+    spec and the DDL), not something this function should paper over by
+    guessing nullable. Callers must treat `None` as "leave the declared
+    schema as it was", never as "assume nullable".
+    """
+    table: str | None = None
+    for sec in spec.secondary_tables:
+        if field in sec.fields:
+            table = sec.table_name
+            break
+    if table is None and spec.table_name:
+        table = spec.table_name
+    if table is None:
+        return None
+    return column_nullability.get(table, {}).get(field)
 
 
 def generate_openapi_spec() -> dict[str, Any]:
@@ -103,6 +147,10 @@ def generate_openapi_spec() -> dict[str, Any]:
     # Collect all resource specs
     specs_list = get_all_resource_specs()
     specs_by_pair: dict[tuple[str, str], Any] = {(s.engine, s.entity): s for s in specs_list}
+    # One static parse of schema.sql for the whole run -- see
+    # _writable_field_is_nullable's own docstring for how a spec's field is
+    # resolved to a table/column pair against this map.
+    _column_nullability = expected_column_nullability()
 
     # Initialize OpenAPI 3.1.0 document
     doc: dict[str, Any] = {
@@ -253,8 +301,23 @@ def generate_openapi_spec() -> dict[str, Any]:
         all_props = set(spec.writable_fields) | set(spec.filterable_fields)
         for prop in sorted(all_props):
             if prop not in item_schema["properties"]:
+                # A column schema.sql declares nullable (no NOT NULL, no
+                # ADD COLUMN ... NOT NULL) can genuinely come back `null`
+                # -- read.py's own three-facts contract for
+                # system_design_node_state is the concrete case this was
+                # measured against (OPENAPI_RESPONSE_SCHEMA_SWEEP.md,
+                # 2026-09-21 addendum), but the condition is structural:
+                # any writable_field routed to a nullable column shows it,
+                # not just these six specs. OpenAPI 3.1 (this doc's own
+                # declared version) dropped the 3.0 `nullable: true`
+                # keyword -- `type: [string, null]` is the 3.1 form.
+                # `is_nullable is None` (field not resolvable to a real
+                # column) leaves the bare scalar type exactly as before --
+                # never guessed.
+                is_nullable = _writable_field_is_nullable(spec, prop, _column_nullability)
+                prop_type: Any = ["string", "null"] if is_nullable else "string"
                 item_schema["properties"][prop] = {
-                    "type": "string",
+                    "type": prop_type,
                     "description": f"Field {prop}",
                 }
 
@@ -290,8 +353,15 @@ def generate_openapi_spec() -> dict[str, Any]:
                     "items": {"$ref": f"#/components/schemas/{model_name}"},
                 },
                 "next_cursor": {
-                    "type": "string",
-                    "nullable": True,
+                    # `nullable: true` is the OpenAPI 3.0 keyword; this
+                    # document declares "openapi": "3.1.0" (3.1 dropped
+                    # `nullable` entirely -- a 3.1-aware validator silently
+                    # ignores it, leaving the schema exactly as wrong as a
+                    # bare `type: "string"`). `type: [string, null]` is the
+                    # 3.1 form. Pre-existing, unrelated to a specific spec
+                    # -- fixed alongside the writable-field version of the
+                    # same defect class rather than left shipping.
+                    "type": ["string", "null"],
                     "description": "Cursor token for fetching the next page",
                 },
                 "total": {

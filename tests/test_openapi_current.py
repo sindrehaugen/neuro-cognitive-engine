@@ -280,3 +280,112 @@ def test_positive_control_unschematized_route_fails(openapi_doc):
     assert resp_errors, (
         f"Positive control failed: removing responses from {target_path} was not detected"
     )
+
+
+def _resolve_field_table(spec: Any, field: str) -> str | None:
+    """Same resolution `gen_openapi.py`'s `_writable_field_is_nullable` does
+    -- kept here as its own small, independent walk (not a call into the
+    generator's private helper) so this test verifies the generator's real
+    output against the same source data, not against itself."""
+    for sec in spec.secondary_tables:
+        if field in sec.fields:
+            return sec.table_name
+    if spec.table_name:
+        return spec.table_name
+    return None
+
+
+def test_nullable_backed_fields_are_never_bare_scalar_types(openapi_doc):
+    """A `writable_field`/`filterable_field` routed to a column `schema.sql`
+    declares nullable (no `NOT NULL`) must be documented as such --
+    `type: ["<scalar>", "null"]`, OpenAPI 3.1's form (this document's own
+    declared version; 3.0's `nullable: true` was removed in 3.1 and a
+    3.1-aware validator silently ignores it).
+
+    Measured structurally, not against a hand-picked spec list: every
+    registered ResourceSpec's writable/filterable fields are checked
+    against `check_schema_drift.expected_column_nullability()`'s real
+    parse of `schema.sql` -- whichever specs this affects are whichever
+    ones the measurement finds, not a fixed set six specs happened to
+    surface tonight.
+    """
+    from check_schema_drift import expected_column_nullability
+
+    from nce.resource_surface import get_all_resource_specs, load_all_engine_resources
+
+    load_all_engine_resources()
+    column_nullability = expected_column_nullability()
+    schemas = openapi_doc.get("components", {}).get("schemas", {})
+
+    wrongly_scalar: list[str] = []
+    wrongly_nullable: list[str] = []
+    checked = 0
+    for spec in get_all_resource_specs():
+        model_name = f"{spec.engine.capitalize()}_{spec.entity.replace('-', '_')}"
+        schema = schemas.get(model_name)
+        if not schema:
+            continue
+        props = schema.get("properties", {})
+        for field in sorted(set(spec.writable_fields) | set(spec.filterable_fields)):
+            prop = props.get(field)
+            if prop is None:
+                continue
+            table = _resolve_field_table(spec, field)
+            if table is None:
+                continue
+            is_nullable = column_nullability.get(table, {}).get(field)
+            if is_nullable is None:
+                continue
+            checked += 1
+            prop_type = prop.get("type")
+            declared_nullable = isinstance(prop_type, list) and "null" in prop_type
+            if is_nullable and not declared_nullable:
+                wrongly_scalar.append(f"{model_name}.{field} (table {table}, type={prop_type!r})")
+            if not is_nullable and declared_nullable:
+                wrongly_nullable.append(f"{model_name}.{field} (table {table}, type={prop_type!r})")
+
+    assert checked > 50, (
+        f"Only resolved {checked} field-to-column pairs -- expected the estate-wide "
+        f"population (100+ schemas were affected when this was measured on "
+        f"2026-09-21). A count this low means the resolution logic stopped matching "
+        f"real specs to real tables, not that the population shrank."
+    )
+    assert not wrongly_scalar, (
+        f"{len(wrongly_scalar)} nullable-backed field(s) are documented as a bare "
+        f"scalar type (schema.sql declares no NOT NULL, but the OpenAPI schema "
+        f"claims the value is never null):\n" + "\n".join(wrongly_scalar[:20])
+    )
+    assert not wrongly_nullable, (
+        f"{len(wrongly_nullable)} NOT NULL field(s) are documented as nullable -- "
+        f"over-applying the fix in the other direction:\n" + "\n".join(wrongly_nullable[:20])
+    )
+
+
+def test_positive_control_nullable_type_regression_is_caught(openapi_doc):
+    """Proves the test above actually fails when it should, the same way
+    `test_positive_control_unschematized_route_fails` proves the route
+    check does: tamper a real nullable-typed property back to a bare
+    scalar (the pre-fix shape) and confirm detection, rather than trusting
+    the assertion's wording."""
+    schemas = openapi_doc.get("components", {}).get("schemas", {})
+    target_model = target_field = None
+    for model_name, schema in schemas.items():
+        for field, prop in schema.get("properties", {}).items():
+            if isinstance(prop.get("type"), list) and "null" in prop["type"]:
+                target_model, target_field = model_name, field
+                break
+        if target_model:
+            break
+    assert target_model, "No nullable-typed property found in the generated spec at all"
+
+    tampered = json.loads(json.dumps(schemas[target_model]))
+    tampered["properties"][target_field]["type"] = "string"
+
+    declared_nullable = (
+        isinstance(tampered["properties"][target_field]["type"], list)
+        and "null" in tampered["properties"][target_field]["type"]
+    )
+    assert not declared_nullable, (
+        f"Tampering {target_model}.{target_field} back to a bare scalar did not "
+        f"produce the pre-fix shape -- positive control is not exercising what it claims to"
+    )
