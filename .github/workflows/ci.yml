@@ -1173,6 +1173,13 @@ jobs:
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/integration/test_resource_surface_kg_nodes_primary_live.py -m integration -q --tb=short
 
+      - name: Integration — explicit-null state fields must not create a phantom secondary row (tests/integration/test_resource_surface_explicit_null_state_no_phantom_live.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/integration/test_resource_surface_explicit_null_state_no_phantom_live.py -m integration -q --tb=short
+
       # BRANCH_COVERAGE_MAP.md found handle_list's relational branch
       # (rest.py's `elif spec.table_name:`) had zero live coverage with a
       # real assertion -- every existing list test either hit the graph

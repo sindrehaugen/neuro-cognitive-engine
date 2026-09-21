@@ -445,6 +445,12 @@ async def upsert_secondary_tables(
     Returns the dict of secondary fields actually written (join_field and
     namespace_id excluded), for callers that merge it into their own
     response.
+
+    A row with no existing secondary-table entry, whose payload carries no
+    real (non-``None``) value beyond ``node_type``, is never INSERTed at
+    all -- see the ``else`` branch below for the full reasoning. An
+    EXISTING row is unaffected by this: an explicit ``null`` there is a
+    legitimate clear of a previously-set value and still writes.
     """
     written: dict[str, Any] = {}
     for sec in spec.secondary_tables:
@@ -485,6 +491,30 @@ async def upsert_secondary_tables(
                     *vals,
                 )
         else:
+            # A row that would hold nothing but its own identity is not a
+            # row worth creating. `node_type` is identity, injected above
+            # (by `compute_secondary_write_data`) whenever ANY of this
+            # table's OTHER fields is present in the caller's payload --
+            # including present-but-explicitly-null. #394/#400 closed the
+            # aggregate-dict version of this gap (a field on a DIFFERENT
+            # secondary table making the combined dict look non-empty);
+            # this closes a second, distinct one found 2026-09-21: a
+            # caller who sends `{"status": null, "revision": null,
+            # "salience": null}` for a node with no existing state row
+            # reaches this INSERT branch with `sec_data` non-empty
+            # (`node_type` plus three explicit nulls) even though nothing
+            # the caller sent is real content. That must produce NO row --
+            # the same "no row" fact `read.py`'s three-facts paragraph and
+            # `retire.py`'s deny-reasons both depend on, not a fresh
+            # phantom.  Scoped to the INSERT branch only: an existing row
+            # (the `if existing:` branch above) can still be cleared by an
+            # explicit null, which is a legitimate write this must not
+            # touch. No extra round trip -- `existing` above is already
+            # fetched unconditionally for every write; this only adds an
+            # in-memory check on data already held.
+            content_keys = [k for k in sec_data if k != "node_type"]
+            if content_keys and not any(sec_data[k] is not None for k in content_keys):
+                continue
             insert_data = dict(query_data)
             insert_data[sec.join_field] = item_id
             if not is_global:
