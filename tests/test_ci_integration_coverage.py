@@ -711,52 +711,155 @@ def test_has_integration_marker_detects_a_decorator_marker(tmp_path: Path) -> No
     assert _has_integration_marker(module_path) is True
 
 
+# Vendored, not fetched: an earlier version of this test pulled each shape via
+# `git show <sha>:<path>` at test time. CI clones shallow, so `53ab458` and
+# `a252043` are not in the runner's object store and `git show` exits 128 --
+# the test failed loudly in CI for an environment reason, not a real
+# regression (found live, 2026-09-21, when this file's own PR went red).
+# Git history is where these three shapes were FOUND, not what the test is
+# about: the property under test is "_has_integration_marker returns True /
+# True / False for these three specific source shapes," which needs no
+# repository, only the text. Vendored here as the real, unmodified content
+# (module docstring plus the marker line's real surrounding context) from
+# each commit, with the SHA kept in a comment so the provenance is not lost.
+
+# tests/integration/test_resource_surface_comment_tag_validation_live.py at
+# commit 53ab458 -- added with a real top-level marker, genuinely unwired
+# until e46f8d1 added its ci.yml step. Must detect True.
+_REAL_MARKED_MODULE_53ab458 = '''"""
+tests/integration/test_resource_surface_comment_tag_validation_live.py
+==========================================================================
+Live-Postgres regression test for write-time identifier validation on the
+comment/tag sub-resources (``handle_add_comment``, ``handle_add_tag``,
+``handle_remove_tag`` in ``nce/resource_surface/rest.py``).
+
+THE BUG
+---------
+``v3_cognitive_ledger``'s comment/tag entries have no FK to a real
+resource -- ``entity_id`` was, before this fix, an unvalidated opaque
+string. A caller who wrote a comment against a bogus, mistyped, or
+(specifically) SHADOWED identifier got a silent 201 that could never be
+found again.
+"""
+
+from __future__ import annotations
+
+import uuid
+
+import asyncpg
+import httpx
+import pytest
+import pytest_asyncio
+from starlette.applications import Starlette
+
+from nce import admin_state
+from nce.auth import set_namespace_context
+from nce.engine_registry import populate_engine_modules
+from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
+from nce.orchestrator import NCEEngine
+from nce.resource_surface import get_all_resource_specs, load_all_engine_resources
+from nce.resource_surface.mcp import build_mcp_tool_specs
+from nce.resource_surface.rest import make_resource_routes
+
+pytestmark = pytest.mark.integration
+
+load_all_engine_resources()
+_SPECS = {(s.engine, s.entity): s for s in get_all_resource_specs()}
+_CONTACT_SPEC = _SPECS[("sales", "contacts")]
+'''
+
+# tests/integration/test_cron_saga_recovery_live.py at commit a252043 --
+# same shape, genuinely unwired until its own ci.yml step landed. Must
+# detect True.
+_REAL_MARKED_MODULE_a252043 = '''"""
+tests/integration/test_cron_saga_recovery_live.py
+====================================================
+Live-Postgres proof that `_saga_recovery_tick` (`nce/cron.py`) actually
+decodes `saga_execution_log.payload` from a real JSONB column.
+
+No asyncpg jsonb codec is registered anywhere in this codebase, so
+`payload` always arrives from a real connection as a raw JSON string,
+never a dict. Before this fix, `isinstance(row["payload"], dict)` was
+therefore always `False`.
+"""
+
+from __future__ import annotations
+
+import json
+import uuid
+
+import asyncpg
+import pytest
+
+from nce.cron import _saga_recovery_tick
+
+pytestmark = pytest.mark.integration
+
+
+async def test_saga_recovery_finds_memory_id_from_real_jsonb_payload(
+    pg_pool: asyncpg.Pool, namespace_id: uuid.UUID
+) -> None:
+    """The actual regression, not a synthetic shape."""
+'''
+
+# tests/unit/test_mocked_db_dependent_test_census.py at commit b46bc8c --
+# the actual false-positive incident this fix closes: this exact text,
+# verbatim from that commit's test_positive_control_ignores_integration_
+# marked_modules, embeds the marker line inside a STRING LITERAL assigned to
+# `live_module_code` -- never a real top-level statement in the file that
+# contains it. Must detect False (the old regex detected True here, which
+# was the bug).
+_FALSE_POSITIVE_MODULE_b46bc8c = '''def test_positive_control_ignores_integration_marked_modules() -> None:
+    """A module carrying `pytestmark = pytest.mark.integration` is a live-Postgres
+    sibling by this repo's own standing convention and must never be scanned,
+    regardless of what it calls directly."""
+    live_module_code = """
+import pytest
+
+pytestmark = pytest.mark.integration
+
+async def test_real_postgres_call(pg_pool):
+    result = await do_something_real(pg_pool)
+    assert result
+"""
+'''
+
+
 def test_has_integration_marker_still_catches_the_three_real_2026_09_21_incidents(
     tmp_path: Path,
 ) -> None:
     """Do not weaken this check to fix the false positive above -- prove it
     against the three real states from tonight that motivated this file's
-    existence and this fix, not synthetic stand-ins:
+    existence and this fix, not synthetic stand-ins.
 
-    1. `tests/integration/test_resource_surface_comment_tag_validation_live.py`
-       at commit 53ab458 -- added with a real top-level marker, genuinely
-       unwired until e46f8d1 added its ci.yml step. Must still detect True.
-    2. `tests/integration/test_cron_saga_recovery_live.py` at commit
-       a252043 -- same shape, genuinely unwired until its own ci.yml step
-       landed. Must still detect True.
-    3. `tests/unit/test_mocked_db_dependent_test_census.py` at commit
-       b46bc8c -- the actual false-positive incident this fix closes: the
-       marker text this test's own docstring describes, in the file as it
-       existed the night it broke CI, embedded in a string literal, never a
-       real top-level statement. Must now detect False (the old regex
-       detected True here, which is the bug).
-
-    Fetches each blob directly via `git show <sha>:<path>` rather than
-    trusting the current working tree, so this proves the historical
-    state, not today's (already-fixed) version of any of these files.
+    Vendored as literals (see the three `_REAL_MARKED_MODULE_*` /
+    `_FALSE_POSITIVE_MODULE_*` constants above) rather than fetched via
+    `git show <sha>:<path>` at test time -- an earlier version of this test
+    did that and failed in CI with `git show ... returned non-zero exit
+    status 128`: CI clones shallow, so `53ab458` and `a252043` are not in
+    the runner's object store. The property under test needs no repository,
+    only the text, so the text is what's committed here.
     """
-    import subprocess
-
-    def _git_show(sha: str, rel_path: str) -> str:
-        result = subprocess.run(
-            ["git", "-C", str(_REPO_ROOT), "show", f"{sha}:{rel_path}"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        return result.stdout
-
     cases = [
-        ("53ab458", "tests/integration/test_resource_surface_comment_tag_validation_live.py", True),
-        ("a252043", "tests/integration/test_cron_saga_recovery_live.py", True),
-        ("b46bc8c", "tests/unit/test_mocked_db_dependent_test_census.py", False),
+        (
+            "53ab458",
+            "test_resource_surface_comment_tag_validation_live.py",
+            _REAL_MARKED_MODULE_53ab458,
+            True,
+        ),
+        ("a252043", "test_cron_saga_recovery_live.py", _REAL_MARKED_MODULE_a252043, True),
+        (
+            "b46bc8c",
+            "test_mocked_db_dependent_test_census.py",
+            _FALSE_POSITIVE_MODULE_b46bc8c,
+            False,
+        ),
     ]
-    for sha, rel_path, expected in cases:
-        src = _git_show(sha, rel_path)
-        module_path = tmp_path / f"{sha}_{Path(rel_path).name}"
+    for sha, name, src, expected in cases:
+        module_path = tmp_path / f"{sha}_{name}"
         module_path.write_text(src, encoding="utf-8")
         assert _has_integration_marker(module_path) is expected, (
-            f"{rel_path} at {sha}: expected _has_integration_marker() == {expected}, "
+            f"{name} at {sha}: expected _has_integration_marker() == {expected}, "
             f"got {not expected} -- this is one of the three real states the AST "
             f"rewrite must not regress"
         )
