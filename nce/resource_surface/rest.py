@@ -906,6 +906,19 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                         if row:
                             item = row_to_dict(row)
                             node_label = item["label"]
+                            # kg_nodes' own real identity, captured before the
+                            # secondary-table merge below overwrites `item["id"]`
+                            # with the satellite table's own, unrelated
+                            # `id UUID PRIMARY KEY` column -- see
+                            # FILED_get_id_shadowing_breaking_change.md.
+                            # `id` itself is deliberately left shadowed (not
+                            # this fix's call to make: redefining it invalidates
+                            # any value a caller already stored, with no error
+                            # at the call site). This exposes the real value
+                            # under a new, unambiguous key instead, additive
+                            # only -- existing callers reading `id` see no
+                            # change.
+                            kg_node_canonical_id = item["id"]
                             # Multi-table spec: merge each secondary table's
                             # row -- a missing secondary row is not an error,
                             # the kg_nodes identity row is still a real
@@ -923,6 +936,16 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                                     _merge_secondary_row_preserving_kg_nodes_timestamps(
                                         item, sec_row
                                     )
+                            # Set AFTER the merge loop so no secondary row's
+                            # own (unrelated) `id` column can ever clobber it --
+                            # the exact failure mode this key exists to give
+                            # callers an escape from. Subject to the same
+                            # `redact_item` tier_allowlist filtering as every
+                            # other field below: a tier without `canonical_id`
+                            # in its spec's allowlist will not see it, same
+                            # default-deny-if-undeclared behavior as any other
+                            # field, not a bug in this fix.
+                            item["canonical_id"] = kg_node_canonical_id
                 except Exception as exc:
                     return admin_error_response(
                         f"Database fetch error: {exc}", exc, status_code=500

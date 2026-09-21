@@ -115,6 +115,133 @@ async def test_rest_create_then_get(engine: NCEEngine, namespace_id: uuid.UUID) 
 
 
 @pytest.mark.asyncio
+async def test_rest_get_exposes_canonical_id_alongside_the_still_shadowed_id(
+    engine: NCEEngine, namespace_id: uuid.UUID
+) -> None:
+    """CONTACT is the one graph-primary spec with a secondary table and no
+    separate, non-shadowed read path (FILED_get_id_shadowing_breaking_change.md)
+    -- the real-world case this fix is for, not a synthetic stand-in.
+
+    `GET`'s `handle_get` merges `sales_contacts`' own row over the `kg_nodes`
+    identity row last, so the response's `id` key has always been
+    `sales_contacts.id` (an unrelated `id UUID PRIMARY KEY DEFAULT
+    gen_random_uuid()`, schema.sql:6080), never `kg_nodes.id`. This proves
+    BOTH halves against real Postgres, not just the new one:
+
+      1. `canonical_id` is the fix -- it must equal the real `kg_nodes.id`.
+      2. `id` is PINNED to the wrong (satellite) value, deliberately. Making
+         `id` mean `kg_nodes.id` is a breaking change on a live frontend
+         (Copper) that may have already persisted the old value -- not this
+         fix's call to make. If this assertion ever needs to change, that is
+         the breaking-change decision from the filed doc being made, not a
+         regression in this test.
+    """
+    node_label = f"probe-contact-canonical-{uuid.uuid4().hex[:8]}"
+    async with _rest_client(engine) as client:
+        r1 = await client.post(
+            "/api/sales/contacts",
+            json={
+                "namespace_id": str(namespace_id),
+                "node_label": node_label,
+                "name": "Canonical Id Probe",
+                "email": "canonical@example.com",
+                "phone": "+4790000002",
+            },
+        )
+        assert r1.status_code == 201, r1.text
+
+        r2 = await client.get(
+            f"/api/sales/contacts/{node_label}",
+            params={"namespace_id": str(namespace_id)},
+            headers={"X-NCE-Principal-Tier": "employee"},
+        )
+    assert r2.status_code == 200, r2.text
+    body = r2.json()
+
+    async with engine.pg_pool.acquire() as conn:
+        kg_node_id = await conn.fetchval(
+            "SELECT id FROM kg_nodes WHERE namespace_id = $1 AND label = $2",
+            namespace_id,
+            node_label,
+        )
+        satellite_id = await conn.fetchval(
+            "SELECT id FROM sales_contacts WHERE namespace_id = $1 AND node_label = $2",
+            namespace_id,
+            node_label,
+        )
+    assert kg_node_id is not None and satellite_id is not None
+    assert kg_node_id != satellite_id, (
+        "test setup invalid: kg_nodes.id and sales_contacts.id must be different "
+        "UUIDs for this to prove anything about the shadowing"
+    )
+
+    # 1. The fix: canonical_id is the real kg_nodes.id.
+    assert body["canonical_id"] == str(kg_node_id), (
+        f"canonical_id must be kg_nodes' real id, got {body.get('canonical_id')!r} "
+        f"vs real {kg_node_id!r}"
+    )
+    # 2. Pinned, deliberately: id still reports the satellite's own id, not
+    # kg_nodes.id -- changing this is the breaking-change decision in
+    # FILED_get_id_shadowing_breaking_change.md, not something to fix here.
+    assert body["id"] == str(satellite_id), (
+        f"id was expected to still be shadowed by sales_contacts.id (pinned "
+        f"behaviour), got {body.get('id')!r} vs satellite {satellite_id!r} -- "
+        f"if id now equals kg_nodes.id, the breaking-change decision has been "
+        f"made and this pin needs updating deliberately, not silently"
+    )
+
+
+@pytest.mark.asyncio
+async def test_mcp_get_exposes_canonical_id_alongside_the_still_shadowed_id(
+    engine: NCEEngine, namespace_id: uuid.UUID
+) -> None:
+    """MCP's `handle_get` carries an independent copy of the same merge
+    (`_merge_secondary_row_preserving_kg_nodes_timestamps`, shared with
+    rest.py) and the same shadowing -- proven here separately, on the MCP
+    surface, not inferred from the REST proof above."""
+    tools = build_mcp_tool_specs(CONTACT_SPEC)
+    node_label = f"probe-contact-mcp-canonical-{uuid.uuid4().hex[:8]}"
+
+    upsert = tools[f"sales_upsert_{CONTACT_SPEC.mcp_slug}"]
+    upsert_result = json.loads(
+        await upsert.handler(
+            engine,
+            {
+                "namespace_id": str(namespace_id),
+                "id": node_label,
+                "name": "MCP Canonical Id Probe",
+                "email": "mcp-canonical@example.com",
+                "phone": "+4790000003",
+            },
+        )
+    )
+    assert upsert_result["status"] == "ok", upsert_result
+
+    get_tool = tools[f"sales_get_{CONTACT_SPEC.mcp_slug}"]
+    get_result = json.loads(
+        await get_tool.handler(engine, {"namespace_id": str(namespace_id), "id": node_label})
+    )
+
+    async with engine.pg_pool.acquire() as conn:
+        kg_node_id = await conn.fetchval(
+            "SELECT id FROM kg_nodes WHERE namespace_id = $1 AND label = $2",
+            namespace_id,
+            node_label,
+        )
+        satellite_id = await conn.fetchval(
+            "SELECT id FROM sales_contacts WHERE namespace_id = $1 AND node_label = $2",
+            namespace_id,
+            node_label,
+        )
+    assert kg_node_id is not None and satellite_id is not None
+    assert kg_node_id != satellite_id
+
+    assert get_result["canonical_id"] == str(kg_node_id)
+    # Pinned, same reasoning as the REST proof above.
+    assert get_result["id"] == str(satellite_id)
+
+
+@pytest.mark.asyncio
 async def test_mcp_upsert_then_patch_change_origin(
     engine: NCEEngine, namespace_id: uuid.UUID
 ) -> None:
@@ -330,7 +457,14 @@ async def test_tier_redaction_strips_pii_for_external_and_contractor(
         )
 
     assert emp.status_code == 200
-    assert emp.json()["email"] == "redact@example.com"
+    emp_body = emp.json()
+    assert emp_body["email"] == "redact@example.com"
+    # canonical_id exists precisely to give a tier something correct to
+    # migrate to away from the shadowed id -- it must not itself be
+    # redacted-away for a tier that can still see id, or that tier is
+    # handed a dead end. Both must appear (employee) or both must be absent
+    # (below) together; never id-without-canonical_id or the reverse.
+    assert "id" in emp_body and "canonical_id" in emp_body, emp_body
 
     for resp in (con, ext):
         assert resp.status_code == 200, resp.text
@@ -338,3 +472,14 @@ async def test_tier_redaction_strips_pii_for_external_and_contractor(
         assert "email" not in body, body
         assert "phone" not in body, body
         assert "name" not in body, body
+        # Parity check, not just absence: CONTACT's tier_allowlists denies
+        # these tiers everything (explicit empty allowlist), so id and
+        # canonical_id are equally invisible here -- not a case of a tier
+        # seeing the wrong identifier with no way to reach the right one.
+        assert "id" not in body, body
+        assert "canonical_id" not in body, (
+            body,
+            "canonical_id was visible without id also being visible (or vice "
+            "versa) -- a tier that can see id but not canonical_id has been "
+            "handed a dead end, the exact gap this key exists to close",
+        )
