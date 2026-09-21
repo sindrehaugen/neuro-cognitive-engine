@@ -127,18 +127,59 @@ GLOBBED_UNMARKED_BY_DESIGN: frozenset[str] = frozenset(
 def _has_integration_marker(path: Path) -> bool:
     """True when *path* contains a real integration marker.
 
-    Deliberately AST-based rather than a substring search: a file that merely
-    mentions the word, or documents the marker in a docstring, is not marked.
+    AST-scoped throughout -- there is no raw-text regex fallback here anymore.
+    Before Batch 155, the first check was ``re.search(r"^pytestmark\\s*=.*
+    integration", src, re.M)`` over the whole file's raw source, which cannot
+    tell a genuine top-level assignment from the same text appearing anywhere
+    else that happens to start a line -- most concretely, inside a string
+    literal used as example/fake module source for a DIFFERENT test's own
+    ``ast.parse()`` call. Confirmed live: ``tests/unit/test_direct_do_call_
+    mocked_db_census.py``'s own ``test_positive_control_ignores_integration_
+    marked_modules`` builds exactly such a string (a fake "live module" body
+    containing a literal ``pytestmark = pytest.mark.integration`` line as
+    example source), and the regex read that column-0 text as a real marker
+    on the census file itself -- a false positive that forced the census's
+    author to assemble the marker at runtime via ``.format()`` purely to
+    dodge this check (see ``CI_INTEGRATION_COVERAGE_REGEX_FRAGILITY.md`` in
+    ``_internal/work-docs``, filed the same night).
+
+    What actually closes the gap is checking each candidate assignment's own
+    TARGET: only an ``ast.Assign``/``ast.AnnAssign`` node whose target is
+    literally ``Name(id="pytestmark")`` counts, and its value must itself be
+    inspected via ``ast.dump`` (a structural walk of that one expression's
+    parsed form), never the file's raw text. The string literal from the
+    incident above parses to an ``ast.Constant`` holding the marker text as a
+    plain string value -- it is not an assignment to a name called
+    ``pytestmark`` at all (the real target there is whatever variable the
+    string was assigned to, e.g. ``live_module_code``), so no amount of
+    walking finds it. ``ast.walk`` (rather than restricting to the module's
+    own top-level ``tree.body``) is deliberate and matches the reference
+    below: pytest honours a class-level ``pytestmark`` too (applies the
+    marker to every method in that class), so a assignment nested one level
+    into a ``ClassDef`` is a real marker, not a false positive to exclude.
+
+    Mirrors ``_has_integration_marker`` in ``tests/unit/test_direct_do_call_
+    mocked_db_census.py`` exactly (same ``ast.walk`` + target-name-check
+    shape, same repo convention -- deliberately not a second shape), with
+    one addition per the filed doc: ``ast.AnnAssign`` alongside ``ast.Assign``
+    for a hypothetical ``pytestmark: ... = ...`` form -- not exercised by any
+    file in the tree today, kept for parity with the recommendation rather
+    than assumed unnecessary.
     """
     src = path.read_text(encoding="utf-8", errors="replace")
     if "integration" not in src:
         return False
-    if re.search(r"^pytestmark\s*=.*integration", src, re.M):
-        return True
     try:
         tree = ast.parse(src)
     except SyntaxError:
         return False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign | ast.AnnAssign) and node.value is not None:
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id == "pytestmark":
+                    if "integration" in ast.dump(node.value):
+                        return True
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
             for dec in node.decorator_list:
@@ -596,3 +637,238 @@ def test_positive_control_fails_on_unmarked_globbed_file() -> None:
         f"Positive control failed: converse ratchet did not isolate {victim!r} when its "
         "marker was pretend-removed from the real, globbed-file input"
     )
+
+
+# ---------------------------------------------------------------------------
+# Batch 155: _has_integration_marker positive controls
+# ---------------------------------------------------------------------------
+#
+# The controls above prove the RATCHETS (set arithmetic over whatever
+# _files_with_integration_markers() returns) catch a bad input. None of them
+# drive _has_integration_marker itself, so none would have caught the false
+# positive it actually had: a raw-text regex fallback that read example
+# marker source inside a string literal as a real marker. These do drive it
+# directly, on real files via tmp_path -- the same entry point
+# _files_with_integration_markers() uses -- not a re-derivation.
+
+
+def test_has_integration_marker_detects_a_real_top_level_marker(tmp_path: Path) -> None:
+    """The ordinary case: a genuine module-level `pytestmark = pytest.mark.
+    integration` must still be detected -- this is what every real
+    live-Postgres sibling in the repo relies on."""
+    module_path = tmp_path / "test_synthetic_real_marker.py"
+    module_path.write_text(
+        "import pytest\n\npytestmark = pytest.mark.integration\n\n"
+        "def test_something():\n    assert True\n",
+        encoding="utf-8",
+    )
+    assert _has_integration_marker(module_path) is True
+
+
+def test_has_integration_marker_ignores_marker_text_inside_a_string_literal(
+    tmp_path: Path,
+) -> None:
+    """Regression test for the actual incident (2026-09-21): `tests/unit/
+    test_direct_do_call_mocked_db_census.py`'s own positive control builds a
+    fake "live module" body, as a plain string, containing the literal line
+    `pytestmark = pytest.mark.integration` purely as example source for its
+    own ast.parse() call -- never a real top-level statement in the census
+    file itself. The old raw-text regex read that string's contents as a
+    real marker and reported the census file as an unwired live-Postgres
+    module. Reproduces that exact shape (a triple-quoted string assigned to
+    a module-level variable, containing the marker text at column 0 inside
+    the string) and asserts the file is NOT marked.
+    """
+    module_path = tmp_path / "test_synthetic_marker_in_string.py"
+    module_path.write_text(
+        'def test_builds_fake_source():\n'
+        '    live_module_code = """\n'
+        "import pytest\n\n"
+        "pytestmark = pytest.mark.integration\n\n"
+        "async def test_real_postgres_call(pg_pool):\n"
+        "    result = await do_something_real(pg_pool)\n"
+        "    assert result\n"
+        '"""\n'
+        "    assert \"pytestmark\" in live_module_code\n",
+        encoding="utf-8",
+    )
+    assert _has_integration_marker(module_path) is False, (
+        "false positive: marker text inside a string literal was mistaken for a "
+        "real top-level pytestmark assignment"
+    )
+
+
+def test_has_integration_marker_detects_a_decorator_marker(tmp_path: Path) -> None:
+    """The other real shape this function must still catch: a per-function
+    `@pytest.mark.integration` decorator with no module-level pytestmark at
+    all. Untouched by the regex removal, but not previously driven by any
+    control in this file either."""
+    module_path = tmp_path / "test_synthetic_decorator_marker.py"
+    module_path.write_text(
+        "import pytest\n\n@pytest.mark.integration\ndef test_something():\n    assert True\n",
+        encoding="utf-8",
+    )
+    assert _has_integration_marker(module_path) is True
+
+
+# Vendored, not fetched: an earlier version of this test pulled each shape via
+# `git show <sha>:<path>` at test time. CI clones shallow, so `53ab458` and
+# `a252043` are not in the runner's object store and `git show` exits 128 --
+# the test failed loudly in CI for an environment reason, not a real
+# regression (found live, 2026-09-21, when this file's own PR went red).
+# Git history is where these three shapes were FOUND, not what the test is
+# about: the property under test is "_has_integration_marker returns True /
+# True / False for these three specific source shapes," which needs no
+# repository, only the text. Vendored here as EXCERPTS of each commit's real
+# content, not always byte-identical: the imports and the actual
+# `pytestmark = pytest.mark.integration` statement are verbatim in all three
+# (the only lines `_has_integration_marker` inspects), but the two
+# true-positive modules' docstring prose is shortened for length --
+# confirmed by diffing all three against fresh `git show <sha>:<path>`
+# fetches (2026-09-21): `_FALSE_POSITIVE_MODULE_b46bc8c` is an exact
+# substring of the real file; the other two match for the first several
+# hundred characters, then their docstrings are trimmed. Re-verified after
+# trimming that the mutation below still reproduces the same failures
+# across the same files, so the shortening reaches no structural part of
+# either shape. SHAs kept in comments so the provenance is not lost.
+
+# tests/integration/test_resource_surface_comment_tag_validation_live.py at
+# commit 53ab458 -- added with a real top-level marker, genuinely unwired
+# until e46f8d1 added its ci.yml step. Must detect True.
+_REAL_MARKED_MODULE_53ab458 = '''"""
+tests/integration/test_resource_surface_comment_tag_validation_live.py
+==========================================================================
+Live-Postgres regression test for write-time identifier validation on the
+comment/tag sub-resources (``handle_add_comment``, ``handle_add_tag``,
+``handle_remove_tag`` in ``nce/resource_surface/rest.py``).
+
+THE BUG
+---------
+``v3_cognitive_ledger``'s comment/tag entries have no FK to a real
+resource -- ``entity_id`` was, before this fix, an unvalidated opaque
+string. A caller who wrote a comment against a bogus, mistyped, or
+(specifically) SHADOWED identifier got a silent 201 that could never be
+found again.
+"""
+
+from __future__ import annotations
+
+import uuid
+
+import asyncpg
+import httpx
+import pytest
+import pytest_asyncio
+from starlette.applications import Starlette
+
+from nce import admin_state
+from nce.auth import set_namespace_context
+from nce.engine_registry import populate_engine_modules
+from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
+from nce.orchestrator import NCEEngine
+from nce.resource_surface import get_all_resource_specs, load_all_engine_resources
+from nce.resource_surface.mcp import build_mcp_tool_specs
+from nce.resource_surface.rest import make_resource_routes
+
+pytestmark = pytest.mark.integration
+
+load_all_engine_resources()
+_SPECS = {(s.engine, s.entity): s for s in get_all_resource_specs()}
+_CONTACT_SPEC = _SPECS[("sales", "contacts")]
+'''
+
+# tests/integration/test_cron_saga_recovery_live.py at commit a252043 --
+# same shape, genuinely unwired until its own ci.yml step landed. Must
+# detect True.
+_REAL_MARKED_MODULE_a252043 = '''"""
+tests/integration/test_cron_saga_recovery_live.py
+====================================================
+Live-Postgres proof that `_saga_recovery_tick` (`nce/cron.py`) actually
+decodes `saga_execution_log.payload` from a real JSONB column.
+
+No asyncpg jsonb codec is registered anywhere in this codebase, so
+`payload` always arrives from a real connection as a raw JSON string,
+never a dict. Before this fix, `isinstance(row["payload"], dict)` was
+therefore always `False`.
+"""
+
+from __future__ import annotations
+
+import json
+import uuid
+
+import asyncpg
+import pytest
+
+from nce.cron import _saga_recovery_tick
+
+pytestmark = pytest.mark.integration
+
+
+async def test_saga_recovery_finds_memory_id_from_real_jsonb_payload(
+    pg_pool: asyncpg.Pool, namespace_id: uuid.UUID
+) -> None:
+    """The actual regression, not a synthetic shape."""
+'''
+
+# tests/unit/test_mocked_db_dependent_test_census.py at commit b46bc8c --
+# the actual false-positive incident this fix closes: this exact text,
+# verbatim from that commit's test_positive_control_ignores_integration_
+# marked_modules, embeds the marker line inside a STRING LITERAL assigned to
+# `live_module_code` -- never a real top-level statement in the file that
+# contains it. Must detect False (the old regex detected True here, which
+# was the bug).
+_FALSE_POSITIVE_MODULE_b46bc8c = '''def test_positive_control_ignores_integration_marked_modules() -> None:
+    """A module carrying `pytestmark = pytest.mark.integration` is a live-Postgres
+    sibling by this repo's own standing convention and must never be scanned,
+    regardless of what it calls directly."""
+    live_module_code = """
+import pytest
+
+pytestmark = pytest.mark.integration
+
+async def test_real_postgres_call(pg_pool):
+    result = await do_something_real(pg_pool)
+    assert result
+"""
+'''
+
+
+def test_has_integration_marker_still_catches_the_three_real_2026_09_21_incidents(
+    tmp_path: Path,
+) -> None:
+    """Do not weaken this check to fix the false positive above -- prove it
+    against the three real states from tonight that motivated this file's
+    existence and this fix, not synthetic stand-ins.
+
+    Vendored as literals (see the three `_REAL_MARKED_MODULE_*` /
+    `_FALSE_POSITIVE_MODULE_*` constants above) rather than fetched via
+    `git show <sha>:<path>` at test time -- an earlier version of this test
+    did that and failed in CI with `git show ... returned non-zero exit
+    status 128`: CI clones shallow, so `53ab458` and `a252043` are not in
+    the runner's object store. The property under test needs no repository,
+    only the text, so the text is what's committed here.
+    """
+    cases = [
+        (
+            "53ab458",
+            "test_resource_surface_comment_tag_validation_live.py",
+            _REAL_MARKED_MODULE_53ab458,
+            True,
+        ),
+        ("a252043", "test_cron_saga_recovery_live.py", _REAL_MARKED_MODULE_a252043, True),
+        (
+            "b46bc8c",
+            "test_mocked_db_dependent_test_census.py",
+            _FALSE_POSITIVE_MODULE_b46bc8c,
+            False,
+        ),
+    ]
+    for sha, name, src, expected in cases:
+        module_path = tmp_path / f"{sha}_{name}"
+        module_path.write_text(src, encoding="utf-8")
+        assert _has_integration_marker(module_path) is expected, (
+            f"{name} at {sha}: expected _has_integration_marker() == {expected}, "
+            f"got {not expected} -- this is one of the three real states the AST "
+            f"rewrite must not regress"
+        )
