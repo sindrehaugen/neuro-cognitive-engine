@@ -725,11 +725,13 @@ NAME_PINS: dict[str, frozenset[str]] = {
             "product_enrich",
             "product_ingest_spec",
             "product_golden_record",
-            # Lane E Wave E-2 -- C12 PRODUCT_SKU resource surface (list/get/upsert/archive)
+            # Lane E Wave E-2 -- C12 PRODUCT_SKU resource surface (list/get/upsert;
+            # archive excluded 2026-09-21 -- product_catalog has no namespace/owner
+            # column to authorize a caller-scoped soft-delete against, spec.py
+            # excluded_verbs reason (4))
             "product_list_product_skus",
             "product_get_product_skus",
             "product_upsert_product_skus",
-            "product_archive_product_skus",
         }
     ),
 }

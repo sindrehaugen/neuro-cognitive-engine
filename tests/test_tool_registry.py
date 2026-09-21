@@ -361,9 +361,11 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # has an is_archived column; see ARCHIVE_COLUMN_SWEEP.md)
         "resources_upsert_allocations",
         "resources_upsert_travel_legs",
-        # Lane E Wave E-2 -- C12 Product resource surface mutations (upsert + archive)
+        # Lane E Wave E-2 -- C12 Product resource surface mutations (upsert only:
+        # archive removed 2026-09-21 -- product_catalog has no namespace/owner
+        # column to authorize a caller-scoped soft-delete against, spec.py
+        # excluded_verbs reason (4))
         "product_upsert_product_skus",
-        "product_archive_product_skus",
         # Lane A Wave A-5 -- C15 Legal-Entity Register resource surface mutations (upsert + archive)
         "legal_entities_upsert_legal_entities",
         "legal_entities_archive_legal_entities",

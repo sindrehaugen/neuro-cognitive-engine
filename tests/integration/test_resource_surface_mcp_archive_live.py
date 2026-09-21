@@ -23,15 +23,22 @@ Every test below reads the actual column back from Postgres directly,
 and the "wrong row" class is covered explicitly by archiving one of two
 rows and confirming the other is untouched, not by trusting the response.
 
-POPULATION -- measured, not assumed. 17 relational, archive-eligible specs
-declare a `soft_delete_field` (same population `test_resource_surface_
-archive_restore_live.py` measured for the REST side). Of those 17, exactly
-1 is tenant_scope="global" (`product:product-skus`) -- the rest are
-"tenant". Both branches of `handle_archive`'s `spec.table_name` case
-(`is_global` true/false, `rest.py`-mirrored WHERE clause) are exercised
-here: `agreements:templates` (tenant, simple schema, no CHECK constraints,
-already used by this session's list sibling) and `product:product-skus`
-(the one global spec, needs its own `enabled_guard` opt-in).
+POPULATION -- measured, not assumed. At this file's original measurement, 17
+relational, archive-eligible specs declared a `soft_delete_field` (same
+population `test_resource_surface_archive_restore_live.py` measured for the
+REST side), and exactly 1 was tenant_scope="global" (`product:product-skus`).
+
+2026-09-21: `product:product-skus` dropped out of the archive-eligible
+population -- `excluded_verbs` now excludes `"archive"` for it (spec.py's
+excluded_verbs reason (4)): `product_catalog` has no namespace/owner column,
+so a caller-scoped soft-delete had no per-row authorization model to check
+at that scope. The global (`is_global` true) branch of `handle_archive` is
+no longer reachable from any registered spec's generated MCP surface;
+`test_archive_is_not_registered_for_global_scope_specs` below asserts that
+directly, against the tool registry, rather than testing a call that can no
+longer be made. The tenant (`is_global` false) branch stays exercised by
+`agreements:templates` (simple schema, no CHECK constraints, already used by
+this session's list sibling).
 """
 
 from __future__ import annotations
@@ -89,14 +96,16 @@ GRAPH_PROBE_SPEC = ResourceSpec(
 
 
 def test_discovery_floor_matches_the_measured_population() -> None:
-    assert len(_RELATIONAL_ARCHIVE_ELIGIBLE) >= 17, (
+    assert len(_RELATIONAL_ARCHIVE_ELIGIBLE) >= 16, (
         f"Only {len(_RELATIONAL_ARCHIVE_ELIGIBLE)} relational, archive-eligible, soft-delete "
-        f"specs found -- expected at least 17 (same population REST's archive/restore sibling "
-        f"measured)."
+        f"specs found -- expected at least 16 (was 17 at this file's original measurement; "
+        f"product:product-skus dropped out when excluded_verbs excluded 'archive' for it, "
+        f"spec.py's excluded_verbs reason (4))."
     )
-    assert len(_GLOBAL_SCOPE) == 1 and _GLOBAL_SCOPE[0] is SKU_SPEC, (
-        f"Expected exactly one global-scope archive-eligible spec (product:product-skus), "
-        f"found {[f'{s.engine}:{s.entity}' for s in _GLOBAL_SCOPE]}"
+    assert len(_GLOBAL_SCOPE) == 0, (
+        f"Expected zero global-scope archive-eligible specs -- product:product-skus was the "
+        f"one (excluded_verbs now excludes 'archive' for it; see spec.py's excluded_verbs "
+        f"reason (4)), found {[f'{s.engine}:{s.entity}' for s in _GLOBAL_SCOPE]}"
     )
 
 
@@ -163,46 +172,25 @@ async def test_mcp_archive_flips_the_row_for_a_tenant_scoped_spec(
     )
 
 
-@pytest.mark.asyncio
-async def test_mcp_archive_flips_the_row_for_a_global_scoped_spec(
-    engine: NCEEngine, namespace_id: uuid.UUID, pg_pool: asyncpg.Pool
-) -> None:
-    """global branch (`is_global` true): `WHERE id = $1`, no namespace_id column
-    on `product_catalog` at all -- `namespace_id` in the call is only for
-    the `enabled_guard` opt-in check, never bound into the UPDATE.
+def test_archive_is_not_registered_for_global_scope_specs() -> None:
+    """`product:product-skus` was this file's own one global-scope archive-
+    eligible spec (see the discovery floor above); it no longer is.
+    `excluded_verbs` now excludes `"archive"` for it (spec.py's
+    excluded_verbs reason (4)): the storage has no column expressing which
+    caller owns a row, so a caller-scoped soft-delete has no per-row
+    authorization model to check at this scope.
+
+    Asserted against the generated tool registry, not a failed call: a tool
+    that exists but errors and a tool that was never emitted look identical
+    from the caller's side, and only the second is what this guards. This is
+    a ratchet against the verb quietly coming back, not a behavior test --
+    stronger than the live call it replaces, which could only prove the verb
+    worked, never that it stays absent.
     """
-    upsert = TOOL_REGISTRY["product_upsert_product_skus"]
-    archive = TOOL_REGISTRY["product_archive_product_skus"]
-
-    unique = uuid.uuid4().hex[:10]
-    created = json.loads(
-        await upsert.handler(
-            engine,
-            {
-                "namespace_id": str(namespace_id),
-                "manufacturer": f"mcp-archive-mfr-{unique}",
-                "mfr_part_no": f"PN-{unique}",
-                "product_source_id": f"SRC-{unique}",
-            },
-        )
-    )
-    assert created["status"] == "ok", created
-    item_id = created["id"]
-
-    result = json.loads(
-        await archive.handler(engine, {"namespace_id": str(namespace_id), "id": item_id})
-    )
-    assert result["status"] == "ok", result
-    assert result["archived"] is True
-
-    async with pg_pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT is_deleted FROM product_catalog WHERE id = $1", uuid.UUID(item_id)
-        )
-    assert row is not None
-    assert row["is_deleted"] is True, (
-        "handler returned status=ok/archived=true but the actual column was not flipped"
-    )
+    assert "archive" in SKU_SPEC.excluded_verbs
+    assert "product_archive_product_skus" not in TOOL_REGISTRY
+    generated = build_mcp_tool_specs(SKU_SPEC)
+    assert not any(name.endswith("_archive_product_skus") for name in generated), generated
 
 
 @pytest.mark.asyncio

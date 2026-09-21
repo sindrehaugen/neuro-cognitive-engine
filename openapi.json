@@ -15242,26 +15242,6 @@
         ],
         "type": "object"
       },
-      "Tool_product_archive_product_skus_Input": {
-        "properties": {
-          "id": {
-            "description": "ID of Product Sku to archive.",
-            "type": "string"
-          },
-          "namespace_id": {
-            "description": "Caller namespace UUID.",
-            "type": "string"
-          },
-          "reason": {
-            "description": "Audit reason for archiving.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id"
-        ],
-        "type": "object"
-      },
       "Tool_product_enrich_Input": {
         "properties": {
           "confirm": {
@@ -25184,17 +25164,6 @@
         "migration": false,
         "mutation": true,
         "name": "product_archive_packages"
-      },
-      "product_archive_product_skus": {
-        "admin_only": false,
-        "cacheable": false,
-        "description": "Soft-archive a Product Sku resource.",
-        "inputSchema": {
-          "$ref": "#/components/schemas/Tool_product_archive_product_skus_Input"
-        },
-        "migration": false,
-        "mutation": true,
-        "name": "product_archive_product_skus"
       },
       "product_enrich": {
         "admin_only": false,
@@ -84912,90 +84881,6 @@
         ]
       }
     },
-    "/api/product/product-skus/{id}/archive": {
-      "post": {
-        "description": "handle_archive (/api/product/product-skus/{id}/archive)",
-        "operationId": "post_api_product_product_skus_id_archive",
-        "parameters": [
-          {
-            "description": "URL path parameter id",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Product_product_skus_Create"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Product_product_skus"
-                }
-              }
-            },
-            "description": "Successful operation"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Validation failure or malformed input"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Missing, expired, or invalid authentication credentials"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Principal tier refusal or cross-tenant boundary violation"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Resource or endpoint not found"
-          }
-        },
-        "summary": "handle_archive (/api/product/product-skus/{id}/archive)",
-        "tags": [
-          "product"
-        ]
-      }
-    },
     "/api/product/product-skus/{id}/comments": {
       "get": {
         "description": "handle_list_comments (/api/product/product-skus/{id}/comments)",
@@ -85559,90 +85444,6 @@
           }
         },
         "summary": "handle_events (/api/product/product-skus/{id}/events)",
-        "tags": [
-          "product"
-        ]
-      }
-    },
-    "/api/product/product-skus/{id}/restore": {
-      "post": {
-        "description": "handle_restore (/api/product/product-skus/{id}/restore)",
-        "operationId": "post_api_product_product_skus_id_restore",
-        "parameters": [
-          {
-            "description": "URL path parameter id",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Product_product_skus_Create"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Product_product_skus"
-                }
-              }
-            },
-            "description": "Successful operation"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Validation failure or malformed input"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Missing, expired, or invalid authentication credentials"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Principal tier refusal or cross-tenant boundary violation"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Resource or endpoint not found"
-          }
-        },
-        "summary": "handle_restore (/api/product/product-skus/{id}/restore)",
         "tags": [
           "product"
         ]
