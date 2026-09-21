@@ -31,7 +31,10 @@ from starlette.testclient import TestClient
 from nce import admin_state
 from nce.admin_handlers import assets as assets_handlers
 from nce.vertical_modules.assets.mcp_handlers import handle_assets_service_history
-from nce.vertical_modules.assets.service_history import do_get_asset_service_history
+from nce.vertical_modules.assets.service_history import (
+    _decode_jsonb,
+    do_get_asset_service_history,
+)
 
 _NS_ID = UUID("00000000-0000-4000-8000-000000000001")
 _ASSET_ID = UUID("11111111-1111-4111-8111-111111111111")
@@ -513,3 +516,37 @@ def test_api_assets_service_history_rest():
         data = res.json()
         assert data["ok"] is True
         assert data["asset_id"] == str(_ASSET_ID)
+
+
+# ---------------------------------------------------------------------------
+# _decode_jsonb -- pure function, no DB. Every mocked test above sets
+# ai_diagnosis on the row as an already-parsed dict (see e.g. line ~226),
+# never what a real asyncpg connection actually returns (no jsonb codec is
+# registered anywhere in this codebase -- the column always arrives as a
+# raw JSON string). These tests pin the real decode.
+# ---------------------------------------------------------------------------
+
+
+def test_decode_jsonb_parses_a_real_json_string():
+    """The actual regression: `tr["ai_diagnosis"] or {}` never substituted
+    for a non-empty string (even `"{}"` is truthy), so the raw string
+    passed straight through before this fix."""
+    assert _decode_jsonb('{"cause": "bad_cable"}', {}) == {"cause": "bad_cable"}
+    assert _decode_jsonb("[]", []) == []
+
+
+def test_decode_jsonb_falls_back_to_default_on_none():
+    assert _decode_jsonb(None, {}) == {}
+    assert _decode_jsonb(None, []) == []
+
+
+def test_decode_jsonb_falls_back_to_default_on_malformed_json():
+    assert _decode_jsonb("{not valid json", {}) == {}
+
+
+def test_decode_jsonb_passes_through_an_already_decoded_value():
+    """Not reachable against a real connection today (no jsonb codec is
+    registered), but a dict/list must still pass through unchanged if one
+    is ever handed in directly."""
+    assert _decode_jsonb({"cause": "bad_cable"}, {}) == {"cause": "bad_cable"}
+    assert _decode_jsonb([1, 2], []) == [1, 2]
