@@ -10,6 +10,13 @@ disabled, so ResourceSpec.tenant_scope resolves to "global" via EXPECTED_GLOBAL_
 rather than a hand-set flag. Per-tenant commercial data (list/cost price) lives in the
 separate, tenant-scoped product_prices table and is out of scope for this spec.
 
+2026-09-21: ``archive`` excluded (``ResourceSpec.excluded_verbs`` reason (4),
+spec.py). ``product_catalog`` (schema.sql:1360-1373) has no namespace/owner
+column, so a caller-scoped check has nothing to authorize a soft-delete
+against a specific row with. Cross-namespace read stays intended (the ruling
+above); a caller-scoped mutation verb needs an ownership column this table
+does not have.
+
 Wave B-7 (2026-09-20):
   - PACKAGE (product_packages table, migration 101). Genuinely new -- grepped
     first, zero existing package-catalog infrastructure anywhere in nce/.
@@ -57,6 +64,9 @@ PRODUCT_SKU_SPEC = ResourceSpec(
         "per physical part number, shared across every tenant."
     ),
     enabled_guard=require_product_enabled,
+    # excluded_verbs reason (4), spec.py: product_catalog has no namespace/owner
+    # column, so a caller-scoped soft-delete has nothing to authorize against.
+    excluded_verbs=frozenset({"archive"}),
 )
 register_resource(PRODUCT_SKU_SPEC)
 

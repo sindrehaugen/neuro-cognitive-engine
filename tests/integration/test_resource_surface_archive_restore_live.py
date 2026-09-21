@@ -27,22 +27,30 @@ POPULATION -- MEASURED, NOT ASSUMED
 -------------------------------------
 Sized in ``_internal/work-docs/mlv16-orchestration/ARCHIVE_INTEGRATION_SIZING.md``
 before this file was written (a read-only sizing pass, per dispatch). Of
-the 56 registered specs, exactly 17 do not exclude ``archive``/``upsert``
-and declare a ``soft_delete_field`` once PR #368 is in
+the 56 registered specs, exactly 17 did not exclude ``archive``/``upsert``
+and declared a ``soft_delete_field`` once PR #368 was in
 (``main``@``fe7fd48``, confirmed by direct query below, not by re-reading
-the sizing doc's numbers). Every one of the 17 has a real ``table_name`` --
-zero are graph/kg_nodes-primary, so ``assert_owner``/``_seed_ownership``
-(needed by a kg_nodes writer, see ``tests/test_agreements_sla.py``) does not
-apply to any of them: ``rest.py``'s kg_nodes write path is gated behind
-``if is_graph:`` (table_name is None), never reached by this population.
+the sizing doc's numbers).
+
+2026-09-21: down to 16 -- ``product:product-skus`` dropped out of the
+population when ``excluded_verbs`` excluded ``"archive"`` for it (PR #404,
+``spec.py``'s ``excluded_verbs`` reason (4): ``product_catalog`` has no
+namespace/owner column, so a caller-scoped soft-delete had no per-row
+authorization model to check against). Every one of the remaining 16 has a
+real ``table_name`` -- zero are graph/kg_nodes-primary, so
+``assert_owner``/``_seed_ownership`` (needed by a kg_nodes writer, see
+``tests/test_agreements_sla.py``) does not apply to any of them: ``rest.py``'s
+kg_nodes write path is gated behind ``if is_graph:`` (table_name is None),
+never reached by this population.
 
 Discovered building this file, NOT part of the sizing pass: ``rest.py``'s
 ``handle_create``/``handle_patch`` never parse a date/timestamp string from
 the JSON request body into a real ``datetime``/``date`` before binding it to
 Postgres (only ``version_field`` gets that treatment, ``rest.py:809``).
 Reproduced directly: binding a plain ISO string to a ``timestamptz`` column
-raises ``asyncpg.exceptions.DataError``. Of the 17, this blocks exactly
-one -- ``notifications:reminders`` (``remind_at TIMESTAMPTZ NOT NULL``, no
+raises ``asyncpg.exceptions.DataError``. Of the (then-17, now-16) population,
+this blocks exactly one -- ``notifications:reminders`` (``remind_at
+TIMESTAMPTZ NOT NULL``, no
 default: omitting it violates NOT NULL, supplying it raises DataError, so no
 client payload can create this row today, through this route, at all). That
 is a real, separate, wider bug (6 of the 56 registered specs cannot create a
@@ -124,14 +132,19 @@ _TEXT_TYPES = {"text", "character varying"}
 
 def test_discovery_floor_matches_the_sized_population() -> None:
     """Guard-the-guard: the sizing doc measured exactly 17 on main@fe7fd48.
-    A silent drop to fewer (a spec losing its soft_delete_field, or gaining
-    an exclusion) would shrink parametrize coverage with no red anywhere
-    else. An increase is fine and expected as new archivable specs land --
-    only a decrease below the measured floor is suspicious."""
-    assert len(_ARCHIVE_ELIGIBLE) >= 17, (
+    2026-09-21: the floor moved to 16 -- product:product-skus dropped out
+    when excluded_verbs excluded "archive" for it (PR #404, spec.py's
+    excluded_verbs reason (4)), a real, deliberate exclusion, not a drift.
+    A silent drop below 16 (a spec losing its soft_delete_field, or gaining
+    an exclusion with no matching update here) would shrink parametrize
+    coverage with no red anywhere else. An increase is fine and expected as
+    new archivable specs land -- only a decrease below the measured floor is
+    suspicious."""
+    assert len(_ARCHIVE_ELIGIBLE) >= 16, (
         f"Only {len(_ARCHIVE_ELIGIBLE)} archive-eligible specs found, expected "
-        f"at least 17 (measured on main@fe7fd48, PR #368). A spec was excluded "
-        f"or lost its soft_delete_field since -- check "
+        f"at least 16 (was 17 at main@fe7fd48/PR #368; product:product-skus "
+        f"dropped out 2026-09-21 via PR #404's excluded_verbs reason (4)). A "
+        f"spec was excluded or lost its soft_delete_field since -- check "
         f"_internal/work-docs/mlv16-orchestration/ARCHIVE_INTEGRATION_SIZING.md."
     )
     assert all(s.table_name is not None for s in _ARCHIVE_ELIGIBLE), (
@@ -197,7 +210,8 @@ async def _typed_sample_payload(
     non-text writable column on this population's tables is nullable or has
     a DEFAULT, so filtering to TEXT/VARCHAR columns and omitting everything
     else is sufficient -- not a per-spec guess, confirmed by inspecting
-    every one of the 17 tables' real DDL before writing this function.
+    every one of the (then-17, now-16) tables' real DDL before writing this
+    function.
     """
     columns = await _text_columns(conn, spec.table_name)  # type: ignore[arg-type]
     skip = _ENUM_CHECK_SKIP.get(spec.table_name, set())
@@ -250,10 +264,13 @@ async def _seed_parent_id(
     spec: ResourceSpec,
     namespace_id: uuid.UUID,
 ) -> dict[str, str]:
-    """The 2 of 17 with a NOT NULL, no-default FK need a real parent row
-    first. Both parents (agreements, sales_deals) are themselves in the
-    trivial-15 set, so this reuses the same typed-payload builder rather
-    than a second fixture design (ARCHIVE_INTEGRATION_SIZING.md)."""
+    """The 2 of 16 with a NOT NULL, no-default FK need a real parent row
+    first (2 of 17 before product:product-skus dropped out of the population,
+    2026-09-21; it needed no parent row, so the trivial side of this split
+    shrank, not this one). Both parents (agreements, sales_deals) are
+    themselves in the trivial-14 set, so this reuses the same typed-payload
+    builder rather than a second fixture design
+    (ARCHIVE_INTEGRATION_SIZING.md)."""
     if spec.table_name == "agreement_parties":
         parent_spec = next(s for s in _ALL_SPECS if s.table_name == "agreements")
         parent_payload = await _typed_sample_payload(conn, parent_spec, namespace_id)
@@ -390,7 +407,7 @@ async def test_positive_control_missing_column_is_caught_against_real_postgres(
     await _enable_engine(pg_pool, namespace_id, broken_spec.engine)
 
     # Hand-built rather than the general _typed_sample_payload builder:
-    # stock_locations is not one of the 17 real archive-eligible specs (it's
+    # stock_locations is not one of the 16 real archive-eligible specs (it's
     # a borrowed real spec for this control only), and its
     # stock_locations_hierarchy_shape CHECK (nce/schema.sql:2597) requires a
     # real ('warehouse'|'van') `kind` with parent_id NULL and level = 0 --

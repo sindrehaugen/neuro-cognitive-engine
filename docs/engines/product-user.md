@@ -352,23 +352,23 @@ Filterable: `gtin`, `manufacturer`, `mfr_part_no`, `product_source_id`,
 `lifecycle_status`. Full-text searchable (`?q=`): `manufacturer`,
 `mfr_part_no`, `gtin`. No `tier_allowlists` override.
 
-### MCP Tools (4)
+### MCP Tools (3)
 
 | Tool Name | Cacheable | Mutation | Description |
 |---|:---:|:---:|---|
 | `product_list_product_skus` | ✔ | ✘ | List/query the global product catalog. |
 | `product_get_product_skus` | ✔ | ✘ | Fetch a single catalog SKU by ID. |
 | `product_upsert_product_skus` | ✘ | ✔ | Create or update a catalog SKU. |
-| `product_archive_product_skus` | ✘ | ✔ | Soft-archive a catalog SKU. |
 
-### REST Routes (16)
+No archive tool — see Storage and Tenancy below.
 
-Mounted under `/api/product/product-skus` — the standard C12 verb set:
-`GET`/`POST` list+create, `POST .../bulk`, `GET`/`PATCH .../{id}`,
-`POST .../{id}/archive`, `POST .../{id}/restore`, `GET .../{id}/events`,
-`GET`/`POST .../{id}/comments`, `GET`/`POST .../{id}/tags`,
-`DELETE .../{id}/tags/{tag}`, `GET`/`POST .../{id}/documents`,
-`DELETE .../{id}/documents/{doc_id}`.
+### REST Routes (14)
+
+Mounted under `/api/product/product-skus` — the standard C12 verb set minus
+archive/restore (see below): `GET`/`POST` list+create, `POST .../bulk`,
+`GET`/`PATCH .../{id}`, `GET .../{id}/events`, `GET`/`POST .../{id}/comments`,
+`GET`/`POST .../{id}/tags`, `DELETE .../{id}/tags/{tag}`,
+`GET`/`POST .../{id}/documents`, `DELETE .../{id}/documents/{doc_id}`.
 
 ### Storage and Tenancy
 
@@ -382,3 +382,12 @@ it through the API* is not, and `namespace_id` is mandatory on every call to
 this surface specifically so that check has something to check (Q-46/#294
 correction: a caller omitting `namespace_id` entirely does not skip the gate,
 it is refused).
+
+**`archive` is excluded** (`excluded_verbs`, `PRODUCT_SKU_SPEC`,
+2026-09-21) — `product_catalog` has no namespace or owner column, so a
+caller-scoped write/delete verb has no per-row authorization model to check
+against at this scope (`ResourceSpec.excluded_verbs` reason (4), see its own
+docstring in `nce/resource_surface/spec.py`). `list`/`get` are unaffected:
+cross-namespace read of a genuinely shared catalog is this table's
+documented, intended design, a separate question from authorizing a mutation
+against one specific row.

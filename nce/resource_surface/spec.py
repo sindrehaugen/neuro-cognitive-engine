@@ -226,7 +226,7 @@ class ResourceSpec:
                             REST routes and the MCP tool surface for this spec:
                             any subset of ``{"list", "get", "upsert", "archive"}``.
                             Empty by default: every spec still gets all four
-                            unless it opts out here. Exactly three legitimate
+                            unless it opts out here. Exactly four legitimate
                             reasons, and no others:
                             (1) a spec whose ``entity`` happens to produce a
                             generated tool name that collides with an
@@ -320,6 +320,43 @@ class ResourceSpec:
                             "use governed_verbs instead" -- send them to
                             hand-written retirement, or to that field's own
                             docstring if they need to know why it raises.
+                            (4) the spec's storage has no column expressing
+                            which caller owns a given row, so a caller-scoped
+                            write/delete verb has no authorization model to
+                            check against at this scope -- distinct from
+                            reason (2): the verb is not forbidden by a grant,
+                            it is unauthorizable by construction, because
+                            there is nothing to compare the caller's identity
+                            against. Applies only at ``tenant_scope ==
+                            "global"`` -- a tenant-scoped table always has
+                            ``namespace_id`` to check; a global one may not
+                            have any equivalent. The test for (4): can you
+                            cite the exact ``CREATE TABLE`` in ``schema.sql``
+                            and show it has no namespace/owner column? If
+                            yes, this reason applies to any verb that reads a
+                            caller identity and acts on a SPECIFIC existing
+                            row on that caller's behalf. Evaluate each such
+                            verb independently against this test -- one verb
+                            passing it today says nothing about a different
+                            verb on the same spec; do not generalize a single
+                            verb's exclusion into a blanket statement about
+                            the others without applying the test to each. If
+                            you are pointing at a column that exists but
+                            merely isn't checked yet, that is an unfixed bug,
+                            not reason (4) -- fix the check, don't hide the
+                            verb.
+                            PRODUCT_SKU_SPEC (product/resources.py) is the
+                            precedent: ``product_catalog``
+                            (``schema.sql:1360-1373``) has no ``namespace_id``
+                            and no owner column of any kind, so no
+                            caller-scoped check can authorize a soft-delete
+                            against a specific row there -- reason (4)
+                            applies to ``archive`` on this spec. ``list``/
+                            ``get`` stay excluded from nothing: cross-namespace
+                            read of a genuinely shared catalog is the
+                            documented, intended design (`product/resources.py`'s
+                            own module docstring), a separate claim from
+                            authorizing a mutation against one specific row.
 
                             On the REST side the mapping is:
                             ``"list"`` -> the list route only; ``"get"`` ->

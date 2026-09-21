@@ -676,14 +676,12 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/product/product-skus/bulk` | `handle_bulk` |
 | GET | `/api/product/product-skus/{id}` | `handle_get` |
 | PATCH | `/api/product/product-skus/{id}` | `handle_patch` |
-| POST | `/api/product/product-skus/{id}/archive` | `handle_archive` |
 | GET | `/api/product/product-skus/{id}/comments` | `handle_list_comments` |
 | POST | `/api/product/product-skus/{id}/comments` | `handle_add_comment` |
 | GET | `/api/product/product-skus/{id}/documents` | `handle_list_documents` |
 | POST | `/api/product/product-skus/{id}/documents` | `handle_attach_document` |
 | DELETE | `/api/product/product-skus/{id}/documents/{doc_id}` | `handle_detach_document` |
 | GET | `/api/product/product-skus/{id}/events` | `handle_events` |
-| POST | `/api/product/product-skus/{id}/restore` | `handle_restore` |
 | GET | `/api/product/product-skus/{id}/tags` | `handle_list_tags` |
 | POST | `/api/product/product-skus/{id}/tags` | `handle_add_tag` |
 | DELETE | `/api/product/product-skus/{id}/tags/{tag}` | `handle_remove_tag` |
@@ -1470,7 +1468,6 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `procurement_upsert_deal_registrations` |  | yes |  |  |
 | `procurement_whatif_spend` |  |  | yes |  |
 | `product_archive_packages` |  | yes |  |  |
-| `product_archive_product_skus` |  | yes |  |  |
 | `product_enrich` |  | yes |  |  |
 | `product_get` |  |  | yes |  |
 | `product_get_packages` |  |  | yes |  |
@@ -1715,4 +1712,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 1170 REST endpoints, 527 MCP tools._
+_Totals: 1168 REST endpoints, 526 MCP tools._
