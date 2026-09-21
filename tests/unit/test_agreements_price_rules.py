@@ -424,9 +424,14 @@ async def test_economy_validate_contract_with_price_rule() -> None:
 @pytest.mark.asyncio
 async def test_economy_validate_contract_agreements_table_fallback() -> None:
     # Not found in economy_contracts, found in agreements table (Wave B-9)
+    # metadata is the raw JSON STRING real Postgres actually returns for a
+    # jsonb column (this pool registers no jsonb codec) -- a Python dict here
+    # was masking the AttributeError this shape used to raise in production,
+    # the same "mock returns a shape the database never produces" pattern
+    # that let the documents.metadata bug ship unnoticed.
     agr_row = {
         "annual_value": Decimal("150000.00"),
-        "metadata": {"cpi_cap": 0.04},
+        "metadata": '{"cpi_cap": 0.04}',
     }
     engine = _make_mock_engine(economy_contract_row=None, agreement_row=agr_row)
 

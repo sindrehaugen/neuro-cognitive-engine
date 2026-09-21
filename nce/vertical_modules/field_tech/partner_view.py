@@ -14,6 +14,7 @@ AND partner_scope_id = $2::uuid.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 from uuid import UUID
@@ -117,7 +118,14 @@ async def do_partner_view(engine: Any, params: dict[str, Any]) -> dict[str, Any]
                 {
                     "checklist_id": c["checklist_id"],
                     "template_id": c["template_id"],
-                    "items": c["items"],
+                    # checklists.items is JSONB NOT NULL DEFAULT '[]'::jsonb --
+                    # this pool registers no jsonb codec, so asyncpg hands
+                    # back the raw JSON string. A partner reading this field
+                    # as a list (the schema's own type) would get a string
+                    # instead. Same isinstance-guarded decode as
+                    # resources/field_schedule.py's own checklists.items
+                    # handling, the in-repo precedent for this column.
+                    "items": json.loads(c["items"]) if isinstance(c["items"], str) else c["items"],
                     "completed_at": c["completed_at"].isoformat() if c["completed_at"] else None,
                 }
                 for c in cl_rows

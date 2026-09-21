@@ -188,6 +188,38 @@ class TestListPending:
         ids = [r["id"] for r in pending]
         assert queue_id in ids, f"Enqueued row {queue_id} not in list_pending result"
 
+    async def test_list_pending_candidate_payload_is_a_real_dict(self, pg_pool, ns: UUID) -> None:
+        """This pool has no jsonb codec -- asyncpg hands candidate_payload
+        back as raw JSON text, never a decoded dict automatically.
+        enqueue() correctly json.dumps()s before the ::jsonb bind, but
+        nothing decoded it back on read: both callers of list_pending()
+        (the admin REST handler and the MCP handle_merge_queue_list tool)
+        shipped it to real callers as an escaped string, and the MCP path
+        then double-encoded it via an outer json.dumps on top of that.
+        Confirmed live before the fix: this exact assertion raised
+        TypeError (string indices must be integers), not AssertionError --
+        `pending[0]["candidate_payload"]` was the literal text
+        '{"label": "Nested Device", "specs": {"ports": 24}}', not a dict.
+        """
+        async with scoped_pg_session(pg_pool, ns) as conn:
+            queue_id = await enqueue(
+                conn,
+                namespace_id=ns,
+                node_type="device",
+                candidate={"label": "Nested Device", "specs": {"ports": 24}},
+                target=None,
+                score=0.65,
+            )
+
+        async with scoped_pg_session(pg_pool, ns) as conn:
+            pending = await list_pending(conn, namespace_id=ns)
+
+        row = next(r for r in pending if r["id"] == queue_id)
+        assert isinstance(row["candidate_payload"], dict), (
+            f"candidate_payload was not decoded: {row['candidate_payload']!r}"
+        )
+        assert row["candidate_payload"]["specs"]["ports"] == 24
+
     async def test_list_pending_excludes_confirmed(self, pg_pool, pg_admin_conn, ns: UUID) -> None:
         """list_pending() does not return rows that have been confirmed."""
         async with scoped_pg_session(pg_pool, ns) as conn:

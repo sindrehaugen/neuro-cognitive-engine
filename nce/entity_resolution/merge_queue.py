@@ -120,7 +120,10 @@ async def list_pending(
     list[dict[str, Any]]:
         List of dicts with keys: ``id``, ``node_type``, ``candidate_payload``,
         ``target_node_id``, ``score``, ``status``, ``created_at``.
-        Empty list when no pending rows exist.
+        ``candidate_payload`` is always a ``dict`` -- decoded here, once, for
+        both callers of this function (the admin REST handler and the MCP
+        ``handle_merge_queue_list`` tool). Empty list when no pending rows
+        exist.
     """
     ns_uuid = _to_uuid(namespace_id)
     rows = await conn.fetch(
@@ -133,7 +136,21 @@ async def list_pending(
         """,
         ns_uuid,
     )
-    return [dict(r) for r in rows]
+    pending = [dict(r) for r in rows]
+    # This pool has no jsonb codec (asyncpg hands back the raw JSON text) --
+    # enqueue() above writes candidate_payload via json.dumps()+::jsonb, but
+    # nothing decoded it back on read, so both consumers of this function
+    # shipped it as an escaped string instead of an object (the MCP handler
+    # doubly so, since it then wraps the whole response in an outer
+    # json.dumps). Mirrors do_get_asset_merge_queue's existing, correct
+    # handling of this same column (assets/mcp_handlers.py).
+    for item in pending:
+        if isinstance(item["candidate_payload"], str):
+            try:
+                item["candidate_payload"] = json.loads(item["candidate_payload"])
+            except (TypeError, ValueError):
+                pass
+    return pending
 
 
 async def confirm(
