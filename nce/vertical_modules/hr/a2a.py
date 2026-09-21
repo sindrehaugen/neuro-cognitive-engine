@@ -18,6 +18,7 @@ Strict Legal & Architectural Guarantees:
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import date, datetime, timezone
 from typing import Any
@@ -448,7 +449,28 @@ async def get_morning_brief_hr_slice(engine: Any, params: dict[str, Any]) -> dic
 
         for row in compliance_rows:
             s_date = row["start_date"]
-            raw_data = row["raw"] if isinstance(row["raw"], dict) else {}
+            # absences.start_date is timestamp with time zone; asyncpg
+            # always hands it back as a real datetime, never a date --
+            # `today` two lines below is a plain date.today(), and
+            # `today - s_date` (date minus datetime) raises TypeError
+            # unconditionally whenever a row exists. Found live while
+            # building the fix for the jsonb bug below: this function
+            # could not have returned a result for any namespace with an
+            # open sick leave until both are fixed together, so the jsonb
+            # fix alone would have been unreachable in production.
+            if isinstance(s_date, datetime):
+                s_date = s_date.date()
+            # absences.raw is jsonb; no jsonb codec is registered on this
+            # project's pool (nce/semantic_search.py's own comment states
+            # the same fact), so asyncpg hands it back as a raw JSON
+            # string, never a dict. The previous `isinstance(raw, dict)`
+            # guard was therefore always False against a real row, so
+            # `compliance_completed_milestones` was always read as empty
+            # -- this dashboard's completed-milestone count was silently
+            # always zero, and every pending-milestone count was
+            # correspondingly over-reported for every open sick leave.
+            raw_val = row["raw"]
+            raw_data = json.loads(raw_val) if isinstance(raw_val, str) else (raw_val or {})
             completed = set(raw_data.get("compliance_completed_milestones") or [])
             days_elapsed = (today - s_date).days if s_date else 0
 
