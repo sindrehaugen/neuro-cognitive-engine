@@ -21,6 +21,16 @@ extend-exclude = [
     "venv",
     "__pycache__",
     "scratch",
+    # ruff 0.16 (2026-09-21 bump from 0.15.20) changed its default file
+    # discovery to walk into Markdown and format embedded Python code
+    # fences -- new discovery scope, not a rule retuning. `ruff format`
+    # reformatting docs/**/*.md's example code blocks is a content change
+    # to pages published on GitHub Pages, which is a decision about
+    # published material, not a lint-tooling bump -- excluded here so the
+    # ruff version bump stays behavior-neutral. Adopting markdown
+    # formatting is a separate, visible decision to make on its own, not
+    # something to accept as a side effect of a dev-dependency update.
+    "*.md",
 ]
 
 [tool.ruff.lint]
