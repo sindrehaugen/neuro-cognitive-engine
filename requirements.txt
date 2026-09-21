@@ -115,7 +115,7 @@ PyYAML>=6.0.3
 # --- Diagram / CAD / Encrypted Office formats --------------------------------
 vsdx>=0.5.16
 psd-tools>=1.9.28
-ezdxf>=1.4.0
+ezdxf>=1.4.4
 olefile>=0.47
 msoffcrypto-tool>=6.0.0
 # --- Python 3.10 floor -------------------------------------------------------
