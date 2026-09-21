@@ -7,6 +7,10 @@ Covers:
   1. ``procurement_calculate_tco``, ``procurement_rank_suppliers``,
      ``procurement_evaluate_match`` are in TOOL_REGISTRY with correct flags
      (cacheable=True, admin_only=False, mutation=False, migration=False).
+     ``procurement_rank_suppliers`` is covered separately: 2026-09-21 found
+     it writes (UPSERT vendor_scorecards per candidate) and was mis-declared
+     mutation=False; now cacheable=False, mutation=True (FILED_mutation_
+     false_writers_2026-09-21.md).
   2. Each ``handle_*`` returns valid JSON for a good payload.
   3. Each ``handle_*`` returns ``{"error": ...}`` for a missing ``namespace_id``.
   4. Tool-count assertion reflects +3 procurement tools (total 81).
@@ -113,12 +117,16 @@ def test_procurement_calculate_tco_flags():
 
 
 def test_procurement_rank_suppliers_flags():
+    """2026-09-21: this tool writes (UPSERT vendor_scorecards per candidate
+    supplier) and was mis-declared mutation=False; fixed to True.
+    cacheable=False follows -- mutation=True makes a cache write unreachable
+    (see FILED_mutation_false_writers_2026-09-21.md)."""
     from nce.tool_registry import TOOL_REGISTRY
 
     spec = TOOL_REGISTRY["procurement_rank_suppliers"]
-    assert spec.cacheable is True
+    assert spec.cacheable is False
     assert spec.admin_only is False
-    assert spec.mutation is False
+    assert spec.mutation is True
     assert spec.migration is False
 
 

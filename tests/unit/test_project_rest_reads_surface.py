@@ -6,7 +6,10 @@ Verifies:
    - project_my_day
    - project_capacity
    - project_detect_scope_creep
-   - project_status_report
+   project_status_report is covered separately below: 2026-09-21 found it
+   writes (DELETE + INSERT kg_nodes) and was mis-declared mutation=False;
+   now cacheable=False, mutation=True (FILED_mutation_false_writers_
+   2026-09-21.md).
 2. MCP Stdio tool declarations in TOOLS with matching input schemas.
 3. Handler invocation, JSON serialization, and error contract handling.
 4. Input validation (missing namespace_id, missing project_id, invalid params).
@@ -36,7 +39,6 @@ class TestProjectRestReadsSurface:
             "project_my_day",
             "project_capacity",
             "project_detect_scope_creep",
-            "project_status_report",
         ],
     )
     def test_tool_registry_flags(self, tool_name: str) -> None:
@@ -46,6 +48,18 @@ class TestProjectRestReadsSurface:
         assert spec.admin_only is False, f"{tool_name} must be admin_only=False"
         assert spec.mutation is False, f"{tool_name} must be mutation=False"
         assert tool_name in CACHEABLE_TOOLS, f"{tool_name} must be in CACHEABLE_TOOLS set"
+
+    def test_project_status_report_tool_registry_flags(self) -> None:
+        """project_status_report writes (DELETE + INSERT kg_nodes) and was
+        mis-declared mutation=False; fixed 2026-09-21. cacheable=False
+        follows -- mutation=True makes a cache write unreachable (see
+        FILED_mutation_false_writers_2026-09-21.md)."""
+        assert "project_status_report" in TOOL_REGISTRY
+        spec = TOOL_REGISTRY["project_status_report"]
+        assert spec.cacheable is False
+        assert spec.admin_only is False
+        assert spec.mutation is True
+        assert "project_status_report" not in CACHEABLE_TOOLS
 
     @pytest.mark.parametrize(
         "tool_name",

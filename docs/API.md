@@ -1246,7 +1246,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `business_insights_ask_business` | yes |  |  |  |
 | `business_insights_generate_board_pack` | yes |  |  |  |
 | `business_insights_get_kpi_snapshots` |  |  | yes |  |
-| `business_insights_kpi_dashboard` | yes |  | yes |  |
+| `business_insights_kpi_dashboard` | yes | yes |  |  |
 | `business_insights_list_kpi_snapshots` |  |  | yes |  |
 | `business_insights_morning_brief` | yes |  | yes |  |
 | `business_insights_risk_radar` | yes |  | yes |  |
@@ -1419,7 +1419,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `manage_namespace` |  | yes |  |  |
 | `manage_quotas` |  | yes |  |  |
 | `marketing_approve_content` | yes | yes |  |  |
-| `marketing_audit_seo` |  |  | yes |  |
+| `marketing_audit_seo` |  | yes |  |  |
 | `marketing_capture_testimonial` | yes | yes |  |  |
 | `marketing_draft_case_study` | yes | yes |  |  |
 | `marketing_find_case_study_candidates` |  |  | yes |  |
@@ -1461,7 +1461,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `procurement_get_po_lines` |  |  | yes |  |
 | `procurement_list_deal_registrations` |  |  | yes |  |
 | `procurement_list_po_lines` |  |  | yes |  |
-| `procurement_rank_suppliers` |  |  | yes |  |
+| `procurement_rank_suppliers` |  | yes |  |  |
 | `procurement_recommend_move_spend` |  |  | yes |  |
 | `procurement_resolve_bids` |  |  | yes |  |
 | `procurement_submit_po` | yes | yes |  |  |
@@ -1494,7 +1494,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `project_my_day` |  |  | yes |  |
 | `project_recall_similar` |  |  | yes |  |
 | `project_record_outcome` | yes | yes |  |  |
-| `project_status_report` |  |  | yes |  |
+| `project_status_report` |  | yes |  |  |
 | `project_suggest_pl` |  |  | yes |  |
 | `project_upsert_projects` |  | yes |  |  |
 | `purge_dlq` |  | yes |  |  |
@@ -1597,7 +1597,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `support_get_ticket_actions` |  |  | yes |  |
 | `support_get_ticket_links` |  |  | yes |  |
 | `support_get_tickets` |  |  | yes |  |
-| `support_health_score` |  |  | yes |  |
+| `support_health_score` |  | yes |  |  |
 | `support_link_ticket` | yes | yes |  |  |
 | `support_list_customer_health` |  |  | yes |  |
 | `support_list_sla_clocks` |  |  | yes |  |
@@ -1608,8 +1608,8 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `support_query_ticket` |  |  | yes |  |
 | `support_record_touchpoint` |  | yes |  |  |
 | `support_resolve_ticket` | yes | yes |  |  |
-| `support_sla_clock` |  |  | yes |  |
-| `support_summarise_ticket` |  |  | yes |  |
+| `support_sla_clock` |  | yes |  |  |
+| `support_summarise_ticket` |  | yes |  |  |
 | `support_sync_now` | yes | yes |  |  |
 | `support_ticket_timeline` |  |  | yes |  |
 | `support_triage_ticket` |  |  | yes |  |
@@ -1698,11 +1698,11 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `validate_migration` |  |  |  | yes |
 | `vendors_calibrate_weights` | yes |  | yes |  |
 | `vendors_check_tier_at_risk` |  |  | yes |  |
-| `vendors_compute_performance` |  |  | yes |  |
-| `vendors_compute_scorecard` |  |  | yes |  |
+| `vendors_compute_performance` |  | yes |  |  |
+| `vendors_compute_scorecard` |  | yes |  |  |
 | `vendors_detect_reliability_degradation` |  |  | yes |  |
 | `vendors_get_contractor` |  |  | yes |  |
-| `vendors_get_tier_status` |  |  | yes |  |
+| `vendors_get_tier_status` |  | yes |  |  |
 | `vendors_get_vendor` |  |  | yes |  |
 | `vendors_match_contractor` |  |  | yes |  |
 | `vendors_recall_similar_jobs` |  |  | yes |  |

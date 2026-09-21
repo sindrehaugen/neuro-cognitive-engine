@@ -23440,13 +23440,13 @@
       },
       "business_insights_kpi_dashboard": {
         "admin_only": true,
-        "cacheable": true,
+        "cacheable": false,
         "description": "Retrieve multi-domain KPI cockpit metrics and snapshot trends across all operational engines.",
         "inputSchema": {
           "$ref": "#/components/schemas/Tool_business_insights_kpi_dashboard_Input"
         },
         "migration": false,
-        "mutation": false,
+        "mutation": true,
         "name": "business_insights_kpi_dashboard"
       },
       "business_insights_list_kpi_snapshots": {
@@ -25211,13 +25211,13 @@
       },
       "marketing_audit_seo": {
         "admin_only": false,
-        "cacheable": true,
+        "cacheable": false,
         "description": "Audit content asset for AEO/GEO answer engine citation readiness, Schema.org JSON-LD, and structured metadata.",
         "inputSchema": {
           "$ref": "#/components/schemas/Tool_marketing_audit_seo_Input"
         },
         "migration": false,
-        "mutation": false,
+        "mutation": true,
         "name": "marketing_audit_seo"
       },
       "marketing_capture_testimonial": {
@@ -25673,13 +25673,13 @@
       },
       "procurement_rank_suppliers": {
         "admin_only": false,
-        "cacheable": true,
+        "cacheable": false,
         "description": "Rank supplier candidates for one BOM line on the configured procurement weights. Read-only, advisory; does not place or modify any order.",
         "inputSchema": {
           "$ref": "#/components/schemas/Tool_procurement_rank_suppliers_Input"
         },
         "migration": false,
-        "mutation": false,
+        "mutation": true,
         "name": "procurement_rank_suppliers"
       },
       "procurement_recommend_move_spend": {
@@ -26036,13 +26036,13 @@
       },
       "project_status_report": {
         "admin_only": false,
-        "cacheable": true,
+        "cacheable": false,
         "description": "Generate retrieval-grounded status report narrative and margin-trinity snapshot. Read-only, advisory.",
         "inputSchema": {
           "$ref": "#/components/schemas/Tool_project_status_report_Input"
         },
         "migration": false,
-        "mutation": false,
+        "mutation": true,
         "name": "project_status_report"
       },
       "project_suggest_pl": {
@@ -27169,13 +27169,13 @@
       },
       "support_health_score": {
         "admin_only": false,
-        "cacheable": true,
+        "cacheable": false,
         "description": "Compute and upsert customer health score and churn risk from passive support signals. Watcher; read-only, cacheable.",
         "inputSchema": {
           "$ref": "#/components/schemas/Tool_support_health_score_Input"
         },
         "migration": false,
-        "mutation": false,
+        "mutation": true,
         "name": "support_health_score"
       },
       "support_link_ticket": {
@@ -27290,24 +27290,24 @@
       },
       "support_sla_clock": {
         "admin_only": false,
-        "cacheable": true,
+        "cacheable": false,
         "description": "Query and evaluate running SLA clock state for a support ticket. Watcher; read-only, cacheable.",
         "inputSchema": {
           "$ref": "#/components/schemas/Tool_support_sla_clock_Input"
         },
         "migration": false,
-        "mutation": false,
+        "mutation": true,
         "name": "support_sla_clock"
       },
       "support_summarise_ticket": {
         "admin_only": false,
-        "cacheable": true,
+        "cacheable": false,
         "description": "Generate a C9a retrieval-grounded summary of a support ticket. Synthesizes verified ticket narrative strictly from DB facts in the Knowledge Graph. Watcher; read-only, cacheable.",
         "inputSchema": {
           "$ref": "#/components/schemas/Tool_support_summarise_ticket_Input"
         },
         "migration": false,
-        "mutation": false,
+        "mutation": true,
         "name": "support_summarise_ticket"
       },
       "support_sync_now": {
@@ -28280,24 +28280,24 @@
       },
       "vendors_compute_performance": {
         "admin_only": false,
-        "cacheable": true,
+        "cacheable": false,
         "description": "Compute a contractor's performance score from work-order ratings and update contractor_profiles. Mutating. NOT available to contractor principals: an A2A contractor session is restricted to vendors_partner_view and is refused this skill.",
         "inputSchema": {
           "$ref": "#/components/schemas/Tool_vendors_compute_performance_Input"
         },
         "migration": false,
-        "mutation": false,
+        "mutation": true,
         "name": "vendors_compute_performance"
       },
       "vendors_compute_scorecard": {
         "admin_only": false,
-        "cacheable": true,
+        "cacheable": false,
         "description": "Compute the scorecard for one vendor. Read-only.",
         "inputSchema": {
           "$ref": "#/components/schemas/Tool_vendors_compute_scorecard_Input"
         },
         "migration": false,
-        "mutation": false,
+        "mutation": true,
         "name": "vendors_compute_scorecard"
       },
       "vendors_detect_reliability_degradation": {
@@ -28324,13 +28324,13 @@
       },
       "vendors_get_tier_status": {
         "admin_only": false,
-        "cacheable": true,
+        "cacheable": false,
         "description": "Current kickback-tier status for one vendor. Read-only.",
         "inputSchema": {
           "$ref": "#/components/schemas/Tool_vendors_get_tier_status_Input"
         },
         "migration": false,
-        "mutation": false,
+        "mutation": true,
         "name": "vendors_get_tier_status"
       },
       "vendors_get_vendor": {

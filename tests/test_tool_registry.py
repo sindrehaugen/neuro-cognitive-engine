@@ -412,6 +412,20 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         "sales_archive_deals",
         "sales_upsert_quotes",
         "sales_archive_quotes",
+        # 2026-09-21 -- ten tools were declaring mutation=False while writing
+        # (FILED_mutation_false_writers_2026-09-21.md). Fixed to mutation=True;
+        # cacheable dropped to False on each at the same time (the mutation
+        # branch in mcp_stdio_dispatch.py bumps the cache generation BEFORE the
+        # cacheable branch writes, so a cacheable=True write would always land
+        # under an already-superseded generation -- structurally unreachable).
+        # Seven of the ten (vendors_compute_scorecard, vendors_get_tier_status,
+        # vendors_compute_performance, marketing_audit_seo, support_sla_clock,
+        # support_health_score, business_insights_kpi_dashboard) are covered by
+        # tool_pins.py's FLAG_PINS and need no entry here. These 3 are not in
+        # tool_pins.py, so they're added here directly:
+        "procurement_rank_suppliers",
+        "project_status_report",
+        "support_summarise_ticket",
     }
 )
 
@@ -459,7 +473,13 @@ def test_mutation_tools_count():
     +5 Wave C-4 Solution Design Intake Queue mutations -> 149.
     +1 Wave B-5 sales_import_quote_lines (external BOM_LINE origination) -> 150.
     +1 Wave B-5 remainder (Lane E) sales_clone_quote -> 151.
-    +1 Wave B-11 (Lane E) economy_reconcile_agreements -> 152."""
+    +1 Wave B-11 (Lane E) economy_reconcile_agreements -> 152.
+    +10 2026-09-21 mis-declared writers corrected to mutation=True
+    (FILED_mutation_false_writers_2026-09-21.md: vendors_compute_scorecard,
+    vendors_get_tier_status, vendors_compute_performance, marketing_audit_seo,
+    support_sla_clock, support_health_score, business_insights_kpi_dashboard,
+    procurement_rank_suppliers, project_status_report,
+    support_summarise_ticket) -> 162."""
     c12_mutation_tools = frozenset(
         n for n, s in build_all_resource_tool_specs().items() if s.mutation
     )
@@ -468,8 +488,8 @@ def test_mutation_tools_count():
     assert len(MUTATION_TOOLS) >= 152, (
         f"Sanity floor: expected at least 152 mutation tools, got {len(MUTATION_TOOLS)}."
     )
-    assert len(hand_written_mutation_tools) == 152, (
-        "Hand-written (non-C12) mutation tool count changed: expected 152, "
+    assert len(hand_written_mutation_tools) == 162, (
+        "Hand-written (non-C12) mutation tool count changed: expected 162, "
         f"got {len(hand_written_mutation_tools)}. If you added/removed a "
         "hand-written mutation tool, update this pin by import. If you only "
         "registered a new C12 ResourceSpec, this number should not move -- "
@@ -501,9 +521,11 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         # Product vertical module (M2.W5) — related-products advisor read, cacheable
         "product_related",
         # Procurement vertical module (M1.W4 / PR-3) — advisor reads, cacheable
+        # procurement_rank_suppliers moved to _EXPECTED_MUTATION_TOOLS: it
+        # writes and was mis-declared mutation=False (FILED_mutation_false_
+        # writers_2026-09-21.md); no longer cacheable, see tool_registry.py.
         "procurement_aggregate_savings",
         "procurement_calculate_tco",
-        "procurement_rank_suppliers",
         "procurement_evaluate_match",
         # Procurement vertical module (M1.W12) — frontier advisor reads, cacheable
         "procurement_forecast_rebate",
@@ -617,7 +639,9 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         "project_my_day",
         "project_capacity",
         "project_detect_scope_creep",
-        "project_status_report",
+        # project_status_report moved to _EXPECTED_MUTATION_TOOLS: it writes
+        # and was mis-declared mutation=False (FILED_mutation_false_writers_
+        # 2026-09-21.md); no longer cacheable, see tool_registry.py.
         # Wave SD-6 -- System Design procurement view (cacheable read)
         # Wave A-3 -- Assets warranty/EOL watcher (cacheable read)
         "assets_check_warranty_eol",
@@ -692,7 +716,9 @@ _EXPECTED_CACHEABLE: frozenset[str] = frozenset(
         # Lane D Wave D-7 -- Support on-call rota reader (cacheable read)
         "support_get_on_call",
         # Lane D Wave D-6 -- Support ticket summary & links readers (2 cacheable reads)
-        "support_summarise_ticket",
+        # support_summarise_ticket moved to _EXPECTED_MUTATION_TOOLS: it
+        # writes and was mis-declared mutation=False (FILED_mutation_false_
+        # writers_2026-09-21.md); no longer cacheable, see tool_registry.py.
         "support_get_ticket_links",
         # Wave C-4 -- Solution Design Intake Queue cacheable reads (2 tools)
         # Lane B Wave B-1 -- C12 Sales resource surface cacheable reads (list + get)
@@ -722,7 +748,10 @@ def test_cacheable_tools_exact_match():
 def test_cacheable_tools_count():
     """Converted to a derived assertion (janitor pass 7, K-H4) -- same
     treatment as test_mutation_tools_count above. 115 is the hand-written
-    baseline + 5 Lane F Wave F-11..F-15 tools + 5 Wave C-1 FL tree reads + 1 Wave D-5 support timeline + 1 Wave D-7 on-call + 1 Wave D-3 service history + 5 Wave C-2 room cat/FL metadata reads + 2 Wave D-2 assets person & subcomponents + 4 Wave C-3 design versions/room spec reads + 4 Wave B-10 agreements price rules/index series reads + 2 Wave D-6 support summary & links + 2 Wave C-4 design request reads + 1 Lane H Wave B-4 DealRoom MCP tool = 148."""
+    baseline + 5 Lane F Wave F-11..F-15 tools + 5 Wave C-1 FL tree reads + 1 Wave D-5 support timeline + 1 Wave D-7 on-call + 1 Wave D-3 service history + 5 Wave C-2 room cat/FL metadata reads + 2 Wave D-2 assets person & subcomponents + 4 Wave C-3 design versions/room spec reads + 4 Wave B-10 agreements price rules/index series reads + 2 Wave D-6 support summary & links + 2 Wave C-4 design request reads + 1 Lane H Wave B-4 DealRoom MCP tool = 148.
+    -10 2026-09-21 mis-declared writers corrected to mutation=True, which made
+    cacheable=True unreachable for each (see test_mutation_tools_count's own
+    history and FILED_mutation_false_writers_2026-09-21.md) -> 138."""
     c12_cacheable_tools = frozenset(
         n for n, s in build_all_resource_tool_specs().items() if s.cacheable
     )
@@ -731,8 +760,8 @@ def test_cacheable_tools_count():
     assert len(CACHEABLE_TOOLS) >= 148, (
         f"Sanity floor: expected at least 148 cacheable tools, got {len(CACHEABLE_TOOLS)}."
     )
-    assert len(hand_written_cacheable_tools) == 148, (
-        "Hand-written (non-C12) cacheable tool count changed: expected 148, "
+    assert len(hand_written_cacheable_tools) == 138, (
+        "Hand-written (non-C12) cacheable tool count changed: expected 138, "
         f"got {len(hand_written_cacheable_tools)}. If you added/removed a "
         "hand-written cacheable tool, update this pin by import. If you "
         "only registered a new C12 ResourceSpec, this number should not "

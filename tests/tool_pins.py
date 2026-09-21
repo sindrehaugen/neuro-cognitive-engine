@@ -417,8 +417,8 @@ FLAG_PINS: dict[str, dict[str, dict[str, bool]]] = {
     # -----------------------------------------------------------------------
     "vendors": {
         "vendors_get_vendor": {"cacheable": True, "admin_only": False, "mutation": False},
-        "vendors_compute_scorecard": {"cacheable": True, "admin_only": False, "mutation": False},
-        "vendors_get_tier_status": {"cacheable": True, "admin_only": False, "mutation": False},
+        "vendors_compute_scorecard": {"cacheable": False, "admin_only": False, "mutation": True},
+        "vendors_get_tier_status": {"cacheable": False, "admin_only": False, "mutation": True},
         "vendors_detect_reliability_degradation": {
             "cacheable": True,
             "admin_only": False,
@@ -426,7 +426,7 @@ FLAG_PINS: dict[str, dict[str, dict[str, bool]]] = {
         },
         "vendors_check_tier_at_risk": {"cacheable": True, "admin_only": False, "mutation": False},
         "vendors_match_contractor": {"cacheable": True, "admin_only": False, "mutation": False},
-        "vendors_compute_performance": {"cacheable": True, "admin_only": False, "mutation": False},
+        "vendors_compute_performance": {"cacheable": False, "admin_only": False, "mutation": True},
         "vendors_recall_similar_jobs": {"cacheable": True, "admin_only": False, "mutation": False},
         "vendors_reliability_radar": {"cacheable": True, "admin_only": False, "mutation": False},
         # Q-41 (ruled 2026-09-20): calibration became an operator action.
@@ -451,14 +451,14 @@ FLAG_PINS: dict[str, dict[str, dict[str, bool]]] = {
             "mutation": True,
         },
         "support_sla_clock": {
-            "cacheable": True,
+            "cacheable": False,
             "admin_only": False,
-            "mutation": False,
+            "mutation": True,
         },
         "support_health_score": {
-            "cacheable": True,
+            "cacheable": False,
             "admin_only": False,
-            "mutation": False,
+            "mutation": True,
         },
         "support_troubleshoot": {
             "cacheable": True,
@@ -531,7 +531,7 @@ FLAG_PINS: dict[str, dict[str, dict[str, bool]]] = {
             "mutation": True,
         },
         "marketing_suggest_content": {"cacheable": True, "admin_only": False, "mutation": False},
-        "marketing_audit_seo": {"cacheable": True, "admin_only": False, "mutation": False},
+        "marketing_audit_seo": {"cacheable": False, "admin_only": False, "mutation": True},
         "marketing_approve_content": {"cacheable": False, "admin_only": True, "mutation": True},
         "marketing_publish_content": {"cacheable": False, "admin_only": True, "mutation": True},
         "marketing_retract_testimonial": {
@@ -608,9 +608,9 @@ FLAG_PINS: dict[str, dict[str, dict[str, bool]]] = {
             "mutation": False,
         },
         "business_insights_kpi_dashboard": {
-            "cacheable": True,
+            "cacheable": False,
             "admin_only": True,
-            "mutation": False,
+            "mutation": True,
         },
         "business_insights_ask_business": {
             "cacheable": False,
