@@ -42,8 +42,23 @@ def test_generated_waves_landed_matches_the_generator():
     The 8 property assertions in this module are the hard gate that survives
     a moving main. The byte-for-byte comparison against generator output is
     advisory: when drift is detected on a moving main, an advisory notice is
-    emitted without failing the test, preventing an estate-wide trunk lock.
+    emitted without failing the test, preventing an estate-wide trunk lock --
+    this generator cross-references wave stamps scattered estate-wide, so any
+    PR touching a stamp anywhere drifts it, not just a PR touching its own
+    subject matter the way the other generated docs do.
+
+    The defect this fixed (2026-09-21): the notice went to stderr, which
+    pytest captures and discards for a passing test under the ``-q``
+    invocation ci.yml already uses to run this file (`tests/unit/` is part
+    of its normal `pytest tests/ -m "not integration and not perf and not
+    live"` sweep, on every PR/push -- this test is NOT `doc_gate`-marked, so
+    it does not run in doc-drift-nightly.yml's separate `-m doc_gate` step)
+    -- so "advisory" had quietly become "invisible," not "non-blocking."
+    Still non-blocking, now also written to ``$GITHUB_STEP_SUMMARY`` when
+    running under GitHub Actions, so a human looking at that run's Summary
+    tab actually sees it. No workflow file changed.
     """
+    import os
     import sys
 
     gen = _load_generator()
@@ -57,13 +72,31 @@ def test_generated_waves_landed_matches_the_generator():
     )
 
     if actual_md.strip() != expected_md.strip():
-        sys.stderr.write(
+        notice = (
             "\n[ADVISORY: Wave A-Q17] docs/_generated/waves_landed.md has drifted from current tree.\n"
             "This check is advisory to avoid taxing sessions when main moves.\n"
             "The 8 property assertions remain the hard gate.\n"
             "To regenerate before milestone publication:\n"
             "  python scripts/gen_waves_landed.py --repo . --baseline HEAD --out docs/_generated/waves_landed.md\n"
         )
+        sys.stderr.write(notice)
+
+        step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+        if step_summary:
+            with open(step_summary, "a", encoding="utf-8") as fh:
+                fh.write(
+                    "\n## :warning: ADVISORY (Wave A-Q17) — `waves_landed.md` has drifted\n\n"
+                    "`docs/_generated/waves_landed.md` no longer matches a fresh regen against "
+                    "the current tree. This is expected on a moving main (the generator "
+                    "cross-references wave stamps scattered estate-wide) and does **not** fail "
+                    "this test — the 8 property assertions in "
+                    "`tests/unit/test_waves_landed_ratchet.py` remain the hard gate.\n\n"
+                    "Regenerate before milestone publication:\n\n"
+                    "```\n"
+                    "python scripts/gen_waves_landed.py --repo . --baseline HEAD "
+                    "--out docs/_generated/waves_landed.md\n"
+                    "```\n"
+                )
 
 
 def test_positive_control_pj5_is_not_landed():
