@@ -1245,6 +1245,13 @@ jobs:
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/integration/test_jsonb_string_decode_live.py -m integration -q --tb=short
 
+      - name: Integration — field_tech jsonb decode (work_orders.raw, checklists.items) (tests/integration/test_field_tech_jsonb_decode_live.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/integration/test_field_tech_jsonb_decode_live.py -m integration -q --tb=short
+
       # Wave C-6: PROJECT_PROJECT C12 resource declaration (thin kg_nodes-
       # primary identity only -- kg_nodes has no attribute storage for any
       # PROJECT_* node type, Q-47, still open) plus
