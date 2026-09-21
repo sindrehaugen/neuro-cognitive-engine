@@ -89,9 +89,21 @@ async def do_review_extraction(
         if corrected_terms is not None:
             extracted_json = json.dumps(corrected_terms)
         else:
-            # If existing["extracted"] is already a dict (from asyncpg jsonb decoding),
-            # serialize it back or let asyncpg handle it. Passing a dict directly
-            # to $2 when the SQL type is jsonb works perfectly in asyncpg.
+            # This works today, but the reason is not "a dict works
+            # directly with asyncpg's jsonb binding" -- that claim is
+            # false (asyncpg requires a JSON-encoded string for a jsonb
+            # parameter unless a codec is registered, and none is,
+            # anywhere in this codebase -- nce/semantic_search.py's own
+            # comment documents this estate-wide). It works because
+            # existing["extracted"] was never decoded in the first
+            # place: the SELECT above reads it straight off asyncpg with
+            # no json.loads, so it is already the raw JSON string this
+            # UPDATE needs -- re-binding it here is a pass-through, not a
+            # dict-to-jsonb conversion. Found while sweeping every
+            # hand-written jsonb writer/reader in the estate
+            # (JSONB_WRITER_CONVENTION_SWEEP.md) -- correct behavior
+            # resting on a false justification, fixed here before anyone
+            # "fixes" this per the old comment's premise.
             extracted_json = existing["extracted"]
 
         updated_row = await conn.fetchrow(

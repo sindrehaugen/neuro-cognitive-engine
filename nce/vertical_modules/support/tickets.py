@@ -139,8 +139,30 @@ def _parse_uuid(val: Any, field_name: str) -> UUID:
         raise ValueError(f"Invalid {field_name} UUID: {val!r}") from exc
 
 
+# Columns this module's queries can return that are JSONB in schema.sql.
+# No asyncpg jsonb codec is registered on this pool (nce/semantic_search.py's
+# own comment documents this estate-wide), so a real connection always hands
+# these back as raw JSON strings, never already-parsed dicts/lists --
+# service_tickets.ai_diagnosis/.events, sla_clocks.paused_intervals,
+# customer_health.trend/.drivers. Named explicitly rather than sniffing JSON
+# out of every string column: a text column that happens to start with '{'
+# or '[' (a note, a title) would be silently corrupted by a blind
+# json.loads attempt, and this function has no other way to know a
+# column's real Postgres type.
+_JSONB_COLUMNS = frozenset({"ai_diagnosis", "events", "paused_intervals", "trend", "drivers"})
+
+
 def _row_to_dict(row: Any) -> dict[str, Any]:
-    """Convert an asyncpg Record or dictionary to a JSON-safe dictionary."""
+    """Convert an asyncpg Record or dictionary to a JSON-safe dictionary.
+
+    Also decodes the known JSONB columns named in `_JSONB_COLUMNS` (see its
+    own comment) -- every `do_open_ticket`/`do_query_ticket`/`do_update_
+    ticket`/`support/ecosystem.py`/`support/health.py` response that goes
+    through this function used to ship those columns as an undecoded raw
+    JSON string instead of a parsed object, found while sweeping every
+    hand-written JSONB writer/reader in the estate for the convention
+    `documents.py` (#406) missed.
+    """
     if row is None:
         return {}
     res: dict[str, Any] = {}
@@ -152,6 +174,11 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
             res[k] = str(v)
         elif isinstance(v, (datetime.datetime, datetime.date)):
             res[k] = v.isoformat()
+        elif k in _JSONB_COLUMNS and isinstance(v, str):
+            try:
+                res[k] = json.loads(v)
+            except (TypeError, ValueError):
+                res[k] = v
         else:
             res[k] = v
     return res

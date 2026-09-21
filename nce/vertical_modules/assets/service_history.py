@@ -19,6 +19,7 @@ Strictly multi-tenant: every database query carries explicit
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 from uuid import UUID
@@ -26,6 +27,24 @@ from uuid import UUID
 from nce.db_utils import scoped_pg_session
 
 log = logging.getLogger("nce.vertical_modules.assets.service_history")
+
+
+def _decode_jsonb(value: Any, default: Any) -> Any:
+    """Decode a JSONB column's real value. No asyncpg jsonb codec is
+    registered on this pool (nce/semantic_search.py's own comment documents
+    this estate-wide), so a real connection always hands this back as a
+    raw JSON string, never an already-parsed dict/list -- `value or
+    default` never substitutes for a non-empty string (even the string
+    `"{}"` is truthy), so the raw string was passing straight through
+    unchanged before this fix. Found while sweeping every hand-written
+    JSONB writer/reader in the estate for the convention `documents.py`
+    (#406) missed."""
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (TypeError, ValueError):
+            return default
+    return value if value is not None else default
 
 
 def _extract_pool(engine: Any) -> Any:
@@ -212,8 +231,8 @@ async def do_get_asset_service_history(
                     "sla_profile": tr["sla_profile"],
                     "first_response_at": _iso(tr["first_response_at"]),
                     "resolved_at": _iso(tr["resolved_at"]),
-                    "ai_diagnosis": tr["ai_diagnosis"] or {},
-                    "events": tr["events"] or [],
+                    "ai_diagnosis": _decode_jsonb(tr["ai_diagnosis"], {}),
+                    "events": _decode_jsonb(tr["events"], []),
                     "created_at": _iso(tr["created_at"]),
                     "updated_at": _iso(tr["updated_at"]),
                 }

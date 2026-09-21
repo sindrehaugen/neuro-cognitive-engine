@@ -1301,6 +1301,18 @@ jobs:
         run: pytest tests/integration/test_product_sku_global_scope_live.py -m integration -q --tb=short
 
       # No asyncpg jsonb codec is registered on this pool, so
+      # service_tickets.ai_diagnosis/.events/sla_clocks.paused_intervals
+      # always arrive as raw JSON strings -- support/tickets.py's shared
+      # _row_to_dict helper only ever converted UUID/datetime fields and
+      # passed these through raw. Found sweeping every hand-written jsonb
+      # writer/reader in the estate (JSONB_WRITER_CONVENTION_SWEEP.md).
+      - name: Integration — support tickets jsonb decode (tests/integration/test_support_tickets_jsonb_decode_live.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/integration/test_support_tickets_jsonb_decode_live.py -m integration -q --tb=short
+
       # testimonials.consent_scope/content_assets.seo always arrive as raw
       # JSON strings -- _json_safe re-serializes a string AS a string, it
       # does not parse JSON text living inside one. Last two of the
