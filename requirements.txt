@@ -70,7 +70,7 @@ numpy>=2.2.6
 scipy>=1.15.3                # Gaussian noise overwriting, statistical operations
 
 # --- Object Storage ----------------------------------------------------------
-minio>=7.2.0
+minio>=7.2.20
 
 # --- Clustering (HDBSCAN / Sleep Consolidation) ------------------------------
 scikit-learn>=1.7.2
