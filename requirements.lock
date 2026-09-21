@@ -338,7 +338,7 @@ opentelemetry-util-http==0.65b0
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
-openvino==2026.3.1
+openvino==2026.4.0
     # via -r requirements.txt
 openvino-telemetry==2025.2.0
     # via openvino
