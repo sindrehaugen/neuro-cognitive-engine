@@ -155,7 +155,22 @@ async def _fetch_product_row(
         """,
         uuid.UUID(product_id),
     )
-    return dict(row) if row is not None else None
+    if row is None:
+        return None
+    product_row = dict(row)
+    # etim_specs is jsonb; no jsonb codec is registered on this project's pool
+    # (nce/semantic_search.py's own comment states the same fact), so asyncpg
+    # hands it back as a raw JSON string, never a dict. Decoded here, once, at
+    # the source, so every consumer of this dict (currently just the LLM
+    # prompt builder below) gets a real dict -- json.dumps() on the
+    # undecoded string would otherwise re-serialize the string itself
+    # (wrapping it in quotes, escaping the inner braces) into a garbled,
+    # double-encoded prompt instead of the intended pretty-printed object.
+    raw_specs = product_row.get("etim_specs")
+    product_row["etim_specs"] = (
+        json.loads(raw_specs) if isinstance(raw_specs, str) else (raw_specs or {})
+    )
+    return product_row
 
 
 # ---------------------------------------------------------------------------
