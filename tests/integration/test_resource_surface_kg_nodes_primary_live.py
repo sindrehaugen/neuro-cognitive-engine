@@ -742,6 +742,147 @@ async def test_device_mcp_upsert_capabilities_only_field_does_not_create_phantom
 
 
 @pytest.mark.asyncio
+async def test_rest_patch_rejects_a_version_that_predates_a_kg_nodes_only_write(
+    engine: NCEEngine, namespace_id: uuid.UUID
+) -> None:
+    """A concurrency check must compare against the row it actually
+    protects. Before this fix, `handle_get`/`handle_patch` merged each
+    secondary table's row over kg_nodes' own (`item.update(row_to_dict(
+    sec_row))`), which replaces kg_nodes' real `updated_at` with a
+    secondary table's -- every graph-primary spec with a secondary table
+    and `version_field="updated_at"` (6 of 9) inherited this. The
+    sequence below is the ordinary, correct way to use optimistic
+    concurrency -- GET, then PATCH with exactly what GET returned -- and
+    it must be rejected here, because kg_nodes changed in between.
+
+    Reproduced live before this fix: this exact sequence returned 200 and
+    silently applied the write, because the version check compared the
+    caller's (shadowed) value against a freshly-recomputed copy of the
+    SAME shadowed value, never against kg_nodes' real, already-advanced
+    clock -- a lost update with no error anywhere.
+    """
+    node_label = f"probe-kg-device-version-{uuid.uuid4().hex[:8]}"
+    async with _rest_client(engine, DEVICE_PROBE_SPEC) as client:
+        r1 = await client.post(
+            "/api/system_design/devices-kgprimary-probe",
+            json={
+                "namespace_id": str(namespace_id),
+                "node_label": node_label,
+                "signal_format": "A",
+            },
+        )
+        assert r1.status_code == 201, r1.text
+
+        # A kg_nodes-only write -- the one thing that advances kg_nodes'
+        # own clock without touching any secondary table.
+        r2 = await client.patch(
+            f"/api/system_design/devices-kgprimary-probe/{node_label}",
+            json={"namespace_id": str(namespace_id), "change_origin": "operator"},
+        )
+        assert r2.status_code == 200, r2.text
+
+        got = (
+            await client.get(
+                f"/api/system_design/devices-kgprimary-probe/{node_label}",
+                params={"namespace_id": str(namespace_id)},
+                headers={"X-NCE-Principal-Tier": "employee"},
+            )
+        ).json()
+
+        async with engine.pg_pool.acquire() as conn:
+            true_updated_at = await conn.fetchval(
+                "SELECT updated_at FROM kg_nodes WHERE namespace_id = $1 AND label = $2",
+                namespace_id,
+                node_label,
+            )
+        assert str(got["updated_at"]).replace("T", " ") == str(true_updated_at), (
+            "test fixture assumption broken: GET's 'updated_at' must reflect kg_nodes' "
+            "real clock for this reproduction to mean anything"
+        )
+
+        r3 = await client.patch(
+            f"/api/system_design/devices-kgprimary-probe/{node_label}",
+            json={
+                "namespace_id": str(namespace_id),
+                "expected_version": got["updated_at"],
+                "status": "planned",
+            },
+        )
+    assert r3.status_code == 200, (
+        f"a version taken from GET immediately after PATCH was refused as stale: {r3.text}"
+    )
+
+    # Now the real check: a SECOND writer who read the node BEFORE the
+    # change_origin PATCH, and only now sends their write, must be
+    # rejected -- not silently applied.
+    async with _rest_client(engine, DEVICE_PROBE_SPEC) as client:
+        r4 = await client.patch(
+            f"/api/system_design/devices-kgprimary-probe/{node_label}",
+            json={
+                "namespace_id": str(namespace_id),
+                "expected_version": r1.json()["updated_at"],
+                "status": "should-not-land",
+            },
+        )
+    assert r4.status_code == 409, (
+        f"a PATCH using a version from before a kg_nodes-only write was NOT rejected: "
+        f"{r4.status_code} {r4.text} -- this is a silent lost update"
+    )
+
+    async with engine.pg_pool.acquire() as conn:
+        state_row = await conn.fetchrow(
+            "SELECT status FROM system_design_node_state WHERE namespace_id = $1 AND node_label = $2",
+            namespace_id,
+            node_label,
+        )
+    assert state_row["status"] == "planned", "the rejected write must not have landed"
+
+
+@pytest.mark.asyncio
+async def test_rest_get_then_immediate_patch_of_a_secondary_field_still_succeeds(
+    engine: NCEEngine, namespace_id: uuid.UUID
+) -> None:
+    """Must not break: the ordinary case, with no concurrent writer at
+    all. A caller who creates, GETs, and immediately PATCHes a secondary
+    field using exactly the version GET returned must succeed -- this is
+    the spurious-409 failure mode a fix to the check above could
+    introduce if it compared against the wrong row instead of the right
+    one, and only a positive test like this one would catch it.
+    """
+    node_label = f"probe-kg-device-version-ok-{uuid.uuid4().hex[:8]}"
+    async with _rest_client(engine, DEVICE_PROBE_SPEC) as client:
+        r1 = await client.post(
+            "/api/system_design/devices-kgprimary-probe",
+            json={
+                "namespace_id": str(namespace_id),
+                "node_label": node_label,
+                "signal_format": "A",
+            },
+        )
+        assert r1.status_code == 201, r1.text
+
+        got = (
+            await client.get(
+                f"/api/system_design/devices-kgprimary-probe/{node_label}",
+                params={"namespace_id": str(namespace_id)},
+                headers={"X-NCE-Principal-Tier": "employee"},
+            )
+        ).json()
+
+        r2 = await client.patch(
+            f"/api/system_design/devices-kgprimary-probe/{node_label}",
+            json={
+                "namespace_id": str(namespace_id),
+                "expected_version": got["updated_at"],
+                "status": "planned",
+            },
+        )
+    assert r2.status_code == 200, (
+        f"GET-then-immediate-PATCH with the exact version GET returned was rejected: {r2.text}"
+    )
+
+
+@pytest.mark.asyncio
 async def test_port_upsert_writes_capabilities_only(
     engine: NCEEngine, namespace_id: uuid.UUID
 ) -> None:

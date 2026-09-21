@@ -129,6 +129,36 @@ def row_to_dict(row: Any) -> dict[str, Any]:
     return dict(row)
 
 
+# Every system_design satellite table (device_capabilities, node_state,
+# design_requests, sales_contacts) carries its own created_at/updated_at
+# columns, unrelated to kg_nodes' own. Merging a secondary row's dict
+# wholesale into a graph-primary item/existing dict (the identity row's own
+# dict, built first) silently replaces kg_nodes' real timestamps with
+# whichever secondary table happened to merge last -- observable two ways:
+# GET's response reports the wrong instant for a node's own age/last-touch,
+# and any version_field="updated_at" spec's optimistic-concurrency check
+# (handle_patch, rest.py) compares against that same shadowed value instead
+# of kg_nodes' real clock, which can silently accept a write that should
+# have been rejected as stale whenever kg_nodes itself changed via a
+# kg_nodes-only write (e.g. change_origin) in between. kg_nodes' own row is
+# always merged first in every call site below, so filtering these two
+# columns out of each secondary row before `.update()` leaves kg_nodes' own
+# values in place, authoritative, matching what the version check already
+# assumes. `id` is deliberately NOT included here -- a separate, filed
+# decision (not this fix's to make): identity is written and looked up by
+# callers, so redefining it invalidates data already keyed on it; a
+# timestamp is only ever read, compared, and discarded.
+_GRAPH_PRIMARY_TIMESTAMP_COLUMNS = frozenset({"created_at", "updated_at"})
+
+
+def _merge_secondary_row_preserving_kg_nodes_timestamps(item: dict[str, Any], sec_row: Any) -> None:
+    """`item.update(...)` a secondary table's row, except its own
+    created_at/updated_at -- see `_GRAPH_PRIMARY_TIMESTAMP_COLUMNS`."""
+    item.update(
+        {k: v for k, v in row_to_dict(sec_row).items() if k not in _GRAPH_PRIMARY_TIMESTAMP_COLUMNS}
+    )
+
+
 class WriteCoercionError(ValueError):
     """A writable field's value cannot be coerced to its real column type.
 
@@ -879,7 +909,10 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                             # Multi-table spec: merge each secondary table's
                             # row -- a missing secondary row is not an error,
                             # the kg_nodes identity row is still a real
-                            # resource on its own.
+                            # resource on its own. kg_nodes' own
+                            # created_at/updated_at are preserved, not
+                            # overwritten by a secondary table's -- see
+                            # _GRAPH_PRIMARY_TIMESTAMP_COLUMNS.
                             for sec in spec.secondary_tables:
                                 sec_row = await conn.fetchrow(
                                     f"SELECT * FROM {sec.table_name} WHERE namespace_id = $1 AND {sec.join_field} = $2",
@@ -887,7 +920,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                                     node_label,
                                 )
                                 if sec_row:
-                                    item.update(row_to_dict(sec_row))
+                                    _merge_secondary_row_preserving_kg_nodes_timestamps(
+                                        item, sec_row
+                                    )
                 except Exception as exc:
                     return admin_error_response(
                         f"Database fetch error: {exc}", exc, status_code=500
@@ -1274,6 +1309,16 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                         if row:
                             existing = row_to_dict(row)
                             node_label = existing["label"]
+                            # kg_nodes' own created_at/updated_at are
+                            # preserved, not overwritten by a secondary
+                            # table's -- this `existing` dict is what the
+                            # expected_version check below reads
+                            # (spec.version_field == "updated_at" for every
+                            # graph-primary spec that sets one); shadowing
+                            # it here made that check compare against
+                            # whichever secondary table merged last instead
+                            # of kg_nodes' real clock. See
+                            # _GRAPH_PRIMARY_TIMESTAMP_COLUMNS.
                             for sec in spec.secondary_tables:
                                 sec_row = await conn.fetchrow(
                                     f"SELECT * FROM {sec.table_name} WHERE namespace_id = $1 AND {sec.join_field} = $2",
@@ -1281,7 +1326,9 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                                     node_label,
                                 )
                                 if sec_row:
-                                    existing.update(row_to_dict(sec_row))
+                                    _merge_secondary_row_preserving_kg_nodes_timestamps(
+                                        existing, sec_row
+                                    )
                 except Exception as exc:
                     return admin_error_response(f"Database error: {exc}", exc, status_code=500)
             elif spec.table_name:
