@@ -70,6 +70,35 @@ def _extract_pool(engine: Any) -> Any:
     return engine
 
 
+def _decode_jsonb_column(rows: list[dict[str, Any]], column: str) -> list[dict[str, Any]]:
+    """Decode one named JSONB column in place, on each row of a listing.
+
+    No asyncpg jsonb codec is registered on this pool (nce/semantic_search.py's
+    own comment documents this estate-wide), so a real connection always hands
+    a JSONB column back as a raw JSON string, never an already-parsed dict --
+    `testimonials.consent_scope`/`content_assets.seo` shipped through these two
+    admin listings as undecoded strings before this fix (`_json_safe`'s own
+    Decimal-aware json.dumps/json.loads round-trip re-serializes a string AS a
+    string, it does not parse JSON text inside one). Found while sweeping
+    every hand-written jsonb writer/reader in the estate for the convention
+    `documents.py` (#406) missed (JSONB_WRITER_CONVENTION_SWEEP.md) -- the
+    last two of that sweep's fourteen findings.
+
+    Named-column, not a blanket "try json.loads on any string" decode: a
+    blanket decode would silently coerce a plain TEXT column whose value
+    happens to be valid JSON (e.g. a title of "123"), corrupting it quietly
+    rather than raising -- only `column` is ever touched here.
+    """
+    for row in rows:
+        raw = row.get(column)
+        if isinstance(raw, str):
+            try:
+                row[column] = json.loads(raw)
+            except (TypeError, ValueError):
+                pass
+    return rows
+
+
 # ---------------------------------------------------------------------------
 # GET /api/marketing/candidates
 # ---------------------------------------------------------------------------
@@ -281,7 +310,7 @@ async def api_marketing_testimonials(request: Any) -> JSONResponse:
                     """,
                     *binds,
                 )
-                items = [dict(r) for r in rows]
+                items = _decode_jsonb_column([dict(r) for r in rows], "consent_scope")
         except Exception as exc:
             return admin_error_response("Failed to query testimonials", exc)
 
@@ -563,7 +592,7 @@ async def api_marketing_assets(request: Any) -> JSONResponse:
                     """,
                     *binds,
                 )
-                items = [dict(r) for r in rows]
+                items = _decode_jsonb_column([dict(r) for r in rows], "seo")
         except Exception as exc:
             return admin_error_response("Failed to query marketing assets", exc)
 

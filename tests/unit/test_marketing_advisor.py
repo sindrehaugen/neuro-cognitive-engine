@@ -16,6 +16,7 @@ import pytest
 from starlette.datastructures import QueryParams
 
 from nce.admin_handlers.marketing import (
+    _decode_jsonb_column,
     api_marketing_approve_content,
     api_marketing_assets,
     api_marketing_audit_seo,
@@ -442,3 +443,129 @@ async def test_rest_api_marketing_assets() -> None:
     req = _MockRequest(query_params={"namespace_id": _NAMESPACE_ID})
     resp = await api_marketing_assets(req)
     assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# _decode_jsonb_column -- pure function, no DB. Every mocked test above sets
+# consent_scope/seo on the row as an already-parsed dict (see e.g. line
+# ~387/~431), which is not what a real asyncpg connection ever returns (no
+# jsonb codec is registered anywhere in this codebase -- these columns
+# always arrive as raw JSON strings). These tests pin the actual decode
+# against a real JSON *string*, the shape those tests structurally cannot
+# see.
+# ---------------------------------------------------------------------------
+
+
+def test_decode_jsonb_column_parses_a_real_json_string() -> None:
+    rows = [{"id": "1", "consent_scope": '{"scope": "all"}'}]
+    result = _decode_jsonb_column(rows, "consent_scope")
+    assert result[0]["consent_scope"] == {"scope": "all"}
+
+
+def test_decode_jsonb_column_leaves_other_columns_untouched() -> None:
+    """The failure mode a blanket 'try json.loads on any string' decode
+    would introduce: a plain TEXT column whose value happens to be valid
+    JSON (e.g. a customer_id of "123") must not be silently coerced to a
+    different Python type."""
+    rows = [{"customer_id": "123", "quote": "true", "consent_scope": '{"a": 1}'}]
+    result = _decode_jsonb_column(rows, "consent_scope")
+    assert result[0]["customer_id"] == "123"
+    assert result[0]["quote"] == "true"
+    assert result[0]["consent_scope"] == {"a": 1}
+
+
+def test_decode_jsonb_column_leaves_an_already_decoded_dict_unchanged() -> None:
+    """Not reachable against a real connection today (no jsonb codec is
+    registered), but a dict must still pass through unchanged if one is
+    ever handed in directly -- this is what keeps every EXISTING mocked
+    test in this file (which sets consent_scope/seo as a dict) passing
+    unchanged."""
+    rows = [{"consent_scope": {"scope": "all"}}]
+    result = _decode_jsonb_column(rows, "consent_scope")
+    assert result[0]["consent_scope"] == {"scope": "all"}
+
+
+def test_decode_jsonb_column_handles_malformed_json_without_raising() -> None:
+    rows = [{"seo": "{not valid json"}]
+    result = _decode_jsonb_column(rows, "seo")
+    assert result[0]["seo"] == "{not valid json"
+
+
+@pytest.mark.asyncio
+async def test_rest_api_marketing_testimonials_decodes_consent_scope_from_a_real_string() -> None:
+    """The actual regression, exercised end to end: the existing
+    `test_rest_api_marketing_testimonials_and_capture` above only checks
+    `status_code == 200` and mocks `consent_scope` as an already-parsed
+    dict -- it cannot see this bug. This test uses the real string shape
+    asyncpg actually returns and asserts on the decoded response body."""
+    import json
+
+    from nce import admin_state
+
+    engine = _make_mock_engine(
+        case_rows=[
+            {
+                "id": str(uuid4()),
+                "namespace_id": _NAMESPACE_ID,
+                "customer_id": "CUST-001",
+                "project_id": "P-001",
+                "quote": "Outstanding reliability.",
+                "status": "received",
+                "consent": True,
+                "consent_tier": "web_retractable",
+                "consent_scope": '{"scope": "all", "channels": ["web"]}',
+                "consent_recorded_at": None,
+                "nps_at_capture": 9.5,
+                "marketing_source_id": "marketing:test:001",
+                "created_at": None,
+                "updated_at": None,
+            }
+        ]
+    )
+    admin_state.engine = engine
+
+    req_list = _MockRequest(query_params={"namespace_id": _NAMESPACE_ID})
+    resp_list = await api_marketing_testimonials(req_list)
+    assert resp_list.status_code == 200
+    body = json.loads(resp_list.body)
+    assert body["items"][0]["consent_scope"] == {"scope": "all", "channels": ["web"]}, (
+        f"consent_scope was not decoded to a dict: {body['items'][0]['consent_scope']!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_rest_api_marketing_assets_decodes_seo_from_a_real_string() -> None:
+    """Same regression, the content_assets listing -- the existing
+    `test_rest_api_marketing_assets` above mocks `seo` as an already-parsed
+    dict and only checks `status_code == 200`."""
+    import json
+
+    from nce import admin_state
+
+    engine = _make_mock_engine(
+        case_rows=[
+            {
+                "id": str(uuid4()),
+                "namespace_id": _NAMESPACE_ID,
+                "kind": "case_study",
+                "ref_id": "CS-001",
+                "title": "Corporate Boardroom Case Study",
+                "seo": '{"meta_description": "A case study", "keywords": ["av", "boardroom"]}',
+                "storage_uri": "s3://assets/study.pdf",
+                "status": "approved",
+                "marketing_source_id": "marketing:asset:001",
+                "created_at": None,
+                "updated_at": None,
+            }
+        ]
+    )
+    admin_state.engine = engine
+
+    req = _MockRequest(query_params={"namespace_id": _NAMESPACE_ID})
+    resp = await api_marketing_assets(req)
+    assert resp.status_code == 200
+    body = json.loads(resp.body)
+    assert body["items"][0]["seo"] == {
+        "meta_description": "A case study",
+        "keywords": ["av", "boardroom"],
+    }, f"seo was not decoded to a dict: {body['items'][0]['seo']!r}"
