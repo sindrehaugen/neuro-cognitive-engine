@@ -4,12 +4,24 @@ nce.source_mode.divergence — C5 divergence audit + flip-gate.
 Responsibilities (each function does exactly one thing — SRP):
 
 ``record_divergence(pool, namespace_id, engine, entity, field,
-                    nce_value, ext_value, materiality)``
+                    nce_value, ext_value, materiality, alert=True)``
     Append one row to ``divergence_log`` inside a scoped session, then
     classify its materiality:
-      - Above the configured threshold  → dispatch a drift alert via the
-        existing ``nce.notifications.dispatcher``.
-      - Below the threshold             → log only (no alert, no page).
+      - Above the configured threshold AND ``alert`` is ``True``  → dispatch
+        a drift alert via the existing ``nce.notifications.dispatcher``.
+      - Above the configured threshold but ``alert`` is ``False`` → log only;
+        the row is still written, so no divergence is ever lost, but nothing
+        pages. For a caller whose materiality rule has not been calibrated
+        against real data yet (see
+        ``vertical_modules/economy/reconcile_agreements.py``'s own gate for
+        the worked example) — a noisy, uncalibrated page trains people to
+        ignore the channel, which defeats the alert for every OTHER caller
+        sharing it too.
+      - Below the threshold             → log only (no alert, no page),
+        regardless of ``alert``.
+    ``alert`` defaults to ``True`` so every existing caller (Sales, Finago)
+    keeps its current behaviour unchanged; a caller opts OUT explicitly, not
+    the other way around.
 
 ``flip_blocked(pool, namespace_id, engine, *, window_seconds)``
     Return ``True`` when a ``both→nce`` flip is blocked (the divergence log
@@ -115,6 +127,7 @@ async def record_divergence(
     nce_value: str | None,
     ext_value: str | None,
     materiality: float | Decimal,
+    alert: bool = True,
 ) -> None:
     """Append one divergence row and classify its materiality.
 
@@ -128,6 +141,12 @@ async def record_divergence(
         ext_value:    External system's current value (``None`` if absent).
         materiality:  Numeric divergence magnitude; caller-supplied.
                       Above ``NCE_DIVERGENCE_ALERT_THRESHOLD`` → alert.
+        alert:        Whether a materiality above the threshold is allowed to
+                      page (default ``True``, matching every existing
+                      caller's behaviour unchanged). A caller with an
+                      uncalibrated rule passes ``alert=False`` to keep
+                      writing the row -- the data stays available -- while
+                      suppressing the page until the rule is validated.
     """
     mat = float(materiality)
 
@@ -157,7 +176,17 @@ async def record_divergence(
     )
 
     threshold = alert_threshold()
-    if mat > threshold:
+    if mat > threshold and not alert:
+        log.info(
+            "divergence above threshold but alerting disabled by caller: "
+            "engine=%s entity=%s field=%s materiality=%.4f threshold=%.4f",
+            engine,
+            entity,
+            field,
+            mat,
+            threshold,
+        )
+    elif mat > threshold:
         title = f"[NCE] Divergence alert: {engine}/{entity}/{field}"
         message = (
             f"Materiality {mat:.4f} exceeds threshold {threshold:.4f}.\n"

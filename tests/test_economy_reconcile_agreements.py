@@ -18,6 +18,14 @@ What is gated here:
   5. gl_account_prefix works as an alternative to an exact gl_account match.
   6. Tenant isolation: postings/contracts in a different namespace never
      leak into either side of the comparison.
+  7. Alerting gate (``ALERTS_ENABLED_ENV``, default off): a material
+     divergence still writes its ``divergence_log`` row either way, but
+     ``dispatcher.dispatch_alert`` only fires when
+     ``NCE_ECONOMY_RECONCILE_AGREEMENTS_ALERTS_ENABLED`` is explicitly
+     truthy -- see the module docstring's "Alerting is opt-in" section and
+     ``B11_DESIGN_BRIEF.md`` for why (this materiality rule has never been
+     calibrated against real data; the host's own equivalent, calibrated by
+     people with real account access, still ran 50% false positives).
 
 Integration tests are ``@pytest.mark.integration`` — require a live
 Postgres. The signature/registration/advertisement checks are pure logic
@@ -28,12 +36,16 @@ from __future__ import annotations
 
 import uuid
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import asyncpg  # type: ignore[import-untyped]
 import pytest
 
 from nce.auth import set_namespace_context
-from nce.vertical_modules.economy.reconcile_agreements import do_reconcile_agreements
+from nce.vertical_modules.economy.reconcile_agreements import (
+    ALERTS_ENABLED_ENV,
+    do_reconcile_agreements,
+)
 
 _TOOL = "economy_reconcile_agreements"
 
@@ -363,3 +375,94 @@ async def test_tenant_isolation_other_namespace_contracts_and_postings_excluded(
     assert result["expected_recognized_total"] == pytest.approx(0.0)
     assert result["actual_gl_total"] == pytest.approx(0.0)
     assert result["contracts_due"] == 0
+
+
+# ---------------------------------------------------------------------------
+# 6. Alerting gate -- off by default, opt-in via env var.
+#
+# The row write and the page are two separate questions: both tests below
+# use the same diverged-period setup as
+# test_diverged_period_writes_one_divergence_row (materiality 0.2, above the
+# default 0.1 threshold), so `material` is True in both -- what differs is
+# whether dispatch_alert actually fires.
+# ---------------------------------------------------------------------------
+
+
+async def _seed_diverged_period(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+    *,
+    tag: str,
+    period: str,
+) -> None:
+    contract_id = _contract_id(tag)
+    await _seed_contract(
+        pg_pool,
+        namespace_id,
+        contract_id=contract_id,
+        annual_amount="1200.00",
+        start_period=period,
+    )
+    # Posted GL is 80.00 against an expected 100.00 -- a real, material gap.
+    await _seed_posting(pg_pool, namespace_id, account="3900", amount="80.00", period_id=period)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_material_divergence_does_not_alert_by_default(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The regression this gate exists to prevent: an uncalibrated rule must
+    not page anyone with the env var unset -- the default state in
+    production until someone flips it on after validating against real
+    data."""
+    monkeypatch.delenv(ALERTS_ENABLED_ENV, raising=False)
+    period = "2026-05"
+    await _seed_diverged_period(pg_pool, namespace_id, tag="NOALERT", period=period)
+
+    engine = _EngineStub(pg_pool)
+    mock_dispatch = AsyncMock()
+    with patch("nce.source_mode.divergence.dispatcher.dispatch_alert", mock_dispatch):
+        result = await do_reconcile_agreements(
+            engine, {"namespace_id": namespace_id, "period": period, "gl_account": "3900"}
+        )
+
+    assert result["material"] is True
+    assert result["alerts_enabled"] is False
+    mock_dispatch.assert_not_called()
+
+    # The row must still be written -- the gate suppresses the page, not the
+    # data. Losing the divergence itself would be the over-reach the module
+    # docstring explicitly warns against.
+    assert await _divergence_count(pg_pool, namespace_id) == 1
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_material_divergence_alerts_when_explicitly_enabled(
+    pg_pool: asyncpg.Pool,  # type: ignore[type-arg]
+    namespace_id: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The other direction the gate must not break: once someone flips
+    ``ALERTS_ENABLED_ENV`` on, the exact same material divergence DOES
+    page -- this is an opt-in switch, not a channel this module has quietly
+    disabled for good."""
+    monkeypatch.setenv(ALERTS_ENABLED_ENV, "true")
+    period = "2026-06"
+    await _seed_diverged_period(pg_pool, namespace_id, tag="ALERTON", period=period)
+
+    engine = _EngineStub(pg_pool)
+    mock_dispatch = AsyncMock()
+    with patch("nce.source_mode.divergence.dispatcher.dispatch_alert", mock_dispatch):
+        result = await do_reconcile_agreements(
+            engine, {"namespace_id": namespace_id, "period": period, "gl_account": "3900"}
+        )
+
+    assert result["material"] is True
+    assert result["alerts_enabled"] is True
+    mock_dispatch.assert_called_once()
+
+    assert await _divergence_count(pg_pool, namespace_id) == 1
