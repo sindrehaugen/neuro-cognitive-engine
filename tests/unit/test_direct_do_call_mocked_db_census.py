@@ -861,6 +861,15 @@ def test_positive_control_ignores_integration_marked_modules() -> None:
     module. Found live in CI (2026-09-21): this exact false positive
     failed py3.10/py3.11 before being fixed here.
     """
+    # Built at runtime, NOT written as a literal "pytestmark = pytest.mark.
+    # integration" line -- if you are reading this because you simplified
+    # it back to a literal, DON'T: test_ci_integration_coverage.py:136 does
+    # `re.search(r"^pytestmark\s*=.*integration", src, re.M)` over this
+    # FILE'S OWN raw source (not an AST check), so a literal occurrence
+    # here -- even inside a string meant only as fake module source for
+    # ast.parse() below -- makes that OTHER ratchet believe this file
+    # itself is an unwired live-Postgres module. See this test's own
+    # docstring for the live CI failure this caused (2026-09-21).
     marker_line = "{} = {}.{}.{}".format("pytestmark", "pytest", "mark", "integration")
     live_module_code = "\n".join(
         [
