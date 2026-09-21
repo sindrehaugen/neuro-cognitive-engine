@@ -186,6 +186,37 @@ async def _partition_maintenance_tick(pool: asyncpg.Pool) -> None:
         await release_cron_lock(lock)
 
 
+def _decode_saga_payload(raw_payload: object) -> dict:
+    """`saga_execution_log.payload` is JSONB, and no asyncpg jsonb codec is
+    registered anywhere in this codebase (`nce/semantic_search.py`'s own
+    comment documents this estate-wide) -- a real connection always hands
+    this back as a raw JSON string, never a dict. The previous
+    `isinstance(row["payload"], dict)` guard was therefore always
+    ``False``, `payload` was always ``{}``, and `memory_id` extraction
+    always failed silently: every `pg_committed` saga this worker ever
+    processed against a real database skipped the memory-exists
+    verification entirely and fell straight to the "no memory_id" branch,
+    which marks the saga `'completed'` unconditionally. Not a display bug
+    -- the verification this whole tick exists to perform never ran, on
+    any saga, ever, in production.
+
+    Extracted as its own function so it can be unit-tested directly
+    against a real JSON string without a live database -- the live
+    integration test proves the fix end-to-end against `_saga_recovery_
+    tick` itself; this one pins the decode logic in isolation.
+    """
+    if isinstance(raw_payload, dict):
+        return raw_payload
+    if isinstance(raw_payload, str):
+        try:
+            decoded = json.loads(raw_payload)
+        except (TypeError, ValueError):
+            return {}
+        if isinstance(decoded, dict):
+            return decoded
+    return {}
+
+
 async def _saga_recovery_tick(pool: asyncpg.Pool) -> None:
     """
     Finalize sagas that committed to PG but never advanced to 'completed'.
@@ -229,7 +260,7 @@ async def _saga_recovery_tick(pool: asyncpg.Pool) -> None:
             saga_id: str = str(row["id"])
             ns_id: str = str(row["namespace_id"])
             agent_id: str = row["agent_id"]
-            payload: dict = row["payload"] if isinstance(row["payload"], dict) else {}
+            payload = _decode_saga_payload(row["payload"])
             memory_id = payload.get("memory_id")
 
             log.warning(
