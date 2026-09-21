@@ -1,5 +1,8 @@
-"""AST census pinning unit test modules that exercise DB-dependent production code
-against a mocked connection, with no live-Postgres sibling covering the same code.
+"""AST census of ONE detectable shape of "mocked-DB-dependent test": a module that
+directly calls a do_*/handle_*/`.handler(...)`-shaped name against a mocked
+connection, with no live-Postgres sibling covering the same code. See "THE
+GUARANTEE, AND ITS BOUNDARY" below before assuming this file covers your case --
+it does not claim to see every module in the broader class, only this one shape.
 
 Why this file exists
 ---------------------
@@ -28,6 +31,30 @@ they belong in the baseline; force-classifying them to keep the list clean is ho
 baseline becomes a lie") is dozens, not a handful, and demanding all 64 be fixed
 before this lands would make the ratchet the kind that gets suppressed in a week. It
 does not fire on the 64. It fires on the 65th.
+
+THE GUARANTEE, AND ITS BOUNDARY -- read this before trusting this file for your case
+--------------------------------------------------------------------------------------
+This file does NOT guarantee "no 65th mocked-DB-dependent test joins tests/unit/."
+It guarantees a narrower thing: "no 65th module joins tests/unit/ via the
+``do_*``/``handle_*``/``.handler(...)`` DIRECT-CALL shape this scanner's AST matcher
+looks for." A new module that reaches the same class of bug through a DIFFERENT
+core-function naming or dispatch convention -- the same 24-of-64 pattern this file's
+own calibration could not rediscover (see below) -- passes this census silently,
+green, with nothing to flag it. ``test_a7_outbound_webhooks.py`` is the confirmed,
+hand-checked example: it is a genuine member of the class this file exists to catch
+(it is in the frozen baseline below), yet it contains zero calls whose name matches
+``do_[a-z0-9_]+`` -- whatever DB-dependent function it mocks is named differently,
+and the scanner cannot see it. If you are adding a new test module and asking
+"would this census catch me if I got this wrong," the honest answer is: only if your
+mocked call is a bare, unpatched, direct call to a name shaped like ``do_thing(...)``
+or ``some_tool.handler(...)``. A dispatch through ``getattr``, a class method, a
+differently-named core, or an indirection through a helper function is invisible to
+this file, the same way ``test_internal_cores_prune_check_floor_census.py``'s own
+scanner cannot see a load reached only through a helper. This file is a census of
+ONE detectable shape within the larger class, not a census of the class itself --
+treat its name accordingly, and see
+``_internal/work-docs/mlv16-orchestration/MOCKED_DB_TEST_INSTRUMENT_CENSUS.md`` for
+the full, human-read population this scanner's own reach does not cover.
 
 Scope, deliberately narrow -- and what this census does NOT catch
 ---------------------------------------------------------------------
