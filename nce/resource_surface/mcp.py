@@ -455,6 +455,16 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                     if row:
                         item = row_to_dict(row)
                         node_label = item["label"]
+                        # kg_nodes' own real identity, captured before the
+                        # secondary-table merge below overwrites `item["id"]`
+                        # with the satellite table's own, unrelated
+                        # `id UUID PRIMARY KEY` column -- see rest.py's
+                        # identical comment on its own copy of this merge, and
+                        # FILED_get_id_shadowing_breaking_change.md. `id`
+                        # itself stays shadowed deliberately (redefining it
+                        # would invalidate any value a caller already stored);
+                        # this exposes the real value under a new key instead.
+                        kg_node_canonical_id = item["id"]
                         # kg_nodes' own created_at/updated_at are preserved,
                         # not overwritten by a secondary table's -- see
                         # rest.py's _GRAPH_PRIMARY_TIMESTAMP_COLUMNS.
@@ -466,6 +476,10 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                             )
                             if sec_row:
                                 _merge_secondary_row_preserving_kg_nodes_timestamps(item, sec_row)
+                        # Set AFTER the merge loop -- see rest.py's identical
+                        # comment. Subject to the same redact_item
+                        # tier_allowlist filtering as every other field.
+                        item["canonical_id"] = kg_node_canonical_id
             elif spec.table_name:
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(engine.pg_pool, session_ns) as conn:
