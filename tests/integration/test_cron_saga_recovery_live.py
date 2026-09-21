@@ -63,7 +63,7 @@ async def test_saga_recovery_finds_memory_id_from_real_jsonb_payload(
             "INSERT INTO memories (id, namespace_id, payload_ref) VALUES ($1, $2, $3)",
             memory_id,
             namespace_id,
-            "test-payload-ref",
+            "0" * 24,  # ck_payload_ref_objectid_format requires 24 hex chars
         )
         await conn.execute(
             """
