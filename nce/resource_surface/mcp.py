@@ -32,6 +32,7 @@ from nce.mcp_errors import mcp_handler
 from nce.resource_surface.rest import (
     WriteCoercionError,
     _get_mem_bucket,
+    _merge_secondary_row_preserving_kg_nodes_timestamps,
     coerce_writable_values,
     compute_secondary_write_data,
     row_to_dict,
@@ -454,6 +455,9 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                     if row:
                         item = row_to_dict(row)
                         node_label = item["label"]
+                        # kg_nodes' own created_at/updated_at are preserved,
+                        # not overwritten by a secondary table's -- see
+                        # rest.py's _GRAPH_PRIMARY_TIMESTAMP_COLUMNS.
                         for sec in spec.secondary_tables:
                             sec_row = await conn.fetchrow(
                                 f"SELECT * FROM {sec.table_name} WHERE namespace_id = $1 AND {sec.join_field} = $2",
@@ -461,7 +465,7 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                                 node_label,
                             )
                             if sec_row:
-                                item.update(row_to_dict(sec_row))
+                                _merge_secondary_row_preserving_kg_nodes_timestamps(item, sec_row)
             elif spec.table_name:
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(engine.pg_pool, session_ns) as conn:
