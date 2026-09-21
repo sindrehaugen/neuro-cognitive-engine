@@ -11,7 +11,7 @@ import json
 import time
 from contextlib import asynccontextmanager
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 import asyncpg  # type: ignore[import-untyped]
@@ -312,6 +312,100 @@ async def test_numeric_field_materiality(pg_pool: asyncpg.Pool, make_namespace: 
     assert row["nce_value"] == "2"
     assert row["ext_value"] == "4"
     assert float(row["materiality"]) == 0.5
+
+
+# ---------------------------------------------------------------------------
+# Alerting coverage (FILED_sales_d365_alerting_coverage_gap_2026-09-21.md)
+#
+# Every prior test in this file asserts the divergence_log ROW but never
+# dispatch_alert itself. Lane H proved that gap by mutating record_divergence's
+# alert default to False and finding this whole file (98 tests across five
+# files) still passed -- none of them reference dispatch_alert/dispatcher at
+# all. A future change that silently stopped Sales/D365 paging (a default
+# flip, a wrong kwarg at the shared record_divergence call site) would be
+# caught by Finago's own suite and pass silently here. These two tests mirror
+# test_economy_finago.py's test_materiality_just_above_threshold_is_material_
+# and_alerts / test_materiality_below_threshold_is_not_material pair, proven
+# independently on the Sales/D365 pairing rather than assumed from Finago's
+# proof of the shared function.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_sales_divergence_material_dispatches_alert(
+    pg_pool: asyncpg.Pool, make_namespace: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NCE_DIVERGENCE_ALERT_THRESHOLD", "0.2")
+    ns_id: UUID = await make_namespace()
+    engine = _make_engine_stub(pg_pool)
+
+    async with pg_pool.acquire() as conn:
+        await set_namespace_context(conn, ns_id)
+        await _seed_mode(
+            conn, namespace_id=ns_id, engine="sales", function="sales_overview", mode="both"
+        )
+
+    # nce=2, ext=4 -> materiality = abs(2-4) / max(2,4,1) = 0.5, above the 0.2 threshold.
+    native_data = {"stages": [{"stage": "G1"}, {"stage": "G2"}]}
+    external_data = {"stages": [{"stage": "G1"}, {"stage": "G2"}, {"stage": "G3"}, {"stage": "G4"}]}
+
+    mock_dispatch = AsyncMock()
+    with (
+        patch("nce.source_mode.divergence.dispatcher.dispatch_alert", mock_dispatch),
+        patch(
+            "nce.vertical_modules.sales.read_model.do_sales_overview",
+            side_effect=[native_data, external_data],
+        ),
+    ):
+        await do_sales_overview(engine, {"namespace_id": ns_id})
+
+    mock_dispatch.assert_awaited_once()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_sales_divergence_immaterial_does_not_alert(
+    pg_pool: asyncpg.Pool, make_namespace: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other direction of the same gap: a real but sub-threshold
+    divergence still writes its divergence_log row (unchanged) but must NOT
+    page -- confirms the alert path is genuinely threshold-gated for
+    Sales/D365, not merely never exercised at all."""
+    monkeypatch.setenv("NCE_DIVERGENCE_ALERT_THRESHOLD", "0.2")
+    ns_id: UUID = await make_namespace()
+    engine = _make_engine_stub(pg_pool)
+
+    async with pg_pool.acquire() as conn:
+        await set_namespace_context(conn, ns_id)
+        await _seed_mode(
+            conn, namespace_id=ns_id, engine="sales", function="sales_overview", mode="both"
+        )
+
+    # nce=10, ext=12 -> materiality = abs(10-12) / max(10,12,1) = 0.1667, below the 0.2 threshold.
+    native_data = {"stages": [{"stage": f"G{i}"} for i in range(10)]}
+    external_data = {"stages": [{"stage": f"G{i}"} for i in range(12)]}
+
+    mock_dispatch = AsyncMock()
+    with (
+        patch("nce.source_mode.divergence.dispatcher.dispatch_alert", mock_dispatch),
+        patch(
+            "nce.vertical_modules.sales.read_model.do_sales_overview",
+            side_effect=[native_data, external_data],
+        ),
+    ):
+        await do_sales_overview(engine, {"namespace_id": ns_id})
+
+    async with pg_pool.acquire() as conn:
+        await set_namespace_context(conn, ns_id)
+        row = await conn.fetchrow(
+            "SELECT materiality FROM divergence_log WHERE namespace_id = $1 AND engine = 'sales'",
+            ns_id,
+        )
+    assert row is not None, "a genuine (if sub-threshold) divergence must still be logged"
+    assert float(row["materiality"]) == pytest.approx(2 / 12)
+
+    mock_dispatch.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
