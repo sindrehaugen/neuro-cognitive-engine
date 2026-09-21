@@ -297,6 +297,95 @@ def compute_secondary_write_data(spec: ResourceSpec, data: dict[str, Any]) -> di
     return sec_data
 
 
+async def resolve_canonical_identifier(
+    conn: Any,
+    spec: ResourceSpec,
+    ns_uuid: Any,
+    candidate_id: str,
+    is_global: bool,
+) -> str | None:
+    """Resolve ``candidate_id`` to the row's real, canonical identifier for
+    this spec, or ``None`` if it identifies nothing.
+
+    Extracted from #401's fix to ``mcp.py``'s ``handle_upsert``, which built
+    exactly this resolution for the 9 graph-primary specs (kg_nodes-first,
+    then each secondary table's own id, mapped back through its
+    ``join_field``) to stop a caller-supplied identifier from silently
+    targeting the wrong row. Shared here so a second caller -- the
+    comment/tag write-time validation this function exists for -- gets the
+    same, already-proven resolution rather than a second copy that can
+    drift, the same "one implementation, not two copies" reasoning as
+    :func:`upsert_secondary_tables` above.
+
+    Returns the CANONICAL value, not just a yes/no: existence alone does
+    not close the fragmentation bug this exists for. GET's shadowed id and
+    the row's real label both "exist" -- they are two different strings
+    identifying the same row, and a caller who comments via one and later
+    queries via the other needs both to land on the same
+    ``v3_cognitive_ledger`` entity_id. Found live, in this function's own
+    first version, before it shipped: a comment written via the shadowed
+    id (existence check passing) was still invisible when queried by the
+    real label, because the raw caller-supplied string -- not the resolved
+    one -- was what got stored. Callers of this function must store its
+    RETURN VALUE as the entity_id, never the caller's original argument.
+
+    The relational branch (``elif spec.table_name``) is REUSED, not newly
+    proven: no verb has previously resolved a caller-supplied identifier
+    for the purpose of REFUSING a write, only for reading or targeting one
+    that already exists. It is correct by inspection -- none of the 47
+    relational specs have ``secondary_tables`` (measured directly, not
+    assumed), so there is no secondary-table id to shadow ``id_field`` the
+    way kg_nodes' surrogate id is shadowed for the 9 graph-primary specs --
+    but it has not been exercised in this specific role before. For a
+    relational spec the canonical value IS the candidate (no shadowing
+    possible), fetched back from the row rather than trusted verbatim, so
+    the return contract is identical for both branches.
+
+    Existence only, not activity: does not distinguish an archived
+    (soft-deleted) row from an active one, since a soft-deleted row is
+    still a real row and the callers of this function need "does this
+    identify something real", not "is it currently active".
+    """
+    if spec.tenant_scope == "graph":
+        existing = await conn.fetchrow(
+            """
+            SELECT label FROM kg_nodes
+            WHERE entity_type = $1 AND namespace_id = $2
+              AND (label = $3 OR id::text = $3)
+            """,
+            spec.node_type,
+            ns_uuid,
+            candidate_id,
+        )
+        if existing:
+            return str(existing["label"])
+        for sec in spec.secondary_tables:
+            sec_row = await conn.fetchrow(
+                f"SELECT {sec.join_field} FROM {sec.table_name} "
+                f"WHERE namespace_id = $1 AND id::text = $2",
+                ns_uuid,
+                candidate_id,
+            )
+            if sec_row:
+                return str(sec_row[sec.join_field])
+        return None
+    if spec.table_name:
+        if is_global:
+            row = await conn.fetchrow(
+                f"SELECT {spec.id_field} FROM {spec.table_name} WHERE {spec.id_field} = $1",
+                candidate_id,
+            )
+        else:
+            row = await conn.fetchrow(
+                f"SELECT {spec.id_field} FROM {spec.table_name} "
+                f"WHERE namespace_id = $1 AND {spec.id_field} = $2",
+                ns_uuid,
+                candidate_id,
+            )
+        return str(row[spec.id_field]) if row else None
+    return None
+
+
 async def upsert_secondary_tables(
     conn: Any,
     spec: ResourceSpec,
@@ -1675,8 +1764,32 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             try:
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                    # Write-time only: v3_cognitive_ledger's comment/tag
+                    # entries have no FK to a real resource, so a bogus or
+                    # mistyped id previously succeeded silently and could
+                    # never be found again -- including the specific case
+                    # of a GET response's own "id" field for a
+                    # graph-primary spec with a secondary table, which is
+                    # that table's own primary key, not kg_nodes.label
+                    # (see #401). Storing the RESOLVED canonical value,
+                    # not the caller's raw argument, is what actually
+                    # closes the fragmentation: existence alone would
+                    # accept the shadowed id but still file the comment
+                    # under a string the real label was never queried
+                    # against. Reads (handle_list_comments) are untouched,
+                    # so a comment written before this check existed stays
+                    # queryable.
+                    canonical_id = await resolve_canonical_identifier(
+                        conn, spec, session_ns, str(item_id), is_global
+                    )
+                    if canonical_id is None:
+                        return admin_error_response(
+                            f"{spec.node_type} {item_id} not found",
+                            KeyError("Resource not found"),
+                            status_code=404,
+                        )
                     res = await append_entity_comment(
-                        conn, session_ns, spec, str(item_id), str(comment_text), str(author)
+                        conn, session_ns, spec, canonical_id, str(comment_text), str(author)
                     )
                     return JSONResponse({"status": "ok", "comment": res}, status_code=201)
             except Exception as exc:
@@ -1744,7 +1857,19 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             try:
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
-                    tags = await add_entity_tag(conn, session_ns, spec, str(item_id), str(tag))
+                    # Write-time validation -- see handle_add_comment's own
+                    # comment for the full reasoning; same helper, storing
+                    # the resolved canonical value, not the raw argument.
+                    canonical_id = await resolve_canonical_identifier(
+                        conn, spec, session_ns, str(item_id), is_global
+                    )
+                    if canonical_id is None:
+                        return admin_error_response(
+                            f"{spec.node_type} {item_id} not found",
+                            KeyError("Resource not found"),
+                            status_code=404,
+                        )
+                    tags = await add_entity_tag(conn, session_ns, spec, canonical_id, str(tag))
                     return JSONResponse({"status": "ok", "tags": tags})
             except Exception as exc:
                 return admin_error_response(f"Failed to add tag: {exc}", exc, status_code=500)
@@ -1774,7 +1899,19 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             try:
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
-                    tags = await remove_entity_tag(conn, session_ns, spec, str(item_id), str(tag))
+                    # Write-time validation -- see handle_add_comment's own
+                    # comment for the full reasoning; same helper, storing
+                    # the resolved canonical value, not the raw argument.
+                    canonical_id = await resolve_canonical_identifier(
+                        conn, spec, session_ns, str(item_id), is_global
+                    )
+                    if canonical_id is None:
+                        return admin_error_response(
+                            f"{spec.node_type} {item_id} not found",
+                            KeyError("Resource not found"),
+                            status_code=404,
+                        )
+                    tags = await remove_entity_tag(conn, session_ns, spec, canonical_id, str(tag))
                     return JSONResponse({"status": "ok", "tags": tags})
             except Exception as exc:
                 return admin_error_response(f"Failed to remove tag: {exc}", exc, status_code=500)
