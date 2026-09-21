@@ -22,6 +22,7 @@ Responsibilities
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 from uuid import UUID
@@ -30,6 +31,24 @@ from nce.db_utils import scoped_pg_session
 from nce.vertical_modules.system_design.devices import _upsert_capability
 
 log = logging.getLogger("nce.vertical_modules.system_design.capability_sync")
+
+
+def _decode_etim_specs(raw: Any) -> dict[str, Any]:
+    """``product_catalog.etim_specs`` is jsonb; no jsonb codec is registered on
+    the pool (checked -- see nce/semantic_search.py's own comment on the same
+    fact), so asyncpg always hands back the column as a raw JSON string, never
+    a dict. The previous ``isinstance(raw, dict)`` guard was therefore always
+    False against a real row, silently discarding the product's existing
+    specs before merging in a caller's override -- confirmed live: not
+    write-through (product_catalog itself is only ever read here, never
+    written), but every computed device-capability row ends up missing every
+    field the discarded specs would have supplied.
+    """
+    if isinstance(raw, str):
+        return json.loads(raw) if raw else {}
+    if isinstance(raw, dict):
+        return raw
+    return {}
 
 
 def _extract_capabilities_from_etim(
@@ -139,7 +158,7 @@ async def do_sync_device_capabilities(
             if row:
                 resolved_mfr = row["manufacturer"]
                 resolved_part = row["mfr_part_no"]
-                etim_specs = row["etim_specs"] if isinstance(row["etim_specs"], dict) else {}
+                etim_specs = _decode_etim_specs(row["etim_specs"])
         elif mfr_part_no:
             query = """
                 SELECT id, manufacturer, mfr_part_no, etim_specs
@@ -155,7 +174,7 @@ async def do_sync_device_capabilities(
             if row:
                 resolved_mfr = row["manufacturer"]
                 resolved_part = row["mfr_part_no"]
-                etim_specs = row["etim_specs"] if isinstance(row["etim_specs"], dict) else {}
+                etim_specs = _decode_etim_specs(row["etim_specs"])
 
         # Merge explicit ETIM overrides from params
         if "etim_specs" in params and isinstance(params["etim_specs"], dict):

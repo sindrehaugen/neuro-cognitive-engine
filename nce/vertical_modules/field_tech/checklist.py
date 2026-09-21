@@ -278,6 +278,14 @@ async def do_complete_checklist(engine: Any, params: dict[str, Any]) -> dict[str
         res["updated_at"] = res["updated_at"].isoformat()
     if res.get("completed_at"):
         res["completed_at"] = res["completed_at"].isoformat()
+    # items/raw are JSONB; this pool registers no jsonb codec, so the
+    # RETURNING clause above hands back raw JSON strings for both, never
+    # decoded dicts/lists -- found while fixing the named work_orders.py/
+    # partner_view.py sites in the same PR (same file family, same shape).
+    # Same isinstance-guarded decode as resources/field_schedule.py's own
+    # checklists.items handling.
+    res["items"] = json.loads(res["items"]) if isinstance(res["items"], str) else res["items"]
+    res["raw"] = json.loads(res["raw"]) if isinstance(res["raw"], str) else dict(res["raw"] or {})
     res["missing_required"] = missing_required
     res["is_complete"] = completed
     res["tested_lines"] = tested_lines

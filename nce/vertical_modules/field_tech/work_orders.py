@@ -60,6 +60,19 @@ class WorkOrderInvalidTransitionError(BusinessRefusalError):
     """Work order status transition is invalid."""
 
 
+def _decode_raw(value: Any) -> dict[str, Any]:
+    """work_orders.raw / checklists.raw is JSONB NOT NULL DEFAULT '{}'::jsonb --
+    this pool registers no jsonb codec, so asyncpg hands back the raw JSON
+    string, never a decoded dict. Every dict(row) conversion in this file
+    was returning that string verbatim -- a caller reading response["raw"]
+    as a dict (the schema's own type) would get a TypeError indexing a
+    string. Same isinstance-guarded shape as
+    nce/vertical_modules/resources/field_schedule.py's checklists.items
+    handling, the in-repo precedent for this exact column family.
+    """
+    return json.loads(value) if isinstance(value, str) else dict(value or {})
+
+
 def _extract_pool(engine_or_pool: Any) -> Any:
     if hasattr(engine_or_pool, "pg_pool") and (
         "pg_pool" in getattr(engine_or_pool, "__dict__", {})
@@ -241,6 +254,7 @@ async def do_create_work_order(engine: Any, params: dict[str, Any]) -> dict[str,
         result["updated_at"] = result["updated_at"].isoformat()
     if result.get("due_at"):
         result["due_at"] = result["due_at"].isoformat()
+    result["raw"] = _decode_raw(result["raw"])
     result["bom_lines"] = bom_lines
     return result
 
@@ -304,6 +318,7 @@ async def do_get_work_order(engine: Any, params: dict[str, Any]) -> dict[str, An
         res["updated_at"] = res["updated_at"].isoformat()
     if res.get("due_at"):
         res["due_at"] = res["due_at"].isoformat()
+    res["raw"] = _decode_raw(res["raw"])
 
     res["checklists"] = [dict(r) for r in cl_rows]
     for cl in res["checklists"]:
@@ -311,6 +326,10 @@ async def do_get_work_order(engine: Any, params: dict[str, Any]) -> dict[str, An
             cl["created_at"] = cl["created_at"].isoformat()
         if cl.get("completed_at"):
             cl["completed_at"] = cl["completed_at"].isoformat()
+        # checklists.items is JSONB NOT NULL DEFAULT '[]'::jsonb -- same
+        # isinstance-guarded decode as
+        # resources/field_schedule.py's own checklists.items handling.
+        cl["items"] = json.loads(cl["items"]) if isinstance(cl["items"], str) else cl["items"]
 
     res["time_entries"] = [dict(r) for r in te_rows]
     for te in res["time_entries"]:
@@ -372,6 +391,7 @@ async def do_query_work_order(engine: Any, params: dict[str, Any]) -> dict[str, 
             d["updated_at"] = d["updated_at"].isoformat()
         if d.get("due_at"):
             d["due_at"] = d["due_at"].isoformat()
+        d["raw"] = _decode_raw(d["raw"])
         work_orders.append(d)
 
     return {
@@ -479,6 +499,7 @@ async def do_assign(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
         res["updated_at"] = res["updated_at"].isoformat()
     if res.get("due_at"):
         res["due_at"] = res["due_at"].isoformat()
+    res["raw"] = _decode_raw(res["raw"])
     return res
 
 

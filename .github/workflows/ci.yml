@@ -1224,6 +1224,13 @@ jobs:
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/integration/test_documents_jsonb_metadata_live.py -m integration -q --tb=short
 
+      - name: Integration — admin handlers decode jsonb reads (tests/integration/test_admin_jsonb_read_decode_live.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/integration/test_admin_jsonb_read_decode_live.py -m integration -q --tb=short
+
       - name: Integration — sub-resource identifier resolution (comments, tags, documents) (tests/integration/test_resource_surface_subresource_write_validation_live.py)
         env:
           PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
@@ -1237,6 +1244,13 @@ jobs:
           NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/integration/test_jsonb_string_decode_live.py -m integration -q --tb=short
+
+      - name: Integration — field_tech jsonb decode (work_orders.raw, checklists.items) (tests/integration/test_field_tech_jsonb_decode_live.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/integration/test_field_tech_jsonb_decode_live.py -m integration -q --tb=short
 
       # Wave C-6: PROJECT_PROJECT C12 resource declaration (thin kg_nodes-
       # primary identity only -- kg_nodes has no attribute storage for any
@@ -1297,6 +1311,21 @@ jobs:
           NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
           NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
         run: pytest tests/integration/test_marketing_admin_listings_jsonb_decode_live.py -m integration -q --tb=short
+
+      # product_catalog.etim_specs is jsonb; no jsonb codec is registered on
+      # this pool, so asyncpg always hands it back as a raw JSON string. The
+      # pre-fix `isinstance(row["etim_specs"], dict)` guard was always False
+      # against a real row, silently discarding the product's existing specs
+      # before merging a caller's override -- not write-through
+      # (product_catalog is only ever SELECTed here, confirmed live), but
+      # every computed system_design_device_capabilities row was missing
+      # every field the discarded specs would have supplied.
+      - name: Integration — capability_sync ETIM specs merge (tests/integration/test_capability_sync_etim_merge_live.py)
+        env:
+          PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+          NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+          NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: "1"
+        run: pytest tests/integration/test_capability_sync_etim_merge_live.py -m integration -q --tb=short
 
 
   # REST-surface mutations must invalidate the MCP response cache.
