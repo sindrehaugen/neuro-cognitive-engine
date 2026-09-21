@@ -78,21 +78,33 @@ async def api_admin_d365_integrations(request):
     except Exception as exc:
         return admin_error_response("Failed to fetch D365 integrations", exc, status_code=500)
 
-    items = [
-        {
-            "id": str(r["id"]),
-            "namespace_id": str(r["namespace_id"]),
-            "namespace_slug": r["namespace_slug"],
-            "org_url": r["org_url"],
-            "status": r["status"],
-            "last_sync_at": r["last_sync_at"].isoformat() if r["last_sync_at"] else None,
-            "last_sync_stats": r["last_sync_stats"],
-            "created_at": r["created_at"].isoformat(),
-            "updated_at": r["updated_at"].isoformat(),
-            "d365_enabled": bool(r["d365_enabled"]),
-        }
-        for r in rows
-    ]
+    items = []
+    for r in rows:
+        # This pool has no jsonb codec (asyncpg hands back the raw JSON
+        # text) -- last_sync_stats is written via ::jsonb (see
+        # api_admin_d365_sync_now below) but never decoded on read, so
+        # without this it reaches JSONResponse as an escaped string
+        # instead of an object.
+        last_sync_stats = r["last_sync_stats"]
+        if isinstance(last_sync_stats, str):
+            try:
+                last_sync_stats = json.loads(last_sync_stats)
+            except (TypeError, ValueError):
+                pass
+        items.append(
+            {
+                "id": str(r["id"]),
+                "namespace_id": str(r["namespace_id"]),
+                "namespace_slug": r["namespace_slug"],
+                "org_url": r["org_url"],
+                "status": r["status"],
+                "last_sync_at": r["last_sync_at"].isoformat() if r["last_sync_at"] else None,
+                "last_sync_stats": last_sync_stats,
+                "created_at": r["created_at"].isoformat(),
+                "updated_at": r["updated_at"].isoformat(),
+                "d365_enabled": bool(r["d365_enabled"]),
+            }
+        )
 
     return JSONResponse({"total": count_row["total"], "items": items})
 
