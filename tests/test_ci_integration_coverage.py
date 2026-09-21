@@ -719,9 +719,18 @@ def test_has_integration_marker_detects_a_decorator_marker(tmp_path: Path) -> No
 # Git history is where these three shapes were FOUND, not what the test is
 # about: the property under test is "_has_integration_marker returns True /
 # True / False for these three specific source shapes," which needs no
-# repository, only the text. Vendored here as the real, unmodified content
-# (module docstring plus the marker line's real surrounding context) from
-# each commit, with the SHA kept in a comment so the provenance is not lost.
+# repository, only the text. Vendored here as EXCERPTS of each commit's real
+# content, not always byte-identical: the imports and the actual
+# `pytestmark = pytest.mark.integration` statement are verbatim in all three
+# (the only lines `_has_integration_marker` inspects), but the two
+# true-positive modules' docstring prose is shortened for length --
+# confirmed by diffing all three against fresh `git show <sha>:<path>`
+# fetches (2026-09-21): `_FALSE_POSITIVE_MODULE_b46bc8c` is an exact
+# substring of the real file; the other two match for the first several
+# hundred characters, then their docstrings are trimmed. Re-verified after
+# trimming that the mutation below still reproduces the same failures
+# across the same files, so the shortening reaches no structural part of
+# either shape. SHAs kept in comments so the provenance is not lost.
 
 # tests/integration/test_resource_surface_comment_tag_validation_live.py at
 # commit 53ab458 -- added with a real top-level marker, genuinely unwired
