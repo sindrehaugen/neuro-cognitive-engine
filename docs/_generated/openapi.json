@@ -6,7 +6,10 @@
         "properties": {
           "agreement_number": {
             "description": "Field agreement_number",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "agreement_type": {
             "description": "Field agreement_type",
@@ -14,7 +17,10 @@
           },
           "annual_value": {
             "description": "Field annual_value",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "auto_renewal": {
             "description": "Field auto_renewal",
@@ -30,15 +36,24 @@
           },
           "customer_id": {
             "description": "Field customer_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "deal_id": {
             "description": "Field deal_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "end_date": {
             "description": "Field end_date",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -53,23 +68,38 @@
           },
           "monthly_value": {
             "description": "Field monthly_value",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "notice_period_days": {
             "description": "Field notice_period_days",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "oneflow_contract_id": {
             "description": "Field oneflow_contract_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "payment_terms_days": {
             "description": "Field payment_terms_days",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "start_date": {
             "description": "Field start_date",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "status": {
             "description": "Field status",
@@ -156,8 +186,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -250,7 +282,10 @@
           },
           "org_number": {
             "description": "Field org_number",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "party_name": {
             "description": "Field party_name",
@@ -266,15 +301,24 @@
           },
           "signatory_email": {
             "description": "Field signatory_email",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "signatory_name": {
             "description": "Field signatory_name",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "signature_source": {
             "description": "Field signature_source",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "signature_status": {
             "description": "Field signature_status",
@@ -282,7 +326,10 @@
           },
           "signed_at": {
             "description": "Field signed_at",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -343,8 +390,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -404,7 +453,10 @@
         "properties": {
           "body_template": {
             "description": "Field body_template",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "category": {
             "description": "Field category",
@@ -412,7 +464,10 @@
           },
           "code": {
             "description": "Field code",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "default_terms": {
             "description": "Field default_terms",
@@ -420,7 +475,10 @@
           },
           "description": {
             "description": "Field description",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -498,8 +556,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -561,7 +621,10 @@
           },
           "functional_location_id": {
             "description": "Field functional_location_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -577,15 +640,24 @@
           },
           "product_id": {
             "description": "Field product_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "product_sku": {
             "description": "Field product_sku",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "serial": {
             "description": "Field serial",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -637,8 +709,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -689,7 +763,10 @@
         "properties": {
           "business_insights_source_id": {
             "description": "Field business_insights_source_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "captured_at": {
             "description": "Field captured_at",
@@ -717,7 +794,10 @@
           },
           "value": {
             "description": "Field value",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -762,8 +842,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -818,11 +900,17 @@
           },
           "file_name": {
             "description": "Field file_name",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "file_size_bytes": {
             "description": "Field file_size_bytes",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -834,11 +922,17 @@
           },
           "mime_type": {
             "description": "Field mime_type",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "sha256": {
             "description": "Field sha256",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "source_kind": {
             "description": "Field source_kind",
@@ -911,8 +1005,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -972,7 +1068,10 @@
         "properties": {
           "customer_id": {
             "description": "Field customer_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -1015,8 +1114,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -1082,8 +1183,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -1149,8 +1252,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -1181,7 +1286,10 @@
           },
           "customer_id": {
             "description": "Field customer_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -1220,8 +1328,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -1264,7 +1374,10 @@
           },
           "period_id": {
             "description": "Field period_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -1287,8 +1400,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -1409,7 +1524,10 @@
           },
           "completed_at": {
             "description": "Field completed_at",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -1421,7 +1539,10 @@
           },
           "partner_scope_id": {
             "description": "Field partner_scope_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "template_id": {
             "description": "Field template_id",
@@ -1475,8 +1596,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -1525,7 +1648,10 @@
           },
           "ended_at": {
             "description": "Field ended_at",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -1533,7 +1659,10 @@
           },
           "partner_scope_id": {
             "description": "Field partner_scope_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "source": {
             "description": "Field source",
@@ -1595,8 +1724,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -1641,15 +1772,24 @@
         "properties": {
           "assignee_id": {
             "description": "Field assignee_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "assignee_kind": {
             "description": "Field assignee_kind",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "due_at": {
             "description": "Field due_at",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -1661,11 +1801,17 @@
           },
           "location_id": {
             "description": "Field location_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "partner_scope_id": {
             "description": "Field partner_scope_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "priority": {
             "description": "Field priority",
@@ -1753,8 +1899,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -1833,11 +1981,17 @@
           },
           "end_date": {
             "description": "Field end_date",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "hr_source_id": {
             "description": "Field hr_source_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -1849,7 +2003,10 @@
           },
           "reason": {
             "description": "Field reason",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "start_date": {
             "description": "Field start_date",
@@ -1922,8 +2079,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -1995,7 +2154,10 @@
           },
           "hr_source_id": {
             "description": "Field hr_source_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -2023,7 +2185,10 @@
           },
           "valid_to": {
             "description": "Field valid_to",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -2074,8 +2239,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -2137,7 +2304,10 @@
           },
           "email": {
             "description": "Field email",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "employee_id": {
             "description": "Field employee_id",
@@ -2145,7 +2315,10 @@
           },
           "hr_source_id": {
             "description": "Field hr_source_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -2157,7 +2330,10 @@
           },
           "location_id": {
             "description": "Field location_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "name": {
             "description": "Field name",
@@ -2227,8 +2403,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -2297,7 +2475,10 @@
           },
           "hr_source_id": {
             "description": "Field hr_source_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -2369,8 +2550,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -2421,7 +2604,10 @@
         "properties": {
           "delivery_note_ref": {
             "description": "Field delivery_note_ref",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -2437,7 +2623,10 @@
           },
           "match_result": {
             "description": "Field match_result",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "po_ref": {
             "description": "Field po_ref",
@@ -2498,8 +2687,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -2617,8 +2808,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -2683,7 +2876,10 @@
           },
           "serial": {
             "description": "Field serial",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "sku": {
             "description": "Field sku",
@@ -2729,8 +2925,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -2787,7 +2985,10 @@
           },
           "parent_id": {
             "description": "Field parent_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "raw": {
             "description": "Field raw",
@@ -2799,7 +3000,10 @@
           },
           "vehicle_ref": {
             "description": "Field vehicle_ref",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -2841,8 +3045,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -2894,7 +3100,10 @@
           },
           "group_parent_org_nr": {
             "description": "Field group_parent_org_nr",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -2963,8 +3172,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -3016,11 +3227,17 @@
           },
           "approved_at": {
             "description": "Field approved_at",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "approver": {
             "description": "Field approver",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "body": {
             "description": "Field body",
@@ -3032,7 +3249,10 @@
           },
           "marketing_source_id": {
             "description": "Field marketing_source_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "project_id": {
             "description": "Field project_id",
@@ -3103,8 +3323,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -3166,11 +3388,17 @@
           },
           "marketing_source_id": {
             "description": "Field marketing_source_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "ref_id": {
             "description": "Field ref_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "seo": {
             "description": "Field seo",
@@ -3182,7 +3410,10 @@
           },
           "storage_uri": {
             "description": "Field storage_uri",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "title": {
             "description": "Field title",
@@ -3235,8 +3466,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -3288,7 +3521,10 @@
           },
           "consent_recorded_at": {
             "description": "Field consent_recorded_at",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "consent_scope": {
             "description": "Field consent_scope",
@@ -3308,15 +3544,24 @@
           },
           "marketing_source_id": {
             "description": "Field marketing_source_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "nps_at_capture": {
             "description": "Field nps_at_capture",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "project_id": {
             "description": "Field project_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "quote": {
             "description": "Field quote",
@@ -3382,8 +3627,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -3459,11 +3706,17 @@
           },
           "read_at": {
             "description": "Field read_at",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "seen_at": {
             "description": "Field seen_at",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "severity": {
             "description": "Field severity",
@@ -3471,11 +3724,17 @@
           },
           "source_id": {
             "description": "Field source_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "source_selector": {
             "description": "Field source_selector",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "title": {
             "description": "Field title",
@@ -3537,8 +3796,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -3595,7 +3856,10 @@
         "properties": {
           "fired_at": {
             "description": "Field fired_at",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -3685,8 +3949,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -3821,7 +4087,10 @@
           },
           "estimated_value": {
             "description": "Field estimated_value",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -3832,11 +4101,17 @@
           },
           "notes": {
             "description": "Field notes",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "registered_by": {
             "description": "Field registered_by",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "status": {
             "description": "Field status",
@@ -3852,11 +4127,17 @@
           },
           "valid_from": {
             "description": "Field valid_from",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "valid_to": {
             "description": "Field valid_to",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -3904,8 +4185,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -3968,7 +4251,10 @@
           },
           "project_id": {
             "description": "Field project_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "status": {
             "description": "Field status",
@@ -3999,8 +4285,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -4031,7 +4319,10 @@
           },
           "description": {
             "description": "Field description",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -4079,8 +4370,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -4120,7 +4413,10 @@
           },
           "gtin": {
             "description": "Field gtin",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -4189,8 +4485,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -4269,8 +4567,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -4308,7 +4608,10 @@
           },
           "demand_id": {
             "description": "Field demand_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "demand_kind": {
             "description": "Field demand_kind",
@@ -4320,7 +4623,10 @@
           },
           "functional_location_id": {
             "description": "Field functional_location_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -4391,8 +4697,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -4462,7 +4770,10 @@
           },
           "ref_id": {
             "description": "Field ref_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -4502,8 +4813,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -4546,7 +4859,10 @@
           },
           "arrival_at": {
             "description": "Field arrival_at",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "attrs": {
             "description": "Field attrs",
@@ -4554,7 +4870,10 @@
           },
           "booking_ref": {
             "description": "Field booking_ref",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "cost_nok": {
             "description": "Field cost_nok",
@@ -4640,8 +4959,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -4702,18 +5023,27 @@
           },
           "email": {
             "description": "Field email",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "label": {
             "type": "string"
           },
           "name": {
             "description": "Field name",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "phone": {
             "description": "Field phone",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -4753,8 +5083,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -4797,7 +5129,10 @@
           },
           "email": {
             "description": "Field email",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -4816,11 +5151,17 @@
           },
           "org_number": {
             "description": "Field org_number",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "phone": {
             "description": "Field phone",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "shipping_address": {
             "description": "Field shipping_address",
@@ -4887,8 +5228,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -4957,7 +5300,10 @@
           },
           "participant_email": {
             "description": "Field participant_email",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "participant_name": {
             "description": "Field participant_name",
@@ -5008,8 +5354,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -5055,11 +5403,17 @@
           },
           "customer_id": {
             "description": "Field customer_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "expected_close_date": {
             "description": "Field expected_close_date",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -5070,7 +5424,10 @@
           },
           "lead_id": {
             "description": "Field lead_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "metadata": {
             "description": "Field metadata",
@@ -5078,7 +5435,10 @@
           },
           "owner_slug": {
             "description": "Field owner_slug",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "probability": {
             "description": "Field probability",
@@ -5152,8 +5512,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -5210,19 +5572,31 @@
         "properties": {
           "company": {
             "description": "Field company",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "contact_name": {
             "description": "Field contact_name",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "customer_id": {
             "description": "Field customer_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "email": {
             "description": "Field email",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "estimated_value": {
             "description": "Field estimated_value",
@@ -5241,7 +5615,10 @@
           },
           "phone": {
             "description": "Field phone",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "source": {
             "description": "Field source",
@@ -5311,8 +5688,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -5369,7 +5748,10 @@
         "properties": {
           "description": {
             "description": "Field description",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -5421,8 +5803,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -5458,7 +5842,10 @@
         "properties": {
           "billing_method": {
             "description": "Field billing_method",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "currency": {
             "description": "Field currency",
@@ -5466,11 +5853,17 @@
           },
           "customer_id": {
             "description": "Field customer_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "deal_id": {
             "description": "Field deal_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -5509,7 +5902,10 @@
           },
           "valid_until": {
             "description": "Field valid_until",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "version": {
             "description": "Field version",
@@ -5573,8 +5969,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -5664,8 +6062,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -5691,14 +6091,20 @@
           },
           "altitude": {
             "description": "Field altitude",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "archived": {
             "type": "boolean"
           },
           "cadastre_id": {
             "description": "Field cadastre_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "footprint_geometry": {
             "description": "Field footprint_geometry",
@@ -5706,7 +6112,10 @@
           },
           "height": {
             "description": "Field height",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -5714,11 +6123,17 @@
           },
           "latitude": {
             "description": "Field latitude",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "longitude": {
             "description": "Field longitude",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "metadata": {
             "description": "Field metadata",
@@ -5734,7 +6149,10 @@
           },
           "telemetry_stream": {
             "description": "Field telemetry_stream",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -5798,8 +6216,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -5878,7 +6298,10 @@
           },
           "last_touchpoint_at": {
             "description": "Field last_touchpoint_at",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "score": {
             "description": "Field score",
@@ -5925,8 +6348,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -5968,7 +6393,10 @@
         "properties": {
           "breach_type": {
             "description": "Field breach_type",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "breached": {
             "description": "Field breached",
@@ -5976,7 +6404,10 @@
           },
           "first_response_due": {
             "description": "Field first_response_due",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "paused_intervals": {
             "description": "Field paused_intervals",
@@ -5984,7 +6415,10 @@
           },
           "resolution_due": {
             "description": "Field resolution_due",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "sla_profile": {
             "description": "Field sla_profile",
@@ -6038,8 +6472,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -6127,8 +6563,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -6155,7 +6593,10 @@
         "properties": {
           "asset_id": {
             "description": "Field asset_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "change_origin": {
             "description": "Field change_origin",
@@ -6163,11 +6604,17 @@
           },
           "customer_id": {
             "description": "Field customer_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "description": {
             "description": "Field description",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -6179,7 +6626,10 @@
           },
           "room_id": {
             "description": "Field room_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "sla_profile": {
             "description": "Field sla_profile",
@@ -6191,7 +6641,10 @@
           },
           "source_id": {
             "description": "Field source_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "status": {
             "description": "Field status",
@@ -6260,8 +6713,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -6328,15 +6783,24 @@
           },
           "revision": {
             "description": "Field revision",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "salience": {
             "description": "Field salience",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "status": {
             "description": "Field status",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -6376,8 +6840,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -6424,11 +6890,17 @@
           },
           "design_id": {
             "description": "Field design_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "functional_location_id": {
             "description": "Field functional_location_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "label": {
             "type": "string"
@@ -6439,7 +6911,10 @@
           },
           "owner_id": {
             "description": "Field owner_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "priority": {
             "description": "Field priority",
@@ -6447,7 +6922,10 @@
           },
           "quote_id": {
             "description": "Field quote_id",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "room_spec": {
             "description": "Field room_spec",
@@ -6520,8 +6998,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -6615,8 +7095,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -6650,15 +7132,24 @@
           },
           "dante_rx_channels": {
             "description": "Field dante_rx_channels",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "dante_tx_channels": {
             "description": "Field dante_tx_channels",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "device_category": {
             "description": "Field device_category",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "extra": {
             "description": "Field extra",
@@ -6666,46 +7157,76 @@
           },
           "heat_btu_hr": {
             "description": "Field heat_btu_hr",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "label": {
             "type": "string"
           },
           "manufacturer": {
             "description": "Field manufacturer",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "model_number": {
             "description": "Field model_number",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "poe_class": {
             "description": "Field poe_class",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "poe_watts": {
             "description": "Field poe_watts",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "power_draw_watts": {
             "description": "Field power_draw_watts",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "redundancy_role": {
             "description": "Field redundancy_role",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "revision": {
             "description": "Field revision",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "salience": {
             "description": "Field salience",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "status": {
             "description": "Field status",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -6778,8 +7299,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -6885,8 +7408,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -6920,42 +7445,69 @@
           },
           "dante_rx_channels": {
             "description": "Field dante_rx_channels",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "dante_tx_channels": {
             "description": "Field dante_tx_channels",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "label": {
             "type": "string"
           },
           "manufacturer": {
             "description": "Field manufacturer",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "model_number": {
             "description": "Field model_number",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "poe_class": {
             "description": "Field poe_class",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "poe_watts": {
             "description": "Field poe_watts",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "port_direction": {
             "description": "Field port_direction",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "signal_format": {
             "description": "Field signal_format",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "signal_version": {
             "description": "Field signal_version",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -7013,8 +7565,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",
@@ -7075,7 +7629,10 @@
           },
           "device_category": {
             "description": "Field device_category",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "extra": {
             "description": "Field extra",
@@ -7083,38 +7640,62 @@
           },
           "heat_btu_hr": {
             "description": "Field heat_btu_hr",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "label": {
             "type": "string"
           },
           "manufacturer": {
             "description": "Field manufacturer",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "model_number": {
             "description": "Field model_number",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "power_draw_watts": {
             "description": "Field power_draw_watts",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "redundancy_role": {
             "description": "Field redundancy_role",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "revision": {
             "description": "Field revision",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "salience": {
             "description": "Field salience",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "status": {
             "description": "Field status",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -7175,8 +7756,10 @@
           },
           "next_cursor": {
             "description": "Cursor token for fetching the next page",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "total": {
             "description": "Total matching count if requested",

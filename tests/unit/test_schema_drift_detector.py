@@ -466,3 +466,141 @@ def test_compare_objects_is_clean_when_everything_is_present() -> None:
 
     state = {"index": {"a", "b"}, "trigger": {"t"}, "function": {"f"}, "constraint": {"c"}}
     assert compare_objects(state, state) == {}
+
+
+# ---------------------------------------------------------------------------
+# expected_column_nullability() -- added for gen_openapi.py, NOT part of
+# this checker's own drift comparison (see the module docstring: still not
+# compared, on purpose). Same static read of schema.sql, same table-name
+# normalisation as expected_columns() -- these tests pin that the
+# extraction itself is correct, independent of what any consumer does with
+# the answer.
+# ---------------------------------------------------------------------------
+
+from check_schema_drift import (  # noqa: E402
+    _is_not_null,
+    _strip_parens,
+    expected_column_nullability,
+)
+
+
+def test_not_null_column_is_reported_not_nullable() -> None:
+    from check_schema_drift import _extract_create_table_defs
+
+    sql = """
+    CREATE TABLE t (
+        id UUID NOT NULL DEFAULT gen_random_uuid(),
+        required_field TEXT NOT NULL
+    );
+    """
+    defs = _extract_create_table_defs(sql)
+    assert _is_not_null(defs["t"]["id"]) is True
+    assert _is_not_null(defs["t"]["required_field"]) is True
+
+
+def test_nullable_column_with_no_not_null_is_reported_nullable() -> None:
+    from check_schema_drift import _extract_create_table_defs
+
+    sql = """
+    CREATE TABLE t (
+        id UUID NOT NULL,
+        optional_field TEXT
+    );
+    """
+    defs = _extract_create_table_defs(sql)
+    assert _is_not_null(defs["t"]["optional_field"]) is False
+
+
+def test_not_null_inside_a_check_clause_is_not_mistaken_for_a_column_constraint() -> None:
+    """🔴 The false-positive risk this parser was built to avoid: an inline
+    CHECK referencing NOT NULL as part of its condition text must not be
+    read as the column's own constraint. No such column exists in
+    schema.sql today (checked directly), but the parser must not start
+    lying the day one is added."""
+    from check_schema_drift import _extract_create_table_defs
+
+    sql = """
+    CREATE TABLE t (
+        id UUID NOT NULL,
+        maybe_a TEXT CHECK (maybe_a IS NOT NULL OR maybe_b IS NOT NULL)
+    );
+    """
+    defs = _extract_create_table_defs(sql)
+    assert _is_not_null(defs["t"]["maybe_a"]) is False, (
+        "an inline CHECK's own NOT NULL text was mistaken for a column-level constraint"
+    )
+
+
+def test_table_level_check_constraint_referencing_not_null_does_not_leak_into_column_parsing() -> (
+    None
+):
+    """The real case, not a synthetic one: `inventory_rma`'s own
+    `CONSTRAINT inventory_rma_disposed_requires_ref CHECK (weee_state <>
+    'disposed' OR disposal_ref IS NOT NULL)` (`schema.sql`) is a
+    table-level constraint clause containing `IS NOT NULL` text, sitting
+    inside the same `CREATE TABLE` body as `disposal_ref`'s own (nullable)
+    column definition. `_TABLE_LEVEL` must filter the whole constraint
+    clause out (it starts with `CONSTRAINT`) before `_is_not_null` ever
+    runs, so `disposal_ref` itself is unaffected by that clause's text."""
+    from check_schema_drift import _extract_create_table_defs
+
+    sql = """
+    CREATE TABLE inventory_rma (
+        id UUID NOT NULL,
+        weee_state TEXT NOT NULL,
+        disposal_ref TEXT,
+        CONSTRAINT inventory_rma_disposed_requires_ref
+            CHECK (weee_state <> 'disposed' OR disposal_ref IS NOT NULL)
+    );
+    """
+    defs = _extract_create_table_defs(sql)
+    assert "inventory_rma_disposed_requires_ref" not in defs["inventory_rma"], (
+        "the table-level CONSTRAINT clause was parsed as if it were a column"
+    )
+    assert _is_not_null(defs["inventory_rma"]["disposal_ref"]) is False, (
+        "the CONSTRAINT clause's own NOT NULL text leaked into disposal_ref's nullability"
+    )
+
+
+def test_strip_parens_removes_nested_groups() -> None:
+    assert _strip_parens("NUMERIC(12, 2) DEFAULT f(a, g(b, c))") == "NUMERIC DEFAULT f"
+
+
+def test_add_column_not_null_is_captured() -> None:
+    """The real, live case in schema.sql today: an ADD COLUMN that declares
+    NOT NULL DEFAULT, not just a bare type."""
+    sql = (
+        "ALTER TABLE memories ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;"
+    )
+    result = expected_column_nullability_from_sql(sql)
+    assert result["memories"]["metadata"] is False
+
+
+def test_add_column_without_not_null_is_nullable() -> None:
+    sql = "ALTER TABLE memories ADD COLUMN IF NOT EXISTS wrapped_dek BYTEA;"
+    result = expected_column_nullability_from_sql(sql)
+    assert result["memories"]["wrapped_dek"] is True
+
+
+def expected_column_nullability_from_sql(sql: str) -> dict[str, dict[str, bool]]:
+    """Test-only helper: run expected_column_nullability()'s own extraction
+    functions against an in-memory SQL string instead of the real
+    schema.sql file, so these tests don't depend on schema.sql's current
+    contents."""
+    from check_schema_drift import _NOT_EXPECTED, _extract_add_column_defs
+
+    result: dict[str, dict[str, bool]] = {}
+    for (table, col), rest in _extract_add_column_defs(sql).items():
+        result.setdefault(table, {})[col] = not _is_not_null(rest)
+    return {t: c for t, c in result.items() if t not in _NOT_EXPECTED}
+
+
+def test_expected_column_nullability_against_the_real_schema_file() -> None:
+    """One live check against the real schema.sql, matching this file's
+    established pattern of also pinning behavior against the real file
+    elsewhere in this suite -- confirms three concrete, already-verified
+    facts rather than only synthetic SQL strings."""
+    result = expected_column_nullability()
+    assert result["system_design_node_state"]["status"] is True
+    assert result["system_design_node_state"]["node_type"] is False
+    assert result["sales_contacts"]["name"] is True

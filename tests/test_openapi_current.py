@@ -280,3 +280,167 @@ def test_positive_control_unschematized_route_fails(openapi_doc):
     assert resp_errors, (
         f"Positive control failed: removing responses from {target_path} was not detected"
     )
+
+
+def _resolve_field_table(spec: Any, field: str) -> str | None:
+    """Same resolution `gen_openapi.py`'s `_writable_field_is_nullable` does
+    -- kept here as its own small, independent walk (not a call into the
+    generator's private helper) so this test verifies the generator's real
+    output against the same source data, not against itself."""
+    for sec in spec.secondary_tables:
+        if field in sec.fields:
+            return sec.table_name
+    if spec.table_name:
+        return spec.table_name
+    return None
+
+
+def _find_nullable_type_violations(openapi_doc: dict[str, Any]) -> tuple[list[str], list[str], int]:
+    """The real check -- extracted so the positive control below can drive
+    this SAME function against a deliberately-tampered doc, instead of
+    re-deriving the check inline against a value it just assigned (which
+    can never fail: see the K49/shape-4 note on the earlier version of
+    that control).
+
+    Returns (wrongly_scalar, wrongly_nullable, checked_count).
+    """
+    from check_schema_drift import expected_column_nullability
+
+    from nce.resource_surface import get_all_resource_specs, load_all_engine_resources
+
+    load_all_engine_resources()
+    column_nullability = expected_column_nullability()
+    schemas = openapi_doc.get("components", {}).get("schemas", {})
+
+    wrongly_scalar: list[str] = []
+    wrongly_nullable: list[str] = []
+    checked = 0
+    for spec in get_all_resource_specs():
+        model_name = f"{spec.engine.capitalize()}_{spec.entity.replace('-', '_')}"
+        schema = schemas.get(model_name)
+        if not schema:
+            continue
+        props = schema.get("properties", {})
+        for field in sorted(set(spec.writable_fields) | set(spec.filterable_fields)):
+            prop = props.get(field)
+            if prop is None:
+                continue
+            table = _resolve_field_table(spec, field)
+            if table is None:
+                continue
+            is_nullable = column_nullability.get(table, {}).get(field)
+            if is_nullable is None:
+                continue
+            checked += 1
+            prop_type = prop.get("type")
+            declared_nullable = isinstance(prop_type, list) and "null" in prop_type
+            if is_nullable and not declared_nullable:
+                wrongly_scalar.append(f"{model_name}.{field} (table {table}, type={prop_type!r})")
+            if not is_nullable and declared_nullable:
+                wrongly_nullable.append(f"{model_name}.{field} (table {table}, type={prop_type!r})")
+    return wrongly_scalar, wrongly_nullable, checked
+
+
+def test_nullable_backed_fields_are_never_bare_scalar_types(openapi_doc):
+    """A `writable_field`/`filterable_field` routed to a column `schema.sql`
+    declares nullable (no `NOT NULL`) must be documented as such --
+    `type: ["<scalar>", "null"]`, OpenAPI 3.1's form (this document's own
+    declared version; 3.0's `nullable: true` was removed in 3.1 and a
+    3.1-aware validator silently ignores it).
+
+    Measured structurally, not against a hand-picked spec list: every
+    registered ResourceSpec's writable/filterable fields are checked
+    against `check_schema_drift.expected_column_nullability()`'s real
+    parse of `schema.sql` -- whichever specs this affects are whichever
+    ones the measurement finds, not a fixed set six specs happened to
+    surface tonight.
+    """
+    wrongly_scalar, wrongly_nullable, checked = _find_nullable_type_violations(openapi_doc)
+
+    assert checked > 50, (
+        f"Only resolved {checked} field-to-column pairs -- expected the estate-wide "
+        f"population (100+ schemas were affected when this was measured on "
+        f"2026-09-21). A count this low means the resolution logic stopped matching "
+        f"real specs to real tables, not that the population shrank."
+    )
+    assert not wrongly_scalar, (
+        f"{len(wrongly_scalar)} nullable-backed field(s) are documented as a bare "
+        f"scalar type (schema.sql declares no NOT NULL, but the OpenAPI schema "
+        f"claims the value is never null):\n" + "\n".join(wrongly_scalar[:20])
+    )
+    assert not wrongly_nullable, (
+        f"{len(wrongly_nullable)} NOT NULL field(s) are documented as nullable -- "
+        f"over-applying the fix in the other direction:\n" + "\n".join(wrongly_nullable[:20])
+    )
+
+
+def test_positive_control_nullable_type_regression_is_caught(openapi_doc):
+    """Proves `_find_nullable_type_violations` -- the function the test
+    above actually asserts on -- really does detect a regression, by
+    driving it against a deliberately-tampered doc rather than
+    re-deriving the check inline against a value the control just
+    assigned (the earlier version of this control did that and could
+    never fail regardless of what it tampered).
+
+    Tampers a REAL nullable-backed writable/filterable field back to the
+    pre-fix bare-scalar shape, in a deep copy of the real generated doc,
+    then calls the production checking function on that copy and asserts
+    it names the exact tampered field -- the same mutation-testing
+    technique `test_positive_control_unschematized_route_fails` above
+    already uses for the route-coverage check.
+
+    The target must come from `_find_nullable_type_violations`'s OWN
+    domain (a `ResourceSpec`'s writable/filterable field, resolved to a
+    real nullable column) -- not "any nullable-typed property anywhere in
+    the doc". An earlier version of this control picked the first
+    nullable-typed property found by walking `schemas.items()` in dict
+    order, which landed on a `_List` schema's synthesized `next_cursor`
+    field; `_find_nullable_type_violations` only ever inspects base item
+    schemas via `spec`-derived `model_name`, so it structurally can never
+    see a `_List` schema's own properties, and that version's positive
+    control failed the moment it was actually driven against the real
+    function (a `False and` sabotage wasn't even needed to prove it) --
+    caught only by running the check itself, not by reading the code.
+    """
+    from check_schema_drift import expected_column_nullability
+
+    from nce.resource_surface import get_all_resource_specs, load_all_engine_resources
+
+    load_all_engine_resources()
+    column_nullability = expected_column_nullability()
+    schemas = openapi_doc.get("components", {}).get("schemas", {})
+
+    target_model = target_field = None
+    for spec in get_all_resource_specs():
+        model_name = f"{spec.engine.capitalize()}_{spec.entity.replace('-', '_')}"
+        schema = schemas.get(model_name)
+        if not schema:
+            continue
+        props = schema.get("properties", {})
+        for field in sorted(set(spec.writable_fields) | set(spec.filterable_fields)):
+            if field not in props:
+                continue
+            table = _resolve_field_table(spec, field)
+            if table is None:
+                continue
+            if column_nullability.get(table, {}).get(field) is True:
+                target_model, target_field = model_name, field
+                break
+        if target_model:
+            break
+    assert target_model, (
+        "No nullable-backed writable/filterable field found anywhere in the registry -- "
+        "the population this control needs a real example from is empty"
+    )
+
+    tampered_doc = json.loads(json.dumps(openapi_doc))
+    tampered_doc["components"]["schemas"][target_model]["properties"][target_field]["type"] = (
+        "string"
+    )
+
+    wrongly_scalar, _wrongly_nullable, _checked = _find_nullable_type_violations(tampered_doc)
+    assert any(entry.startswith(f"{target_model}.{target_field} ") for entry in wrongly_scalar), (
+        f"Tampering {target_model}.{target_field} back to a bare scalar was not caught by "
+        f"_find_nullable_type_violations -- the positive control does not exercise the real "
+        f"check. wrongly_scalar={wrongly_scalar!r}"
+    )
