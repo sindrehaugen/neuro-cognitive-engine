@@ -829,26 +829,51 @@ async def test_synthetic_offender():
     )
 
 
-def test_positive_control_ignores_patched_out_function() -> None:
+def test_positive_control_ignores_patched_out_function(tmp_path: Path) -> None:
     """A do_* name that only ever appears as a patch() target -- never actually
-    invoked -- must not be flagged; this is test_hr_rest.py's own shape."""
+    invoked -- must not be flagged; this is test_hr_rest.py's own shape.
+
+    G found this control inert (2026-09-21): the original fixture patched
+    ``do_query_employees`` but never CALLED it, so no ``ast.Call`` node for
+    that name existed at all -- ``hits == set()`` held regardless of whether
+    the patched-out exclusion logic ran. Mutating ``_patched_out_names`` to
+    always return an empty set left this control passing, proving it never
+    exercised that logic. Fixed by driving ``_scan_file`` (the real entry
+    point every other check in this file uses) on an ACTUAL file that both
+    patches AND calls the same bare name, so the exclusion is the only
+    reason the resulting hit set can be empty.
+    """
     good_code = """
 from unittest.mock import patch
 
 async def test_patches_it_away():
     with patch("nce.admin_handlers.hr.do_query_employees") as mock_core:
         mock_core.return_value = {"items": []}
+        result = await do_query_employees(mock_core, {})
+        assert result == {"items": []}
 """
-    tree = ast.parse(good_code)
-    patched_out = _patched_out_names(tree)
-    hits = _direct_dependent_calls(tree, patched_out)
+    module_path = tmp_path / "test_synthetic_patched_out.py"
+    module_path.write_text(good_code, encoding="utf-8")
+    hits = _scan_file(module_path)
     assert hits == set(), f"Positive control over-fired on a fully patched-out call: {hits}"
 
 
-def test_positive_control_ignores_integration_marked_modules() -> None:
+def test_positive_control_ignores_integration_marked_modules(tmp_path: Path) -> None:
     """A module carrying `pytestmark = pytest.mark.integration` is a live-Postgres
     sibling by this repo's own standing convention and must never be scanned,
     regardless of what it calls directly.
+
+    G found this control inert (2026-09-21): the original version asserted
+    only `_has_integration_marker(tree) is True` on a standalone helper --
+    it never called `_scan_file`, the entry point the real ratchet actually
+    uses. Disabling the skip INSIDE `_scan_file` left all tests, including
+    this one, passing. Worse: no existing tests/unit/*.py file is BOTH
+    integration-marked AND calls a do_*/handler name, so the real ratchet's
+    own skip branch was unexercised estate-wide -- a production branch
+    nothing reached, this control included. Fixed by driving `_scan_file`
+    on an ACTUAL file that is both integration-marked and contains a real,
+    unpatched do_* call, asserting the whole file is skipped -- this is
+    also the first live exercise of that skip branch.
 
     The marker assignment below is assembled via .format() rather than
     written as a literal line, deliberately: `tests/test_ci_integration_
@@ -884,6 +909,15 @@ def test_positive_control_ignores_integration_marked_modules() -> None:
     )
     tree = ast.parse(live_module_code)
     assert _has_integration_marker(tree) is True
+
+    module_path = tmp_path / "test_synthetic_integration_marked.py"
+    module_path.write_text(live_module_code, encoding="utf-8")
+    hits = _scan_file(module_path)
+    assert hits == set(), (
+        f"Positive control over-fired on an integration-marked module: {hits} -- "
+        f"a module carrying the marker must be skipped even though it calls a "
+        f"real, unpatched do_* name"
+    )
 
 
 def test_positive_control_ignores_pure_logic_with_no_dependent_call() -> None:
