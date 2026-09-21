@@ -1,17 +1,16 @@
 """Unit test suite for C17 Site Master Data (Wave A-9).
 
 Tests:
-  1. C17 Site Master Data CRUD lifecycle (register, get, get_by_cadastre_id, update, archive).
-  2. Vessel site telemetry stream ingestion and dynamic positioning.
-  3. Cadastre ID normalization pure function.
-  4. Multi-tenant isolation across namespaces.
-  5. C1 Site & FL Building Resolution Hook & Merge Queue Gating:
-     - Cadastre ID is the FL-building match key (score = 1.0).
-     - Two FL buildings with the same cadastre ID land in entity_merge_queue.
-     - CRITICAL INVARIANT: NEVER auto-merged (auto_merged is False, status is 'pending').
-  6. C12 Resource Surface REST API & Principal Tier Redaction (contractor vs external-customer).
-  7. C12 MCP tool definitions and execution specs.
-  8. U18 standing positive controls.
+  1. Cadastre ID normalization pure function.
+  2. get_site/update_site (plus multi-tenant isolation) -- the two service.py functions
+     still called in production, by address_registry.py's Kartverket enrichment. The
+     register's own CRUD (register, get_by_cadastre_id, list, archive, vessel telemetry)
+     and the C1 site/FL-building hook were deleted as dead code (2026-09-21): the C12
+     resource surface generates the reachable CRUD from SITE_SPEC, and nothing called
+     the hand-written versions or the hook outside their own tests. See
+     DEAD_HAND_WRITTEN_SERVICE_LAYERS_2026-09-21.md.
+  3. C12 Resource Surface REST API & Principal Tier Redaction (contractor vs external-customer).
+  4. C12 MCP tool definitions and execution specs.
 """
 
 from __future__ import annotations
@@ -24,29 +23,19 @@ from starlette.testclient import TestClient
 from tests._verified_tier_middleware import VERIFIED_TIER_TEST_MIDDLEWARE
 
 from nce import admin_state
-from nce.entity_resolution.site_hook import (
-    _clear_hook_mem_store,
-    get_mem_merge_queue,
-    reconcile_fl_building_with_site,
-    register_mem_fl_building,
-)
 from nce.resource_surface import ResourceSpec, register_resource
 from nce.resource_surface.rest import _clear_mem_store as _clear_rest_mem_store
 from nce.resource_surface.rest import make_resource_routes
-from nce.vertical_modules.sites.models import SiteCreate, SiteUpdate
+from nce.vertical_modules.sites.models import SiteItem, SiteUpdate
 from nce.vertical_modules.sites.resources import SITE_SPEC
 from nce.vertical_modules.sites.service import (
-    _clear_mem_store as _clear_sites_mem_store,
+    _MEM_SITES,
+    get_site,
+    normalize_cadastre_id,
+    update_site,
 )
 from nce.vertical_modules.sites.service import (
-    archive_site,
-    get_site,
-    get_site_by_cadastre_id,
-    list_sites,
-    normalize_cadastre_id,
-    register_site,
-    update_site,
-    update_vessel_telemetry,
+    _clear_mem_store as _clear_sites_mem_store,
 )
 
 _NS_A = str(uuid.UUID("11111111-1111-1111-1111-111111111111"))
@@ -59,13 +48,11 @@ _UUID_B = uuid.UUID(_NS_B)
 def _reset_env():
     _clear_rest_mem_store()
     _clear_sites_mem_store()
-    _clear_hook_mem_store()
     admin_state.engine = None
     register_resource(SITE_SPEC)
     yield
     _clear_rest_mem_store()
     _clear_sites_mem_store()
-    _clear_hook_mem_store()
 
 
 def _client_for_spec(spec: ResourceSpec) -> TestClient:
@@ -89,59 +76,43 @@ def test_normalize_cadastre_id():
 
 
 # ===========================================================================
-# 2. Service CRUD & Lifecycle Tests
+# 2. get_site / update_site -- the two functions kept for
+#    address_registry.py's Kartverket enrichment write-back. No register_site
+#    remains to seed a fixture through the service API (deleted as dead code),
+#    so these seed the in-memory store directly, the same store the deleted
+#    function used to write to.
 # ===========================================================================
 
 
+def _seed_site(namespace_id: uuid.UUID, **overrides) -> SiteItem:
+    site = SiteItem(
+        id=overrides.pop("id", uuid.uuid4()),
+        namespace_id=namespace_id,
+        name=overrides.pop("name", "Oslo Innovation Hub"),
+        **overrides,
+    )
+    _MEM_SITES.setdefault(str(namespace_id), {})[str(site.id)] = site
+    return site
+
+
 @pytest.mark.asyncio
-async def test_site_crud_lifecycle():
-    """Verify full CRUD lifecycle: register, get, update, list, and archive."""
-    create_payload = SiteCreate(
-        name="Oslo Innovation Hub",
+async def test_get_and_update_site_in_memory():
+    """Retrieve and update an in-memory site record."""
+    site = _seed_site(
+        _UUID_A,
         cadastre_id="0301-123/45/0/0",
         site_type="building",
-        address={
-            "street": "Storgata 1",
-            "postal_code": "0155",
-            "city": "Oslo",
-            "country": "NO",
-            "is_validated": True,
-        },
-        latitude=59.9139,
-        longitude=10.7522,
-        altitude=15.0,
         height=42.5,
-        footprint_geometry={
-            "type": "Polygon",
-            "coordinates": [[[10.75, 59.91], [10.76, 59.91], [10.76, 59.92], [10.75, 59.91]]],
-        },
-        metadata={"campus": "Sentrum", "code": "HUB-01"},
     )
 
-    created = await register_site(None, _UUID_A, create_payload)
-    assert created.id is not None
-    assert created.namespace_id == _UUID_A
-    assert created.name == "Oslo Innovation Hub"
-    assert created.cadastre_id == "0301-123/45/0/0"
-    assert created.height == 42.5
-    assert created.address["is_validated"] is True
-    assert not created.archived
-
-    # Retrieve by ID
-    fetched = await get_site(None, _UUID_A, created.id)
+    fetched = await get_site(None, _UUID_A, site.id)
     assert fetched is not None
     assert fetched.name == "Oslo Innovation Hub"
 
-    # Retrieve by cadastre_id
-    by_cad = await get_site_by_cadastre_id(None, _UUID_A, "0301-123/45/0/0")
-    assert by_cad is not None
-    assert by_cad.id == created.id
-
-    # Update
     updated = await update_site(
         None,
         _UUID_A,
-        created.id,
+        site.id,
         SiteUpdate(name="Oslo Innovation Hub (Expanded)", height=48.0),
     )
     assert updated is not None
@@ -149,157 +120,32 @@ async def test_site_crud_lifecycle():
     assert updated.height == 48.0
     assert updated.cadastre_id == "0301-123/45/0/0"
 
-    # List
-    items = await list_sites(None, _UUID_A, site_type="building")
-    assert len(items) == 1
-    assert items[0].id == created.id
-
-    # Archive
-    archived = await archive_site(None, _UUID_A, created.id)
-    assert archived is True
-
-    # Check that archived site is not returned by default lookups
-    assert await get_site(None, _UUID_A, created.id) is None
-    assert await get_site_by_cadastre_id(None, _UUID_A, "0301-123/45/0/0") is None
-    assert len(await list_sites(None, _UUID_A)) == 0
+    refetched = await get_site(None, _UUID_A, site.id)
+    assert refetched is not None
+    assert refetched.name == "Oslo Innovation Hub (Expanded)"
 
 
 @pytest.mark.asyncio
-async def test_vessel_telemetry_positioning():
-    """Verify vessel site telemetry stream and coordinate updates."""
-    create_payload = SiteCreate(
-        name="Research Vessel Nansen",
-        site_type="vessel",
-        latitude=60.3913,
-        longitude=5.3221,
-        telemetry_stream={"heading": 180, "speed_knots": 12.4},
-    )
-    vessel = await register_site(None, _UUID_A, create_payload)
-    assert vessel.site_type == "vessel"
-    assert vessel.telemetry_stream["speed_knots"] == 12.4
-
-    # Update dynamic position via telemetry stream
-    updated = await update_vessel_telemetry(
-        None,
-        _UUID_A,
-        vessel.id,
-        latitude=60.4500,
-        longitude=5.4000,
-        telemetry={"heading": 195, "speed_knots": 14.1, "source": "AIS"},
-    )
-    assert updated is not None
-    assert updated.latitude == 60.4500
-    assert updated.longitude == 5.4000
-    assert updated.telemetry_stream["speed_knots"] == 14.1
-    assert updated.telemetry_stream["source"] == "AIS"
+async def test_update_site_missing_returns_none():
+    """update_site on a non-existent id/namespace returns None, not an error."""
+    result = await update_site(None, _UUID_A, uuid.uuid4(), SiteUpdate(name="Ghost Site"))
+    assert result is None
 
 
 @pytest.mark.asyncio
 async def test_multi_tenant_isolation():
-    """Verify tenant isolation: Namespace B cannot see Namespace A sites."""
-    site_a = await register_site(
-        None,
-        _UUID_A,
-        SiteCreate(name="Site Alpha", cadastre_id="CAD-A-1"),
-    )
+    """Verify tenant isolation: Namespace B cannot see or update Namespace A's site."""
+    site_a = _seed_site(_UUID_A, cadastre_id="CAD-A-1")
 
-    # Inaccessible from Namespace B
     assert await get_site(None, _UUID_B, site_a.id) is None
-    assert await get_site_by_cadastre_id(None, _UUID_B, "CAD-A-1") is None
-    assert len(await list_sites(None, _UUID_B)) == 0
+    assert await update_site(None, _UUID_B, site_a.id, SiteUpdate(name="Hijacked")) is None
 
-    # Namespace B can register its own site with independent identity
-    site_b = await register_site(
-        None,
-        _UUID_B,
-        SiteCreate(name="Site Beta", cadastre_id="CAD-B-1"),
-    )
-    assert site_b.namespace_id == _UUID_B
-    assert await get_site(None, _UUID_B, site_b.id) is not None
-    assert await get_site(None, _UUID_A, site_b.id) is None
+    # Namespace A itself still sees it
+    assert await get_site(None, _UUID_A, site_a.id) is not None
 
 
 # ===========================================================================
-# 3. C1 Site & FL Building Resolution Hook & Merge Queue Gating
-# ===========================================================================
-
-
-@pytest.mark.asyncio
-async def test_gate_two_fl_buildings_with_same_cadastre_id_land_in_merge_queue():
-    """GATE: Two FL buildings with the same cadastre ID land in the merge queue.
-
-    C1 Invariant:
-    Cadastre ID is the FL-building match key (score = 1.0).
-    NEVER auto-merge: must enqueue with status 'pending' and auto_merged = False.
-    """
-    cadastre = "0301-400/10/0/0"
-
-    # Register first FL building / Site
-    site1 = await register_site(
-        None,
-        _UUID_A,
-        SiteCreate(name="Headquarters Building A", cadastre_id=cadastre),
-    )
-
-    # Candidate 2: A second FL building claiming the exact same cadastre_id
-    candidate_building = {
-        "building_name": "Headquarters Main Wing",
-        "cadastre_id": cadastre,
-        "floor_count": 5,
-    }
-
-    result = await reconcile_fl_building_with_site(
-        None,
-        namespace_id=_UUID_A,
-        candidate=candidate_building,
-        entity_type="FUNCTIONAL_LOCATION",
-    )
-
-    # Verify matching result
-    assert result["matched"] is True
-    assert result["target_id"] == site1.id
-    assert result["normalized_cadastre_id"] == cadastre
-    assert result["score"] == 1.0
-    assert result["queued_for_merge"] is True
-    assert result["auto_merged"] is False
-    assert result["status"] == "pending"
-
-    # Verify queue contents
-    queue = get_mem_merge_queue()
-    assert len(queue) == 1
-    entry = queue[0]
-    assert entry["namespace_id"] == _UUID_A
-    assert entry["node_type"] == "FUNCTIONAL_LOCATION"
-    assert entry["target_id"] == site1.id
-    assert entry["cadastre_id"] == cadastre
-    assert entry["score"] == 1.0
-    assert entry["status"] == "pending"
-    assert entry["auto_merged"] is False
-
-
-@pytest.mark.asyncio
-async def test_two_fl_buildings_match_without_site_entity():
-    """Verify that two FL buildings with matching cadastre IDs enqueue even when matching an existing FL building."""
-    cadastre = "CAD-FL-MATCH-888"
-    existing_fl_id = uuid.uuid4()
-    register_mem_fl_building(_UUID_A, existing_fl_id, cadastre, "Existing FL Building")
-
-    candidate = {"name": "Candidate FL Building", "cadastre_id": cadastre}
-    result = await reconcile_fl_building_with_site(
-        None,
-        namespace_id=_UUID_A,
-        candidate=candidate,
-    )
-
-    assert result["matched"] is True
-    assert result["target_id"] == existing_fl_id
-    assert result["target_type"] == "FUNCTIONAL_LOCATION"
-    assert result["auto_merged"] is False
-    assert result["status"] == "pending"
-
-
-# ===========================================================================
-# 4. C12 Resource Surface REST API & Principal Tier Redaction
+# 3. C12 Resource Surface REST API & Principal Tier Redaction
 # ===========================================================================
 
 
@@ -378,7 +224,7 @@ def test_c12_resource_surface_rest_api_and_redaction():
 
 
 # ===========================================================================
-# 5. MCP Tool Definitions & Surface
+# 4. MCP Tool Definitions & Surface
 # ===========================================================================
 
 
@@ -400,30 +246,3 @@ def test_c12_mcp_tools_advertised():
     # Verify registered in TOOL_REGISTRY
     for name in tool_names:
         assert name in TOOL_REGISTRY, f"Tool {name} not found in TOOL_REGISTRY"
-
-
-# ===========================================================================
-# 6. U18 Standing Positive Controls
-# ===========================================================================
-
-
-@pytest.mark.asyncio
-async def test_positive_control_different_cadastre_id_does_not_queue():
-    """Standing positive control (U18): prove different cadastre_id does NOT queue for merge."""
-    await register_site(
-        None,
-        _UUID_A,
-        SiteCreate(name="Real Building", cadastre_id="CAD-EXISTS-111"),
-    )
-
-    candidate = {"name": "Unrelated Building", "cadastre_id": "CAD-DIFFERENT-222"}
-    result = await reconcile_fl_building_with_site(
-        None,
-        namespace_id=_UUID_A,
-        candidate=candidate,
-    )
-
-    assert result["matched"] is False
-    assert result["reason"] == "not_found"
-    assert result["auto_merged"] is False
-    assert len(get_mem_merge_queue()) == 0

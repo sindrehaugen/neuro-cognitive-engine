@@ -1,15 +1,15 @@
 """Unit test suite for C15 Legal-Entity Register (Wave A-5).
 
 Tests:
-  1. C15 Legal Entity Register CRUD lifecycle (register, get, get_by_org_nr, update, add_role, archive).
-  2. Org.nr normalization pure functions (Norwegian NO/MVA prefixes/suffixes, whitespace, hyphens, slashes).
-  3. Multi-tenant isolation across namespaces.
-  4. C1 Legal Entity Hook & Merge Queue Gating:
-     - Strongest match key (score = 1.0).
-     - Customer and vendor with same org_nr resolve to one legal entity through entity_merge_queue.
-     - CRITICAL INVARIANT: NEVER auto-merged (auto_merged is False, status is 'pending').
-  5. C12 Resource Surface REST API & Principal Tier Redaction (contractor vs external-customer).
-  6. C12 MCP tool definitions and execution specs.
+  1. Org.nr normalization pure functions (Norwegian NO/MVA prefixes/suffixes, whitespace, hyphens, slashes).
+  2. get_legal_entity/update_legal_entity -- the two service.py functions still called in
+     production, by brreg_feed.py's BRREG enrichment. The register's own CRUD (register,
+     get_by_org_nr, list, add_role, archive) and the C1 legal-entity hook were deleted as
+     dead code (2026-09-21): the C12 resource surface generates the reachable CRUD from
+     LEGAL_ENTITY_SPEC, and nothing called the hand-written versions or the hook outside
+     their own tests. See DEAD_HAND_WRITTEN_SERVICE_LAYERS_2026-09-21.md.
+  3. Multi-tenant isolation across namespaces (via get_legal_entity).
+  4. C12 Resource Surface REST API & Principal Tier Redaction (contractor vs external-customer).
 """
 
 from __future__ import annotations
@@ -22,26 +22,18 @@ from starlette.testclient import TestClient
 from tests._verified_tier_middleware import VERIFIED_TIER_TEST_MIDDLEWARE
 
 from nce import admin_state
-from nce.entity_resolution.legal_entity_hook import (
-    _clear_hook_mem_store,
-    get_mem_merge_queue,
-    reconcile_with_legal_entity,
-)
 from nce.entity_resolution.normalizers import normalize, normalize_org_nr
 from nce.resource_surface import ResourceSpec, register_resource
 from nce.resource_surface.rest import _clear_mem_store, make_resource_routes
+from nce.vertical_modules.legal_entities.models import LegalEntityRecord
 from nce.vertical_modules.legal_entities.resources import LEGAL_ENTITY_SPEC
 from nce.vertical_modules.legal_entities.service import (
-    _clear_mem_store as _clear_le_mem_store,
+    _MEM_LEGAL_ENTITIES,
+    get_legal_entity,
+    update_legal_entity,
 )
 from nce.vertical_modules.legal_entities.service import (
-    add_role_to_legal_entity,
-    archive_legal_entity,
-    get_legal_entity,
-    get_legal_entity_by_org_nr,
-    list_legal_entities,
-    register_legal_entity,
-    update_legal_entity,
+    _clear_mem_store as _clear_le_mem_store,
 )
 
 _NS_A = str(uuid.UUID("11111111-1111-1111-1111-111111111111"))
@@ -54,13 +46,11 @@ _UUID_B = uuid.UUID(_NS_B)
 def _reset_env():
     _clear_mem_store()
     _clear_le_mem_store()
-    _clear_hook_mem_store()
     admin_state.engine = None
     register_resource(LEGAL_ENTITY_SPEC)
     yield
     _clear_mem_store()
     _clear_le_mem_store()
-    _clear_hook_mem_store()
 
 
 def _client_for_spec(spec: ResourceSpec) -> TestClient:
@@ -93,82 +83,57 @@ def test_normalizer_dispatch():
 
 
 # ===========================================================================
-# 2. Service CRUD & Lifecycle Tests
+# 2. get_legal_entity / update_legal_entity -- the two functions kept for
+#    brreg_feed.py's BRREG enrichment write-back. No register_legal_entity
+#    remains to seed a fixture through the service API (deleted as dead code),
+#    so these seed the in-memory store directly, the same store the deleted
+#    function used to write to.
 # ===========================================================================
 
 
 @pytest.mark.asyncio
-async def test_legal_entity_crud_lifecycle():
-    """Test full CRUD lifecycle in memory."""
-    # 1. Register
-    entity = await register_legal_entity(
-        conn=None,
+async def test_get_and_update_legal_entity_in_memory():
+    """Retrieve and update an in-memory legal entity record."""
+    entity = LegalEntityRecord(
+        id=uuid.uuid4(),
         namespace_id=_UUID_A,
-        org_nr="NO 912 345 678 MVA",
+        org_nr="912345678",
         name="Nordic AV Solutions AS",
-        group_parent_org_nr="900 100 200",
-        roles=["customer"],
-        country="NO",
-        metadata={"industry": "AV", "tier": "gold"},
+        roles=("customer",),
+        metadata={"industry": "AV"},
     )
-    assert entity.org_nr == "912345678"
-    assert entity.group_parent_org_nr == "900100200"
-    assert entity.name == "Nordic AV Solutions AS"
-    assert "customer" in entity.roles
-    assert not entity.archived
+    _MEM_LEGAL_ENTITIES.setdefault(str(_UUID_A), {})[str(entity.id)] = entity
 
-    # 2. Lookup by ID and Org Nr
-    by_id = await get_legal_entity(conn=None, namespace_id=_UUID_A, entity_id=entity.id)
-    assert by_id is not None
-    assert by_id.id == entity.id
+    fetched = await get_legal_entity(conn=None, namespace_id=_UUID_A, entity_id=entity.id)
+    assert fetched is not None
+    assert fetched.org_nr == "912345678"
+    assert fetched.name == "Nordic AV Solutions AS"
 
-    by_org = await get_legal_entity_by_org_nr(conn=None, namespace_id=_UUID_A, org_nr="912-345-678")
-    assert by_org is not None
-    assert by_org.id == entity.id
-
-    # 3. Add Role (idempotent)
-    updated_role = await add_role_to_legal_entity(
-        conn=None, namespace_id=_UUID_A, entity_id=entity.id, role="vendor"
-    )
-    assert updated_role is not None
-    assert "customer" in updated_role.roles
-    assert "vendor" in updated_role.roles
-
-    # Adding again doesn't duplicate
-    again = await add_role_to_legal_entity(
-        conn=None, namespace_id=_UUID_A, entity_id=entity.id, role="vendor"
-    )
-    assert again is not None
-    assert again.roles.count("vendor") == 1
-
-    # 4. Update
     updated = await update_legal_entity(
         conn=None,
         namespace_id=_UUID_A,
         entity_id=entity.id,
         name="Nordic AV Group AS",
-        metadata={"industry": "AV", "tier": "platinum"},
+        metadata={"tier": "platinum"},
     )
     assert updated is not None
     assert updated.name == "Nordic AV Group AS"
+    # metadata merges into what's already there, doesn't replace it
     assert updated.metadata.get("tier") == "platinum"
+    assert updated.metadata.get("industry") == "AV"
 
-    # 5. List
-    entities = await list_legal_entities(conn=None, namespace_id=_UUID_A, role="vendor")
-    assert len(entities) == 1
-    assert entities[0].id == entity.id
+    refetched = await get_legal_entity(conn=None, namespace_id=_UUID_A, entity_id=entity.id)
+    assert refetched is not None
+    assert refetched.name == "Nordic AV Group AS"
 
-    # 6. Archive
-    archived = await archive_legal_entity(conn=None, namespace_id=_UUID_A, entity_id=entity.id)
-    assert archived is True
 
-    # After archive, active list is empty
-    active = await list_legal_entities(conn=None, namespace_id=_UUID_A, archived=False)
-    assert len(active) == 0
-
-    # Archived list has it
-    archived_list = await list_legal_entities(conn=None, namespace_id=_UUID_A, archived=True)
-    assert len(archived_list) == 1
+@pytest.mark.asyncio
+async def test_update_legal_entity_missing_returns_none():
+    """update_legal_entity on a non-existent id/namespace returns None, not an error."""
+    result = await update_legal_entity(
+        conn=None, namespace_id=_UUID_A, entity_id=uuid.uuid4(), name="Ghost AS"
+    )
+    assert result is None
 
 
 # ===========================================================================
@@ -178,112 +143,29 @@ async def test_legal_entity_crud_lifecycle():
 
 @pytest.mark.asyncio
 async def test_multi_tenant_isolation():
-    """Verify legal entities are completely isolated between namespaces."""
-    # Register in Namespace A
-    le_a = await register_legal_entity(
-        conn=None,
-        namespace_id=_UUID_A,
-        org_nr="999888777",
-        name="Tenant A Corp",
+    """Verify get_legal_entity is completely isolated between namespaces."""
+    le_a = LegalEntityRecord(
+        id=uuid.uuid4(), namespace_id=_UUID_A, org_nr="999888777", name="Tenant A Corp"
     )
+    _MEM_LEGAL_ENTITIES.setdefault(str(_UUID_A), {})[str(le_a.id)] = le_a
 
-    # Register in Namespace B with same org_nr (different tenant domain)
-    le_b = await register_legal_entity(
-        conn=None,
-        namespace_id=_UUID_B,
-        org_nr="999888777",
-        name="Tenant B Corp",
-    )
-
-    # Lookup in Namespace A returns Tenant A only
-    found_a = await get_legal_entity_by_org_nr(conn=None, namespace_id=_UUID_A, org_nr="999888777")
+    found_a = await get_legal_entity(conn=None, namespace_id=_UUID_A, entity_id=le_a.id)
     assert found_a is not None
-    assert found_a.id == le_a.id
     assert found_a.name == "Tenant A Corp"
-
-    # Lookup in Namespace B returns Tenant B only
-    found_b = await get_legal_entity_by_org_nr(conn=None, namespace_id=_UUID_B, org_nr="999888777")
-    assert found_b is not None
-    assert found_b.id == le_b.id
-    assert found_b.name == "Tenant B Corp"
 
     # Namespace B cannot see le_a by ID
     assert await get_legal_entity(conn=None, namespace_id=_UUID_B, entity_id=le_a.id) is None
+    # ...nor update it
+    assert (
+        await update_legal_entity(
+            conn=None, namespace_id=_UUID_B, entity_id=le_a.id, name="Hijacked"
+        )
+        is None
+    )
 
 
 # ===========================================================================
-# 4. C1 Legal Entity Hook & Merge Queue Gating (CRITICAL INVARIANT)
-# ===========================================================================
-
-
-@pytest.mark.asyncio
-async def test_c1_hook_enqueues_merge_never_auto_merges():
-    """Verify that candidate matching an existing legal entity resolves through entity_merge_queue.
-
-    CRITICAL INVARIANT: A customer and vendor with the same org_nr resolve
-    to one legal entity through the merge queue, NEVER auto-merged.
-    """
-    # 1. Register existing legal entity with role 'vendor'
-    le = await register_legal_entity(
-        conn=None,
-        namespace_id=_UUID_A,
-        org_nr="987 654 321",
-        name="Acme Acoustics AS",
-        roles=["vendor"],
-    )
-
-    # 2. Reconcile a candidate 'customer' that has the same org_nr
-    candidate_customer = {
-        "name": "Acme Acoustics Customer Division",
-        "org_nr": "NO 987 654 321 MVA",
-        "contact_email": "billing@acme.example",
-    }
-
-    result = await reconcile_with_legal_entity(
-        conn=None,
-        namespace_id=_UUID_A,
-        entity_type="customer",
-        candidate=candidate_customer,
-    )
-
-    # Assertions
-    assert result["matched"] is True
-    assert result["legal_entity_id"] == le.id
-    assert result["normalized_org_nr"] == "987654321"
-    assert result["score"] == 1.0  # strongest match key
-    assert result["queued_for_merge"] is True
-    assert result["status"] == "pending"
-
-    # INVARIANT: Must NEVER auto-merge
-    assert result["auto_merged"] is False
-
-    # Verify item queued in merge queue
-    queue_items = get_mem_merge_queue()
-    assert len(queue_items) == 1
-    item = queue_items[0]
-    assert item["node_type"] == "customer"
-    assert item["target_id"] == le.id
-    assert item["score"] == 1.0
-    assert item["status"] == "pending"
-
-
-@pytest.mark.asyncio
-async def test_c1_hook_unmatched_returns_cleanly():
-    """Unmatched org_nr returns matched=False with zero merge queue enqueue."""
-    result = await reconcile_with_legal_entity(
-        conn=None,
-        namespace_id=_UUID_A,
-        entity_type="vendor",
-        candidate={"name": "Unknown Corp", "org_nr": "111222333"},
-    )
-    assert result["matched"] is False
-    assert result["reason"] == "not_found"
-    assert result["auto_merged"] is False
-    assert len(get_mem_merge_queue()) == 0
-
-
-# ===========================================================================
-# 5. C12 REST Surface & Tier Redaction Tests
+# 4. C12 REST Surface & Tier Redaction Tests
 # ===========================================================================
 
 

@@ -27,8 +27,8 @@ Two decisions made and documented rather than guessed past
 2. "A field's name is not its meaning" (estate-wide rule, filed after
    Wave F-6's Q-SYS Reflect `serial`/`serialNumber` trap). NCE's
    ``legal_entities.roles`` (see ``models.py``) is a small tenant-chosen
-   relationship-tag set (e.g. ``"customer"``, ``"vendor"`` — see
-   ``service.add_role_to_legal_entity``'s own docstring). BRREG's own
+   relationship-tag set (e.g. ``"customer"``, ``"vendor"`` — a caller-chosen
+   label, not a BRREG concept). BRREG's own
    "roller" means something entirely different: government-registered
    PERSONAL signatory roles (``DAGL``/daglig leder, ``LEDE``/``NEST``/
    ``MEDL`` board chair/deputy/member, ``INNH`` sole-proprietor owner) —
