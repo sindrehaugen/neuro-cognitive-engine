@@ -848,16 +848,31 @@ async def test_patches_it_away():
 def test_positive_control_ignores_integration_marked_modules() -> None:
     """A module carrying `pytestmark = pytest.mark.integration` is a live-Postgres
     sibling by this repo's own standing convention and must never be scanned,
-    regardless of what it calls directly."""
-    live_module_code = """
-import pytest
+    regardless of what it calls directly.
 
-pytestmark = pytest.mark.integration
-
-async def test_real_postgres_call(pg_pool):
-    result = await do_something_real(pg_pool)
-    assert result
-"""
+    The marker assignment below is assembled via .format() rather than
+    written as a literal line, deliberately: `tests/test_ci_integration_
+    coverage.py`'s own ratchet does a raw-text regex
+    (`^pytestmark\\s*=.*integration`) over every file's SOURCE looking for
+    real, unwired live-Postgres modules -- a literal occurrence of that
+    exact text on its own line here, even inside a string meant only as
+    fake module source for an ast.parse() check, would trip that OTHER
+    ratchet into believing THIS file itself is an unwired live-Postgres
+    module. Found live in CI (2026-09-21): this exact false positive
+    failed py3.10/py3.11 before being fixed here.
+    """
+    marker_line = "{} = {}.{}.{}".format("pytestmark", "pytest", "mark", "integration")
+    live_module_code = "\n".join(
+        [
+            "import pytest",
+            "",
+            marker_line,
+            "",
+            "async def test_real_postgres_call(pg_pool):",
+            "    result = await do_something_real(pg_pool)",
+            "    assert result",
+        ]
+    )
     tree = ast.parse(live_module_code)
     assert _has_integration_marker(tree) is True
 
