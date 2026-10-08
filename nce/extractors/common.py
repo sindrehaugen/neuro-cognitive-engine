@@ -123,7 +123,10 @@ def html_to_text(html: str | None) -> str:
     if not html:
         return ""
     try:
-        from selectolax.parser import HTMLParser
+        try:
+            from selectolax.lexbor import LexborHTMLParser as HTMLParser
+        except ImportError:
+            from selectolax.parser import HTMLParser
 
         tree = HTMLParser(html)
         for sel in ("script", "style", "nav", "header", "footer"):

@@ -263,7 +263,14 @@ BANNED: list[tuple[str, re.Pattern[str], tuple[tuple[str, str], ...]]] = [
             r"\b(steps_product|steps_d365|steps_finago|agreement_sidecar|hr_sidecar|lysning)\b",
             re.I,
         ),
-        (),
+        (
+            (
+                "docs/_generated/merged_prs.json",
+                "false positive: mirrors upstream public PR #353 title ('fix(identity): add "
+                "steps_finago to the private-fork-family enumeration') which introduced this "
+                "very gate rule",
+            ),
+        ),
     ),
     (
         "planning-corpus owner",

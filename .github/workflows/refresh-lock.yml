@@ -70,7 +70,7 @@ jobs:
 
           echo "::group::lock diff"
           git diff --stat -- requirements.lock
-          git diff -- requirements.lock | head -200
+          git diff -- requirements.lock | head -n 200 || true
           echo "::endgroup::"
 
           BRANCH="chore/refresh-lock-$(date -u +%Y%m%d)"
