@@ -94,6 +94,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The banner-drift report below diffs each doc's claimed SHA against
+      # HEAD, and claimed SHAs can be days or weeks old -- actions/checkout's
+      # default shallow clone (depth 1) would make every one of them look
+      # unresolvable, which is indistinguishable from the genuine MISSING_SHA
+      # case this report exists to name correctly. Unshallow once, here, for
+      # every step below rather than doing it inside the script itself.
+      - name: Fetch full history (needed for banner-SHA resolution)
+        run: git fetch --prune --unshallow || git fetch --prune
+
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -116,3 +125,15 @@ jobs:
         env:
           NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
         run: pytest -m doc_gate -q --tb=short
+
+      # Advisory only -- see scripts/check_docs_banner_drift.py's own
+      # docstring. Deliberately NOT a gate: 130+ docs carry a
+      # `Verified-against` banner and main moves daily, so treating this as
+      # pass/fail would make the job permanently red for information that
+      # is almost always already true (the same Q-17 reasoning already
+      # governing waves_landed.md's own advisory pytest, above). This step
+      # always exits 0; read its output (or the job summary) for what
+      # actually drifted, ranked by files, not just a count.
+      - name: Doc banner drift report (advisory only, never fails the job)
+        if: always()
+        run: python scripts/check_docs_banner_drift.py --against HEAD
