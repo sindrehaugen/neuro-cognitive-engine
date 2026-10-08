@@ -89,7 +89,7 @@ jsonschema>=4.26.0
 # --- Testing -----------------------------------------------------------------
 pytest>=9.1.1
 pytest-asyncio>=1.4.0
-pytest-mock>=3.14.0
+pytest-mock>=3.16.0
 pytest-httpx>=0.30.0
 
 # --- Document Format Extraction (Dual-Track Hybrid — Sovereign Documents) ----
