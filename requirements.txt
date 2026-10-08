@@ -57,9 +57,9 @@ APScheduler>=3.11.3          # Bridge subscription renewal + dep-audit scheduler
 cachetools>=7.2.0            # Signing key cache TTL eviction
 
 # --- ML / Embeddings (Poly-Semantic Projection) ------------------------------
-sentence-transformers>=6.0.1
-transformers>=5.17.0
-torch>=2.14.0
+sentence-transformers>=6.1.0
+transformers>=5.18.0
+torch>=2.14.1
 openvino>=2026.4.0           # OpenVINONPUBackend: RAW runtime, never optimum-intel (D45)
 
 # --- Graph Operations (Topology & Causal Inference) -------------------------
