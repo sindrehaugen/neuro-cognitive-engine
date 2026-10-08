@@ -28,7 +28,7 @@ argon2-cffi-bindings==26.1.0
     # via argon2-cffi
 asgiref==3.12.1
     # via opentelemetry-instrumentation-asgi
-asyncpg==0.31.0
+asyncpg==0.32.0
     # via -r requirements.txt
 attrs==26.1.0
     # via
@@ -39,7 +39,7 @@ beautifulsoup4==4.15.0
     # via extract-msg
 blis==1.3.3
     # via thinc
-cachetools==7.2.0
+cachetools==7.2.1
     # via -r requirements.txt
 catalogue==2.0.10
     # via
@@ -58,7 +58,7 @@ cffi==2.1.1
     #   cryptography
 chardet==7.6.0
     # via -r requirements.txt
-charset-normalizer==3.5.1
+charset-normalizer==3.5.2
     # via
     #   pdfminer-six
     #   requests
@@ -68,7 +68,7 @@ click==8.5.0
     #   rq
     #   spacy
     #   uvicorn
-cloudpathlib==0.25.0
+cloudpathlib==0.26.0
     # via weasel
 cloudpickle==3.1.2
     # via joblib
@@ -83,15 +83,15 @@ confection==1.3.3
     #   weasel
 croniter==6.2.4
     # via rq
-cryptography==50.0.1
+cryptography==50.0.2
     # via
     #   -r requirements.txt
     #   msoffcrypto-tool
     #   pdfminer-six
     #   pyjwt
-cuda-bindings==13.3.1
+cuda-bindings==13.4.3
     # via torch
-cuda-pathfinder==1.8.1
+cuda-pathfinder==1.8.3
     # via cuda-bindings
 cuda-toolkit==13.0.3.0
     # via torch
@@ -116,31 +116,31 @@ extract-msg==0.56.1
     # via -r requirements.txt
 ezdxf==1.4.4
     # via -r requirements.txt
-fastapi==0.141.1
+fastapi==0.142.4
     # via -r requirements.txt
 fastjsonschema==2.22.2
     # via nbformat
-filelock==3.32.5
+filelock==4.0.12
     # via
     #   huggingface-hub
     #   torch
-fonttools==4.64.0
+fonttools==4.66.1
     # via ezdxf
-fsspec==2026.7.0
+fsspec==2026.9.0
     # via
     #   huggingface-hub
     #   torch
-googleapis-common-protos==1.75.3
+googleapis-common-protos==1.75.5
     # via
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
-grpcio==1.83.1
+grpcio==1.84.0
     # via opentelemetry-exporter-otlp-proto-grpc
 h11==0.16.0
     # via
     #   httpcore
     #   uvicorn
-hf-xet==1.6.0
+hf-xet==1.7.0
     # via huggingface-hub
 httpcore==1.0.9
     # via httpx
@@ -153,17 +153,17 @@ httpx==0.28.1
     #   weasel
 httpx-sse==0.4.3
     # via mcp
-huggingface-hub==1.30.0
+huggingface-hub==1.33.0
     # via
     #   sentence-transformers
     #   tokenizers
     #   transformers
-idna==3.19
+idna==3.20
     # via
     #   anyio
     #   httpx
     #   requests
-iniconfig==2.3.0
+iniconfig==2.3.1
     # via pytest
 jcs==0.2.1
     # via -r requirements.txt
@@ -195,7 +195,7 @@ markdown-it-py==4.2.0
     # via
     #   -r requirements.txt
     #   rich
-markupsafe==3.0.3
+markupsafe==3.0.4
     # via jinja2
 mcp==1.30.0
     # via -r requirements.txt
@@ -216,15 +216,15 @@ murmurhash==1.0.15
     #   preshed
     #   spacy
     #   thinc
-narwhals==2.25.0
+narwhals==2.26.0
     # via scikit-learn
 nbformat==5.11.1
     # via -r requirements.txt
-networkx==3.6.1
+networkx==3.7
     # via
     #   -r requirements.txt
     #   torch
-numpy==2.4.6
+numpy==2.5.3
     # via
     #   -r requirements.txt
     #   blis
@@ -268,7 +268,7 @@ nvidia-cusparselt-cu13==0.8.1
     # via torch
 nvidia-nccl-cu13==2.30.7
     # via torch
-nvidia-nvjitlink==13.3.33
+nvidia-nvjitlink==13.4.92
     # via
     #   cuda-toolkit
     #   nvidia-cufft
@@ -290,9 +290,11 @@ oletools==0.60.2
     #   rtfde
 openpyxl==3.1.5
     # via -r requirements.txt
-opentelemetry-api==1.44.0
+opentelemetry-api==1.45.1
     # via
     #   -r requirements.txt
+    #   fastapi
+    #   opentelemetry-exporter-http-transport
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-instrumentation
@@ -300,45 +302,52 @@ opentelemetry-api==1.44.0
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-exporter-otlp==1.44.0
+opentelemetry-exporter-http-transport==0.66b1
+    # via opentelemetry-exporter-otlp-proto-http
+opentelemetry-exporter-otlp==1.45.1
     # via -r requirements.txt
-opentelemetry-exporter-otlp-proto-common==1.44.0
+opentelemetry-exporter-otlp-common==0.66b1
     # via
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
-opentelemetry-exporter-otlp-proto-grpc==1.44.0
+opentelemetry-exporter-otlp-proto-common==1.45.1
+    # via
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-exporter-otlp-proto-grpc==1.45.1
     # via opentelemetry-exporter-otlp
-opentelemetry-exporter-otlp-proto-http==1.44.0
+opentelemetry-exporter-otlp-proto-http==1.45.1
     # via opentelemetry-exporter-otlp
-opentelemetry-instrumentation==0.65b0
+opentelemetry-instrumentation==0.66b1
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-asgi==0.65b0
+opentelemetry-instrumentation-asgi==0.66b1
     # via opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-fastapi==0.65b0
+opentelemetry-instrumentation-fastapi==0.66b1
     # via -r requirements.txt
-opentelemetry-proto==1.44.0
+opentelemetry-proto==1.45.1
     # via
     #   opentelemetry-exporter-otlp-proto-common
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
-opentelemetry-sdk==1.44.0
+opentelemetry-sdk==1.45.1
     # via
     #   -r requirements.txt
+    #   opentelemetry-exporter-otlp-common
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
-opentelemetry-semantic-conventions==0.65b0
+opentelemetry-semantic-conventions==0.66b1
     # via
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
-opentelemetry-util-http==0.65b0
+opentelemetry-util-http==0.66b1
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
-openvino==2026.4.0
+openvino==2026.4.1
     # via -r requirements.txt
 openvino-telemetry==2025.2.0
     # via openvino
@@ -371,7 +380,7 @@ pillow==12.3.0
     #   psd-tools
     #   pytesseract
     #   python-pptx
-platformdirs==4.11.7
+platformdirs==4.12.4
     # via jupyter-core
 pluggy==1.6.0
     # via pytest
@@ -381,15 +390,15 @@ preshed==3.0.13
     #   thinc
 prometheus-client==0.26.0
     # via -r requirements.txt
-protobuf==7.36.1
+protobuf==7.36.2
     # via
     #   googleapis-common-protos
     #   opentelemetry-proto
-psd-tools==1.19.0
+psd-tools==1.24.0
     # via -r requirements.txt
 pycparser==3.0
     # via cffi
-pycryptodome==3.23.0
+pycryptodome==3.24.0
     # via minio
 pydantic==2.13.5
     # via
@@ -408,19 +417,19 @@ pygments==2.21.0
     # via
     #   pytest
     #   rich
-pyjwt==2.14.0
+pyjwt==2.15.1
     # via
     #   -r requirements.txt
     #   mcp
-pymongo==4.18.0
+pymongo==4.18.2
     # via motor
-pyparsing==3.3.2
+pyparsing==3.3.3
     # via
     #   ezdxf
     #   oletools
-pypdf==6.18.0
+pypdf==6.19.0
     # via -r requirements.txt
-pypdfium2==5.13.0
+pypdfium2==5.14.0
     # via pdfplumber
 pypika==0.51.1
     # via -r requirements.txt
@@ -436,13 +445,13 @@ pytest-asyncio==1.4.0
     # via -r requirements.txt
 pytest-httpx==0.36.2
     # via -r requirements.txt
-pytest-mock==3.15.1
+pytest-mock==3.16.0
     # via -r requirements.txt
 python-dateutil==2.9.0.post0
     # via croniter
 python-docx==1.2.0
     # via -r requirements.txt
-python-dotenv==1.2.3
+python-dotenv==1.2.4
     # via
     #   -r requirements.txt
     #   pydantic-settings
@@ -465,15 +474,16 @@ referencing==0.37.0
     # via
     #   jsonschema
     #   jsonschema-specifications
-regex==2026.9.3
+regex==2026.9.29
     # via transformers
 requests==2.34.2
     # via
+    #   opentelemetry-exporter-http-transport
     #   opentelemetry-exporter-otlp-proto-http
     #   spacy
 rich==15.0.0
     # via typer
-rpds-py==2026.6.3
+rpds-py==2026.9.1
     # via
     #   jsonschema
     #   referencing
@@ -483,26 +493,26 @@ rtfde==0.1.2.2
     # via extract-msg
 safetensors==0.8.0
     # via transformers
-scikit-learn==1.9.0
+scikit-learn==1.9.1
     # via
     #   -r requirements.txt
     #   sentence-transformers
-scipy==1.17.1
+scipy==1.18.1
     # via
     #   -r requirements.txt
     #   scikit-learn
     #   sentence-transformers
-selectolax==0.4.11
+selectolax==1.0.0
     # via -r requirements.txt
-sentence-transformers==6.0.1
+sentence-transformers==6.1.0
     # via -r requirements.txt
 shellingham==1.5.4
     # via typer
 six==1.17.0
     # via python-dateutil
-smart-open==8.0.1
+smart-open==8.0.2
     # via weasel
-soupsieve==2.9.2
+soupsieve==2.10
     # via beautifulsoup4
 spacy==3.8.16
     # via -r requirements.txt
@@ -510,16 +520,16 @@ spacy-legacy==3.0.12
     # via spacy
 spacy-loggers==1.0.5
     # via spacy
-srsly==2.5.3
+srsly==2.5.4
     # via
     #   spacy
     #   thinc
     #   weasel
-sse-starlette==3.4.11
+sse-starlette==3.5.0
     # via
     #   -r requirements.txt
     #   mcp
-starlette==1.6.0
+starlette==1.7.0
     # via
     #   -r requirements.txt
     #   fastapi
@@ -529,21 +539,21 @@ striprtf==0.0.33
     # via -r requirements.txt
 sympy==1.14.0
     # via torch
-tenacity==9.1.4
+tenacity==9.2.1
     # via -r requirements.txt
 thinc==8.3.13
     # via spacy
-threadpoolctl==3.6.0
+threadpoolctl==3.7.0
     # via scikit-learn
 tokenizers==0.23.2
     # via
     #   sentence-transformers
     #   transformers
-torch==2.14.0
+torch==2.14.1
     # via
     #   -r requirements.txt
     #   sentence-transformers
-tqdm==4.70.0
+tqdm==4.70.1
     # via
     #   huggingface-hub
     #   sentence-transformers
@@ -553,7 +563,7 @@ traitlets==5.16.1
     # via
     #   jupyter-core
     #   nbformat
-transformers==5.17.0
+transformers==5.19.0
     # via
     #   -r requirements.txt
     #   sentence-transformers
@@ -561,11 +571,11 @@ tree-sitter==0.26.0
     # via
     #   -r requirements.txt
     #   tree-sitter-language-pack
-tree-sitter-language-pack==1.20.0
+tree-sitter-language-pack==1.21.0
     # via -r requirements.txt
 triton==3.8.0
     # via torch
-typer==0.27.2
+typer==0.27.3
     # via
     #   spacy
     #   transformers
@@ -606,11 +616,11 @@ tzlocal==5.4.4
     # via
     #   apscheduler
     #   extract-msg
-urllib3==2.7.0
+urllib3==2.8.0
     # via
     #   minio
     #   requests
-uvicorn==0.53.0
+uvicorn==0.54.0
     # via
     #   -r requirements.txt
     #   mcp
@@ -623,7 +633,7 @@ wasabi==1.1.3
     #   weasel
 weasel==1.0.0
     # via spacy
-wrapt==2.4.0
+wrapt==2.5.0
     # via
     #   opentelemetry-instrumentation
     #   smart-open
