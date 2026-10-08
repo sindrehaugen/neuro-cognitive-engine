@@ -1774,5 +1774,1661 @@
     "mergedAt": "2026-09-18T15:20:49Z",
     "number": 230,
     "title": "test(instruments): H-4 generated resource-surface positive controls"
+  },
+  {
+    "mergeCommit": {
+      "oid": "32211fd2eecaa65b8d425fcf1025a6db9409827f"
+    },
+    "mergedAt": "2026-09-18T16:41:57Z",
+    "number": 231,
+    "title": "feat(procurement): C12 resource surface for PO_LINE (Lane E Wave E-3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "2500c9b575a4479d87123d66229dd42b6517cf38"
+    },
+    "mergedAt": "2026-09-18T16:57:18Z",
+    "number": 232,
+    "title": "docs(audit): Wave D-STREAM align published docs against landed waves (#205-#230)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "da265ac855747b0820a68aae63201416a7b4fa7c"
+    },
+    "mergedAt": "2026-09-18T19:12:33Z",
+    "number": 233,
+    "title": "feat(resource-surface): Wave A-1b tenant_scope dispatch and dynamic MCP tool advertising"
+  },
+  {
+    "mergeCommit": {
+      "oid": "e3b02b96abce81e4425b162f57493ce4229e1120"
+    },
+    "mergedAt": "2026-09-18T20:03:03Z",
+    "number": 234,
+    "title": "feat(shared-core): Wave A-4 C14 document register and entity document verbs"
+  },
+  {
+    "mergeCommit": {
+      "oid": "0d9b5a8466e1e06d040ccb8ad1c676b9f9beaf94"
+    },
+    "mergedAt": "2026-09-18T20:41:47Z",
+    "number": 235,
+    "title": "feat(product): C12 resource surface for PRODUCT_SKU (Lane E Wave E-2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "0ad451a2006d54b3f9f9acd54162d0243fbcb564"
+    },
+    "mergedAt": "2026-09-18T21:39:34Z",
+    "number": 236,
+    "title": "feat(vendors): C12 resource surface for CONTRACTOR (Lane E Wave E-5)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "815fa9786f2849bf8def464ffa7fba191d421371"
+    },
+    "mergedAt": "2026-09-18T21:19:47Z",
+    "number": 237,
+    "title": "fix(instruments): janitor pass 6 -- C12 drift in surface.md, H-4 docstring"
+  },
+  {
+    "mergeCommit": {
+      "oid": "13ba9560e5b57c59a667dd25cdeb27271000212a"
+    },
+    "mergedAt": "2026-09-18T20:28:44Z",
+    "number": 238,
+    "title": "feat(resources): C12 resource surface for ALLOCATION + TRAVEL_LEG (Lane E Wave E-6)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "a72567885df507ec748bf8c0d5081f9c45e74ab4"
+    },
+    "mergedAt": "2026-09-18T22:39:34Z",
+    "number": 239,
+    "title": "feat(geodata): OSM local store, bbox query, migration 085 (Wave F-11)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "042cf804dd936f1fd6649faa0dc9a219f2180db8"
+    },
+    "mergedAt": "2026-09-18T21:00:45Z",
+    "number": 240,
+    "title": "feat(shared-core): Wave A-5 C15 legal-entity register"
+  },
+  {
+    "mergeCommit": {
+      "oid": "426640c1adc9a516f0645ce84f55f3cbea53dfa6"
+    },
+    "mergedAt": "2026-09-19T10:31:47Z",
+    "number": 241,
+    "title": "feat(system_design): FUNCTIONAL_LOCATION tree operations and fold rules (Wave C-1)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "1900b1cdbec5b571de686a637b624012e0f84665"
+    },
+    "mergedAt": "2026-09-19T15:45:48Z",
+    "number": 242,
+    "title": "feat(assets): Wave D-1 ASSET resource surface, move/merge/link verbs, and shell flag (#D1)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "53600a3f0fc855018864025dea9606729dbe3c99"
+    },
+    "mergedAt": "2026-09-18T21:22:10Z",
+    "number": 243,
+    "title": "fix(instruments): convert MUTATION_TOOLS/CACHEABLE_TOOLS exact pins to derived assertions"
+  },
+  {
+    "mergeCommit": {
+      "oid": "da680953a3c04347678b8a9f06ed001440c6ae4a"
+    },
+    "mergedAt": "2026-09-18T23:24:55Z",
+    "number": 244,
+    "title": "feat(economy): C12 resource surface for POSTING (Lane E Wave E-7)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "22b312f9d581f46bebbd01a05ce3cea7f5edc69f"
+    },
+    "mergedAt": "2026-09-19T17:11:23Z",
+    "number": 245,
+    "title": "feat(sales): Wave B-1 C12 resource surface for CUSTOMER, LEAD, DEAL, and QUOTE"
+  },
+  {
+    "mergeCommit": {
+      "oid": "c3651510c2a2404e81a7873504591366910eae5f"
+    },
+    "mergedAt": "2026-09-18T23:11:13Z",
+    "number": 246,
+    "title": "feat(support): C12 resource surface for TICKET, SLA, SUPPORT_HEALTH_SCORE (Lane E Wave E-8)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "041b7c5de04c34e1ee40fa5fcef4884366b0372e"
+    },
+    "mergedAt": "2026-09-18T21:06:45Z",
+    "number": 247,
+    "title": "fix(resource-surface): correct false/misnamed table claims in exemptions.py (Lane E sweep)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "3115552b9211a6231e389ec4fc763f21eebd5bb2"
+    },
+    "mergedAt": "2026-09-18T22:59:02Z",
+    "number": 248,
+    "title": "Lane F Wave F-12: geodata FEED module -- N50 land-cover local store"
+  },
+  {
+    "mergeCommit": {
+      "oid": "a92e20817efc50c8c5725b8ab3d1a02fb02f1a2d"
+    },
+    "mergedAt": "2026-09-18T21:12:06Z",
+    "number": 249,
+    "title": "test(instruments): generated-vs-hand-written tool-name collision ratchet (K-H5)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "8dd8046c785f0248fa0bdddd66a39b030a436889"
+    },
+    "mergedAt": "2026-09-18T21:12:56Z",
+    "number": 250,
+    "title": "test(instruments): migration-number uniqueness and gap ratchet (K-H6)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "01d95b37c1d2f0bb40c0b044d752594531fb0a53"
+    },
+    "mergedAt": "2026-09-18T21:19:05Z",
+    "number": 251,
+    "title": "feat(resource-surface): Wave A-4b C12 ResourceSpec tool collision guard"
+  },
+  {
+    "mergeCommit": {
+      "oid": "1925f6dad992071599afd477e4a0d2c0fa2214b8"
+    },
+    "mergedAt": "2026-09-19T15:33:15Z",
+    "number": 252,
+    "title": "feat(support): Wave D-5 C12 resource surface for TICKET + append-only TICKET_ACTION log"
+  },
+  {
+    "mergeCommit": {
+      "oid": "8ed821aefa22b31eaff9d6b6871539a3d6a0f1c0"
+    },
+    "mergedAt": "2026-09-18T23:44:27Z",
+    "number": 253,
+    "title": "feat(field_tech): C12 resource surface for WORK_ORDER, FIELD_TECH_TIME_ENTRY, FIELD_TECH_CHECKLIST (Lane E Wave E-10)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "dfb889d6c388c66fda35e7d8a4affb253ed0a71c"
+    },
+    "mergedAt": "2026-09-18T21:49:50Z",
+    "number": 254,
+    "title": "test(instruments): H-5 -- close the negative cross-tenant-isolation gap in vendors"
+  },
+  {
+    "mergeCommit": {
+      "oid": "4eb98acb3682148de172c9ea18cb7ef3918f9dec"
+    },
+    "mergedAt": "2026-09-18T22:00:56Z",
+    "number": 255,
+    "title": "Lane F Wave F-8: national business registry feed (C15 Legal-Entity Register)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "e1859fbf93993b9cb428ac0539617071894ae657"
+    },
+    "mergedAt": "2026-09-18T22:00:39Z",
+    "number": 256,
+    "title": "chore(git): merge=ours driver for generated docs -- kill the rebase tax (K-H7)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "00588aa661cc515fcdcf036f34c02657b65f76df"
+    },
+    "mergedAt": "2026-09-18T22:16:16Z",
+    "number": 257,
+    "title": "docs(instruments): cross-reference the pin-conversion / collision-ratchet boundary"
+  },
+  {
+    "mergeCommit": {
+      "oid": "99b75191afa65497b633f6c061a78ea8d3251eb3"
+    },
+    "mergedAt": "2026-09-19T00:33:44Z",
+    "number": 258,
+    "title": "Lane F Wave F-13: place-name nearest-point lookup (geodata FEED module)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "ff48757b7b106634a972b73c72da6ecc8a40692c"
+    },
+    "mergedAt": "2026-09-19T00:14:24Z",
+    "number": 259,
+    "title": "fix(tests): freeze the clock in HR compliance time-bomb tests"
+  },
+  {
+    "mergeCommit": {
+      "oid": "05156eaf1caeb189ec7c3a4ff4a1d8ccbe8b1861"
+    },
+    "mergedAt": "2026-09-19T00:55:44Z",
+    "number": 260,
+    "title": "Lane F Wave F-15: FX rate feed + weather live-read (geodata/pricing FEED)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "c31a91b0dc771a8c01a44e0a7aba4223ecbe8d33"
+    },
+    "mergedAt": "2026-09-19T10:37:13Z",
+    "number": 261,
+    "title": "test(instruments): H-6 -- close the remaining per-route negative-RLS combinations"
+  },
+  {
+    "mergeCommit": {
+      "oid": "b12f989ceea3cf5713d2519d67ef1ae6b64b3250"
+    },
+    "mergedAt": "2026-09-19T10:53:56Z",
+    "number": 262,
+    "title": "feat(auth): Wave A-6 C16 Principal Mapping and /api/me/context"
+  },
+  {
+    "mergeCommit": {
+      "oid": "0b95f1788c7a62fb1392d91fdd61b63f4cbca794"
+    },
+    "mergedAt": "2026-09-19T11:04:28Z",
+    "number": 263,
+    "title": "Wave G-3: FL backfill decision core (no-write stubs)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "f76d0d54159b09e151ca569100c3d2135270dafb"
+    },
+    "mergedAt": "2026-09-19T11:07:20Z",
+    "number": 264,
+    "title": "fix(instruments): H-1 residual bucket -- allowlist replaces bare pin (K-H8)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "6aabc801dcf1351a7ac1ad9fc88d6f24c16cbc2b"
+    },
+    "mergedAt": "2026-09-19T11:39:49Z",
+    "number": 265,
+    "title": "feat(outbox): Wave A-7 outbound webhooks on C4 with HMAC signing and relay delivery"
+  },
+  {
+    "mergeCommit": {
+      "oid": "06156f42047158834bc5fe11f9d193b71c80a8e8"
+    },
+    "mergedAt": "2026-09-19T11:56:39Z",
+    "number": 266,
+    "title": "feat(api): Wave A-8 OpenAPI generation from registries"
+  },
+  {
+    "mergeCommit": {
+      "oid": "ed835311dbbce0f144ad4b2b26f45fdc0f17326b"
+    },
+    "mergedAt": "2026-09-19T12:28:40Z",
+    "number": 267,
+    "title": "feat(sites): Wave A-9 C17 site master data schema, C12 ResourceSpec, and C1 cadastre hook"
+  },
+  {
+    "mergeCommit": {
+      "oid": "86a4ee0419a3ad40af455188e87ee643e4b0c2aa"
+    },
+    "mergedAt": "2026-09-19T14:54:31Z",
+    "number": 268,
+    "title": "feat(instruments): H-2 -- verified-live backing check for host_parity table"
+  },
+  {
+    "mergeCommit": {
+      "oid": "6913801920935c4e1b0755d04b0196e6968f5a18"
+    },
+    "mergedAt": "2026-09-19T15:09:33Z",
+    "number": 269,
+    "title": "Lane F Wave F-9: address registry feed into C17 SITE (Kartverket cadastre)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "330cd0416bdbbef6c88fd49769a27ff4f74e2f22"
+    },
+    "mergedAt": "2026-09-19T17:29:57Z",
+    "number": 270,
+    "title": "feat(system_design): Wave C-2 room categories, FL metadata, and upsert_fl_path"
+  },
+  {
+    "mergeCommit": {
+      "oid": "3b303b9a29c6558415e084dcc8cf14518bd10f6d"
+    },
+    "mergedAt": "2026-09-19T15:19:44Z",
+    "number": 271,
+    "title": "fix(identity): scrub private-fork backend/ paths from F-8/F-11 docstrings"
+  },
+  {
+    "mergeCommit": {
+      "oid": "1fb1f14e158b5f2c2b1b8906b5a63b18c7a49219"
+    },
+    "mergedAt": "2026-09-19T16:12:07Z",
+    "number": 272,
+    "title": "feat(support): Wave D-7 on-call rota and active responder routing"
+  },
+  {
+    "mergeCommit": {
+      "oid": "571e932eb7bc0da4b4ed69d736820a63fedbea3a"
+    },
+    "mergedAt": "2026-09-19T15:15:59Z",
+    "number": 273,
+    "title": "fix(instruments): T-4c -- unconverted-files allowlist replaces bare error-site floor"
+  },
+  {
+    "mergeCommit": {
+      "oid": "767a7f8d514debac6a160af965afaab26a90bf85"
+    },
+    "mergedAt": "2026-09-19T15:35:13Z",
+    "number": 274,
+    "title": "fix(identity): add steps_finago to the private-fork-family enumeration"
+  },
+  {
+    "mergeCommit": {
+      "oid": "8b168ce11ba4a2b5d6d2905ead375c08b54a4646"
+    },
+    "mergedAt": "2026-09-19T15:39:46Z",
+    "number": 275,
+    "title": "feat(instruments): H-10 -- hashed host-token identity gate"
+  },
+  {
+    "mergeCommit": {
+      "oid": "75d6c9da0d049ff6a2f53eca8869f9f64139d7b1"
+    },
+    "mergedAt": "2026-09-19T15:48:49Z",
+    "number": 276,
+    "title": "fix(docs): Q-45 -- rewrite Q-25 disclaimers to name components, not private paths"
+  },
+  {
+    "mergeCommit": {
+      "oid": "a3fb12760707c0dc721abaa5fd8a9f1aa0edab08"
+    },
+    "mergedAt": "2026-09-19T21:29:40Z",
+    "number": 277,
+    "title": "feat(support): Wave D-6 ticket summary (C9a grounded) and link surface (#D6)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "d4645ee4b368c05d647f940d42d00cc03a96afe9"
+    },
+    "mergedAt": "2026-09-19T16:55:10Z",
+    "number": 278,
+    "title": "feat(assets): Wave D-3 composite service history read for ASSET (#D3)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "c27d5990fc71d527caae700197ab43bc2f0e9463"
+    },
+    "mergedAt": "2026-09-19T18:43:39Z",
+    "number": 279,
+    "title": "feat(assets): Wave D-2 person assignment and sub-components (#D2)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "56152804693fbcf29615913eb79de0e94bf8c5e3"
+    },
+    "mergedAt": "2026-09-19T17:48:13Z",
+    "number": 280,
+    "title": "feat(agreements): Wave B-9 C12 resource surface for AGREEMENT, AGREEMENT_PARTY, and AGREEMENT_TEMPLATE"
+  },
+  {
+    "mergeCommit": {
+      "oid": "1380c65bbf6d2fd0f558a5953f15b557ad2949c0"
+    },
+    "mergedAt": "2026-09-19T17:59:59Z",
+    "number": 281,
+    "title": "fix(instruments): K-H -- remove duplicate global tool-count pins (4th lane hit today)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "e94129f6e236ea608fd672a89236ceebe0b97768"
+    },
+    "mergedAt": "2026-09-19T20:58:14Z",
+    "number": 282,
+    "title": "feat(system_design): Wave C-3 DESIGN Versions per FL & Room Specifications"
+  },
+  {
+    "mergeCommit": {
+      "oid": "22913b4e9dfdf34a537e2d7a199b8774793fed5d"
+    },
+    "mergedAt": "2026-09-19T18:44:41Z",
+    "number": 283,
+    "title": "fix(product): Q-44 RESOLVED \u2014 no copying; correct a false provenance claim"
+  },
+  {
+    "mergeCommit": {
+      "oid": "445eeb38bc24609fa452f90df8af92e84d731035"
+    },
+    "mergedAt": "2026-09-19T18:59:49Z",
+    "number": 284,
+    "title": "fix(resource-surface): C12 upsert crashes against real Postgres (26/30 specs)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "1d4c15e84a0b29a6cc595c26f6776352115bff1f"
+    },
+    "mergedAt": "2026-09-19T18:39:59Z",
+    "number": 285,
+    "title": "fix(assets): route crestron/sennheiser/shure to UnimplementedVendorAdapter (Q-38 part 1)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "bdb0c12bd9a596bb0afa94712382b8439a82b03d"
+    },
+    "mergedAt": "2026-09-19T19:50:10Z",
+    "number": 286,
+    "title": "feat(sales): C12 resource surface for SIGNED_BASELINE (Lane E)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "c4e82a7dc401516b25de49b512fc40aaafc3a01d"
+    },
+    "mergedAt": "2026-09-19T20:32:28Z",
+    "number": 287,
+    "title": "feat(hr): C12 resource surface for EMPLOYEE/SKILL/CERTIFICATION/ABSENCE (Lane E Wave E-14)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "b43daf059da853f4133a938b3f69dac193da8f94"
+    },
+    "mergedAt": "2026-09-19T21:39:49Z",
+    "number": 288,
+    "title": "feat(marketing): C12 resource surface for CASE_STUDY/TESTIMONIAL/CONTENT_ASSET (Lane E Wave E-15)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "862ead45dbdcf46e02c7f631dc970818da8c5a36"
+    },
+    "mergedAt": "2026-09-19T21:10:49Z",
+    "number": 289,
+    "title": "feat(business_insights): C12 resource surface for BUSINESS_INSIGHTS_KPI_SNAPSHOT (Lane E Wave E-16, partial)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "fc597f82174d7c39aeb866628ad0a05ecf1cf614"
+    },
+    "mergedAt": "2026-09-19T19:20:48Z",
+    "number": 290,
+    "title": "feat(instruments): H-9 -- Golden Thread v2 extension (9 new steps, 5 genuine breaks)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "e5a7d14eba6f8a130e181a401ba1cd89dde03e3a"
+    },
+    "mergedAt": "2026-09-19T19:09:46Z",
+    "number": 291,
+    "title": "docs(customer_portal): Q-32 ownership rows, all three exempted (Lane E Wave E-17)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "c9be47df0e94593b42b6df21a754dbf1e7bb3452"
+    },
+    "mergedAt": "2026-09-19T19:37:55Z",
+    "number": 293,
+    "title": "fix(vendors): un-declare CONTRACTOR -- unreachable through admin_app's RLS"
+  },
+  {
+    "mergeCommit": {
+      "oid": "8844e13046e782aaede23592160c67f53f2f16f2"
+    },
+    "mergedAt": "2026-09-19T19:44:17Z",
+    "number": 294,
+    "title": "fix(resource_surface): enforce per-namespace opt-in gate on generated C12 surface"
+  },
+  {
+    "mergeCommit": {
+      "oid": "838965ecd94512f672f99baea5b42e87a3ca8c88"
+    },
+    "mergedAt": "2026-09-19T20:15:29Z",
+    "number": 295,
+    "title": "feat(ci): \u00a710.5b -- regenerate generated docs on main post-merge, retire merge=ours"
+  },
+  {
+    "mergeCommit": {
+      "oid": "e812b363242c6731f846edd134e744fcf48aa634"
+    },
+    "mergedAt": "2026-09-19T20:13:25Z",
+    "number": 296,
+    "title": "test(instruments): ratchet -- every spec on a _guard.py engine must set enabled_guard"
+  },
+  {
+    "mergeCommit": {
+      "oid": "31a41109f2e5a78b7453158813685566f1ea90cf"
+    },
+    "mergedAt": "2026-09-19T20:50:20Z",
+    "number": 297,
+    "title": "fix(ci): \u00a710.5b -- actually stop requiring generated docs at the PR gate"
+  },
+  {
+    "mergeCommit": {
+      "oid": "130c48faa9a856ecb08d66e89ca6206fe7358f43"
+    },
+    "mergedAt": "2026-09-19T21:17:46Z",
+    "number": 298,
+    "title": "feat(agreements): add price rules and index series config-as-IP (Wave B-10)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "a072e0a87ea248af4c5f0b9a8bbe944d2f50394c"
+    },
+    "mergedAt": "2026-09-19T21:03:58Z",
+    "number": 299,
+    "title": "fix(lint): enable ruff W605 -- invalid escape sequences silently pass every 3.10 worktree"
+  },
+  {
+    "mergeCommit": {
+      "oid": "fef6e7bb621ebfc74dfc39a9da1c0368ce6d11cd"
+    },
+    "mergedAt": "2026-09-19T23:46:02Z",
+    "number": 300,
+    "title": "feat(system_design): Wave C-4 DESIGN_REQUEST Queue & from_quote consumption"
+  },
+  {
+    "mergeCommit": {
+      "oid": "ef110d2eef8dd4e21b0c779d1f36c362cd8aaadd"
+    },
+    "mergedAt": "2026-09-19T21:51:41Z",
+    "number": 301,
+    "title": "\ud83d\udd34 revert(ci): \u00a710.5b's post-merge-regen premise doesn't work -- restore PR-level doc gates"
+  },
+  {
+    "mergeCommit": {
+      "oid": "ef0b05282542e2ec88c21ab3a9f6fe429450592e"
+    },
+    "mergedAt": "2026-09-19T22:09:53Z",
+    "number": 302,
+    "title": "fix(ci): delete regen-generated-docs.yml -- it cannot succeed and cannot be fixed to"
+  },
+  {
+    "mergeCommit": {
+      "oid": "113dba2a2dfac9425d6d664e2262a82c335d0ab5"
+    },
+    "mergedAt": "2026-09-19T22:31:30Z",
+    "number": 303,
+    "title": "docs(H-8): write C12 Resource Surface sections for all engines with a registered spec"
+  },
+  {
+    "mergeCommit": {
+      "oid": "9a45295060232df33d7124809f57de9ecdcf81f9"
+    },
+    "mergedAt": "2026-09-20T00:05:53Z",
+    "number": 304,
+    "title": "feat(resource_surface): multi-table ResourceSpec support (spec.py + both backends)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "bcdef461daf66c48a52259a9b904affd1e8011b0"
+    },
+    "mergedAt": "2026-09-20T00:21:52Z",
+    "number": 305,
+    "title": "Wave 2: close break-h9a (merge_fl_nodes change_origin), verified live"
+  },
+  {
+    "mergeCommit": {
+      "oid": "bbd74bbff320d1da70aa50acf5f9fbf0cdc3c560"
+    },
+    "mergedAt": "2026-09-20T00:34:42Z",
+    "number": 306,
+    "title": "Gate golden_thread_seams.md and ENGINE_STATUS.md's byte-check"
+  },
+  {
+    "mergeCommit": {
+      "oid": "62167302ac203dea2dbe7743a63e9ef0f25a1d41"
+    },
+    "mergedAt": "2026-09-20T00:41:31Z",
+    "number": 307,
+    "title": "Wave 3(b): kg_nodes-primary ResourceSpec support (DEVICE/PORT/RACK/CABLE)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "a86cc2acee4e1d697a61d8c140467ef076887990"
+    },
+    "mergedAt": "2026-09-20T01:11:21Z",
+    "number": 308,
+    "title": "Wave 4: fix Golden Thread's live fixture never registering outbox subscribers (step 22)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "8d6bb4f0edcf57ff1779d9df42e16d68a8d89e89"
+    },
+    "mergedAt": "2026-09-20T08:02:24Z",
+    "number": 309,
+    "title": "docs(cron): D-10 acceptance \u2014 correct telemetry tick docstring, file per-asset dispatch as blocked-on-data"
+  },
+  {
+    "mergeCommit": {
+      "oid": "61e45ad1d17cca25a55933ca7134a09e31cb52ee"
+    },
+    "mergedAt": "2026-09-20T06:49:37Z",
+    "number": 310,
+    "title": "D-9: generalize the Sales flip-gate to nce.source_mode.flip"
+  },
+  {
+    "mergeCommit": {
+      "oid": "acd5e93996236b025c1b7306eb30a517e991a520"
+    },
+    "mergedAt": "2026-09-20T07:04:43Z",
+    "number": 311,
+    "title": "feat(system_design): Wave E-11 C12 resource surface for DEVICE/PORT/RACK/CABLE"
+  },
+  {
+    "mergeCommit": {
+      "oid": "f85f5ffbe644a090a3d0e794b781e1024aa33ab9"
+    },
+    "mergedAt": "2026-09-20T07:25:39Z",
+    "number": 312,
+    "title": "Close a real gap: kg_nodes-primary writes skipped assert_owner + emit_graph_write"
+  },
+  {
+    "mergeCommit": {
+      "oid": "d199be2733536f82bc9a06f096bfe63554b05f05"
+    },
+    "mergedAt": "2026-09-20T07:39:48Z",
+    "number": 313,
+    "title": "C-6: register PROJECT_PROJECT resource + GET /api/project/{id}/bom-lines"
+  },
+  {
+    "mergeCommit": {
+      "oid": "2056929456368c32faec6dd65cd0f6fff5b934df"
+    },
+    "mergedAt": "2026-09-20T08:52:23Z",
+    "number": 314,
+    "title": "B-2: register CONTACT C12 resource (kg_nodes-primary + sales_contacts satellite)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "6e1781bfecebe654edab35eecd69d9ed6388f719"
+    },
+    "mergedAt": "2026-09-20T10:08:59Z",
+    "number": 315,
+    "title": "D-9: build the generic GET/PUT /api/admin/source-mode route"
+  },
+  {
+    "mergeCommit": {
+      "oid": "0241ef5ddbc9f779a9e527682e1e292c12ba949c"
+    },
+    "mergedAt": "2026-09-20T10:22:00Z",
+    "number": 316,
+    "title": "Trim DEVICE/PORT/RACK/CABLE to real kg_nodes filters (fixes #311)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "770ddb6641fae1aaa829a75b0ed780664958fc64"
+    },
+    "mergedAt": "2026-09-20T10:30:19Z",
+    "number": 317,
+    "title": "fix(system_design): C-1 -- correct FUNCTIONAL_LOCATION's stale exemption reason"
+  },
+  {
+    "mergeCommit": {
+      "oid": "1fa05a88df7bb78789bb3e127d8790b5d3acca05"
+    },
+    "mergedAt": "2026-09-20T11:07:26Z",
+    "number": 318,
+    "title": "D-9 follow-on: flip-gate staleness heartbeat (observability, not enforcement)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "c7b4ccbb244939eb01febb45f88c3626af4d84f5"
+    },
+    "mergedAt": "2026-09-20T10:44:06Z",
+    "number": 319,
+    "title": "Kill the tool-pin discoverability tax: one manifest, twelve files derive from it"
+  },
+  {
+    "mergeCommit": {
+      "oid": "76e9209b80dac2c67b769289c771e3064e3810d6"
+    },
+    "mergedAt": "2026-09-20T10:47:00Z",
+    "number": 320,
+    "title": "feat(sales): B-5 -- sales_import_quote_lines, the external BOM_LINE origination path"
+  },
+  {
+    "mergeCommit": {
+      "oid": "a7f9be9e14928c6e59f627e52e7941655fa08e2c"
+    },
+    "mergedAt": "2026-09-20T11:15:42Z",
+    "number": 321,
+    "title": "Inert-instrument audit: 7 internal-cores.json prune checks could never fail"
+  },
+  {
+    "mergeCommit": {
+      "oid": "56fc40c6ae2c1a79818492c0c5937afbe531043f"
+    },
+    "mergedAt": "2026-09-20T12:02:48Z",
+    "number": 322,
+    "title": "feat(resource_surface): ResourceSpec.excluded_verbs -- closes RESOURCE and FUNCTIONAL_LOCATION exemptions"
+  },
+  {
+    "mergeCommit": {
+      "oid": "273c58b19f79fd20de2bf811aa1c1c8c29095977"
+    },
+    "mergedAt": "2026-09-20T11:27:50Z",
+    "number": 323,
+    "title": "Fix asset telemetry tick's silent 100-asset cap with fair-rotation keyset pagination"
+  },
+  {
+    "mergeCommit": {
+      "oid": "55f913f711e4818b85b0ba1ecf256d3b586cb63d"
+    },
+    "mergedAt": "2026-09-20T11:43:30Z",
+    "number": 324,
+    "title": "B-4: wire the DealRoom operation to an MCP tool (sales_open_dealroom)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "c72924306519646f645d7b5d98fe31fd47d87ca9"
+    },
+    "mergedAt": "2026-09-20T11:58:02Z",
+    "number": 325,
+    "title": "Fix inert customer_portal admin-only tool ratchet (subset check couldn't see new tools)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "3d585d038859361d6c68c46cc0c574b367e5bcf8"
+    },
+    "mergedAt": "2026-09-20T12:16:15Z",
+    "number": 326,
+    "title": "Q-48 follow-on: make table-backed bulk create all-or-nothing"
+  },
+  {
+    "mergeCommit": {
+      "oid": "a8175976f76045eaf42c4714e279da566a580e0a"
+    },
+    "mergedAt": "2026-09-20T12:25:08Z",
+    "number": 327,
+    "title": "C-7: governed confirm-first time-entry approval"
+  },
+  {
+    "mergeCommit": {
+      "oid": "5445ebbdcb8d1025a848c9350782e58102ac29bc"
+    },
+    "mergedAt": "2026-09-20T12:30:02Z",
+    "number": 328,
+    "title": "Guard: ResourceSpec.governed_verbs raises instead of silently doing nothing"
+  },
+  {
+    "mergeCommit": {
+      "oid": "dfc852dd53ed318514cacaa4e3587ddab852c146"
+    },
+    "mergedAt": "2026-09-20T13:24:12Z",
+    "number": 329,
+    "title": "feat(system_design): C-3 -- register DESIGN, identity-only, closes the exemption"
+  },
+  {
+    "mergeCommit": {
+      "oid": "39293533ae52c012fdfd2549043b1870ed73a2bf"
+    },
+    "mergedAt": "2026-09-20T13:59:52Z",
+    "number": 330,
+    "title": "feat(sales): B-5 remainder -- clone_quote, billing_method, light fields view"
+  },
+  {
+    "mergeCommit": {
+      "oid": "d449c3850866d42abd22d57dec568854635dce43"
+    },
+    "mergedAt": "2026-09-20T13:40:25Z",
+    "number": 331,
+    "title": "Room category to SLA price-tier resolver, refuse-and-name"
+  },
+  {
+    "mergeCommit": {
+      "oid": "69f7ffca26ab9b77572db248d84505c3506b97df"
+    },
+    "mergedAt": "2026-09-20T14:27:59Z",
+    "number": 332,
+    "title": "B-15: register DEAL_REGISTRATION, Procurement-owned C12 resource"
+  },
+  {
+    "mergeCommit": {
+      "oid": "d8a390f3970519ecdb59841a6b3900fb487c6799"
+    },
+    "mergedAt": "2026-09-20T15:27:45Z",
+    "number": 333,
+    "title": "feat(economy): B-12 governed billing-run generation"
+  },
+  {
+    "mergeCommit": {
+      "oid": "599bae7426a56f2e4e3883a9d75c04b24a9f9586"
+    },
+    "mergedAt": "2026-09-20T14:45:29Z",
+    "number": 334,
+    "title": "B-7: register QUOTE_TEMPLATE (Sales) and PACKAGE (Product) C12 resources"
+  },
+  {
+    "mergeCommit": {
+      "oid": "4b6390acdf5147377d01e4faa76dbf0bcda4608b"
+    },
+    "mergedAt": "2026-09-20T15:14:05Z",
+    "number": 335,
+    "title": "test(golden-thread): K34 -- steps 33/36 attempt real calls instead of raising"
+  },
+  {
+    "mergeCommit": {
+      "oid": "c34c329d7e5fe760b6bb585cc528f070bd0c0ea4"
+    },
+    "mergedAt": "2026-09-20T16:41:57Z",
+    "number": 336,
+    "title": "feat(system_design): C-4 -- DESIGN_REQUEST resource surface + storage cutover"
+  },
+  {
+    "mergeCommit": {
+      "oid": "223377f3482274ff9543facc0af5d7af918e1ccf"
+    },
+    "mergedAt": "2026-09-20T14:56:30Z",
+    "number": 337,
+    "title": "Harden principal tier resolution"
+  },
+  {
+    "mergeCommit": {
+      "oid": "b488cc34998c6d74ed1345a201d28a9b214f6b51"
+    },
+    "mergedAt": "2026-09-20T15:05:29Z",
+    "number": 338,
+    "title": "Close the tool_pins/test_tool_registry.py category-membership tangle (K8)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "57d7be0a0b3abf4a761cab90176e91fe00f60712"
+    },
+    "mergedAt": "2026-09-20T15:14:53Z",
+    "number": 339,
+    "title": "Add ratchet: MCP server must use only the stdio transport"
+  },
+  {
+    "mergeCommit": {
+      "oid": "84232a81e8c6303ed4a229168ba4df525823e46c"
+    },
+    "mergedAt": "2026-09-20T16:10:52Z",
+    "number": 340,
+    "title": "feat(economy): B-11 -- revenue-side Agreements<->GL reconciliation"
+  },
+  {
+    "mergeCommit": {
+      "oid": "137c5796fb4d668fdf41c4515d7385b89835b85b"
+    },
+    "mergedAt": "2026-09-20T15:20:02Z",
+    "number": 341,
+    "title": "Gate docs/_generated/resource_surface.md; disposition the other two ungated generators"
+  },
+  {
+    "mergeCommit": {
+      "oid": "7d98f9a75d6c6c9b6e9e5a4e90fa17426ca74f37"
+    },
+    "mergedAt": "2026-09-20T15:19:35Z",
+    "number": 342,
+    "title": "Delete scripts/generate_schemas.py and docs/schemas.json (dead, silently wrong)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "9a318147a6716b3becea0b7c04ba78f86d90c682"
+    },
+    "mergedAt": "2026-09-20T15:28:14Z",
+    "number": 343,
+    "title": "fix(ci): correct stale gating claims in doc-drift-nightly.yml header"
+  },
+  {
+    "mergeCommit": {
+      "oid": "adb70bcb548329b3382d8fde1bf64a956cb3d4e1"
+    },
+    "mergedAt": "2026-09-20T15:56:58Z",
+    "number": 344,
+    "title": "fix(agreements): three-way room-category collapse ruled -- three outcomes, not two"
+  },
+  {
+    "mergeCommit": {
+      "oid": "226e646a774fe33e45983f780a7901c171a96927"
+    },
+    "mergedAt": "2026-09-20T16:09:43Z",
+    "number": 345,
+    "title": "Q-44: scrub public provenance defense, gate Nettailer per-source, enforce isolation"
+  },
+  {
+    "mergeCommit": {
+      "oid": "559f35c1ab926d6907a1f12b5d893ef1a35d3977"
+    },
+    "mergedAt": "2026-09-20T16:58:03Z",
+    "number": 346,
+    "title": "feat(economy): B-13 CUSTOMER_INVOICE proposal generation"
+  },
+  {
+    "mergeCommit": {
+      "oid": "7a40e35f0a203967ce9ae6a6a2b55ba3ba49cbbf"
+    },
+    "mergedAt": "2026-09-20T17:14:01Z",
+    "number": 347,
+    "title": "fix(tests): isolate MCP tenant-namespace tests from ambient env"
+  },
+  {
+    "mergeCommit": {
+      "oid": "d3fbba89949e1bcf509173b200a5683b35ddb58d"
+    },
+    "mergedAt": "2026-09-20T17:15:37Z",
+    "number": 348,
+    "title": "fix(scripts): derive migration-gap categories instead of hardcoding one"
+  },
+  {
+    "mergeCommit": {
+      "oid": "01ae241123dff5b9fe2f9f1382f995680aeea4fb"
+    },
+    "mergedAt": "2026-09-20T17:44:23Z",
+    "number": 349,
+    "title": "Q-49: close product_catalog.lifecycle_status to a real vocabulary"
+  },
+  {
+    "mergeCommit": {
+      "oid": "3370cc80651fd06dfbcf812f0f38346ee85cbf17"
+    },
+    "mergedAt": "2026-09-20T17:23:43Z",
+    "number": 350,
+    "title": "test(rls): consolidate five duplicated tenant-RLS-table-count pins into one"
+  },
+  {
+    "mergeCommit": {
+      "oid": "ac44db0bfd4d0abcc0eb1bbc196883690511798d"
+    },
+    "mergedAt": "2026-09-20T17:26:23Z",
+    "number": 351,
+    "title": "fix(tests): clear NCE_MCP_NAMESPACE_ID for every test, not just the ones that know about it"
+  },
+  {
+    "mergeCommit": {
+      "oid": "313ae7dd90084ef7c63e7b956b519bf7d9f90163"
+    },
+    "mergedAt": "2026-09-20T18:18:37Z",
+    "number": 352,
+    "title": "feat(sales): B-3 -- DEAL_PARTICIPANT C12 sub-resource"
+  },
+  {
+    "mergeCommit": {
+      "oid": "16866ae8915e07b4800f10dccf74329715c52eee"
+    },
+    "mergedAt": "2026-09-20T17:55:13Z",
+    "number": 353,
+    "title": "docs(procurement): document why procurement_bid_prices has no C12 surface"
+  },
+  {
+    "mergeCommit": {
+      "oid": "bb65e11308196d4f034f1e992f67f7595f4ca502"
+    },
+    "mergedAt": "2026-09-20T17:59:43Z",
+    "number": 354,
+    "title": "fix(tests): make test_ast_reachability_from_mcp_handlers detect real calls, not substrings"
+  },
+  {
+    "mergeCommit": {
+      "oid": "419e80f8c33e42f17093a5cf741272f2eef8356a"
+    },
+    "mergedAt": "2026-09-20T18:23:32Z",
+    "number": 355,
+    "title": "fix(tests): instrument-audit mechanical fixes (tautological controls, stale ceiling)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "a30d6a76e676a28bc5dd396e09affd8075790d40"
+    },
+    "mergedAt": "2026-09-20T18:46:16Z",
+    "number": 356,
+    "title": "fix(tests): align golden-thread step 35 to the K34 tool-probe pattern"
+  },
+  {
+    "mergeCommit": {
+      "oid": "1083130ca1eee6e230c4368fa7f9522b924a13cc"
+    },
+    "mergedAt": "2026-09-20T18:41:19Z",
+    "number": 357,
+    "title": "Q-48: all-or-nothing bulk-create contract, structural pre-write validation"
+  },
+  {
+    "mergeCommit": {
+      "oid": "48fa573e9b6632fd9298c4e5f1fd5ca869fc4e39"
+    },
+    "mergedAt": "2026-09-20T18:23:50Z",
+    "number": 358,
+    "title": "test(migrations): guard the filename == header-comment convention"
+  },
+  {
+    "mergeCommit": {
+      "oid": "a766468a9ace6de9edadb68ce2c4c5122cfd0de0"
+    },
+    "mergedAt": "2026-09-20T19:01:46Z",
+    "number": 359,
+    "title": "fix(sales): exclude write verbs from SIGNED_BASELINE_SPEC's generic surface"
+  },
+  {
+    "mergeCommit": {
+      "oid": "034fee236c30e146809caa4d21a5892feb1bf25a"
+    },
+    "mergedAt": "2026-09-20T19:19:19Z",
+    "number": 360,
+    "title": "feat(economy): register BILLING_RUN, BILLING_CANDIDATE, CUSTOMER_INVOICE, CONTRACT as read-only C12 resources"
+  },
+  {
+    "mergeCommit": {
+      "oid": "350c899937022dc2804aa2f5c85c871406d4b4af"
+    },
+    "mergedAt": "2026-09-20T19:36:50Z",
+    "number": 361,
+    "title": "Q-41: vendors_calibrate_weights becomes an operator-only action"
+  },
+  {
+    "mergeCommit": {
+      "oid": "775a81649cc2a9be4e5617ee900c468b08cade72"
+    },
+    "mergedAt": "2026-09-20T20:07:20Z",
+    "number": 362,
+    "title": "fix(economy): exclude upsert and archive from POSTING_SPEC's generated surface"
+  },
+  {
+    "mergeCommit": {
+      "oid": "028db9845ba499e212a04aa967882d5bd5dabf41"
+    },
+    "mergedAt": "2026-09-20T19:41:56Z",
+    "number": 363,
+    "title": "fix(procurement): exclude upsert/archive from PO_LINE_SPEC's generic surface"
+  },
+  {
+    "mergeCommit": {
+      "oid": "1d66ccafb2b6372103a8fce3039621efb74c5710"
+    },
+    "mergedAt": "2026-09-20T19:43:26Z",
+    "number": 364,
+    "title": "fix(resource_surface): correct five stale exemption reasons"
+  },
+  {
+    "mergeCommit": {
+      "oid": "cad594b312f49853a3347f6e1bf071742c596b43"
+    },
+    "mergedAt": "2026-09-20T19:52:17Z",
+    "number": 365,
+    "title": "fix(resource_surface): excluded_verbs docstring no longer offers a dead escape hatch"
+  },
+  {
+    "mergeCommit": {
+      "oid": "ac8df2fefe22fa7b7b05faeb8eb5ed8e1002c596"
+    },
+    "mergedAt": "2026-09-20T19:58:37Z",
+    "number": 366,
+    "title": "docs(a2a): generalize the Q-41 note into a dispatch-site constraint"
+  },
+  {
+    "mergeCommit": {
+      "oid": "629094710aff36fa1bb9dbe67096bb9473642d57"
+    },
+    "mergedAt": "2026-09-20T20:07:34Z",
+    "number": 367,
+    "title": "fix(resource_surface): clear writable_fields to () when upsert is excluded"
+  },
+  {
+    "mergeCommit": {
+      "oid": "fe7fd48ff59d044aae96882d1c4ef9336ce05334"
+    },
+    "mergedAt": "2026-09-20T20:24:12Z",
+    "number": 368,
+    "title": "fix(resource_surface): exclude archive on 23 specs lacking an is_archived column (archive wave)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "307f2b8d2d797e10fd6c061cb3ef44aa63d27fc9"
+    },
+    "mergedAt": "2026-09-20T20:18:21Z",
+    "number": 369,
+    "title": "fix(surface-parity): scanner blind spot for customer_portal/me_app, tighten a2a.py, remove CP-2"
+  },
+  {
+    "mergeCommit": {
+      "oid": "fd2e976e39ace194eafa496783b47824518099df"
+    },
+    "mergedAt": "2026-09-20T20:34:49Z",
+    "number": 371,
+    "title": "docs(resource_surface): document the id/label lookup leniency's real load"
+  },
+  {
+    "mergeCommit": {
+      "oid": "a9b240b9d0aea26b759b226dfd1b2d91ad29b378"
+    },
+    "mergedAt": "2026-09-20T20:48:45Z",
+    "number": 372,
+    "title": "fix(config): rewrite 10 stale internal-cores reasons, PJ-5, and D-9 collision"
+  },
+  {
+    "mergeCommit": {
+      "oid": "05cd56db56dafc6ebe791c7d62c738d1313c6aa6"
+    },
+    "mergedAt": "2026-09-20T20:43:27Z",
+    "number": 373,
+    "title": "fix(tests): repair blind GUC-leak mock and wire the live-Postgres proof into CI"
+  },
+  {
+    "mergeCommit": {
+      "oid": "141f1e357329da7dd57a389e09d0418b23a05507"
+    },
+    "mergedAt": "2026-09-20T21:00:00Z",
+    "number": 374,
+    "title": "test(signing_credentials): add live-Postgres cross-tenant isolation test"
+  },
+  {
+    "mergeCommit": {
+      "oid": "ee950e87d663ff7d916a564fc9c5aba76510240c"
+    },
+    "mergedAt": "2026-09-20T21:03:55Z",
+    "number": 375,
+    "title": "test(resource_surface): live archive/restore sibling against real Postgres"
+  },
+  {
+    "mergeCommit": {
+      "oid": "1995acca257e7d26de49b55fcbd99fb09ad6ca45"
+    },
+    "mergedAt": "2026-09-20T21:00:05Z",
+    "number": 376,
+    "title": "fix(me-app): harden PUT /api/me/context to bind only the authenticated caller"
+  },
+  {
+    "mergeCommit": {
+      "oid": "65784919abbf0f4ce496208e4ec5ed89673d92b8"
+    },
+    "mergedAt": "2026-09-20T21:12:19Z",
+    "number": 377,
+    "title": "docs(gen_openapi): correct false 'comprehensive' claim in module docstring"
+  },
+  {
+    "mergeCommit": {
+      "oid": "fbfc78aa5ff33df9708578440f878748a5f942e0"
+    },
+    "mergedAt": "2026-09-20T21:21:16Z",
+    "number": 378,
+    "title": "fix(resource_surface): coerce writable values to their real Postgres type"
+  },
+  {
+    "mergeCommit": {
+      "oid": "41253274daab4659ed37d268300bb71e84d487cc"
+    },
+    "mergedAt": "2026-09-20T21:32:39Z",
+    "number": 379,
+    "title": "test(hr): live PATCH proof for employees.active against real Postgres"
+  },
+  {
+    "mergeCommit": {
+      "oid": "4039843bdb4f4b3581aa9c9cf6a39492beadafa9"
+    },
+    "mergedAt": "2026-09-20T21:56:33Z",
+    "number": 380,
+    "title": "docs(test_surface_parity): name registration-based dispatch as a fourth unobserved surface"
+  },
+  {
+    "mergeCommit": {
+      "oid": "f074d4f48223a060e680272b69bab5cc300e7623"
+    },
+    "mergedAt": "2026-09-20T21:40:43Z",
+    "number": 381,
+    "title": "fix(gen_openapi): correct response identity property for kg_nodes-primary specs"
+  },
+  {
+    "mergeCommit": {
+      "oid": "308020c6ab48b5f5d7a06d730737b5c567daa41f"
+    },
+    "mergedAt": "2026-09-20T21:42:18Z",
+    "number": 382,
+    "title": "fix(config): fold Lane F's function-based confirmation into 5 unconfirmed reasons"
+  },
+  {
+    "mergeCommit": {
+      "oid": "96630d819e03db7a60a2d2ccbabecf5b9d354e92"
+    },
+    "mergedAt": "2026-09-20T21:53:57Z",
+    "number": 383,
+    "title": "fix(gen_openapi): stop claiming format=uuid on graph-primary identity properties"
+  },
+  {
+    "mergeCommit": {
+      "oid": "853ba3147dc3bcac03ed684033642dd3e4b445a5"
+    },
+    "mergedAt": "2026-09-20T21:54:01Z",
+    "number": 384,
+    "title": "fix(tests): clear the signing key cache unconditionally between tests"
+  },
+  {
+    "mergeCommit": {
+      "oid": "d6712671086ac03149c677a0c0c619699a239a88"
+    },
+    "mergedAt": "2026-09-20T21:54:05Z",
+    "number": 385,
+    "title": "test(resource_surface): generic PATCH live sibling against real Postgres"
+  },
+  {
+    "mergeCommit": {
+      "oid": "ec864d0932f49ce47038a22dca3ba6c7a78a2366"
+    },
+    "mergedAt": "2026-09-20T21:57:41Z",
+    "number": 386,
+    "title": "docs(inventory,system_design): fix two docstrings citing register_automation_subscribers' stale caller count"
+  },
+  {
+    "mergeCommit": {
+      "oid": "0aaba82f8c0c927127dc203dfc3a11adac50072e"
+    },
+    "mergedAt": "2026-09-20T22:42:38Z",
+    "number": 387,
+    "title": "fix(support): enforce the append-only invariant support_ticket_actions has always claimed"
+  },
+  {
+    "mergeCommit": {
+      "oid": "ece4b5a1c7e5d878c8ca7b2891e9fc25d47f76f1"
+    },
+    "mergedAt": "2026-09-20T22:12:14Z",
+    "number": 388,
+    "title": "test(resource_surface): graph-primary PATCH live sibling against real Postgres"
+  },
+  {
+    "mergeCommit": {
+      "oid": "f257d957f97de16cb5b6a5b63870dd5811423214"
+    },
+    "mergedAt": "2026-09-20T22:31:16Z",
+    "number": 389,
+    "title": "fix(resource_surface): stop a real column from shadowing response envelope keys"
+  },
+  {
+    "mergeCommit": {
+      "oid": "03919669087a1e5bf956af36951e5be8af220052"
+    },
+    "mergedAt": "2026-09-20T22:31:26Z",
+    "number": 390,
+    "title": "fix(field_tech): add identifier columns to writable_fields"
+  },
+  {
+    "mergeCommit": {
+      "oid": "152253a94a4c3a776180e5c92c943997c2498cc0"
+    },
+    "mergedAt": "2026-09-20T22:58:51Z",
+    "number": 391,
+    "title": "test(resource_surface): re-enable field_tech in the generic PATCH sibling"
+  },
+  {
+    "mergeCommit": {
+      "oid": "652171292bc45b26551e6f864469e66ede3969e6"
+    },
+    "mergedAt": "2026-09-20T23:00:46Z",
+    "number": 392,
+    "title": "fix(schema): collapse support_ticket_actions' grant to one self-healing pair"
+  },
+  {
+    "mergeCommit": {
+      "oid": "36b31eec97fb443e7265ce4e873be1072db8066b"
+    },
+    "mergedAt": "2026-09-20T23:08:12Z",
+    "number": 393,
+    "title": "test(resource_surface): graph-primary CREATE live sibling against real Postgres"
+  },
+  {
+    "mergeCommit": {
+      "oid": "8763129ce7e432d11388488081799bced5da9839"
+    },
+    "mergedAt": "2026-09-20T23:35:01Z",
+    "number": 394,
+    "title": "fix(resource_surface): PATCH now re-injects node_type on secondary-table writes"
+  },
+  {
+    "mergeCommit": {
+      "oid": "994b285b1cc125abc5391237891a5d60888d05ec"
+    },
+    "mergedAt": "2026-09-20T23:44:24Z",
+    "number": 395,
+    "title": "test(resource_surface): live sibling for handle_list's relational branch"
+  },
+  {
+    "mergeCommit": {
+      "oid": "2989e6665c85ff45074925b411bdf6eb0d7e5d69"
+    },
+    "mergedAt": "2026-09-20T23:44:33Z",
+    "number": 396,
+    "title": "fix(resource_surface): re-inject node_type on mcp.py's upsert relational branch"
+  },
+  {
+    "mergeCommit": {
+      "oid": "242853b4a4d9f5f066d0d0421f8ac92327174aa3"
+    },
+    "mergedAt": "2026-09-20T23:47:05Z",
+    "number": 397,
+    "title": "docs(internal-cores): correct stale REST/MCP-surface reason text for B-12/B-13 writers"
+  },
+  {
+    "mergeCommit": {
+      "oid": "4306c58a22e1df7e8c74d5d8022213c92e70ac86"
+    },
+    "mergedAt": "2026-09-20T23:52:27Z",
+    "number": 398,
+    "title": "test(resource_surface): live MCP list/get for the one global-scope spec"
+  },
+  {
+    "mergeCommit": {
+      "oid": "b86fa44048ac0f91c50a70c12e1334bf5c59c7c2"
+    },
+    "mergedAt": "2026-09-21T00:01:00Z",
+    "number": 399,
+    "title": "test(resource_surface): live sibling for MCP's handle_archive"
+  },
+  {
+    "mergeCommit": {
+      "oid": "6523519e7f4e15582a5a2ef23f67ab367646aa92"
+    },
+    "mergedAt": "2026-09-21T00:44:06Z",
+    "number": 400,
+    "title": "fix(resource_surface): gate node_type injection everywhere, stop the phantom node_state row"
+  },
+  {
+    "mergeCommit": {
+      "oid": "7c790aa322efa763a5ff5a846f1f6b8bf7e4aa61"
+    },
+    "mergedAt": "2026-09-21T00:09:34Z",
+    "number": 401,
+    "title": "fix(resource_surface): stop MCP upsert from silently duplicating graph-primary nodes"
+  },
+  {
+    "mergeCommit": {
+      "oid": "da52128b6fae9d23eeb8f6f6b8cadabd2c880d05"
+    },
+    "mergedAt": "2026-09-21T00:27:02Z",
+    "number": 402,
+    "title": "test(resource_surface): pin REST patch's label-OR-id::text leniency against the TRUE kg_nodes id"
+  },
+  {
+    "mergeCommit": {
+      "oid": "f91a78fb606b6ef6a247974c92be8495e4c39d67"
+    },
+    "mergedAt": "2026-09-21T01:17:04Z",
+    "number": 403,
+    "title": "fix(resource_surface): validate and resolve identifiers before sub-resource writes (comments, tags, documents)"
+  },
+  {
+    "mergeCommit": {
+      "oid": "18c612220855172776e97571be20f7e4919e47f2"
+    },
+    "mergedAt": "2026-09-21T01:01:50Z",
+    "number": 404,
+    "title": "fix(resource_surface): exclude archive for global-scope specs with no ownership column"
+  },
+  {
+    "mergeCommit": {
+      "oid": "d2d94022022f33862588e128e96e735bc9b70158"
+    },
+    "mergedAt": "2026-09-21T01:17:44Z",
+    "number": 405,
+    "title": "fix(resource_surface): graph-primary optimistic concurrency compares kg_nodes' own updated_at"
+  },
+  {
+    "mergeCommit": {
+      "oid": "92750214466c4c89e6b538b2c2e1c460984994c8"
+    },
+    "mergedAt": "2026-09-21T01:01:02Z",
+    "number": 406,
+    "title": "fix(documents): register_document/list_entity_documents never worked against real Postgres"
+  },
+  {
+    "mergeCommit": {
+      "oid": "f3a46d57d62e0ca3b59b9ad6f6c5d5e333737c13"
+    },
+    "mergedAt": "2026-09-21T01:19:24Z",
+    "number": 407,
+    "title": "fix(openapi): document nullable writable_fields as such, generator-only"
+  },
+  {
+    "mergeCommit": {
+      "oid": "39dad2afc429044e756eb069625bda4f3bdf3945"
+    },
+    "mergedAt": "2026-09-21T01:32:50Z",
+    "number": 408,
+    "title": "docs(golden-thread): state that no passing step exercises the C12 surface"
+  },
+  {
+    "mergeCommit": {
+      "oid": "eee46a32dbffa1f6e895176fd65eabbac4db50f4"
+    },
+    "mergedAt": "2026-09-21T02:08:51Z",
+    "number": 409,
+    "title": "test(unit): shrink-only ratchet for mocked-DB-dependent unit tests"
+  },
+  {
+    "mergeCommit": {
+      "oid": "cd1fd86422706c50e6ee162b4149866423cf247f"
+    },
+    "mergedAt": "2026-09-21T02:49:49Z",
+    "number": 410,
+    "title": "fix(cron): saga-recovery worker never actually decoded a committed saga's payload"
+  },
+  {
+    "mergeCommit": {
+      "oid": "986453822108b995337c1566884477775bc60b98"
+    },
+    "mergedAt": "2026-09-21T01:52:23Z",
+    "number": 411,
+    "title": "fix(jsonb): decode three raw jsonb strings never parsed against real Postgres"
+  },
+  {
+    "mergeCommit": {
+      "oid": "2056d6e15a5cbc93fb6da2831189d87bcb80160d"
+    },
+    "mergedAt": "2026-09-21T02:35:21Z",
+    "number": 412,
+    "title": "fix(support): _row_to_dict never decoded the jsonb columns it returned"
+  },
+  {
+    "mergeCommit": {
+      "oid": "35bfcdf6a5be02fa1b88ddcb68466fec810196ae"
+    },
+    "mergedAt": "2026-09-21T02:14:13Z",
+    "number": 413,
+    "title": "fix(admin): decode three jsonb reads this pool's missing codec left raw"
+  },
+  {
+    "mergeCommit": {
+      "oid": "ecf1f19adbfae69dfc229c34a60c44cbc85b2b04"
+    },
+    "mergedAt": "2026-09-21T02:17:47Z",
+    "number": 414,
+    "title": "fix(system_design): capability sync merges catalog ETIM specs instead of discarding them"
+  },
+  {
+    "mergeCommit": {
+      "oid": "c3911a7978bd588e770775e81ea6728a57e59f48"
+    },
+    "mergedAt": "2026-09-21T02:55:49Z",
+    "number": 415,
+    "title": "fix(product): decode etim_specs before building the enrichment prompt"
+  },
+  {
+    "mergeCommit": {
+      "oid": "3a6ed794a4f44850896a31421c13e659636487e1"
+    },
+    "mergedAt": "2026-09-21T02:23:24Z",
+    "number": 416,
+    "title": "fix(field_tech): decode work_orders.raw and checklists.items strings"
+  },
+  {
+    "mergeCommit": {
+      "oid": "c828ee9882fd423c6a356a7e5077ab46bd08a14d"
+    },
+    "mergedAt": "2026-09-21T02:38:47Z",
+    "number": 417,
+    "title": "fix(hr): decode absences.raw jsonb and fix a date/datetime crash in the compliance loop"
+  },
+  {
+    "mergeCommit": {
+      "oid": "4484c5aae6a68b75ff9d4c5d458999d80b2e6f47"
+    },
+    "mergedAt": "2026-09-21T02:50:00Z",
+    "number": 418,
+    "title": "Decode JSONB seo/consent_scope in marketing admin listings"
+  },
+  {
+    "mergeCommit": {
+      "oid": "968d80399811f1f4c26b66bf0df6e929fc5d772a"
+    },
+    "mergedAt": "2026-09-21T03:17:20Z",
+    "number": 420,
+    "title": "fix(tests): replace the raw-text regex marker check with an AST scan"
+  },
+  {
+    "mergeCommit": {
+      "oid": "b2df5fb551a5caa6b4ab7a67c94c726bb3d2442b"
+    },
+    "mergedAt": "2026-09-21T13:11:08Z",
+    "number": 421,
+    "title": "deps(deps): bump the security-critical group with 3 updates"
+  },
+  {
+    "mergeCommit": {
+      "oid": "f1d8a8132a7639023e053763c6d9a664adbc8bad"
+    },
+    "mergedAt": "2026-09-21T12:24:56Z",
+    "number": 422,
+    "title": "deps(deps): update tree-sitter-language-pack requirement from >=1.19.1 to >=1.20.0"
+  },
+  {
+    "mergeCommit": {
+      "oid": "48cdd72be1586094fd512a8001e2ea09a0bb3020"
+    },
+    "mergedAt": "2026-09-21T12:25:09Z",
+    "number": 423,
+    "title": "deps(deps): update ezdxf requirement from >=1.4.0 to >=1.4.4"
+  },
+  {
+    "mergeCommit": {
+      "oid": "625d4165c5557571d179577f6198736194f2756a"
+    },
+    "mergedAt": "2026-09-21T12:25:21Z",
+    "number": 424,
+    "title": "deps(deps): update lxml requirement from >=6.0.0 to >=6.1.3"
+  },
+  {
+    "mergeCommit": {
+      "oid": "a45c4975cca37bfc726948533962cd82366e24e0"
+    },
+    "mergedAt": "2026-09-21T13:12:32Z",
+    "number": 425,
+    "title": "deps(deps-dev): bump ruff from 0.15.20 to 0.16.8"
+  },
+  {
+    "mergeCommit": {
+      "oid": "dcc0f743ccd19b2438b18a8a246368397a985f2d"
+    },
+    "mergedAt": "2026-09-21T12:26:28Z",
+    "number": 426,
+    "title": "deps(deps): update openpyxl requirement from >=3.1.3 to >=3.1.5"
+  },
+  {
+    "mergeCommit": {
+      "oid": "a025a52fa32e7b28f7393c7f154094e80427b005"
+    },
+    "mergedAt": "2026-09-21T13:11:22Z",
+    "number": 427,
+    "title": "deps(deps): update cachetools requirement from >=7.1.8 to >=7.2.0"
+  },
+  {
+    "mergeCommit": {
+      "oid": "5be830181eccfe7855a59425c44882f96fcb996a"
+    },
+    "mergedAt": "2026-09-21T13:13:16Z",
+    "number": 428,
+    "title": "deps(deps): update psd-tools requirement from >=1.9.28 to >=1.19.0"
+  },
+  {
+    "mergeCommit": {
+      "oid": "03e1110b6202a344eb24859149bf158f858c301c"
+    },
+    "mergedAt": "2026-09-21T12:26:41Z",
+    "number": 429,
+    "title": "deps(deps): update minio requirement from >=7.2.0 to >=7.2.20"
+  },
+  {
+    "mergeCommit": {
+      "oid": "880b1c8d49ab0d4ef0206aa9ed363ed606082491"
+    },
+    "mergedAt": "2026-09-21T13:11:36Z",
+    "number": 430,
+    "title": "deps(deps): update openvino requirement from >=2026.3.1 to >=2026.4.0"
+  },
+  {
+    "mergeCommit": {
+      "oid": "946ff1a2a839b7917d24bbbd54e807bd67f93be0"
+    },
+    "mergedAt": "2026-09-21T11:52:22Z",
+    "number": 431,
+    "title": "fix(resource-surface): expose kg_nodes' real id as canonical_id on GET"
+  },
+  {
+    "mergeCommit": {
+      "oid": "64fbbcace40f9d00b9eac39c235d632732921a9e"
+    },
+    "mergedAt": "2026-09-21T12:02:21Z",
+    "number": 432,
+    "title": "refactor(legal_entities,sites): delete dead hand-written CRUD, keep the enrichment pair"
+  },
+  {
+    "mergeCommit": {
+      "oid": "f5638ddb1d0e299eef5c3dbef537f87d22290d7c"
+    },
+    "mergedAt": "2026-09-21T11:39:53Z",
+    "number": 433,
+    "title": "fix(rest): stop explicit-null state fields from creating phantom node_state rows"
+  },
+  {
+    "mergeCommit": {
+      "oid": "e6a45b1ebf694d860d3fb0631e23ca862e36e2cb"
+    },
+    "mergedAt": "2026-09-21T11:48:05Z",
+    "number": 434,
+    "title": "docs(generated): regenerate waves_landed.md from clean origin/main"
+  },
+  {
+    "mergeCommit": {
+      "oid": "1be35fa32de72ebf41d96ef32731ef43fa5ef52b"
+    },
+    "mergedAt": "2026-09-21T12:12:37Z",
+    "number": 435,
+    "title": "fix(tool-registry): correct mutation=False on ten writer tools, drop their dead cacheable flag"
+  },
+  {
+    "mergeCommit": {
+      "oid": "394753c910cbf7f7cf050a3f929b4c82ac6785e3"
+    },
+    "mergedAt": "2026-09-21T11:52:32Z",
+    "number": 436,
+    "title": "fix(tests): make the waves_landed advisory visible instead of hard-gating it"
+  },
+  {
+    "mergeCommit": {
+      "oid": "723727fe91c14d887726090f500aee6ce07b1727"
+    },
+    "mergedAt": "2026-09-21T11:58:42Z",
+    "number": 437,
+    "title": "fix(economy): gate B-11 reconciliation alerting behind an explicit opt-in"
+  },
+  {
+    "mergeCommit": {
+      "oid": "8c8001ea9a53f6658dd094446f0980d334b1fe0e"
+    },
+    "mergedAt": "2026-09-21T12:30:40Z",
+    "number": 438,
+    "title": "test(sales): assert dispatch_alert is actually called by Sales/D365 divergence"
+  },
+  {
+    "mergeCommit": {
+      "oid": "59debcac3a3998042c15cd2367dfa3abe671d4bc"
+    },
+    "mergedAt": "2026-10-08T09:35:23Z",
+    "number": 439,
+    "title": "feat(docs): compute doc-banner drift nightly instead of trusting the claim"
+  },
+  {
+    "mergeCommit": {
+      "oid": "0e27c1f44efaa143e7c51c7bb79e4d2e98ef44f1"
+    },
+    "mergedAt": "2026-10-08T09:35:30Z",
+    "number": 443,
+    "title": "deps(deps-dev): bump pytest-timeout from 2.3.1 to 2.4.0"
   }
 ]

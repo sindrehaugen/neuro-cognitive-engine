@@ -392,7 +392,10 @@ def _html_sections_from_headings(html: str) -> list[Section]:
     Falls back to a single plain-text section if selectolax is unavailable.
     """
     try:
-        from selectolax.parser import HTMLParser
+        try:
+            from selectolax.lexbor import LexborHTMLParser as HTMLParser
+        except ImportError:
+            from selectolax.parser import HTMLParser
     except ImportError:
         plain = html_to_text(html)
         return [Section(text=plain.strip(), structure_path="HTML", section_type="body", order=0)]
