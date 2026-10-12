@@ -104,7 +104,7 @@ defusedxml==0.7.1
     # via -r requirements.txt
 deprecation==2.1.0
     # via vsdx
-dnspython==2.8.0
+dnspython==2.9.0
     # via pymongo
 easygui==0.98.3
     # via oletools
@@ -116,11 +116,11 @@ extract-msg==0.56.1
     # via -r requirements.txt
 ezdxf==1.4.4
     # via -r requirements.txt
-fastapi==0.142.4
+fastapi==0.143.0
     # via -r requirements.txt
 fastjsonschema==2.22.2
     # via nbformat
-filelock==4.0.12
+filelock==4.1.1
     # via
     #   huggingface-hub
     #   torch
@@ -216,7 +216,7 @@ murmurhash==1.0.15
     #   preshed
     #   spacy
     #   thinc
-narwhals==2.26.0
+narwhals==2.27.1
     # via scikit-learn
 nbformat==5.11.1
     # via -r requirements.txt
@@ -224,7 +224,7 @@ networkx==3.7
     # via
     #   -r requirements.txt
     #   torch
-numpy==2.5.3
+numpy==2.5.4
     # via
     #   -r requirements.txt
     #   blis
@@ -380,7 +380,7 @@ pillow==12.3.0
     #   psd-tools
     #   pytesseract
     #   python-pptx
-platformdirs==4.12.4
+platformdirs==4.13.0
     # via jupyter-core
 pluggy==1.6.0
     # via pytest
@@ -396,11 +396,11 @@ protobuf==7.36.2
     #   opentelemetry-proto
 psd-tools==1.24.0
     # via -r requirements.txt
-pycparser==3.0
+pycparser==3.11
     # via cffi
-pycryptodome==3.24.0
+pycryptodome==3.24.1
     # via minio
-pydantic==2.13.5
+pydantic==2.14.1
     # via
     #   -r requirements.txt
     #   fastapi
@@ -409,7 +409,7 @@ pydantic==2.13.5
     #   spacy
     #   thinc
     #   weasel
-pydantic-core==2.46.5
+pydantic-core==2.50.1
     # via pydantic
 pydantic-settings==2.15.0
     # via mcp
@@ -421,13 +421,13 @@ pyjwt==2.15.1
     # via
     #   -r requirements.txt
     #   mcp
-pymongo==4.18.2
+pymongo==4.18.3
     # via motor
 pyparsing==3.3.3
     # via
     #   ezdxf
     #   oletools
-pypdf==6.19.0
+pypdf==6.20.0
     # via -r requirements.txt
 pypdfium2==5.14.0
     # via pdfplumber
@@ -512,7 +512,7 @@ six==1.17.0
     # via python-dateutil
 smart-open==8.0.2
     # via weasel
-soupsieve==2.10
+soupsieve==3.0.2
     # via beautifulsoup4
 spacy==3.8.16
     # via -r requirements.txt
@@ -545,7 +545,7 @@ thinc==8.3.13
     # via spacy
 threadpoolctl==3.7.0
     # via scikit-learn
-tokenizers==0.23.2
+tokenizers==0.23.3
     # via
     #   sentence-transformers
     #   transformers
@@ -571,7 +571,7 @@ tree-sitter==0.26.0
     # via
     #   -r requirements.txt
     #   tree-sitter-language-pack
-tree-sitter-language-pack==1.21.0
+tree-sitter-language-pack==1.21.3
     # via -r requirements.txt
 triton==3.8.0
     # via torch
