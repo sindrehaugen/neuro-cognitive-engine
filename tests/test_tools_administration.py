@@ -282,8 +282,9 @@ async def test_a2a_skill_server_interception(mock_engine):
     GOVERNANCE._snapshot = None
     GOVERNANCE._fetched_at = None
 
-    caller_ctx = NamespaceContext(namespace_id=uuid.uuid4(), agent_id="agent-b")
-    params = {"query": "hello", "namespace_id": str(uuid.uuid4())}
+    ns_id = uuid.uuid4()
+    caller_ctx = NamespaceContext(namespace_id=ns_id, agent_id="agent-b")
+    params = {"query": "hello", "namespace_id": str(ns_id)}
 
     with patch("nce.a2a_server._engine", mock_engine):
         with pytest.raises(A2AScopeViolationError) as exc:
@@ -301,8 +302,9 @@ async def test_a2a_skill_server_fail_safe(mock_engine):
     redis.hkeys = AsyncMock(side_effect=RuntimeError("Redis down"))
     mock_engine.redis_client = redis
 
-    caller_ctx = NamespaceContext(namespace_id=uuid.uuid4(), agent_id="agent-b")
-    params = {"query": "hello", "namespace_id": str(uuid.uuid4()), "limit": 5}
+    ns_id = uuid.uuid4()
+    caller_ctx = NamespaceContext(namespace_id=ns_id, agent_id="agent-b")
+    params = {"query": "hello", "namespace_id": str(ns_id), "limit": 5}
 
     with patch("nce.a2a_server._engine", mock_engine):
         # Skill executes — governance gate served the fresh allow-snapshot.

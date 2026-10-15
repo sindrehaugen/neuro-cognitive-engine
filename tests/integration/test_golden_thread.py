@@ -464,12 +464,16 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         canonical_label="deal with participants",
         is_broken=True,
         review_break="break-h9b",
-        phase1_wave="B-1-followup",
+        phase1_wave="deal-graph-relational-split",
         description=(
-            "No DEAL_PARTICIPANT concept exists anywhere in nce.vertical_modules.sales "
-            "(confirmed by reading resources.py/graph.py and migration 088) -- do_create_deal "
-            "takes no participants/attendees argument at all. Aspirational per the original "
-            "charter text, not yet built by any landed wave."
+            "DEAL_PARTICIPANT shipped in #352 (Wave B-3, migration 107_sales_deal_participants.sql, "
+            "sales_upsert_deal_participants). Re-running this step against a real Postgres via "
+            "sales_upsert_deal_participants surfaces ForeignKeyViolationError on "
+            "sales_deal_participants_deal_id_fkey (deal_id REFERENCES sales_deals(id)): "
+            "ctx.deal_id is written by do_create_deal (step 1) only as a kg_nodes graph node "
+            "(entity_type='DEAL', label='DEAL:...'), with no row in the C12-relational "
+            "sales_deals table -- the exact same graph-vs-relational identity split (Q-46) "
+            "as step 34 (break-h9c)."
         ),
     ),
     BurndownStep(
@@ -501,10 +505,11 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         review_break="break-h9d",
         phase1_wave="B-12",
         description=(
-            "No billing-run capability exists anywhere in the tree: "
-            "git ls-tree origin/main -- nce/migrations/ has no billing_run migration, and no "
-            "vertical_modules package implements one. Tracked charter-wide as Wave B-12, not "
-            "yet started as of this wave."
+            "do_generate_billing_run (nce/vertical_modules/economy/billing_runs.py, migrations "
+            "102/103, Wave B-12) exists in the tree, and PR #360 registered read-only C12 "
+            "visibility (BILLING_RUN_SPEC / BILLING_CANDIDATE_SPEC, get/list only with "
+            "excluded_verbs={'upsert', 'archive'}), but the governed writer core remains "
+            "deliberately unwired to any MCP tool or REST route (nce/config_data/internal-cores.json)."
         ),
     ),
     BurndownStep(
@@ -513,11 +518,13 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         canonical_label="customer invoice",
         is_broken=True,
         review_break="break-h9e",
-        phase1_wave="B-12",
+        phase1_wave="B-13",
         description=(
-            "No customer-invoice capability exists anywhere in the tree (distinct from the "
-            "existing supplier-invoice approval path economy_approve_invoice already covers). "
-            "Depends on billing_run (step 35) existing first; tracked under the same Wave B-12."
+            "do_propose_customer_invoice (nce/vertical_modules/economy/customer_invoices.py, "
+            "migration 108, Wave B-13) exists in the tree, and PR #360 registered read-only C12 "
+            "visibility (CUSTOMER_INVOICE_SPEC, get/list only with excluded_verbs={'upsert', "
+            "'archive'}), but the governed writer core remains deliberately unwired to any MCP "
+            "tool or REST route (nce/config_data/internal-cores.json)."
         ),
     ),
     BurndownStep(
@@ -1943,33 +1950,24 @@ class TestGoldenThreadSteps:
     @pytest.mark.xfail(
         strict=True,
         reason=(
-            "break-h9b: no DEAL_PARTICIPANT concept exists anywhere in "
-            "nce.vertical_modules.sales (confirmed by reading resources.py/graph.py and "
-            "migration 088_sales_resource_tables.sql) -- do_create_deal takes no "
-            "participants/attendees argument at all. Aspirational per the original H-9 "
-            "charter text, not yet built by any landed wave (tracked as B-1-followup). "
-            "K34 (2026-09-20): this step now ATTEMPTS the real capability instead of "
-            "raising unconditionally -- it asserts the live TOOL_REGISTRY contains no "
-            "tool matching 'deal_participant' (a substring predicate, not one guessed "
-            "exact name -- a C12 spec would generate 'sales_upsert_deal_participants', "
-            "a hand-written route could pick anything else entirely; the predicate "
-            "flips to XPASS under any of them). Fails today with a genuine assertion, "
-            "will XPASS (forcing this marker's removal under strict=True) the moment a "
-            "matching tool exists."
+            "break-h9b (re-diagnosed): DEAL_PARTICIPANT shipped in #352 (Wave B-3, "
+            "migration 107_sales_deal_participants.sql, sales/resources.py:428 "
+            "registering sales_upsert_deal_participants). Calling "
+            "sales_upsert_deal_participants directly surfaces asyncpg.exceptions."
+            "ForeignKeyViolationError on sales_deal_participants_deal_id_fkey "
+            "(deal_id REFERENCES sales_deals(id)): ctx.deal_id is written by "
+            "do_create_deal (step 1) only as a kg_nodes graph node "
+            "(entity_type='DEAL', label='DEAL:...'), with no matching row in the "
+            "C12-relational sales_deals table -- the exact same graph-vs-relational "
+            "identity split (Q-46) as step 34 (break-h9c)."
         ),
     )
     async def test_step_33_deal_participants(self, scenario: GoldenThreadScenarioContext) -> None:
-        """Step 33: deal with participants (not built -- see xfail reason)."""
+        """Step 33: deal with participants, via the C12 resource-surface tool."""
         ctx = scenario
         await self._ensure_prereqs(ctx, 1)
-        # A substring predicate over the live TOOL_REGISTRY, not a guessed exact
-        # key -- see the xfail reason for why an exact name is the wrong check.
-        matching = [name for name in TOOL_REGISTRY if "deal_participant" in name]
-        assert matching, (
-            "DEAL_PARTICIPANT has no tool registered under any name -- seam h9b still open"
-        )
         result = json.loads(
-            await TOOL_REGISTRY[matching[0]].handler(
+            await TOOL_REGISTRY["sales_upsert_deal_participants"].handler(
                 ctx.engine,
                 {
                     "namespace_id": str(ctx.namespace_id),
@@ -2030,31 +2028,35 @@ class TestGoldenThreadSteps:
     @pytest.mark.xfail(
         strict=True,
         reason=(
-            "break-h9d: no billing-run capability is reachable from any surface -- "
+            "break-h9d: no billing-run writer capability is reachable from any surface -- "
             "nce/vertical_modules/economy/billing_runs.py implements "
-            "do_generate_billing_run (migrations 102/103 back it), but nothing "
-            "registers it in TOOL_REGISTRY or wires it into a REST route, so a "
-            "caller has no way to invoke it. K34 (2026-09-20): aligned to the "
-            "same pattern as steps 33/36 -- this step now ATTEMPTS the real "
-            "capability instead of raising unconditionally -- it asserts the live "
-            "TOOL_REGISTRY contains no tool matching 'billing_run' (a substring "
-            "predicate, not one guessed exact name -- a C12 spec would generate "
-            "'economy_upsert_billing_runs', a hand-written route could pick "
-            "anything else entirely; the predicate flips to XPASS under any of "
-            "them). Fails today with a genuine assertion, will XPASS (forcing "
-            "this marker's removal under strict=True) the moment a matching tool "
-            "exists -- previously this raised NotImplementedError unconditionally "
-            "and could never XPASS even after the capability shipped."
+            "do_generate_billing_run (migrations 102/103 back it), and PR #360 registered "
+            "read-only C12 visibility (BILLING_RUN_SPEC, get/list only with "
+            "excluded_verbs={'upsert', 'archive'}), but the governed writer core "
+            "(do_generate_billing_run in nce/config_data/internal-cores.json) remains "
+            "unwired in TOOL_REGISTRY or any REST route. K34 (2026-09-20, updated for #360): "
+            "this step asserts the live TOOL_REGISTRY contains no mutating/writer tool "
+            "matching 'billing_run' (spec.mutation is True -- filtering out #360's read-only "
+            "economy_list_billing_runs / economy_get_billing_runs so this positive control "
+            "genuinely asserts the absence of a writer tool rather than calling list and "
+            "failing on status=='ok'). Fails today with a genuine assertion, will XPASS "
+            "(forcing this marker's removal under strict=True) the moment a writer tool "
+            "is registered."
         ),
     )
     async def test_step_35_billing_run(self, scenario: GoldenThreadScenarioContext) -> None:
-        """Step 35: billing run (not built -- see xfail reason)."""
+        """Step 35: billing run (writer unwired -- see xfail reason)."""
         ctx = scenario
         await self._ensure_prereqs(ctx, 1)
-        # A substring predicate over the live TOOL_REGISTRY, not a guessed exact
-        # key -- see the xfail reason for why an exact name is the wrong check.
-        matching = [name for name in TOOL_REGISTRY if "billing_run" in name]
-        assert matching, "BILLING_RUN has no tool registered under any name -- seam h9d still open"
+        # A substring + spec.mutation predicate over the live TOOL_REGISTRY --
+        # PR #360 registered read-only get/list tools, so filtering by spec.mutation
+        # checks for a mutating writer tool under any name.
+        matching = [
+            name for name, spec in TOOL_REGISTRY.items() if "billing_run" in name and spec.mutation
+        ]
+        assert matching, (
+            "BILLING_RUN has no writer tool registered under any name -- seam h9d still open"
+        )
         result = json.loads(
             await TOOL_REGISTRY[matching[0]].handler(
                 ctx.engine,
@@ -2071,30 +2073,37 @@ class TestGoldenThreadSteps:
     @pytest.mark.xfail(
         strict=True,
         reason=(
-            "break-h9e: no customer-invoice capability exists anywhere in the tree "
+            "break-h9e: no customer-invoice writer capability is reachable from any surface "
             "(distinct from the existing supplier-invoice approval path "
-            "economy_approve_invoice already covers). billing_run (step 35, B-12) now "
-            "exists (PR #333), but customer-invoice generation from a BILLING_CANDIDATE "
-            "is a separate, still-unbuilt capability (tracked as B-13). K34 (2026-09-20): "
-            "this step now ATTEMPTS the real capability instead of raising unconditionally "
-            "-- it asserts the live TOOL_REGISTRY contains no tool matching "
-            "'customer_invoice' (a substring predicate, not one guessed exact name -- a "
-            "C12 spec would generate 'economy_upsert_customer_invoices', a hand-written "
-            "route could pick anything else; the predicate flips to XPASS under any of "
-            "them, and 'customer_invoice' does not match the existing supplier-side "
-            "'economy_approve_invoice'). Fails today with a genuine assertion, will "
-            "XPASS the moment a matching tool exists."
+            "economy_approve_invoice already covers). "
+            "nce/vertical_modules/economy/customer_invoices.py implements "
+            "do_propose_customer_invoice (migration 108, Wave B-13), and PR #360 registered "
+            "read-only C12 visibility (CUSTOMER_INVOICE_SPEC, get/list only with "
+            "excluded_verbs={'upsert', 'archive'}), but the governed writer core "
+            "(do_propose_customer_invoice in nce/config_data/internal-cores.json) remains "
+            "unwired in TOOL_REGISTRY or any REST route. K34 (2026-09-20, updated for #360): "
+            "this step asserts the live TOOL_REGISTRY contains no mutating/writer tool "
+            "matching 'customer_invoice' (spec.mutation is True -- filtering out #360's "
+            "read-only economy_list_customer_invoices / economy_get_customer_invoices so "
+            "this positive control genuinely asserts the absence of a writer tool rather "
+            "than calling list and failing on status=='ok'). Fails today with a genuine "
+            "assertion, will XPASS the moment a writer tool is registered."
         ),
     )
     async def test_step_36_customer_invoice(self, scenario: GoldenThreadScenarioContext) -> None:
-        """Step 36: customer invoice (not built -- see xfail reason)."""
+        """Step 36: customer invoice (writer unwired -- see xfail reason)."""
         ctx = scenario
         await self._ensure_prereqs(ctx, 1)
-        # A substring predicate over the live TOOL_REGISTRY, not a guessed exact
-        # key -- see the xfail reason for why an exact name is the wrong check.
-        matching = [name for name in TOOL_REGISTRY if "customer_invoice" in name]
+        # A substring + spec.mutation predicate over the live TOOL_REGISTRY --
+        # PR #360 registered read-only get/list tools, so filtering by spec.mutation
+        # checks for a mutating writer tool under any name.
+        matching = [
+            name
+            for name, spec in TOOL_REGISTRY.items()
+            if "customer_invoice" in name and spec.mutation
+        ]
         assert matching, (
-            "CUSTOMER_INVOICE has no tool registered under any name -- seam h9e still open"
+            "CUSTOMER_INVOICE has no writer tool registered under any name -- seam h9e still open"
         )
         result = json.loads(
             await TOOL_REGISTRY[matching[0]].handler(
@@ -2732,11 +2741,14 @@ class TestGoldenThreadPositiveControls:
         The original 28 steps still execute with zero broken steps. H-9 (2026-09-19)
         added 5 genuine breaks alongside 4 new working steps: break-h9a (fl_tree_merge,
         a real bug in Lane C's merge_fl_nodes -- fixed via #282, closed this wave),
-        break-h9b (deal_participants, not built), break-h9c (agreement_parties:
-        resource_surface fix landed in #284, but re-verification surfaced a distinct,
-        unbridged graph-vs-relational customer-identity gap), break-h9d/e (billing_run/
-        customer_invoice, Wave B-12, not started). A stated partial per S7, not a
-        silent one.
+        break-h9b (deal_participants: DEAL_PARTICIPANT shipped in #352, re-diagnosed
+        to the same Q-46 graph-vs-relational deal-identity FK split on sales_deals as
+        break-h9c), break-h9c (agreement_parties: resource_surface fix landed in #284,
+        but re-verification surfaced a distinct, unbridged Q-46 graph-vs-relational
+        customer-identity gap on sales_customers), break-h9d/e (billing_run /
+        customer_invoice, Waves B-12/B-13: read-only C12 visibility registered in #360,
+        governed writer cores do_generate_billing_run / do_propose_customer_invoice
+        remain unwired). A stated partial per S7, not a silent one.
         """
         broken_steps = [s for s in GOLDEN_THREAD_STEPS if s.is_broken]
         assert len(broken_steps) == 4, f"Expected 4 broken steps, found: {broken_steps}"

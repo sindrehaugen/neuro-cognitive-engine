@@ -410,6 +410,29 @@ def _require_param(params: dict[str, Any], key: str) -> Any:
     return val
 
 
+def _normalize_namespace_str(value: Any) -> str:
+    raw = str(value).strip()
+    try:
+        return str(uuid.UUID(raw))
+    except (ValueError, AttributeError):
+        return raw.lower()
+
+
+def _resolve_skill_namespace(
+    params: dict[str, Any],
+    caller_ctx: NamespaceContext | None,
+) -> str:
+    """Validate and return ``namespace_id`` from skill parameters against caller context."""
+    ns_id = _require_param(params, "namespace_id")
+    caller_ns = getattr(caller_ctx, "namespace_id", None) if caller_ctx is not None else None
+    if "_owner_agent_id" not in params and isinstance(caller_ns, (uuid.UUID, str)):
+        if _normalize_namespace_str(ns_id) != _normalize_namespace_str(caller_ns):
+            raise A2AScopeViolationError(
+                "Requested namespace_id does not match authenticated caller namespace."
+            )
+    return str(ns_id)
+
+
 # ---------------------------------------------------------------------------
 # Route handlers
 # ---------------------------------------------------------------------------
@@ -493,7 +516,12 @@ async def tasks_send(request: Request) -> JSONResponse:
 
     task_id: str = str(body.get("id") or uuid4())
     skill: str = str(body.get("skill") or "").strip()
-    params: dict[str, Any] = body.get("params") or {}
+    raw_params = body.get("params")
+    params: dict[str, Any] = (
+        {k: v for k, v in raw_params.items() if k != "_owner_agent_id"}
+        if isinstance(raw_params, dict)
+        else {}
+    )
     sharing_token: str | None = body.get("sharing_token")  # optional cross-agent token
 
     # Propagate correlation_id from the caller's _meta block.
@@ -716,7 +744,7 @@ async def _dispatch_skill(
 
     if skill == "recall_relevant_context":
         query = _require_param(params, "query")
-        ns_id = _require_param(params, "namespace_id")
+        ns_id = _resolve_skill_namespace(params, caller_ctx)
         agent_id = params.get("agent_id", caller_ctx.agent_id or "default")
         top_k = max(1, min(int(params.get("limit", params.get("top_k", 5))), 20))
         offset = max(0, int(params.get("offset", 0)))
@@ -741,7 +769,7 @@ async def _dispatch_skill(
         from nce.models import MemoryType, StoreMemoryRequest
 
         memories = _require_param(params, "memories")
-        ns_id = _require_param(params, "namespace_id")
+        ns_id = _resolve_skill_namespace(params, caller_ctx)
         agent_id = _require_param(params, "agent_id")
 
         if not isinstance(memories, list):
@@ -768,7 +796,7 @@ async def _dispatch_skill(
 
     if skill == "find_related_decisions":
         query = _require_param(params, "query")
-        ns_id = _require_param(params, "namespace_id")
+        ns_id = _resolve_skill_namespace(params, caller_ctx)
         max_depth = max(1, min(int(params.get("max_depth", 2)), 3))
         agent_id = params.get("agent_id")
 
@@ -783,11 +811,13 @@ async def _dispatch_skill(
         return result
 
     if skill == "verify_memory_integrity":
+        if params.get("namespace_id") is not None:
+            _resolve_skill_namespace(params, caller_ctx)
         memory_id_str = _require_param(params, "memory_id")
         return await _engine.verify_memory(memory_id=memory_id_str)
 
     if skill == "get_cognitive_state":
-        ns_id = _require_param(params, "namespace_id")
+        ns_id = _resolve_skill_namespace(params, caller_ctx)
         agent_id = _require_param(params, "agent_id")
         user_id = params.get("user_id", "default")
         n = max(1, min(int(params.get("n", 10)), 50))
@@ -819,7 +849,7 @@ async def _dispatch_skill(
             )
 
     if skill == "vendors_partner_view":
-        ns_id = _require_param(params, "namespace_id")
+        ns_id = _resolve_skill_namespace(params, caller_ctx)
         node_id = params.get("node_id") or params.get("contractor_id") or params.get("vendor_id")
         if not node_id:
             raise ValueError("node_id is required")
@@ -836,7 +866,7 @@ async def _dispatch_skill(
         return await do_partner_view(_engine, view_params)
 
     if skill == "vendors_match_contractor":
-        ns_id = _require_param(params, "namespace_id")
+        ns_id = _resolve_skill_namespace(params, caller_ctx)
         job = _require_param(params, "job")
         if not isinstance(job, dict):
             raise ValueError("job parameter must be a dictionary")
@@ -846,7 +876,7 @@ async def _dispatch_skill(
         return await do_match_contractor(_engine, {"namespace_id": ns_id, "job": job})
 
     if skill == "vendors_compute_performance":
-        ns_id = _require_param(params, "namespace_id")
+        ns_id = _resolve_skill_namespace(params, caller_ctx)
         contractor_id = _require_param(params, "contractor_id")
         window = params.get("window")
 
@@ -862,7 +892,7 @@ async def _dispatch_skill(
         )
 
     if skill == "vendors_recall_similar_jobs":
-        ns_id = _require_param(params, "namespace_id")
+        ns_id = _resolve_skill_namespace(params, caller_ctx)
         query = _require_param(params, "query")
         contractor_id = params.get("contractor_id")
         limit = params.get("limit") or params.get("top_k", 5)
@@ -880,7 +910,7 @@ async def _dispatch_skill(
         )
 
     if skill == "vendors_reliability_radar":
-        ns_id = _require_param(params, "namespace_id")
+        ns_id = _resolve_skill_namespace(params, caller_ctx)
 
         from nce.vertical_modules.vendors.frontier import do_reliability_radar
 
