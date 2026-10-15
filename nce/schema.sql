@@ -800,8 +800,10 @@ BEGIN
                     SELECT * FROM event_log_default 
                     WHERE occurred_at >= p_start AND occurred_at < p_end;
                     
+                PERFORM set_config('nce.partition_maintenance', 'on', true);
                 DELETE FROM event_log_default 
                 WHERE occurred_at >= p_start AND occurred_at < p_end;
+                PERFORM set_config('nce.partition_maintenance', '', true);
                 
                 -- Create partition
                 EXECUTE format(
@@ -865,6 +867,11 @@ DROP FUNCTION IF EXISTS trg_event_log_parent_set_null();
 CREATE OR REPLACE FUNCTION prevent_mutation()
 RETURNS TRIGGER AS $$
 BEGIN
+    IF TG_OP = 'DELETE'
+       AND TG_TABLE_NAME = 'event_log_default'
+       AND current_setting('nce.partition_maintenance', true) = 'on' THEN
+        RETURN OLD;
+    END IF;
     RAISE EXCEPTION 'event_log is immutable (WORM). % operation is forbidden.', TG_OP;
     RETURN NULL;
 END;
@@ -1358,19 +1365,24 @@ CREATE INDEX IF NOT EXISTS idx_source_mode_config_namespace_engine
 
 -- --- Product Catalog (Migration 031) ---
 CREATE TABLE IF NOT EXISTS product_catalog (
-    id                UUID        NOT NULL DEFAULT gen_random_uuid(),
-    gtin              TEXT,
-    manufacturer      TEXT        NOT NULL,
-    mfr_part_no       TEXT        NOT NULL,
-    product_source_id TEXT        NOT NULL,
-    lifecycle_status  TEXT        NOT NULL DEFAULT 'active',
-    is_deleted        BOOLEAN     NOT NULL DEFAULT false,
-    etim_specs        JSONB       NOT NULL DEFAULT '{}'::jsonb,
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id                   UUID             NOT NULL DEFAULT gen_random_uuid(),
+    gtin                 TEXT,
+    manufacturer         TEXT             NOT NULL,
+    mfr_part_no          TEXT             NOT NULL,
+    product_source_id    TEXT             NOT NULL,
+    lifecycle_status     TEXT             NOT NULL DEFAULT 'active',
+    successor_sku        TEXT,
+    lifecycle_confidence DOUBLE PRECISION,
+    is_deleted           BOOLEAN          NOT NULL DEFAULT false,
+    etim_specs           JSONB            NOT NULL DEFAULT '{}'::jsonb,
+    created_at           TIMESTAMPTZ      NOT NULL DEFAULT now(),
+    updated_at           TIMESTAMPTZ      NOT NULL DEFAULT now(),
     PRIMARY KEY (id),
     UNIQUE (manufacturer, mfr_part_no)
 );
+
+ALTER TABLE product_catalog ADD COLUMN IF NOT EXISTS successor_sku TEXT;
+ALTER TABLE product_catalog ADD COLUMN IF NOT EXISTS lifecycle_confidence DOUBLE PRECISION;
 
 CREATE TABLE IF NOT EXISTS product_prices (
     id            UUID        NOT NULL DEFAULT gen_random_uuid(),

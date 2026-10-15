@@ -64,9 +64,10 @@ async def publish(
     it to any handler registered via ``subscribe``.  Callers must call this inside
     an open transaction so post-commit semantics are preserved.
 
-    If no consumer is registered for this event selector in ``OUTBOX_HANDLERS``,
+    If no consumer is registered for this event selector in ``OUTBOX_HANDLERS``
+    and no active matching C4 outbound webhook is registered for the tenant,
     the event is dropped with a debug log and counted in ``nce_outbox_unconsumed_total``
-    rather than being inserted into ``outbox_events`` (Wave B-R2).
+    rather than being inserted into ``outbox_events`` (Wave B-R2 / Wave R-14).
 
     Parameters
     ----------
@@ -79,7 +80,17 @@ async def publish(
     """
     event_type = _selector_key(node_type, op)
     handlers = OUTBOX_HANDLERS.get(event_type)
-    if not handlers:
+    matching_webhooks: list[Any] = []
+    if not handlers and namespace_id is not None:
+        try:
+            from nce.outbound_webhooks import get_matching_webhooks
+
+            res = await get_matching_webhooks(conn, namespace_id, event_type)
+            if isinstance(res, list):
+                matching_webhooks = res
+        except Exception as exc:
+            log.debug("[bus] error checking matching outbound webhooks: %s", exc)
+    if not handlers and not matching_webhooks:
         log.debug(
             "[bus] Dropping unconsumed event: selector=%s aggregate_type=%s aggregate_id=%s ns=%s",
             event_type,
