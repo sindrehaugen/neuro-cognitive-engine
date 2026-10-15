@@ -266,8 +266,7 @@ async def _scan_catalog_for_eol(
     """Scan ``product_catalog`` for EOL lifecycle statuses.
 
     Returns entries in the same shape as the config-seeded list.
-    Only includes rows that have a non-empty ``successor_sku`` column
-    (if that column exists in the schema).
+    Only includes rows that have a non-empty ``successor_sku`` column.
     """
     _EOL_STATUSES = frozenset({"eol", "eos", "end_of_life", "end_of_sale", "discontinued"})
 

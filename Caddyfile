@@ -23,7 +23,7 @@ http://:80, https://:443 {
 		# Restrict browser feature access
 		Permissions-Policy "geolocation=(), camera=(), microphone=()"
 		# Content Security Policy (strict by default, allowing local resources)
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self';"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; connect-src 'self';"
 		# Hide the server signature
 		-Server
 	}
@@ -54,6 +54,17 @@ http://:80, https://:443 {
 			max_size 10485760
 		}
 		reverse_proxy customer-portal:8005 {
+			# Sanitize proxy headers to prevent client-side IP spoofing
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	# Route A2A protocol endpoints to dedicated a2a service
+	@a2a_routes path /tasks/* /.well-known/agent-card
+	handle @a2a_routes {
+		reverse_proxy a2a:8004 {
 			# Sanitize proxy headers to prevent client-side IP spoofing
 			header_up X-Forwarded-For {remote_host}
 			header_up X-Forwarded-Proto {scheme}

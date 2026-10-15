@@ -2,10 +2,10 @@
 
 Phase A Wave A-1:
 Generates declarative MCP tools and executable handlers for any ResourceSpec:
-  - {engine}_list_{entity}: collection query with filters, q search, and cursor pagination
-  - {engine}_get_{entity}: single item fetch (no tier redaction on this
-    surface -- redact_item/resolve_principal_tier/tier_allowlists are a
-    rest.py-only mechanism today, not implemented for MCP tools)
+  - {engine}_list_{entity}: collection query with filters, q search, cursor pagination,
+    and principal tier redaction via redact_item
+  - {engine}_get_{entity}: single item fetch with principal tier redaction via
+    redact_item when a caller principal tier is supplied
   - {engine}_upsert_{entity}: create or update with concurrency protection
   - {engine}_archive_{entity}: soft archive
 
@@ -35,6 +35,7 @@ from nce.resource_surface.rest import (
     _merge_secondary_row_preserving_kg_nodes_timestamps,
     coerce_writable_values,
     compute_secondary_write_data,
+    redact_item,
     row_to_dict,
     upsert_secondary_tables,
 )
@@ -42,6 +43,28 @@ from nce.resource_surface.spec import ResourceSpec
 
 if TYPE_CHECKING:
     from nce.tool_registry import ToolSpec
+
+
+def resolve_mcp_principal_tier(arguments: dict[str, Any]) -> str:
+    """Resolve the caller principal tier from MCP tool ``arguments``.
+
+    Checks ``_principal_tier`` or ``principal_kind`` when supplied (and not
+    ``None``). When neither key is present, defaults to ``"employee"`` so
+    internal/stdio MCP agent callers retain unfiltered access. When a tier is
+    explicitly supplied, only ``"employee"``, ``"contractor"``, and
+    ``"external-customer"`` are accepted; any unrecognized value resolves to
+    ``"unverified"`` (fail-closed, matching ``resolve_principal_tier`` in
+    ``nce.resource_surface.rest``).
+    """
+    raw_tier = arguments.get("_principal_tier")
+    if raw_tier is None:
+        raw_tier = arguments.get("principal_kind")
+    if raw_tier is None:
+        return "employee"
+    tier = str(raw_tier)
+    if tier in ("employee", "contractor", "external-customer"):
+        return tier
+    return "unverified"
 
 
 def _version_str(value: Any) -> str:
@@ -392,6 +415,9 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                     filtered.append(it)
             items = filtered[:limit]
 
+        tier = resolve_mcp_principal_tier(arguments)
+        items = [redact_item(it, spec, tier) for it in items]
+
         return json.dumps(
             {"items": items, "next_cursor": next_cursor, "total": len(items)}, default=str
         )
@@ -518,6 +544,9 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
 
         if not item:
             return json.dumps({"error": f"{spec.node_type} {item_id} not found"})
+
+        tier = resolve_mcp_principal_tier(arguments)
+        item = redact_item(item, spec, tier)
 
         return json.dumps(item, default=str)
 

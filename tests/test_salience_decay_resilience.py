@@ -11,7 +11,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from nce.salience import compute_decayed_score
+from nce.salience import (
+    compute_decayed_score,
+    half_life_to_stability,
+    stability_to_half_life,
+)
+from nce.temporal_decay import MemoryClass, retention, stability_for
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -149,3 +154,32 @@ class TestOverflowGuard:
         for s_last, updated_at, half_life in cases:
             score = compute_decayed_score(s_last, updated_at, half_life_days=half_life, now=_NOW)
             assert score >= 0.0, f"Negative score for inputs ({s_last}, {updated_at}, {half_life})"
+
+
+# ---------------------------------------------------------------------------
+# TestEbbinghausParameterEquivalence — half-life vs stability S identity
+# ---------------------------------------------------------------------------
+
+
+class TestEbbinghausParameterEquivalence:
+    def test_half_life_and_stability_round_trip_and_retention_identity(self):
+        """Verify half_life_to_stability and stability_to_half_life round-trip
+        and prove compute_decayed_score matches temporal_decay.retention."""
+        assert half_life_to_stability(0.0) == 0.0
+        assert half_life_to_stability(-5.0) == 0.0
+        assert stability_to_half_life(0.0) == 0.0
+        assert stability_to_half_life(-5.0) == 0.0
+
+        for mc in MemoryClass:
+            s = stability_for(mc)
+            hl = stability_to_half_life(s)
+            assert half_life_to_stability(hl) == pytest.approx(s, abs=1e-12)
+            assert stability_to_half_life(half_life_to_stability(hl)) == pytest.approx(
+                hl, abs=1e-12
+            )
+
+            t0 = _NOW - timedelta(days=12, hours=6)
+            t1 = _NOW
+            decayed = compute_decayed_score(1.0, t0, hl, now=t1)
+            ret = retention(t0, mc, _now=t1).retention
+            assert abs(decayed - ret) < 1e-12
