@@ -11,17 +11,14 @@ customer → design → quote → sign → **baseline frozen** → project → P
 
 H-9 Golden Thread v2 extension (charter §9, 2026-09-19), steps 29-37: address →
 **SITE** → FL tree (children/ancestors/move real; merge real, break-h9a closed) →
-room category + responsible employee → **deal with participants (not built,
-break-h9b)** → **agreement with parties (graph/relational customer-identity
-split, break-h9c)** → **billing run
-(not built, break-h9d)** → **customer invoice (not built, break-h9e)** →
-notification received by the responsible employee. A stated partial per S7: the
-thread has a genuine gap from steps 33-36 (participants/billing/invoice do not
-exist yet), not a scenario that quietly stops early. See each step's own
-docstring/xfail reason for the evidence. ``TestGoldenThreadPipeline``'s
-sequential full-run test still covers only the original 28 steps -- extending
-it to the same 9 was out of this wave's time budget and is noted here rather
-than left silently stale.
+room category + responsible employee → **deal with participants (break-h9b closed,
+Wave R-6)** → **agreement with parties and SLA coverage (break-h9c closed,
+Wave R-6/R-8)** → **billing run (break-h9d closed, Wave R-7)** → **customer invoice
+(break-h9e closed, Wave R-7)** → notification received by the responsible employee.
+All 37 steps (the original 28 + H-9's 9 extension steps) now execute against live
+PostgreSQL with zero open xfail seams. ``TestGoldenThreadPipeline``'s sequential
+full-run test covers the original 28 steps while the individual step tests and
+``_ensure_prereqs`` chain cover all 37.
 
 Per ML-orch Charter §13:
 - Live database execution against PostgreSQL across one created & torn-down test namespace.
@@ -34,29 +31,23 @@ Per ML-orch Charter §13:
   touching the database cannot pass. Wall-clock is deliberately NOT used: it
   measures the hardware, not the behaviour.
 
-WHAT "GOLDEN THREAD GREEN" DOES NOT MEAN (measured 2026-09-21, not assumed)
-----------------------------------------------------------------------------
-No PASSING step in this file exercises the C12 generated resource-surface
-(``nce/resource_surface/rest.py`` + ``mcp.py``) successfully. Its only contact
-with that surface is five ``TOOL_REGISTRY[...]`` calls, and every one of them
-sits inside the four currently-broken ``xfail`` steps (33/34/35/36,
-break-h9b/h9c/h9d/h9e) -- the furthest of those (step 34,
-``agreements_upsert_agreements``/``agreements_upsert_parties``) dies on an
-unrelated FK violation before it would prove anything either way. Comments,
-tags, and the documents sub-resource (attach/detach/list) are never
-exercised anywhere in this file, under any step, passing or broken -- not a
-scoped-out corner of a broader C12 pass, there simply is no passing C12
-contact to be a corner of. A green Golden Thread run has never been evidence
-of correct C12 generated read/write behaviour, for any of the 56 specs it
-covers, including the two documents bugs #406 fixed. That coverage lives
-instead in the dedicated live sibling suites: e.g.
+WHAT "GOLDEN THREAD GREEN" DOES NOT MEAN (updated post-Wave R-8)
+----------------------------------------------------------------
+Steps 33 and 34 exercise three C12 MCP upsert tools
+(``sales_upsert_deal_participants``, ``agreements_upsert_agreements``, and
+``agreements_upsert_parties``) in ``nce/resource_surface/mcp.py``. However, no step
+in this file exercises the C12 REST handlers (``nce/resource_surface/rest.py``) or
+the comments, tags, and documents sub-resources (attach/detach/list). A green
+Golden Thread run is not a substitute for full C12 read/write/sub-resource coverage
+across all 56 registered specs. That coverage lives in the dedicated live sibling
+suites: e.g.
 ``tests/integration/test_resource_surface_subresource_write_validation_live.py``
 (comments/tags/documents identifier resolution),
 ``tests/integration/test_documents_jsonb_metadata_live.py`` (documents
 metadata jsonb round-trip), and
 ``tests/integration/test_resource_surface_kg_nodes_primary_live.py``
-(graph-primary C12 read/write) -- check those, not this file's pass/fail, for
-anything C12-shaped.
+(graph-primary C12 read/write) -- check those, not this file's pass/fail alone, for
+comprehensive C12 surface verification.
 """
 
 from __future__ import annotations
@@ -462,69 +453,58 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         index=33,
         name="deal_participants",
         canonical_label="deal with participants",
-        is_broken=True,
-        review_break="break-h9b",
-        phase1_wave="deal-graph-relational-split",
+        is_broken=False,
+        review_break=None,
+        phase1_wave=None,
         description=(
-            "DEAL_PARTICIPANT shipped in #352 (Wave B-3, migration 107_sales_deal_participants.sql, "
-            "sales_upsert_deal_participants). Re-running this step against a real Postgres via "
-            "sales_upsert_deal_participants surfaces ForeignKeyViolationError on "
-            "sales_deal_participants_deal_id_fkey (deal_id REFERENCES sales_deals(id)): "
-            "ctx.deal_id is written by do_create_deal (step 1) only as a kg_nodes graph node "
-            "(entity_type='DEAL', label='DEAL:...'), with no row in the C12-relational "
-            "sales_deals table -- the exact same graph-vs-relational identity split (Q-46) "
-            "as step 34 (break-h9c)."
+            "DEAL_PARTICIPANT (Wave B-3, migration 107_sales_deal_participants.sql, "
+            "sales_upsert_deal_participants) previously failed with ForeignKeyViolationError "
+            "on sales_deal_participants_deal_id_fkey because do_create_deal wrote only the "
+            "kg_nodes DEAL node without a relational sales_deals row (break-h9b). Closed by "
+            "dual-writing sales_deals in do_create_deal (Wave R-6)."
         ),
     ),
     BurndownStep(
         index=34,
         name="agreement_parties",
         canonical_label="agreement with parties",
-        is_broken=True,
-        review_break="break-h9c",
-        phase1_wave="customer-graph-relational-split",
+        is_broken=False,
+        review_break=None,
+        phase1_wave=None,
         description=(
-            "AGREEMENT/AGREEMENT_PARTY (B-9, migration 096) exist only as C12 resource-surface "
-            "tools -- no hand-written creation path. The resource_surface datetime/version_field "
-            "bug this step was originally blocked on landed on main in #284; re-verified live and "
-            "it is fixed. Re-running this step against a real Postgres surfaces a second, distinct "
-            "blocker: 'agreements' hard-FKs customer_id to sales_customers.id "
-            "(agreements_customer_id_fkey), but the Golden Thread's CUSTOMER concept -- and every "
-            "customer in the sales engine's DEAL/QUOTE flow -- lives only as a kg_nodes graph node "
-            "(do_create_deal writes entity_type='CUSTOMER' to kg_nodes; step 1). Nothing anywhere "
-            "in the tree bridges a graph-modeled customer to a real sales_customers row. Not a test "
-            "bug and not fixed here -- an architecture question (graph vs. C12-relational customer "
-            "identity) outside this lane's charter to decide."
+            "AGREEMENT/AGREEMENT_PARTY (Wave B-9, migration 096) previously failed with "
+            "ForeignKeyViolationError on agreements_customer_id_fkey because do_create_deal "
+            "wrote only the kg_nodes CUSTOMER node without a relational sales_customers row "
+            "(break-h9c). Closed by dual-writing sales_customers in do_create_customer / "
+            "do_create_deal (Wave R-6) and wiring SLA coverage for the agreement."
         ),
     ),
     BurndownStep(
         index=35,
         name="billing_run",
         canonical_label="billing run",
-        is_broken=True,
-        review_break="break-h9d",
-        phase1_wave="B-12",
+        is_broken=False,
+        review_break=None,
+        phase1_wave=None,
         description=(
-            "do_generate_billing_run (nce/vertical_modules/economy/billing_runs.py, migrations "
-            "102/103, Wave B-12) exists in the tree, and PR #360 registered read-only C12 "
-            "visibility (BILLING_RUN_SPEC / BILLING_CANDIDATE_SPEC, get/list only with "
-            "excluded_verbs={'upsert', 'archive'}), but the governed writer core remains "
-            "deliberately unwired to any MCP tool or REST route (nce/config_data/internal-cores.json)."
+            "do_generate_billing_run (Wave B-12, migrations 102/103) was previously unwired "
+            "in TOOL_REGISTRY (break-h9d). Closed by registering economy_generate_billing_run "
+            "in TOOL_REGISTRY and mcp_stdio_tools.py (Wave R-7), generating a confirmed "
+            "billing candidate from SLA room coverage."
         ),
     ),
     BurndownStep(
         index=36,
         name="customer_invoice",
         canonical_label="customer invoice",
-        is_broken=True,
-        review_break="break-h9e",
-        phase1_wave="B-13",
+        is_broken=False,
+        review_break=None,
+        phase1_wave=None,
         description=(
-            "do_propose_customer_invoice (nce/vertical_modules/economy/customer_invoices.py, "
-            "migration 108, Wave B-13) exists in the tree, and PR #360 registered read-only C12 "
-            "visibility (CUSTOMER_INVOICE_SPEC, get/list only with excluded_verbs={'upsert', "
-            "'archive'}), but the governed writer core remains deliberately unwired to any MCP "
-            "tool or REST route (nce/config_data/internal-cores.json)."
+            "do_propose_customer_invoice (Wave B-13, migration 105) was previously unwired "
+            "in TOOL_REGISTRY (break-h9e). Closed by registering "
+            "economy_propose_customer_invoice in TOOL_REGISTRY and mcp_stdio_tools.py "
+            "(Wave R-7), proposing a customer invoice from Step 35's billing candidate."
         ),
     ),
     BurndownStep(
@@ -536,8 +516,7 @@ GOLDEN_THREAD_STEPS: tuple[BurndownStep, ...] = (
         phase1_wave=None,
         description=(
             "C13 create_notification delivers a real notification row to the principal "
-            "bound to the employee assigned responsible in step 32 -- not about the invoice "
-            "chain (steps 34-36 are broken), an honest SLA-coverage notice instead"
+            "bound to the employee assigned responsible in step 32"
         ),
     ),
 )
@@ -579,6 +558,7 @@ class GoldenThreadScenarioContext:
     fl_floor_label: str = ""
     responsible_employee_id: str = ""
     responsible_principal_id: str = ""
+    billing_candidate_id: str = ""
 
 
 async def _live_read_signed_baseline(eng: NCEEngine, nsu: UUID, qid: str) -> dict | None:
@@ -704,7 +684,12 @@ async def _setup_live_context() -> AsyncGenerator[GoldenThreadScenarioContext, N
     slug = f"pytest-gt-{uuid.uuid4().hex[:8]}"
 
     async with pool.acquire() as conn:
-        ns_id = await conn.fetchval("INSERT INTO namespaces (slug) VALUES ($1) RETURNING id", slug)
+        ns_id = await conn.fetchval(
+            "INSERT INTO namespaces (slug, metadata) "
+            'VALUES ($1, \'{"agreements": {"enabled": true}, "economy": {"enabled": true}}\'::jsonb) '
+            "RETURNING id",
+            slug,
+        )
         async with conn.transaction():
             await set_namespace_context(conn, ns_id)
             await seed_node_ownership_registry(conn, ns_id)
@@ -795,7 +780,7 @@ async def _setup_live_context() -> AsyncGenerator[GoldenThreadScenarioContext, N
         namespace_id=ns_id,
         namespace_slug=slug,
         start_time=start_time,
-        deal_id=f"DEAL-{uuid.uuid4().hex[:6].upper()}",
+        deal_id=str(uuid.uuid4()),
         customer_id=str(uuid.uuid4()),
         quote_id=f"Q-{uuid.uuid4().hex[:6].upper()}",
         design_id=f"DSN-{uuid.uuid4().hex[:6].upper()}",
@@ -1000,6 +985,16 @@ class TestGoldenThreadSteps:
             await self.test_step_30_fl_tree_children_ancestors_move(ctx)
         if up_to_step >= 32 and not ctx.responsible_employee_id:
             await self.test_step_32_responsible_assigned(ctx)
+        if up_to_step >= 34:
+            async with ctx.pool.acquire() as conn:
+                acnt = await conn.fetchval(
+                    "SELECT count(*) FROM agreements WHERE namespace_id = $1",
+                    ctx.namespace_id,
+                )
+            if acnt == 0:
+                await self.test_step_34_agreement_parties(ctx)
+        if up_to_step >= 35 and not ctx.billing_candidate_id:
+            await self.test_step_35_billing_run(ctx)
 
     async def test_step_01_customer(self, scenario: GoldenThreadScenarioContext) -> None:
         """Step 1: customer account / deal model."""
@@ -1947,21 +1942,6 @@ class TestGoldenThreadSteps:
             "principal_bindings row not written for the responsible employee"
         )
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "break-h9b (re-diagnosed): DEAL_PARTICIPANT shipped in #352 (Wave B-3, "
-            "migration 107_sales_deal_participants.sql, sales/resources.py:428 "
-            "registering sales_upsert_deal_participants). Calling "
-            "sales_upsert_deal_participants directly surfaces asyncpg.exceptions."
-            "ForeignKeyViolationError on sales_deal_participants_deal_id_fkey "
-            "(deal_id REFERENCES sales_deals(id)): ctx.deal_id is written by "
-            "do_create_deal (step 1) only as a kg_nodes graph node "
-            "(entity_type='DEAL', label='DEAL:...'), with no matching row in the "
-            "C12-relational sales_deals table -- the exact same graph-vs-relational "
-            "identity split (Q-46) as step 34 (break-h9c)."
-        ),
-    )
     async def test_step_33_deal_participants(self, scenario: GoldenThreadScenarioContext) -> None:
         """Step 33: deal with participants, via the C12 resource-surface tool."""
         ctx = scenario
@@ -1978,27 +1958,12 @@ class TestGoldenThreadSteps:
             )
         )
         assert result.get("status") == "ok", result
+        assert result.get("id"), result
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "break-h9c (re-diagnosed): the resource_surface datetime/version_field bug this "
-            "was originally blocked on merged to main in #284 -- confirmed fixed by live "
-            "re-run. That re-run surfaced the real, distinct blocker: asyncpg.exceptions."
-            "ForeignKeyViolationError on agreements_customer_id_fkey. ctx.customer_id is a "
-            "synthetic UUID that only ever exists as a kg_nodes graph node (entity_type="
-            "'CUSTOMER', written by do_create_deal in step 1) -- no step anywhere in this "
-            "file, and no code path anywhere in nce/, ever creates a matching row in the "
-            "C12-relational sales_customers table. 'agreements' hard-FKs to that table, so "
-            "any real customer_id must exist there first. This is an architecture split "
-            "(graph-modeled customer identity vs. C12-relational customer identity) with no "
-            "bridge between them, not a test bug and not fixed here."
-        ),
-    )
     async def test_step_34_agreement_parties(self, scenario: GoldenThreadScenarioContext) -> None:
-        """Step 34: agreement with parties, via the C12 resource-surface tools."""
+        """Step 34: agreement with parties and SLA room coverage."""
         ctx = scenario
-        await self._ensure_prereqs(ctx, 1)
+        await self._ensure_prereqs(ctx, 32)
         agr_res = json.loads(
             await TOOL_REGISTRY["agreements_upsert_agreements"].handler(
                 ctx.engine,
@@ -2012,6 +1977,7 @@ class TestGoldenThreadSteps:
             )
         )
         assert agr_res.get("status") == "ok", agr_res
+        ctx.agreement_id = str(agr_res["id"])
         party_res = json.loads(
             await TOOL_REGISTRY["agreements_upsert_parties"].handler(
                 ctx.engine,
@@ -2025,107 +1991,87 @@ class TestGoldenThreadSteps:
         )
         assert party_res.get("status") == "ok", party_res
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "break-h9d: no billing-run writer capability is reachable from any surface -- "
-            "nce/vertical_modules/economy/billing_runs.py implements "
-            "do_generate_billing_run (migrations 102/103 back it), and PR #360 registered "
-            "read-only C12 visibility (BILLING_RUN_SPEC, get/list only with "
-            "excluded_verbs={'upsert', 'archive'}), but the governed writer core "
-            "(do_generate_billing_run in nce/config_data/internal-cores.json) remains "
-            "unwired in TOOL_REGISTRY or any REST route. K34 (2026-09-20, updated for #360): "
-            "this step asserts the live TOOL_REGISTRY contains no mutating/writer tool "
-            "matching 'billing_run' (spec.mutation is True -- filtering out #360's read-only "
-            "economy_list_billing_runs / economy_get_billing_runs so this positive control "
-            "genuinely asserts the absence of a writer tool rather than calling list and "
-            "failing on status=='ok'). Fails today with a genuine assertion, will XPASS "
-            "(forcing this marker's removal under strict=True) the moment a writer tool "
-            "is registered."
-        ),
-    )
-    async def test_step_35_billing_run(self, scenario: GoldenThreadScenarioContext) -> None:
-        """Step 35: billing run (writer unwired -- see xfail reason)."""
-        ctx = scenario
-        await self._ensure_prereqs(ctx, 1)
-        # A substring + spec.mutation predicate over the live TOOL_REGISTRY --
-        # PR #360 registered read-only get/list tools, so filtering by spec.mutation
-        # checks for a mutating writer tool under any name.
-        matching = [
-            name for name, spec in TOOL_REGISTRY.items() if "billing_run" in name and spec.mutation
-        ]
-        assert matching, (
-            "BILLING_RUN has no writer tool registered under any name -- seam h9d still open"
+        # Wire SLA room coverage for this relational agreement against the
+        # colon-delimited FL path so _functional_location_label resolves to
+        # ctx.fl_room_label (FL:<SLUG>:HQ:MAIN:1:101) for Step 35's billing run.
+        sla_res = await do_set_sla_coverage(
+            ctx.engine,
+            {
+                "namespace_id": str(ctx.namespace_id),
+                "agreement_id": ctx.agreement_id,
+                "functional_location_id": "HQ:Main:1:101",
+                "sla_terms": {"responseHours": 4, "coverageWindow": "24x7"},
+            },
         )
-        result = json.loads(
-            await TOOL_REGISTRY[matching[0]].handler(
+        assert sla_res["covers_edge"]["object"] == ctx.fl_room_label
+        await do_attach_sla(
+            ctx.engine,
+            {
+                "namespace_id": str(ctx.namespace_id),
+                "agreement_id": ctx.agreement_id,
+                "functional_location_id": "HQ:Main:1:101",
+                "namespace_slug": ctx.namespace_slug,
+            },
+        )
+
+    async def test_step_35_billing_run(self, scenario: GoldenThreadScenarioContext) -> None:
+        """Step 35: billing run generated via economy_generate_billing_run."""
+        ctx = scenario
+        await self._ensure_prereqs(ctx, 34)
+        # Step 32 set OPERATIONS_CENTER (an orphan refusal category in
+        # room_category_pricing.py); set BOARDROOM (large_boardroom tier) so the
+        # billing run prices the covered FL room into a confirmed candidate.
+        cat_res = await do_set_fl_room_category(
+            ctx.engine,
+            ctx.namespace_id,
+            {"fl_id_or_label": ctx.fl_room_label, "category_id": "BOARDROOM"},
+        )
+        assert cat_res["status"] == "ok", cat_res
+
+        outer = json.loads(
+            await TOOL_REGISTRY["economy_generate_billing_run"].handler(
                 ctx.engine,
                 {
                     "namespace_id": str(ctx.namespace_id),
                     "period_start": "2026-09-01",
                     "period_end": "2026-09-30",
-                    "agreement_ids": [ctx.agreement_id] if ctx.agreement_id else [],
+                    "agreement_ids": [ctx.agreement_id],
+                    "confirm": True,
                 },
             )
         )
-        assert result.get("status") == "ok", result
+        assert outer.get("status") == "executed", outer
+        assert outer["result"]["status"] == "confirmed", outer
+        assert outer["result"]["candidate_count"] >= 1, outer
+        ctx.billing_candidate_id = str(outer["result"]["candidates"][0]["billing_candidate_id"])
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "break-h9e: no customer-invoice writer capability is reachable from any surface "
-            "(distinct from the existing supplier-invoice approval path "
-            "economy_approve_invoice already covers). "
-            "nce/vertical_modules/economy/customer_invoices.py implements "
-            "do_propose_customer_invoice (migration 108, Wave B-13), and PR #360 registered "
-            "read-only C12 visibility (CUSTOMER_INVOICE_SPEC, get/list only with "
-            "excluded_verbs={'upsert', 'archive'}), but the governed writer core "
-            "(do_propose_customer_invoice in nce/config_data/internal-cores.json) remains "
-            "unwired in TOOL_REGISTRY or any REST route. K34 (2026-09-20, updated for #360): "
-            "this step asserts the live TOOL_REGISTRY contains no mutating/writer tool "
-            "matching 'customer_invoice' (spec.mutation is True -- filtering out #360's "
-            "read-only economy_list_customer_invoices / economy_get_customer_invoices so "
-            "this positive control genuinely asserts the absence of a writer tool rather "
-            "than calling list and failing on status=='ok'). Fails today with a genuine "
-            "assertion, will XPASS the moment a writer tool is registered."
-        ),
-    )
     async def test_step_36_customer_invoice(self, scenario: GoldenThreadScenarioContext) -> None:
-        """Step 36: customer invoice (writer unwired -- see xfail reason)."""
+        """Step 36: customer invoice proposed via economy_propose_customer_invoice."""
         ctx = scenario
-        await self._ensure_prereqs(ctx, 1)
-        # A substring + spec.mutation predicate over the live TOOL_REGISTRY --
-        # PR #360 registered read-only get/list tools, so filtering by spec.mutation
-        # checks for a mutating writer tool under any name.
-        matching = [
-            name
-            for name, spec in TOOL_REGISTRY.items()
-            if "customer_invoice" in name and spec.mutation
-        ]
-        assert matching, (
-            "CUSTOMER_INVOICE has no writer tool registered under any name -- seam h9e still open"
-        )
-        result = json.loads(
-            await TOOL_REGISTRY[matching[0]].handler(
+        await self._ensure_prereqs(ctx, 35)
+        outer = json.loads(
+            await TOOL_REGISTRY["economy_propose_customer_invoice"].handler(
                 ctx.engine,
                 {
                     "namespace_id": str(ctx.namespace_id),
-                    "customer_id": ctx.customer_id,
-                    "quote_id": ctx.quote_id,
+                    "billing_candidate_id": ctx.billing_candidate_id,
+                    "confirm": True,
                 },
             )
         )
-        assert result.get("status") == "ok", result
+        assert outer.get("status") == "executed", outer
+        assert outer["result"]["status"] == "proposal", outer
+        assert outer["result"]["billing_candidate_id"] == ctx.billing_candidate_id, outer
+        assert outer["result"]["customer_id"] == ctx.customer_id, outer
 
     async def test_step_37_notification_received(
         self, scenario: GoldenThreadScenarioContext
     ) -> None:
         """Step 37: C13 notification delivered to the responsible employee.
 
-        Deliberately not about the invoice chain (steps 34-36 are broken
-        seams) -- an honest SLA-coverage notice to the employee assigned
-        responsible in step 32, using the real hand-written
-        ``create_notification`` (not the generic C12 upsert path).
+        Delivers an SLA-coverage notice to the employee assigned responsible in
+        step 32, using the real hand-written ``create_notification`` (not the
+        generic C12 upsert path).
         """
         ctx = scenario
         await self._ensure_prereqs(ctx, 32)
@@ -2738,22 +2684,17 @@ class TestGoldenThreadPositiveControls:
     def test_burndown_manifest_broken_steps_count(self) -> None:
         """Verify broken steps count reflects honest live state.
 
-        The original 28 steps still execute with zero broken steps. H-9 (2026-09-19)
-        added 5 genuine breaks alongside 4 new working steps: break-h9a (fl_tree_merge,
-        a real bug in Lane C's merge_fl_nodes -- fixed via #282, closed this wave),
-        break-h9b (deal_participants: DEAL_PARTICIPANT shipped in #352, re-diagnosed
-        to the same Q-46 graph-vs-relational deal-identity FK split on sales_deals as
-        break-h9c), break-h9c (agreement_parties: resource_surface fix landed in #284,
-        but re-verification surfaced a distinct, unbridged Q-46 graph-vs-relational
-        customer-identity gap on sales_customers), break-h9d/e (billing_run /
-        customer_invoice, Waves B-12/B-13: read-only C12 visibility registered in #360,
-        governed writer cores do_generate_billing_run / do_propose_customer_invoice
-        remain unwired). A stated partial per S7, not a silent one.
+        All 37 steps (the original 28 steps plus H-9's 9 extension steps,
+        including break-h9a through break-h9e) now execute with zero broken
+        seams: break-h9a closed via #282, break-h9b/c closed by dual-writing
+        sales_deals and sales_customers in sales/graph.py (Wave R-6), and
+        break-h9d/e closed by registering economy_generate_billing_run and
+        economy_propose_customer_invoice in TOOL_REGISTRY and mcp_stdio_tools.py (Wave R-7).
         """
         broken_steps = [s for s in GOLDEN_THREAD_STEPS if s.is_broken]
-        assert len(broken_steps) == 4, f"Expected 4 broken steps, found: {broken_steps}"
+        assert len(broken_steps) == 0, f"Expected 0 broken steps, found: {broken_steps}"
         broken_indices = {s.index for s in broken_steps}
-        assert broken_indices == {33, 34, 35, 36}
+        assert broken_indices == set()
 
     def test_positive_control_broken_steps_have_remediation_waves(self) -> None:
         """Verify every broken step specifies a responsible Phase 1 remediation wave."""

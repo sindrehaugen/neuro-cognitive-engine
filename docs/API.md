@@ -1294,6 +1294,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `economy_compute_recognition_schedule` |  |  | yes |  |
 | `economy_emit_event` |  |  | yes |  |
 | `economy_forecast_cashflow` |  |  | yes |  |
+| `economy_generate_billing_run` | yes | yes |  |  |
 | `economy_generate_close_narrative` |  |  | yes |  |
 | `economy_generate_ehf` | yes |  |  |  |
 | `economy_generate_kid` |  |  | yes |  |
@@ -1310,6 +1311,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `economy_list_customer_invoices` |  |  | yes |  |
 | `economy_list_postings` |  |  | yes |  |
 | `economy_match_invoice` |  |  | yes |  |
+| `economy_propose_customer_invoice` | yes | yes |  |  |
 | `economy_reconcile_agreements` |  | yes |  |  |
 | `economy_snapshot_mrr_arr_churn` |  |  | yes |  |
 | `economy_validate_contract` |  |  | yes |  |
@@ -1712,4 +1714,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `vendors_upsert_vendor` | yes | yes |  |  |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 1168 REST endpoints, 526 MCP tools._
+_Totals: 1168 REST endpoints, 528 MCP tools._

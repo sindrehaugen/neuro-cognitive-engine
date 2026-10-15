@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid5
 
 import asyncpg  # type: ignore[import-untyped]
 
@@ -47,7 +47,7 @@ _PRED_FREEZES: str = "freezes"
 
 
 # ---------------------------------------------------------------------------
-# Label helpers
+# Label & UUID helpers
 # ---------------------------------------------------------------------------
 
 
@@ -73,6 +73,20 @@ def _quote_label(quote_id: str) -> str:
 
 def _signed_baseline_label(baseline_id: str) -> str:
     return f"SIGNED_BASELINE:{baseline_id.upper()}"
+
+
+def _resolve_entity_uuid(ns_uuid: UUID, raw_id: str, prefix: str) -> UUID:
+    """Resolve a string identifier to a parsed UUID or deterministic UUIDv5."""
+    stripped = raw_id.strip()
+    candidates = [stripped]
+    if stripped.lower().startswith("nce:"):
+        candidates.append(stripped[4:].strip())
+    for candidate in candidates:
+        try:
+            return UUID(candidate)
+        except (ValueError, AttributeError):
+            continue
+    return uuid5(ns_uuid, f"{prefix}:{stripped.upper()}")
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +164,92 @@ async def _upsert_edge(
     )
 
 
+async def _upsert_relational_customer(
+    conn: asyncpg.Connection,  # type: ignore[type-arg]
+    ns_uuid: UUID,
+    customer_id: str,
+    name: str | None = None,
+) -> UUID:
+    """Upsert a customer row in sales_customers so C12 child foreign keys resolve."""
+    cust_uuid = _resolve_entity_uuid(ns_uuid, customer_id, _NODE_TYPE_CUSTOMER)
+    customer_name = name or customer_id
+    await conn.execute(
+        """
+        INSERT INTO sales_customers (id, namespace_id, name)
+        VALUES ($1::uuid, $2::uuid, $3)
+        ON CONFLICT (id) DO UPDATE
+            SET name = COALESCE($4, sales_customers.name),
+                updated_at = NOW()
+        """,
+        str(cust_uuid),
+        str(ns_uuid),
+        customer_name,
+        name,
+    )
+    return cust_uuid
+
+
+async def _upsert_relational_lead(
+    conn: asyncpg.Connection,  # type: ignore[type-arg]
+    ns_uuid: UUID,
+    lead_id: str,
+    *,
+    customer_uuid: UUID | None = None,
+    title: str | None = None,
+) -> UUID:
+    """Upsert a lead row in sales_leads so C12 child foreign keys resolve."""
+    lead_uuid = _resolve_entity_uuid(ns_uuid, lead_id, _NODE_TYPE_LEAD)
+    lead_title = title or lead_id
+    await conn.execute(
+        """
+        INSERT INTO sales_leads (id, namespace_id, title, customer_id)
+        VALUES ($1::uuid, $2::uuid, $3, $4::uuid)
+        ON CONFLICT (id) DO UPDATE
+            SET title = COALESCE($5, sales_leads.title),
+                customer_id = COALESCE(EXCLUDED.customer_id, sales_leads.customer_id),
+                updated_at = NOW()
+        """,
+        str(lead_uuid),
+        str(ns_uuid),
+        lead_title,
+        str(customer_uuid) if customer_uuid else None,
+        title,
+    )
+    return lead_uuid
+
+
+async def _upsert_relational_deal(
+    conn: asyncpg.Connection,  # type: ignore[type-arg]
+    ns_uuid: UUID,
+    deal_id: str,
+    *,
+    customer_uuid: UUID | None = None,
+    lead_uuid: UUID | None = None,
+    title: str | None = None,
+) -> UUID:
+    """Upsert a deal row in sales_deals so C12 child foreign keys resolve."""
+    deal_uuid = _resolve_entity_uuid(ns_uuid, deal_id, _NODE_TYPE_DEAL)
+    deal_title = title or deal_id
+    await conn.execute(
+        """
+        INSERT INTO sales_deals (id, namespace_id, title, customer_id, lead_id)
+        VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5::uuid)
+        ON CONFLICT (id) DO UPDATE
+            SET title = COALESCE($6, sales_deals.title),
+                customer_id = COALESCE(EXCLUDED.customer_id, sales_deals.customer_id),
+                lead_id = COALESCE(EXCLUDED.lead_id, sales_deals.lead_id),
+                updated_at = NOW()
+        """,
+        str(deal_uuid),
+        str(ns_uuid),
+        deal_title,
+        str(customer_uuid) if customer_uuid else None,
+        str(lead_uuid) if lead_uuid else None,
+        title,
+    )
+    return deal_uuid
+
+
 # ---------------------------------------------------------------------------
 # Public Actions
 # ---------------------------------------------------------------------------
@@ -190,6 +290,8 @@ async def do_create_customer(
         customer_name,
         json.dumps(source_json),
     )
+
+    await _upsert_relational_customer(conn, ns_uuid, customer_id, name)
 
     return {"ok": True, "customer_id": customer_id, "name": customer_name}
 
@@ -239,6 +341,17 @@ async def do_create_lead(
         lead_id,
         lead_name,
         json.dumps(source_json),
+    )
+
+    cust_uuid = (
+        await _upsert_relational_customer(conn, ns_uuid, customer_id) if customer_id else None
+    )
+    await _upsert_relational_lead(
+        conn,
+        ns_uuid,
+        lead_id,
+        customer_uuid=cust_uuid,
+        title=name,
     )
 
     return {
@@ -333,6 +446,21 @@ async def do_create_deal(
         json.dumps(deal_source_json),
     )
 
+    cust_uuid = await _upsert_relational_customer(conn, ns_uuid, customer_id)
+    lead_uuid = (
+        await _upsert_relational_lead(conn, ns_uuid, lead_id, customer_uuid=cust_uuid)
+        if lead_id
+        else None
+    )
+    await _upsert_relational_deal(
+        conn,
+        ns_uuid,
+        deal_id,
+        customer_uuid=cust_uuid,
+        lead_uuid=lead_uuid,
+        title=name,
+    )
+
     return {"ok": True, "deal_id": deal_id, "quote_id": quote_id, "customer_id": customer_id}
 
 
@@ -387,6 +515,17 @@ async def do_edit_deal(
             name,
             str(ns_uuid),
             deal_id,
+        )
+        await conn.execute(
+            """
+            UPDATE sales_deals
+            SET title = $1,
+                updated_at = NOW()
+            WHERE namespace_id = $2::uuid AND id = $3::uuid
+            """,
+            name,
+            str(ns_uuid),
+            str(_resolve_entity_uuid(ns_uuid, deal_id, _NODE_TYPE_DEAL)),
         )
 
     return {"ok": True, "deal_id": deal_id}

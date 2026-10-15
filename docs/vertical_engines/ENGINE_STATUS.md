@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `ca0d22a` (public `main`) · **Last-audited:** 2026-09-21
+> **Status:** shipped · **Verified-against:** `e94ca518` (public `main`) · **Last-audited:** 2026-10-15
 
 # NCE Vertical Engines — Build & Production Status
 
@@ -27,13 +27,13 @@
 | Instrument | Value |
 |---|---|
 | Module packages under `nce/vertical_modules/` | **25** (17 numbered engines + `diagnostics`, `dynamics365`, `netbox`, `legal_entities`, `geodata`, `notifications`, `documents`, `sites`) |
-| `TOOL_REGISTRY` entries | **526** MCP tools (70 shared + 456 engine) — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
+| `TOOL_REGISTRY` entries | **528** MCP tools (70 shared + 458 engine) — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 | REST routes on the admin app | **1,168** across `shared` and vertical modules in [`docs/_generated/surface.md`](../_generated/surface.md) (+12 on the Customer Portal's own app shell) — see [`docs/_generated/surface.md`](../_generated/surface.md) as authoritative |
 | `do_*` domain cores | **293** distinct names across the 25 packages (302 per-module entries in [`docs/_generated/surface.md`](../_generated/surface.md); 316 `file::do_*` definitions) |
 | SQL migrations | 104 files (+1 optional), `001` → `108` — gaps at `002`, `009`, `059` (never allocated); `010` exists only under `nce/migrations/optional/`. — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 | `EXPECTED_TENANT_RLS_TABLES` | **118** |
 | Tests | **6,430** `def test_` across 529 files |
-| Golden Thread seam burndown | **4 of 37** lifecycle steps broken (4 distinct seams) — mirrored from [`docs/_generated/golden_thread_seams.md`](../_generated/golden_thread_seams.md); see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
+| Golden Thread seam burndown | **0 of 37** lifecycle steps broken (0 distinct seams) — mirrored from [`docs/_generated/golden_thread_seams.md`](../_generated/golden_thread_seams.md); see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 | v1.6 C12 resource-surface registrations | **19 of 25** engines have `resources.py` — see [`docs/_generated/engine_figures.md`](../_generated/engine_figures.md) |
 
 **Status legend**
@@ -45,9 +45,9 @@
 | ⬜ **Planned** | Specced, not built. |
 
 > [!NOTE]
-> **Live-database verification:** In addition to per-module unit tests, **33 of 37** cross-engine
+> **Live-database verification:** In addition to per-module unit tests, **37 of 37** cross-engine
 > lifecycle steps in [`tests/integration/test_golden_thread.py`](../../tests/integration/test_golden_thread.py)
-> run end-to-end against live Postgres in CI — see
+> run end-to-end against live Postgres in CI with **0 broken seams** — see
 > [`docs/_generated/golden_thread_seams.md`](../_generated/golden_thread_seams.md) for the exact step-by-step status.
 
 ---
@@ -76,7 +76,7 @@
 | Sales | M5 | ✅ Live | 47 | 148 | 36 | Owns `CUSTOMER`/`LEAD`/`DEAL`/`QUOTE`/`SIGNED_BASELINE`. Full read/write model, `d365`/`both`/`nce` source-mode flip with parity window, public quote endpoint (HMAC token), quote-line tools landing BOM_LINEs, C7 signature request (`sales_request_signature`), 8 C12 resource surfaces. |
 | Vendors & Contractors | M4 | ✅ Live | 14 | 7 | 18 | Owns `VENDOR`/`CONTRACTOR`. Scorecards, tier status, reliability degradation, contractor matching, certification tracking, partner view over A2A with a pinned allowlist. |
 | Agreements | M3 | ✅ Live | 26 | 69 | 17 | Owns `AGREEMENT`. Structured LLM extraction (`agreements/extract.py` via `provider.complete`; per-field confidence, money and legal always route to review), review queue, coverage matrix, kickback reconciliation, compliance audit, index series & price rules, coverage watcher on cron, 3 C12 resource surfaces. |
-| Economy | M8 | ✅ Live | 26 | 68 | 26 | Owns `INVOICE`/`POSTING`/`MARGIN`/`BILLING_RUN`. 130-point matching, NGAAP periodisation, WORM balance trigger, 7-effect approval cascade, MRR/ARR/churn, dunning, Monte-Carlo cashflow, KID, EHF, GL records & sync status, close-narrative generation, Finago reader (real HTTP), 5 C12 resource surfaces. |
+| Economy | M8 | ✅ Live | 28 | 68 | 26 | Owns `INVOICE`/`POSTING`/`MARGIN`/`BILLING_RUN`. 130-point matching, NGAAP periodisation, WORM balance trigger, 7-effect approval cascade, MRR/ARR/churn, dunning, Monte-Carlo cashflow, KID, EHF, GL records & sync status, close-narrative generation, billing-run & customer-invoice generation (`economy_generate_billing_run`, `economy_propose_customer_invoice`), Finago reader (real HTTP), 5 C12 resource surfaces. |
 
 ## Tier 3 — Delivery & Field Ops
 
@@ -124,21 +124,14 @@ rather than hand-editing it. It is the file to trust when this page and the code
 
 ## Critical frontend planning notes
 
-> [!WARNING]
-> ### Golden Thread lifecycle: 33 of 37 steps pass against live Postgres; 4 v1.6 seams remain open
-> All 7 original v1.5 cross-engine seams (Steps 1–28) and 5 v1.6 extension steps (Steps 29–32, 37)
-> are **closed and verified end-to-end against live Postgres** in
-> [`tests/integration/test_golden_thread.py`](../../tests/integration/test_golden_thread.py).
-> Only **4** v1.6 extension seams (`break-h9b`, `break-h9c`, `break-h9d`, `break-h9e` in Steps 33–36)
-> remain open as strict `xfail`s — mirrored automatically in
-> [`docs/_generated/golden_thread_seams.md`](../_generated/golden_thread_seams.md):
->
-> | Open Seam | Step | What happens today |
-> |---|---|---|
-> | `break-h9b` | Step 33 (`test_step_33_deal_participants`) | The C12 `sales_deal_participants` surface is mounted, but `do_create_deal` accepts no inline participants and `sales_deal_participants.deal_id` FKs to relational `sales_deals(id)` whereas `do_create_deal` writes a `kg_nodes` `DEAL` node. |
-> | `break-h9c` | Step 34 (`test_step_34_agreement_parties`) | Relational `agreements.customer_id` carries a hard FK to `sales_customers(id)`, whereas Step 1's `do_create_deal` writes a `kg_nodes` `CUSTOMER` node without bridging to `sales_customers`. |
-> | `break-h9d` | Step 35 (`test_step_35_billing_run`) | `do_generate_billing_run` (`nce/vertical_modules/economy/billing_runs.py`) is implemented and read-only C12 surfaces (`billing-runs`, `billing-candidates`) exist, but no writer tool or route invokes `do_generate_billing_run`. |
-> | `break-h9e` | Step 36 (`test_step_36_customer_invoice`) | `do_propose_customer_invoice` (`nce/vertical_modules/economy/customer_invoices.py`) is implemented and read-only C12 surface (`customer-invoices`) exists, but no writer tool or route invokes `do_propose_customer_invoice`. |
+> [!NOTE]
+> ### Golden Thread lifecycle: 37 of 37 steps pass against live Postgres (0 open seams)
+> All 28 original v1.5 cross-engine lifecycle steps (Steps 1–28) and all 9 v1.6 extension steps
+> (Steps 29–37, closing `break-h9a` through `break-h9e`) are **closed and verified end-to-end
+> against live Postgres** in
+> [`tests/integration/test_golden_thread.py`](../../tests/integration/test_golden_thread.py) —
+> mirrored automatically in
+> [`docs/_generated/golden_thread_seams.md`](../_generated/golden_thread_seams.md).
 
 > [!IMPORTANT]
 > ### LLM extraction & enrichment vs. deterministic retrieval-grounded advisors
@@ -161,7 +154,7 @@ rather than hand-editing it. It is the file to trust when this page and the code
 
 > [!NOTE]
 > ### Internal cores without a public surface
-> Unreached `do_*` cores across `nce/vertical_modules/` have been reduced from 83 to **19**
+> Unreached `do_*` cores across `nce/vertical_modules/` have been reduced from 83 to **17**
 > explicitly reasoned entries in [`nce/config_data/internal-cores.json`](../../nce/config_data/internal-cores.json),
 > guarded by the shrink-only AST reachability ratchet in
 > [`tests/test_surface_parity.py`](../../tests/test_surface_parity.py). Every entry records an

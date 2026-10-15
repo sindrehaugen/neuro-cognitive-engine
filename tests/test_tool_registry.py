@@ -107,7 +107,7 @@ _TOOL_PINS_ADMIN_ONLY_TOOLS = frozenset(
     for name, flags in engine.items()
     if flags.get("admin_only")
 )
-_EXPECTED_STATIC_TOTAL = 345  # 292 hand-written tools + 8 FUNCTIONAL_LOCATION tree tools (Lane C Wave C-1) + 1 C17 site master data address-registry feed (Lane F Wave F-9) + 2 support action/timeline tools (Lane D Wave D-5) + 1 support on-call rota (Lane D Wave D-7) + 1 assets service history (Lane D Wave D-3) + 8 room cat & FL metadata tools (Lane C Wave C-2) + 6 assets person/subcomponent tools (Lane D Wave D-2) + 8 design versions & room spec tools (Lane C Wave C-3) + 4 agreements price rules & index series tools (Lane B Wave B-10) + 3 support summary/links tools (Lane D Wave D-6) + 7 design requests tools (Lane C Wave C-4) + 1 external-import BOM_LINE origination (Lane B Wave B-5) + 1 DealRoom MCP tool, sales_open_dealroom (Lane H Wave B-4) + 1 sales_clone_quote (Lane E Wave B-5 remainder) + 1 economy_reconcile_agreements (Lane E Wave B-11); see _C12_TOOL_NAMES above
+_EXPECTED_STATIC_TOTAL = 347  # 292 hand-written tools + 8 FUNCTIONAL_LOCATION tree tools (Lane C Wave C-1) + 1 C17 site master data address-registry feed (Lane F Wave F-9) + 2 support action/timeline tools (Lane D Wave D-5) + 1 support on-call rota (Lane D Wave D-7) + 1 assets service history (Lane D Wave D-3) + 8 room cat & FL metadata tools (Lane C Wave C-2) + 6 assets person/subcomponent tools (Lane D Wave D-2) + 8 design versions & room spec tools (Lane C Wave C-3) + 4 agreements price rules & index series tools (Lane B Wave B-10) + 3 support summary/links tools (Lane D Wave D-6) + 7 design requests tools (Lane C Wave C-4) + 1 external-import BOM_LINE origination (Lane B Wave B-5) + 1 DealRoom MCP tool, sales_open_dealroom (Lane H Wave B-4) + 1 sales_clone_quote (Lane E Wave B-5 remainder) + 1 economy_reconcile_agreements (Lane E Wave B-11) + 2 economy_generate_billing_run & economy_propose_customer_invoice (Waves B-12 & B-13, R-7); see _C12_TOOL_NAMES above
 
 # Re-exported for tests/unit/test_{assets,economy,inventory}_surface.py and
 # test_sales_skeleton.py, which each do `from tests.test_tool_registry import
@@ -268,6 +268,9 @@ _EXPECTED_MUTATION_TOOLS: frozenset[str] = frozenset(
         # Charter Wave B-11 (Lane E) -- Agreements<->GL reconciliation; writes
         # divergence_log on a non-zero delta, not read-only
         "economy_reconcile_agreements",
+        # Charter Waves B-12 & B-13 (R-7) -- governed billing-run generation and customer-invoice proposal
+        "economy_generate_billing_run",
+        "economy_propose_customer_invoice",
         # ML10-B5 (M10.W5) -- Support Engine mutations (Actor, admin_only)
         # ML12-B5 (M12.W5) -- Field Tech Engine mutations (8 tools)
         # ML13-B3 (M13.W3) -- HR Engine mutations (3 tools)
@@ -479,7 +482,9 @@ def test_mutation_tools_count():
     vendors_get_tier_status, vendors_compute_performance, marketing_audit_seo,
     support_sla_clock, support_health_score, business_insights_kpi_dashboard,
     procurement_rank_suppliers, project_status_report,
-    support_summarise_ticket) -> 162."""
+    support_summarise_ticket) -> 162.
+    +2 Waves B-12 & B-13 (R-7) economy_generate_billing_run &
+    economy_propose_customer_invoice -> 164."""
     c12_mutation_tools = frozenset(
         n for n, s in build_all_resource_tool_specs().items() if s.mutation
     )
@@ -488,8 +493,8 @@ def test_mutation_tools_count():
     assert len(MUTATION_TOOLS) >= 152, (
         f"Sanity floor: expected at least 152 mutation tools, got {len(MUTATION_TOOLS)}."
     )
-    assert len(hand_written_mutation_tools) == 162, (
-        "Hand-written (non-C12) mutation tool count changed: expected 162, "
+    assert len(hand_written_mutation_tools) == 164, (
+        "Hand-written (non-C12) mutation tool count changed: expected 164, "
         f"got {len(hand_written_mutation_tools)}. If you added/removed a "
         "hand-written mutation tool, update this pin by import. If you only "
         "registered a new C12 ResourceSpec, this number should not move -- "
@@ -913,6 +918,9 @@ _EXPECTED_ADMIN_ONLY: frozenset[str] = frozenset(
         "support_log_ticket_action",
         # Lane D Wave D-6 -- support_link_ticket (admin_only mutation)
         "support_link_ticket",
+        # Waves B-12 & B-13 (R-7) -- governed billing-run generation and customer-invoice proposal (admin_only mutations)
+        "economy_generate_billing_run",
+        "economy_propose_customer_invoice",
     }
 )
 # Q-41 (ruled 2026-09-20): vendors_calibrate_weights became admin_only. It is
@@ -938,8 +946,8 @@ def test_admin_only_tools_exact_match():
 
 def test_admin_only_tools_count():
     assert (
-        len(ADMIN_ONLY_TOOLS) == 105
-    )  # 90 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3) + 1 BRREG registry-feed enrichment (Lane F Wave F-8) + 1 geodata OSM import (Lane F Wave F-11) + 1 geodata N50 land-cover import (Lane F Wave F-12) + 1 geodata place-name import (Lane F Wave F-13) + 1 sites address-registry enrichment (Lane F Wave F-9) + 1 support_log_ticket_action (Lane D Wave D-5) + 4 assets person & sub-components (Lane D Wave D-2) + 1 support_link_ticket (Lane D Wave D-6) + 1 vendors_calibrate_weights (Q-41, ruled 2026-09-20)
+        len(ADMIN_ONLY_TOOLS) == 107
+    )  # 90 baseline + 2 Inventory kitting (Wave IN-2) + 1 Inventory restock PO (Wave IN-3) + 1 BRREG registry-feed enrichment (Lane F Wave F-8) + 1 geodata OSM import (Lane F Wave F-11) + 1 geodata N50 land-cover import (Lane F Wave F-12) + 1 geodata place-name import (Lane F Wave F-13) + 1 sites address-registry enrichment (Lane F Wave F-9) + 1 support_log_ticket_action (Lane D Wave D-5) + 4 assets person & sub-components (Lane D Wave D-2) + 1 support_link_ticket (Lane D Wave D-6) + 1 vendors_calibrate_weights (Q-41, ruled 2026-09-20) + 2 economy_generate_billing_run & economy_propose_customer_invoice (Waves B-12 & B-13, R-7)
 
 
 # ---------------------------------------------------------------------------

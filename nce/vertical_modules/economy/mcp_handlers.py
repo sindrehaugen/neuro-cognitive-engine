@@ -34,9 +34,19 @@ from nce.db_utils import scoped_pg_session
 from nce.mcp_args import require_namespace_id
 from nce.mcp_errors import McpError, mcp_handler
 from nce.vertical_modules.economy._guard import EconomyDisabledError, require_economy_enabled
+from nce.vertical_modules.economy.billing_runs import (
+    AgreementNotFoundError,
+    _billing_run_idempotency_key,
+    do_generate_billing_run,
+)
 from nce.vertical_modules.economy.cascade import do_cascade_on_approval
 from nce.vertical_modules.economy.close_narrative import do_generate_close_narrative
 from nce.vertical_modules.economy.contracts import do_validate_contract
+from nce.vertical_modules.economy.customer_invoices import (
+    BillingCandidateNotFoundError,
+    CustomerInvoiceAlreadyExistsError,
+    do_propose_customer_invoice,
+)
 from nce.vertical_modules.economy.dunning import do_compute_dunning
 from nce.vertical_modules.economy.events import UnbalancedPostingsError, do_emit_financial_event
 from nce.vertical_modules.economy.finago import do_gl_sync_status
@@ -1016,6 +1026,161 @@ async def handle_economy_reconcile_agreements(engine: NCEEngine, arguments: dict
             {
                 "error": (
                     f"economy_reconcile_agreements: result contains a non-finite value and "
+                    f"cannot be serialized ({exc})"
+                )
+            },
+            default=str,
+        )
+
+
+@mcp_handler
+async def handle_economy_generate_billing_run(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """MCP tool: economy_generate_billing_run — governed confirm-first billing-run generation (Wave B-12).
+
+    Required arguments:
+        namespace_id  (str, UUID)
+        period_start  (str) — ISO date string ('YYYY-MM-DD') bounding the billing period
+        period_end    (str) — ISO date string ('YYYY-MM-DD') bounding the billing period
+        agreement_ids (list[str]) — non-empty list of agreement UUID strings to bill
+    Optional arguments:
+        on_site         (bool) — passed to sla_room_pricing (default False)
+        confirm         (bool) — confirm-first gate (default False returns pending_approval)
+        idempotency_key (str)  — optional explicit idempotency key
+
+    Returns a JSON string with the billing run result or pending_approval envelope,
+    or {"error": "..."} on validation failure.
+    """
+    try:
+        await _check_economy_enabled(engine, arguments)
+        ns_uuid = require_namespace_id(arguments)
+        period_start = arguments.get("period_start")
+        if not period_start:
+            raise ValueError("economy_generate_billing_run: 'period_start' is required")
+        period_end = arguments.get("period_end")
+        if not period_end:
+            raise ValueError("economy_generate_billing_run: 'period_end' is required")
+        agreement_ids = arguments.get("agreement_ids")
+        if not isinstance(agreement_ids, list) or not agreement_ids:
+            raise ValueError(
+                "economy_generate_billing_run: 'agreement_ids' must be a non-empty list"
+            )
+        on_site = bool(arguments.get("on_site", False))
+        confirm = bool(arguments.get("confirm", False))
+        idempotency_key = str(
+            arguments.get("idempotency_key") or ""
+        ).strip() or _billing_run_idempotency_key(
+            str(ns_uuid),
+            str(period_start),
+            str(period_end),
+            [str(a) for a in agreement_ids],
+        )
+        async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
+            result = await do_generate_billing_run(
+                conn,
+                ns_uuid,
+                idempotency_key=idempotency_key,
+                confirm=confirm,
+                engine=engine,
+                period_start=period_start,
+                period_end=period_end,
+                agreement_ids=agreement_ids,
+                on_site=on_site,
+            )
+    except McpError:
+        raise
+    except (ValueError, KeyError, TypeError, AgreementNotFoundError) as exc:
+        return json.dumps({"error": str(exc)}, default=str)
+    except Exception as exc:
+        log.exception("[economy] handle_economy_generate_billing_run unexpected error")
+        return json.dumps({"error": str(exc)}, default=str)
+
+    try:
+        return json.dumps(result, default=str, allow_nan=False)
+    except ValueError as exc:
+        log.error(
+            "[economy] handle_economy_generate_billing_run result not JSON-serializable: %s", exc
+        )
+        return json.dumps(
+            {
+                "error": (
+                    f"economy_generate_billing_run: result contains a non-finite value and "
+                    f"cannot be serialized ({exc})"
+                )
+            },
+            default=str,
+        )
+
+
+@mcp_handler
+async def handle_economy_propose_customer_invoice(
+    engine: NCEEngine, arguments: dict[str, Any]
+) -> str:
+    """MCP tool: economy_propose_customer_invoice — governed confirm-first customer-invoice proposal (Wave B-13).
+
+    Required arguments:
+        namespace_id         (str, UUID)
+        billing_candidate_id (str, UUID) — the BILLING_CANDIDATE to invoice
+    Optional arguments:
+        vat_rate_pct    (number | str) — explicit outbound VAT rate override (defaults to 25%)
+        due_date_days   (int)          — days from issue_date to due_date (default 14)
+        confirm         (bool)         — confirm-first gate (default False returns pending_approval)
+        idempotency_key (str)          — optional explicit idempotency key
+
+    Returns a JSON string with the proposal invoice result or pending_approval envelope,
+    or {"error": "..."} on validation failure.
+    """
+    try:
+        await _check_economy_enabled(engine, arguments)
+        ns_uuid = require_namespace_id(arguments)
+        billing_candidate_id = arguments.get("billing_candidate_id")
+        if not billing_candidate_id:
+            raise ValueError("economy_propose_customer_invoice: 'billing_candidate_id' is required")
+        vat_rate_pct = arguments.get("vat_rate_pct")
+        due_date_days_raw = arguments.get("due_date_days")
+        if isinstance(due_date_days_raw, bool):
+            raise ValueError("due_date_days must be an int")
+        due_date_days = 14 if due_date_days_raw is None else int(due_date_days_raw)
+        confirm = bool(arguments.get("confirm", False))
+        idempotency_key = (
+            str(arguments.get("idempotency_key") or "").strip()
+            or f"propose_customer_invoice:{ns_uuid}:{billing_candidate_id}"
+        )
+        async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
+            result = await do_propose_customer_invoice(
+                conn,
+                ns_uuid,
+                idempotency_key=idempotency_key,
+                confirm=confirm,
+                engine=engine,
+                billing_candidate_id=billing_candidate_id,
+                vat_rate_pct=vat_rate_pct,
+                due_date_days=due_date_days,
+            )
+    except McpError:
+        raise
+    except (
+        ValueError,
+        KeyError,
+        TypeError,
+        BillingCandidateNotFoundError,
+        CustomerInvoiceAlreadyExistsError,
+    ) as exc:
+        return json.dumps({"error": str(exc)}, default=str)
+    except Exception as exc:
+        log.exception("[economy] handle_economy_propose_customer_invoice unexpected error")
+        return json.dumps({"error": str(exc)}, default=str)
+
+    try:
+        return json.dumps(result, default=str, allow_nan=False)
+    except ValueError as exc:
+        log.error(
+            "[economy] handle_economy_propose_customer_invoice result not JSON-serializable: %s",
+            exc,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    f"economy_propose_customer_invoice: result contains a non-finite value and "
                     f"cannot be serialized ({exc})"
                 )
             },

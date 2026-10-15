@@ -710,6 +710,9 @@ NAME_PINS: dict[str, frozenset[str]] = {
             "economy_get_postings",
             # Lane E Wave B-11 -- revenue-side Agreements<->GL reconciliation
             "economy_reconcile_agreements",
+            # Waves B-12 & B-13 (R-7) -- governed billing-run generation and customer-invoice proposal
+            "economy_generate_billing_run",
+            "economy_propose_customer_invoice",
         }
     ),
     # -----------------------------------------------------------------------
