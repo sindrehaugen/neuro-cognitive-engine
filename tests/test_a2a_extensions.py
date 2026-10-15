@@ -425,3 +425,73 @@ async def test_handle_a2a_inspect_grant_mcp() -> None:
         res = json.loads(res_str)
         assert res["grant_id"] == str(grant_id)
         mock_domain.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_dispatch_verify_grant_status_propagates_external_scope_id() -> None:
+    """Verify _dispatch_skill('verify_grant_status') sets external_scope_id inside a transaction."""
+    from nce.a2a_server import _dispatch_skill
+
+    call_order: list[str] = []
+    conn = AsyncMock()
+    tx = AsyncMock()
+
+    async def _tx_enter() -> None:
+        call_order.append("tx_enter")
+
+    async def _tx_exit(*_exc: object) -> None:
+        call_order.append("tx_exit")
+
+    tx.__aenter__ = AsyncMock(side_effect=_tx_enter)
+    tx.__aexit__ = AsyncMock(side_effect=_tx_exit)
+    conn.transaction = MagicMock(return_value=tx)
+
+    engine = _engine_pool_context(conn)
+    engine.redis_client = None
+
+    caller_ns = uuid.uuid4()
+    ext_scope_id = uuid.uuid4()
+    grant_id = uuid.uuid4()
+    caller_ctx = NamespaceContext(
+        namespace_id=caller_ns,
+        agent_id="customer-agent",
+        principal_kind="external-customer",
+        external_scope_id=ext_scope_id,
+    )
+
+    expected_status = {"grant_id": str(grant_id), "status": "active", "scopes": []}
+
+    async def _fake_set_external_scope(c: object, scope_id: object) -> None:
+        assert c is conn
+        assert scope_id == ext_scope_id
+        call_order.append("set_external_scope")
+
+    async def _fake_verify_grant_status(**kwargs: object) -> dict:
+        assert kwargs["conn"] is conn
+        assert kwargs["ctx"] == caller_ctx
+        assert kwargs["grant_id"] == grant_id
+        call_order.append("verify_grant_status")
+        return expected_status
+
+    with (
+        patch("nce.a2a_server._engine", engine),
+        patch(
+            "nce.a2a_server.set_external_scope",
+            AsyncMock(side_effect=_fake_set_external_scope),
+        ) as mock_set_scope,
+        patch(
+            "nce.a2a.verify_grant_status",
+            AsyncMock(side_effect=_fake_verify_grant_status),
+        ) as mock_verify,
+    ):
+        res = await _dispatch_skill(
+            "verify_grant_status",
+            {"grant_id": str(grant_id)},
+            caller_ctx,
+        )
+
+    assert res == expected_status
+    conn.transaction.assert_called_once()
+    mock_set_scope.assert_awaited_once_with(conn, ext_scope_id)
+    mock_verify.assert_awaited_once()
+    assert call_order == ["tx_enter", "set_external_scope", "verify_grant_status", "tx_exit"]

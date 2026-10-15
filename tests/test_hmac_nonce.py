@@ -426,3 +426,32 @@ class TestCheckAndStoreTTL:
             nx=True,
             px=_NONCE_TTL_SECONDS * 1000,
         )
+
+
+# ---------------------------------------------------------------------------
+# Admin UI signedFetch includes X-NCE-Nonce header
+# ---------------------------------------------------------------------------
+
+
+class TestAdminSignedFetchNonceHeader:
+    """admin/index.html signedFetch sets X-NCE-Nonce alongside HMAC headers."""
+
+    def test_signed_fetch_sets_x_nce_nonce_header(self) -> None:
+        from pathlib import Path
+
+        admin_html_path = Path(__file__).resolve().parent.parent / "admin" / "index.html"
+        content = admin_html_path.read_text(encoding="utf-8")
+
+        start_marker = "async function signedFetch(apiKey, pathname, options = {}) {"
+        start_idx = content.find(start_marker)
+        assert start_idx != -1, "signedFetch definition not found in admin/index.html"
+
+        fetch_idx = content.find("const res = await fetch(url,", start_idx)
+        assert fetch_idx != -1, "fetch call inside signedFetch not found in admin/index.html"
+
+        fn_header_block = content[start_idx:fetch_idx]
+        assert "headers['X-TriMCP-Timestamp'] = String(ts);" in fn_header_block
+        assert "headers['Authorization'] = 'HMAC-SHA256 ' + sig;" in fn_header_block
+        assert "k.toLowerCase() === 'x-nce-nonce'" in fn_header_block
+        assert "headers['X-NCE-Nonce'] =" in fn_header_block
+        assert "crypto.randomUUID()" in fn_header_block

@@ -242,6 +242,11 @@ async def test_handle_project_assignment_query_match_and_assign() -> None:
 
         # Verify DB execute calls for KG nodes and edges
         assert mock_conn.execute.call_count >= 3
+        prj_node_call = mock_conn.execute.call_args_list[0]
+        assert "INSERT INTO kg_nodes" in prj_node_call.args[0]
+        assert prj_node_call.args[1] == f"PROJECT:{prj_id}"
+        assert prj_node_call.args[2] == "PROJECT_PROJECT"
+        assert prj_node_call.args[3] == ns_id
 
 
 @pytest.mark.asyncio

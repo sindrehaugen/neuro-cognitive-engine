@@ -43,7 +43,7 @@ from nce.vertical_modules.hr.taxonomy import (
 
 log = logging.getLogger("nce.vertical_modules.hr.a2a")
 
-_NODE_TYPE_PROJECT = "PROJECT"
+_NODE_TYPE_PROJECT = "PROJECT_PROJECT"
 _NODE_TYPE_EMPLOYEE = "EMPLOYEE"
 _PREDICATE_LED_BY = "led_by"
 _HR_ENGINE = "hr"
