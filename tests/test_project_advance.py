@@ -603,6 +603,8 @@ class TestProjectAdvancePhaseToolRegistry:
         (FILED_mutation_false_writers_2026-09-21.md) -- this is the SAME pin
         as test_tool_registry.py's test_mutation_tools_count, kept in sync
         by hand; both moved 152 -> 162 for this change.
+        +2 Waves B-12 & B-13 (R-7) economy_generate_billing_run &
+        economy_propose_customer_invoice -> 164.
 
         Converted to a derived assertion (janitor pass 7, K-H4): since Wave
         A-1b, every C12 ResourceSpec registration mounts 2 mutation tools
@@ -623,9 +625,9 @@ class TestProjectAdvancePhaseToolRegistry:
         assert len(MUTATION_TOOLS) >= 152, (
             f"Sanity floor: expected at least 152 mutation tools, got {len(MUTATION_TOOLS)}."
         )
-        assert len(hand_written_mutation_tools) == 162, (
+        assert len(hand_written_mutation_tools) == 164, (
             "Hand-written (non-C12) mutation tool count changed: expected "
-            f"162, got {len(hand_written_mutation_tools)}. If you "
+            f"164, got {len(hand_written_mutation_tools)}. If you "
             "added/removed a hand-written mutation tool, update this pin by "
             "import. If you only registered a new C12 ResourceSpec, this "
             f"number should not move -- investigate. Tools: "
@@ -671,7 +673,7 @@ class TestProjectAdvancePhaseToolRegistry:
                 "h4_probe_archive_k_h4_synthetic",
             }
             assert after_total == before_total  # TOOL_REGISTRY snapshot doesn't re-scan; see below
-            assert len(hand_written_after) == 162, (
+            assert len(hand_written_after) == 164, (
                 "Registering a new C12 spec must not move the hand-written "
                 f"baseline: got {len(hand_written_after)}."
             )

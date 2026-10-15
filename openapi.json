@@ -10541,6 +10541,48 @@
         ],
         "type": "object"
       },
+      "Tool_economy_generate_billing_run_Input": {
+        "properties": {
+          "agreement_ids": {
+            "description": "Explicit non-empty list of agreement UUIDs to bill in this run.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "confirm": {
+            "description": "Confirm-first execution gate (false queues pending_approval; true executes).",
+            "type": "boolean"
+          },
+          "idempotency_key": {
+            "description": "Optional explicit idempotency key (derived from inputs when omitted).",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "on_site": {
+            "description": "Optional on-site SLA rate flag (defaults to false).",
+            "type": "boolean"
+          },
+          "period_end": {
+            "description": "Billing period end date ('YYYY-MM-DD').",
+            "type": "string"
+          },
+          "period_start": {
+            "description": "Billing period start date ('YYYY-MM-DD').",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace_id",
+          "period_start",
+          "period_end",
+          "agreement_ids"
+        ],
+        "type": "object"
+      },
       "Tool_economy_generate_close_narrative_Input": {
         "properties": {
           "namespace_id": {
@@ -10968,6 +11010,42 @@
         "required": [
           "namespace_id",
           "invoice"
+        ],
+        "type": "object"
+      },
+      "Tool_economy_propose_customer_invoice_Input": {
+        "properties": {
+          "billing_candidate_id": {
+            "description": "UUID of the BILLING_CANDIDATE to propose an invoice for.",
+            "type": "string"
+          },
+          "confirm": {
+            "description": "Confirm-first execution gate (false queues pending_approval; true executes).",
+            "type": "boolean"
+          },
+          "due_date_days": {
+            "description": "Optional days from issue_date to due_date (defaults to 14).",
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "description": "Optional explicit idempotency key.",
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Caller namespace UUID.",
+            "type": "string"
+          },
+          "vat_rate_pct": {
+            "description": "Optional explicit outbound VAT percentage override (defaults to 25.00 with vat_rate_assumed=true).",
+            "type": [
+              "number",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "namespace_id",
+          "billing_candidate_id"
         ],
         "type": "object"
       },
@@ -23845,6 +23923,17 @@
         "mutation": false,
         "name": "economy_forecast_cashflow"
       },
+      "economy_generate_billing_run": {
+        "admin_only": true,
+        "cacheable": false,
+        "description": "[ADMIN] Governed, confirm-first generation of one SLA billing run (charter Wave B-12). Prices every requested agreement's covered FUNCTIONAL_LOCATION rooms via C-2 room categories and B-10 price tiers before writing any rows (refuse-and-name at the run level: if any covered room has an unpriced category, the whole run is recorded as status='failed' with zero partial candidates). CUSTOM_PROJECT rooms (CONFERENCE_MEDIUM / CONFERENCE_LARGE) are skipped and named in custom_project_fl_labels without refusing.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_economy_generate_billing_run_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "economy_generate_billing_run"
+      },
       "economy_generate_close_narrative": {
         "admin_only": false,
         "cacheable": true,
@@ -24020,6 +24109,17 @@
         "migration": false,
         "mutation": false,
         "name": "economy_match_invoice"
+      },
+      "economy_propose_customer_invoice": {
+        "admin_only": true,
+        "cacheable": false,
+        "description": "[ADMIN] Governed, confirm-first creation of a 'proposal' customer invoice from one BILLING_CANDIDATE (charter Wave B-13). Computes VAT (defaulting to 25% outbound MVA with vat_rate_assumed=true unless vat_rate_pct is explicitly supplied) and leaves invoice_number and kid NULL until export.",
+        "inputSchema": {
+          "$ref": "#/components/schemas/Tool_economy_propose_customer_invoice_Input"
+        },
+        "migration": false,
+        "mutation": true,
+        "name": "economy_propose_customer_invoice"
       },
       "economy_reconcile_agreements": {
         "admin_only": false,

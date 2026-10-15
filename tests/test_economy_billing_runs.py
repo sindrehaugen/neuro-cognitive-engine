@@ -28,17 +28,22 @@ Integration tier proves, against a real database:
 
 from __future__ import annotations
 
+import json
 import uuid
+from contextlib import asynccontextmanager
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from nce.auth import set_namespace_context
 from nce.db_utils import scoped_pg_session
 from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
+from nce.mcp_errors import McpError
+from nce.tool_registry import TOOL_REGISTRY
 from nce.vertical_modules.economy.billing_runs import (
     AgreementNotFoundError,
+    _billing_run_idempotency_key,
     do_generate_billing_run,
 )
 
@@ -87,6 +92,123 @@ async def test_generate_without_confirm_is_pending_and_does_not_run() -> None:
 
     assert result["status"] == "pending_approval"
     mock_conn.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_mcp_handler_generate_billing_run_validation_and_delegation() -> None:
+    spec = TOOL_REGISTRY["economy_generate_billing_run"]
+    assert spec.cacheable is False
+    assert spec.admin_only is True
+    assert spec.mutation is True
+    assert spec.migration is False
+
+    ns_id = str(uuid.uuid4())
+    agreement_id = str(uuid.uuid4())
+    mock_conn = _make_mock_conn()
+    engine = MagicMock()
+    engine.pg_pool = MagicMock()
+
+    @asynccontextmanager
+    async def _fake_scoped_session(_pool: Any, _ns: Any):
+        yield mock_conn
+
+    with (
+        patch(
+            "nce.vertical_modules.economy.mcp_handlers._check_economy_enabled",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "nce.vertical_modules.economy.mcp_handlers.scoped_pg_session",
+            side_effect=_fake_scoped_session,
+        ),
+    ):
+        # Missing period_start
+        raw_err = await spec.handler(
+            engine,
+            {
+                "namespace_id": ns_id,
+                "period_end": "2026-09-30",
+                "agreement_ids": [agreement_id],
+            },
+        )
+        assert "period_start" in json.loads(raw_err)["error"]
+
+        # Empty agreement_ids
+        raw_err2 = await spec.handler(
+            engine,
+            {
+                "namespace_id": ns_id,
+                "period_start": "2026-09-01",
+                "period_end": "2026-09-30",
+                "agreement_ids": [],
+            },
+        )
+        assert "agreement_ids" in json.loads(raw_err2)["error"]
+
+        # Delegated confirm=False call via TOOL_REGISTRY
+        raw_ok = await spec.handler(
+            engine,
+            {
+                "namespace_id": ns_id,
+                "period_start": "2026-09-01",
+                "period_end": "2026-09-30",
+                "agreement_ids": [agreement_id],
+                "confirm": False,
+            },
+        )
+        payload = json.loads(raw_ok)
+        assert payload["status"] == "pending_approval"
+        assert payload["action_type"] == "generate_billing_run"
+
+        # AgreementNotFoundError surfaces as {"error": ...} JSON
+        with patch(
+            "nce.vertical_modules.economy.mcp_handlers.do_generate_billing_run",
+            new=AsyncMock(side_effect=AgreementNotFoundError("missing agreement")),
+        ) as mock_do:
+            raw_not_found = await spec.handler(
+                engine,
+                {
+                    "namespace_id": ns_id,
+                    "period_start": "2026-09-01",
+                    "period_end": "2026-09-30",
+                    "agreement_ids": [agreement_id],
+                    "on_site": True,
+                    "confirm": True,
+                },
+            )
+            assert "missing agreement" in json.loads(raw_not_found)["error"]
+            expected_idem = _billing_run_idempotency_key(
+                ns_id, "2026-09-01", "2026-09-30", [agreement_id]
+            )
+            mock_do.assert_awaited_once_with(
+                mock_conn,
+                ns_id,
+                idempotency_key=expected_idem,
+                confirm=True,
+                engine=engine,
+                period_start="2026-09-01",
+                period_end="2026-09-30",
+                agreement_ids=[agreement_id],
+                on_site=True,
+            )
+
+    # McpError propagates untouched when economy vertical is disabled
+    with (
+        patch(
+            "nce.vertical_modules.economy.mcp_handlers._check_economy_enabled",
+            new=AsyncMock(side_effect=McpError(-32005, "Economy disabled")),
+        ),
+        pytest.raises(McpError),
+    ):
+        await spec.handler(
+            engine,
+            {
+                "namespace_id": ns_id,
+                "period_start": "2026-09-01",
+                "period_end": "2026-09-30",
+                "agreement_ids": [agreement_id],
+            },
+        )
 
 
 # ---------------------------------------------------------------------------

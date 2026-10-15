@@ -198,6 +198,22 @@ async def do_suggest_content(
     }
 
 
+def _decode_seo_dict(raw_seo: Any) -> dict[str, Any]:
+    """Safely decode a content_assets.seo value (raw JSON string or dict) into a dict."""
+    if isinstance(raw_seo, dict):
+        return dict(raw_seo)
+    if isinstance(raw_seo, str):
+        stripped = raw_seo.strip()
+        if stripped:
+            try:
+                parsed = json.loads(stripped)
+                if isinstance(parsed, dict):
+                    return parsed
+            except (ValueError, TypeError):
+                pass
+    return {}
+
+
 async def do_audit_seo(
     engine: Any,
     params: dict[str, Any],
@@ -234,6 +250,7 @@ async def do_audit_seo(
     content_raw = params.get("content") or ""
     url = str(params.get("url") or "https://example.test/case-studies").strip()
 
+    existing_seo: dict[str, Any] = {}
     if asset_id_str and pool is not None:
         try:
             async with pool.acquire() as conn:
@@ -266,8 +283,14 @@ async def do_audit_seo(
                     if row_asset:
                         if not title:
                             title = row_asset["title"]
-                        if not content_raw and row_asset.get("seo"):
-                            content_raw = str(row_asset["seo"])
+                        existing_seo = _decode_seo_dict(row_asset.get("seo"))
+                        if not content_raw and existing_seo:
+                            content_raw = str(
+                                existing_seo.get("description")
+                                or existing_seo.get("meta_description")
+                                or existing_seo.get("summary")
+                                or ""
+                            )
         except Exception as exc:
             log.warning("do_audit_seo DB fetch error: %s", exc)
 
@@ -362,19 +385,20 @@ async def do_audit_seo(
     }
 
     if asset_id_str and pool is not None:
+        merged_seo = {**existing_seo, **report}
         try:
             async with pool.acquire() as conn:
                 await conn.execute(
                     """
                     UPDATE content_assets
-                    SET    seo = $3::jsonb,
+                    SET    seo = COALESCE(seo, '{}'::jsonb) || $3::jsonb,
                            updated_at = now()
                     WHERE  namespace_id = $1::uuid
                       AND  id = $2::uuid
                     """,
                     UUID(ns_str),
                     UUID(asset_id_str),
-                    json.dumps(report),
+                    json.dumps(merged_seo),
                 )
         except Exception as exc:
             log.warning("do_audit_seo DB update error: %s", exc)

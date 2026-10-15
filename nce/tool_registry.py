@@ -1505,6 +1505,19 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         admin_only=False,
         mutation=True,
     ),
+    # Governed billing-run generation and customer-invoice proposal (Waves B-12 & B-13).
+    "economy_generate_billing_run": ToolSpec(
+        _h(economy_mcp_handlers, "handle_economy_generate_billing_run"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
+    "economy_propose_customer_invoice": ToolSpec(
+        _h(economy_mcp_handlers, "handle_economy_propose_customer_invoice"),
+        cacheable=False,
+        admin_only=True,
+        mutation=True,
+    ),
     # ------------------------------------------------------------------
     # Inventory vertical module tools (Batch 131, M11.W3) — stock-surface
     # ------------------------------------------------------------------

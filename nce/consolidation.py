@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import uuid as _uuid_mod
 from datetime import datetime
 from typing import Any
@@ -116,8 +117,6 @@ class ConsolidationWorker:
 
     async def _cluster_memories_async(self, memories: list) -> tuple[list, dict]:
         """Async wrapper: parse embeddings + HDBSCAN clustering (offloaded to thread)."""
-        import math
-
         import numpy as np
         from sklearn.cluster import HDBSCAN
 
@@ -271,6 +270,31 @@ class ConsolidationWorker:
             )
             return str(result.inserted_id)
 
+    async def _embed_abstraction(self, text: str) -> str | None:
+        """Embed consolidated abstraction text if provider supports ``embed()``."""
+        embed_fn = getattr(self.provider, "embed", None)
+        if not callable(embed_fn):
+            log.debug(
+                "Provider does not implement embed(); consolidated memory embedding will be NULL"
+            )
+            return None
+        try:
+            vec = await self.provider.embed(text)
+        except Exception as e:
+            log.debug("Failed to embed consolidated abstraction: %s", e)
+            return None
+        if (
+            not isinstance(vec, (list, tuple))
+            or len(vec) == 0
+            or not all(
+                isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+                for x in vec
+            )
+        ):
+            log.debug("Provider embed() returned invalid or empty vector; skipping embedding")
+            return None
+        return f"[{','.join(str(float(x)) for x in vec)}]"
+
     async def _store_consolidated_memory(
         self,
         conn,
@@ -280,6 +304,7 @@ class ConsolidationWorker:
         cluster_mems: list,
         mem_ids: list,
         payload_ref: str,
+        embedding_vec: str | None = None,
     ) -> tuple[Any, int]:
         """Store consolidated memory row + WORM-compliant event log (inside PG transaction).
 
@@ -292,20 +317,37 @@ class ConsolidationWorker:
         parent_depths = [int(m.get("derivation_depth") or 0) for m in cluster_mems]
         new_depth = max(parent_depths) + 1
 
-        new_mem_id = await conn.fetchval(
-            """
-            INSERT INTO memories (
-                namespace_id, memory_type, assertion_type, payload_ref, derived_from,
-                change_origin, derivation_depth
+        if embedding_vec is not None:
+            new_mem_id = await conn.fetchval(
+                """
+                INSERT INTO memories (
+                    namespace_id, memory_type, assertion_type, payload_ref, derived_from,
+                    change_origin, derivation_depth, embedding
+                )
+                VALUES ($1, 'consolidated', 'fact', $2, $3, 'consolidation', $4, $5::vector)
+                RETURNING id
+                """,
+                namespace_id,
+                payload_ref,
+                json.dumps(mem_ids),
+                new_depth,
+                embedding_vec,
             )
-            VALUES ($1, 'consolidated', 'fact', $2, $3, 'consolidation', $4)
-            RETURNING id
-            """,
-            namespace_id,
-            payload_ref,
-            json.dumps(mem_ids),
-            new_depth,
-        )
+        else:
+            new_mem_id = await conn.fetchval(
+                """
+                INSERT INTO memories (
+                    namespace_id, memory_type, assertion_type, payload_ref, derived_from,
+                    change_origin, derivation_depth
+                )
+                VALUES ($1, 'consolidated', 'fact', $2, $3, 'consolidation', $4)
+                RETURNING id
+                """,
+                namespace_id,
+                payload_ref,
+                json.dumps(mem_ids),
+                new_depth,
+            )
 
         event_params = abstraction.model_dump()
         event_params["source_memories"] = mem_ids
@@ -572,6 +614,7 @@ class ConsolidationWorker:
                     payload_ref = await self._store_abstraction_in_mongo(
                         namespace_id, abstraction.abstraction
                     )
+                    embedding_vec = await self._embed_abstraction(abstraction.abstraction)
 
                     # PG transaction: memory row + WORM event log via append_event().
                     async with scoped_pg_session(self.pool, namespace_id) as conn:
@@ -582,6 +625,7 @@ class ConsolidationWorker:
                             cluster_mems=cluster_mems,
                             mem_ids=mem_ids,
                             payload_ref=payload_ref,
+                            embedding_vec=embedding_vec,
                         )
                         await self._update_kg(
                             conn,

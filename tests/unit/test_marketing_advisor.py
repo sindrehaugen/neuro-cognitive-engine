@@ -203,6 +203,107 @@ async def test_audit_seo_sensitive_financials_refusal() -> None:
         )
 
 
+@pytest.mark.asyncio
+async def test_audit_seo_preserves_existing_seo_metadata_on_writeback() -> None:
+    """Mechanism A fix (JSONB_WRITER_CONVENTION_SWEEP.md §15):
+    Auditing a content_assets row with pre-existing SEO metadata (returned by
+    asyncpg as a raw JSON string) preserves existing keys on write-back and
+    extracts only genuine prose metadata (meta_description) rather than
+    stringifying the entire JSON object."""
+    import json
+
+    asset_id = str(uuid4())
+    existing_seo_str = json.dumps(
+        {
+            "meta_title": "Original SEO Title",
+            "keywords": ["dante", "av"],
+            "meta_description": "Verified 99.99% uptime across campus rooms.",
+        }
+    )
+    engine = _make_mock_engine(
+        asset_row={
+            "id": asset_id,
+            "title": "Campus Dante Audio Architecture",
+            "storage_uri": "s3://assets/campus.pdf",
+            "seo": existing_seo_str,
+        }
+    )
+
+    res = await do_audit_seo(
+        engine,
+        {
+            "namespace_id": _NAMESPACE_ID,
+            "asset_id": asset_id,
+        },
+    )
+
+    assert res["ok"] is True
+    # Fallback content came from meta_description prose, not raw JSON string
+    assert res["json_ld"]["description"] == "Verified 99.99% uptime across campus rooms."
+
+    conn = engine.pg_pool.acquire.return_value.__aenter__.return_value
+    assert conn.execute.await_count == 1
+    sql_arg, _ns_arg, _id_arg, payload_arg = conn.execute.await_args.args
+    assert "COALESCE(seo, '{}'::jsonb) || $3::jsonb" in sql_arg
+    written_seo = json.loads(payload_arg)
+    assert written_seo["meta_title"] == "Original SEO Title"
+    assert written_seo["keywords"] == ["dante", "av"]
+    assert written_seo["meta_description"] == "Verified 99.99% uptime across campus rooms."
+    assert written_seo["aeo_score"] == res["aeo_score"]
+    assert written_seo["citation_readiness"] == res["citation_readiness"]
+
+
+@pytest.mark.asyncio
+async def test_audit_seo_does_not_self_score_prior_audit_report_in_seo_column() -> None:
+    """Mechanism B fix (JSONB_WRITER_CONVENTION_SWEEP.md §15):
+    When caller supplies no content and content_assets.seo is a raw JSON string
+    containing a prior audit report (including json_ld.citation with urn:nce:),
+    do_audit_seo must NOT feed the prior report JSON into content_text."""
+    import json
+
+    asset_id = str(uuid4())
+    prior_report_str = json.dumps(
+        {
+            "ok": True,
+            "aeo_score": 85,
+            "citation_readiness": "ready",
+            "json_ld": {
+                "@context": "https://schema.org",
+                "@type": "TechArticle",
+                "headline": "Boardroom Audio Asset",
+                "description": "Boardroom Audio Asset",
+                "citation": ["urn:nce:graph:verified_delivery"],
+            },
+            "recommendations": [],
+            "analyzed_at": "2026-09-21T00:00:00+00:00",
+        }
+    )
+    engine = _make_mock_engine(
+        asset_row={
+            "id": asset_id,
+            "title": "Boardroom Audio Asset",
+            "storage_uri": "s3://assets/boardroom.pdf",
+            "seo": prior_report_str,
+        }
+    )
+
+    res = await do_audit_seo(
+        engine,
+        {
+            "namespace_id": _NAMESPACE_ID,
+            "asset_id": asset_id,
+        },
+    )
+
+    assert res["ok"] is True
+    # Title >= 10 chars gives 30 + 20 = 50; prior report's urn:nce:graph:verified_delivery
+    # must NOT be scored as content citations (+15).
+    assert res["aeo_score"] == 50
+    assert res["citation_readiness"] == "needs_improvement"
+    assert res["json_ld"]["description"] == "Boardroom Audio Asset"
+    assert any("urn:nce:*" in rec for rec in res["recommendations"])
+
+
 # ---------------------------------------------------------------------------
 # Admin REST route tests
 # ---------------------------------------------------------------------------

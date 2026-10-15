@@ -22,15 +22,19 @@ Integration tier proves, against a real database:
 
 from __future__ import annotations
 
+import json
 import uuid
+from contextlib import asynccontextmanager
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from nce.auth import set_namespace_context
 from nce.db_utils import scoped_pg_session
 from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
+from nce.mcp_errors import McpError
+from nce.tool_registry import TOOL_REGISTRY
 from nce.vertical_modules.economy.customer_invoices import (
     BillingCandidateNotFoundError,
     CustomerInvoiceAlreadyExistsError,
@@ -80,6 +84,106 @@ async def test_propose_without_confirm_is_pending_and_does_not_run() -> None:
 
     assert result["status"] == "pending_approval"
     mock_conn.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_mcp_handler_propose_customer_invoice_validation_and_delegation() -> None:
+    spec = TOOL_REGISTRY["economy_propose_customer_invoice"]
+    assert spec.cacheable is False
+    assert spec.admin_only is True
+    assert spec.mutation is True
+    assert spec.migration is False
+
+    ns_id = str(uuid.uuid4())
+    candidate_id = str(uuid.uuid4())
+    mock_conn = _make_mock_conn()
+    engine = MagicMock()
+    engine.pg_pool = MagicMock()
+
+    @asynccontextmanager
+    async def _fake_scoped_session(_pool: Any, _ns: Any):
+        yield mock_conn
+
+    with (
+        patch(
+            "nce.vertical_modules.economy.mcp_handlers._check_economy_enabled",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "nce.vertical_modules.economy.mcp_handlers.scoped_pg_session",
+            side_effect=_fake_scoped_session,
+        ),
+    ):
+        # Missing billing_candidate_id
+        raw_err = await spec.handler(engine, {"namespace_id": ns_id})
+        assert "billing_candidate_id" in json.loads(raw_err)["error"]
+
+        # Boolean due_date_days rejected
+        raw_bool_err = await spec.handler(
+            engine,
+            {
+                "namespace_id": ns_id,
+                "billing_candidate_id": candidate_id,
+                "due_date_days": True,
+            },
+        )
+        assert "due_date_days" in json.loads(raw_bool_err)["error"]
+
+        # Delegated confirm=False call via TOOL_REGISTRY
+        raw_ok = await spec.handler(
+            engine,
+            {
+                "namespace_id": ns_id,
+                "billing_candidate_id": candidate_id,
+                "confirm": False,
+            },
+        )
+        payload = json.loads(raw_ok)
+        assert payload["status"] == "pending_approval"
+        assert payload["action_type"] == "propose_customer_invoice"
+
+        # CustomerInvoiceAlreadyExistsError surfaces as {"error": ...} JSON
+        with patch(
+            "nce.vertical_modules.economy.mcp_handlers.do_propose_customer_invoice",
+            new=AsyncMock(side_effect=CustomerInvoiceAlreadyExistsError(candidate_id)),
+        ) as mock_do:
+            raw_dup = await spec.handler(
+                engine,
+                {
+                    "namespace_id": ns_id,
+                    "billing_candidate_id": candidate_id,
+                    "vat_rate_pct": 15,
+                    "due_date_days": 30,
+                    "confirm": True,
+                },
+            )
+            assert "already has a customer invoice" in json.loads(raw_dup)["error"]
+            mock_do.assert_awaited_once_with(
+                mock_conn,
+                ns_id,
+                idempotency_key=f"propose_customer_invoice:{ns_id}:{candidate_id}",
+                confirm=True,
+                engine=engine,
+                billing_candidate_id=candidate_id,
+                vat_rate_pct=15,
+                due_date_days=30,
+            )
+
+    # McpError propagates untouched when economy vertical is disabled
+    with (
+        patch(
+            "nce.vertical_modules.economy.mcp_handlers._check_economy_enabled",
+            new=AsyncMock(side_effect=McpError(-32005, "Economy disabled")),
+        ),
+        pytest.raises(McpError),
+    ):
+        await spec.handler(
+            engine,
+            {
+                "namespace_id": ns_id,
+                "billing_candidate_id": candidate_id,
+            },
+        )
 
 
 # ---------------------------------------------------------------------------

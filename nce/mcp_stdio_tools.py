@@ -5642,6 +5642,91 @@ TOOLS = [
         },
     ),
     Tool(
+        name="economy_generate_billing_run",
+        description=(
+            "[ADMIN] Governed, confirm-first generation of one SLA billing run (charter Wave B-12). "
+            "Prices every requested agreement's covered FUNCTIONAL_LOCATION rooms via C-2 room "
+            "categories and B-10 price tiers before writing any rows (refuse-and-name at the run "
+            "level: if any covered room has an unpriced category, the whole run is recorded as "
+            "status='failed' with zero partial candidates). CUSTOM_PROJECT rooms (CONFERENCE_MEDIUM / "
+            "CONFERENCE_LARGE) are skipped and named in custom_project_fl_labels without refusing."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Caller namespace UUID.",
+                },
+                "period_start": {
+                    "type": "string",
+                    "description": "Billing period start date ('YYYY-MM-DD').",
+                },
+                "period_end": {
+                    "type": "string",
+                    "description": "Billing period end date ('YYYY-MM-DD').",
+                },
+                "agreement_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Explicit non-empty list of agreement UUIDs to bill in this run.",
+                },
+                "on_site": {
+                    "type": "boolean",
+                    "description": "Optional on-site SLA rate flag (defaults to false).",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Confirm-first execution gate (false queues pending_approval; true executes).",
+                },
+                "idempotency_key": {
+                    "type": "string",
+                    "description": "Optional explicit idempotency key (derived from inputs when omitted).",
+                },
+            },
+            "required": ["namespace_id", "period_start", "period_end", "agreement_ids"],
+        },
+    ),
+    Tool(
+        name="economy_propose_customer_invoice",
+        description=(
+            "[ADMIN] Governed, confirm-first creation of a 'proposal' customer invoice from one "
+            "BILLING_CANDIDATE (charter Wave B-13). Computes VAT (defaulting to 25% outbound MVA "
+            "with vat_rate_assumed=true unless vat_rate_pct is explicitly supplied) and leaves "
+            "invoice_number and kid NULL until export."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Caller namespace UUID.",
+                },
+                "billing_candidate_id": {
+                    "type": "string",
+                    "description": "UUID of the BILLING_CANDIDATE to propose an invoice for.",
+                },
+                "vat_rate_pct": {
+                    "type": ["number", "string"],
+                    "description": "Optional explicit outbound VAT percentage override (defaults to 25.00 with vat_rate_assumed=true).",
+                },
+                "due_date_days": {
+                    "type": "integer",
+                    "description": "Optional days from issue_date to due_date (defaults to 14).",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Confirm-first execution gate (false queues pending_approval; true executes).",
+                },
+                "idempotency_key": {
+                    "type": "string",
+                    "description": "Optional explicit idempotency key.",
+                },
+            },
+            "required": ["namespace_id", "billing_candidate_id"],
+        },
+    ),
+    Tool(
         name="detect_causal_cycles",
         description=(
             "[ADMIN] Detect cycles in the event_parents causal DAG for a namespace. "
