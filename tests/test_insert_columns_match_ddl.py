@@ -70,23 +70,7 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 KNOWN_BAD_INSERT_COLUMNS: dict[str, dict[str, str]] = {}
 
 # Shrink-only, same contract as the INSERT allowlist above.
-KNOWN_BAD_QUERY_COLUMNS: dict[str, dict[str, str]] = {
-    "product_catalog": {
-        "successor_sku": (
-            "product/watchers.py:291 -- queries successor_sku and lifecycle_confidence. "
-            "The table lacks both columns; the read is guarded at runtime by an "
-            "information_schema.columns check pending the Charter §13 Item 7 storage decision."
-        ),
-        "lifecycle_confidence": "same query as 'successor_sku' above.",
-    },
-    "v3_cognitive_ledger": {
-        "valid_to": (
-            "database/pruning.py:449 -- consistency check checks valid_to IS NOT NULL "
-            "on v3_cognitive_ledger. v3_cognitive_ledger (migration 008) is the Empathic "
-            "Tensor store and has no valid_to column."
-        ),
-    },
-}
+KNOWN_BAD_QUERY_COLUMNS: dict[str, dict[str, str]] = {}
 
 _SQL_KEYWORDS = {
     # Aggregates & Math
@@ -775,6 +759,8 @@ def test_the_schema_parser_finds_the_tables_it_must() -> None:
     )
     # The table both known defects target, with the column that makes it unusable.
     assert "empathic_tensor" in tables["v3_cognitive_ledger"]
+    assert "valid_to" in tables["v3_cognitive_ledger"]
+    assert {"successor_sku", "lifecycle_confidence"} <= tables["product_catalog"]
     # Assert zero collisions between parsed table columns and _SQL_KEYWORDS
     collisions = {t: cols & _SQL_KEYWORDS for t, cols in tables.items() if cols & _SQL_KEYWORDS}
     assert not collisions, (

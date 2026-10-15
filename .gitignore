@@ -165,3 +165,6 @@ build/linux/dist/
 # Scratch CI/debug logs pulled down with `gh run view --log-failed`. Three of these
 # reached commits via `git add -A` during the Q-4 work before this rule existed.
 *.log
+
+# Compiled Go binaries
+go/*.exe

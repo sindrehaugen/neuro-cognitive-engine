@@ -108,6 +108,48 @@ async def test_publish_drops_unconsumed_event_and_increments_counter(monkeypatch
     mock_counter.return_value.inc.assert_called_once()
 
 
+@pytest.mark.asyncio
+async def test_publish_inserts_outbox_event_when_matching_outbound_webhook_exists(monkeypatch):
+    """publish() inserts into outbox_events when an active matching C4 outbound webhook is registered even with no in-process handler."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    import nce.outbound_webhooks
+    from nce.observability import OUTBOX_UNCONSUMED_TOTAL
+
+    mock_conn = MagicMock()
+    mock_conn.execute = AsyncMock()
+
+    mock_counter = MagicMock()
+    monkeypatch.setattr(OUTBOX_UNCONSUMED_TOTAL, "labels", mock_counter)
+
+    monkeypatch.setitem(outbox_relay.OUTBOX_HANDLERS, "unconsumed.event", [])
+    mock_get_webhooks = AsyncMock(return_value=[MagicMock()])
+    monkeypatch.setattr(nce.outbound_webhooks, "get_matching_webhooks", mock_get_webhooks)
+
+    ns_id = uuid.uuid4()
+    await publish(
+        mock_conn,
+        namespace_id=ns_id,
+        node_type="unconsumed",
+        op="event",
+        aggregate_id="test-id",
+        payload={"key": "val"},
+    )
+
+    mock_get_webhooks.assert_awaited_once_with(mock_conn, ns_id, "unconsumed.event")
+    mock_conn.execute.assert_awaited_once()
+    args = mock_conn.execute.call_args[0]
+    assert "INSERT INTO outbox_events" in args[0]
+    assert args[1:] == (
+        ns_id,
+        "unconsumed",
+        "test-id",
+        "unconsumed.event",
+        json.dumps({"key": "val"}),
+    )
+    mock_counter.assert_not_called()
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_publish_lands_row_in_outbox_events(pg_pool, namespace_id):
