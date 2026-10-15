@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import urllib.parse
+import urllib.request
 from datetime import datetime, timezone
 from typing import Any
 
@@ -65,7 +67,51 @@ class NceCognitiveStatsView(View):
                 # Fallback to simulated data if query fails
                 return JsonResponse(generate_simulated_data(namespace_slug, as_of, error=str(err)))
         else:
+            remote_data = self._fetch_remote_nce_data(namespace_slug, as_of)
+            if remote_data is not None:
+                return JsonResponse(remote_data)
             return JsonResponse(generate_simulated_data(namespace_slug, as_of))
+
+    def _fetch_remote_nce_data(self, namespace_slug: str, as_of: datetime) -> dict[str, Any] | None:
+        """Fetches cognitive telemetry from the configured remote NCE Admin API."""
+        plugins_cfg = getattr(settings, "PLUGINS_CONFIG", {}) or {}
+        plugin_cfg = (
+            plugins_cfg.get("nce_netbox_plugin", {}) if isinstance(plugins_cfg, dict) else {}
+        )
+        if not isinstance(plugin_cfg, dict):
+            plugin_cfg = {}
+        base_url = (
+            str(
+                plugin_cfg.get("nce_admin_api_url")
+                or getattr(settings, "NCE_ADMIN_API_URL", "")
+                or ""
+            )
+            .strip()
+            .rstrip("/")
+        )
+        if not base_url:
+            return None
+
+        url = (
+            f"{base_url}/api/cognitive/stats"
+            f"?namespace={urllib.parse.quote(namespace_slug)}"
+            f"&as_of={urllib.parse.quote(as_of.isoformat())}"
+        )
+        headers: dict[str, str] = {"Accept": "application/json"}
+        api_key = plugin_cfg.get("nce_admin_api_key")
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        try:
+            req = urllib.request.Request(url, headers=headers, method="GET")
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                status = getattr(resp, "status", 200)
+                if status != 200:
+                    return None
+                payload = json.loads(resp.read().decode("utf-8"))
+                return payload if isinstance(payload, dict) else None
+        except Exception:
+            return None
 
     def _resolve_tenant_slug(self, object_type: str, object_id: str) -> str | None:
         """Resolves the tenant slug associated with the NetBox object."""
@@ -237,8 +283,8 @@ class NceCognitiveStatsView(View):
             try:
                 cursor.execute(
                     """
-                    SELECT id, name, node_type, metadata 
-                    FROM kg_nodes 
+                    SELECT id, label, entity_type
+                    FROM kg_nodes
                     WHERE namespace_id = %s AND created_at <= %s;
                     """,
                     [ns_id, as_of],
@@ -246,16 +292,22 @@ class NceCognitiveStatsView(View):
                 rows = cursor.fetchall()
                 nodes = []
                 for r in rows:
-                    meta = json.loads(r[3]) if isinstance(r[3], str) else r[3] or {}
-                    # Filter for nodes flagged with failure probability
-                    if "failure_probability" in meta or r[2] == "predictive_fault":
+                    label = str(r[1])
+                    entity_type = str(r[2])
+                    if (
+                        entity_type == "predictive_fault"
+                        or "fault" in entity_type.lower()
+                        or "fault" in label.lower()
+                    ):
                         nodes.append(
                             {
                                 "node_id": str(r[0]),
-                                "name": r[1],
-                                "node_type": r[2],
-                                "failure_probability": meta.get("failure_probability", 0.0),
-                                "estimated_mtbf_hours": meta.get("estimated_mtbf_hours", 720.0),
+                                "name": label,
+                                "node_type": entity_type,
+                                "failure_probability": 0.75
+                                if entity_type == "predictive_fault"
+                                else 0.5,
+                                "estimated_mtbf_hours": 720.0,
                             }
                         )
                 return nodes

@@ -133,3 +133,11 @@ class TestOneSharedLockId:
             encoding="utf-8"
         )
         assert "ALTER ROLE nce_app" in schema
+
+    def test_existing_role_branch_does_not_reset_password(self) -> None:
+        """Existing nce_app role must retain its configured password on connect."""
+        nce_dir = Path(inspect.getfile(orchestrator_module)).parent
+        for filename in ("schema.sql", "schema_runtime.sql"):
+            content = (nce_dir / filename).read_text(encoding="utf-8")
+            assert "ALTER ROLE nce_app WITH LOGIN;" in content
+            assert "ALTER ROLE nce_app WITH LOGIN PASSWORD" not in content

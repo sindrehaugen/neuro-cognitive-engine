@@ -51,9 +51,13 @@ class SharePointBridge(BridgeProvider):
                 None,
             )
             if cs:
-                from nce.bridge_runtime import resolve_stored_oauth_access_token
+                from nce.bridge_runtime import resolve_stored_oauth_access_token_async
 
-                t = resolve_stored_oauth_access_token("sharepoint", client_state=cs)
+                t = await resolve_stored_oauth_access_token_async(
+                    "sharepoint",
+                    client_state=cs,
+                    pg_pool=context.get("pg_pool"),
+                )
                 if t:
                     self._oauth_token_override = t
 

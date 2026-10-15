@@ -26,13 +26,17 @@ suite.
 
 from __future__ import annotations
 
+import json
+from unittest.mock import MagicMock
 from uuid import uuid4
 
+import pytest
 from starlette.requests import Request
 
 from nce.auth import NamespaceContext
 from nce.principal_bindings.service import extract_principal_identity
-from nce.resource_surface.rest import redact_item, resolve_principal_tier
+from nce.resource_surface.mcp import build_mcp_tool_specs, resolve_mcp_principal_tier
+from nce.resource_surface.rest import _clear_mem_store, redact_item, resolve_principal_tier
 from nce.resource_surface.spec import ResourceSpec
 
 
@@ -226,3 +230,94 @@ def test_extract_principal_identity_verified_employee_still_works():
     req = _make_binding_request(ns_ctx_principal_kind="employee")
     _, _, tier = extract_principal_identity(req)
     assert tier == "employee"
+
+
+# ===========================================================================
+# 4. MCP resource tools -- resolve_mcp_principal_tier and redact_item
+# ===========================================================================
+
+
+def test_resolve_mcp_principal_tier_defaults_to_employee_when_omitted():
+    assert resolve_mcp_principal_tier({}) == "employee"
+    assert (
+        resolve_mcp_principal_tier({"principal_kind": None, "_principal_tier": None}) == "employee"
+    )
+
+
+def test_resolve_mcp_principal_tier_valid_tiers_and_unrecognized_fallback():
+    assert resolve_mcp_principal_tier({"principal_kind": "employee"}) == "employee"
+    assert resolve_mcp_principal_tier({"principal_kind": "contractor"}) == "contractor"
+    assert (
+        resolve_mcp_principal_tier({"_principal_tier": "external-customer"}) == "external-customer"
+    )
+    assert resolve_mcp_principal_tier({"principal_kind": "guest"}) == "unverified"
+    assert resolve_mcp_principal_tier({"_principal_tier": "guest"}) == "unverified"
+
+
+@pytest.mark.asyncio
+async def test_mcp_handle_get_and_list_principal_tier_redaction():
+    """Verify MCP handle_get and handle_list apply redact_item across default
+    internal calls, declared contractor allowlists, and unrecognized tiers."""
+    _clear_mem_store()
+    try:
+        mock_engine = MagicMock()
+        mock_engine.pg_pool = None
+
+        tool_specs = build_mcp_tool_specs(_SPEC_WITH_ALLOWLIST)
+        upsert_fn = tool_specs["probe_upsert_widgets"].handler
+        get_fn = tool_specs["probe_get_widgets"].handler
+        list_fn = tool_specs["probe_list_widgets"].handler
+
+        ns_id = str(uuid4())
+        created_raw = await upsert_fn(
+            mock_engine,
+            {"namespace_id": ns_id, "name": "Widget", "cost_price": 42.0},
+        )
+        item_id = json.loads(created_raw)["id"]
+
+        # (a) Default internal MCP call (no principal_kind / _principal_tier) -> employee -> all fields
+        emp_get = json.loads(await get_fn(mock_engine, {"namespace_id": ns_id, "id": item_id}))
+        assert emp_get["id"] == item_id
+        assert emp_get["name"] == "Widget"
+        assert emp_get["cost_price"] == 42.0
+
+        emp_list = json.loads(await list_fn(mock_engine, {"namespace_id": ns_id}))
+        assert len(emp_list["items"]) == 1
+        assert emp_list["items"][0]["cost_price"] == 42.0
+
+        # (b) Contractor tier -> allowlisted fields only (cost_price redacted in both get and list)
+        con_get = json.loads(
+            await get_fn(
+                mock_engine,
+                {"namespace_id": ns_id, "id": item_id, "principal_kind": "contractor"},
+            )
+        )
+        assert con_get == {"id": item_id, "name": "Widget"}
+        assert "cost_price" not in con_get
+
+        con_list = json.loads(
+            await list_fn(
+                mock_engine,
+                {"namespace_id": ns_id, "principal_kind": "contractor"},
+            )
+        )
+        assert con_list["items"] == [{"id": item_id, "name": "Widget"}]
+
+        # (c) Unrecognized tier ("guest") -> resolves to "unverified" -> {} for each item
+        guest_get = json.loads(
+            await get_fn(
+                mock_engine,
+                {"namespace_id": ns_id, "id": item_id, "principal_kind": "guest"},
+            )
+        )
+        assert guest_get == {}
+
+        guest_list = json.loads(
+            await list_fn(
+                mock_engine,
+                {"namespace_id": ns_id, "principal_kind": "guest"},
+            )
+        )
+        assert guest_list["items"] == [{}]
+    finally:
+        _clear_mem_store()

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 
 from nce import bridge_repo
 from nce.bridge_providers import BRIDGE_PROVIDERS
@@ -27,6 +28,7 @@ async def resolve_stored_oauth_access_token_async(
     client_state: str | None = None,
     subscription_id: str | None = None,
     resource_id: str | None = None,
+    pg_pool: Any = None,
 ) -> str | None:
     """Async core: load and decrypt OAuth access token from ``bridge_subscriptions``.
 
@@ -45,10 +47,14 @@ async def resolve_stored_oauth_access_token_async(
     if not any((client_state, subscription_id, resource_id)):
         return None
 
-    engine = NCEEngine()
-    await engine.connect()
+    engine: NCEEngine | None = None
+    pool = pg_pool
+    if pool is None:
+        engine = NCEEngine()
+        await engine.connect()
+        pool = engine.pg_pool
     try:
-        async with engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with pool.acquire(timeout=10.0) as conn:
             row = await bridge_repo.fetch_active_subscription(
                 conn,
                 provider_lower,
@@ -59,7 +65,7 @@ async def resolve_stored_oauth_access_token_async(
         if not row:
             return None
         try:
-            return await ensure_fresh_oauth_token(engine.pg_pool, row, "")
+            return await ensure_fresh_oauth_token(pool, row, "")
         except Exception as exc:
             log.warning(
                 "%s: Stored bridge OAuth token fetch/refresh failed for provider=%r: %s",
@@ -69,15 +75,16 @@ async def resolve_stored_oauth_access_token_async(
             )
             return None
     finally:
-        try:
-            await asyncio.wait_for(engine.disconnect(), timeout=5.0)
-        except Exception as exc:
-            log.warning(
-                "%s: engine.disconnect() failed for provider=%r: %s",
-                type(exc).__name__,
-                provider,
-                exc,
-            )
+        if engine is not None:
+            try:
+                await asyncio.wait_for(engine.disconnect(), timeout=5.0)
+            except Exception as exc:
+                log.warning(
+                    "%s: engine.disconnect() failed for provider=%r: %s",
+                    type(exc).__name__,
+                    provider,
+                    exc,
+                )
 
 
 def resolve_stored_oauth_access_token(

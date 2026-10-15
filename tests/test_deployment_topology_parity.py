@@ -60,7 +60,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-import pytest
 import yaml
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -146,25 +145,6 @@ def test_caddy_routes_discovery_floor() -> None:
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "RED by design (H-1's pattern): 'a2a' publishes port 8004 directly to "
-        "the host -- not localhost-bound like the data stores, so the same "
-        "reasoning that exempts redis/postgres/mongodb/minio does not apply -- "
-        "and is neither a Caddy reverse_proxy target nor in "
-        "_NO_CADDY_ROUTE_EXEMPTIONS. No comment anywhere in docker-compose.yml "
-        "explains why the A2A protocol server bypasses the edge proxy (TLS "
-        "termination, security headers, request-size limiting) that every "
-        "other externally-reachable service goes through. This is a real, "
-        "undocumented gap, not a considered exclusion -- deciding whether a2a "
-        "needs a Caddy route or has a legitimate reason to bypass it is a "
-        "security/architecture call outside Lane H's mandate (bounded "
-        "judgement: propose, do not decide a contract). Filed as a question, "
-        "not resolved here. XPASSes (and fails CI) the day someone adds a "
-        "route or a reasoned exemption, forcing that decision to be conscious."
-    ),
-)
 def test_every_port_exposing_service_is_routed_or_exempt() -> None:
     """Assertion 1: every service with a published port is a Caddy target or
     carries a reasoned exemption."""
@@ -311,3 +291,15 @@ def test_customer_portal_confinement_comment_is_true() -> None:
             f"but {key!r} is {env[key]!r}, not blank. The comment and the "
             "environment block have diverged."
         )
+
+
+def test_caddyfile_csp_permits_admin_ui_assets_and_routes_a2a() -> None:
+    """Verify Caddyfile CSP allows Admin UI assets (Alpine.js and Google Fonts)
+    and routes A2A protocol endpoints to a2a:8004."""
+    text = _CADDYFILE.read_text(encoding="utf-8")
+    assert "https://cdn.jsdelivr.net" in text
+    assert "'unsafe-eval'" in text
+    assert "https://fonts.googleapis.com" in text
+    assert "https://fonts.gstatic.com" in text
+    assert "@a2a_routes path /tasks/* /.well-known/agent-card" in text
+    assert "reverse_proxy a2a:8004" in text

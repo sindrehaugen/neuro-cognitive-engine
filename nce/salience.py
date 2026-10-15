@@ -31,6 +31,32 @@ def _jitter_factor(memory_id: str) -> float:
     return (seed_val - 0.5) * _JITTER_RANGE
 
 
+def half_life_to_stability(half_life_days: float) -> float:
+    """Convert a half-life in days (t_1/2) to Ebbinghaus stability (S).
+
+    By the Ebbinghaus decay identity:
+        exp(-ln(2) * t / t_{1/2}) = exp(-t / S)  <=>  S = t_{1/2} / ln(2)
+
+    Returns ``0.0`` when ``half_life_days <= 0``.
+    """
+    if half_life_days <= 0:
+        return 0.0
+    return half_life_days / math.log(2)
+
+
+def stability_to_half_life(stability_days: float) -> float:
+    """Convert Ebbinghaus stability in days (S) to a half-life in days (t_1/2).
+
+    By the Ebbinghaus decay identity:
+        exp(-ln(2) * t / t_{1/2}) = exp(-t / S)  <=>  t_{1/2} = S * ln(2)
+
+    Returns ``0.0`` when ``stability_days <= 0``.
+    """
+    if stability_days <= 0:
+        return 0.0
+    return stability_days * math.log(2)
+
+
 def compute_decayed_score(
     s_last: float,
     updated_at: datetime,

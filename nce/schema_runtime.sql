@@ -35,7 +35,7 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
         CREATE ROLE nce_app WITH LOGIN PASSWORD 'nce_app_secret';
     ELSE
-        ALTER ROLE nce_app WITH LOGIN PASSWORD 'nce_app_secret';
+        ALTER ROLE nce_app WITH LOGIN;
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_gc') THEN
         CREATE ROLE nce_gc BYPASSRLS NOLOGIN;

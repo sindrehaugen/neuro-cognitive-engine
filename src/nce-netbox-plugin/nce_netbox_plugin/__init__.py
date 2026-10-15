@@ -22,7 +22,7 @@ class NceCognitiveDashboardConfig(PluginConfig):
     base_url = "nce-cognitive-dashboard"
     required_settings = []
     default_settings = {
-        "nce_admin_api_url": "http://localhost:8000",
+        "nce_admin_api_url": "http://localhost:8003",
     }
 
 
