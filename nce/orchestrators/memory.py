@@ -791,6 +791,30 @@ class MemoryOrchestrator(OrchestratorBase):
                     saga_event_id=saga_event_id,
                 )
 
+                if getattr(pii_result, "redacted", False) is True:
+                    from nce.event_log import append_event
+
+                    raw_entities_found = getattr(pii_result, "entities_found", None)
+                    entity_types = (
+                        [str(e) for e in raw_entities_found]
+                        if isinstance(raw_entities_found, (list, tuple, set))
+                        else []
+                    )
+                    raw_vault = getattr(pii_result, "vault_entries", None)
+                    tokens_redacted = len(raw_vault) if isinstance(raw_vault, (list, tuple)) else 0
+                    await append_event(
+                        conn=conn,
+                        namespace_id=payload.namespace_id,
+                        agent_id=payload.agent_id,
+                        event_type="pii_redaction",
+                        params={
+                            "memory_id": str(memory_id),
+                            "entity_types": entity_types,
+                            "tokens_redacted": tokens_redacted,
+                        },
+                        parent_event_id=saga_event_id,
+                    )
+
                 # STEP 2c: Transactional Outbox — atomically publish
                 await self._enqueue_outbox(
                     conn,

@@ -123,13 +123,6 @@ KNOWN_UNPRODUCED_EVENT_TYPES: dict[str, str] = {
         "NULL / tombstone row) in a schema wave that runs ALONE. Do NOT "
         "dispatch another emitter wave -- one already stopped here."
     ),
-    "pii_redaction": (
-        "TRUE POSITIVE, unfixed: declared for the 'PII / snapshot / cryptographic "
-        "redaction probes' group; its siblings snapshot_created and unredact are "
-        "both emitted, this one never is. The only occurrence estate-wide is an "
-        "unrelated dict key in tests/test_event_types_contracts.py:45. Needs a "
-        "redaction-path wave."
-    ),
 }
 
 # Call sites that pass a *non-constant* ``event_type`` to an emitter.  These make

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hashlib
-from typing import get_args
-from unittest.mock import AsyncMock
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
+from typing import Any, get_args
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -20,6 +22,9 @@ from nce.event_types import (
     VALID_EVENT_TYPES,
     EventType,
 )
+from nce.models import AssertionType, MemoryType, StoreMemoryRequest
+from nce.orchestrators import memory as memory_mod
+from nce.orchestrators.memory import MemoryOrchestrator
 from nce.replay import ForkedReplay
 from tests.fixtures.fake_asyncpg import RecordingFakeConnection
 
@@ -106,3 +111,113 @@ async def test_append_rejects_legacy_consolidation_event_type(
                     "payload_ref": "507f1f77bcf86cd799439011",
                 },
             )
+
+
+@pytest.mark.asyncio
+async def test_store_semantic_graph_pg_emits_pii_redaction_only_when_redacted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``MemoryOrchestrator._store_semantic_graph_pg`` emits ``pii_redaction``
+    with ``memory_id``, ``entity_types``, ``tokens_redacted``, and
+    ``parent_event_id`` when ``pii_result.redacted is True``, and omits it when
+    ``pii_result.redacted is False``.
+    """
+    expected_memory_id = uuid4()
+
+    @asynccontextmanager
+    async def _fake_tx():
+        yield
+
+    conn = MagicMock()
+    conn.fetch = AsyncMock(return_value=[])
+    conn.fetchval = AsyncMock(return_value=expected_memory_id)
+    conn.execute = AsyncMock()
+    conn.executemany = AsyncMock()
+    conn.transaction = _fake_tx
+
+    @asynccontextmanager
+    async def _fake_scoped_pg_session(_pool: object, _ns: object):
+        yield conn
+
+    recorded_events: list[dict[str, Any]] = []
+
+    async def _recording_append_event(**kwargs: Any) -> Any:
+        _validate_event_params(kwargs["event_type"], kwargs["params"])
+        recorded_events.append(kwargs)
+        return kwargs.get("event_id") or uuid4()
+
+    monkeypatch.setattr(memory_mod, "scoped_pg_session", _fake_scoped_pg_session)
+    monkeypatch.setattr(event_log_mod, "append_event", _recording_append_event)
+
+    orch = MemoryOrchestrator(
+        pg_pool=MagicMock(),
+        mongo_client=MagicMock(),
+        redis_client=MagicMock(),
+    )
+    payload = StoreMemoryRequest(
+        namespace_id=uuid4(),
+        agent_id="test-agent",
+        content="Sensitive payload",
+        summary="Sanitized summary",
+        heavy_payload="Sanitized heavy",
+        memory_type=MemoryType.episodic,
+        assertion_type=AssertionType.fact,
+    )
+
+    pii_redacted = SimpleNamespace(
+        redacted=True,
+        entities_found=["EMAIL", "PHONE"],
+        vault_entries=[
+            {"token": "[EMAIL_1]", "encrypted_value": b"enc-1", "entity_type": "EMAIL"},
+            {"token": "[PHONE_1]", "encrypted_value": b"enc-2", "entity_type": "PHONE"},
+        ],
+    )
+
+    returned_id = await orch._store_semantic_graph_pg(
+        payload=payload,
+        sanitized_summary="Sanitized summary",
+        vector=[0.1] * 768,
+        node_vecs=[],
+        pii_result=pii_redacted,
+        inserted_mongo_id="507f1f77bcf86cd799439011",
+        entities=[],
+        triplets=[],
+        saga_id="saga-1",
+        user_id="user-1",
+        session_id="sess-1",
+    )
+    assert returned_id == expected_memory_id
+    assert [e["event_type"] for e in recorded_events] == ["store_memory", "pii_redaction"]
+
+    store_ev, pii_ev = recorded_events
+    assert pii_ev["namespace_id"] == payload.namespace_id
+    assert pii_ev["agent_id"] == payload.agent_id
+    assert pii_ev["params"] == {
+        "memory_id": str(expected_memory_id),
+        "entity_types": ["EMAIL", "PHONE"],
+        "tokens_redacted": 2,
+    }
+    assert pii_ev["parent_event_id"] == store_ev["event_id"]
+    assert pii_ev["parent_event_id"] is not None
+
+    # When pii_result.redacted is False, pii_redaction must NOT be emitted.
+    recorded_events.clear()
+    pii_unredacted = SimpleNamespace(
+        redacted=False,
+        entities_found=[],
+        vault_entries=[],
+    )
+    await orch._store_semantic_graph_pg(
+        payload=payload,
+        sanitized_summary="Sanitized summary",
+        vector=[0.1] * 768,
+        node_vecs=[],
+        pii_result=pii_unredacted,
+        inserted_mongo_id="507f1f77bcf86cd799439011",
+        entities=[],
+        triplets=[],
+        saga_id="saga-2",
+        user_id="user-1",
+        session_id="sess-1",
+    )
+    assert [e["event_type"] for e in recorded_events] == ["store_memory"]

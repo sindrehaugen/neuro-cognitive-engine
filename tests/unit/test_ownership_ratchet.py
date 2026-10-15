@@ -52,14 +52,6 @@ KNOWN_UNGUARDED_GRAPH_WRITERS: dict[str, dict[str, str]] = {
 
 # Shrink-only allowlist: Entity types written by code lacking rows in node-ownership.json
 KNOWN_UNREGISTERED_ENTITY_TYPES: dict[str, dict[str, str]] = {
-    "PROJECT": {
-        "engine": "hr",
-        "owner": "MLV15B",
-        "reason": (
-            "HR A2A module writes unnamespaced 'PROJECT' node rather than 'PROJECT_PROJECT' "
-            "as registered by Project engine in node-ownership.json; scheduled for remediation in HR-1."
-        ),
-    },
     "D365_Account": {
         "engine": "dynamics365",
         "owner": "Core",
@@ -321,14 +313,10 @@ def test_unregistered_entity_types_allowlist_is_shrink_only() -> None:
 
 
 def test_starting_baseline_matches_charter() -> None:
-    """Charter §6 verification: after FT-2 and Lane E's HR wave (Wave E-14, #287), every
-    vertical engine's kg_nodes writers are fully guarded by this scan's own (function-level,
-    not per-node-type) has_assert check -- hr/a2a.py's handle_project_assignment_query gained
-    an assert_owner(..., "EMPLOYEE", "hr") call when EMPLOYEE was registered in
-    node-ownership.json, which also satisfies this coarse per-function metric for the
-    function's separate, unrelated, still-open PROJECT write (see KNOWN_UNREGISTERED_ENTITY_TYPES
-    -- that bug, writing an unnamespaced "PROJECT" instead of the registered "PROJECT_PROJECT",
-    is explicitly out of scope for this wave and remains scheduled for its own remediation)."""
+    """Charter §6 verification: after FT-2, Lane E's HR wave (Wave E-14, #287), and Wave R-9
+    (F-14a), every vertical engine's kg_nodes writers are fully guarded and write registered
+    entity types -- hr/a2a.py's handle_project_assignment_query calls assert_owner(..., "EMPLOYEE",
+    "hr") and writes the registered "PROJECT_PROJECT" entity type alongside "EMPLOYEE"."""
     writers, _, _ = _scan_kg_nodes_writers(_REPO_ROOT)
     unguarded_files_by_engine: dict[str, list[str]] = {}
 

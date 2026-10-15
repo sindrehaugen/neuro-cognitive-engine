@@ -840,7 +840,17 @@ async def _dispatch_skill(
 
         from nce.a2a import verify_grant_status as a2a_verify_grant_status
 
+        external_scope_id = getattr(caller_ctx, "external_scope_id", None)
         async with _engine.pg_pool.acquire(timeout=10.0) as conn:
+            if external_scope_id is not None:
+                async with conn.transaction():
+                    await set_external_scope(conn, external_scope_id)
+                    return await a2a_verify_grant_status(
+                        conn=conn,
+                        ctx=caller_ctx,
+                        sharing_token=sharing_token,
+                        grant_id=grant_id,
+                    )
             return await a2a_verify_grant_status(
                 conn=conn,
                 ctx=caller_ctx,
