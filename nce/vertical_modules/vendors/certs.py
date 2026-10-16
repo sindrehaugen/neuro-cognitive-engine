@@ -40,6 +40,152 @@ except ImportError:
         NCE_VENDORS_CERT_EXPIRY_WARN_DAYS = 30
 
 
+def validate_contractor_regulatory_compliance(
+    contractor_meta: dict[str, Any],
+    certs: list[dict[str, Any]] | list[Any],
+    regulatory_scope: str = "electrical_lv",
+    require_iso: list[str] | None = None,
+    ref_date: date | None = None,
+) -> dict[str, Any]:
+    """Verify contractor company regulatory registrations and ISO management systems.
+
+    Verifies:
+    - electrical_lv / electrical_hv: contractor registered in DSB Elvirksomhetsregisteret
+      and has a designated Faglig Ansvarlig (FEK § 3 / § 5 / § 7).
+    - ekom: contractor registered in NKOM ENA register or holds active NKOM_ENA cert.
+    - dnv_marine: contractor is DNV approved supplier or holds active DNV_AOSS cert.
+    - require_iso: verifies each requested ISO management system standard (e.g. ISO 9001,
+      ISO 14001, ISO 45001) is active and not expired.
+    """
+    if ref_date is None:
+        ref_date = date.today()
+    elif isinstance(ref_date, datetime):
+        ref_date = ref_date.date()
+    elif isinstance(ref_date, str):
+        try:
+            ref_date = date.fromisoformat(ref_date.split("T")[0])
+        except Exception:
+            ref_date = date.today()
+
+    norm_scope = str(regulatory_scope or "electrical_lv").strip().lower()
+    reasons: list[str] = []
+    verified_requirements: list[str] = []
+    missing_requirements: list[str] = []
+
+    def _is_cert_active(c: dict[str, Any]) -> bool:
+        st = str(c.get("status") or "active").strip().lower()
+        if st in ("expired", "revoked", "suspended", "inactive"):
+            return False
+        v_raw = c.get("valid_to") or c.get("expiry_date") or c.get("expires_at")
+        if v_raw:
+            try:
+                v_d = (
+                    v_raw.date()
+                    if isinstance(v_raw, datetime)
+                    else (
+                        v_raw
+                        if isinstance(v_raw, date)
+                        else date.fromisoformat(str(v_raw).split("T")[0])
+                    )
+                )
+                if v_d < ref_date:
+                    return False
+            except Exception:
+                pass
+        return True
+
+    parsed_certs: list[dict[str, Any]] = []
+    for c in certs or []:
+        if isinstance(c, str):
+            parsed_certs.append({"name": c, "status": "active"})
+        elif isinstance(c, dict):
+            parsed_certs.append(c)
+
+    def _has_active_cert(cert_keys: list[str]) -> bool:
+        normalized_keys = {k.strip().upper().replace("-", "_").replace(" ", "_") for k in cert_keys}
+        for pc in parsed_certs:
+            nm = str(
+                pc.get("name") or pc.get("cert_name") or pc.get("code") or pc.get("cert_id") or ""
+            )
+            norm_nm = nm.strip().upper().replace("-", "_").replace(" ", "_")
+            if any(k in norm_nm or norm_nm in k for k in normalized_keys):
+                if _is_cert_active(pc):
+                    return True
+        return False
+
+    # 1. Electrical scope: DSB Elvirksomhetsregisteret + Faglig Ansvarlig
+    if norm_scope in ("electrical_lv", "electrical_hv"):
+        if contractor_meta.get("dsb_elvirksomhet_registered") is True:
+            verified_requirements.append("DSB Elvirksomhetsregisteret")
+        else:
+            missing_requirements.append("DSB Elvirksomhetsregisteret")
+            reasons.append(
+                "Contractor is not registered in DSB Elvirksomhetsregisteret (Forskrift om elektroforetak / FEK § 3)"
+            )
+
+        fa = contractor_meta.get("faglig_ansvarlig")
+        if fa and str(fa).strip():
+            verified_requirements.append(f"Faglig Ansvarlig ({fa})")
+        else:
+            missing_requirements.append("Faglig Ansvarlig")
+            reasons.append("Contractor lacks designated Faglig Ansvarlig (FEK § 5 / § 7)")
+
+    # 2. Ekom scope: NKOM ENA registered or active cert
+    elif norm_scope == "ekom":
+        if contractor_meta.get("nkom_ena_registered") is True or _has_active_cert(
+            ["NKOM_ENA", "ENA", "EKOM"]
+        ):
+            verified_requirements.append("NKOM Ekomautorisasjon (ENA)")
+        else:
+            missing_requirements.append("NKOM Ekomautorisasjon (ENA)")
+            reasons.append(
+                "Contractor is not NKOM ENA registered and lacks active NKOM_ENA certificate (Ekomforskriften § 9-1)"
+            )
+
+    # 3. Maritime scope: DNV Approved Supplier or active DNV_AOSS cert
+    elif norm_scope == "dnv_marine":
+        if contractor_meta.get("dnv_approved_supplier") is True or _has_active_cert(
+            ["DNV_AOSS", "DNV_APPROVED", "DNV"]
+        ):
+            verified_requirements.append("DNV Approved Supplier (AOSS)")
+        else:
+            missing_requirements.append("DNV Approved Supplier (AOSS)")
+            reasons.append(
+                "Contractor is not DNV approved supplier and lacks active DNV_AOSS certificate (DNV-CP-0484)"
+            )
+
+    # 4. ISO management system standards (e.g. ISO 9001, ISO 14001, ISO 45001)
+    if require_iso:
+        for iso_item in require_iso:
+            iso_str = str(iso_item).strip().upper()
+            iso_key = iso_str.replace("-", "_").replace(" ", "_")
+            in_meta = (
+                contractor_meta.get(iso_key.lower()) is True
+                or contractor_meta.get(iso_key) is True
+                or iso_key
+                in [str(x).upper().replace("-", "_") for x in contractor_meta.get("iso_certs", [])]
+                or iso_key
+                in [
+                    str(x).upper().replace("-", "_")
+                    for x in contractor_meta.get("iso_certifications", [])
+                ]
+            )
+            in_certs = _has_active_cert([iso_str, iso_key])
+            if in_meta or in_certs:
+                verified_requirements.append(iso_str)
+            else:
+                missing_requirements.append(iso_str)
+                reasons.append(f"Missing or expired management system certification: {iso_str}")
+
+    return {
+        "compliant": len(reasons) == 0,
+        "regulatory_scope": regulatory_scope,
+        "reasons": reasons,
+        "verified_requirements": verified_requirements,
+        "missing_requirements": missing_requirements,
+    }
+
+
 async def do_upsert_cert(
     engine: Any,
     params: dict[str, Any],

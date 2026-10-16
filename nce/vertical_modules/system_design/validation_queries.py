@@ -382,6 +382,78 @@ def check_avixa_checkpoint_conformance(
 
 
 # ---------------------------------------------------------------------------
+# Pure check #6 — electrical NEK 400 / EN 61439 compliance.
+# ---------------------------------------------------------------------------
+
+
+def check_electrical_nek_compliance(
+    circuits: list[dict[str, Any]] | None = None,
+    earthing_system: str = "TN_S_400V_3P",
+) -> CheckResult:
+    """Check electrical installation compliance per NEK 400 / EN 61439.
+
+    Parameters
+    ----------
+    circuits:
+        Optional list of circuit definitions. If None or empty, check passes cleanly.
+    earthing_system:
+        Earthing system identifier (defaults to "TN_S_400V_3P").
+
+    Returns
+    -------
+    CheckResult
+        ``{"passed": bool, "reasons": list[str]}``
+    """
+    from nce.vertical_modules.system_design.electrical_nek import generate_kursfortegnelse
+
+    if not circuits:
+        return {
+            "passed": True,
+            "reasons": ["No electrical circuits provided; NEK 400 compliance check skipped."],
+        }
+
+    kurs_res = generate_kursfortegnelse(circuits=circuits, earthing_system=earthing_system)
+    reasons = list(kurs_res.get("all_violations", []))
+    passed = bool(kurs_res.get("passed", False))
+    if not reasons and passed:
+        reasons = [
+            f"NEK 400 / EN 61439 electrical compliance passed: {len(circuits)} circuits verified "
+            f"under {earthing_system}."
+        ]
+    return {
+        "passed": passed,
+        "reasons": reasons,
+    }
+
+
+def run_all_validations(
+    *,
+    input_port_labels: list[str] | None = None,
+    connected_to_targets: set[str] | None = None,
+    connections: list[dict[str, Any]] | None = None,
+    cap_by_label: dict[str, Any] | None = None,
+    device_caps: list[dict[str, Any]] | None = None,
+    port_caps: list[dict[str, Any]] | None = None,
+    electrical_circuits: list[dict[str, Any]] | None = None,
+    earthing_system: str = "TN_S_400V_3P",
+) -> list[CheckResult]:
+    """Run pure validation checks on pre-fetched data structures.
+
+    Returns a list of CheckResult dicts. If electrical_circuits is None,
+    returns exactly the 5 baseline checks for full backward-compatibility.
+    """
+    r1 = check_signal_flow_continuity(input_port_labels or [], connected_to_targets or set())
+    r2 = check_port_format_compatibility(connections or [], cap_by_label or {})
+    r3 = check_power_heat_budget(device_caps or [])
+    r4 = check_spof_redundancy(device_caps or [])
+    r5 = check_avixa_checkpoint_conformance(device_caps or [], port_caps or [])
+    checks = [r1, r2, r3, r4, r5]
+    if electrical_circuits is not None:
+        checks.append(check_electrical_nek_compliance(electrical_circuits, earthing_system))
+    return checks
+
+
+# ---------------------------------------------------------------------------
 # Public aggregator — validate_design_graph
 # ---------------------------------------------------------------------------
 
@@ -405,6 +477,8 @@ async def validate_design_graph(
         ``{
             "namespace_id": str | UUID,   # required
             "design_id": str,             # required
+            "electrical_circuits": list,  # optional Wave E-1 circuits
+            "earthing_system": str,       # optional Wave E-1 earthing system
         }``
 
     Returns
@@ -412,7 +486,7 @@ async def validate_design_graph(
     dict
         ``{"passed": bool, "reasons": list[str]}``
         Mirrors the shape of Phase-1 ``do_validate_design``.
-        ``passed`` is True only when all five checks pass.
+        ``passed`` is True only when all checks pass.
         ``reasons`` is the union of all failure reasons (and always includes
         the power/heat budget totals from check #3).
 
@@ -455,6 +529,12 @@ async def validate_design_graph(
     r5 = check_avixa_checkpoint_conformance(device_caps, port_caps)
 
     all_checks = [r1, r2, r3, r4, r5]
+    if params.get("electrical_circuits") is not None:
+        r6 = check_electrical_nek_compliance(
+            circuits=params.get("electrical_circuits"),
+            earthing_system=params.get("earthing_system", "TN_S_400V_3P"),
+        )
+        all_checks.append(r6)
 
     all_reasons: list[str] = []
     for chk in all_checks:

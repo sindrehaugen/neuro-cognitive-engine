@@ -27,6 +27,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import uuid
 from typing import TYPE_CHECKING, Any
 
@@ -60,6 +61,325 @@ _MONEY_LEGAL_FIELDS: frozenset[str] = frozenset(
         "contract_terms",
     }
 )
+
+# ---------------------------------------------------------------------------
+# ETIM EN 61360 / ISO 13584 and AV Specification Bounds
+# ---------------------------------------------------------------------------
+
+_SPEC_BOUNDS: dict[str, tuple[float, float]] = {
+    # Existing AV & infrastructure keys
+    "rack_units": (0.5, 52.0),
+    "power_watts": (0.0, 50000.0),
+    "poe_class": (0.0, 8.0),
+    "btu_per_hour": (0.0, 200000.0),
+    "weight_kg": (0.01, 2000.0),
+    "hdmi_in": (0.0, 64.0),
+    "hdmi_out": (0.0, 64.0),
+    "sdi_in": (0.0, 64.0),
+    "sdi_out": (0.0, 64.0),
+    "dante_channels": (0.0, 512.0),
+    "network_ports": (0.0, 128.0),
+    # Electrical, maritime, and European ETIM (EN 61360 / ISO 13584) attributes
+    "cross_section_mm2": (0.14, 1000.0),
+    "conductor_count": (1, 100),
+    "rated_current_a": (0.1, 6300.0),
+    "rated_voltage_v": (5.0, 36000.0),
+    "breaking_capacity_ka": (1.5, 150.0),
+    "rcd_sensitivity_ma": (6.0, 1000.0),
+    "copper_weight_kg_per_km": (0.5, 25000.0),
+    "drum_length_m": (1.0, 5000.0),
+}
+
+# ---------------------------------------------------------------------------
+# European and Norwegian Compliance String & Enum Specifications
+# ---------------------------------------------------------------------------
+
+_CPR_FIRE_CLASSES: frozenset[str] = frozenset({"Aca", "B1ca", "B2ca", "Cca", "Dca", "Eca", "Fca"})
+_IK_RATINGS: frozenset[str] = frozenset({f"IK{i:02d}" for i in range(11)})
+_WEEE_CATEGORIES: frozenset[str] = frozenset({"1", "2", "3", "4", "5", "6"})
+
+_STRING_ENUM_SPECS: dict[str, frozenset[str]] = {
+    "cpr_fire_class": _CPR_FIRE_CLASSES,
+    "ik_rating": _IK_RATINGS,
+    "weee_category": _WEEE_CATEGORIES,
+}
+
+
+# ---------------------------------------------------------------------------
+# Norwegian Elnummer & Metal Surcharge Helpers
+# ---------------------------------------------------------------------------
+
+
+def normalize_elnummer(raw: str | int | None) -> str | None:
+    """Normalize and validate a 7-digit Norwegian EFOBasen Elnummer.
+
+    Norwegian electrical wholesalers and EFOBasen assign 7-digit numerical identifiers
+    in the range 1000000..9999999.
+    Strips spaces, dots, hyphens, and optional common prefixes ("EL", "ELNR", "NO").
+
+    Examples:
+        "10 123 45"   -> "1012345"
+        "10.123.45"   -> "1012345"
+        "EL1012345"   -> "1012345"
+        1012345       -> "1012345"
+        "999999"      -> None (6 digits)
+    """
+    if raw is None or isinstance(raw, bool):
+        return None
+
+    if isinstance(raw, int):
+        if 1000000 <= raw <= 9999999:
+            return str(raw)
+        return None
+
+    if not isinstance(raw, str):
+        return None
+
+    cleaned = raw.strip()
+    if not cleaned:
+        return None
+
+    upper = cleaned.upper()
+    for prefix in ("ELNR:", "ELNR.", "ELNR ", "ELNR", "EL:", "EL ", "EL", "NO:", "NO "):
+        if upper.startswith(prefix):
+            cleaned = cleaned[len(prefix) :].strip()
+            break
+
+    # Strip spaces, dots, dashes, underscores
+    cleaned = (
+        cleaned.replace(" ", "")
+        .replace("\u00a0", "")
+        .replace(".", "")
+        .replace("-", "")
+        .replace("_", "")
+    )
+
+    if len(cleaned) == 7 and cleaned.isdigit():
+        val = int(cleaned)
+        if 1000000 <= val <= 9999999:
+            return cleaned
+
+    return None
+
+
+def calculate_cable_metal_surcharge(
+    length_m: float,
+    metal_weight_kg_per_km: float,
+    lme_rate_nok_per_kg: float,
+    baseline_rate_nok_per_kg: float = 0.0,
+) -> dict[str, Any]:
+    """Calculate Norwegian wholesaler cable metal surcharge (Kobbertillegg / Aluminiumstillegg).
+
+    In Norwegian electrical wholesaling (EFOBasen / ETIM), cable prices exclude
+    or baseline raw metal commodity fluctuations. The surcharge reflects London
+    Metal Exchange (LME) market rates minus the manufacturer's baseline rate.
+
+    Formula:
+        metal_weight_kg = (length_m / 1000.0) * metal_weight_kg_per_km
+        surcharge_rate_nok_per_kg = max(0.0, lme_rate_nok_per_kg - baseline_rate_nok_per_kg)
+        surcharge_amount_nok = metal_weight_kg * surcharge_rate_nok_per_kg
+
+    Parameters
+    ----------
+    length_m:
+        Length of cable run in metres.
+    metal_weight_kg_per_km:
+        Copper or aluminium weight of the cable in kg per km (ETIM conductor weight).
+    lme_rate_nok_per_kg:
+        Current LME settlement price converted to NOK per kg.
+    baseline_rate_nok_per_kg:
+        Manufacturer base metal price included in list price (default 0.0 NOK/kg).
+
+    Returns
+    -------
+    dict with length_m, metal_weight_kg_per_km, metal_weight_kg,
+    lme_rate_nok_per_kg, baseline_rate_nok_per_kg, surcharge_rate_nok_per_kg,
+    surcharge_amount_nok, currency ("NOK").
+    """
+    if length_m < 0:
+        raise ValueError("length_m must be non-negative")
+    if metal_weight_kg_per_km < 0:
+        raise ValueError("metal_weight_kg_per_km must be non-negative")
+    if lme_rate_nok_per_kg < 0:
+        raise ValueError("lme_rate_nok_per_kg must be non-negative")
+    if baseline_rate_nok_per_kg < 0:
+        raise ValueError("baseline_rate_nok_per_kg must be non-negative")
+
+    length = float(length_m)
+    weight_km = float(metal_weight_kg_per_km)
+    lme = float(lme_rate_nok_per_kg)
+    base = float(baseline_rate_nok_per_kg)
+
+    metal_weight_kg = (length / 1000.0) * weight_km
+    rate_diff = max(0.0, lme - base)
+    surcharge_amount = metal_weight_kg * rate_diff
+
+    return {
+        "length_m": length,
+        "metal_weight_kg_per_km": weight_km,
+        "metal_weight_kg": round(metal_weight_kg, 4),
+        "lme_rate_nok_per_kg": lme,
+        "baseline_rate_nok_per_kg": base,
+        "surcharge_rate_nok_per_kg": round(rate_diff, 4),
+        "surcharge_amount_nok": round(surcharge_amount, 2),
+        "currency": "NOK",
+    }
+
+
+def _validate_spec_value(field_name: str, value: Any) -> tuple[bool, str | None]:
+    """Validate a specification field value against bounds, enums, or standard formats.
+
+    Returns (is_valid: bool, error_message: str | None).
+    """
+    if value is None:
+        return False, f"Field {field_name!r} cannot be None"
+
+    if field_name in _SPEC_BOUNDS:
+        min_v, max_v = _SPEC_BOUNDS[field_name]
+        try:
+            num = float(value)
+            if not (min_v <= num <= max_v):
+                return False, f"Field {field_name!r} value {num} out of bounds [{min_v}, {max_v}]"
+            return True, None
+        except (ValueError, TypeError):
+            return False, f"Field {field_name!r} value {value!r} is not a valid number"
+
+    if field_name == "elnummer":
+        norm = normalize_elnummer(value)
+        if norm is None:
+            return (
+                False,
+                f"Field 'elnummer' must be a valid 7-digit Norwegian Elnummer, got {value!r}",
+            )
+        return True, None
+
+    if field_name == "cpr_fire_class":
+        val_str = str(value).strip()
+        match = next((c for c in _CPR_FIRE_CLASSES if c.lower() == val_str.lower()), None)
+        if match is None:
+            return (
+                False,
+                f"Field 'cpr_fire_class' must be one of {sorted(_CPR_FIRE_CLASSES)}, got {value!r}",
+            )
+        return True, None
+
+    if field_name == "ip_rating":
+        val_str = str(value).strip().upper()
+        if not re.match(r"^IP[0-6X][0-9X][A-D]?(K)?$", val_str):
+            return (
+                False,
+                f"Field 'ip_rating' must be a valid EN 60529 code (e.g. IP20, IP65, IP68), got {value!r}",
+            )
+        return True, None
+
+    if field_name == "ik_rating":
+        val_str = str(value).strip().upper()
+        if val_str not in _IK_RATINGS:
+            return (
+                False,
+                f"Field 'ik_rating' must be one of {sorted(_IK_RATINGS)} per EN 62262, got {value!r}",
+            )
+        return True, None
+
+    if field_name == "weee_category":
+        val_str = str(value).strip()
+        if val_str not in _WEEE_CATEGORIES:
+            return (
+                False,
+                f"Field 'weee_category' must be in 1..6 per EU WEEE 2012/19/EU, got {value!r}",
+            )
+        return True, None
+
+    if field_name in ("rohs_compliant", "ce_marked"):
+        if isinstance(value, bool):
+            return True, None
+        if isinstance(value, str) and value.strip().lower() in ("true", "false", "1", "0"):
+            return True, None
+        return False, f"Field {field_name!r} must be a boolean, got {value!r}"
+
+    if field_name in _STRING_ENUM_SPECS:
+        allowed = _STRING_ENUM_SPECS[field_name]
+        val_str = str(value).strip()
+        if val_str not in allowed:
+            return False, f"Field {field_name!r} must be one of {sorted(allowed)}, got {value!r}"
+        return True, None
+
+    return True, None
+
+
+def validate_european_product_compliance(etim_specs: dict[str, Any]) -> dict[str, Any]:
+    """Validate product ETIM specifications against European & Norwegian compliance standards.
+
+    Validates:
+      - Norwegian EFOBasen Elnummer (7-digit)
+      - EU Construction Products Regulation (CPR 305/2011 / EN 50575) fire reaction
+      - Ingress Protection (EN 60529 IP ratings)
+      - Impact Protection (EN 62262 IK ratings)
+      - EU WEEE 2012/19/EU / RENAS categories (1..6)
+      - RoHS (2011/65/EU) compliance flag
+      - CE mark conformity flag
+      - ETIM EN 61360 / ISO 13584 technical attributes in _SPEC_BOUNDS
+
+    Returns
+    -------
+    dict with:
+        valid: bool (True if all present specs passed validation)
+        errors: dict[str, str] (mapping of field_name to failure message)
+        validated_specs: dict[str, Any] (normalized values for valid specs)
+        compliance: dict[str, bool] (status of individual regulatory standards)
+    """
+    errors: dict[str, str] = {}
+    validated_specs: dict[str, Any] = {}
+    compliance: dict[str, bool] = {
+        "ce_marked": False,
+        "rohs_compliant": False,
+        "cpr_compliant": False,
+        "weee_compliant": False,
+        "efobasen_compliant": False,
+    }
+
+    for key, val in etim_specs.items():
+        is_valid, err = _validate_spec_value(key, val)
+        if not is_valid:
+            errors[key] = err or "Validation failed"
+        else:
+            if key == "elnummer":
+                norm_el = normalize_elnummer(val)
+                validated_specs[key] = norm_el
+                compliance["efobasen_compliant"] = True
+            elif key == "cpr_fire_class":
+                val_str = str(val).strip()
+                match = next(
+                    (c for c in _CPR_FIRE_CLASSES if c.lower() == val_str.lower()), val_str
+                )
+                validated_specs[key] = match
+                compliance["cpr_compliant"] = True
+            elif key == "ip_rating":
+                validated_specs[key] = str(val).strip().upper()
+            elif key == "ik_rating":
+                validated_specs[key] = str(val).strip().upper()
+            elif key == "weee_category":
+                validated_specs[key] = int(str(val).strip())
+                compliance["weee_compliant"] = True
+            elif key in ("rohs_compliant", "ce_marked"):
+                b_val = (
+                    val if isinstance(val, bool) else (str(val).strip().lower() in ("true", "1"))
+                )
+                validated_specs[key] = b_val
+                if b_val:
+                    compliance[key] = True
+            elif key in _SPEC_BOUNDS:
+                validated_specs[key] = float(val)
+            else:
+                validated_specs[key] = val
+
+    return {
+        "valid": len(errors) == 0,
+        "errors": errors,
+        "validated_specs": validated_specs,
+        "compliance": compliance,
+    }
+
 
 # ---------------------------------------------------------------------------
 # Confidence threshold (env-configurable, default 0.70)
@@ -376,7 +696,15 @@ async def do_enrich_product(
         # §9.3: money/legal ALWAYS needs_review, regardless of confidence.
         is_money_legal = field_name in _MONEY_LEGAL_FIELDS
         below_threshold = confidence < min_conf
-        needs_review: bool = is_money_legal or below_threshold
+        is_spec_field = (
+            field_name in _SPEC_BOUNDS
+            or field_name in _STRING_ENUM_SPECS
+            or field_name in ("elnummer", "ip_rating", "rohs_compliant", "ce_marked")
+        )
+        is_valid_spec, _ = (
+            _validate_spec_value(field_name, field_value) if is_spec_field else (True, None)
+        )
+        needs_review: bool = is_money_legal or below_threshold or (not is_valid_spec)
 
         # --- Write to product_enrichment_log (always) ---
         await conn.execute(

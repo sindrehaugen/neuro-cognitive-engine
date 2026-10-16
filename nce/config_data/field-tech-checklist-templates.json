@@ -76,5 +76,195 @@
         "required": true
       }
     ]
+  },
+  "fse_en50110_sja": {
+    "name": "FSE / EN 50110-1 Sikker Jobb-Analyse & De 5 Sikkerhetsreglene",
+    "kind": "fse_sja",
+    "items": [
+      {
+        "id": "fse_1_disconnect",
+        "label": "Frakoble (frakobling av alle poler)",
+        "required": true
+      },
+      {
+        "id": "fse_2_loto",
+        "label": "Sikre mot innkobling / LOTO",
+        "required": true
+      },
+      {
+        "id": "fse_3_verify_dead",
+        "label": "Kontrollere spenningsløshet",
+        "required": true
+      },
+      {
+        "id": "fse_4_earth_short",
+        "label": "Jorde og kortslutte",
+        "required": true
+      },
+      {
+        "id": "fse_5_shield_adjacent",
+        "label": "Avskjerme nærliggende spenningsførende deler",
+        "required": true
+      },
+      {
+        "id": "sja_ppe_arc_flash",
+        "label": "SJA & verneutstyr verifisert",
+        "required": true
+      }
+    ]
+  },
+  "nek400_en61557_sluttkontroll": {
+    "name": "NEK 400 Del 6 / HD 60364-6 / EN 61557 Sluttkontroll",
+    "kind": "sluttkontroll",
+    "items": [
+      {
+        "id": "visual_inspection",
+        "label": "Visuell kontroll (NEK 400-6 § 6.4.2)",
+        "required": true
+      },
+      {
+        "id": "pe_continuity_ohm",
+        "label": "Kontinuitet i beskyttelsesledere (R_PE ≤ 1.0 Ω)",
+        "required": true,
+        "max_value": 1.0,
+        "unit": "ohm"
+      },
+      {
+        "id": "insulation_resistance_mohm",
+        "label": "Isolasjonsresistans ved 500V DC (R_iso ≥ 1.0 MΩ)",
+        "required": true,
+        "min_value": 1.0,
+        "unit": "MOhm"
+      },
+      {
+        "id": "rcd_trip_time_ms",
+        "label": "Jordfeilbryter utløsetid ved 1x I_Δn (≤ 300 ms)",
+        "required": true,
+        "max_value": 300.0,
+        "unit": "ms"
+      },
+      {
+        "id": "fault_loop_impedance_verified",
+        "label": "Sløyfeimpedans / kortslutningsstrøm (I_kmin) verifisert",
+        "required": true
+      },
+      {
+        "id": "polarity_and_phase_sequence",
+        "label": "Polaritet og fasesekvens verifisert",
+        "required": true
+      }
+    ]
+  },
+  "nek700_en50174_ekom": {
+    "name": "NEK 700 / EN 50174-2 EKOM & Kabling",
+    "kind": "ekom",
+    "items": [
+      {
+        "id": "fluke_dsx_pass",
+        "label": "Fluke DSX sertifiseringstesting PASSED",
+        "required": true
+      },
+      {
+        "id": "emc_separation_verified",
+        "label": "EMC separasjonsavstand kraft og signal (EN 50174-2)",
+        "required": true
+      },
+      {
+        "id": "bend_radius_and_fire_sealing",
+        "label": "Bøyeradius og brannteknisk branntetting",
+        "required": true
+      },
+      {
+        "id": "cpr_label_verified",
+        "label": "CPR euroklasse brannklassifisering og merking verifisert",
+        "required": true
+      }
+    ]
+  },
+  "dnv_hat_sat_marine": {
+    "name": "DNV Harbour & Sea Acceptance Test (HAT/SAT)",
+    "kind": "marine",
+    "items": [
+      {
+        "id": "imd_alarm_test_pass",
+        "label": "Isolasjonsovervåking (IMD) alarmtest PASSED",
+        "required": true
+      },
+      {
+        "id": "msb_esb_blackout_changeover_s",
+        "label": "Hovedtavle (MSB) til nødtavle (ESB) blackout omkobling (≤ 45 s)",
+        "required": true,
+        "max_value": 45.0,
+        "unit": "s"
+      },
+      {
+        "id": "hot_cold_insulation_mohm",
+        "label": "Varm og kald isolasjonsresistans (≥ 1.0 MΩ)",
+        "required": true,
+        "min_value": 1.0,
+        "unit": "MOhm"
+      },
+      {
+        "id": "harmonic_thd_pct",
+        "label": "Spenning harmonisk forvrengning THD (≤ 8.0 %)",
+        "required": true,
+        "max_value": 8.0,
+        "unit": "%"
+      }
+    ]
+  },
+  "iso_9001_14001_45001_handover": {
+    "name": "ISO 9001 / 14001 / 45001 / 50001 QHSE & Energy Handover",
+    "kind": "qhse",
+    "items": [
+      {
+        "id": "iso45001_safe_workplace",
+        "label": "ISO 45001: Sikker arbeidsplass og HMS-avvik verifisert",
+        "required": true
+      },
+      {
+        "id": "iso14001_weee_waste_sorted",
+        "label": "ISO 14001: EE-avfall (WEEE) og emballasje kildesortert",
+        "required": true
+      },
+      {
+        "id": "iso9001_as_built_docs_verified",
+        "label": "ISO 9001: Som-bygget (As-Built) FDV-dokumentasjon verifisert",
+        "required": true
+      },
+      {
+        "id": "iso50001_energy_metering_verified",
+        "label": "ISO 50001: Energioppfølging og forbruksmåling verifisert",
+        "required": true
+      }
+    ]
+  },
+  "ipc_a610_a620_esd_qc": {
+    "name": "IPC-A-610 / IPC-A-620 & EN 61340-5-1 ESD QC",
+    "kind": "esd_qc",
+    "items": [
+      {
+        "id": "esd_epa_resistance_mohm",
+        "label": "ESD EPA overflateresistans (≤ 1000.0 MΩ)",
+        "required": true,
+        "max_value": 1000.0,
+        "unit": "MOhm"
+      },
+      {
+        "id": "ipc_a610_solder_inspection",
+        "label": "IPC-A-610 Loddekvalitet klasse 2/3 visuell inspeksjon",
+        "required": true
+      },
+      {
+        "id": "ipc_a620_crimp_pull_test",
+        "label": "IPC/WHMA-A-620 Krympe- og strekkfasthetstest verifisert",
+        "required": true
+      },
+      {
+        "id": "rohs_ce_marking_verified",
+        "label": "RoHS direktiv 2011/65/EU og CE-merking verifisert",
+        "required": true
+      }
+    ]
   }
 }

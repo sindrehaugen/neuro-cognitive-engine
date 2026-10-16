@@ -75,8 +75,21 @@ def _load_template_items(template_id: str) -> list[dict[str, Any]]:
     return []
 
 
-async def do_complete_checklist(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
-    """Record completed items for a work order checklist and verify ISO9001 compliance."""
+def _load_template_kind(template_id: str) -> str:
+    if not _TEMPLATES_PATH.exists():
+        return "install"
+    try:
+        data = json.loads(_TEMPLATES_PATH.read_text(encoding="utf-8"))
+        tmpl = data.get(template_id)
+        if tmpl and isinstance(tmpl, dict) and "kind" in tmpl:
+            return str(tmpl["kind"])
+    except Exception as exc:
+        log.warning("Failed to read checklist template kind %s: %s", template_id, exc)
+    return "install"
+
+
+async def do_submit_checklist(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
+    """Submit completed items and quantitative measurements for a work order checklist and verify compliance."""
     pool = _extract_pool(engine)
     ns_uuid = _parse_uuid(params.get("namespace_id"), "namespace_id")
 
@@ -91,6 +104,7 @@ async def do_complete_checklist(engine: Any, params: dict[str, Any]) -> dict[str
         checklist_id = f"CL-{uuid4().hex[:8].upper()}"
 
     template_id = str(params.get("template_id") or "install_standard").strip()
+    kind = str(params.get("kind") or _load_template_kind(template_id) or "install")
     items: list[dict[str, Any]] = list(params.get("items") or [])
 
     # If items are empty or sparse, merge with template items
@@ -98,18 +112,88 @@ async def do_complete_checklist(engine: Any, params: dict[str, Any]) -> dict[str
     if template_items and not items:
         items = [dict(it, ticked=False) for it in template_items]
     elif template_items:
-        # Overlay required flag from template if missing
-        template_req = {it["id"]: it.get("required", False) for it in template_items}
+        # Overlay required flag and metadata from template if missing
+        template_map = {it["id"]: it for it in template_items if "id" in it}
         for it in items:
-            if "required" not in it and it.get("id") in template_req:
-                it["required"] = template_req[it["id"]]
+            tid = it.get("id")
+            if tid in template_map:
+                t_def = template_map[tid]
+                if "required" not in it and "required" in t_def:
+                    it["required"] = t_def["required"]
+                if "min_value" not in it and "min_value" in t_def:
+                    it["min_value"] = t_def["min_value"]
+                if "max_value" not in it and "max_value" in t_def:
+                    it["max_value"] = t_def["max_value"]
+                if "unit" not in it and "unit" in t_def:
+                    it["unit"] = t_def["unit"]
+                if "label" not in it and "label" in t_def:
+                    it["label"] = t_def["label"]
 
-    # Audit required items
+    # Audit required items (boolean completion logic)
     missing_required = [
         it.get("id") or it.get("label")
         for it in items
-        if it.get("required") and not it.get("ticked")
+        if it.get("required") and not (it.get("ticked") or it.get("completed"))
     ]
+    completed_count = sum(1 for it in items if (it.get("ticked") or it.get("completed")))
+    total_count = len(items)
+
+    # Quantitative threshold validation
+    measurement_violations: list[dict[str, Any]] = []
+    template_map = {it["id"]: it for it in template_items if "id" in it}
+    for it in items:
+        tid = it.get("id")
+        t_def = template_map.get(tid, {})
+
+        min_val = it.get("min_value")
+        if min_val is None:
+            min_val = t_def.get("min_value")
+
+        max_val = it.get("max_value")
+        if max_val is None:
+            max_val = t_def.get("max_value")
+
+        unit = it.get("unit") or t_def.get("unit")
+
+        val: float | None = None
+        if "measured_value" in it and it["measured_value"] is not None:
+            try:
+                val = float(it["measured_value"])
+            except (ValueError, TypeError):
+                val = None
+        elif "value" in it and it["value"] is not None:
+            try:
+                val = float(it["value"])
+            except (ValueError, TypeError):
+                val = None
+
+        if (min_val is not None or max_val is not None) and val is not None:
+            violated = False
+            reason = ""
+            if min_val is not None and val < float(min_val):
+                violated = True
+                reason = (
+                    f"Measured value {val} is below minimum allowed {min_val} {unit or ''}".strip()
+                )
+            elif max_val is not None and val > float(max_val):
+                violated = True
+                reason = (
+                    f"Measured value {val} exceeds maximum allowed {max_val} {unit or ''}".strip()
+                )
+
+            if violated:
+                measurement_violations.append(
+                    {
+                        "item_id": tid or it.get("label"),
+                        "label": it.get("label") or t_def.get("label") or tid,
+                        "measured_value": val,
+                        "min_value": min_val,
+                        "max_value": max_val,
+                        "unit": unit,
+                        "reason": reason,
+                    }
+                )
+
     strict_quality_gate = params.get("require_all_required", False)
     if strict_quality_gate and missing_required:
         raise ChecklistIncompleteError(
@@ -117,6 +201,7 @@ async def do_complete_checklist(engine: Any, params: dict[str, Any]) -> dict[str
         )
 
     completed = len(missing_required) == 0
+    passed = completed and len(measurement_violations) == 0
 
     partner_scope_id = params.get("partner_scope_id")
     partner_scope_uuid: UUID | None = None
@@ -171,7 +256,7 @@ async def do_complete_checklist(engine: Any, params: dict[str, Any]) -> dict[str
             partner_scope_uuid,
             template_id,
             json.dumps(items),
-            completed,
+            passed,
             json.dumps(params.get("raw") or {}),
         )
 
@@ -204,7 +289,7 @@ async def do_complete_checklist(engine: Any, params: dict[str, Any]) -> dict[str
 
         # Advance BOM_LINE status to TESTED on successful checklist completion (Wave FT-1)
         tested_lines: list[str] = []
-        if completed:
+        if passed:
             raw_lines: list[str] = []
             if params.get("bom_line_id"):
                 raw_lines.append(str(params["bom_line_id"]).strip())
@@ -289,4 +374,15 @@ async def do_complete_checklist(engine: Any, params: dict[str, Any]) -> dict[str
     res["missing_required"] = missing_required
     res["is_complete"] = completed
     res["tested_lines"] = tested_lines
+    res["passed"] = passed
+    res["measurement_violations"] = measurement_violations
+    res["completed_count"] = completed_count
+    res["total_count"] = total_count
+    res["kind"] = kind
+    res["memory_id"] = str(params.get("memory_id") or res["id"])
     return res
+
+
+async def do_complete_checklist(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
+    """Record completed items for a work order checklist and verify ISO9001 compliance."""
+    return await do_submit_checklist(engine, params)

@@ -664,3 +664,474 @@ async def test_enrich_product_auto_merge_includes_provenance_and_accept_scopes_n
     assert len(log_updates) == 1
     assert "namespace_id = $2::uuid" in log_updates[0][0]
     assert log_updates[0][1] == (log_id, ns_id)
+
+
+# ---------------------------------------------------------------------------
+# Wave E-5: Norwegian Elnummer, European ETIM, Metal Surcharges & Drum Cuts
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_elnummer_valid_and_variants() -> None:
+    from nce.vertical_modules.product.enrich import normalize_elnummer
+
+    # Standard formats
+    assert normalize_elnummer("1012345") == "1012345"
+    assert normalize_elnummer(1012345) == "1012345"
+    assert normalize_elnummer(1000000) == "1000000"
+    assert normalize_elnummer(9999999) == "9999999"
+
+    # Whitespace and punctuation
+    assert normalize_elnummer("10 123 45") == "1012345"
+    assert normalize_elnummer("10.123.45") == "1012345"
+    assert normalize_elnummer(" 10-123-45 ") == "1012345"
+    assert normalize_elnummer("10_123_45") == "1012345"
+
+    # Prefixes (case-insensitive)
+    assert normalize_elnummer("EL1012345") == "1012345"
+    assert normalize_elnummer("EL 10 123 45") == "1012345"
+    assert normalize_elnummer("el: 1012345") == "1012345"
+    assert normalize_elnummer("Elnr 1012345") == "1012345"
+    assert normalize_elnummer("ELNR: 10 123 45") == "1012345"
+    assert normalize_elnummer("NO: 1012345") == "1012345"
+
+
+def test_normalize_elnummer_invalid_cases() -> None:
+    from nce.vertical_modules.product.enrich import normalize_elnummer
+
+    assert normalize_elnummer(None) is None
+    assert normalize_elnummer(True) is None
+    assert normalize_elnummer(False) is None
+    assert normalize_elnummer("") is None
+    assert normalize_elnummer("   ") is None
+    assert normalize_elnummer("999999") is None  # 6 digits
+    assert normalize_elnummer(999999) is None
+    assert normalize_elnummer("10000000") is None  # 8 digits
+    assert normalize_elnummer(10000000) is None
+    assert normalize_elnummer("0123456") is None  # Below 1000000
+    assert normalize_elnummer("abcdefg") is None
+    assert normalize_elnummer("10A2345") is None
+
+
+def test_calculate_cable_metal_surcharge_standard_and_baseline() -> None:
+    from nce.vertical_modules.product.enrich import calculate_cable_metal_surcharge
+
+    # Standard run: 1000m, 300 kg/km, LME 100 NOK/kg, baseline 0
+    res1 = calculate_cable_metal_surcharge(
+        length_m=1000.0,
+        metal_weight_kg_per_km=300.0,
+        lme_rate_nok_per_kg=100.0,
+        baseline_rate_nok_per_kg=0.0,
+    )
+    assert res1["length_m"] == 1000.0
+    assert res1["metal_weight_kg_per_km"] == 300.0
+    assert res1["metal_weight_kg"] == 300.0
+    assert res1["surcharge_rate_nok_per_kg"] == 100.0
+    assert res1["surcharge_amount_nok"] == 30000.0
+    assert res1["currency"] == "NOK"
+
+    # Fractional run with baseline deduction: 500m, 150 kg/km, LME 110, baseline 30
+    # metal_weight = 0.5 * 150 = 75 kg. rate_diff = 110 - 30 = 80 NOK/kg. surcharge = 6000 NOK.
+    res2 = calculate_cable_metal_surcharge(
+        length_m=500.0,
+        metal_weight_kg_per_km=150.0,
+        lme_rate_nok_per_kg=110.0,
+        baseline_rate_nok_per_kg=30.0,
+    )
+    assert res2["metal_weight_kg"] == 75.0
+    assert res2["surcharge_rate_nok_per_kg"] == 80.0
+    assert res2["surcharge_amount_nok"] == 6000.0
+
+    # LME below baseline: surcharge rate floor 0.0 NOK
+    res3 = calculate_cable_metal_surcharge(
+        length_m=200.0,
+        metal_weight_kg_per_km=50.0,
+        lme_rate_nok_per_kg=25.0,
+        baseline_rate_nok_per_kg=30.0,
+    )
+    assert res3["surcharge_rate_nok_per_kg"] == 0.0
+    assert res3["surcharge_amount_nok"] == 0.0
+
+
+def test_calculate_cable_metal_surcharge_validation() -> None:
+    from nce.vertical_modules.product.enrich import calculate_cable_metal_surcharge
+
+    with pytest.raises(ValueError, match="length_m"):
+        calculate_cable_metal_surcharge(
+            length_m=-1.0, metal_weight_kg_per_km=100.0, lme_rate_nok_per_kg=80.0
+        )
+
+    with pytest.raises(ValueError, match="metal_weight_kg_per_km"):
+        calculate_cable_metal_surcharge(
+            length_m=100.0, metal_weight_kg_per_km=-5.0, lme_rate_nok_per_kg=80.0
+        )
+
+    with pytest.raises(ValueError, match="lme_rate_nok_per_kg"):
+        calculate_cable_metal_surcharge(
+            length_m=100.0, metal_weight_kg_per_km=100.0, lme_rate_nok_per_kg=-10.0
+        )
+
+    with pytest.raises(ValueError, match="baseline_rate_nok_per_kg"):
+        calculate_cable_metal_surcharge(
+            length_m=100.0,
+            metal_weight_kg_per_km=100.0,
+            lme_rate_nok_per_kg=80.0,
+            baseline_rate_nok_per_kg=-5.0,
+        )
+
+
+def test_spec_bounds_keys_and_values() -> None:
+    from nce.vertical_modules.product.enrich import _SPEC_BOUNDS
+
+    # Existing keys preserved 100%
+    existing_keys = [
+        "rack_units",
+        "power_watts",
+        "poe_class",
+        "btu_per_hour",
+        "weight_kg",
+        "hdmi_in",
+        "hdmi_out",
+        "sdi_in",
+        "sdi_out",
+        "dante_channels",
+        "network_ports",
+    ]
+    for k in existing_keys:
+        assert k in _SPEC_BOUNDS, f"Missing existing key {k}"
+
+    # Wave E-5 expanded attributes
+    assert _SPEC_BOUNDS["cross_section_mm2"] == (0.14, 1000.0)
+    assert _SPEC_BOUNDS["conductor_count"] == (1, 100)
+    assert _SPEC_BOUNDS["rated_current_a"] == (0.1, 6300.0)
+    assert _SPEC_BOUNDS["rated_voltage_v"] == (5.0, 36000.0)
+    assert _SPEC_BOUNDS["breaking_capacity_ka"] == (1.5, 150.0)
+    assert _SPEC_BOUNDS["rcd_sensitivity_ma"] == (6.0, 1000.0)
+    assert _SPEC_BOUNDS["copper_weight_kg_per_km"] == (0.5, 25000.0)
+    assert _SPEC_BOUNDS["drum_length_m"] == (1.0, 5000.0)
+
+
+def test_validate_spec_value_bounds_and_enums() -> None:
+    from nce.vertical_modules.product.enrich import _validate_spec_value
+
+    # Numeric bounds
+    ok, err = _validate_spec_value("cross_section_mm2", 2.5)
+    assert ok and err is None
+    ok, err = _validate_spec_value("cross_section_mm2", 0.05)
+    assert not ok and "out of bounds" in err
+
+    ok, err = _validate_spec_value("rated_voltage_v", 230.0)
+    assert ok and err is None
+    ok, err = _validate_spec_value("rated_voltage_v", 50000.0)
+    assert not ok and "out of bounds" in err
+
+    # CPR Fire Class (EN 50575)
+    ok, err = _validate_spec_value("cpr_fire_class", "Cca")
+    assert ok and err is None
+    ok, err = _validate_spec_value("cpr_fire_class", "b1ca")
+    assert ok and err is None
+    ok, err = _validate_spec_value("cpr_fire_class", "NonExistentClass")
+    assert not ok and "cpr_fire_class" in err
+
+    # IP rating (EN 60529)
+    ok, err = _validate_spec_value("ip_rating", "IP20")
+    assert ok and err is None
+    ok, err = _validate_spec_value("ip_rating", "IP68")
+    assert ok and err is None
+    ok, err = _validate_spec_value("ip_rating", "IP69K")
+    assert ok and err is None
+    ok, err = _validate_spec_value("ip_rating", "IP999")
+    assert not ok and "ip_rating" in err
+
+    # IK rating (EN 62262)
+    ok, err = _validate_spec_value("ik_rating", "IK08")
+    assert ok and err is None
+    ok, err = _validate_spec_value("ik_rating", "IK15")
+    assert not ok and "ik_rating" in err
+
+    # WEEE Category (1..6)
+    ok, err = _validate_spec_value("weee_category", "4")
+    assert ok and err is None
+    ok, err = _validate_spec_value("weee_category", 4)
+    assert ok and err is None
+    ok, err = _validate_spec_value("weee_category", 9)
+    assert not ok and "weee_category" in err
+
+    # Boolean flags
+    ok, err = _validate_spec_value("rohs_compliant", True)
+    assert ok and err is None
+    ok, err = _validate_spec_value("ce_marked", "true")
+    assert ok and err is None
+    ok, err = _validate_spec_value("ce_marked", "maybe")
+    assert not ok and "ce_marked" in err
+
+
+def test_validate_european_product_compliance_full_structure() -> None:
+    from nce.vertical_modules.product.enrich import validate_european_product_compliance
+
+    valid_specs = {
+        "elnummer": "10 123 45",
+        "cpr_fire_class": "cca",
+        "ip_rating": "ip65",
+        "ik_rating": "ik08",
+        "weee_category": 4,
+        "rohs_compliant": True,
+        "ce_marked": True,
+        "cross_section_mm2": 2.5,
+        "rated_current_a": 16.0,
+        "rated_voltage_v": 230.0,
+    }
+    report = validate_european_product_compliance(valid_specs)
+    assert report["valid"] is True
+    assert len(report["errors"]) == 0
+    assert report["validated_specs"]["elnummer"] == "1012345"
+    assert report["validated_specs"]["cpr_fire_class"] == "Cca"
+    assert report["validated_specs"]["ip_rating"] == "IP65"
+    assert report["compliance"]["ce_marked"] is True
+    assert report["compliance"]["rohs_compliant"] is True
+    assert report["compliance"]["cpr_compliant"] is True
+    assert report["compliance"]["efobasen_compliant"] is True
+    assert report["compliance"]["weee_compliant"] is True
+
+    # Invalid specs
+    invalid_specs = {
+        "elnummer": "123",
+        "cpr_fire_class": "Zca",
+        "ip_rating": "NOT_AN_IP",
+        "breaking_capacity_ka": 999.0,
+    }
+    invalid_report = validate_european_product_compliance(invalid_specs)
+    assert invalid_report["valid"] is False
+    assert "elnummer" in invalid_report["errors"]
+    assert "cpr_fire_class" in invalid_report["errors"]
+    assert "ip_rating" in invalid_report["errors"]
+    assert "breaking_capacity_ka" in invalid_report["errors"]
+
+
+def test_resolve_elnummer_query_and_search() -> None:
+    from nce.vertical_modules.product.mcp_handlers import resolve_elnummer_query
+
+    assert resolve_elnummer_query("10 123 45") == "1012345"
+    assert resolve_elnummer_query("EL1012345") == "1012345"
+    assert resolve_elnummer_query("1012345") == "1012345"
+    assert resolve_elnummer_query("Cisco Catalyst") is None
+    assert resolve_elnummer_query("SFP-10G-SR") is None
+
+
+@pytest.mark.asyncio
+async def test_do_search_products_elnummer_branch() -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from nce.vertical_modules.product.mcp_handlers import do_search_products
+
+    engine = MagicMock()
+    conn = AsyncMock()
+    fake_rows = [
+        {
+            "id": "11111111-1111-4000-8000-000000000001",
+            "manufacturer": "NEXANS",
+            "mfr_part_no": "TXP-1012345",
+            "gtin": None,
+            "lifecycle_status": "active",
+            "etim_specs": {"elnummer": "1012345"},
+            "updated_at": None,
+        }
+    ]
+    conn.fetch = AsyncMock(return_value=fake_rows)
+
+    class FakeCtx:
+        async def __aenter__(self):
+            return conn
+
+        async def __aexit__(self, *args):
+            pass
+
+    pool = MagicMock()
+    pool.acquire = MagicMock(return_value=FakeCtx())
+    engine.pg_pool = pool
+
+    # Patch scoped_pg_session to use FakeCtx
+    import nce.vertical_modules.product.mcp_handlers as mcp_mod
+
+    orig_scoped = mcp_mod.scoped_pg_session
+
+    class FakeScopedSession:
+        def __init__(self, p, ns):
+            self.p = p
+
+        async def __aenter__(self):
+            return conn
+
+        async def __aexit__(self, *args):
+            pass
+
+    mcp_mod.scoped_pg_session = FakeScopedSession
+    try:
+        res = await do_search_products(
+            engine,
+            {"namespace_id": "00000000-0000-4000-8000-000000000001", "query": "10 123 45"},
+        )
+        assert res["total"] == 1
+        assert res["results"][0]["manufacturer"] == "NEXANS"
+        # Verify SQL query executed includes etim_specs->>'elnummer'
+        assert conn.fetch.called
+        call_sql = conn.fetch.call_args[0][0]
+        assert "etim_specs->>'elnummer' = $1" in call_sql
+        assert conn.fetch.call_args[0][1] == "1012345"
+    finally:
+        mcp_mod.scoped_pg_session = orig_scoped
+
+
+def test_evaluate_cable_drum_cut_best_fit() -> None:
+    from nce.vertical_modules.inventory.stock import evaluate_cable_drum_cut
+
+    drums = [
+        {"drum_id": "DRUM-100", "remaining_length_m": 500.0},
+        {"drum_id": "DRUM-200", "remaining_length_m": 120.0},
+        {"drum_id": "DRUM-300", "remaining_length_m": 80.0},
+    ]
+
+    # Required length 100m:
+    # DRUM-300 has 80m (< 100m, ineligible).
+    # DRUM-100 has 500m (waste = 400m).
+    # DRUM-200 has 120m (waste = 20m).
+    # Best fit must be DRUM-200.
+    res = evaluate_cable_drum_cut(drums, required_length_m=100.0, allow_splicing=False)
+    assert res["passed"] is True
+    assert res["selected_drum_id"] == "DRUM-200"
+    assert res["cut_length_m"] == 100.0
+    assert res["remnant_length_m"] == 20.0
+
+
+def test_evaluate_cable_drum_cut_exact_fit() -> None:
+    from nce.vertical_modules.inventory.stock import evaluate_cable_drum_cut
+
+    drums = [
+        {"id": "DRUM-EXACT", "qty_on_hand": 150.0},
+        {"id": "DRUM-LARGE", "qty_on_hand": 500.0},
+    ]
+    res = evaluate_cable_drum_cut(drums, required_length_m=150.0)
+    assert res["passed"] is True
+    assert res["selected_drum_id"] == "DRUM-EXACT"
+    assert res["cut_length_m"] == 150.0
+    assert res["remnant_length_m"] == 0.0
+
+
+def test_evaluate_cable_drum_cut_fails_closed_without_splicing() -> None:
+    from nce.vertical_modules.inventory.stock import evaluate_cable_drum_cut
+
+    # Total cable across drums is 110m (50 + 60), but required is 75m contiguous
+    drums = [
+        {"drum_id": "DRUM-A", "remaining_length_m": 50.0},
+        {"drum_id": "DRUM-B", "remaining_length_m": 60.0},
+    ]
+    res = evaluate_cable_drum_cut(drums, required_length_m=75.0, allow_splicing=False)
+    assert res["passed"] is False
+    assert res["selected_drum_id"] is None
+    assert res["cut_length_m"] == 0.0
+    assert res["remnant_length_m"] is None
+    assert "NEK 400-5-52" in res["reason"]
+
+
+def test_evaluate_cable_drum_cut_splicing_permitted() -> None:
+    from nce.vertical_modules.inventory.stock import evaluate_cable_drum_cut
+
+    drums = [
+        {"drum_id": "DRUM-A", "remaining_length_m": 50.0},
+        {"drum_id": "DRUM-B", "remaining_length_m": 60.0},
+    ]
+    # Splicing permitted: takes 60m from DRUM-B and 15m from DRUM-A
+    res = evaluate_cable_drum_cut(drums, required_length_m=75.0, allow_splicing=True)
+    assert res["passed"] is True
+    assert res["cut_length_m"] == 75.0
+    assert "cuts" in res
+    assert len(res["cuts"]) == 2
+
+
+def test_evaluate_cable_drum_cut_invalid_inputs() -> None:
+    from nce.vertical_modules.inventory.stock import evaluate_cable_drum_cut
+
+    with pytest.raises(ValueError, match="strictly positive"):
+        evaluate_cable_drum_cut([], required_length_m=0.0)
+
+    with pytest.raises(ValueError, match="strictly positive"):
+        evaluate_cable_drum_cut([], required_length_m=-10.0)
+
+    with pytest.raises(ValueError, match="valid number"):
+        evaluate_cable_drum_cut([], required_length_m="invalid_number")
+
+
+@pytest.mark.asyncio
+async def test_enrich_product_spec_bounds_violation_triggers_review(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Out-of-bounds technical specification forces needs_review=True even if confidence is high."""
+    from typing import Any
+    from unittest.mock import AsyncMock, MagicMock
+
+    import nce.vertical_modules.product.enrich as enrich_mod
+    from nce.vertical_modules.product.enrich import do_enrich_product
+
+    ns_id = uuid.uuid4()
+    product_id = uuid.uuid4()
+
+    executed_queries: list[tuple[str, tuple[Any, ...]]] = []
+    conn = AsyncMock()
+    conn._pool = None
+
+    async def fake_fetchrow(sql: str, *args: Any) -> Any:
+        executed_queries.append((sql, args))
+        if "FROM govern_idempotency_ledger" in sql or "FROM action_approval_queue" in sql:
+            return None
+        if "product_catalog" in sql:
+            return {
+                "id": product_id,
+                "manufacturer": "Siemens",
+                "mfr_part_no": "5SY4116-7",
+                "product_source_id": "SRC-E5",
+                "etim_specs": "{}",
+            }
+        return None
+
+    async def fake_execute(sql: str, *args: Any) -> str:
+        executed_queries.append((sql, args))
+        return "INSERT 1"
+
+    conn.fetchrow.side_effect = fake_fetchrow
+    conn.execute.side_effect = fake_execute
+
+    # Proposal with rated_voltage_v = 100000.0 (max bound is 36000.0)
+    async def fake_build_proposals(*_args: Any, **_kwargs: Any) -> list[dict[str, Any]]:
+        return [
+            {
+                "field_name": "rated_voltage_v",
+                "field_value": "100000.0",
+                "confidence": 0.99,
+                "verbalized": "very_high",
+            }
+        ]
+
+    monkeypatch.setattr(enrich_mod, "_build_proposals", fake_build_proposals)
+    monkeypatch.setattr("nce.autonomy.governor._audit_execution", AsyncMock())
+
+    res = await do_enrich_product(
+        conn,
+        ns_id,
+        idempotency_key="idem-bounds-test-1",
+        confirm=True,
+        product_id=str(product_id),
+        trigger_context={"missing_fields": ["rated_voltage_v"]},
+        provider=MagicMock(),
+    )
+    assert res["status"] == "executed"
+    result_data = res.get("result", res)
+    assert result_data["auto_merged"] == 0
+    assert result_data["needs_review_count"] == 1
+    # Verify no UPDATE product_catalog was executed since out-of-bounds field was not auto-merged
+    catalog_updates = [args for sql, args in executed_queries if "UPDATE product_catalog" in sql]
+    assert len(catalog_updates) == 0
+    # But product_enrichment_log INSERT was executed with needs_review=True
+    log_inserts = [
+        args for sql, args in executed_queries if "INSERT INTO product_enrichment_log" in sql
+    ]
+    assert len(log_inserts) == 1
+    assert log_inserts[0][6] is True  # needs_review parameter

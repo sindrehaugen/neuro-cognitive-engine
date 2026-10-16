@@ -27,6 +27,7 @@ _NODE_TYPE_SCAN = "FIELD_TECH_SCAN"
 _NODE_TYPE_ASSET = "ASSET"
 _NODE_TYPE_BOM_LINE = "BOM_LINE"
 _OWNER_ENGINE = "field_tech"
+_VALID_MSL_LEVELS = frozenset({"1", "2", "2A", "3", "4", "5", "5A", "6"})
 
 
 def _extract_pool(engine_or_pool: Any) -> Any:
@@ -247,6 +248,49 @@ async def do_scan_serial(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
                 ns_uuid,
             )
 
+        # 8. Component lot/reel traceability (Wave E-6)
+        traceability: dict[str, Any] = {}
+        for key in ("lot_code", "date_code", "reel_id", "msl_level", "rohs_compliant"):
+            if key in params and params[key] is not None:
+                val = params[key]
+                if key == "msl_level":
+                    clean_msl = str(val).strip().upper()
+                    if clean_msl.startswith("MSL-") or clean_msl.startswith("MSL "):
+                        clean_msl = clean_msl.replace("MSL-", "").replace("MSL ", "")
+                    if clean_msl not in _VALID_MSL_LEVELS:
+                        raise ValueError(
+                            f"Invalid msl_level: {val!r}. Must be one of 1, 2, 2A, 3, 4, 5, 5A, 6."
+                        )
+                    traceability["msl_level"] = clean_msl
+                elif key == "rohs_compliant":
+                    if isinstance(val, bool):
+                        traceability["rohs_compliant"] = val
+                    elif isinstance(val, str):
+                        traceability["rohs_compliant"] = val.strip().lower() in ("true", "1", "yes")
+                    else:
+                        traceability["rohs_compliant"] = bool(val)
+                else:
+                    s_val = str(val).strip()
+                    if not s_val:
+                        raise ValueError(f"{key} must not be empty string if provided")
+                    traceability[key] = s_val
+
+        lot_code_val = traceability.get("lot_code") or str(params.get("lot_code") or "").strip()
+        if params.get("record_lot_edge") is True:
+            if not lot_code_val:
+                raise ValueError("lot_code is required when record_lot_edge is True")
+            lot_label = f"LOT:{lot_code_val.upper()}"
+            await conn.execute(
+                """
+                INSERT INTO kg_edges (subject_label, predicate, object_label, confidence, namespace_id, change_origin)
+                VALUES ($1, 'used_in', $2, 1.0, $3::uuid, 'agent')
+                ON CONFLICT (subject_label, predicate, object_label, namespace_id) DO NOTHING
+                """,
+                lot_label,
+                asset_label,
+                ns_uuid,
+            )
+
     res: dict[str, Any] = {
         "status": "scanned",
         "work_order_id": work_order_id,
@@ -263,4 +307,13 @@ async def do_scan_serial(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
     }
     if asbuilt_label:
         res["asbuilt_location"] = asbuilt_label
+    if traceability:
+        res["traceability"] = traceability
+    if params.get("record_lot_edge") is True and lot_code_val:
+        res["lot_edge"] = {
+            "subject": f"LOT:{lot_code_val.upper()}",
+            "predicate": "used_in",
+            "object": asset_label,
+            "raw": f"LOT:{lot_code_val.upper()} -[used_in]-> {asset_label}",
+        }
     return res

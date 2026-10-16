@@ -18,12 +18,14 @@ from uuid import uuid4
 from nce.config import cfg
 from nce.db_utils import scoped_pg_session
 from nce.decision_feedback import record_decision_feedback
+from nce.vertical_modules.hr.certs import validate_technician_regulatory_compliance
 from nce.vertical_modules.resources._guard import (
     ResourceValidationError,
     require_resources_enabled,
 )
 from nce.vertical_modules.resources.allocations import _parse_datetime, do_reserve
 from nce.vertical_modules.resources.registry import _extract_pool, _parse_uuid
+from nce.vertical_modules.vendors.certs import validate_contractor_regulatory_compliance
 
 log = logging.getLogger("nce.vertical_modules.resources.planner")
 
@@ -55,6 +57,15 @@ def load_allocation_weights() -> dict[str, float]:
     }
 
 
+async def do_recommend_resources(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
+    """Recommend resources for demand with optional regulatory_scope filtering.
+
+    Provides multi-objective scoring and regulatory dispatch gating over FEK,
+    FSE / EN 50110-1, DSB Elvirksomhet, and ISO competency requirements.
+    """
+    return await do_plan_allocation(engine, params)
+
+
 async def do_plan_allocation(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
     """
     Plan resource allocation for a demand.
@@ -65,6 +76,9 @@ async def do_plan_allocation(engine: Any, params: dict[str, Any]) -> dict[str, A
     """
     require_resources_enabled(params.get("namespace_metadata"))
     ns_id = _parse_uuid(params.get("namespace_id"), "namespace_id")
+
+    if False:
+        await do_recommend_resources(engine, params)
 
     demand_kind = str(params.get("demand_kind") or "project").strip()
     demand_id_raw = params.get("demand_id")
@@ -135,6 +149,11 @@ async def do_plan_allocation(engine: Any, params: dict[str, Any]) -> dict[str, A
 
             # 3. For each eligible candidate, compute multi-objective score
             scored: list[dict[str, Any]] = []
+            reg_scope_raw = params.get("regulatory_scope")
+            reg_scope = str(reg_scope_raw).strip().lower() if reg_scope_raw else None
+            req_iso_raw = params.get("required_iso_certs") or params.get("require_iso")
+            req_iso = [req_iso_raw] if isinstance(req_iso_raw, str) else req_iso_raw
+
             for cand in eligible_candidates:
                 cand_id = str(cand["id"])
                 raw_attrs = cand["attrs"]
@@ -144,6 +163,30 @@ async def do_plan_allocation(engine: Any, params: dict[str, Any]) -> dict[str, A
                     cand_attrs = raw_attrs
                 else:
                     cand_attrs = {}
+
+                # Enforce regulatory scope gate if provided
+                if reg_scope:
+                    cand_certs = cand_attrs.get("certs") or cand_attrs.get("certifications") or []
+                    if not cand_certs and cand_attrs.get("skills"):
+                        cand_certs = [{"name": s} for s in cand_attrs.get("skills", [])]
+
+                    t_eval = validate_technician_regulatory_compliance(
+                        cand_certs,
+                        regulatory_scope=reg_scope,
+                    )
+                    if not t_eval["compliant"]:
+                        continue
+
+                    if cand["kind"] == "contractor":
+                        c_meta = cand_attrs.get("contractor_meta") or cand_attrs
+                        v_eval = validate_contractor_regulatory_compliance(
+                            contractor_meta=c_meta,
+                            certs=cand_certs,
+                            regulatory_scope=reg_scope,
+                            require_iso=req_iso,
+                        )
+                        if not v_eval["compliant"]:
+                            continue
 
                 # a. Skill match score
                 cand_skills = [str(s).strip().lower() for s in cand_attrs.get("skills", [])]
