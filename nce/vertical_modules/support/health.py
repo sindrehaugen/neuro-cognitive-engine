@@ -155,18 +155,7 @@ async def _fetch_customer_affect_metrics(
     if frustration_param is not None and touchpoint_param is not None:
         return float(frustration_param), float(touchpoint_param)
 
-    # 2. Check if conn is a mock with exhausted side_effect to protect existing mock tests
-    fetch_attr = getattr(conn, "fetch", None)
-    if fetch_attr is not None and type(fetch_attr).__name__ in ("MagicMock", "AsyncMock"):
-        side_effect = getattr(fetch_attr, "side_effect", None)
-        if isinstance(side_effect, (list, tuple)) and getattr(fetch_attr, "call_count", 0) >= len(
-            side_effect
-        ):
-            f_val = float(frustration_param) if frustration_param is not None else 0.0
-            tp_val = float(touchpoint_param) if touchpoint_param is not None else None
-            return f_val, tp_val
-
-    # 3. Query v3_cognitive_ledger for recent touchpoint and frustration metrics
+    # 2. Query v3_cognitive_ledger for recent touchpoint and frustration metrics
     try:
         rows = await conn.fetch(
             """

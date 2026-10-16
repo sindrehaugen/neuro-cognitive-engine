@@ -420,3 +420,134 @@ async def test_plan_allocation_recalls_completed_by_field_tech_outcomes(mock_eng
     assert top["cognitive_recall"]["historical_jobs"] == 1
     assert top["cognitive_recall"]["avg_rating"] == 5.0
     assert top["cognitive_recall"]["avg_quality"] == 0.95
+
+
+@pytest.mark.asyncio
+async def test_resolve_capacity_defaults_to_zero_utilization(monkeypatch) -> None:
+    """Verify that resources with empty attrs default to 0.0 utilization and empty utilized_resources."""
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock
+
+    from nce.vertical_modules.resources.capacity import (
+        do_check_capacity,
+        do_resolve_capacity,
+    )
+
+    res_id = uuid4()
+    ns_id = uuid4()
+    mock_rows = [
+        {
+            "id": res_id,
+            "namespace_id": ns_id,
+            "kind": "technician",
+            "ref_id": "TECH-01",
+            "display_name": "Test Tech",
+            "attrs": {},
+        }
+    ]
+
+    conn = AsyncMock()
+
+    async def fake_fetch(query: str, *args: Any) -> list[dict[str, Any]]:
+        q = query.lower()
+        if "from resources" in q:
+            return mock_rows
+        return []
+
+    conn.fetch = AsyncMock(side_effect=fake_fetch)
+
+    @asynccontextmanager
+    async def fake_session(_pool: Any, _ns: Any):
+        yield conn
+
+    monkeypatch.setattr(
+        "nce.vertical_modules.resources.capacity.scoped_pg_session",
+        fake_session,
+    )
+
+    engine = MagicMock()
+    engine.pg_pool = MagicMock()
+
+    params = {
+        "namespace_id": str(ns_id),
+        "namespace_metadata": {"features": {"resources": True}},
+        "window": {"starts_at": "2026-10-01T08:00:00Z", "ends_at": "2026-10-01T17:00:00Z"},
+    }
+
+    res = await do_resolve_capacity(engine, params)
+    assert res["total_resources"] == 1
+    assert len(res["available_resources"]) == 1
+    assert res["utilized_resources"] == []
+    assert res["utilization_pct"] == 0.0
+
+    res_alias = await do_check_capacity(engine, params)
+    assert res_alias["utilization_pct"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_resolve_capacity_computes_utilization_from_attrs(monkeypatch) -> None:
+    """Verify capacity resolution calculates real utilization from utilization_pct and allocated_hours."""
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock
+
+    from nce.vertical_modules.resources.capacity import do_resolve_capacity
+
+    ns_id = uuid4()
+    res1_id = uuid4()
+    res2_id = uuid4()
+
+    mock_rows = [
+        {
+            "id": res1_id,
+            "namespace_id": ns_id,
+            "kind": "technician",
+            "ref_id": "TECH-UTIL",
+            "display_name": "Utilized Tech",
+            "attrs": json.dumps({"utilization_pct": 80.0}),
+        },
+        {
+            "id": res2_id,
+            "namespace_id": ns_id,
+            "kind": "technician",
+            "ref_id": "TECH-HOURS",
+            "display_name": "Hours Tech",
+            "attrs": {"allocated_hours": 20, "capacity_hours": 40},
+        },
+    ]
+
+    conn = AsyncMock()
+
+    async def fake_fetch(query: str, *args: Any) -> list[dict[str, Any]]:
+        q = query.lower()
+        if "from resources" in q:
+            return mock_rows
+        return []
+
+    conn.fetch = AsyncMock(side_effect=fake_fetch)
+
+    @asynccontextmanager
+    async def fake_session(_pool: Any, _ns: Any):
+        yield conn
+
+    monkeypatch.setattr(
+        "nce.vertical_modules.resources.capacity.scoped_pg_session",
+        fake_session,
+    )
+
+    engine = MagicMock()
+    engine.pg_pool = MagicMock()
+
+    params = {
+        "namespace_id": str(ns_id),
+        "namespace_metadata": {"features": {"resources": True}},
+        "window": {"starts_at": "2026-10-01T08:00:00Z", "ends_at": "2026-10-01T17:00:00Z"},
+    }
+
+    res = await do_resolve_capacity(engine, params)
+    assert res["total_resources"] == 2
+    assert len(res["utilized_resources"]) == 2
+    assert abs(res["utilization_pct"] - 65.0) < 0.01
+
+    utilized_ids = {u["id"] for u in res["utilized_resources"]}
+    assert str(res1_id) in utilized_ids
+    assert str(res2_id) in utilized_ids

@@ -879,3 +879,75 @@ async def test_dispatch_load_statuses_and_outcome_employee_hr_routing() -> None:
             {"namespace_id": _NS_A, "work_order_id": _WO_ID_1, "rating": 5.0},
         )
     assert "hr" in res_out["routed_engines"]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_penalizes_technician_rework_history() -> None:
+    """Technician with high rework rate has quality score discounted vs clean history."""
+    wo_id = "WO-REWORK-001"
+
+    conn = AsyncMock()
+    conn.fetchrow.return_value = {
+        "work_order_id": wo_id,
+        "namespace_id": UUID(_NS_A),
+        "kind": "service",
+        "location_id": "LOC-OSLO",
+        "raw": {"required_skills": ["cctv"]},
+    }
+
+    conn.fetch.side_effect = [
+        [
+            {"assignee_id": "tech_clean", "open_count": 0},
+            {"assignee_id": "tech_rework", "open_count": 0},
+        ],
+        [
+            {
+                "completed_by": "tech_clean",
+                "completed_count": 5,
+                "avg_rating": 4.8,
+                "avg_quality": 0.95,
+                "rework_count": 0,
+            },
+            {
+                "completed_by": "tech_rework",
+                "completed_count": 5,
+                "avg_rating": 4.8,
+                "avg_quality": 0.95,
+                "rework_count": 3,
+            },
+        ],
+    ]
+
+    pool = _make_mock_pool(conn)
+
+    candidates = [
+        {
+            "id": "tech_clean",
+            "name": "Clean Tech",
+            "skills": ["cctv"],
+            "location_id": "LOC-OSLO",
+        },
+        {
+            "id": "tech_rework",
+            "name": "Rework Tech",
+            "skills": ["cctv"],
+            "location_id": "LOC-OSLO",
+        },
+    ]
+
+    res = await do_dispatch(
+        pool,
+        {
+            "namespace_id": _NS_A,
+            "work_order_id": wo_id,
+            "candidates": candidates,
+        },
+    )
+
+    ranked = res["ranked_candidates"]
+    assert len(ranked) == 2
+    assert ranked[0]["id"] == "tech_clean"
+    assert ranked[1]["id"] == "tech_rework"
+    assert ranked[0]["score"] > ranked[1]["score"]
+    assert ranked[0]["component_scores"]["history"] > ranked[1]["component_scores"]["history"]
+    assert "reworks" in ranked[1]["rationale"]

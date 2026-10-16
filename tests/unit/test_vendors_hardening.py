@@ -1080,3 +1080,79 @@ class TestVendorsContractorsAndPartnerView:
         assert stored_payload["defect_rma"] is False
         assert stored_payload["substituted"] is False
         assert stored_payload["reliability"] == 98.5
+
+
+@pytest.mark.asyncio
+async def test_get_tier_status_sums_monetary_volume_never_match_score(monkeypatch) -> None:
+    """Verify do_get_tier_status sums amount/volume/value and strictly ignores score."""
+    ns_id = uuid4()
+    vendor_label = "VENDOR:ACME_TEST"
+
+    ledger_rows = [
+        {
+            "tlx_scores": json.dumps(
+                {
+                    "event_type": "match_decision",
+                    "supplier_id": vendor_label,
+                    "amount": 15000.0,
+                    "score": 99.0,
+                }
+            )
+        },
+        {
+            "tlx_scores": {
+                "event_type": "match_decision",
+                "vendor_id": vendor_label,
+                "score": 95.0,
+            }
+        },
+        {
+            "tlx_scores": {
+                "event_type": "match_decision",
+                "vendor_id": vendor_label,
+                "volume": 5000.0,
+                "score": 88.0,
+            }
+        },
+    ]
+
+    conn = AsyncMock()
+
+    async def fake_fetch(query: str, *args: Any) -> list[dict[str, Any]]:
+        q = query.lower()
+        if "from v3_cognitive_ledger" in q:
+            return ledger_rows
+        return []
+
+    async def fake_fetchrow(query: str, *args: Any) -> dict[str, Any] | None:
+        q = query.lower()
+        if "from kg_nodes" in q:
+            return {"id": uuid4(), "label": vendor_label, "payload_ref": None}
+        return None
+
+    conn.fetch = AsyncMock(side_effect=fake_fetch)
+    conn.fetchrow = AsyncMock(side_effect=fake_fetchrow)
+    conn.execute = AsyncMock(return_value="INSERT 0 1")
+
+    @asynccontextmanager
+    async def fake_session(_pool: Any, _ns: Any):
+        yield conn
+
+    monkeypatch.setattr(
+        "nce.vertical_modules.vendors.tiers.scoped_pg_session",
+        fake_session,
+    )
+
+    engine = MagicMock()
+    engine.pg_pool = MagicMock()
+
+    status = await do_get_tier_status(
+        engine,
+        {
+            "namespace_id": str(ns_id),
+            "vendor_id": vendor_label,
+        },
+    )
+
+    assert status["ytd_volume"] == 20000.0
+    assert status["current_tier"] == "Bronze"
