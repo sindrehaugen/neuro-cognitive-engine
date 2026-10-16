@@ -187,3 +187,59 @@ def test_orchestrator_no_longer_executes_the_whole_schema() -> None:
     assert "schema_runtime.sql" in body
     assert "applied_migrations" in body, "bootstrap must be gated on the migration ledger"
     assert 'here / "schema.sql"' not in body, "schema.sql must no longer be executed wholesale"
+
+
+@pytest.mark.asyncio
+async def test_existing_database_applies_migrations_before_schema_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """On an existing database (applied_migrations non-empty), pending numbered
+    migrations must run before schema_runtime.sql so newly introduced tables
+    exist before runtime RLS/policies/grants are applied."""
+    from contextlib import asynccontextmanager
+
+    from nce.config import cfg
+    from nce.orchestrator import NCEEngine
+
+    events: list[str] = []
+
+    class _FakeConn:
+        @asynccontextmanager
+        async def transaction(self):
+            yield
+
+        async def fetchval(self, sql: str, *args):
+            if "to_regclass" in sql:
+                return True
+            if "count(*) FROM applied_migrations" in sql:
+                return 78
+            return None
+
+        async def execute(self, sql: str, *args):
+            if "pg_advisory_xact_lock" in sql:
+                events.append("advisory_lock")
+            elif "CREATE TABLE" in sql and "SET namespace_id = global_ns_id" in sql:
+                events.append("schema_bootstrap")
+            elif "tenant_tables" in sql:
+                events.append("schema_runtime")
+
+    class _FakePool:
+        @asynccontextmanager
+        async def acquire(self, timeout: float = 10.0):
+            yield _FakeConn()
+
+    engine = NCEEngine.__new__(NCEEngine)
+    engine.pg_pool = _FakePool()
+
+    async def _fake_apply_migrations() -> None:
+        events.append("apply_pg_migrations")
+
+    monkeypatch.setattr(engine, "_apply_pg_migrations", _fake_apply_migrations)
+    monkeypatch.setattr(cfg, "NCE_APP_PASSWORD", "")
+
+    await engine._init_pg_schema()
+
+    assert "schema_bootstrap" not in events
+    assert "apply_pg_migrations" in events
+    assert "schema_runtime" in events
+    assert events.index("apply_pg_migrations") < events.index("schema_runtime")
