@@ -459,6 +459,7 @@ class NCEEngine(OrchestratorBase):
         bootstrap_path = here / "schema_bootstrap.sql"
         runtime_path = here / "schema_runtime.sql"
 
+        is_fresh = True
         async with self.pg_pool.acquire(timeout=10.0) as conn:
             async with conn.transaction():
                 await conn.execute(_ADVISORY_LOCK_SQL, SCHEMA_ADVISORY_LOCK_ID)
@@ -473,7 +474,6 @@ class NCEEngine(OrchestratorBase):
                 ledger_exists = await conn.fetchval(
                     "SELECT to_regclass('public.applied_migrations') IS NOT NULL"
                 )
-                is_fresh = True
                 if ledger_exists:
                     is_fresh = not await conn.fetchval("SELECT count(*) FROM applied_migrations")
 
@@ -483,8 +483,18 @@ class NCEEngine(OrchestratorBase):
                         "[PG] bootstrap schema applied (empty migration ledger) from %s",
                         bootstrap_path,
                     )
+                    await conn.execute(runtime_path.read_text(encoding="utf-8"))
 
-                await conn.execute(runtime_path.read_text(encoding="utf-8"))
+        if not is_fresh:
+            # Existing database: apply any pending numbered migrations BEFORE
+            # schema_runtime.sql so that tables introduced by newer migrations
+            # (e.g. support_ticket_actions, economy_billing_runs) exist before
+            # schema_runtime.sql enables RLS, policies, and grants on them.
+            await self._apply_pg_migrations()
+            async with self.pg_pool.acquire(timeout=10.0) as conn:
+                async with conn.transaction():
+                    await conn.execute(_ADVISORY_LOCK_SQL, SCHEMA_ADVISORY_LOCK_ID)
+                    await conn.execute(runtime_path.read_text(encoding="utf-8"))
 
         log.debug(
             "[PG] runtime schema applied from %s (bootstrap %s)",
