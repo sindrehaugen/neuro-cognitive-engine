@@ -341,11 +341,19 @@ async def api_portal_room_tracker(request: Request) -> JSONResponse:
     if chk is not None:
         return chk
 
+    _readonly_keys = {
+        "stage",
+        "percent_ready",
+        "status",
+        "summary",
+        "total_rooms",
+        "overall_percent_ready",
+    }
     params = {
         # Client-supplied values FIRST so the authoritative
         # namespace/scope assigned below cannot be overridden by a
         # client-controlled body or query parameter (cross-customer IDOR).
-        **dict(request.query_params),
+        **{k: v for k, v in request.query_params.items() if k not in _readonly_keys},
         "namespace_id": ns_id,
         "customer_scope_id": cust_scope,
         "room_id": room_id,
@@ -381,11 +389,19 @@ async def api_portal_room_overview(request: Request) -> JSONResponse:
     if chk is not None:
         return chk
 
+    _readonly_keys = {
+        "stage",
+        "percent_ready",
+        "status",
+        "summary",
+        "total_rooms",
+        "overall_percent_ready",
+    }
     params = {
         # Client-supplied values FIRST so the authoritative
         # namespace/scope assigned below cannot be overridden by a
         # client-controlled body or query parameter (cross-customer IDOR).
-        **dict(request.query_params),
+        **{k: v for k, v in request.query_params.items() if k not in _readonly_keys},
         "namespace_id": ns_id,
         "customer_scope_id": cust_scope,
     }

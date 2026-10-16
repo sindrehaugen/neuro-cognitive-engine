@@ -117,6 +117,10 @@ async def do_room_tracker(engine: Any, params: dict[str, Any]) -> dict[str, Any]
         messy_context=messy_context,
     )
 
+    excluded_tracker_keys = {"bom_lines", "assets", "messy_context", "room_id"}
+    if not (engine is not None and hasattr(engine, "get_room")):
+        excluded_tracker_keys.update({"stage", "percent_ready", "status", "summary"})
+
     raw_response = {
         "room_id": room_id,
         "room_name": room_name,
@@ -129,21 +133,7 @@ async def do_room_tracker(engine: Any, params: dict[str, Any]) -> dict[str, Any]
         "last_updated_at": params.get("last_updated_at", "2026-09-05T20:00:00Z"),
         "estimated_readiness": params.get("estimated_readiness", "2026-10-15"),
         # Include raw params for allow-list redaction verification
-        **{
-            k: v
-            for k, v in params.items()
-            if k
-            not in (
-                "bom_lines",
-                "assets",
-                "messy_context",
-                "room_id",
-                "stage",
-                "percent_ready",
-                "status",
-                "summary",
-            )
-        },
+        **{k: v for k, v in params.items() if k not in excluded_tracker_keys},
     }
 
     return project_customer_safe(raw_response, "room_tracker")

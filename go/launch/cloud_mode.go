@@ -62,4 +62,3 @@ func runCloud(ctx context.Context, n UserNotifier, log *slog.Logger, appRoot str
 
 	return runCloudMCPServer(ctx, n, appRoot, env, log)
 }
-

@@ -420,11 +420,9 @@ async def test_code_indexing_soft_delete_includes_namespace_predicate() -> None:
 
     from nce import tasks
 
-    src = inspect.getsource(tasks._run_code_indexing)
-    assert (
-        "WHERE filepath = $1 AND (user_id IS NOT DISTINCT FROM $2) "
-        "AND valid_to IS NULL AND namespace_id = $3::uuid"
-    ) in src
+    src = inspect.getsource(tasks.process_code_indexing)
+    assert "WHERE filepath = $1 AND (user_id IS NOT DISTINCT FROM $2)" in src
+    assert "AND valid_to IS NULL AND namespace_id = $3::uuid" in src
 
 
 @pytest.mark.asyncio
@@ -468,17 +466,22 @@ async def test_reembedding_worker_memories_phase_includes_namespace_predicates()
     conn.execute = AsyncMock(side_effect=_execute)
 
     @asynccontextmanager
+    async def _tx():
+        yield
+
+    conn.transaction = _tx
+
+    @asynccontextmanager
     async def _acquire(timeout=None):
         yield conn
 
     pool = MagicMock()
     pool.acquire = _acquire
 
-    worker = ReembeddingWorker(pg_pool=pool, mongo_client=MagicMock(), batch_size=10)
+    worker = ReembeddingWorker(batch_size=10)
     with (
-        patch.object(
-            worker,
-            "_fetch_memories_batch",
+        patch(
+            "nce.reembedding_worker._fetch_memories_batch",
             new_callable=AsyncMock,
             side_effect=[[row], []],
         ),
@@ -492,11 +495,8 @@ async def test_reembedding_worker_memories_phase_includes_namespace_predicates()
         await worker._run_memories_phase(
             pool,
             MagicMock(),
-            migration_id=uuid.uuid4(),
-            target_model="bge-m3",
-            target_dim=1024,
-            cursor_after_ts=None,
-            cursor_after_id=None,
+            uuid.uuid4(),
+            uuid.uuid4(),
         )
 
     dek_selects = [(q, a) for q, a in fetch_queries if "SELECT payload_ref, wrapped_dek" in q]
@@ -565,12 +565,13 @@ async def test_consolidation_worker_queries_include_namespace_predicates(monkeyp
     monkeypatch.setattr(cons_mod, "scoped_pg_session", _fake_scoped)
     monkeypatch.setattr(cfg, "CONSOLIDATION_DECAY_SOURCES", True)
 
-    worker = ConsolidationWorker(pg_pool=MagicMock(), mongo_client=None)
+    worker = ConsolidationWorker(pool=MagicMock(), provider=MagicMock(), mongo_client=None)
     abstraction = ConsolidatedAbstraction(
         abstraction="Summary fact",
         confidence=0.9,
         key_entities=["NodeA"],
         key_relations=[],
+        supporting_memory_ids=[str(mem_id)],
     )
 
     with patch.object(cons_mod, "append_event", new_callable=AsyncMock):
@@ -581,7 +582,7 @@ async def test_consolidation_worker_queries_include_namespace_predicates(monkeyp
             cluster_mems=[{"id": mem_id, "derivation_depth": 0}],
             mem_ids=[str(mem_id)],
             payload_ref="b" * 24,
-            embedding_vec=[0.1] * 1024,
+            embedding_vec="[0.1,0.2]",
         )
 
     event_log_queries = [(q, a) for q, a in fetchval_calls if "SELECT id FROM event_log" in q]
