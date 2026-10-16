@@ -923,3 +923,136 @@ async def do_record_consumption(engine: NCEEngine, params: dict[str, Any]) -> di
         "on_hand": on_hand,
         "work_order": work_order,
     }
+
+
+# ---------------------------------------------------------------------------
+# Cable drum fractional cut evaluation (Wave E-5)
+# ---------------------------------------------------------------------------
+
+
+def evaluate_cable_drum_cut(
+    drums: list[dict[str, Any]],
+    required_length_m: float | Decimal,
+    allow_splicing: bool = False,
+) -> dict[str, Any]:
+    """Evaluate cable drum inventory to select the best drum for a required cut length.
+
+    Implements best-fit allocation (minimizing remnant waste) while adhering to
+    Norwegian installation standards NEK 400-5-52 (cabling systems) and NEK 700
+    (telecommunications cabling), which prohibit arbitrary splicing inside conduit runs.
+
+    Parameters
+    ----------
+    drums:
+        List of drum inventory records, each containing an identifier
+        (``drum_id`` or ``id``) and length (``remaining_length_m``, ``length_m``, or ``qty_on_hand``).
+    required_length_m:
+        Length in metres required for the run (must be > 0).
+    allow_splicing:
+        If False (default), fails closed if no single drum has a contiguous run
+        >= required_length_m. If True, permits combining multiple drums.
+
+    Returns
+    -------
+    dict with:
+        selected_drum_id: str | None
+        cut_length_m: float
+        remnant_length_m: float | None
+        passed: bool
+        reason: str (optional, present on failure or multi-cut)
+    """
+    try:
+        req = Decimal(str(required_length_m))
+    except (ValueError, TypeError, DecimalException) as exc:
+        raise ValueError(
+            f"required_length_m must be a valid number, got {required_length_m!r}"
+        ) from exc
+
+    if req <= 0:
+        raise ValueError("required_length_m must be strictly positive")
+
+    parsed_drums: list[dict[str, Any]] = []
+    for d in drums:
+        drum_id = d.get("drum_id") or d.get("id")
+        rem_raw = d.get("remaining_length_m")
+        if rem_raw is None:
+            rem_raw = d.get("length_m")
+        if rem_raw is None:
+            rem_raw = d.get("qty_on_hand")
+        if drum_id is not None and rem_raw is not None:
+            try:
+                rem_dec = Decimal(str(rem_raw))
+                if rem_dec > 0:
+                    parsed_drums.append({"drum_id": str(drum_id), "remaining_m": rem_dec, "raw": d})
+            except (ValueError, TypeError, DecimalException):
+                continue
+
+    # 1. Contiguous run candidates: remaining_m >= req
+    candidates = [d for d in parsed_drums if d["remaining_m"] >= req]
+
+    if candidates:
+        # Best-fit selection: minimize remnant waste (remaining_m - req)
+        best = min(candidates, key=lambda d: (d["remaining_m"] - req, d["remaining_m"]))
+        remnant = best["remaining_m"] - req
+        return {
+            "passed": True,
+            "selected_drum_id": best["drum_id"],
+            "cut_length_m": float(req),
+            "remnant_length_m": float(remnant),
+        }
+
+    # 2. No single drum has enough contiguous length
+    if not allow_splicing:
+        return {
+            "passed": False,
+            "selected_drum_id": None,
+            "cut_length_m": 0.0,
+            "remnant_length_m": None,
+            "reason": (
+                "No single drum has sufficient contiguous length >= "
+                f"{float(req)}m (splicing disallowed under NEK 400-5-52 / NEK 700)"
+            ),
+        }
+
+    # 3. Splicing permitted: check if total available >= req
+    total_avail = sum((d["remaining_m"] for d in parsed_drums), Decimal(0))
+    if total_avail < req:
+        return {
+            "passed": False,
+            "selected_drum_id": None,
+            "cut_length_m": 0.0,
+            "remnant_length_m": None,
+            "reason": (
+                f"Total available length across all drums ({float(total_avail)}m) "
+                f"is less than required ({float(req)}m)"
+            ),
+        }
+
+    # Greedily allocate from largest drums to minimize splice count
+    sorted_drums = sorted(parsed_drums, key=lambda d: d["remaining_m"], reverse=True)
+    accum = Decimal(0)
+    cuts: list[dict[str, Any]] = []
+    last_remnant = Decimal(0)
+    for d in sorted_drums:
+        needed = req - accum
+        take = min(d["remaining_m"], needed)
+        accum += take
+        rem = d["remaining_m"] - take
+        last_remnant = rem
+        cuts.append(
+            {
+                "drum_id": d["drum_id"],
+                "cut_length_m": float(take),
+                "remnant_length_m": float(rem),
+            }
+        )
+        if accum >= req:
+            break
+
+    return {
+        "passed": True,
+        "selected_drum_id": cuts[0]["drum_id"] if len(cuts) == 1 else "spliced_multiple",
+        "cut_length_m": float(req),
+        "remnant_length_m": float(last_remnant),
+        "cuts": cuts,
+    }

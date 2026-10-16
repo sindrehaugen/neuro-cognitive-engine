@@ -20,11 +20,14 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import date
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 from nce.db_utils import scoped_pg_session
+from nce.vertical_modules.hr.certs import validate_technician_regulatory_compliance
+from nce.vertical_modules.vendors.certs import validate_contractor_regulatory_compliance
 
 log = logging.getLogger("nce.vertical_modules.field_tech.dispatch")
 
@@ -166,13 +169,71 @@ async def do_dispatch(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
                     }
                 )
 
+        reg_scope_raw = params.get("regulatory_scope") or wo_raw.get("regulatory_scope")
+        reg_scope = str(reg_scope_raw).strip().lower() if reg_scope_raw else None
+
+        disqualified_candidates: list[dict[str, Any]] = []
+        if reg_scope:
+            req_iso_raw = (
+                params.get("required_iso_certs")
+                or wo_raw.get("required_iso_certs")
+                or params.get("require_iso")
+                or wo_raw.get("require_iso")
+            )
+            req_iso = [req_iso_raw] if isinstance(req_iso_raw, str) else req_iso_raw
+
+            compliant_candidates: list[dict[str, Any]] = []
+            for c in candidates:
+                cid = str(c.get("id"))
+                c_kind = str(c.get("kind") or "employee").strip().lower()
+                c_certs = c.get("certs") or c.get("certifications") or []
+                if not c_certs and c.get("skills"):
+                    c_certs = [{"name": s} for s in c.get("skills", [])]
+
+                c_reasons: list[str] = []
+
+                t_eval = validate_technician_regulatory_compliance(
+                    certs=c_certs,
+                    regulatory_scope=reg_scope,
+                    ref_date=date.today(),
+                )
+                if not t_eval["compliant"]:
+                    c_reasons.extend(t_eval["reasons"])
+
+                if c_kind == "contractor":
+                    c_meta = c.get("contractor_meta") or c
+                    v_eval = validate_contractor_regulatory_compliance(
+                        contractor_meta=c_meta,
+                        certs=c_certs,
+                        regulatory_scope=reg_scope,
+                        require_iso=req_iso,
+                    )
+                    if not v_eval["compliant"]:
+                        c_reasons.extend(v_eval["reasons"])
+
+                if c_reasons:
+                    disqualified_candidates.append({"id": cid, "reasons": c_reasons})
+                else:
+                    compliant_candidates.append(c)
+
+            candidates = compliant_candidates
+
         if not candidates:
             # Graceful fallback: return empty candidate ranking with explanation
-            return {
+            empty_res: dict[str, Any] = {
                 "work_order_id": work_order_id,
                 "ranked_candidates": [],
-                "rationale": "No eligible internal technicians or external contractors found in pool.",
+                "top_recommendation": "None",
+                "rationale": (
+                    f"No candidates met regulatory compliance for scope {reg_scope!r}."
+                    if reg_scope
+                    else "No eligible internal technicians or external contractors found in pool."
+                ),
             }
+            if reg_scope:
+                empty_res["disqualified_candidates"] = disqualified_candidates
+                empty_res["regulatory_scope"] = reg_scope
+            return empty_res
 
         # 3. Query current load for each candidate (active WOs in this namespace)
         candidate_ids = [str(c["id"]) for c in candidates]
@@ -293,10 +354,14 @@ async def do_dispatch(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
     scored_candidates.sort(key=lambda x: x["score"], reverse=True)
 
     top_tech = scored_candidates[0]["name"] if scored_candidates else "None"
-    return {
+    dispatch_res: dict[str, Any] = {
         "work_order_id": work_order_id,
         "weights": weights,
         "ranked_candidates": scored_candidates,
         "top_recommendation": top_tech,
         "rationale": f"Top candidate {top_tech!r} selected by composite skill/location/load/history recall.",
     }
+    if reg_scope:
+        dispatch_res["disqualified_candidates"] = disqualified_candidates
+        dispatch_res["regulatory_scope"] = reg_scope
+    return dispatch_res

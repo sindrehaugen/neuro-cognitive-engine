@@ -16,7 +16,8 @@ Invariants:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+import re
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -63,6 +64,163 @@ def _parse_successor_sku(
     if len(parts) == 2:
         return parts[0], parts[1]
     return default_mfr, s
+
+
+def evaluate_regulatory_compliance(
+    params: dict[str, Any], check_date: date | datetime | None = None
+) -> dict[str, Any]:
+    """Evaluate DNV Type Approval Certificate (TAC), ATEX, and ISO 12944 compliance (Wave E-2).
+
+    Parameters
+    ----------
+    params:
+        - ``dnv_tac_number`` (str, optional): DNV Type Approval Certificate identifier.
+        - ``dnv_tac_expiry`` (date | str, optional): TAC expiry date.
+        - ``atex_marking`` (str, optional): ATEX gas/dust marking string.
+        - ``atex_cert_number`` (str, optional): ATEX Notified Body certificate reference.
+        - ``atex_cert_expiry`` (date | str, optional): ATEX certificate expiry date.
+        - ``iso12944_class`` (str, optional): ISO 12944 corrosivity classification (C1-CX).
+        - ``ip_rating`` (str, optional): Ingress protection rating (e.g. IP66).
+    check_date:
+        Reference date for checking certificate expiration. Defaults to current UTC date.
+    """
+    if isinstance(check_date, datetime):
+        ref_date = check_date.date()
+    elif isinstance(check_date, date):
+        ref_date = check_date
+    elif isinstance(check_date, str) and check_date.strip():
+        try:
+            ref_date = date.fromisoformat(check_date.strip()[:10])
+        except ValueError:
+            ref_date = datetime.now(timezone.utc).date()
+    else:
+        ref_date = datetime.now(timezone.utc).date()
+
+    violations: list[str] = []
+    warnings: list[str] = []
+
+    # 1. DNV Type Approval Certificate (TAC)
+    dnv_tac_number = str(params.get("dnv_tac_number") or "").strip()
+    raw_tac_expiry = params.get("dnv_tac_expiry")
+
+    tac_expiry_date: date | None = None
+    if isinstance(raw_tac_expiry, datetime):
+        tac_expiry_date = raw_tac_expiry.date()
+    elif isinstance(raw_tac_expiry, date):
+        tac_expiry_date = raw_tac_expiry
+    elif isinstance(raw_tac_expiry, str) and raw_tac_expiry.strip():
+        try:
+            tac_expiry_date = date.fromisoformat(raw_tac_expiry.strip()[:10])
+        except ValueError:
+            violations.append(f"Invalid dnv_tac_expiry date format: '{raw_tac_expiry}'")
+
+    tac_is_expired = False
+    tac_days_remaining: int | None = None
+    tac_valid = False
+
+    if dnv_tac_number or tac_expiry_date:
+        if not dnv_tac_number:
+            violations.append("DNV TAC expiry specified without valid dnv_tac_number.")
+        elif tac_expiry_date is None:
+            violations.append(f"DNV TAC '{dnv_tac_number}' has no valid expiration date specified.")
+        else:
+            tac_days_remaining = (tac_expiry_date - ref_date).days
+            if tac_days_remaining < 0:
+                tac_is_expired = True
+                violations.append(
+                    f"DNV Type Approval Certificate '{dnv_tac_number}' expired on "
+                    f"{tac_expiry_date.isoformat()} ({abs(tac_days_remaining)} days ago)."
+                )
+            else:
+                tac_valid = True
+                if tac_days_remaining <= 90:
+                    warnings.append(
+                        f"DNV Type Approval Certificate '{dnv_tac_number}' expires in "
+                        f"{tac_days_remaining} days ({tac_expiry_date.isoformat()})."
+                    )
+
+    # 2. ATEX Compliance
+    atex_marking = str(params.get("atex_marking") or "").strip()
+    atex_cert_num = str(params.get("atex_cert_number") or "").strip()
+    raw_atex_expiry = params.get("atex_cert_expiry")
+
+    atex_expiry_date: date | None = None
+    if isinstance(raw_atex_expiry, datetime):
+        atex_expiry_date = raw_atex_expiry.date()
+    elif isinstance(raw_atex_expiry, date):
+        atex_expiry_date = raw_atex_expiry
+    elif isinstance(raw_atex_expiry, str) and raw_atex_expiry.strip():
+        try:
+            atex_expiry_date = date.fromisoformat(raw_atex_expiry.strip()[:10])
+        except ValueError:
+            violations.append(f"Invalid atex_cert_expiry date format: '{raw_atex_expiry}'")
+
+    atex_valid = False
+    atex_is_expired = False
+    if atex_marking or atex_cert_num or atex_expiry_date:
+        if atex_marking:
+            has_ex_concept = bool(
+                re.search(r"\b(Ex|I|II|1G|2G|3G|1D|2D|3D)\b", atex_marking, re.IGNORECASE)
+            )
+            if not has_ex_concept:
+                violations.append(f"Invalid or unrecognized ATEX marking string: '{atex_marking}'.")
+            else:
+                atex_valid = True
+
+        if atex_expiry_date:
+            days_rem = (atex_expiry_date - ref_date).days
+            if days_rem < 0:
+                atex_is_expired = True
+                atex_valid = False
+                violations.append(
+                    f"ATEX Certificate '{atex_cert_num or 'unspecified'}' expired on {atex_expiry_date.isoformat()}."
+                )
+
+    # 3. ISO 12944 / Environmental Protection
+    iso_class = str(params.get("iso12944_class") or "").strip().upper()
+    ip_rating = str(params.get("ip_rating") or "").strip().upper()
+
+    valid_iso_classes = {"C1", "C2", "C3", "C4", "C5", "C5-I", "C5-M", "C5M", "CX"}
+    env_valid = True
+    if iso_class:
+        if iso_class not in valid_iso_classes:
+            env_valid = False
+            violations.append(
+                f"Invalid ISO 12944 corrosion category '{iso_class}'. Permitted: C1, C2, C3, C4, C5, CX."
+            )
+
+    if ip_rating:
+        if not re.match(r"^IP[0-6X][0-9X]$", ip_rating):
+            env_valid = False
+            violations.append(
+                f"Invalid EN 60529 IP rating format: '{ip_rating}'. Expected format e.g. IP66."
+            )
+
+    return {
+        "compliant": len(violations) == 0,
+        "check_date": ref_date.isoformat(),
+        "dnv_tac": {
+            "certificate_number": dnv_tac_number or None,
+            "expiry_date": tac_expiry_date.isoformat() if tac_expiry_date else None,
+            "is_expired": tac_is_expired,
+            "days_remaining": tac_days_remaining,
+            "valid": tac_valid,
+        },
+        "atex": {
+            "marking": atex_marking or None,
+            "cert_number": atex_cert_num or None,
+            "cert_expiry": atex_expiry_date.isoformat() if atex_expiry_date else None,
+            "is_expired": atex_is_expired,
+            "valid": atex_valid,
+        },
+        "environmental": {
+            "iso12944_class": iso_class or None,
+            "ip_rating": ip_rating or None,
+            "valid": env_valid,
+        },
+        "violations": violations,
+        "warnings": warnings,
+    }
 
 
 async def do_check_warranty_eol(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
@@ -252,7 +410,7 @@ async def do_check_warranty_eol(engine: Any, params: dict[str, Any]) -> dict[str
                 }
             )
 
-    return {
+    res_dict: dict[str, Any] = {
         "ok": True,
         "namespace_id": str(ns_uuid),
         "total_scanned": len(rows),
@@ -266,3 +424,10 @@ async def do_check_warranty_eol(engine: Any, params: dict[str, Any]) -> dict[str
             "eol_or_lifespan_exceeded": len(eol_alerts),
         },
     }
+
+    # Wave E-2: Include regulatory_compliance ONLY when regulatory compliance params are supplied
+    regulatory_keys = ("dnv_tac_number", "dnv_tac_expiry", "atex_marking", "iso12944_class")
+    if any(k in params for k in regulatory_keys):
+        res_dict["regulatory_compliance"] = evaluate_regulatory_compliance(params, now_dt.date())
+
+    return res_dict

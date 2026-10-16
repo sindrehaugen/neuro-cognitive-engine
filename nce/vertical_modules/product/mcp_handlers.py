@@ -72,6 +72,18 @@ _SEARCH_MAX_ROWS: int = 50
 
 
 # ---------------------------------------------------------------------------
+# Elnummer query resolution helper
+# ---------------------------------------------------------------------------
+
+
+def resolve_elnummer_query(query: str) -> str | None:
+    """Resolve an Elnummer query string to a canonical 7-digit Elnummer, or None."""
+    from nce.vertical_modules.product.enrich import normalize_elnummer
+
+    return normalize_elnummer(query)
+
+
+# ---------------------------------------------------------------------------
 # Core: do_search_products
 # ---------------------------------------------------------------------------
 
@@ -117,9 +129,30 @@ async def do_search_products(engine: NCEEngine, params: dict[str, Any]) -> dict[
         limit = 20
 
     async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+        elnummer = resolve_elnummer_query(query)
+        if elnummer is not None:
+            rows = await conn.fetch(
+                """
+                SELECT id, manufacturer, mfr_part_no, gtin, lifecycle_status,
+                       etim_specs, updated_at
+                FROM   product_catalog
+                WHERE  is_deleted = false
+                  AND  (
+                           etim_specs->>'elnummer' = $1
+                        OR mfr_part_no = $1
+                        OR (
+                               to_tsvector('simple', manufacturer || ' ' || mfr_part_no)
+                               @@ plainto_tsquery('simple', $1)
+                           )
+                       )
+                LIMIT  $2
+                """,
+                elnummer,
+                limit,
+            )
         # Full-text search with an ILIKE fallback for very-short terms (<3 chars)
         # that the FTS parser would reject or produce no tokens for.
-        if len(query) >= 3:
+        elif len(query) >= 3:
             rows = await conn.fetch(
                 """
                 SELECT id, manufacturer, mfr_part_no, gtin, lifecycle_status,

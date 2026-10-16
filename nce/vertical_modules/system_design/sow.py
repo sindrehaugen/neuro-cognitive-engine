@@ -398,7 +398,7 @@ def generate_sow(sow_input: SoWInput, version_number: int = 1) -> SoWDoc:
             "questions": comms.get("questions", []),
         }
 
-    return {
+    doc: dict[str, Any] = {
         "documentRef": document_ref,
         "generatedAt": generated_at,
         "versionNumber": version_number,
@@ -424,6 +424,19 @@ def generate_sow(sow_input: SoWInput, version_number: int = 1) -> SoWDoc:
         "capturedIntelligence": captured_intelligence,
         "terms": terms,
     }
+
+    if sow_input.get("electrical_circuits"):
+        from nce.vertical_modules.system_design.electrical_nek import generate_kursfortegnelse
+
+        earthing_sys = sow_input.get("earthing_system", "TN_S_400V_3P")
+        switchboard_id = sow_input.get("switchboard_id", "TAVLE-01")
+        doc["kursfortegnelse"] = generate_kursfortegnelse(
+            circuits=sow_input["electrical_circuits"],
+            earthing_system=earthing_sys,
+            switchboard_id=switchboard_id,
+        )
+
+    return doc
 
 
 # ---------------------------------------------------------------------------
@@ -773,6 +786,12 @@ async def do_generate_sow(
         fl_nodes=fl_nodes,
         fl_to_lines=fl_to_lines,
     )
+    if "electrical_circuits" in params:
+        sow_input["electrical_circuits"] = params["electrical_circuits"]
+    if "earthing_system" in params:
+        sow_input["earthing_system"] = params["earthing_system"]
+    if "switchboard_id" in params:
+        sow_input["switchboard_id"] = params["switchboard_id"]
 
     # Call the pure transform (0-DB).
     sow_doc = generate_sow(sow_input, version_number=version_number)

@@ -951,3 +951,505 @@ async def test_dispatch_penalizes_technician_rework_history() -> None:
     assert ranked[0]["score"] > ranked[1]["score"]
     assert ranked[0]["component_scores"]["history"] > ranked[1]["component_scores"]["history"]
     assert "reworks" in ranked[1]["rationale"]
+
+
+# ============================================================================
+# 10. Regulatory Compliance & Dispatch Gates (Wave E-4: FEK, FSE, DSB, NKOM, ISO)
+# ============================================================================
+
+
+def test_regulatory_cert_rules_metadata() -> None:
+    """Verify REGULATORY_CERT_RULES codifies Norwegian, Maritime and European standards."""
+    from nce.vertical_modules.hr.certs import REGULATORY_CERT_RULES
+
+    assert "FSE_LAVSPENNING" in REGULATORY_CERT_RULES
+    fse_lv = REGULATORY_CERT_RULES["FSE_LAVSPENNING"]
+    assert fse_lv["max_validity_days"] == 365
+    assert "FSE § 7" in fse_lv["standard"]
+    assert fse_lv["requires_first_aid"] is True
+
+    assert "FAGBREV_GR_L" in REGULATORY_CERT_RULES
+    assert "FEK § 6" in REGULATORY_CERT_RULES["FAGBREV_GR_L"]["standard"]
+
+    assert "FEK_INSTALLATOR" in REGULATORY_CERT_RULES
+    assert "FEK § 7" in REGULATORY_CERT_RULES["FEK_INSTALLATOR"]["standard"]
+
+    assert "NKOM_ENA" in REGULATORY_CERT_RULES
+    assert "Ekomforskriften" in REGULATORY_CERT_RULES["NKOM_ENA"]["standard"]
+
+    assert "ATEX_IECEX_COMPEX" in REGULATORY_CERT_RULES
+    assert REGULATORY_CERT_RULES["ATEX_IECEX_COMPEX"]["max_validity_days"] == 1825
+
+    assert "DNV_MARINE_ELECTRICAL" in REGULATORY_CERT_RULES
+    assert "DNV" in REGULATORY_CERT_RULES["DNV_MARINE_ELECTRICAL"]["standard"]
+
+
+def test_technician_compliance_electrical_lv_valid() -> None:
+    """Technician holding valid FSE (<365 days) and Fagbrev Gr. L is compliant."""
+    from datetime import date, timedelta
+
+    from nce.vertical_modules.hr.certs import validate_technician_regulatory_compliance
+
+    ref_date = date(2026, 10, 16)
+    certs = [
+        {
+            "name": "FSE_LAVSPENNING",
+            "issued": ref_date - timedelta(days=90),
+            "valid_to": ref_date + timedelta(days=275),
+        },
+        {"name": "FAGBREV_GR_L", "issued": "2018-06-15"},
+    ]
+    res = validate_technician_regulatory_compliance(certs, "electrical_lv", ref_date=ref_date)
+    assert res["compliant"] is True
+    assert len(res["reasons"]) == 0
+    assert len(res["verified_certs"]) == 2
+
+
+def test_technician_compliance_fse_365_days_expired_under_fse_section_7() -> None:
+    """FSE completed >365 days ago expires under FSE § 7 / EN 50110-1 even with longer nominal validity."""
+    from datetime import date, timedelta
+
+    from nce.vertical_modules.hr.certs import validate_technician_regulatory_compliance
+
+    ref_date = date(2026, 10, 16)
+    certs = [
+        {
+            "name": "FSE_LAVSPENNING",
+            "issued": ref_date - timedelta(days=400),
+            "valid_to": ref_date + timedelta(days=365),  # Nominal future expiry entered in error
+        },
+        {"name": "FAGBREV_GR_L"},
+    ]
+    res = validate_technician_regulatory_compliance(certs, "electrical_lv", ref_date=ref_date)
+    assert res["compliant"] is False
+    assert "FSE_LAVSPENNING" in res["expired_certs"]
+    assert any("FSE § 7" in r and "365 days" in r for r in res["reasons"])
+
+
+def test_technician_compliance_missing_trade_qualification() -> None:
+    """Technician with active FSE but lacking FEK § 6 trade cert is non-compliant."""
+    from datetime import date, timedelta
+
+    from nce.vertical_modules.hr.certs import validate_technician_regulatory_compliance
+
+    ref_date = date(2026, 10, 16)
+    certs = [
+        {"name": "FSE_LAVSPENNING", "issued": ref_date - timedelta(days=30)},
+    ]
+    res = validate_technician_regulatory_compliance(certs, "electrical_lv", ref_date=ref_date)
+    assert res["compliant"] is False
+    assert "FAGBREV_GR_L" in res["missing_certs"]
+    assert any("Missing required certificate" in r for r in res["reasons"])
+
+
+def test_technician_compliance_electrical_hv() -> None:
+    """Scope electrical_hv requires FSE Høyspenning and Fagbrev Gr. H."""
+    from datetime import date, timedelta
+
+    from nce.vertical_modules.hr.certs import validate_technician_regulatory_compliance
+
+    ref_date = date(2026, 10, 16)
+    # Lacks Gr. H (only Gr. L)
+    certs_lv_only = [
+        {"name": "FSE_HOYSPENNING", "issued": ref_date - timedelta(days=30)},
+        {"name": "FAGBREV_GR_L"},
+    ]
+    res_lv = validate_technician_regulatory_compliance(
+        certs_lv_only, "electrical_hv", ref_date=ref_date
+    )
+    assert res_lv["compliant"] is False
+
+    # Proper HV qualifications
+    certs_hv = [
+        {"name": "FSE_HOYSPENNING", "issued": ref_date - timedelta(days=30)},
+        {"name": "FAGBREV_GR_H"},
+    ]
+    res_hv = validate_technician_regulatory_compliance(certs_hv, "electrical_hv", ref_date=ref_date)
+    assert res_hv["compliant"] is True
+
+
+def test_technician_compliance_nkom_atex_and_dnv() -> None:
+    """Validate Ekom, ATEX (1825 day validity), and DNV Maritime scopes."""
+    from datetime import date, timedelta
+
+    from nce.vertical_modules.hr.certs import validate_technician_regulatory_compliance
+
+    ref_date = date(2026, 10, 16)
+
+    # NKOM ENA
+    res_nkom = validate_technician_regulatory_compliance(
+        [{"name": "NKOM_ENA"}], "ekom", ref_date=ref_date
+    )
+    assert res_nkom["compliant"] is True
+
+    # ATEX / CompEx valid within 5 years (1825 days)
+    res_atex_ok = validate_technician_regulatory_compliance(
+        [{"name": "ATEX_IECEX_COMPEX", "issued": ref_date - timedelta(days=1000)}],
+        "atex_ex",
+        ref_date=ref_date,
+    )
+    assert res_atex_ok["compliant"] is True
+
+    # ATEX / CompEx expired beyond 5 years
+    res_atex_exp = validate_technician_regulatory_compliance(
+        [{"name": "ATEX_IECEX_COMPEX", "issued": ref_date - timedelta(days=1900)}],
+        "atex_ex",
+        ref_date=ref_date,
+    )
+    assert res_atex_exp["compliant"] is False
+    assert "ATEX_IECEX_COMPEX" in res_atex_exp["expired_certs"]
+
+    # DNV Marine Electrical
+    res_dnv = validate_technician_regulatory_compliance(
+        [{"name": "DNV_MARINE_ELECTRICAL"}],
+        "dnv_marine",
+        ref_date=ref_date,
+    )
+    assert res_dnv["compliant"] is True
+
+
+def test_contractor_compliance_electrical_dsb_and_fa() -> None:
+    """Contractor must be registered in DSB Elvirksomhetsregisteret and have Faglig Ansvarlig."""
+    from nce.vertical_modules.vendors.certs import validate_contractor_regulatory_compliance
+
+    # Compliant contractor
+    ok_meta = {"dsb_elvirksomhet_registered": True, "faglig_ansvarlig": "Ola Nordmann"}
+    res_ok = validate_contractor_regulatory_compliance(ok_meta, [], "electrical_lv")
+    assert res_ok["compliant"] is True
+
+    # Missing DSB registration
+    no_dsb = {"dsb_elvirksomhet_registered": False, "faglig_ansvarlig": "Ola Nordmann"}
+    res_no_dsb = validate_contractor_regulatory_compliance(no_dsb, [], "electrical_lv")
+    assert res_no_dsb["compliant"] is False
+    assert any("DSB Elvirksomhetsregisteret" in r for r in res_no_dsb["reasons"])
+
+    # Missing Faglig Ansvarlig
+    no_fa = {"dsb_elvirksomhet_registered": True, "faglig_ansvarlig": ""}
+    res_no_fa = validate_contractor_regulatory_compliance(no_fa, [], "electrical_lv")
+    assert res_no_fa["compliant"] is False
+    assert any("Faglig Ansvarlig" in r for r in res_no_fa["reasons"])
+
+
+def test_contractor_compliance_ekom_dnv_and_iso() -> None:
+    """Contractor Ekom, DNV Marine, and ISO 9001/14001/45001 verification."""
+    from datetime import date, timedelta
+
+    from nce.vertical_modules.vendors.certs import validate_contractor_regulatory_compliance
+
+    ref_date = date(2026, 10, 16)
+
+    # Ekom scope with active cert
+    res_ekom = validate_contractor_regulatory_compliance(
+        {},
+        [{"name": "NKOM_ENA", "valid_to": ref_date + timedelta(days=100)}],
+        "ekom",
+        ref_date=ref_date,
+    )
+    assert res_ekom["compliant"] is True
+
+    # DNV scope with DNV Approved Supplier
+    res_dnv = validate_contractor_regulatory_compliance(
+        {"dnv_approved_supplier": True},
+        [],
+        "dnv_marine",
+        ref_date=ref_date,
+    )
+    assert res_dnv["compliant"] is True
+
+    # ISO requirements: all active
+    iso_certs = [
+        {"name": "ISO_9001", "valid_to": ref_date + timedelta(days=200)},
+        {"name": "ISO_14001", "valid_to": ref_date + timedelta(days=200)},
+        {"name": "ISO_45001", "valid_to": ref_date + timedelta(days=200)},
+    ]
+    res_iso_ok = validate_contractor_regulatory_compliance(
+        {"dsb_elvirksomhet_registered": True, "faglig_ansvarlig": "Kari Nordmann"},
+        iso_certs,
+        "electrical_lv",
+        require_iso=["ISO_9001", "ISO_14001", "ISO_45001"],
+        ref_date=ref_date,
+    )
+    assert res_iso_ok["compliant"] is True
+
+    # ISO requirements: missing ISO_45001
+    res_iso_missing = validate_contractor_regulatory_compliance(
+        {"dsb_elvirksomhet_registered": True, "faglig_ansvarlig": "Kari Nordmann"},
+        iso_certs[:2],
+        "electrical_lv",
+        require_iso=["ISO_9001", "ISO_14001", "ISO_45001"],
+        ref_date=ref_date,
+    )
+    assert res_iso_missing["compliant"] is False
+    assert any("ISO_45001" in r for r in res_iso_missing["reasons"])
+
+    # ISO requirements: expired ISO_14001
+    iso_certs_expired = [
+        {"name": "ISO_9001", "valid_to": ref_date + timedelta(days=200)},
+        {"name": "ISO_14001", "valid_to": ref_date - timedelta(days=5)},
+        {"name": "ISO_45001", "valid_to": ref_date + timedelta(days=200)},
+    ]
+    res_iso_exp = validate_contractor_regulatory_compliance(
+        {"dsb_elvirksomhet_registered": True, "faglig_ansvarlig": "Kari Nordmann"},
+        iso_certs_expired,
+        "electrical_lv",
+        require_iso=["ISO_9001", "ISO_14001", "ISO_45001"],
+        ref_date=ref_date,
+    )
+    assert res_iso_exp["compliant"] is False
+    assert any("ISO_14001" in r for r in res_iso_exp["reasons"])
+
+
+@pytest.mark.asyncio
+async def test_dispatch_regulatory_scope_disqualification_and_ranking() -> None:
+    """do_dispatch disqualifies non-compliant candidates and records them in disqualified_candidates."""
+    from datetime import date, timedelta
+
+    conn = AsyncMock()
+    conn.fetchrow.return_value = {
+        "work_order_id": _WO_ID_1,
+        "namespace_id": UUID(_NS_A),
+        "kind": "service",
+        "location_id": "LOC-OSLO",
+        "raw": {"regulatory_scope": "electrical_lv"},
+    }
+    # Load and history queries return empty
+    conn.fetch.side_effect = [[], []]
+    pool = _make_mock_pool(conn)
+
+    today = date.today()
+
+    candidates = [
+        # 1. Compliant Employee
+        {
+            "id": "emp_compliant",
+            "kind": "employee",
+            "name": "Compliant Employee",
+            "certs": [
+                {"name": "FSE_LAVSPENNING", "issued": today - timedelta(days=60)},
+                {"name": "FAGBREV_GR_L"},
+            ],
+            "skills": ["electrical"],
+            "location_id": "LOC-OSLO",
+        },
+        # 2. Expired FSE Employee (>365 days under FSE § 7)
+        {
+            "id": "emp_expired_fse",
+            "kind": "employee",
+            "name": "Expired FSE Employee",
+            "certs": [
+                {"name": "FSE_LAVSPENNING", "issued": today - timedelta(days=400)},
+                {"name": "FAGBREV_GR_L"},
+            ],
+            "skills": ["electrical"],
+            "location_id": "LOC-OSLO",
+        },
+        # 3. Contractor with missing DSB Elvirksomhetsregisteret
+        {
+            "id": "cont_unregistered",
+            "kind": "contractor",
+            "name": "Unregistered Contractor",
+            "certs": [
+                {"name": "FSE_LAVSPENNING", "issued": today - timedelta(days=30)},
+                {"name": "FAGBREV_GR_L"},
+            ],
+            "contractor_meta": {
+                "dsb_elvirksomhet_registered": False,
+                "faglig_ansvarlig": "Ola",
+            },
+            "skills": ["electrical"],
+            "location_id": "LOC-OSLO",
+        },
+        # 4. Compliant Contractor
+        {
+            "id": "cont_compliant",
+            "kind": "contractor",
+            "name": "Compliant Contractor",
+            "certs": [
+                {"name": "FSE_LAVSPENNING", "issued": today - timedelta(days=30)},
+                {"name": "FAGBREV_GR_L"},
+            ],
+            "contractor_meta": {
+                "dsb_elvirksomhet_registered": True,
+                "faglig_ansvarlig": "Per Hansen",
+            },
+            "skills": ["electrical"],
+            "location_id": "LOC-OSLO",
+        },
+    ]
+
+    res = await do_dispatch(
+        pool,
+        {
+            "namespace_id": _NS_A,
+            "work_order_id": _WO_ID_1,
+            "candidates": candidates,
+        },
+    )
+
+    ranked_ids = [c["id"] for c in res["ranked_candidates"]]
+    assert "emp_compliant" in ranked_ids
+    assert "cont_compliant" in ranked_ids
+    assert "emp_expired_fse" not in ranked_ids
+    assert "cont_unregistered" not in ranked_ids
+
+    assert "disqualified_candidates" in res
+    disq_map = {d["id"]: d["reasons"] for d in res["disqualified_candidates"]}
+    assert "emp_expired_fse" in disq_map
+    assert any("FSE § 7" in r or "365 days" in r for r in disq_map["emp_expired_fse"])
+
+    assert "cont_unregistered" in disq_map
+    assert any("DSB Elvirksomhetsregisteret" in r for r in disq_map["cont_unregistered"])
+
+
+@pytest.mark.asyncio
+async def test_dispatch_all_disqualified_returns_empty_ranked() -> None:
+    """When no candidates satisfy regulatory scope, ranked_candidates is empty and top_recommendation is None."""
+    conn = AsyncMock()
+    conn.fetchrow.return_value = {
+        "work_order_id": _WO_ID_1,
+        "namespace_id": UUID(_NS_A),
+        "kind": "service",
+        "location_id": "LOC-OSLO",
+        "raw": {},
+    }
+    pool = _make_mock_pool(conn)
+
+    candidates = [
+        {
+            "id": "tech_no_certs",
+            "kind": "employee",
+            "name": "No Certs Tech",
+            "certs": [],
+        },
+    ]
+
+    res = await do_dispatch(
+        pool,
+        {
+            "namespace_id": _NS_A,
+            "work_order_id": _WO_ID_1,
+            "regulatory_scope": "electrical_lv",
+            "candidates": candidates,
+        },
+    )
+
+    assert len(res["ranked_candidates"]) == 0
+    assert res["top_recommendation"] == "None"
+    assert len(res["disqualified_candidates"]) == 1
+    assert res["disqualified_candidates"][0]["id"] == "tech_no_certs"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_without_regulatory_scope_preserves_legacy_ranking() -> None:
+    """When regulatory_scope is omitted, no disqualification occurs and backward-compatible dict is returned."""
+    conn = AsyncMock()
+    conn.fetchrow.return_value = {
+        "work_order_id": _WO_ID_1,
+        "namespace_id": UUID(_NS_A),
+        "kind": "service",
+        "location_id": "LOC-OSLO",
+        "raw": {},
+    }
+    conn.fetch.side_effect = [[], []]
+    pool = _make_mock_pool(conn)
+
+    candidates = [
+        {"id": "tech_plain", "name": "Plain Tech", "skills": []},
+    ]
+
+    res = await do_dispatch(
+        pool,
+        {
+            "namespace_id": _NS_A,
+            "work_order_id": _WO_ID_1,
+            "candidates": candidates,
+        },
+    )
+
+    assert len(res["ranked_candidates"]) == 1
+    assert "disqualified_candidates" not in res
+    assert res["top_recommendation"] == "Plain Tech"
+
+
+@pytest.mark.asyncio
+async def test_resources_planner_do_recommend_resources_regulatory_filtering() -> None:
+    """do_recommend_resources filters out non-compliant resources when regulatory_scope is provided."""
+    from unittest.mock import patch
+    from uuid import uuid4
+
+    from nce.vertical_modules.resources.planner import do_recommend_resources
+
+    res_compliant_id = uuid4()
+    res_non_compliant_id = uuid4()
+    ns_id = uuid4()
+
+    mock_rows = [
+        {
+            "id": res_compliant_id,
+            "kind": "employee",
+            "ref_id": "TECH-01",
+            "display_name": "Compliant Electrical Tech",
+            "attrs": {
+                "skills": ["electrical"],
+                "certs": [
+                    {"name": "FSE_LAVSPENNING", "issued": "2026-05-01"},
+                    {"name": "FAGBREV_GR_L"},
+                ],
+                "base_location": "Oslo",
+            },
+        },
+        {
+            "id": res_non_compliant_id,
+            "kind": "employee",
+            "ref_id": "TECH-02",
+            "display_name": "Non-compliant Tech",
+            "attrs": {
+                "skills": ["electrical"],
+                "certs": [],
+                "base_location": "Oslo",
+            },
+        },
+    ]
+
+    mock_conn = AsyncMock()
+    mock_conn.fetch.return_value = mock_rows
+    mock_conn.fetchval.return_value = None
+    mock_conn.fetchrow.return_value = {"total_jobs": 0, "avg_rating": None, "avg_quality": None}
+
+    class MockContextManager:
+        async def __aenter__(self):
+            return mock_conn
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+    engine = MagicMock()
+    engine.pg_pool = MagicMock()
+
+    with (
+        patch(
+            "nce.vertical_modules.resources.planner.scoped_pg_session",
+            return_value=MockContextManager(),
+        ),
+        patch(
+            "nce.vertical_modules.resources.planner.require_resources_enabled",
+            return_value=None,
+        ),
+    ):
+        result = await do_recommend_resources(
+            engine,
+            {
+                "namespace_id": str(ns_id),
+                "demand_kind": "service",
+                "required_kinds": ["employee"],
+                "regulatory_scope": "electrical_lv",
+                "starts_at": "2026-10-25T08:00:00Z",
+                "ends_at": "2026-10-25T16:00:00Z",
+                "auto_reserve": False,
+            },
+        )
+
+        assert result["status"] == "suggested"
+        assert len(result["plan"]) == 1
+        winner = result["plan"][0]
+        assert winner["resource_id"] == str(res_compliant_id)
