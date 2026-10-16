@@ -215,3 +215,99 @@ def test_embed_abstraction_validation_guards():
         assert await w_ok._embed_abstraction("text") == "[1.0,0.25,-0.5]"
 
     asyncio.run(_run())
+
+
+def test_consolidation_embed_provider_fallback(monkeypatch: pytest.MonkeyPatch):
+    """When LLM provider lacks embed(), ConsolidationWorker falls back to _embed_provider."""
+    ns = uuid4()
+    mid_a, mid_b = uuid4(), uuid4()
+    rows = [
+        {"id": mid_a, "payload_ref": "ref-a", "embedding": json.dumps([0.1, 0.2, 0.3])},
+        {"id": mid_b, "payload_ref": "ref-b", "embedding": json.dumps([0.1, 0.2, 0.3])},
+    ]
+    _patch_clustering_and_events(monkeypatch, rows)
+
+    conn = _FakeConn(namespace_id=ns, memory_rows=rows)
+    # LLM provider has NO embed method
+    provider = _StubProvider(_sample_abstraction([mid_a, mid_b]), embed_fn=None)
+    mock_embed_provider = MagicMock()
+    mock_embed_provider.embed = AsyncMock(return_value=[0.4, 0.5, 0.6])
+
+    async def _run() -> None:
+        worker = ConsolidationWorker(
+            _FakePool(conn),
+            provider,
+            embed_provider=mock_embed_provider,
+        )
+        await worker.run_consolidation(ns)
+
+    asyncio.run(_run())
+
+    mock_embed_provider.embed.assert_awaited_once_with("Synthesized semantic fact.")
+    assert len(conn.memory_inserts) == 1
+    query, args = conn.memory_inserts[0]
+    assert "$5::vector" in query
+    assert len(args) == 5
+    assert args[4] == "[0.4,0.5,0.6]"
+
+
+def test_consolidation_queries_with_order_by_created_at_desc(monkeypatch: pytest.MonkeyPatch):
+    """Consolidation selects episodic memories ordered by created_at DESC to prioritize newest."""
+    ns = uuid4()
+    rows: list[dict[str, Any]] = []
+
+    fetched_queries: list[str] = []
+
+    class _CaptureConn(_FakeConn):
+        async def fetch(self, query: str, *args: Any) -> list:
+            fetched_queries.append(query)
+            return await super().fetch(query, *args)
+
+    conn = _CaptureConn(namespace_id=ns, memory_rows=rows)
+    provider = _StubProvider(_sample_abstraction([]), embed_fn=None)
+
+    async def _run() -> None:
+        worker = ConsolidationWorker(_FakePool(conn), provider)
+        await worker.run_consolidation(ns)
+
+    asyncio.run(_run())
+
+    assert any("ORDER BY created_at DESC" in q for q in fetched_queries)
+
+
+def test_consolidation_records_pending_contradictions():
+    """Contradicting memory IDs are preserved on worker._pending_contradictions instead of being dropped."""
+    ns = uuid4()
+    mid_a = uuid4()
+    mid_b = uuid4()
+    contradicting_abs = ConsolidatedAbstraction(
+        abstraction="Contradicting statement.",
+        key_entities=["A"],
+        key_relations=[],
+        supporting_memory_ids=[str(mid_a)],
+        contradicting_memory_ids=[str(mid_b)],
+        confidence=0.8,
+    )
+
+    provider = _StubProvider(contradicting_abs)
+    worker = ConsolidationWorker(MagicMock(), provider)
+
+    cluster_mems = [
+        {"id": mid_a, "payload_ref": "ref-a"},
+        {"id": mid_b, "payload_ref": "ref-b"},
+    ]
+
+    async def _run() -> None:
+        res = await worker._call_consolidation_llm(
+            cluster_mems=cluster_mems,
+            mem_ids=[str(mid_a), str(mid_b)],
+            label=0,
+            namespace_id=ns,
+        )
+        assert res is None  # routed away from direct consolidation
+        assert len(worker._pending_contradictions) == 1
+        entry = worker._pending_contradictions[0]
+        assert entry["contradicting_memory_ids"] == [str(mid_b)]
+        assert entry["cluster_label"] == 0
+
+    asyncio.run(_run())

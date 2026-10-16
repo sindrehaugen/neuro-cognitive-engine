@@ -191,7 +191,7 @@ async def do_plan_allocation(engine: Any, params: dict[str, Any]) -> dict[str, A
                            AVG(COALESCE((tlx_scores->>'quality_score')::numeric, 1.0)) AS avg_quality
                     FROM v3_cognitive_ledger
                     WHERE namespace_id = $1
-                      AND tlx_scores->>'resource_id' = $2
+                      AND COALESCE(tlx_scores->>'resource_id', tlx_scores->>'completed_by') = $2
                     """,
                     ns_id,
                     cand_id,

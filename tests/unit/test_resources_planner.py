@@ -40,14 +40,20 @@ def mock_engine(monkeypatch):
                 return {"owner_engine": "resources"}
             return None
 
-        if "from v3_cognitive_ledger" in q and "tlx_scores->>'resource_id' = $2" in q:
+        if "from v3_cognitive_ledger" in q and (
+            "tlx_scores->>'resource_id' = $2" in q
+            or "coalesce(tlx_scores->>'resource_id', tlx_scores->>'completed_by') = $2" in q
+        ):
             ns_id = str(args[0])
             res_id = str(args[1])
             matches = [
                 row
                 for row in engine.ledger
                 if str(row["namespace_id"]) == ns_id
-                and row["tlx_scores"].get("resource_id") == res_id
+                and (
+                    row["tlx_scores"].get("resource_id") == res_id
+                    or row["tlx_scores"].get("completed_by") == res_id
+                )
             ]
             if not matches:
                 return {"total_jobs": 0, "avg_rating": None, "avg_quality": None}
@@ -357,3 +363,60 @@ async def test_plan_allocation_tiered_autonomy(mock_engine):
     assert over_res["autonomous"] is False
     assert over_res["requires_approval"] is True
     assert "exceeds autonomy ceiling" in over_res["rationale"]
+
+
+@pytest.mark.asyncio
+async def test_plan_allocation_recalls_completed_by_field_tech_outcomes(mock_engine) -> None:
+    """Verify that field-tech outcomes recorded under completed_by are visible to the planner."""
+    ns_id = uuid4()
+
+    # Create technician resource as employee
+    res = await do_create_resource(
+        mock_engine,
+        {
+            "namespace_id": ns_id,
+            "kind": "employee",
+            "ref_id": "TECH-FIELD-01",
+            "display_name": "Field Technician Alice",
+            "attrs": {"skills": ["cctv", "audio"], "base_location": "Oslo"},
+        },
+    )
+    tech_id = res["id"]
+
+    # Record historical outcome in cognitive ledger using completed_by
+    mock_engine.ledger.append(
+        {
+            "id": uuid4(),
+            "namespace_id": str(ns_id),
+            "tlx_scores": {
+                "completed_by": str(tech_id),
+                "rating": 5.0,
+                "quality_score": 0.95,
+                "event_type": "field_tech_outcome",
+            },
+            "model_version": "v3",
+            "created_at": datetime.now(timezone.utc),
+        }
+    )
+
+    plan = await do_plan_allocation(
+        mock_engine,
+        {
+            "namespace_id": ns_id,
+            "demand_kind": "service_ticket",
+            "required_kinds": ["employee"],
+            "required_skills": ["cctv"],
+            "starts_at": "2026-09-20T09:00:00Z",
+            "ends_at": "2026-09-20T17:00:00Z",
+            "location": "Oslo",
+            "auto_reserve": False,
+        },
+    )
+
+    assert plan["status"] == "suggested"
+    assert len(plan["plan"]) >= 1
+    top = plan["plan"][0]
+    assert top["resource_id"] == tech_id
+    assert top["cognitive_recall"]["historical_jobs"] == 1
+    assert top["cognitive_recall"]["avg_rating"] == 5.0
+    assert top["cognitive_recall"]["avg_quality"] == 0.95

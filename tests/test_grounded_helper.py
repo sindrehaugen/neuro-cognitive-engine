@@ -200,3 +200,57 @@ async def test_ground_cross_namespace_node_not_visible(pg_pool, make_namespace) 
         assert result["prose"] == ""
     finally:
         await _delete_kg_node(pg_pool, node_id)
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for verify_entailment
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ground_verify_entailment_scores_claims() -> None:
+    """When verify_entailment=True, ground scores claims with check_nli_relevance and attaches score."""
+    from unittest.mock import AsyncMock, patch
+
+    mock_conn = AsyncMock()
+    node_id = uuid4()
+    mock_conn.fetchrow.return_value = {"id": node_id, "label": "Switch has 48 ports"}
+
+    with patch(
+        "nce.semantic_search.check_nli_relevance",
+        new=AsyncMock(return_value=0.92),
+    ) as mock_nli:
+        result = await ground(
+            mock_conn,
+            namespace_id=uuid4(),
+            claims=[{"node_id": str(node_id), "claim_text": "Device has 48 ports"}],
+            template="Facts: {facts}",
+            verify_entailment=True,
+        )
+
+        assert "entailment_score" in result
+        assert result["entailment_score"] == 0.92
+        assert len(result["citations"]) == 1
+        assert result["citations"][0]["entailment_score"] == 0.92
+        mock_nli.assert_called_once_with("Switch has 48 ports", "Device has 48 ports")
+
+
+@pytest.mark.asyncio
+async def test_ground_verify_entailment_all_dropped() -> None:
+    """When verify_entailment=True and all claims dropped, entailment_score is 0.0."""
+    from unittest.mock import AsyncMock
+
+    mock_conn = AsyncMock()
+    mock_conn.fetchrow.return_value = None
+
+    result = await ground(
+        mock_conn,
+        namespace_id=uuid4(),
+        claims=[{"node_id": str(uuid4())}],
+        template="Facts: {facts}",
+        verify_entailment=True,
+    )
+
+    assert result["entailment_score"] == 0.0
+    assert result["citations"] == []
+    assert len(result["dropped"]) == 1

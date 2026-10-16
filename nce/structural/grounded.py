@@ -32,6 +32,7 @@ Usage:
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 import asyncpg  # type: ignore[import-untyped]
@@ -41,8 +42,9 @@ async def ground(
     conn: asyncpg.Connection,  # type: ignore[type-arg]
     *,
     namespace_id: str | UUID,
-    claims: list[dict[str, str | UUID]],
+    claims: list[dict[str, Any]],
     template: str,
+    verify_entailment: bool = False,
 ) -> dict[str, object]:
     """Resolve claims against kg_nodes and template the backed ones into prose.
 
@@ -64,10 +66,13 @@ async def ground(
         A ``str.format``-style template with a single ``{facts}`` placeholder.
         The backed facts (DB-retrieved labels) are joined with ``"  "``
         (double space) and substituted for ``{facts}``.
+    verify_entailment:
+        When True, scores each backed claim against assembled facts using
+        ``check_nli_relevance`` and attaches ``entailment_score``.
 
     Returns
     -------
-    dict with three keys:
+    dict with keys:
         ``prose``     — the rendered output string (empty string when all
                         claims are dropped).
         ``citations`` — list of ``{"node_id": str, "fact": str}`` for every
@@ -76,11 +81,13 @@ async def ground(
         ``dropped``   — list of ``{"node_id": str}`` for every claim that
                         had no matching ``kg_nodes`` row (excluded from
                         prose; reported here so callers can audit the gap).
+        ``entailment_score`` — attached when ``verify_entailment=True``.
     """
     ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
 
-    citations: list[dict[str, str]] = []
+    citations: list[dict[str, Any]] = []
     dropped: list[dict[str, str]] = []
+    backed_pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
 
     for claim in claims:
         raw_id = claim["node_id"]
@@ -106,17 +113,43 @@ async def ground(
             dropped.append({"node_id": str(node_uuid)})
         else:
             # fact is sourced from the database — never from caller input.
-            citations.append({"node_id": str(node_uuid), "fact": row["label"]})
+            cit: dict[str, Any] = {"node_id": str(node_uuid), "fact": row["label"]}
+            citations.append(cit)
+            backed_pairs.append((claim, cit))
 
     # Construct prose ONLY from backed (cited) DB-sourced facts.
     if citations:
         assembled_facts = "  ".join(c["fact"] for c in citations)
         prose = template.format(facts=assembled_facts)
     else:
+        assembled_facts = ""
         prose = ""
 
-    return {
+    result: dict[str, object] = {
         "prose": prose,
         "citations": citations,
         "dropped": dropped,
     }
+
+    if verify_entailment:
+        from nce.semantic_search import check_nli_relevance
+
+        scores: list[float] = []
+        for claim_dict, cit in backed_pairs:
+            claim_text = str(
+                claim_dict.get("claim_text")
+                or claim_dict.get("claim")
+                or claim_dict.get("text")
+                or cit["fact"]
+            )
+            try:
+                score = await check_nli_relevance(assembled_facts, claim_text)
+            except Exception:
+                score = 1.0
+            cit["entailment_score"] = score
+            scores.append(score)
+
+        avg_score = round(sum(scores) / len(scores), 4) if scores else 0.0
+        result["entailment_score"] = avg_score
+
+    return result

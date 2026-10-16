@@ -357,3 +357,66 @@ async def test_gate_field_tech_writes_decision_feedback() -> None:
     assert args[2] == "field_tech"
     assert args[3] == "WO-100"
     assert args[5] == "succeeded"
+
+
+# ============================================================================
+# 4. Synaptic Weight Adaptation Integration
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_record_decision_feedback_triggers_adapt_synaptic_weights() -> None:
+    """When proposal contains reinforced_edges, adapt_synaptic_weights is invoked."""
+    from unittest.mock import patch
+
+    conn = AsyncMock()
+    row_id = uuid4()
+    conn.fetchrow.return_value = {"id": row_id, "created_at": "2026-09-06T12:00:00Z"}
+    pool = _make_mock_pool(conn)
+
+    with patch(
+        "nce.graph_query.adapt_synaptic_weights", new=AsyncMock(return_value=2)
+    ) as mock_adapt:
+        edges = [("router-1", "connects_to", "switch-2")]
+        res = await record_decision_feedback(
+            pool,
+            _NS_ID,
+            engine="network",
+            proposal={"route": "primary", "reinforced_edges": edges},
+            decision="accept",
+            actor="netops",
+        )
+
+        assert res["status"] == "recorded"
+        mock_adapt.assert_called_once()
+        adapt_call = mock_adapt.call_args
+        assert adapt_call[1]["namespace_id"] == _NS_UUID
+        assert adapt_call[1]["decision_outcome"] == "success"
+        assert adapt_call[1]["reinforced_edges"] == edges
+
+
+@pytest.mark.asyncio
+async def test_record_decision_feedback_synaptic_failure_is_non_fatal() -> None:
+    """If adapt_synaptic_weights raises, decision_feedback row is still successfully recorded."""
+    from unittest.mock import patch
+
+    conn = AsyncMock()
+    row_id = uuid4()
+    conn.fetchrow.return_value = {"id": row_id, "created_at": "2026-09-06T12:00:00Z"}
+    pool = _make_mock_pool(conn)
+
+    with patch(
+        "nce.graph_query.adapt_synaptic_weights",
+        side_effect=RuntimeError("Graph lock contention"),
+    ):
+        res = await record_decision_feedback(
+            pool,
+            _NS_ID,
+            engine="network",
+            proposal={"reinforced_edges": [("a", "b")]},
+            decision="override",
+            actor="netops",
+        )
+
+        assert res["status"] == "recorded"
+        assert res["id"] == str(row_id)

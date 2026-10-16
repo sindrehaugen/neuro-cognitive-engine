@@ -20,6 +20,8 @@ import logging
 import re
 from typing import Any
 
+import asyncpg  # type: ignore[import-untyped]
+
 from nce.db_utils import scoped_pg_session
 from nce.vertical_modules.support.tickets import (
     TicketNotFoundError,
@@ -66,6 +68,18 @@ def _calculate_similarity(query_tokens: set[str], candidate_tokens: set[str]) ->
     if not intersection:
         return 0.0
     return len(intersection) / len(query_tokens.union(candidate_tokens))
+
+
+def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
+    """Calculate cosine similarity between two numerical vectors (I-VERT-06c)."""
+    if not vec_a or not vec_b or len(vec_a) != len(vec_b):
+        return 0.0
+    dot = sum(a * b for a, b in zip(vec_a, vec_b))
+    norm_a = sum(a * a for a in vec_a) ** 0.5
+    norm_b = sum(b * b for b in vec_b) ** 0.5
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return max(0.0, min(1.0, dot / (norm_a * norm_b)))
 
 
 async def do_troubleshoot(
@@ -125,6 +139,50 @@ async def do_troubleshoot(
         query_tokens = _tokenize(symptom_text)
         target_asset_str = str(target_asset_id).lower() if target_asset_id else None
 
+        query_embedding = params.get("query_embedding")
+        raw_vector_matches = params.get("vector_matches") or params.get("memories_matches") or {}
+        vector_sim_map: dict[str, float] = {}
+        if isinstance(raw_vector_matches, dict):
+            for k, v in raw_vector_matches.items():
+                try:
+                    vector_sim_map[str(k).lower()] = float(v)
+                except (ValueError, TypeError):
+                    pass
+
+        semantic_weight = float(params.get("semantic_weight", 0.5))
+
+        # 2b. Optional pgvector search over memories if query_embedding provided and vector_sim_map empty
+        if (
+            query_embedding
+            and not vector_sim_map
+            and isinstance(query_embedding, (list, tuple))
+            and isinstance(conn, asyncpg.Connection)
+        ):
+            try:
+                async with conn.transaction():
+                    mem_rows = await conn.fetch(
+                        """
+                        SELECT id, name, payload_ref, (1 - (embedding <=> $1::halfvec)) AS similarity
+                        FROM memories
+                        WHERE namespace_id = $2::uuid
+                          AND embedding IS NOT NULL
+                          AND valid_to IS NULL
+                        ORDER BY embedding <=> $1::halfvec ASC
+                        LIMIT 20
+                        """,
+                        json.dumps(list(query_embedding)),
+                        ns_uuid,
+                    )
+                    for mr in mem_rows:
+                        sim_val = mr["similarity"]
+                        if sim_val is not None:
+                            for key_col in ("id", "name", "payload_ref"):
+                                val = mr[key_col]
+                                if val:
+                                    vector_sim_map[str(val).lower()] = float(sim_val)
+            except Exception as exc:
+                log.debug("Memories vector search skipped or failed: %s", exc)
+
         # 2. Query structured resolutions from v3_cognitive_ledger
         # Strict namespace_id predicate enforcement per Charter §5.5
         rows = await conn.fetch(
@@ -154,6 +212,39 @@ async def do_troubleshoot(
             cand_tokens = _tokenize(f"{summary} {res_text}")
             token_sim = _calculate_similarity(query_tokens, cand_tokens)
 
+            # Semantic similarity resolution (I-VERT-06c)
+            semantic_sim: float | None = None
+            cand_ticket_id = str(payload.get("ticket_id") or "").lower()
+            cand_ledger_id = str(r["id"]).lower() if "id" in r else ""
+
+            if cand_ticket_id and cand_ticket_id in vector_sim_map:
+                semantic_sim = vector_sim_map[cand_ticket_id]
+            elif cand_ledger_id and cand_ledger_id in vector_sim_map:
+                semantic_sim = vector_sim_map[cand_ledger_id]
+            elif query_embedding and isinstance(query_embedding, (list, tuple)):
+                cand_emb = payload.get("embedding") or payload.get("vector")
+                if not cand_emb and hasattr(r, "__getitem__") and "embedding" in r:
+                    cand_emb = r["embedding"]
+                if cand_emb and isinstance(cand_emb, (list, tuple)):
+                    try:
+                        emb_floats = [float(x) for x in cand_emb]
+                        q_floats = [float(x) for x in query_embedding]
+                        semantic_sim = _cosine_similarity(q_floats, emb_floats)
+                    except (ValueError, TypeError):
+                        pass
+            elif payload.get("semantic_similarity") is not None:
+                try:
+                    semantic_sim = float(payload["semantic_similarity"])
+                except (ValueError, TypeError):
+                    pass
+
+            if semantic_sim is not None:
+                blended_sim = (1.0 - semantic_weight) * token_sim + semantic_weight * semantic_sim
+                effective_sim = blended_sim
+            else:
+                blended_sim = token_sim
+                effective_sim = token_sim
+
             # Match bonus checks
             asset_match = False
             fixed_asset = str(payload.get("fixed_asset_id") or "").lower()
@@ -161,32 +252,35 @@ async def do_troubleshoot(
                 asset_match = True
 
             # Calculate confidence score
-            if asset_match and token_sim > 0.1:
-                confidence = min(0.60 + (token_sim * 0.40), 0.98)
-            elif token_sim >= 0.20:
-                confidence = min(0.50 + (token_sim * 0.45), 0.92)
-            elif token_sim > 0.05:
-                confidence = min(0.35 + (token_sim * 0.50), 0.85)
+            if asset_match and effective_sim > 0.1:
+                confidence = min(0.60 + (effective_sim * 0.40), 0.98)
+            elif effective_sim >= 0.20:
+                confidence = min(0.50 + (effective_sim * 0.45), 0.92)
+            elif effective_sim > 0.05:
+                confidence = min(0.35 + (effective_sim * 0.50), 0.85)
             elif asset_match:
                 confidence = 0.65
             else:
                 confidence = 0.0
 
             if confidence >= min_confidence:
-                candidates.append(
-                    {
-                        "ledger_id": str(r["id"]),
-                        "ticket_id": payload.get("ticket_id"),
-                        "summary": summary,
-                        "resolution_text": res_text,
-                        "resolution_category": payload.get("resolution_category", "other"),
-                        "fixed_asset_id": payload.get("fixed_asset_id"),
-                        "confidence": round(confidence, 2),
-                        "created_at": r["created_at"].isoformat()
-                        if hasattr(r["created_at"], "isoformat")
-                        else str(r["created_at"]),
-                    }
-                )
+                cand_data = {
+                    "ledger_id": str(r["id"]),
+                    "ticket_id": payload.get("ticket_id"),
+                    "summary": summary,
+                    "resolution_text": res_text,
+                    "resolution_category": payload.get("resolution_category", "other"),
+                    "fixed_asset_id": payload.get("fixed_asset_id"),
+                    "confidence": round(confidence, 2),
+                    "created_at": r["created_at"].isoformat()
+                    if hasattr(r["created_at"], "isoformat")
+                    else str(r["created_at"]),
+                }
+                if semantic_sim is not None:
+                    cand_data["token_similarity"] = round(token_sim, 3)
+                    cand_data["semantic_similarity"] = round(semantic_sim, 3)
+                    cand_data["blended_similarity"] = round(blended_sim, 3)
+                candidates.append(cand_data)
 
         # 3. Sort candidates by confidence
         candidates.sort(key=lambda c: float(c["confidence"]), reverse=True)

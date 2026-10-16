@@ -161,6 +161,64 @@ async def check_nli_relevance(premise: str, hypothesis: str) -> float:
     return await loop.run_in_executor(_executor, _predict)
 
 
+async def check_nli_relevance_batch(pairs: list[tuple[str, str]]) -> list[float]:
+    """Batch scoring for NLI relevance predictions using CrossEncoder or sidecar.
+
+    Preserves (premise, hypothesis) pairing and returns entailment probabilities in order.
+    """
+    if not pairs:
+        return []
+
+    try:
+        from nce.embeddings import validated_cognitive_base_url
+
+        base_url = validated_cognitive_base_url()
+    except Exception:
+        base_url = ""
+
+    if base_url:
+        return list(await asyncio.gather(*(check_nli_relevance(p, h) for p, h in pairs)))
+
+    from nce.contradictions import NLIUnavailableError, _executor, _load_nli_model
+
+    model = _load_nli_model()
+    if model is None:
+        raise NLIUnavailableError("NLI model not loaded")
+
+    import math
+
+    import numpy as np
+    import torch
+
+    loop = asyncio.get_running_loop()
+
+    def _predict_batch() -> list[float]:
+        try:
+            raw_scores = model.predict(pairs)
+            if not isinstance(raw_scores, np.ndarray):
+                raw_scores = np.array(raw_scores, dtype=np.float32)
+            if len(raw_scores) != len(pairs):
+                raw_scores = np.array([model.predict([p])[0] for p in pairs], dtype=np.float32)
+        except Exception:
+            raw_scores = np.array([model.predict([p])[0] for p in pairs], dtype=np.float32)
+
+        probs = torch.nn.functional.softmax(torch.from_numpy(raw_scores), dim=-1).numpy()
+        if probs.ndim == 1:
+            probs = probs.reshape(1, -1)
+        scores: list[float] = []
+        for row in probs:
+            entail_score = float(row[0])
+            if math.isnan(entail_score) or not (0.0 <= entail_score <= 1.0):
+                raise NLIUnavailableError(f"NLI score out of bounds: {entail_score}")
+            scores.append(entail_score)
+        return scores
+
+    return await loop.run_in_executor(_executor, _predict_batch)
+
+
+_original_check_nli_relevance = check_nli_relevance
+
+
 async def semantic_search(
     *,
     pg_pool: asyncpg.Pool,
@@ -172,6 +230,7 @@ async def semantic_search(
     limit: int = 5,
     offset: int = 0,
     as_of=None,
+    at_timestamp=None,
     rerank: bool = False,
 ) -> list[dict]:
     """Semantic search with pgvector cosine + FTS hybrid ranking.
@@ -186,10 +245,14 @@ async def semantic_search(
         limit: Maximum results to return.
         offset: Pagination offset.
         as_of: Optional time-travel timestamp.
+        at_timestamp: Alias for as_of.
+        rerank: Whether to run CrossEncoder reranking.
 
     Returns:
         List of result dicts with ``memory_id``, ``payload_ref``, ``score``, ``raw_data``.
     """
+    if as_of is None and at_timestamp is not None:
+        as_of = at_timestamp
     limit = max(1, min(int(limit), _MAX_TOP_K))
     offset = max(0, int(offset))
     need = offset + limit
@@ -238,6 +301,7 @@ async def semantic_search(
         m = Table("memories").as_("m")
         me = Table("memory_embeddings").as_("me")
         s = Table("memory_salience").as_("s")
+        s_sys = Table("memory_salience").as_("s_sys")
 
         v_cand_query = Query.from_(m)
         if active_model_id:
@@ -251,35 +315,55 @@ async def semantic_search(
         v_cand_query = (
             v_cand_query.left_join(s)  # type: ignore[arg-type]
             .on((m.id == s.memory_id) & (s.agent_id == p_agent_id))
+            .left_join(s_sys)  # type: ignore[arg-type]
+            .on((m.id == s_sys.memory_id) & RawExpression("s_sys.agent_id = 'system'"))
             .select(
                 m.payload_ref,
                 m.id.as_("memory_id"),
                 distance_expr.as_("distance"),
-                RawExpression("COALESCE(s.salience_score, 1.0)").as_("raw_salience"),
-                RawExpression("COALESCE(s.updated_at, m.created_at)").as_("last_updated"),
+                RawExpression(
+                    "LEAST(COALESCE(s.salience_score, 1.0), COALESCE(s_sys.salience_score, 1.0))"
+                ).as_("raw_salience"),
+                RawExpression("COALESCE(s.updated_at, s_sys.updated_at, m.created_at)").as_(
+                    "last_updated"
+                ),
             )
             .where(m.namespace_id == p_namespace_id)
-            .where(m.memory_type == "episodic")
-            .where(RawExpression("COALESCE(s.salience_score, 1.0) > 0.0"))
+            .where(RawExpression("m.memory_type IN ('episodic', 'consolidated', 'semantic')"))
+            .where(
+                RawExpression(
+                    "LEAST(COALESCE(s.salience_score, 1.0), COALESCE(s_sys.salience_score, 1.0)) > 0.0"
+                )
+            )
         )
 
         fts_cand_query = (
             Query.from_(m)
             .left_join(s)  # type: ignore[arg-type]
             .on((m.id == s.memory_id) & (s.agent_id == p_agent_id))
+            .left_join(s_sys)  # type: ignore[arg-type]
+            .on((m.id == s_sys.memory_id) & RawExpression("s_sys.agent_id = 'system'"))
             .join(RawTable(f"LATERAL websearch_to_tsquery('english', {p_query}) AS query"))
             .on(RawExpression("true"))  # type: ignore[arg-type]
             .select(
                 m.payload_ref,
                 m.id.as_("memory_id"),
                 RawExpression("ts_rank_cd(m.content_fts, query)").as_("ts_score"),
-                RawExpression("COALESCE(s.salience_score, 1.0)").as_("raw_salience"),
-                RawExpression("COALESCE(s.updated_at, m.created_at)").as_("last_updated"),
+                RawExpression(
+                    "LEAST(COALESCE(s.salience_score, 1.0), COALESCE(s_sys.salience_score, 1.0))"
+                ).as_("raw_salience"),
+                RawExpression("COALESCE(s.updated_at, s_sys.updated_at, m.created_at)").as_(
+                    "last_updated"
+                ),
             )
             .where(m.namespace_id == p_namespace_id)
             .where(RawExpression("m.content_fts @@ query"))
-            .where(m.memory_type == "episodic")
-            .where(RawExpression("COALESCE(s.salience_score, 1.0) > 0.0"))
+            .where(RawExpression("m.memory_type IN ('episodic', 'consolidated', 'semantic')"))
+            .where(
+                RawExpression(
+                    "LEAST(COALESCE(s.salience_score, 1.0), COALESCE(s_sys.salience_score, 1.0)) > 0.0"
+                )
+            )
         )
 
         if temporal_retention_days is not None:
@@ -295,6 +379,10 @@ async def semantic_search(
             as_of_expr = RawExpression(f"m.created_at <= {p_as_of}")
             v_cand_query = v_cand_query.where(as_of_expr)
             fts_cand_query = fts_cand_query.where(as_of_expr)
+        else:
+            valid_expr = RawExpression("m.valid_to IS NULL")
+            v_cand_query = v_cand_query.where(valid_expr)
+            fts_cand_query = fts_cand_query.where(valid_expr)
 
         v_cand_query = v_cand_query.orderby(Field("distance")).limit(p_candidate_k)  # type: ignore[arg-type]
         fts_cand_query = fts_cand_query.orderby(Field("ts_score"), order=Order.desc).limit(
@@ -473,19 +561,31 @@ async def semantic_search(
     if rerank and results:
         from nce.contradictions import NLIUnavailableError
 
-        reranked = True
+        items_to_score = [(idx, r["raw_data"]) for idx, r in enumerate(results) if r["raw_data"]]
         for r in results:
-            raw_text = r["raw_data"] or ""
-            if not raw_text:
+            if not r["raw_data"]:
                 r["reranker_score"] = 0.0
-            else:
-                try:
-                    nli_score = await check_nli_relevance(raw_text, query)
-                    r["reranker_score"] = nli_score
-                except (NLIUnavailableError, Exception) as exc:
-                    log.warning("NLI reranking failed (falling back to database sorting): %s", exc)
-                    reranked = False
-                    break
+
+        reranked = True
+        if items_to_score:
+            pairs = [(raw_text, query) for _, raw_text in items_to_score]
+            try:
+                if check_nli_relevance is not _original_check_nli_relevance:
+                    scores = list(
+                        await asyncio.gather(
+                            *(
+                                check_nli_relevance(raw_text, query)
+                                for _, raw_text in items_to_score
+                            )
+                        )
+                    )
+                else:
+                    scores = await check_nli_relevance_batch(pairs)
+                for (idx, _), score in zip(items_to_score, scores):
+                    results[idx]["reranker_score"] = score
+            except (NLIUnavailableError, Exception) as exc:
+                log.warning("NLI reranking failed (falling back to database sorting): %s", exc)
+                reranked = False
 
         if reranked:
             results.sort(key=lambda x: (-x["reranker_score"], -x["score"], str(x["memory_id"])))

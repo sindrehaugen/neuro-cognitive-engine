@@ -168,23 +168,65 @@ async def do_ask_business(engine: Any, params: dict[str, Any]) -> dict[str, Any]
                 selected_rows = matched if matched else list(snapshot_rows[:5])
 
                 try:
-                    memory_rows = await conn.fetch(
-                        """
-                        SELECT id, memory_type, created_at
-                        FROM memories
-                        WHERE namespace_id = $1
-                        ORDER BY created_at DESC
-                        LIMIT 5;
-                        """,
-                        ns_uuid,
-                    )
+                    query_embedding = params.get("embedding") or params.get("query_embedding")
+                    if query_embedding is None and question:
+                        try:
+                            from nce.embeddings import embed
+
+                            query_embedding = await embed(question)
+                        except Exception:
+                            query_embedding = None
+
+                    if query_embedding is not None:
+                        import json as _json
+
+                        memory_rows = await conn.fetch(
+                            """
+                            SELECT id, memory_type, created_at,
+                                   embedding <=> $2::vector AS distance
+                            FROM memories
+                            WHERE namespace_id = $1
+                            ORDER BY distance ASC
+                            LIMIT 5;
+                            """,
+                            ns_uuid,
+                            _json.dumps(query_embedding),
+                        )
+                    else:
+                        memory_rows = await conn.fetch(
+                            """
+                            SELECT id, memory_type, created_at
+                            FROM memories
+                            WHERE namespace_id = $1
+                            ORDER BY created_at DESC
+                            LIMIT 5;
+                            """,
+                            ns_uuid,
+                        )
                     if memory_rows:
                         cognitive_recall = {
                             "prior_similar_periods": [str(m["id"]) for m in memory_rows],
                             "context_note": f"Recalled {len(memory_rows)} historical episodic memories for namespace {namespace_id}.",
                         }
                 except Exception as exc:
-                    log.debug("No memories fetched or table unavailable: %s", exc)
+                    try:
+                        memory_rows = await conn.fetch(
+                            """
+                            SELECT id, memory_type, created_at
+                            FROM memories
+                            WHERE namespace_id = $1
+                            ORDER BY created_at DESC
+                            LIMIT 5;
+                            """,
+                            ns_uuid,
+                        )
+                        if memory_rows:
+                            cognitive_recall = {
+                                "prior_similar_periods": [str(m["id"]) for m in memory_rows],
+                                "context_note": f"Recalled {len(memory_rows)} historical episodic memories for namespace {namespace_id}.",
+                            }
+                    except Exception:
+                        log.debug("No memories fetched or table unavailable: %s", exc)
         except Exception as exc:
             log.warning("Database connection error in do_ask_business: %s", exc)
 

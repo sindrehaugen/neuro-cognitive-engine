@@ -295,3 +295,80 @@ async def test_resolve_never_writes_to_entity_merge_queue(
         f"resolve() must never write to entity_merge_queue; "
         f"count changed from {count_before} to {count_after}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for key filtering and filter_rejected_merges
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_resolve_skips_non_string_auxiliary_keys() -> None:
+    """resolve() skips empty strings, lists, dicts, and None values without diluting score."""
+    from unittest.mock import AsyncMock
+
+    mock_conn = AsyncMock()
+    mock_conn.fetch.return_value = [{"node_id": uuid4(), "score": 0.95}]
+
+    ns = uuid4()
+    candidate = {
+        "name": "Cisco",
+        "empty_field": "",
+        "tags": ["network", "switch"],
+        "metadata": {"rack": 1},
+        "none_val": None,
+    }
+    keys = ["name", "empty_field", "tags", "metadata", "none_val"]
+
+    results = await resolve(
+        mock_conn,
+        namespace_id=ns,
+        candidate=candidate,
+        keys=keys,
+        node_type="device",
+    )
+
+    assert len(results) == 1
+    assert results[0].score == 0.95
+    assert results[0].matched_on == ["name"]
+
+    # Verify query parameters only contained "cisco"
+    fetch_args = mock_conn.fetch.call_args[0]
+    # fetch_args[0]=query, [1]=ns, [2]=device, [3]="cisco"
+    assert len(fetch_args) == 4
+    assert fetch_args[3] == "cisco"
+
+
+@pytest.mark.asyncio
+async def test_filter_rejected_merges_suppresses_rejected_candidates() -> None:
+    """filter_rejected_merges removes matched nodes whose merges were rejected."""
+    from unittest.mock import AsyncMock
+
+    from nce.entity_resolution.resolver import filter_rejected_merges
+
+    node1 = uuid4()
+    node2 = uuid4()
+    node3 = uuid4()
+
+    matches = [
+        Match(node_id=node1, score=0.9, matched_on=["name"]),
+        Match(node_id=node2, score=0.8, matched_on=["name"]),
+        Match(node_id=node3, score=0.7, matched_on=["name"]),
+    ]
+
+    mock_conn = AsyncMock()
+    # node2 was rejected
+    mock_conn.fetch.return_value = [{"target_node_id": str(node2)}]
+
+    filtered = await filter_rejected_merges(
+        mock_conn,
+        namespace_id=uuid4(),
+        candidate_id="cand-123",
+        matches=matches,
+    )
+
+    assert len(filtered) == 2
+    filtered_ids = {m.node_id for m in filtered}
+    assert node1 in filtered_ids
+    assert node3 in filtered_ids
+    assert node2 not in filtered_ids

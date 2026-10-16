@@ -96,7 +96,17 @@ async def record_decision_feedback(
     proposal_json = json.dumps(proposal or {})
     delta_json = json.dumps(delta or {})
 
-    async with scoped_pg_session(pool, ns_uuid) as conn:
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _resolve_conn(p_or_c: Any, ns: UUID):
+        if hasattr(p_or_c, "acquire"):
+            async with scoped_pg_session(p_or_c, ns) as c:
+                yield c
+        else:
+            yield p_or_c
+
+    async with _resolve_conn(pool, ns_uuid) as conn:
         row = await conn.fetchrow(
             """
             INSERT INTO decision_feedback (
@@ -114,6 +124,35 @@ async def record_decision_feedback(
             delta_json,
             str(actor or "human").strip(),
         )
+
+        if isinstance(proposal, dict) and "reinforced_edges" in proposal:
+            reinforced = proposal.get("reinforced_edges")
+            if isinstance(reinforced, list) and reinforced:
+                try:
+                    from nce.graph_query import adapt_synaptic_weights
+
+                    pos_decisions = {
+                        "accept",
+                        "accepted",
+                        "held",
+                        "succeeded",
+                        "confirm",
+                        "confirmed",
+                        "approved",
+                    }
+                    outcome = "success" if decision.strip().lower() in pos_decisions else "failure"
+                    await adapt_synaptic_weights(
+                        conn,
+                        namespace_id=ns_uuid,
+                        decision_outcome=outcome,
+                        reinforced_edges=reinforced,
+                    )
+                except Exception:
+                    log.warning(
+                        "adapt_synaptic_weights failed for decision_feedback context=%s",
+                        context_id,
+                        exc_info=True,
+                    )
 
     feedback_id = None
     created_at = None

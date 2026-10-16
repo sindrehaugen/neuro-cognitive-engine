@@ -71,22 +71,100 @@ async def do_resolve_capacity(engine: Any, params: dict[str, Any]) -> dict[str, 
 
     total_resources = len(rows)
     available_resources: list[dict[str, Any]] = []
+    utilized_resources: list[dict[str, Any]] = []
+    total_util_pct = 0.0
+
+    alloc_map: dict[str, int] = {}
+    try:
+        async with scoped_pg_session(pool, ns_id) as conn:
+            alloc_rows = await conn.fetch(
+                """
+                SELECT resource_id, COUNT(*) AS alloc_count
+                FROM allocations
+                WHERE namespace_id = $1
+                  AND status <> 'released'
+                  AND tstzrange(starts_at, ends_at) && tstzrange($2::timestamptz, $3::timestamptz)
+                GROUP BY resource_id
+                """,
+                ns_id,
+                window.get("starts_at"),
+                window.get("ends_at"),
+            )
+            for ar in alloc_rows:
+                alloc_map[str(ar["resource_id"])] = int(ar["alloc_count"])
+    except Exception:
+        pass
 
     for r in rows:
-        available_resources.append(
-            {
-                "id": str(r["id"]),
-                "kind": r["kind"],
-                "ref_id": r["ref_id"],
-                "display_name": r["display_name"],
-                "status": "available",
-            }
+        rid = str(r["id"])
+        raw_attrs = (
+            r["attrs"]
+            if isinstance(r, dict) or hasattr(r, "__getitem__")
+            else getattr(r, "attrs", None)
         )
+        if isinstance(raw_attrs, str):
+            try:
+                import json
+
+                attrs = json.loads(raw_attrs)
+            except Exception:
+                attrs = {}
+        elif isinstance(raw_attrs, dict):
+            attrs = raw_attrs
+        else:
+            attrs = {}
+
+        u_pct = 0.0
+        if "utilization_pct" in attrs:
+            try:
+                u_pct = float(attrs["utilization_pct"])
+            except (ValueError, TypeError):
+                u_pct = 0.0
+        elif "allocated_hours" in attrs and "capacity_hours" in attrs:
+            try:
+                cap = float(attrs["capacity_hours"])
+                alloc = float(attrs["allocated_hours"])
+                if cap > 0:
+                    u_pct = round((alloc / cap) * 100.0, 2)
+            except (ValueError, TypeError):
+                u_pct = 0.0
+        elif alloc_map.get(rid, 0) > 0:
+            u_pct = 100.0
+
+        u_pct = max(0.0, min(100.0, u_pct))
+        total_util_pct += u_pct
+
+        res_info = {
+            "id": rid,
+            "kind": r["kind"],
+            "ref_id": r["ref_id"],
+            "display_name": r["display_name"],
+            "status": "available" if u_pct < 100.0 else "fully_utilized",
+            "utilization_pct": u_pct,
+        }
+
+        if u_pct > 0.0:
+            utilized_resources.append(res_info)
+        if u_pct < 100.0:
+            available_resources.append(
+                {
+                    "id": rid,
+                    "kind": r["kind"],
+                    "ref_id": r["ref_id"],
+                    "display_name": r["display_name"],
+                    "status": "available",
+                }
+            )
+
+    avg_utilization_pct = round(total_util_pct / total_resources, 2) if total_resources > 0 else 0.0
 
     return {
         "window": window,
         "total_resources": total_resources,
         "available_resources": available_resources,
-        "utilized_resources": [],
-        "utilization_pct": 0.0,
+        "utilized_resources": utilized_resources,
+        "utilization_pct": avg_utilization_pct,
     }
+
+
+do_check_capacity = do_resolve_capacity

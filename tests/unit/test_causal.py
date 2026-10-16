@@ -495,6 +495,10 @@ class TestEdgeDecay:
         result = edge.decayed_confidence(_now=NOW)
         assert 0.0 < result < 0.9
 
+    def test_custom_decay_coefficient_applied(self):
+        edge = CausalEdge("A", "B", "connected_to", 0.9, 0.05, NOW - timedelta(days=10))
+        assert edge.decayed_confidence(_now=NOW) == pytest.approx(0.9 * math.exp(-0.5), rel=1e-3)
+
 
 # ---------------------------------------------------------------------------
 # 8. Probability math helpers

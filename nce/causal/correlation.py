@@ -163,7 +163,10 @@ class CausalEdge:
             else self.last_verified.replace(tzinfo=timezone.utc)
         )
         elapsed_days = (now - lv).total_seconds() / 86_400.0
-        decay = math.exp(-elapsed_days / _TOPOLOGY_EDGE_STABILITY_DAYS)
+        if self.decay_coefficient > 0 and self.decay_coefficient != 0.001:
+            decay = math.exp(-self.decay_coefficient * elapsed_days)
+        else:
+            decay = math.exp(-elapsed_days / _TOPOLOGY_EDGE_STABILITY_DAYS)
         raw = self.confidence_score * decay
         return max(_MIN_CONFIDENCE, min(1.0, raw))
 

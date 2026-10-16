@@ -17,11 +17,16 @@ from uuid import UUID
 
 import pytest
 
-from nce.vertical_modules.support.proactive import do_open_proactive_telemetry_ticket
+from nce.vertical_modules.support.proactive import (
+    do_open_proactive_telemetry_ticket,
+    do_proactive_ticket_from_anomaly,
+)
 
 _NAMESPACE_ID = "00000000-0000-4000-8000-000000000001"
 _ASSET_ID = "11111111-1111-4111-8111-111111111111"
 _TICKET_ID = "22222222-2222-4222-8222-222222222222"
+_UPSTREAM_ASSET_ID = "33333333-3333-4333-8333-333333333333"
+_UPSTREAM_TICKET_ID = "44444444-4444-4444-8444-444444444444"
 
 
 @pytest.mark.asyncio
@@ -149,4 +154,94 @@ async def test_proactive_telemetry_ticket_idempotent_replay():
     assert res["idempotent_replay"] is True
     assert res["ticket_id"] == _TICKET_ID
     assert res["edge"] == f"TICKET:{_TICKET_ID} -[about]-> ASSET:{_ASSET_ID}"
+    mock_do_open.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_proactive_ticket_correlated_to_upstream_kg_edges():
+    """Validates that downstream anomaly correlates to existing upstream root-cause ticket."""
+    mock_conn = AsyncMock()
+    # 1. Direct asset has no active ticket
+    # 2. Upstream connected asset in kg_edges has an active ticket
+    upstream_row = {
+        "id": UUID(_UPSTREAM_TICKET_ID),
+        "asset_id": UUID(_UPSTREAM_ASSET_ID),
+        "status": "open",
+        "summary": "Core PoE switch degraded",
+    }
+    mock_conn.fetchrow.side_effect = [None, upstream_row]
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+
+    pool = MagicMock()
+
+    with (
+        patch(
+            "nce.vertical_modules.support.proactive.scoped_pg_session",
+            return_value=mock_session,
+        ),
+        patch(
+            "nce.vertical_modules.support.proactive.do_open_ticket",
+            new_callable=AsyncMock,
+        ) as mock_do_open,
+    ):
+        res = await do_proactive_ticket_from_anomaly(
+            pool,
+            {
+                "namespace_id": _NAMESPACE_ID,
+                "asset_id": _ASSET_ID,
+                "correlate_upstream": True,
+            },
+        )
+
+    assert res["status"] == "correlated_to_upstream"
+    assert res["created"] is False
+    assert res["ticket_id"] == _UPSTREAM_TICKET_ID
+    assert res["root_cause_asset_id"] == _UPSTREAM_ASSET_ID
+    mock_do_open.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_proactive_ticket_correlated_to_upstream_via_param_ids():
+    """Validates upstream correlation when explicit upstream_asset_ids are passed."""
+    mock_conn = AsyncMock()
+    upstream_row = {
+        "id": UUID(_UPSTREAM_TICKET_ID),
+        "asset_id": UUID(_UPSTREAM_ASSET_ID),
+        "status": "in_progress",
+        "summary": "PDU breaker tripped",
+    }
+    mock_conn.fetchrow.side_effect = [None, upstream_row]
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+
+    pool = MagicMock()
+
+    with (
+        patch(
+            "nce.vertical_modules.support.proactive.scoped_pg_session",
+            return_value=mock_session,
+        ),
+        patch(
+            "nce.vertical_modules.support.proactive.do_open_ticket",
+            new_callable=AsyncMock,
+        ) as mock_do_open,
+    ):
+        res = await do_open_proactive_telemetry_ticket(
+            pool,
+            {
+                "namespace_id": _NAMESPACE_ID,
+                "asset_id": _ASSET_ID,
+                "upstream_asset_ids": [_UPSTREAM_ASSET_ID],
+            },
+        )
+
+    assert res["status"] == "correlated_to_upstream"
+    assert res["created"] is False
+    assert res["ticket_id"] == _UPSTREAM_TICKET_ID
+    assert res["root_cause_asset_id"] == _UPSTREAM_ASSET_ID
     mock_do_open.assert_not_called()

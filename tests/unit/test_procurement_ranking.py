@@ -606,3 +606,45 @@ def test_legacy_kickback_proximity_candidate_field_is_still_honoured() -> None:
     assert score_of(legacy_zero) == score_of(new_zero)
     # ...and omitting BOTH gives the neutral 0.5 default, which differs from 0.0
     assert score_of(base) != score_of(new_zero)
+
+
+def test_candidate_with_none_lead_time_days_does_not_crash() -> None:
+    """A candidate with lead_time_days=None must not raise TypeError."""
+    from nce.vertical_modules.procurement.ranking import do_rank_suppliers
+
+    cand = {
+        "supplier_id": "NONE-LEAD",
+        "unit_price": 99.0,
+        "lead_time_days": None,
+        "delivery_reliability": 0.85,
+    }
+    result = do_rank_suppliers(_WEIGHTS_A, {"quantity": 1}, [cand])
+    assert len(result["ranked"]) == 1
+    assert result["ranked"][0]["score_breakdown"]["step2_delivery_reliability"] == 0.85
+
+
+def test_optional_lead_time_weight_promotes_faster_supplier() -> None:
+    """When lead_time weight is configured, faster lead time contributes positively."""
+    from nce.vertical_modules.procurement.ranking import do_rank_suppliers
+
+    weights_with_lead = copy.deepcopy(_WEIGHTS_A)
+    weights_with_lead["SCORING_WEIGHTS"]["lead_time"] = 0.20
+
+    fast = {
+        "supplier_id": "FAST-LEAD",
+        "unit_price": 100.0,
+        "lead_time_days": 2,
+        "delivery_reliability": 0.9,
+    }
+    slow = {
+        "supplier_id": "SLOW-LEAD",
+        "unit_price": 100.0,
+        "lead_time_days": 10,
+        "delivery_reliability": 0.9,
+    }
+
+    result = do_rank_suppliers(weights_with_lead, {"quantity": 5}, [fast, slow])
+    fast_entry = next(e for e in result["ranked"] if e["supplier_id"] == "FAST-LEAD")
+    slow_entry = next(e for e in result["ranked"] if e["supplier_id"] == "SLOW-LEAD")
+
+    assert fast_entry["composite_score"] > slow_entry["composite_score"]

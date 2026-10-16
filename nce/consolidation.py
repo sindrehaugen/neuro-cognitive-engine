@@ -106,10 +106,14 @@ class ConsolidationWorker:
         pool: asyncpg.Pool,
         provider: LLMProvider,
         mongo_client: Any | None = None,
+        embed_provider: Any | None = None,
     ):
         self.pool = pool
         self.provider = provider
+        self._llm = provider
         self.mongo_client = mongo_client
+        self._embed_provider = embed_provider
+        self._pending_contradictions: list[dict[str, Any]] = []
 
     # ------------------------------------------------------------------
     # Private helpers (extracted from run_consolidation per Clean Code)
@@ -241,6 +245,17 @@ class ConsolidationWorker:
                 label,
                 abstraction.contradicting_memory_ids,
             )
+            if not hasattr(self, "_pending_contradictions") or self._pending_contradictions is None:
+                self._pending_contradictions = []
+            self._pending_contradictions.append(
+                {
+                    "cluster_label": label,
+                    "namespace_id": str(namespace_id),
+                    "contradicting_memory_ids": list(abstraction.contradicting_memory_ids),
+                    "supporting_memory_ids": list(abstraction.supporting_memory_ids),
+                    "abstraction": abstraction.abstraction,
+                }
+            )
             return None
 
         return abstraction
@@ -271,18 +286,40 @@ class ConsolidationWorker:
             return str(result.inserted_id)
 
     async def _embed_abstraction(self, text: str) -> str | None:
-        """Embed consolidated abstraction text if provider supports ``embed()``."""
-        embed_fn = getattr(self.provider, "embed", None)
-        if not callable(embed_fn):
-            log.debug(
-                "Provider does not implement embed(); consolidated memory embedding will be NULL"
-            )
-            return None
-        try:
-            vec = await self.provider.embed(text)
-        except Exception as e:
-            log.debug("Failed to embed consolidated abstraction: %s", e)
-            return None
+        """Embed consolidated abstraction text via provider, embed_provider, or embeddings module."""
+        llm = getattr(self, "_llm", self.provider)
+        embed_fn = getattr(llm, "embed", None)
+        vec = None
+
+        if callable(embed_fn):
+            try:
+                vec = await embed_fn(text)
+            except Exception as e:
+                log.debug("Failed to embed consolidated abstraction via provider.embed: %s", e)
+                return None
+        else:
+            embed_provider = getattr(self, "_embed_provider", None)
+            if embed_provider is not None:
+                try:
+                    if callable(getattr(embed_provider, "embed", None)):
+                        vec = await embed_provider.embed(text)
+                    elif callable(embed_provider):
+                        vec = await embed_provider(text)
+                except Exception as e:
+                    log.debug("Failed to embed consolidated abstraction via _embed_provider: %s", e)
+                    return None
+            else:
+                try:
+                    from nce.embeddings import embed_text
+
+                    vec = await embed_text(text)
+                except Exception as e:
+                    log.debug(
+                        "Provider does not implement embed(); consolidated memory embedding will be NULL: %s",
+                        e,
+                    )
+                    return None
+
         if (
             not isinstance(vec, (list, tuple))
             or len(vec) == 0
@@ -562,7 +599,7 @@ class ConsolidationWorker:
                 if since_timestamp:
                     sql += " AND created_at >= $3"
                     args.append(since_timestamp)
-                sql += " LIMIT 1000"
+                sql += " ORDER BY created_at DESC LIMIT 1000"
                 memories = await conn.fetch(sql, *args)
         except Exception as e:
             log.exception("Failed to create consolidation run or fetch memories")

@@ -46,6 +46,7 @@ class StressTracker:
             SELECT empathic_tensor, created_at, tlx_scores, vad_scores 
             FROM v3_cognitive_ledger 
             WHERE namespace_id = $1::uuid 
+              AND COALESCE(model_version, '') NOT LIKE 'survivorship/%'
             ORDER BY created_at ASC
             """,
             ns_uuid,
@@ -94,6 +95,7 @@ class StressTracker:
         namespace_id: UUID | str,
         master_key: MasterKey,
         beta: float = 0.3,
+        burnout_threshold: float = 0.75,
     ) -> bytes:
         """
         Trend frustration, calculate fatigue (smoothed VAD), check for burnout,
@@ -113,11 +115,14 @@ class StressTracker:
         # 1. Trend frustration (index 5)
         frustration_trend = [r["empathic_tensor"][5] for r in records]
 
-        # 2. Burnout Alert Rule: frustration > 7.0 across 5+ consecutive tracked shifts
+        # 2. Burnout Alert Rule: frustration >= burnout_threshold across 5+ consecutive tracked shifts.
+        # If frustration > 1.0 (e.g. legacy D365 rows recorded on a 0.0..10.0 scale),
+        # normalize to 0.0..1.0 before comparing against burnout_threshold.
         burnout_alert = False
         consecutive_count = 0
         for f in frustration_trend:
-            if f > 7.0:
+            f_norm = min(1.0, f / 10.0) if f > 1.0 else max(0.0, f)
+            if f_norm >= burnout_threshold:
                 consecutive_count += 1
                 if consecutive_count >= 5:
                     burnout_alert = True

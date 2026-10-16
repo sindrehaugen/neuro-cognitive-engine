@@ -469,29 +469,39 @@ def build_atms_from_causal_graph(graph: CausalGraph) -> ATMSEngine:
 # ---------------------------------------------------------------------------
 
 
-def is_valid_uuid(val: str) -> bool:
-    """Returns True if val is a valid UUID string."""
-    try:
-        uuid.UUID(val)
+def is_valid_uuid(val: Any) -> bool:
+    """Returns True if val is a valid UUID or UUID string."""
+    if isinstance(val, uuid.UUID):
         return True
-    except ValueError:
+    try:
+        uuid.UUID(str(val))
+        return True
+    except (ValueError, AttributeError, TypeError):
         return False
+
+
+_is_uuid = is_valid_uuid
 
 
 async def evaluate_atms_intervention(
     conn: Any,  # asyncpg.Connection
     namespace_id: uuid.UUID,
-    invalidated_node_id: str,
+    invalidated_node_id: str | list[str] | set[str],
 ) -> set[str]:
     """Loads the causal graph for a namespace, builds an ATMS, and cascades invalidation."""
     graph = await CausalGraph.load_from_db(conn, namespace_id)
     atms = build_atms_from_causal_graph(graph)
 
-    # Invalidate the target node and get all affected downstream nodes
-    cascade = atms.invalidate_assumption(invalidated_node_id)
-    if invalidated_node_id in atms.nodes:
-        # Force invalidation if registered as DERIVED
-        cascade.update(atms.propagate_deprecation(invalidated_node_id))
+    targets = (
+        [invalidated_node_id] if isinstance(invalidated_node_id, str) else list(invalidated_node_id)
+    )
+    cascade: set[str] = set()
+    for nid in targets:
+        c = atms.invalidate_assumption(nid)
+        cascade.update(c)
+        if nid in atms.nodes:
+            # Force invalidation if registered as DERIVED
+            cascade.update(atms.propagate_deprecation(nid))
 
     return cascade
 
@@ -499,16 +509,17 @@ async def evaluate_atms_intervention(
 async def persist_atms_invalidation(
     conn: Any,  # asyncpg.Connection
     namespace_id: uuid.UUID,
-    invalidated_node_ids: set[str],
+    invalidated_node_ids: set[str] | list[str],
 ) -> int:
     """Soft-deletes (valid_to = now()) invalidated memories and topology edges in DB."""
     if not invalidated_node_ids:
         return 0
 
-    # 1. Update memories
-    uuid_candidates = [uuid.UUID(nid) for nid in invalidated_node_ids if is_valid_uuid(nid)]
+    invalidated_ids = list(invalidated_node_ids)
+    # 1. Update memories - filter to valid UUIDs to prevent postgres uuid cast errors on topology slugs
+    _valid_uuids = [uuid.UUID(str(i)) for i in invalidated_ids if _is_uuid(i)]
     count_mem = 0
-    if uuid_candidates:
+    if _valid_uuids:
         res_mem = await conn.execute(
             """
             UPDATE memories
@@ -518,7 +529,7 @@ async def persist_atms_invalidation(
               AND valid_to IS NULL
             """,
             namespace_id,
-            uuid_candidates,
+            _valid_uuids,
         )
         count_mem = int(res_mem.split()[-1]) if res_mem else 0
 
@@ -532,7 +543,7 @@ async def persist_atms_invalidation(
           AND valid_to IS NULL
         """,
         namespace_id,
-        list(invalidated_node_ids),
+        [str(nid) for nid in invalidated_ids],
     )
     count_topo = int(res_topo.split()[-1]) if res_topo else 0
 

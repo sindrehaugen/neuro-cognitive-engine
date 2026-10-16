@@ -179,16 +179,13 @@ async def do_get_tier_status(
             if isinstance(scores, str):
                 scores = json.loads(scores)
             if scores:
-                # Try to get volume/amount, default to score if no amount is present
-                vol = scores.get("amount") or scores.get("volume") or scores.get("value")
-                if vol is not None:
-                    ytd_volume += float(vol)
-                elif (
-                    scores.get("event_type") in ("match_decision", "procurement_match")
-                    and scores.get("score") is not None
-                ):
-                    # Fallback to score
-                    ytd_volume += float(scores.get("score"))
+                # Only sum monetary fields, NEVER match score
+                vol = scores.get("amount") or scores.get("volume") or scores.get("value") or 0.0
+                if vol:
+                    try:
+                        ytd_volume += float(vol)
+                    except (ValueError, TypeError):
+                        pass
 
     # 5. Determine current tier and next tier threshold
     current_tier = "Base"

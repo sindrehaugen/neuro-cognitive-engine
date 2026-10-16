@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from uuid import UUID
 
 from nce.db_utils import scoped_pg_session
 from nce.entity_resolution.ownership import assert_owner
@@ -30,6 +31,87 @@ log = logging.getLogger("nce.vertical_modules.support.proactive")
 
 _NODE_TYPE_TICKET: str = "TICKET"
 _SUPPORT_ENGINE: str = "support"
+
+
+async def _find_upstream_root_cause_ticket(
+    conn: Any,
+    ns_uuid: UUID,
+    asset_uuid: UUID,
+    params: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Find active proactive ticket on an upstream asset connected to asset_uuid (I-VERT-01)."""
+    upstream_ids = params.get("upstream_asset_ids")
+    if upstream_ids:
+        parsed_upstream_uuids = [_parse_uuid(u, "upstream_asset_ids") for u in upstream_ids]
+        row = await conn.fetchrow(
+            """
+            SELECT id, asset_id, status, summary
+            FROM service_tickets
+            WHERE asset_id = ANY($1::uuid[])
+              AND namespace_id = $2::uuid
+              AND status IN ('open', 'in_progress', 'waiting_parts')
+              AND (change_origin = 'proactive_telemetry' OR (change_origin = 'agent' AND source = 'nce'))
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            parsed_upstream_uuids,
+            ns_uuid,
+        )
+        if row is not None and hasattr(row, "__getitem__"):
+            try:
+                return {
+                    "id": row["id"],
+                    "asset_id": row["asset_id"],
+                    "status": row.get("status", "open") if hasattr(row, "get") else row["status"],
+                    "summary": row.get("summary", "") if hasattr(row, "get") else row["summary"],
+                }
+            except Exception:
+                return None
+        return None
+
+    if not params.get("correlate_upstream", True):
+        return None
+
+    asset_object = f"ASSET:{asset_uuid}"
+    try:
+        row = await conn.fetchrow(
+            """
+            SELECT st.id, st.asset_id, st.status, st.summary
+            FROM kg_edges ke
+            JOIN service_tickets st ON (
+                ke.subject_label = 'ASSET:' || st.asset_id::text
+                OR ke.object_label = 'ASSET:' || st.asset_id::text
+            )
+            WHERE ke.namespace_id = $1::uuid
+              AND st.namespace_id = $1::uuid
+              AND (
+                  (ke.object_label = $2 AND ke.predicate IN ('connected_to', 'feeds', 'powers'))
+                  OR
+                  (ke.subject_label = $2 AND ke.predicate IN ('depends_on', 'powered_by'))
+              )
+              AND st.status IN ('open', 'in_progress', 'waiting_parts')
+              AND (st.change_origin = 'proactive_telemetry' OR (st.change_origin = 'agent' AND source = 'nce'))
+            ORDER BY st.created_at DESC
+            LIMIT 1
+            """,
+            ns_uuid,
+            asset_object,
+        )
+    except Exception as exc:
+        log.debug("Upstream correlation query skipped/failed: %s", exc)
+        return None
+
+    if row is not None and hasattr(row, "__getitem__"):
+        try:
+            return {
+                "id": row["id"],
+                "asset_id": row["asset_id"],
+                "status": row.get("status", "open") if hasattr(row, "get") else row["status"],
+                "summary": row.get("summary", "") if hasattr(row, "get") else row["summary"],
+            }
+        except Exception:
+            return None
+    return None
 
 
 async def do_open_proactive_telemetry_ticket(
@@ -116,6 +198,28 @@ async def do_open_proactive_telemetry_ticket(
                 "edge": f"{ticket_subject_prefix}{existing_ticket_id} -[about]-> {asset_object}",
             }
 
+        # 1b. Upstream Topological Root-Cause Correlation (I-VERT-01)
+        if params.get("correlate_upstream", True):
+            upstream_ticket = await _find_upstream_root_cause_ticket(
+                conn, ns_uuid, asset_uuid, params
+            )
+            if upstream_ticket is not None:
+                upstream_ticket_id = upstream_ticket["id"]
+                upstream_asset_id = upstream_ticket.get("asset_id")
+                log.info(
+                    "Correlated proactive anomaly for asset_id=%s to upstream root cause ticket_id=%s (asset_id=%s)",
+                    asset_uuid,
+                    upstream_ticket_id,
+                    upstream_asset_id,
+                )
+                return {
+                    "ok": True,
+                    "status": "correlated_to_upstream",
+                    "ticket_id": str(upstream_ticket_id),
+                    "root_cause_asset_id": str(upstream_asset_id) if upstream_asset_id else None,
+                    "created": False,
+                }
+
         # 2. Contract A Ownership Guard: Assert Support owns TICKET
         await assert_owner(conn, ns_uuid, _NODE_TYPE_TICKET, _SUPPORT_ENGINE)
 
@@ -163,3 +267,6 @@ async def do_open_proactive_telemetry_ticket(
         "edge": f"{ticket_subject} -[about]-> {asset_object}",
         "proactive": True,
     }
+
+
+do_proactive_ticket_from_anomaly = do_open_proactive_telemetry_ticket

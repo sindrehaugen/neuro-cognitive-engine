@@ -490,3 +490,75 @@ class TestReject:
         async with scoped_pg_session(pg_pool, ns) as conn:
             with pytest.raises(LookupError):
                 await reject(conn, namespace_id=ns, queue_id=queue_id, decided_by="tester-2")
+
+    async def test_confirm_with_record_feedback_writes_decision_feedback(
+        self, pg_pool, pg_admin_conn, ns: UUID
+    ) -> None:
+        """confirm() with record_feedback=True records decision in decision_feedback."""
+        async with scoped_pg_session(pg_pool, ns) as conn:
+            queue_id = await enqueue(
+                conn,
+                namespace_id=ns,
+                node_type="device",
+                candidate={"label": "Feedback-Device"},
+                target=None,
+                score=0.88,
+            )
+            await confirm(
+                conn,
+                namespace_id=ns,
+                queue_id=queue_id,
+                decided_by="auditor-1",
+                record_feedback=True,
+            )
+
+        row = await _fetch_queue_row(pg_admin_conn, queue_id=queue_id)
+        assert row["status"] == "confirmed"
+
+        df_row = await pg_admin_conn.fetchrow(
+            """
+            SELECT * FROM decision_feedback
+            WHERE namespace_id = $1 AND engine = 'entity_resolution' AND context_id = $2
+            """,
+            ns,
+            str(queue_id),
+        )
+        assert df_row is not None
+        assert df_row["decision"] == "accept"
+        assert df_row["actor"] == "auditor-1"
+
+    async def test_reject_with_record_feedback_writes_decision_feedback(
+        self, pg_pool, pg_admin_conn, ns: UUID
+    ) -> None:
+        """reject() with record_feedback=True records override decision in decision_feedback."""
+        async with scoped_pg_session(pg_pool, ns) as conn:
+            queue_id = await enqueue(
+                conn,
+                namespace_id=ns,
+                node_type="device",
+                candidate={"label": "Feedback-Reject-Device"},
+                target=None,
+                score=0.45,
+            )
+            await reject(
+                conn,
+                namespace_id=ns,
+                queue_id=queue_id,
+                decided_by="auditor-2",
+                record_feedback=True,
+            )
+
+        row = await _fetch_queue_row(pg_admin_conn, queue_id=queue_id)
+        assert row["status"] == "rejected"
+
+        df_row = await pg_admin_conn.fetchrow(
+            """
+            SELECT * FROM decision_feedback
+            WHERE namespace_id = $1 AND engine = 'entity_resolution' AND context_id = $2
+            """,
+            ns,
+            str(queue_id),
+        )
+        assert df_row is not None
+        assert df_row["decision"] == "override"
+        assert df_row["actor"] == "auditor-2"

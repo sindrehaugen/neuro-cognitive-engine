@@ -227,10 +227,13 @@ class CognitiveOrchestrator(OrchestratorBase):
                 try:
                     async with conn.transaction():
                         loser_id = None
+                        winner_id = None
                         if resolution == "accepted_a":
                             loser_id = str(row["memory_b_id"])
+                            winner_id = str(row["memory_a_id"])
                         elif resolution == "accepted_b":
                             loser_id = str(row["memory_a_id"])
+                            winner_id = str(row["memory_b_id"])
                         elif resolution in ("superseded", "rejected", "merged"):
                             # Fetch memories to compare creation times
                             mems = await conn.fetch(
@@ -251,8 +254,10 @@ class CognitiveOrchestrator(OrchestratorBase):
 
                             if resolution in ("superseded", "merged"):
                                 loser_id = older_id
+                                winner_id = newer_id
                             else:
                                 loser_id = newer_id
+                                winner_id = older_id
 
                         if loser_id:
                             from nce.atms import (
@@ -260,11 +265,80 @@ class CognitiveOrchestrator(OrchestratorBase):
                                 floor_retracted_kg_edges,
                                 persist_atms_invalidation,
                             )
+                            from nce.graph_query import adapt_synaptic_weights
+
+                            # Synaptic weight adaptation & topology node discovery
+                            discovered_topology_nodes: set[str] = set()
+                            try:
+                                loser_edge_rows = await conn.fetch(
+                                    """
+                                    SELECT ke.subject_label, ke.predicate, ke.object_label
+                                    FROM kg_edges ke
+                                    JOIN memories m
+                                      ON m.origin_event_id = ke.origin_event_id
+                                     AND m.namespace_id = ke.namespace_id
+                                    WHERE ke.namespace_id = $1::uuid
+                                      AND m.id = $2::uuid
+                                    """,
+                                    ns_uuid,
+                                    UUID(loser_id) if isinstance(loser_id, str) else loser_id,
+                                )
+                                loser_edges = [
+                                    (r["subject_label"], r["predicate"], r["object_label"])
+                                    for r in loser_edge_rows
+                                ]
+                                for r in loser_edge_rows:
+                                    discovered_topology_nodes.add(r["subject_label"])
+                                    discovered_topology_nodes.add(r["object_label"])
+
+                                if loser_edges:
+                                    await adapt_synaptic_weights(
+                                        conn=conn,
+                                        namespace_id=ns_uuid,
+                                        decision_outcome="failure",
+                                        reinforced_edges=loser_edges,
+                                    )
+                            except Exception:
+                                pass
+
+                            if winner_id:
+                                try:
+                                    winner_edge_rows = await conn.fetch(
+                                        """
+                                        SELECT ke.subject_label, ke.predicate, ke.object_label
+                                        FROM kg_edges ke
+                                        JOIN memories m
+                                          ON m.origin_event_id = ke.origin_event_id
+                                         AND m.namespace_id = ke.namespace_id
+                                        WHERE ke.namespace_id = $1::uuid
+                                          AND m.id = $2::uuid
+                                        """,
+                                        ns_uuid,
+                                        UUID(winner_id)
+                                        if isinstance(winner_id, str)
+                                        else winner_id,
+                                    )
+                                    winner_edges = [
+                                        (r["subject_label"], r["predicate"], r["object_label"])
+                                        for r in winner_edge_rows
+                                    ]
+                                    if winner_edges:
+                                        await adapt_synaptic_weights(
+                                            conn=conn,
+                                            namespace_id=ns_uuid,
+                                            decision_outcome="success",
+                                            reinforced_edges=winner_edges,
+                                        )
+                                except Exception:
+                                    pass
 
                             cascade_set = {loser_id}
 
                             # 1. Topology/infrastructure cascade
-                            topo_cascade = await evaluate_atms_intervention(conn, ns_uuid, loser_id)
+                            targets_to_evaluate = [loser_id] + sorted(discovered_topology_nodes)
+                            topo_cascade = await evaluate_atms_intervention(
+                                conn, ns_uuid, targets_to_evaluate
+                            )
                             cascade_set.update(topo_cascade)
 
                             # 2. Memory dependents recursively via derived_from
