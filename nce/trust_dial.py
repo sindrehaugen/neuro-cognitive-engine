@@ -111,16 +111,122 @@ async def get_tenant_configured_tier(
     return 3
 
 
+class TrustMetrics(dict):
+    """Container for trust and precision metrics with Brier calibration."""
+
+    def __init__(
+        self,
+        sample_size: int = 0,
+        accepted_count: int = 0,
+        override_count: int = 0,
+        precision_rate: float = 0.0,
+        brier_score: float | None = None,
+        mean_calibration_error: float | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            sample_size=sample_size,
+            accepted_count=accepted_count,
+            override_count=override_count,
+            precision_rate=precision_rate,
+            brier_score=brier_score,
+            mean_calibration_error=mean_calibration_error,
+            **kwargs,
+        )
+
+    @property
+    def sample_size(self) -> int:
+        return self["sample_size"]
+
+    @property
+    def accepted_count(self) -> int:
+        return self["accepted_count"]
+
+    @property
+    def override_count(self) -> int:
+        return self["override_count"]
+
+    @property
+    def precision_rate(self) -> float:
+        return self["precision_rate"]
+
+    @property
+    def brier_score(self) -> float | None:
+        return self["brier_score"]
+
+    @property
+    def mean_calibration_error(self) -> float | None:
+        return self["mean_calibration_error"]
+
+
+def compute_brier_calibration(rows: list[dict[str, Any]]) -> dict[str, float | None]:
+    """Compute Brier calibration score and mean calibration error.
+
+    Calculates empirical calibration from decision_feedback rows where
+    proposal contains a numeric 'confidence' value in [0, 1].
+
+    Brier score = (1/N) * sum((confidence - outcome)^2)
+    Mean calibration error = (1/N) * sum(|confidence - outcome|)
+    where outcome = 1.0 for POSITIVE_DECISIONS and 0.0 for NEGATIVE_DECISIONS.
+    """
+    pairs: list[tuple[float, float]] = []
+
+    for r in rows:
+        dec = (
+            str(r.get("decision") or "").strip().lower()
+            if hasattr(r, "get")
+            else (str(r["decision"] or "").strip().lower() if "decision" in r else "")
+        )
+        if dec in POSITIVE_DECISIONS:
+            y = 1.0
+        elif dec in NEGATIVE_DECISIONS:
+            y = 0.0
+        else:
+            continue
+
+        raw_prop = (
+            r.get("proposal") if hasattr(r, "get") else (r["proposal"] if "proposal" in r else None)
+        )
+        if raw_prop is None:
+            continue
+
+        prop: dict[str, Any] = {}
+        if isinstance(raw_prop, dict):
+            prop = raw_prop
+        elif isinstance(raw_prop, str):
+            try:
+                prop = json.loads(raw_prop)
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        raw_conf = prop.get("confidence")
+        if raw_conf is not None:
+            try:
+                conf = float(raw_conf)
+                if 0.0 <= conf <= 1.0:
+                    pairs.append((conf, y))
+            except (ValueError, TypeError):
+                continue
+
+    if not pairs:
+        return {"brier_score": None, "mean_calibration_error": None}
+
+    n = len(pairs)
+    brier = round(sum((c - y) ** 2 for c, y in pairs) / n, 4)
+    mce = round(sum(abs(c - y) for c, y in pairs) / n, 4)
+    return {"brier_score": brier, "mean_calibration_error": mce}
+
+
 async def compute_trust_metrics(
     conn: asyncpg.Connection,
     namespace_id: UUID,
     engine: str | None = None,
-) -> dict[str, Any]:
+) -> TrustMetrics:
     """Aggregate decision_feedback rows for the tenant and compute precision metrics."""
     if engine:
         rows = await conn.fetch(
             """
-            SELECT decision
+            SELECT decision, proposal
             FROM decision_feedback
             WHERE namespace_id = $1::uuid
               AND engine = $2
@@ -131,7 +237,7 @@ async def compute_trust_metrics(
     else:
         rows = await conn.fetch(
             """
-            SELECT decision
+            SELECT decision, proposal
             FROM decision_feedback
             WHERE namespace_id = $1::uuid
             """,
@@ -153,13 +259,16 @@ async def compute_trust_metrics(
             pass
 
     precision_rate = round(accepted_count / total_samples, 4) if total_samples > 0 else 0.0
+    calib = compute_brier_calibration(rows)
 
-    return {
-        "sample_size": total_samples,
-        "accepted_count": accepted_count,
-        "override_count": override_count,
-        "precision_rate": precision_rate,
-    }
+    return TrustMetrics(
+        sample_size=total_samples,
+        accepted_count=accepted_count,
+        override_count=override_count,
+        precision_rate=precision_rate,
+        brier_score=calib["brier_score"],
+        mean_calibration_error=calib["mean_calibration_error"],
+    )
 
 
 def evaluate_tier_proposal(
@@ -304,6 +413,8 @@ async def get_trust_dial_status(
             "accepted_count": metrics["accepted_count"],
             "override_count": metrics["override_count"],
             "precision_rate": precision_rate,
+            "brier_score": metrics.get("brier_score"),
+            "mean_calibration_error": metrics.get("mean_calibration_error"),
         },
         "eu_ai_act_compliance": {
             "article": "EU AI Act Article 14 (Human Oversight) & Article 13 (Transparency)",

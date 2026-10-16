@@ -199,3 +199,32 @@ class TestPredictiveSynthesisEngine:
         assert data_tuples[0][2] == "switch_01"
         assert data_tuples[0][3] == "device"
         assert data_tuples[0][4] == 0.25
+
+    @pytest.mark.asyncio
+    async def test_fetch_historical_incidents_matches_operational_anomalies_and_breaches(
+        self, engine, mock_pg_conn
+    ):
+        mock_pg_conn.fetch.return_value = [
+            {"event_type": "sla_breach", "params": {"device_id": "router_01"}},
+            {"event_type": "ticket_sla_breached", "params": {"node_id": "switch_01"}},
+            {"event_type": "anomaly_detected", "params": {"memory_id": "service_01"}},
+            {"event_type": "degradation_detected", "params": {"device_id": "router_01"}},
+            {"event_type": "network_breach_alert", "params": {"node_id": "switch_01"}},
+            {"event_type": "traffic_anomaly_event", "params": {"memory_id": "service_01"}},
+        ]
+
+        counts = await engine.detect_anomalous_clusters(mock_pg_conn, NS, time_window_days=14.0)
+
+        assert counts.get("router_01") == 2
+        assert counts.get("switch_01") == 2
+        assert counts.get("service_01") == 2
+
+        # Verify SQL query includes the expanded operational anomaly predicates
+        fetch_call = mock_pg_conn.fetch.call_args
+        sql = fetch_call[0][0]
+        assert "sla_breach" in sql
+        assert "ticket_sla_breached" in sql
+        assert "anomaly_detected" in sql
+        assert "degradation_detected" in sql
+        assert "LIKE '%breach%'" in sql
+        assert "LIKE '%anomaly%'" in sql

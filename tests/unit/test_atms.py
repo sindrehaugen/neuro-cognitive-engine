@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
+
 from nce.atms import ATMSEngine, ATMSNodeType, build_atms_from_causal_graph
 from nce.causal.correlation import CausalGraph
 
@@ -331,3 +333,66 @@ class TestTenantScaling:
                 assert engine.nodes["power"].is_valid is True
                 assert engine.nodes[f"switch_{i}"].is_valid is True
                 assert engine.nodes[f"server_{i}"].is_valid is True
+
+
+# ---------------------------------------------------------------------------
+# 7. Persistence & UUID Slug Filtering
+# ---------------------------------------------------------------------------
+
+
+class TestATMSPersistence:
+    def test_is_uuid_helper(self):
+        from nce.atms import _is_uuid
+
+        assert _is_uuid("pdu-rack-12") is False
+        assert _is_uuid("server-rack-1") is False
+        assert _is_uuid("11111111-2222-3333-4444-555555555555") is True
+        assert _is_uuid(uuid.UUID("11111111-2222-3333-4444-555555555555")) is True
+
+    @pytest.mark.asyncio
+    async def test_persist_atms_invalidation_filters_non_uuid_slugs(self):
+        from unittest.mock import AsyncMock
+
+        from nce.atms import persist_atms_invalidation
+
+        valid_id = "11111111-2222-3333-4444-555555555555"
+        conn = AsyncMock()
+        conn.execute.side_effect = ["UPDATE 1", "UPDATE 2"]
+
+        res = await persist_atms_invalidation(
+            conn,
+            NS,
+            {"pdu-rack-12", valid_id},
+        )
+        assert res == 3
+        # Memories update must receive only valid UUIDs
+        mem_call = conn.execute.call_args_list[0]
+        assert mem_call.args[2] == [uuid.UUID(valid_id)]
+        # Topology update must receive all slugs
+        topo_call = conn.execute.call_args_list[1]
+        assert set(topo_call.args[2]) == {"pdu-rack-12", valid_id}
+
+    @pytest.mark.asyncio
+    async def test_evaluate_atms_intervention_multi_node(self):
+        from unittest.mock import AsyncMock, patch
+
+        from nce.atms import evaluate_atms_intervention
+
+        rows = [
+            _row("pdu-rack-12", "switch-01", edge_type="connected_to"),
+            _row("switch-01", "server-01", edge_type="connected_to"),
+        ]
+        graph = CausalGraph.from_rows(rows, NS)
+
+        with patch(
+            "nce.causal.correlation.CausalGraph.load_from_db", new_callable=AsyncMock
+        ) as mock_load:
+            mock_load.return_value = graph
+            cascade = await evaluate_atms_intervention(
+                AsyncMock(),
+                NS,
+                ["pdu-rack-12", "other-node"],
+            )
+            assert "pdu-rack-12" in cascade
+            assert "switch-01" in cascade
+            assert "server-01" in cascade

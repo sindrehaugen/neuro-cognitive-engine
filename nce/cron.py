@@ -898,26 +898,58 @@ async def _agreements_coverage_watcher_tick(pool: asyncpg.Pool) -> None:
                 """
             )
 
-        for row in rows:
-            ns_id: UUID = row["id"]
-            try:
-                result = await do_coverage_matrix(engine, {"namespace_id": ns_id})
-                flags = result.get("flags", [])
-                log.debug(
-                    "agreements_coverage_watcher tick namespace=%s status=%s flags=%d",
-                    ns_id,
-                    result.get("status"),
-                    len(flags),
-                )
-                await _dispatch_agreements_coverage_alerts(ns_id, flags)
-            except _CRON_TICK_ERRORS as exc:
-                log.exception("agreements_coverage_watcher tick failed for namespace=%s", ns_id)
-                await _dispatch_throttled_alert(
-                    f"cron.agreements_coverage_watcher.{ns_id}",
-                    f"Agreements Coverage Watcher Failed: Namespace {ns_id}",
-                    f"Agreements coverage watcher tick failed for namespace {ns_id}: "
-                    f"{type(exc).__name__}: {exc}",
-                )
+            for row in rows:
+                ns_id: UUID = row["id"]
+                try:
+                    result = await do_coverage_matrix(engine, {"namespace_id": ns_id})
+                    flags = result.get("flags", [])
+                    log.debug(
+                        "agreements_coverage_watcher tick namespace=%s status=%s flags=%d",
+                        ns_id,
+                        result.get("status"),
+                        len(flags),
+                    )
+                    await _dispatch_agreements_coverage_alerts(ns_id, flags)
+                    expiring_flags = [f for f in flags if f.get("flag_type") == "expiry"]
+                    if expiring_flags and isinstance(conn, asyncpg.Connection):
+                        try:
+                            from nce.events.bus import publish
+
+                            async with conn.transaction():
+                                for f in expiring_flags:
+                                    ag_id = str(f.get("agreement_id", ""))
+                                    await publish(
+                                        conn,
+                                        namespace_id=ns_id,
+                                        node_type="AGREEMENT",
+                                        op="renewal_due",
+                                        aggregate_id=ag_id,
+                                        payload={
+                                            "agreement_id": ag_id,
+                                            "namespace_id": str(ns_id),
+                                            "detail": f.get("detail"),
+                                            **{
+                                                k: v
+                                                for k, v in f.items()
+                                                if k
+                                                not in ("agreement_id", "namespace_id", "detail")
+                                            },
+                                        },
+                                    )
+                        except Exception as exc:
+                            log.warning(
+                                "Failed to publish AGREEMENT.renewal_due event for ns=%s: %s",
+                                ns_id,
+                                exc,
+                            )
+                except _CRON_TICK_ERRORS as exc:
+                    log.exception("agreements_coverage_watcher tick failed for namespace=%s", ns_id)
+                    await _dispatch_throttled_alert(
+                        f"cron.agreements_coverage_watcher.{ns_id}",
+                        f"Agreements Coverage Watcher Failed: Namespace {ns_id}",
+                        f"Agreements coverage watcher tick failed for namespace {ns_id}: "
+                        f"{type(exc).__name__}: {exc}",
+                    )
     except _CRON_TICK_ERRORS as exc:
         log.exception("agreements_coverage_watcher tick failed unexpectedly")
         await _dispatch_throttled_alert(
@@ -1407,34 +1439,64 @@ async def _sales_stalled_deal_watcher_tick(pool: asyncpg.Pool) -> None:
         ) as conn:
             rows = await conn.fetch("SELECT id FROM namespaces")
 
-        for row in rows:
-            ns_id: UUID = row["id"]
-            try:
-                stats = await do_stalled_deal_watcher(engine, {"namespace_id": str(ns_id)})
-                count = stats.get("stalled_deals_count", 0)
-                log.debug(
-                    "sales_stalled_deal_watcher tick namespace=%s stalled_deals=%d",
-                    ns_id,
-                    count,
-                )
-                if count > 0:
-                    deals = stats.get("stalled_deals", [])
-                    sample_str = "; ".join(
-                        f"Deal {d.get('deal_id')} ({d.get('name')})" for d in deals[:5]
+            for row in rows:
+                ns_id: UUID = row["id"]
+                try:
+                    stats = await do_stalled_deal_watcher(engine, {"namespace_id": str(ns_id)})
+                    count = stats.get("stalled_deals_count", 0)
+                    log.debug(
+                        "sales_stalled_deal_watcher tick namespace=%s stalled_deals=%d",
+                        ns_id,
+                        count,
                     )
+                    if count > 0:
+                        deals = stats.get("stalled_deals", [])
+                        sample_str = "; ".join(
+                            f"Deal {d.get('deal_id')} ({d.get('name')})" for d in deals[:5]
+                        )
+                        await _dispatch_throttled_alert(
+                            f"cron.sales_stalled_deal_watcher.{ns_id}",
+                            f"Stalled Deals Detected: Namespace {ns_id}",
+                            f"{count} stalled deal(s) detected in namespace {ns_id}: {sample_str}",
+                        )
+                        if isinstance(conn, asyncpg.Connection):
+                            try:
+                                from nce.events.bus import publish
+
+                                async with conn.transaction():
+                                    for d in deals:
+                                        deal_id = str(d.get("deal_id") or d.get("id") or "")
+                                        await publish(
+                                            conn,
+                                            namespace_id=ns_id,
+                                            node_type="DEAL",
+                                            op="stalled",
+                                            aggregate_id=deal_id,
+                                            payload={
+                                                "deal_id": deal_id,
+                                                "name": d.get("name"),
+                                                "namespace_id": str(ns_id),
+                                                **{
+                                                    k: v
+                                                    for k, v in d.items()
+                                                    if k not in ("deal_id", "name", "namespace_id")
+                                                },
+                                            },
+                                        )
+                            except Exception as exc:
+                                log.warning(
+                                    "Failed to publish DEAL.stalled event for ns=%s: %s",
+                                    ns_id,
+                                    exc,
+                                )
+                except _CRON_TICK_ERRORS as exc:
+                    log.exception("sales_stalled_deal_watcher tick failed for namespace=%s", ns_id)
                     await _dispatch_throttled_alert(
                         f"cron.sales_stalled_deal_watcher.{ns_id}",
-                        f"Stalled Deals Detected: Namespace {ns_id}",
-                        f"{count} stalled deal(s) detected in namespace {ns_id}: {sample_str}",
+                        f"Sales Stalled Deal Watcher Failed: Namespace {ns_id}",
+                        f"Sales stalled deal watcher tick failed for namespace {ns_id}: "
+                        f"{type(exc).__name__}: {exc}",
                     )
-            except _CRON_TICK_ERRORS as exc:
-                log.exception("sales_stalled_deal_watcher tick failed for namespace=%s", ns_id)
-                await _dispatch_throttled_alert(
-                    f"cron.sales_stalled_deal_watcher.{ns_id}",
-                    f"Sales Stalled Deal Watcher Failed: Namespace {ns_id}",
-                    f"Sales stalled deal watcher tick failed for namespace {ns_id}: "
-                    f"{type(exc).__name__}: {exc}",
-                )
     except _CRON_TICK_ERRORS as exc:
         log.exception("sales_stalled_deal_watcher tick failed unexpectedly")
         await _dispatch_throttled_alert(

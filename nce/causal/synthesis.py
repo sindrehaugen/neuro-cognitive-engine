@@ -74,9 +74,18 @@ class PredictiveSynthesisEngine:
             WHERE namespace_id = $1::uuid
               AND occurred_at >= NOW() - ($2::float * INTERVAL '1 day')
               AND (
-                  event_type IN ('store_memory_rolled_back', 'saga_recovered')
+                  event_type IN (
+                      'store_memory_rolled_back',
+                      'saga_recovered',
+                      'sla_breach',
+                      'ticket_sla_breached',
+                      'anomaly_detected',
+                      'degradation_detected'
+                  )
                   OR event_type LIKE '%error%'
                   OR event_type LIKE '%fail%'
+                  OR event_type LIKE '%breach%'
+                  OR event_type LIKE '%anomaly%'
               )
             """,
             namespace_id,
@@ -99,10 +108,19 @@ class PredictiveSynthesisEngine:
 
             # Determine if this event indicates a structural or logical failure
             is_failure = (
-                event_type == "store_memory_rolled_back"
-                or event_type == "saga_recovered"
+                event_type
+                in (
+                    "store_memory_rolled_back",
+                    "saga_recovered",
+                    "sla_breach",
+                    "ticket_sla_breached",
+                    "anomaly_detected",
+                    "degradation_detected",
+                )
                 or "error" in event_type
                 or "fail" in event_type
+                or "breach" in event_type
+                or "anomaly" in event_type
             )
 
             if is_failure:
@@ -309,3 +327,6 @@ class PredictiveSynthesisEngine:
             len(predictive_nodes),
             namespace_id,
         )
+
+    # Alias for operational anomaly cluster detection
+    detect_anomalous_clusters = fetch_historical_incidents

@@ -115,3 +115,46 @@ async def test_decay_prune_tick_scopes_queries_per_namespace() -> None:
     for bound_ns, _mc, arg_ns in prune_calls[len(MemoryClass) :]:
         assert bound_ns == str(ns_b)
         assert arg_ns == ns_b
+
+
+@pytest.mark.asyncio
+async def test_decay_prune_tick_uses_salience_updated_at_in_ebbinghaus_clock() -> None:
+    """Verify _decay_prune_tick uses GREATEST(m.valid_from, COALESCE((SELECT MAX(ms2.updated_at)...))) for Ebbinghaus clock."""
+    import uuid
+    from contextlib import asynccontextmanager
+
+    from nce.cron_lock import CronLock
+    from nce.temporal_decay import _decay_prune_tick
+
+    ns = uuid.uuid4()
+    executed_queries: list[str] = []
+
+    conn = MagicMock()
+    conn.fetch = AsyncMock(return_value=[{"id": ns}])
+
+    async def _execute(sql: str, *args):
+        if "WITH candidates AS" in sql:
+            executed_queries.append(sql)
+            return "UPDATE 1"
+        return "OK"
+
+    conn.execute = AsyncMock(side_effect=_execute)
+
+    @asynccontextmanager
+    async def _unmanaged(_pool, *, site: str):
+        yield conn
+
+    fake_lock = CronLock(job_id="decay_prune", key="k", token="t", ttl_seconds=3660)
+    with (
+        patch("nce.cron_lock.acquire_cron_lock", new_callable=AsyncMock, return_value=fake_lock),
+        patch("nce.cron_lock.release_cron_lock", new_callable=AsyncMock),
+        patch("nce.db_utils.unmanaged_pg_connection", _unmanaged),
+    ):
+        await _decay_prune_tick(MagicMock())
+
+    assert len(executed_queries) > 0
+    candidate_sql = executed_queries[0]
+    assert (
+        "GREATEST(m.valid_from, COALESCE((SELECT MAX(ms2.updated_at) FROM memory_salience ms2 WHERE ms2.memory_id = m.id), m.valid_from))"
+        in candidate_sql
+    )

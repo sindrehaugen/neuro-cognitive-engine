@@ -319,3 +319,100 @@ async def test_triage_cross_tenant_isolation() -> None:
                 "ticket_id": _TICKET_ID_1,
             },
         )
+
+
+# ============================================================================
+# 3. Hybrid Semantic + Token Troubleshooting Tests (I-VERT-06c)
+# ============================================================================
+
+
+def test_cosine_similarity_math() -> None:
+    from nce.vertical_modules.support.troubleshoot import _cosine_similarity
+
+    # Identical
+    assert abs(_cosine_similarity([1.0, 0.0, 0.0], [1.0, 0.0, 0.0]) - 1.0) < 1e-5
+    # Orthogonal
+    assert abs(_cosine_similarity([1.0, 0.0, 0.0], [0.0, 1.0, 0.0])) < 1e-5
+    # Empty or mismatched length
+    assert _cosine_similarity([], [1.0]) == 0.0
+    assert _cosine_similarity([1.0], [1.0, 2.0]) == 0.0
+
+
+@pytest.mark.asyncio
+async def test_troubleshoot_hybrid_semantic_embedding_blend() -> None:
+    """Validates that candidate embedding blends with token similarity using query_embedding."""
+    conn = AsyncMock()
+    # High cosine similarity vector (parallel direction), moderate lexical overlap
+    past_resolution_row = {
+        "id": UUID("99999999-9999-4999-8999-999999999999"),
+        "namespace_id": UUID(_NS_A),
+        "tlx_scores": json.dumps(
+            {
+                "event_type": "ticket_resolution",
+                "ticket_id": _PAST_TICKET_A,
+                "summary": "Video monitor blank display",
+                "resolution_text": "Replaced faulty HDMI EDID emulator inline on display receiver",
+                "was_fix": True,
+                "resolution_category": "video",
+                "embedding": [0.6, 0.8, 0.0],
+            }
+        ),
+        "created_at": datetime.datetime(2026, 8, 1, 10, 0, 0, tzinfo=datetime.timezone.utc),
+    }
+    conn.fetch.return_value = [past_resolution_row]
+    pool = _make_mock_pool(conn)
+
+    res = await do_troubleshoot(
+        pool,
+        {
+            "namespace_id": _NS_A,
+            "symptom_text": "Screen dark black image output",
+            "query_embedding": [0.6, 0.8, 0.0],  # Exact cosine match = 1.0
+            "semantic_weight": 0.6,
+        },
+    )
+
+    assert res["confidence"] >= 0.70
+    assert _PAST_TICKET_A in res["cited_ticket_ids"]
+    assert len(res["similar_tickets"]) == 1
+    top_cand = res["similar_tickets"][0]
+    assert top_cand["semantic_similarity"] == 1.0
+    assert "blended_similarity" in top_cand
+    assert "HDMI EDID emulator" in res["proposed_fix"]
+
+
+@pytest.mark.asyncio
+async def test_troubleshoot_hybrid_vector_matches_map() -> None:
+    """Validates that vector_matches map boosts candidate confidence when semantic matches provided."""
+    conn = AsyncMock()
+    past_resolution_row = {
+        "id": UUID("99999999-9999-4999-8999-999999999999"),
+        "namespace_id": UUID(_NS_A),
+        "tlx_scores": json.dumps(
+            {
+                "event_type": "ticket_resolution",
+                "ticket_id": _PAST_TICKET_A,
+                "summary": "Dante audio clock drift jitter",
+                "resolution_text": "Configured PTP v2 leader clock priority on core DSP switch",
+                "was_fix": True,
+                "resolution_category": "audio",
+            }
+        ),
+        "created_at": datetime.datetime(2026, 8, 1, 10, 0, 0, tzinfo=datetime.timezone.utc),
+    }
+    conn.fetch.return_value = [past_resolution_row]
+    pool = _make_mock_pool(conn)
+
+    res = await do_troubleshoot(
+        pool,
+        {
+            "namespace_id": _NS_A,
+            "symptom_text": "Microphone audio distortion crackling",
+            "vector_matches": {_PAST_TICKET_A: 0.92},
+            "semantic_weight": 0.5,
+        },
+    )
+
+    assert res["confidence"] >= 0.65
+    assert _PAST_TICKET_A in res["cited_ticket_ids"]
+    assert "PTP v2 leader clock" in res["proposed_fix"]

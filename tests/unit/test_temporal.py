@@ -534,9 +534,9 @@ class TestPruneSQLCorrectness:
         )
 
     def test_uses_valid_from_not_updated_at(self, prune_sql):
-        """Prune query must use valid_from (real memories column), not updated_at."""
+        """Prune query must use valid_from (real memories column), not m.updated_at."""
         assert "valid_from" in prune_sql
-        assert "updated_at" not in prune_sql
+        assert "m.updated_at" not in prune_sql and "memories.updated_at" not in prune_sql
 
     def test_update_joins_on_composite_pk(self, prune_sql):
         """UPDATE must join on both id and created_at (composite PK after TD-010-1)."""

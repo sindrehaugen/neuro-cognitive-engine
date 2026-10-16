@@ -141,7 +141,12 @@ def do_rank_suppliers(
         Conservative default for missing lead_time_days: 9999 (misses any tight
         deadline).  Conservative default for missing delivery_reliability: 0.0.
         """
-        lead_time = int(candidate.get("lead_time_days", 9999))
+        raw_lead = candidate.get("lead_time_days")
+        try:
+            lead_time = int(raw_lead) if raw_lead is not None else 9999
+        except (ValueError, TypeError):
+            lead_time = 9999
+
         if required_by_day is not None and lead_time > required_by_day:
             # Candidate cannot meet the deadline — score 0 (not dropped, per spec).
             return 0.0
@@ -241,6 +246,17 @@ def do_rank_suppliers(
     w_own_stock = w_tco * 0.5
     w_tco_adjusted = w_tco * 0.5
 
+    w_lead_time = float(scoring_w.get("lead_time", scoring_w.get("lead_time_weight", 0.0)))
+
+    valid_leads = [
+        int(c.get("lead_time_days"))
+        for c in candidates
+        if c.get("lead_time_days") is not None
+        and str(c.get("lead_time_days")).isdigit()
+        and int(c.get("lead_time_days")) > 0
+    ]
+    min_lead = min(valid_leads) if valid_leads else 1
+
     scored: list[dict[str, Any]] = []
     for idx, (candidate, tco_result) in enumerate(zip(candidates, tco_results)):
         s1 = _step1_own_stock(candidate)
@@ -256,6 +272,17 @@ def do_rank_suppliers(
             + s4 * w_bid
             + s5 * (w_tier + w_rebate)
         )
+        if w_lead_time > 0:
+            try:
+                c_lead = int(candidate.get("lead_time_days", 9999))
+            except (ValueError, TypeError):
+                c_lead = 9999
+            s_lead = (
+                (min_lead / c_lead)
+                if c_lead > 0 and (required_by_day is None or c_lead <= required_by_day)
+                else 0.0
+            )
+            composite += s_lead * w_lead_time
 
         scored.append(
             {

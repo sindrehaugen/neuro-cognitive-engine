@@ -132,16 +132,43 @@ async def do_score_lead(
             total_similarity += cand.get("similarity", 0.0)
 
         if total_count > 0:
-            score = won_count / total_count
+            hist_score = won_count / total_count
             confidence = total_similarity / total_count
             reasons = [
                 f"Found {total_count} similar historical deals.",
-                f"Historical win rate among these deals is {score * 100:.1f}%.",
+                f"Historical win rate among these deals is {hist_score * 100:.1f}%.",
             ]
         else:
-            score = 0.5  # Neutral default
+            hist_score = 0.5  # Neutral default
             confidence = 0.5
             reasons = ["No similar historical deals found in memory. Defaulted to neutral score."]
+
+        # Support optional stage_probability / engagement_score blending when passed in params
+        stage_prob = params.get("stage_probability")
+        engagement = params.get("engagement_score")
+
+        blend_components: list[tuple[float, float]] = [(hist_score, 0.5)]
+        if stage_prob is not None:
+            try:
+                sp = max(0.0, min(1.0, float(stage_prob)))
+                blend_components.append((sp, 0.3))
+                reasons.append(f"Blended stage probability: {sp * 100:.1f}%.")
+            except (ValueError, TypeError):
+                pass
+
+        if engagement is not None:
+            try:
+                es = max(0.0, min(1.0, float(engagement)))
+                blend_components.append((es, 0.2))
+                reasons.append(f"Blended engagement score: {es * 100:.1f}%.")
+            except (ValueError, TypeError):
+                pass
+
+        if len(blend_components) > 1:
+            total_weight = sum(w for _, w in blend_components)
+            score = sum(val * (w / total_weight) for val, w in blend_components)
+        else:
+            score = hist_score
 
     return {
         "ok": True,

@@ -324,3 +324,87 @@ async def test_system_design_propose_embeds_trust_dial_badge():
         assert "trust_dial" in res
         assert res["trust_dial"] is not None
         assert res["trust_dial"]["effective_tier"] == 2
+
+
+# ===========================================================================
+# 6. Brier Score & Calibration Metrics
+# ===========================================================================
+
+
+def test_compute_brier_calibration_calculates_scores() -> None:
+    """compute_brier_calibration correctly calculates Brier score and mean calibration error."""
+    from nce.trust_dial import compute_brier_calibration
+
+    rows = [
+        {"decision": "accept", "proposal": json.dumps({"confidence": 0.9})},
+        {"decision": "accept", "proposal": {"confidence": 0.8}},
+        {"decision": "override", "proposal": {"confidence": 0.3}},
+    ]
+    # For accept: y = 1.0. (0.9 - 1)^2 = 0.01; |0.9 - 1| = 0.1
+    # For accept: y = 1.0. (0.8 - 1)^2 = 0.04; |0.8 - 1| = 0.2
+    # For override: y = 0.0. (0.3 - 0)^2 = 0.09; |0.3 - 0| = 0.3
+    # Brier = (0.01 + 0.04 + 0.09) / 3 = 0.14 / 3 = 0.0467
+    # MCE = (0.1 + 0.2 + 0.3) / 3 = 0.6 / 3 = 0.2
+    res = compute_brier_calibration(rows)
+    assert res["brier_score"] == pytest.approx(0.0467, abs=1e-4)
+    assert res["mean_calibration_error"] == pytest.approx(0.2, abs=1e-4)
+
+
+def test_compute_brier_calibration_handles_empty_or_uncalibrated_rows() -> None:
+    """compute_brier_calibration returns None when rows have no confidence data."""
+    from nce.trust_dial import compute_brier_calibration
+
+    # Rows without proposal or confidence
+    rows = [
+        {"decision": "accept"},
+        {"decision": "override", "proposal": {}},
+        {"decision": "unknown", "proposal": {"confidence": 0.9}},
+    ]
+    res = compute_brier_calibration(rows)
+    assert res["brier_score"] is None
+    assert res["mean_calibration_error"] is None
+
+
+def test_trust_metrics_exposes_brier_score() -> None:
+    """TrustMetrics exposes brier_score via property and dict subscription."""
+    from nce.trust_dial import TrustMetrics
+
+    tm_default = TrustMetrics(sample_size=5, accepted_count=4, override_count=1, precision_rate=0.8)
+    assert tm_default.brier_score is None
+    assert tm_default["brier_score"] is None
+
+    tm_calib = TrustMetrics(
+        sample_size=5,
+        accepted_count=4,
+        override_count=1,
+        precision_rate=0.8,
+        brier_score=0.05,
+        mean_calibration_error=0.15,
+    )
+    assert tm_calib.brier_score == 0.05
+    assert tm_calib["brier_score"] == 0.05
+    assert tm_calib.mean_calibration_error == 0.15
+    assert tm_calib["mean_calibration_error"] == 0.15
+
+
+@pytest.mark.asyncio
+async def test_compute_trust_metrics_populates_brier_score() -> None:
+    """compute_trust_metrics populates brier_score when confidence is present."""
+    from nce.trust_dial import compute_trust_metrics
+
+    mock_conn = AsyncMock()
+    mock_conn.fetch.return_value = [
+        {"decision": "accept", "proposal": {"confidence": 0.95}},
+        {"decision": "accept", "proposal": {"confidence": 0.90}},
+        {"decision": "accept", "proposal": {"confidence": 0.85}},
+        {"decision": "accept", "proposal": {"confidence": 0.92}},
+        {"decision": "override", "proposal": {"confidence": 0.20}},
+    ]
+
+    metrics = await compute_trust_metrics(mock_conn, uuid4())
+    assert metrics["sample_size"] == 5
+    assert metrics["accepted_count"] == 4
+    assert metrics["override_count"] == 1
+    assert metrics.brier_score is not None
+    assert metrics["brier_score"] is not None
+    assert metrics.brier_score >= 0.0

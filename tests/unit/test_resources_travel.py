@@ -351,3 +351,65 @@ async def test_contract_b_idempotency_and_missing_key(mock_engine):
     )
     assert res2["status"] == "booked"
     assert res2["idempotent_replay"] is True
+
+
+def test_estimate_distance_km_equirectangular_scaling() -> None:
+    """Verify _estimate_distance_km applies cosine latitude scaling."""
+    import math
+
+    from nce.vertical_modules.resources.travel import _estimate_distance_km
+
+    # 1. Equator test: at lat 0, cos(0) == 1.0, 1 degree lon is ~111.0 km
+    dist_equator = _estimate_distance_km(0.0, 10.0, 0.0, 11.0)
+    assert abs(dist_equator - 111.0) < 0.1
+
+    # 2. Polar test: at lat 60 (e.g. Oslo), cos(60 deg) == 0.5, 1 degree lon is ~55.5 km
+    dist_60 = _estimate_distance_km(60.0, 10.0, 60.0, 11.0)
+    expected_60 = 111.0 * math.cos(math.radians(60.0))
+    assert abs(dist_60 - expected_60) < 0.1
+
+    # 3. Two-point distance between Oslo (59.91, 10.75) and Bergen (60.39, 5.32)
+    dist_oslo_bergen = _estimate_distance_km(59.91, 10.75, 60.39, 5.32)
+    assert 300.0 < dist_oslo_bergen < 400.0
+
+
+@pytest.mark.asyncio
+async def test_do_plan_travel_with_coordinates(mock_engine) -> None:
+    """Verify travel legs compute estimated_distance_km when coordinates are present."""
+    ns_id = uuid4()
+    alloc_id = uuid4()
+    mock_engine.allocations[str(alloc_id)] = {
+        "id": str(alloc_id),
+        "namespace_id": str(ns_id),
+        "resource_id": str(uuid4()),
+        "status": "reserved",
+    }
+
+    plan = await do_plan_travel(
+        mock_engine,
+        {
+            "namespace_id": ns_id,
+            "allocation_id": alloc_id,
+            "action": "plan",
+            "itinerary": {
+                "travel_legs": [
+                    {
+                        "origin": "Oslo",
+                        "destination": "Bergen",
+                        "origin_lat": 59.91,
+                        "origin_lon": 10.75,
+                        "dest_lat": 60.39,
+                        "dest_lon": 5.32,
+                        "departure_at": "2026-09-21T07:00:00Z",
+                        "cost_nok": 1850.0,
+                    }
+                ],
+            },
+        },
+    )
+
+    assert plan["status"] == "planned"
+    assert len(plan["travel_legs"]) == 1
+    leg = plan["travel_legs"][0]
+    assert "estimated_distance_km" in leg
+    assert 300.0 < leg["estimated_distance_km"] < 400.0

@@ -474,6 +474,11 @@ def governed(
     counterparty_arg: str = "counterparty",
     allowlist: Sequence[str] | None = None,
     risk_flags_arg: str = "risk_flags",
+    confidence_arg: str = "confidence",
+    min_confidence: float | None = None,
+    blast_radius_count_arg: str = "blast_radius_count",
+    max_blast_radius: int | None = None,
+    reversibility_arg: str = "reversibility",
 ) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[dict[str, Any]]]]:
     """Wrap an async mutating handler with the C2 autonomy gate.
 
@@ -645,6 +650,11 @@ def governed(
                 counterparty=_get_arg(counterparty_arg),
                 allowlist=allowlist,
                 risk_flags=_get_arg(risk_flags_arg),
+                confidence=_get_arg(confidence_arg),
+                min_confidence=min_confidence,
+                blast_radius_count=_get_arg(blast_radius_count_arg),
+                max_blast_radius=max_blast_radius,
+                reversibility=_get_arg(reversibility_arg),
             )
             if policy.requires_confirm:
                 queue_id = await _record_pending_approval(

@@ -170,3 +170,78 @@ class TestStressTracker:
         with require_master_key() as wrong_mk:
             with pytest.raises(SigningKeyDecryptionError):
                 StressTracker.decrypt_report(enc_report, wrong_mk)
+
+    async def test_get_raw_empathic_data_filters_survivorship_provenance(self) -> None:
+        """Query must exclude C1 survivorship provenance records to avoid streak resets."""
+        ns = uuid.uuid4()
+        conn = MockConnection([])
+        tracker = StressTracker(conn)
+
+        await tracker.get_raw_empathic_data(ns)
+        assert len(conn.fetch_calls) == 1
+        query, args = conn.fetch_calls[0]
+        assert "COALESCE(model_version, '') NOT LIKE 'survivorship/%'" in query
+        assert args == (ns,)
+
+    async def test_burnout_alert_normalized_scale(self) -> None:
+        """5 consecutive shifts with frustration >= 0.75 on a 0.0..1.0 scale triggers burnout."""
+        ns = uuid.uuid4()
+        now = datetime.datetime.now(datetime.timezone.utc)
+        fetch_results = [
+            {
+                "empathic_tensor": [0.0, 0.0, 0.0, 0.0, 0.0, 0.8],
+                "created_at": now,
+                "tlx_scores": None,
+                "vad_scores": None,
+            }
+            for _ in range(5)
+        ]
+        conn = MockConnection(fetch_results)
+        tracker = StressTracker(conn)
+        with require_master_key() as mk:
+            enc_report = await tracker.analyze_and_encrypt_stress(ns, mk)
+            report = StressTracker.decrypt_report(enc_report, mk)
+            assert report["burnout_alert"] is True
+            assert report["frustration_trend"] == [0.8] * 5
+
+    async def test_burnout_alert_legacy_scale_avoids_false_positive(self) -> None:
+        """5 consecutive shifts with 2.0 on a 0.0..10.0 scale normalizes to 0.2, avoiding false alert."""
+        ns = uuid.uuid4()
+        now = datetime.datetime.now(datetime.timezone.utc)
+        fetch_results = [
+            {
+                "empathic_tensor": [0.0, 0.0, 0.0, 0.0, 0.0, 2.0],
+                "created_at": now,
+                "tlx_scores": None,
+                "vad_scores": None,
+            }
+            for _ in range(5)
+        ]
+        conn = MockConnection(fetch_results)
+        tracker = StressTracker(conn)
+        with require_master_key() as mk:
+            enc_report = await tracker.analyze_and_encrypt_stress(ns, mk)
+            report = StressTracker.decrypt_report(enc_report, mk)
+            assert report["burnout_alert"] is False
+            assert report["frustration_trend"] == [2.0] * 5
+
+    async def test_burnout_alert_legacy_scale_triggers_on_high_frustration(self) -> None:
+        """5 consecutive shifts with 8.5 on a 0.0..10.0 scale normalizes to 0.85, triggering burnout."""
+        ns = uuid.uuid4()
+        now = datetime.datetime.now(datetime.timezone.utc)
+        fetch_results = [
+            {
+                "empathic_tensor": [0.0, 0.0, 0.0, 0.0, 0.0, 8.5],
+                "created_at": now,
+                "tlx_scores": None,
+                "vad_scores": None,
+            }
+            for _ in range(5)
+        ]
+        conn = MockConnection(fetch_results)
+        tracker = StressTracker(conn)
+        with require_master_key() as mk:
+            enc_report = await tracker.analyze_and_encrypt_stress(ns, mk)
+            report = StressTracker.decrypt_report(enc_report, mk)
+            assert report["burnout_alert"] is True
+            assert report["frustration_trend"] == [8.5] * 5

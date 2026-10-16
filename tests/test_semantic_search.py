@@ -706,3 +706,97 @@ class TestBatch63CrossEncoderReranking:
         # Should fall back to database sorting and return results cleanly
         assert len(results) == 1
         assert results[0]["reranker_score"] is None
+
+
+class TestWaveI1CandidateQueriesAndSalience:
+    @pytest.mark.asyncio
+    async def test_candidate_query_includes_consolidated_semantic_and_valid_to_null(self) -> None:
+        mock_conn = _base_pg_conn([])
+        pool = MagicMock()
+
+        async def embed(_query: str):
+            return [0.0] * VECTOR_DIM
+
+        with patch("nce.semantic_search.scoped_pg_session", _fake_scoped(mock_conn)):
+            with patch(
+                "nce.semantic_search.asyncio.create_task",
+                side_effect=lambda coro: (coro.close(), MagicMock())[1],
+            ):
+                await semantic_search(
+                    pg_pool=pool,
+                    mongo_client=_mongo_client(),
+                    embedding_fn=embed,
+                    query="q",
+                    namespace_id=NS,
+                    agent_id=AGENT,
+                )
+
+        sql = mock_conn.fetch.call_args[0][0]
+        assert "m.memory_type IN ('episodic', 'consolidated', 'semantic')" in sql
+        assert "m.valid_to IS NULL" in sql
+        assert "s_sys.agent_id = 'system'" in sql
+        assert "LEAST(COALESCE(s.salience_score, 1.0), COALESCE(s_sys.salience_score, 1.0))" in sql
+
+    @pytest.mark.asyncio
+    async def test_candidate_query_with_as_of_omits_valid_to_null(self) -> None:
+        mock_conn = _base_pg_conn([])
+        pool = MagicMock()
+
+        async def embed(_query: str):
+            return [0.0] * VECTOR_DIM
+
+        with patch("nce.semantic_search.scoped_pg_session", _fake_scoped(mock_conn)):
+            with patch(
+                "nce.semantic_search.asyncio.create_task",
+                side_effect=lambda coro: (coro.close(), MagicMock())[1],
+            ):
+                await semantic_search(
+                    pg_pool=pool,
+                    mongo_client=_mongo_client(),
+                    embedding_fn=embed,
+                    query="q",
+                    namespace_id=NS,
+                    agent_id=AGENT,
+                    at_timestamp="2026-01-01T00:00:00Z",
+                )
+
+        sql = mock_conn.fetch.call_args[0][0]
+        assert "m.valid_to IS NULL" not in sql
+        assert "m.created_at <=" in sql
+
+
+class TestWaveI1BatchNLIReranking:
+    @pytest.mark.asyncio
+    async def test_check_nli_relevance_batch_empty_list(self) -> None:
+        from nce.semantic_search import check_nli_relevance_batch
+
+        res = await check_nli_relevance_batch([])
+        assert res == []
+
+    @pytest.mark.asyncio
+    async def test_check_nli_relevance_batch_local_model(self) -> None:
+        import numpy as np
+
+        from nce.semantic_search import check_nli_relevance_batch
+
+        mock_model = MagicMock()
+        mock_model.predict = MagicMock(
+            return_value=np.array(
+                [
+                    [2.5, 0.0, -1.0],
+                    [-2.5, 0.0, 1.0],
+                ],
+                dtype=np.float32,
+            )
+        )
+
+        with patch("nce.contradictions._load_nli_model", return_value=mock_model):
+            pairs = [
+                ("premise 1", "hypothesis 1"),
+                ("premise 2", "hypothesis 2"),
+            ]
+            scores = await check_nli_relevance_batch(pairs)
+
+        assert len(scores) == 2
+        assert scores[0] > 0.8
+        assert scores[1] < 0.2

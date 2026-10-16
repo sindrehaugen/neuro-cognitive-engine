@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -58,6 +59,26 @@ def load_travel_policy() -> dict[str, Any]:
             "requires_idempotency_key": True,
         },
     }
+
+
+def _estimate_distance_km(
+    lat1: float,
+    lon1: float,
+    lat2: float,
+    lon2: float,
+) -> float:
+    """Estimate distance in kilometers between two lat/lon coordinates.
+
+    Applies equirectangular approximation with cosine latitude scaling:
+      avg_lat = (lat1 + lat2) / 2.0
+      dlat = lat2 - lat1
+      dlon = (lon2 - lon1) * cos(radians(avg_lat))
+      distance = sqrt(dlat^2 + dlon^2) * 111.0 km
+    """
+    dlat = float(lat2) - float(lat1)
+    avg_lat = (float(lat1) + float(lat2)) / 2.0
+    dlon = (float(lon2) - float(lon1)) * math.cos(math.radians(avg_lat))
+    return round(math.sqrt(dlat**2 + dlon**2) * 111.0, 3)
 
 
 def calculate_norwegian_diett(
@@ -165,17 +186,44 @@ async def do_plan_travel(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
         arr = (
             _parse_datetime(leg.get("arrival_at"), "arrival_at") if leg.get("arrival_at") else None
         )
-        evaluated_legs.append(
-            {
-                "origin": str(leg.get("origin") or "HQ"),
-                "destination": str(leg.get("destination") or "Site"),
-                "departure_at": dep.isoformat(),
-                "arrival_at": arr.isoformat() if arr else None,
-                "mode": str(leg.get("mode") or "flight"),
-                "cost_nok": float(cost),
-                "booking_ref": leg.get("booking_ref"),
-            }
+        leg_dict = {
+            "origin": str(leg.get("origin") or "HQ"),
+            "destination": str(leg.get("destination") or "Site"),
+            "departure_at": dep.isoformat(),
+            "arrival_at": arr.isoformat() if arr else None,
+            "mode": str(leg.get("mode") or "flight"),
+            "cost_nok": float(cost),
+            "booking_ref": leg.get("booking_ref"),
+        }
+        o_lat = leg.get("origin_lat") or (
+            leg.get("origin_coords", {}).get("lat")
+            if isinstance(leg.get("origin_coords"), dict)
+            else None
         )
+        o_lon = leg.get("origin_lon") or (
+            leg.get("origin_coords", {}).get("lon")
+            if isinstance(leg.get("origin_coords"), dict)
+            else None
+        )
+        d_lat = leg.get("dest_lat") or (
+            leg.get("destination_coords", {}).get("lat")
+            if isinstance(leg.get("destination_coords"), dict)
+            else None
+        )
+        d_lon = leg.get("dest_lon") or (
+            leg.get("destination_coords", {}).get("lon")
+            if isinstance(leg.get("destination_coords"), dict)
+            else None
+        )
+        if o_lat is not None and o_lon is not None and d_lat is not None and d_lon is not None:
+            try:
+                leg_dict["estimated_distance_km"] = _estimate_distance_km(
+                    float(o_lat), float(o_lon), float(d_lat), float(d_lon)
+                )
+            except Exception:
+                pass
+
+        evaluated_legs.append(leg_dict)
 
     evaluated_stays = []
     stays_cost = Decimal("0.00")

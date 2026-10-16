@@ -142,6 +142,112 @@ def compute_health_score(
     }
 
 
+async def _fetch_customer_affect_metrics(
+    conn: Any,
+    ns_uuid: Any,
+    customer_id: str,
+    params: dict[str, Any],
+) -> tuple[float, float | None]:
+    """Fetch customer frustration and touchpoint scores from params or v3_cognitive_ledger (I-VERT-03)."""
+    # 1. Parameter overrides take highest precedence
+    frustration_param = params.get("frustration_score")
+    touchpoint_param = params.get("touchpoint_avg")
+    if frustration_param is not None and touchpoint_param is not None:
+        return float(frustration_param), float(touchpoint_param)
+
+    # 2. Query v3_cognitive_ledger for recent touchpoint and frustration metrics
+    try:
+        rows = await conn.fetch(
+            """
+            SELECT empathic_tensor, tlx_scores, created_at
+            FROM v3_cognitive_ledger
+            WHERE namespace_id = $1::uuid
+              AND (
+                tlx_scores->>'customer_id' = $2
+                OR tlx_scores->>'event_type' IN ('customer_touchpoint', 'touchpoint_response')
+              )
+            ORDER BY created_at DESC
+            LIMIT 50
+            """,
+            ns_uuid,
+            customer_id,
+        )
+    except (StopIteration, RuntimeError, Exception) as exc:
+        log.debug("Ledger query for customer affect skipped or failed: %s", exc)
+        f_val = float(frustration_param) if frustration_param is not None else 0.0
+        tp_val = float(touchpoint_param) if touchpoint_param is not None else None
+        return f_val, tp_val
+
+    if not rows or not isinstance(rows, (list, tuple)):
+        f_val = float(frustration_param) if frustration_param is not None else 0.0
+        tp_val = float(touchpoint_param) if touchpoint_param is not None else None
+        return f_val, tp_val
+
+    touchpoint_scores: list[float] = []
+    frustration_scores: list[float] = []
+
+    for r in rows:
+        if not hasattr(r, "__getitem__"):
+            continue
+        raw_tlx = r["tlx_scores"] if "tlx_scores" in r else None
+        payload: dict[str, Any] = {}
+        if raw_tlx:
+            payload = json.loads(raw_tlx) if isinstance(raw_tlx, str) else dict(raw_tlx)
+
+        # Ensure match on customer_id if present in payload
+        payload_cust = payload.get("customer_id")
+        if payload_cust is not None and str(payload_cust).strip() != customer_id:
+            continue
+
+        event_type = payload.get("event_type")
+        if event_type in ("customer_touchpoint", "touchpoint_response") or "score" in payload:
+            score = payload.get("score")
+            if score is not None:
+                try:
+                    touchpoint_scores.append(float(score))
+                except (ValueError, TypeError):
+                    pass
+
+        # Empathic Tensor vector(6) has frustration at index 5 (0-indexed) / index 6 (1-indexed in SQL)
+        tensor = r["empathic_tensor"] if "empathic_tensor" in r else None
+        if tensor is not None:
+            if isinstance(tensor, (list, tuple)) and len(tensor) >= 6:
+                try:
+                    frustration_scores.append(float(tensor[5]))
+                except (ValueError, TypeError):
+                    pass
+            elif isinstance(tensor, str):
+                clean = tensor.strip("[]{}() ")
+                if clean:
+                    parts = [float(p.strip()) for p in clean.split(",") if p.strip()]
+                    if len(parts) >= 6:
+                        frustration_scores.append(parts[5])
+        elif "frustration" in payload:
+            try:
+                frustration_scores.append(float(payload["frustration"]))
+            except (ValueError, TypeError):
+                pass
+
+    resolved_frustration = (
+        float(frustration_param)
+        if frustration_param is not None
+        else (
+            round(sum(frustration_scores) / len(frustration_scores), 3)
+            if frustration_scores
+            else 0.0
+        )
+    )
+    resolved_touchpoint = (
+        float(touchpoint_param)
+        if touchpoint_param is not None
+        else (
+            round(sum(touchpoint_scores) / len(touchpoint_scores), 2) if touchpoint_scores else None
+        )
+    )
+
+    return resolved_frustration, resolved_touchpoint
+
+
 async def do_health_score(
     engine_or_pool: Any,
     params: dict[str, Any],
@@ -215,13 +321,18 @@ async def do_health_score(
         prev_score = float(prev_health["score"]) if prev_health else None
         last_touchpoint = prev_health["last_touchpoint_at"] if prev_health else None
 
-        # 4. Compute composite health score
+        # 4. Resolve customer affect metrics from ledger or params (I-VERT-03)
+        frustration_score, touchpoint_avg = await _fetch_customer_affect_metrics(
+            conn, ns_uuid, cust_str, params
+        )
+
+        # 5. Compute composite health score
         calc = compute_health_score(
             ticket_count=ticket_count,
             recent_ticket_count=recent_ticket_count,
             breach_count=breach_count,
-            frustration_score=0.0,
-            touchpoint_avg=None,
+            frustration_score=frustration_score,
+            touchpoint_avg=touchpoint_avg,
             previous_score=prev_score,
         )
 

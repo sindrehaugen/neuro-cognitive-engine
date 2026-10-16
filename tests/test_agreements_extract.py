@@ -169,3 +169,67 @@ async def test_extract_agreement_handles_predecoded_dict_metadata() -> None:
         )
     assert res["supplierId"]["value"] == "VENDOR:NORDIC"
     assert res["supplierId"]["reviewStatus"] == "auto_green"
+
+
+def test_build_ocr_prompt_includes_document_text() -> None:
+    """Verify _build_ocr_prompt incorporates document content when provided."""
+    from nce.vertical_modules.agreements.extract import _build_ocr_prompt
+
+    prompt_no_text = _build_ocr_prompt("sharepoint://docs/contract.pdf")
+    assert "sharepoint://docs/contract.pdf" in prompt_no_text
+    assert "Document Content:" not in prompt_no_text
+
+    doc_content = "Supplier: Nordic Sound AS\nRebate: 5.0%\nPayment: 30 days"
+    prompt_with_text = _build_ocr_prompt("sharepoint://docs/contract.pdf", doc_content)
+    assert "sharepoint://docs/contract.pdf" in prompt_with_text
+    assert "Document Content:" in prompt_with_text
+    assert "Supplier: Nordic Sound AS" in prompt_with_text
+
+
+@pytest.mark.asyncio
+async def test_extract_agreement_passes_hydrated_document_text() -> None:
+    """Verify do_extract_agreement forwards document_text from params or database row."""
+    import uuid
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    ns_id = str(uuid.uuid4())
+    doc_id = str(uuid.uuid4())
+
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(
+        return_value={
+            "metadata": {"provider": "mock"},
+            "content": "Supplier: Nordic Audio AS\nPayment Terms: 45 days",
+        }
+    )
+
+    @asynccontextmanager
+    async def _fake_session(_pool: Any, _ns: Any):
+        yield conn
+
+    mock_extracted = ExtractedAgreementModel(
+        supplierId=ExtractedFieldString(value="VENDOR:NORDIC", confidence=95.0),
+    )
+
+    engine = EngineStub(MagicMock())
+    with (
+        patch(
+            "nce.vertical_modules.agreements.extract.scoped_pg_session",
+            side_effect=_fake_session,
+        ),
+        patch(
+            "nce.vertical_modules.agreements.extract._call_ocr_extraction",
+            return_value=mock_extracted,
+        ) as mock_call,
+    ):
+        res = await do_extract_agreement(
+            engine,  # type: ignore[arg-type]
+            {"namespace_id": ns_id, "source_doc_ref": doc_id},
+        )
+        assert res["supplierId"]["value"] == "VENDOR:NORDIC"
+        mock_call.assert_called_once()
+        assert (
+            mock_call.call_args[1]["document_text"]
+            == "Supplier: Nordic Audio AS\nPayment Terms: 45 days"
+        )

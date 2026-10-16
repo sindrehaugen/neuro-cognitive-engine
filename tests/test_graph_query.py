@@ -527,3 +527,73 @@ async def test_search_allows_none_namespace_with_flag(
 
     subgraph = await traverser.search("query", namespace_id=None, _allow_global_sweep=True)
     assert subgraph.anchor == "Redis"
+
+
+@pytest.mark.asyncio
+async def test_search_multi_anchor_preserves_secondary_anchors(
+    traverser,
+    mock_pg_pool,
+    mock_mongo_client,
+):
+    """Multi-anchor search (anchor_top_k > 1) includes secondary anchors in subgraph nodes."""
+    _, conn = mock_pg_pool
+
+    async def mock_find_anchor(*args, **kwargs):
+        return [
+            GraphNode(
+                label="PrimaryAnchor", entity_type="CONCEPT", payload_ref="ref1", distance=0.05
+            ),
+            GraphNode(
+                label="SecondaryAnchor", entity_type="CONCEPT", payload_ref="ref2", distance=0.15
+            ),
+        ]
+
+    traverser._find_anchor = mock_find_anchor
+
+    async def mock_bfs(label, *args, **kwargs):
+        if label == "PrimaryAnchor":
+            return {"PrimaryAnchor", "Target1"}, [
+                GraphEdge(
+                    subject="PrimaryAnchor",
+                    predicate="relates_to",
+                    obj="Target1",
+                    confidence=0.9,
+                    payload_ref=None,
+                )
+            ]
+        elif label == "SecondaryAnchor":
+            return {"SecondaryAnchor", "Target2"}, [
+                GraphEdge(
+                    subject="SecondaryAnchor",
+                    predicate="relates_to",
+                    obj="Target2",
+                    confidence=0.8,
+                    payload_ref=None,
+                )
+            ]
+        return {label}, []
+
+    traverser._bfs = mock_bfs
+
+    conn.fetch.return_value = [
+        {"label": "PrimaryAnchor", "entity_type": "CONCEPT", "payload_ref": "ref1"},
+        {"label": "SecondaryAnchor", "entity_type": "CONCEPT", "payload_ref": "ref2"},
+        {"label": "Target1", "entity_type": "CONCEPT", "payload_ref": None},
+        {"label": "Target2", "entity_type": "CONCEPT", "payload_ref": None},
+    ]
+
+    traverser._hydrate_sources = AsyncMock(return_value=[])
+
+    subgraph = await traverser.search(
+        "query",
+        anchor_top_k=2,
+        _allow_global_sweep=True,
+    )
+
+    assert subgraph.anchor == "PrimaryAnchor"
+    labels = {n.label for n in subgraph.nodes}
+    assert "PrimaryAnchor" in labels
+    assert "SecondaryAnchor" in labels
+    assert "Target1" in labels
+    assert "Target2" in labels
+    assert len(subgraph.edges) == 2

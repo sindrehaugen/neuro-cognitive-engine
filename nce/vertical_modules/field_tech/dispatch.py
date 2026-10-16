@@ -197,7 +197,8 @@ async def do_dispatch(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
                 tlx_scores->>'completed_by' as completed_by,
                 COUNT(*) as completed_count,
                 AVG(COALESCE((tlx_scores->>'rating')::numeric, 5.0)) as avg_rating,
-                AVG(COALESCE((tlx_scores->>'quality_score')::numeric, 1.0)) as avg_quality
+                AVG(COALESCE((tlx_scores->>'quality_score')::numeric, 1.0)) as avg_quality,
+                COUNT(*) FILTER (WHERE (tlx_scores->>'was_rework')::boolean IS TRUE) as rework_count
             FROM v3_cognitive_ledger
             WHERE namespace_id = $1::uuid
               AND tlx_scores->>'event_type' = 'field_tech_outcome'
@@ -213,6 +214,7 @@ async def do_dispatch(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
                 "count": int(hr["completed_count"]),
                 "avg_rating": float(hr["avg_rating"]),
                 "avg_quality": float(hr["avg_quality"]),
+                "rework_count": int(hr.get("rework_count") or 0),
             }
 
     # 5. Pure scoring over candidates
@@ -246,7 +248,11 @@ async def do_dispatch(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
         if h_info and h_info["count"] > 0:
             # Scale rating [1..5] to [0.2..1.0] and quality [0..1]
             rating_norm = max(0.0, min(1.0, h_info["avg_rating"] / 5.0))
-            hist_score = 0.6 * rating_norm + 0.4 * max(0.0, min(1.0, h_info["avg_quality"]))
+            raw_quality = max(0.0, min(1.0, h_info["avg_quality"]))
+            rework_count = int(h_info.get("rework_count") or 0)
+            rework_penalty = (rework_count / h_info["count"]) * 0.5 if h_info["count"] > 0 else 0.0
+            effective_quality = max(0.0, raw_quality * (1.0 - rework_penalty))
+            hist_score = 0.6 * rating_norm + 0.4 * effective_quality
         else:
             hist_score = 0.7  # Neutral prior for newcomers
 
@@ -255,10 +261,15 @@ async def do_dispatch(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
             w_skill * skill_score + w_loc * loc_score + w_load * load_score + w_hist * hist_score
         )
 
+        rework_txt = (
+            f", {h_info.get('rework_count', 0)} reworks"
+            if h_info and h_info.get("rework_count", 0) > 0
+            else ""
+        )
         rationale = (
             f"Skill match: {skill_score:.2f}, Location: {loc_score:.2f}, "
             f"Active load: {active_load} ({load_score:.2f}), "
-            f"History: {hist_score:.2f} (from {h_info['count'] if h_info else 0} prior jobs)"
+            f"History: {hist_score:.2f} (from {h_info['count'] if h_info else 0} prior jobs{rework_txt})"
         )
 
         scored_candidates.append(

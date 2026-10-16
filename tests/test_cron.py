@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import os
-
-os.environ.setdefault("NCE_MASTER_KEY", "x" * 32)
-
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import asyncpg
 import pytest
+
+os.environ.setdefault("NCE_MASTER_KEY", "x" * 32)
 
 from nce.cron import _decode_saga_payload, _reembedding_tick
 
@@ -327,3 +328,171 @@ async def test_reschedule_jobs_covers_all_interval_jobs_and_startup_includes_ass
     src = inspect.getsource(cron_mod.async_main)
     startup_block = src.split("startup_coros = [", 1)[1].split("]", 1)[0]
     assert "_assets_telemetry_tick(pool)" in startup_block
+
+
+class _MockAsyncpgConnection(asyncpg.Connection):
+    def __init__(self, fetch_val: Any = None) -> None:
+        self._protocol = None
+        self._aborted = False
+        self._closed = True
+        self.fetch = AsyncMock(return_value=fetch_val or [])
+        self.execute = AsyncMock()
+
+    def transaction(self, **kwargs: Any) -> Any:
+        from contextlib import asynccontextmanager
+
+        @asynccontextmanager
+        async def _tx():
+            yield self
+
+        return _tx()
+
+    def __del__(self) -> None:
+        pass
+
+
+@pytest.mark.asyncio
+async def test_agreements_coverage_watcher_publishes_c4_event():
+    import uuid
+    from contextlib import asynccontextmanager
+
+    from nce.cron import _agreements_coverage_watcher_tick
+
+    ns_id = uuid.uuid4()
+    mock_pool = MagicMock()
+    mock_lock = MagicMock()
+    mock_conn = _MockAsyncpgConnection([{"id": ns_id}])
+
+    @asynccontextmanager
+    async def _fake_unmanaged(pool: Any, *, site: str):
+        yield mock_conn
+
+    coverage_result = {
+        "status": "ok",
+        "flags": [
+            {"agreement_id": "ag-01", "flag_type": "expiry", "detail": "Expires in 7 days"},
+            {"agreement_id": "ag-02", "flag_type": "leakage", "detail": "Rate drift"},
+        ],
+    }
+
+    with (
+        patch("nce.cron.acquire_cron_lock", new_callable=AsyncMock, return_value=mock_lock),
+        patch("nce.cron.release_cron_lock", new_callable=AsyncMock) as mock_release,
+        patch("nce.cron.unmanaged_pg_connection", _fake_unmanaged),
+        patch(
+            "nce.vertical_modules.agreements.coverage.do_coverage_matrix",
+            new_callable=AsyncMock,
+            return_value=coverage_result,
+        ),
+        patch("nce.cron._dispatch_agreements_coverage_alerts", new_callable=AsyncMock),
+        patch("nce.events.bus.publish", new_callable=AsyncMock) as mock_publish,
+    ):
+        await _agreements_coverage_watcher_tick(mock_pool)
+
+        mock_release.assert_awaited_once_with(mock_lock)
+        mock_publish.assert_awaited_once_with(
+            mock_conn,
+            namespace_id=ns_id,
+            node_type="AGREEMENT",
+            op="renewal_due",
+            aggregate_id="ag-01",
+            payload={
+                "agreement_id": "ag-01",
+                "namespace_id": str(ns_id),
+                "detail": "Expires in 7 days",
+                "flag_type": "expiry",
+            },
+        )
+
+
+@pytest.mark.asyncio
+async def test_sales_stalled_deal_watcher_publishes_c4_event():
+    import uuid
+    from contextlib import asynccontextmanager
+
+    from nce.cron import _sales_stalled_deal_watcher_tick
+
+    ns_id = uuid.uuid4()
+    mock_pool = MagicMock()
+    mock_lock = MagicMock()
+    mock_conn = _MockAsyncpgConnection([{"id": ns_id}])
+
+    @asynccontextmanager
+    async def _fake_unmanaged(pool: Any, *, site: str):
+        yield mock_conn
+
+    stats = {
+        "stalled_deals_count": 1,
+        "stalled_deals": [{"deal_id": "deal-101", "name": "Expansion Opportunity"}],
+    }
+
+    with (
+        patch("nce.cron.acquire_cron_lock", new_callable=AsyncMock, return_value=mock_lock),
+        patch("nce.cron.release_cron_lock", new_callable=AsyncMock) as mock_release,
+        patch("nce.cron.unmanaged_pg_connection", _fake_unmanaged),
+        patch(
+            "nce.vertical_modules.sales.flip.do_stalled_deal_watcher",
+            new_callable=AsyncMock,
+            return_value=stats,
+        ),
+        patch("nce.cron._dispatch_throttled_alert", new_callable=AsyncMock),
+        patch("nce.events.bus.publish", new_callable=AsyncMock) as mock_publish,
+    ):
+        await _sales_stalled_deal_watcher_tick(mock_pool)
+
+        mock_release.assert_awaited_once_with(mock_lock)
+        mock_publish.assert_awaited_once_with(
+            mock_conn,
+            namespace_id=ns_id,
+            node_type="DEAL",
+            op="stalled",
+            aggregate_id="deal-101",
+            payload={
+                "deal_id": "deal-101",
+                "name": "Expansion Opportunity",
+                "namespace_id": str(ns_id),
+            },
+        )
+
+
+@pytest.mark.asyncio
+async def test_watcher_ticks_isolate_publish_exception():
+    import uuid
+    from contextlib import asynccontextmanager
+
+    from nce.cron import _sales_stalled_deal_watcher_tick
+
+    ns_id = uuid.uuid4()
+    mock_pool = MagicMock()
+    mock_lock = MagicMock()
+    mock_conn = _MockAsyncpgConnection([{"id": ns_id}])
+
+    @asynccontextmanager
+    async def _fake_unmanaged(pool: Any, *, site: str):
+        yield mock_conn
+
+    stats = {
+        "stalled_deals_count": 1,
+        "stalled_deals": [{"deal_id": "deal-202", "name": "Test Deal"}],
+    }
+
+    with (
+        patch("nce.cron.acquire_cron_lock", new_callable=AsyncMock, return_value=mock_lock),
+        patch("nce.cron.release_cron_lock", new_callable=AsyncMock) as mock_release,
+        patch("nce.cron.unmanaged_pg_connection", _fake_unmanaged),
+        patch(
+            "nce.vertical_modules.sales.flip.do_stalled_deal_watcher",
+            new_callable=AsyncMock,
+            return_value=stats,
+        ),
+        patch("nce.cron._dispatch_throttled_alert", new_callable=AsyncMock) as mock_alert,
+        patch(
+            "nce.events.bus.publish",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("Bus connection dropped"),
+        ),
+    ):
+        # Should not raise exception even when publish fails
+        await _sales_stalled_deal_watcher_tick(mock_pool)
+        mock_alert.assert_awaited_once()
+        mock_release.assert_awaited_once_with(mock_lock)

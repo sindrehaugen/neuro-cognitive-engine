@@ -426,3 +426,98 @@ async def test_governed_kill_switch_blocks_even_on_confirm_false() -> None:
 
     mock_redis.hexists.assert_awaited()
     assert call_log == []
+
+
+def test_policy_confidence_below_minimum_returns_verdict() -> None:
+    """Confidence below min_confidence returns PolicyVerdict with allowed=False."""
+    from nce.autonomy.policy import PolicyVerdict
+
+    result = evaluate_policy(confidence=0.75, min_confidence=0.80)
+    assert isinstance(result, PolicyVerdict)
+    assert result.allowed is False
+    assert result.requires_confirm is True
+    assert result.reason == "confidence_below_minimum:0.750<0.800"
+
+
+def test_policy_confidence_above_minimum_passes() -> None:
+    """Confidence at or above min_confidence passes."""
+    result = evaluate_policy(confidence=0.85, min_confidence=0.80)
+    assert result.allowed is True
+    assert result.requires_confirm is False
+    assert result.reason == "ok"
+
+
+def test_policy_blast_radius_exceeded_returns_verdict() -> None:
+    """blast_radius_count exceeding max_blast_radius returns PolicyVerdict with allowed=False."""
+    from nce.autonomy.policy import PolicyVerdict
+
+    result = evaluate_policy(blast_radius_count=15, max_blast_radius=10)
+    assert isinstance(result, PolicyVerdict)
+    assert result.allowed is False
+    assert result.requires_confirm is True
+    assert result.reason == "blast_radius_exceeded:15>10"
+
+
+def test_policy_blast_radius_within_cap_passes() -> None:
+    """blast_radius_count at or below max_blast_radius passes."""
+    result = evaluate_policy(blast_radius_count=10, max_blast_radius=10)
+    assert result.allowed is True
+    assert result.requires_confirm is False
+    assert result.reason == "ok"
+
+
+def test_policy_reversibility_parameter_accepted() -> None:
+    """reversibility parameter is accepted without breaking evaluation."""
+    result = evaluate_policy(reversibility="reversible")
+    assert result.allowed is True
+    assert result.requires_confirm is False
+
+
+def test_policy_verdict_interoperability() -> None:
+    """PolicyVerdict instances interoperate transparently with PolicyDecision."""
+    from nce.autonomy.policy import PolicyVerdict
+
+    verdict_fail = PolicyVerdict(allowed=False, reason="custom_reason")
+    assert verdict_fail.allowed is False
+    assert verdict_fail.requires_confirm is True
+    assert verdict_fail == PolicyDecision(requires_confirm=True, reason="custom_reason")
+    assert PolicyDecision(requires_confirm=True, reason="custom_reason") == verdict_fail
+
+    verdict_pass = PolicyVerdict(allowed=True, reason="ok")
+    assert verdict_pass.allowed is True
+    assert verdict_pass.requires_confirm is False
+    assert verdict_pass == PolicyDecision(requires_confirm=False, reason="ok")
+    assert PolicyDecision(requires_confirm=False, reason="ok") == verdict_pass
+
+
+@pytest.mark.asyncio
+async def test_governed_confidence_gate_enforcement() -> None:
+    """@governed routes low confidence acts to pending_approval."""
+    call_log: list[int] = []
+
+    @governed(
+        action_type="test_action_conf",
+        min_confidence=0.85,
+    )
+    async def handler(
+        conn: Any,
+        namespace_id: uuid.UUID,
+        *,
+        idempotency_key: str,
+        confirm: bool = False,
+        confidence: float | None = None,
+    ) -> dict[str, Any]:
+        call_log.append(1)
+        return {"done": True}
+
+    res = await handler(
+        _mock_conn_in_tx(),
+        uuid.uuid4(),
+        idempotency_key="k-conf-1",
+        confirm=True,
+        confidence=0.72,
+    )
+
+    assert res["status"] == "pending_approval"
+    assert "confidence_below_minimum" in res.get("reason", "")
+    assert call_log == []

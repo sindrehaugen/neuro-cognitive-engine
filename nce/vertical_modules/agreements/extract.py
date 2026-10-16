@@ -115,16 +115,25 @@ def _map_confidence_to_status(
 # ---------------------------------------------------------------------------
 
 
-async def _call_ocr_extraction(
-    provider: LLMProvider,
-    source_doc_ref: str,
-) -> ExtractedAgreementModel:
-    """Invoke the cognitive provider to parse the document referenced by source_doc_ref."""
+def _build_ocr_prompt(source_doc_ref: str, document_text: str | None = None) -> str:
+    """Build the prompt for LLM OCR extraction, embedding document text when available."""
     prompt = (
         f"Perform OCR on the agreement document referenced by '{source_doc_ref}' and "
         "extract its core commercial terms. For each field, provide your best estimation of "
         "the value along with a self-reported confidence score between 0.0 and 100.0."
     )
+    if document_text and document_text.strip():
+        prompt += f"\n\nDocument Content:\n{document_text.strip()}"
+    return prompt
+
+
+async def _call_ocr_extraction(
+    provider: LLMProvider,
+    source_doc_ref: str,
+    document_text: str | None = None,
+) -> ExtractedAgreementModel:
+    """Invoke the cognitive provider to parse the document referenced by source_doc_ref."""
+    prompt = _build_ocr_prompt(source_doc_ref, document_text)
     messages = [
         Message.system(
             "You are an expert contract analysis system. You extract key values from legal agreements "
@@ -159,6 +168,8 @@ async def do_extract_agreement(
         dict containing:
           - namespace_id: str/UUID (required)
           - source_doc_ref: str (required)
+          - document_text: str (optional)
+          - content: str (optional)
 
     Returns
     -------
@@ -169,6 +180,8 @@ async def do_extract_agreement(
     source_doc_ref = params.get("source_doc_ref")
     if not source_doc_ref:
         raise ValueError("source_doc_ref is required")
+
+    document_text: str | None = params.get("document_text") or params.get("content")
 
     # 1. Resolve namespace metadata from the DB to choose the proper LLM provider
     async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
@@ -186,10 +199,27 @@ async def do_extract_agreement(
             else {}
         )
 
+        # Hydrate document text if not directly provided in params
+        if not document_text and row:
+            if "content" in row and row["content"]:
+                document_text = str(row["content"])
+            elif isinstance(metadata, dict) and (metadata.get("text") or metadata.get("content")):
+                document_text = str(metadata.get("text") or metadata.get("content"))
+
+    if not document_text and getattr(engine, "mongo_db", None) is not None:
+        try:
+            doc_payload = await engine.mongo_db["memory_payloads"].find_one(
+                {"_id": str(source_doc_ref)}
+            )
+            if doc_payload and (doc_payload.get("raw_data") or doc_payload.get("content")):
+                document_text = str(doc_payload.get("raw_data") or doc_payload.get("content"))
+        except Exception:
+            pass
+
     provider = get_provider(metadata)
 
     # 2. Call the isolated OCR extraction function
-    extracted = await _call_ocr_extraction(provider, source_doc_ref)
+    extracted = await _call_ocr_extraction(provider, source_doc_ref, document_text=document_text)
 
     # 3. Apply the confidence gate to each field
     autogreen_thresh = float(cfg.NCE_AGREEMENTS_OCR_AUTOGREEN_THRESHOLD)

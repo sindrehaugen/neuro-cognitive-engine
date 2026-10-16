@@ -55,6 +55,7 @@ class GraphNode:
     entity_type: str
     payload_ref: str | None
     distance: float = 0.0  # cosine distance from query anchor
+    secondary_anchors: list[GraphNode] = field(default_factory=list)
 
 
 @dataclass
@@ -1002,6 +1003,8 @@ class GraphRAGTraverser:
             return None
 
         anchor = anchors[0]
+        if len(anchors) > 1:
+            anchor.secondary_anchors = anchors[1:]
         log.info("[%s] Anchor: '%s' (distance=%.4f)", method_name, anchor.label, anchor.distance)
 
         visited_labels, edges = await self._bfs(
@@ -1013,6 +1016,25 @@ class GraphRAGTraverser:
             max_edges_per_node=per_node,
             conn=conn,
         )
+
+        if len(anchors) > 1:
+            for sec in anchors[1:]:
+                visited_labels.add(sec.label)
+                try:
+                    sec_visited, sec_edges = await self._bfs(
+                        sec.label,
+                        max_depth=max_depth,
+                        namespace_id=namespace_id,
+                        as_of=as_of,
+                        _allow_global_sweep=_allow_global_sweep,
+                        max_edges_per_node=per_node,
+                        conn=conn,
+                    )
+                    visited_labels.update(sec_visited)
+                    edges.extend(sec_edges)
+                except Exception:
+                    pass
+
         return anchor, visited_labels, edges
 
     def _temporal_cte_prefix(self) -> str:
@@ -1097,12 +1119,16 @@ class GraphRAGTraverser:
                 "SELECT label, entity_type, payload_ref FROM kg_nodes WHERE label = ANY($1::text[])",
                 labels,
             )
+        anchor_distances = {anchor.label: anchor.distance}
+        for sa in getattr(anchor, "secondary_anchors", []):
+            anchor_distances[sa.label] = sa.distance
+
         return [
             GraphNode(
                 label=r["label"],
                 entity_type=r["entity_type"],
                 payload_ref=r["payload_ref"],
-                distance=anchor.distance if r["label"] == anchor.label else 0.0,
+                distance=anchor_distances.get(r["label"], 0.0),
             )
             for r in rows
         ]
@@ -1138,6 +1164,8 @@ class GraphRAGTraverser:
         has_more = edge_total > off + len(page_edges)
 
         labels_for_page = {anchor.label}
+        for sa in getattr(anchor, "secondary_anchors", []):
+            labels_for_page.add(sa.label)
         for e in page_edges:
             labels_for_page.add(e.subject)
             labels_for_page.add(e.obj)
@@ -1368,6 +1396,8 @@ class GraphRAGTraverser:
 
                         # Select active nodes: fired nodes, anchor node, and sub-threshold activated nodes
                         active_labels = set(engine.fired_nodes) | {anchor.label}
+                        for sa in getattr(anchor, "secondary_anchors", []):
+                            active_labels.add(sa.label)
                         # Also include any nodes that reached at least 10% of firing threshold
                         sub_threshold = actual_theta * 0.1
                         for node_label, pot in engine.max_potentials.items():

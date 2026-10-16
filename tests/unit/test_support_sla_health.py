@@ -358,3 +358,202 @@ async def test_do_record_touchpoint_success() -> None:
     ledger_call = conn.execute.call_args
     assert "INSERT INTO v3_cognitive_ledger" in ledger_call[0][0]
     assert ledger_call[0][2] == UUID(_NS_A)
+
+
+@pytest.mark.asyncio
+async def test_fetch_customer_affect_metrics_from_ledger() -> None:
+    """Validates that frustration tensor and touchpoint responses are parsed from ledger."""
+    import json
+
+    from nce.vertical_modules.support.health import _fetch_customer_affect_metrics
+
+    conn = AsyncMock()
+    now = datetime.datetime.now(datetime.timezone.utc)
+    ledger_rows = [
+        {
+            "empathic_tensor": [0.1, 0.2, 0.3, 0.4, 0.5, 0.75],
+            "tlx_scores": json.dumps(
+                {
+                    "event_type": "customer_touchpoint",
+                    "customer_id": _CUST_1,
+                    "score": 60.0,
+                }
+            ),
+            "created_at": now,
+        },
+        {
+            "empathic_tensor": [0.0, 0.0, 0.0, 0.0, 0.0, 0.65],
+            "tlx_scores": json.dumps(
+                {
+                    "event_type": "touchpoint_response",
+                    "customer_id": _CUST_1,
+                    "score": 50.0,
+                }
+            ),
+            "created_at": now,
+        },
+    ]
+    conn.fetch.return_value = ledger_rows
+
+    frustration, touchpoint = await _fetch_customer_affect_metrics(
+        conn,
+        UUID(_NS_A),
+        _CUST_1,
+        {},
+    )
+
+    assert abs(frustration - 0.70) < 0.01
+    assert abs(touchpoint - 55.0) < 0.01
+
+    sql = conn.fetch.call_args[0][0]
+    assert "WHERE namespace_id = $1::uuid" in sql
+
+
+@pytest.mark.asyncio
+async def test_do_health_score_with_live_cognitive_ledger_frustration_and_touchpoint() -> None:
+    """Validates that live cognitive ledger affect metrics impact health calculation and drivers."""
+    import json
+
+    conn = AsyncMock()
+    tickets = [
+        {
+            "id": UUID(_TICKET_ID_1),
+            "created_at": datetime.datetime.now(datetime.timezone.utc),
+        }
+    ]
+    ledger_rows = [
+        {
+            "empathic_tensor": [0.1, 0.1, 0.1, 0.2, 0.3, 0.80],
+            "tlx_scores": json.dumps(
+                {
+                    "event_type": "touchpoint_response",
+                    "customer_id": _CUST_1,
+                    "score": 50.0,
+                }
+            ),
+            "created_at": datetime.datetime.now(datetime.timezone.utc),
+        }
+    ]
+    conn.fetch.side_effect = [
+        tickets,
+        [],
+        ledger_rows,
+    ]
+
+    captured_score = {}
+
+    def _mock_fetchrow(sql: str, *args: Any) -> dict[str, Any] | None:
+        if "customer_health" in sql and "INSERT INTO" in sql:
+            captured_score["score"] = args[2]
+            captured_score["drivers"] = json.loads(args[5])
+            captured_score["churn_risk"] = args[4]
+            return {
+                "customer_id": _CUST_1,
+                "namespace_id": UUID(_NS_A),
+                "score": args[2],
+                "trend": json.loads(args[3]),
+                "churn_risk": args[4],
+                "drivers": json.loads(args[5]),
+                "last_touchpoint_at": None,
+                "computed_at": datetime.datetime.now(datetime.timezone.utc),
+            }
+        return None
+
+    conn.fetchrow.side_effect = _mock_fetchrow
+    pool = _make_mock_pool(conn)
+
+    res = await do_health_score(pool, {"namespace_id": _NS_A, "customer_id": _CUST_1})
+
+    assert res["customer_id"] == _CUST_1
+    assert captured_score["score"] < 90.0
+    driver_str = " ".join(captured_score["drivers"])
+    assert "frustration" in driver_str.lower()
+    assert "touchpoint" in driver_str.lower()
+
+
+@pytest.mark.asyncio
+async def test_do_health_score_with_param_overrides() -> None:
+    """Validates that explicit parameters override ledger reading."""
+    import json
+
+    conn = AsyncMock()
+    conn.fetch.side_effect = [
+        [],
+        [],
+    ]
+    captured_score = {}
+
+    def _mock_fetchrow(sql: str, *args: Any) -> dict[str, Any] | None:
+        if "customer_health" in sql and "INSERT INTO" in sql:
+            captured_score["score"] = args[2]
+            captured_score["drivers"] = json.loads(args[5])
+            return {
+                "customer_id": _CUST_1,
+                "namespace_id": UUID(_NS_A),
+                "score": args[2],
+                "trend": json.loads(args[3]),
+                "churn_risk": args[4],
+                "drivers": json.loads(args[5]),
+                "last_touchpoint_at": None,
+                "computed_at": datetime.datetime.now(datetime.timezone.utc),
+            }
+        return None
+
+    conn.fetchrow.side_effect = _mock_fetchrow
+    pool = _make_mock_pool(conn)
+
+    res = await do_health_score(
+        pool,
+        {
+            "namespace_id": _NS_A,
+            "customer_id": _CUST_1,
+            "frustration_score": 0.9,
+            "touchpoint_avg": 40.0,
+        },
+    )
+
+    assert res["customer_id"] == _CUST_1
+    assert captured_score["score"] < 70.0
+    driver_str = " ".join(captured_score["drivers"])
+    assert "frustration" in driver_str.lower()
+
+
+@pytest.mark.asyncio
+async def test_do_health_score_positive_touchpoint_boost() -> None:
+    """Validates that high touchpoint score (>= 90) provides positive score boost."""
+    import json
+
+    conn = AsyncMock()
+    conn.fetch.side_effect = [
+        [],
+        [],
+        [
+            {
+                "empathic_tensor": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                "tlx_scores": json.dumps(
+                    {
+                        "event_type": "customer_touchpoint",
+                        "customer_id": _CUST_1,
+                        "score": 98.0,
+                    }
+                ),
+                "created_at": datetime.datetime.now(datetime.timezone.utc),
+            }
+        ],
+    ]
+    upserted_row = {
+        "customer_id": _CUST_1,
+        "namespace_id": UUID(_NS_A),
+        "score": 100.0,
+        "trend": {"direction": "stable"},
+        "churn_risk": "low",
+        "drivers": [],
+        "last_touchpoint_at": None,
+        "computed_at": datetime.datetime.now(datetime.timezone.utc),
+    }
+    conn.fetchrow.side_effect = [None, upserted_row]
+    pool = _make_mock_pool(conn)
+
+    res = await do_health_score(pool, {"namespace_id": _NS_A, "customer_id": _CUST_1})
+    assert res["score"] == 100.0
+    assert res["churn_risk"] == "low"

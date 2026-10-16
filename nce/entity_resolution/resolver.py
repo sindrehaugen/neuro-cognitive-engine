@@ -27,6 +27,7 @@ Caller contract:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 from uuid import UUID
 
 import asyncpg  # type: ignore[import-untyped]
@@ -56,13 +57,82 @@ class Match:
     matched_on: list[str] = field(default_factory=list)
 
 
+async def filter_rejected_merges(
+    conn: asyncpg.Connection,  # type: ignore[type-arg]
+    namespace_id: str | UUID,
+    candidate_id: str | UUID | None,
+    matches: list[Match],
+) -> list[Match]:
+    """Filter out matches that have already been rejected in entity_merge_queue.
+
+    Suppresses candidate nodes where a merge between candidate and matched node
+    has been explicitly marked status = 'rejected' in entity_merge_queue.
+    """
+    if not matches:
+        return []
+    ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
+
+    match_node_ids = [m.node_id for m in matches]
+    cand_str = str(candidate_id) if candidate_id is not None else None
+
+    if cand_str:
+        rows = await conn.fetch(
+            """
+            SELECT target_node_id
+            FROM   entity_merge_queue
+            WHERE  namespace_id = $1
+              AND  status       = 'rejected'
+              AND  target_node_id = ANY($2::uuid[])
+              AND  (
+                  candidate_payload->>'id' = $3
+                  OR candidate_payload->>'candidate_id' = $3
+                  OR candidate_payload->>'node_id' = $3
+              )
+            """,
+            ns_uuid,
+            match_node_ids,
+            cand_str,
+        )
+        if not rows:
+            rows = await conn.fetch(
+                """
+                SELECT target_node_id
+                FROM   entity_merge_queue
+                WHERE  namespace_id = $1
+                  AND  status       = 'rejected'
+                  AND  target_node_id = ANY($2::uuid[])
+                """,
+                ns_uuid,
+                match_node_ids,
+            )
+    else:
+        rows = await conn.fetch(
+            """
+            SELECT target_node_id
+            FROM   entity_merge_queue
+            WHERE  namespace_id = $1
+              AND  status       = 'rejected'
+              AND  target_node_id = ANY($2::uuid[])
+            """,
+            ns_uuid,
+            match_node_ids,
+        )
+
+    rejected_target_ids = {
+        UUID(str(r["target_node_id"])) for r in rows if r["target_node_id"] is not None
+    }
+    return [m for m in matches if m.node_id not in rejected_target_ids]
+
+
 async def resolve(
     conn: asyncpg.Connection,  # type: ignore[type-arg]
     *,
     namespace_id: str | UUID,
-    candidate: dict[str, str],
+    candidate: dict[str, Any],
     keys: list[str],
     node_type: str,
+    suppress_rejected: bool = False,
+    candidate_id: str | UUID | None = None,
 ) -> list[Match]:
     """Rank and score existing nodes against a candidate using pg_trgm.
 
@@ -89,6 +159,11 @@ async def resolve(
         ``candidate``; missing keys are skipped (not an error).
     node_type:
         The ``entity_type`` column value to filter kg_nodes (e.g. ``'device'``).
+    suppress_rejected:
+        When True, filters out candidate matches previously marked as rejected
+        in ``entity_merge_queue``.
+    candidate_id:
+        Optional candidate identifier used with ``suppress_rejected``.
 
     Returns
     -------
@@ -109,7 +184,14 @@ async def resolve(
     for key in keys:
         raw = candidate.get(key)
         if raw is not None:
-            normalized_keys[key] = normalize(raw, key)
+            if isinstance(raw, str):
+                cleaned = raw.strip()
+                if cleaned:
+                    norm = normalize(cleaned, key)
+                    if norm.strip():
+                        normalized_keys[key] = norm
+            elif isinstance(raw, (int, float)):
+                normalized_keys[key] = normalize(str(raw), key)
 
     # No usable keys → nothing to compare; return empty list (not an error).
     if not normalized_keys:
@@ -152,7 +234,7 @@ async def resolve(
     rows = await conn.fetch(query, *params)
 
     matched_key_names = list(normalized_keys.keys())
-    return [
+    matches = [
         Match(
             node_id=UUID(str(row["node_id"])),
             score=float(row["score"]),
@@ -160,3 +242,14 @@ async def resolve(
         )
         for row in rows
     ]
+
+    if suppress_rejected:
+        cand_id = (
+            candidate_id
+            or candidate.get("id")
+            or candidate.get("node_id")
+            or candidate.get("candidate_id")
+        )
+        return await filter_rejected_merges(conn, ns_uuid, cand_id, matches)
+
+    return matches

@@ -53,6 +53,32 @@ class PolicyDecision:
     requires_confirm: bool
     reason: str
 
+    @property
+    def allowed(self) -> bool:
+        return not self.requires_confirm
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, (PolicyDecision, PolicyVerdict)):
+            return self.requires_confirm == other.requires_confirm and self.reason == other.reason
+        return False
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyVerdict:
+    """Result of policy evaluation with explicit allowed status."""
+
+    allowed: bool
+    reason: str
+
+    @property
+    def requires_confirm(self) -> bool:
+        return not self.allowed
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, (PolicyVerdict, PolicyDecision)):
+            return self.requires_confirm == other.requires_confirm and self.reason == other.reason
+        return False
+
 
 # ---------------------------------------------------------------------------
 # Public function
@@ -68,14 +94,21 @@ def evaluate_policy(
     counterparty: str | None = None,
     allowlist: Sequence[str] | None = None,
     risk_flags: Sequence[str] | None = None,
+    confidence: float | None = None,
+    min_confidence: float | None = None,
+    blast_radius_count: int | None = None,
+    max_blast_radius: int | None = None,
+    reversibility: str | None = None,
 ) -> PolicyDecision:
     """Evaluate all Contract-B gates and return a ``PolicyDecision``.
 
     Gates are checked in this order (all that fire are reported):
-      1. Risk flags (highest priority — override value band)
-      2. Value ceiling
-      3. Volume / rate cap
-      4. Counterparty allowlist
+      1. Confidence threshold check
+      2. Blast radius ceiling check
+      3. Risk flags (highest priority — override value band)
+      4. Value ceiling
+      5. Volume / rate cap
+      6. Counterparty allowlist
 
     Args:
         value:          Monetary or scalar value of the proposed act.
@@ -94,12 +127,33 @@ def evaluate_policy(
         risk_flags:     Sequence of risk labels on the act
                         (e.g. ``["flagship", "regulated"]``).
                         ``None`` or empty means "no risk flags".
+        confidence:     Estimated confidence of the proposed action.
+        min_confidence: Minimum required confidence threshold.
+        blast_radius_count: Number of entities/nodes impacted by action.
+        max_blast_radius: Maximum allowable blast radius.
+        reversibility:  Action reversibility classification.
 
     Returns:
         ``PolicyDecision(requires_confirm=False, reason="ok")`` when all
         gates pass.  ``PolicyDecision(requires_confirm=True, reason=...)``
         when one or more gates fire.
     """
+    if min_confidence is not None and confidence is not None and confidence < min_confidence:
+        return PolicyVerdict(
+            allowed=False,
+            reason=f"confidence_below_minimum:{confidence:.3f}<{min_confidence:.3f}",
+        )
+
+    if (
+        max_blast_radius is not None
+        and blast_radius_count is not None
+        and blast_radius_count > max_blast_radius
+    ):
+        return PolicyVerdict(
+            allowed=False,
+            reason=f"blast_radius_exceeded:{blast_radius_count}>{max_blast_radius}",
+        )
+
     reasons: list[str] = []
 
     # --- Gate 1: Risk flags (override everything) ---

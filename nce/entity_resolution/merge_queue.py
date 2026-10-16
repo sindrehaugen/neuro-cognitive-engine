@@ -159,6 +159,7 @@ async def confirm(
     namespace_id: str | UUID,
     queue_id: UUID,
     decided_by: str,
+    record_feedback: bool = False,
 ) -> None:
     """Mark a queue row as ``confirmed`` and record the decider.
 
@@ -179,6 +180,9 @@ async def confirm(
     decided_by:
         Identifier of the human (or authorised service) recording the
         decision.  Must be non-empty.
+    record_feedback:
+        When True, records decision feedback for this human confirmation
+        in ``decision_feedback``.
 
     Raises
     ------
@@ -192,6 +196,7 @@ async def confirm(
         queue_id=queue_id,
         new_status="confirmed",
         decided_by=decided_by,
+        record_feedback=record_feedback,
     )
 
 
@@ -201,6 +206,7 @@ async def reject(
     namespace_id: str | UUID,
     queue_id: UUID,
     decided_by: str,
+    record_feedback: bool = False,
 ) -> None:
     """Mark a queue row as ``rejected`` and record the decider.
 
@@ -221,6 +227,9 @@ async def reject(
     decided_by:
         Identifier of the human (or authorised service) recording the
         decision.  Must be non-empty.
+    record_feedback:
+        When True, records decision feedback for this human rejection
+        in ``decision_feedback``.
 
     Raises
     ------
@@ -234,6 +243,7 @@ async def reject(
         queue_id=queue_id,
         new_status="rejected",
         decided_by=decided_by,
+        record_feedback=record_feedback,
     )
 
 
@@ -254,6 +264,7 @@ async def _set_decision(
     queue_id: UUID,
     new_status: str,
     decided_by: str,
+    record_feedback: bool = False,
 ) -> None:
     """Internal: update status + decided_by + decided_at on a pending row.
 
@@ -285,6 +296,40 @@ async def _set_decision(
             f"Queue row {queue_id} not found in namespace {ns_uuid} "
             f"with status 'pending' — cannot set {new_status!r}."
         )
+
+    if record_feedback:
+        try:
+            row = await conn.fetchrow(
+                "SELECT node_type, candidate_payload, target_node_id, score FROM entity_merge_queue WHERE id = $1",
+                queue_id,
+            )
+            if row is not None:
+                from nce.decision_feedback import record_decision_feedback
+
+                cand_val = row["candidate_payload"]
+                if isinstance(cand_val, str):
+                    try:
+                        cand_val = json.loads(cand_val)
+                    except (TypeError, ValueError):
+                        pass
+                proposal_data = {
+                    "node_type": row["node_type"],
+                    "candidate": cand_val,
+                    "target_node_id": str(row["target_node_id"]) if row["target_node_id"] else None,
+                    "score": row["score"],
+                }
+                decision_outcome = "accept" if new_status == "confirmed" else "override"
+                await record_decision_feedback(
+                    conn,
+                    ns_uuid,
+                    engine="entity_resolution",
+                    proposal=proposal_data,
+                    decision=decision_outcome,
+                    actor=decided_by,
+                    context_id=str(queue_id),
+                )
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------

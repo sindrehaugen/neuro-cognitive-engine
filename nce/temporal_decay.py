@@ -353,11 +353,11 @@ async def _decay_prune_tick(pool: object) -> None:  # pool: asyncpg.Pool
                             result = await conn.execute(
                                 """
                                 WITH candidates AS (
-                                    SELECT id, created_at
-                                    FROM   memories
-                                    WHERE  memory_type = $1
-                                      AND  valid_to IS NULL
-                                      AND  extract(epoch from now() - valid_from) / 86400.0 > $2
+                                    SELECT m.id, m.created_at
+                                    FROM   memories m
+                                    WHERE  m.memory_type = $1
+                                      AND  m.valid_to IS NULL
+                                      AND  extract(epoch from now() - GREATEST(m.valid_from, COALESCE((SELECT MAX(ms2.updated_at) FROM memory_salience ms2 WHERE ms2.memory_id = m.id), m.valid_from))) / 86400.0 > $2
                                       AND  ($4::uuid IS NULL OR namespace_id = $4::uuid)
                                     LIMIT  $3
                                 )

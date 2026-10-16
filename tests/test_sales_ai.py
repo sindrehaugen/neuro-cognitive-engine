@@ -247,3 +247,46 @@ class TestSalesAiSurface:
                 )
                 assert params["decision_type"] == "lead_score_override"
                 assert params["details"]["lead_id"] == "lead-456"
+
+
+@pytest.mark.asyncio
+async def test_score_lead_stage_and_engagement_blending() -> None:
+    """Verify do_score_lead blends stage_probability and engagement_score when provided."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    ns_id = uuid.uuid4()
+    engine = _make_engine_stub(MagicMock())
+
+    # Mock recall_similar_deals to return 2 candidates (1 won, 1 lost -> hist_score = 0.5)
+    mock_candidates = [
+        {"similarity": 0.85, "metadata": {"status": "won"}},
+        {"similarity": 0.80, "metadata": {"status": "lost"}},
+    ]
+
+    with patch(
+        "nce.vertical_modules.sales.ai.recall_similar_deals",
+        new=AsyncMock(return_value=mock_candidates),
+    ):
+        with patch("nce.vertical_modules.sales.ai.scoped_pg_session") as mock_session:
+            mock_session.return_value.__aenter__.return_value = AsyncMock()
+
+            # Baseline without optional params: pure hist_score = 0.5
+            res_base = await do_score_lead(engine, {"namespace_id": str(ns_id)})
+            assert abs(res_base["score"] - 0.5) < 1e-4
+
+            # Blended with high stage_probability (0.9) and high engagement (0.8)
+            # hist: 0.5 * 0.5 = 0.25
+            # stage: 0.9 * 0.3 = 0.27
+            # engagement: 0.8 * 0.2 = 0.16
+            # total = 0.68 / 1.0 = 0.68
+            res_blended = await do_score_lead(
+                engine,
+                {
+                    "namespace_id": str(ns_id),
+                    "stage_probability": 0.9,
+                    "engagement_score": 0.8,
+                },
+            )
+            assert abs(res_blended["score"] - 0.68) < 1e-4
+            assert any("stage probability" in r.lower() for r in res_blended["reasons"])
+            assert any("engagement score" in r.lower() for r in res_blended["reasons"])
