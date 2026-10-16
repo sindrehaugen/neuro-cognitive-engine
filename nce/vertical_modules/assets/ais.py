@@ -287,7 +287,13 @@ class AisTelemetryAdapter(TelemetryAdapter):
                 resp = await self._gated_request(client, "GET", "", headers=headers)
                 for row in _as_rows(resp.json()):
                     mmsi = row.get("mmsi")
-                    if mmsi is not None and str(int(mmsi)) == wanted_mmsi:
+                    if mmsi is None:
+                        continue
+                    try:
+                        mmsi_norm = str(int(mmsi))
+                    except (ValueError, TypeError):
+                        continue
+                    if mmsi_norm == wanted_mmsi:
                         return _samples_from_vessel(row, now)
                 log.info("AisTelemetryAdapter: no vessel with MMSI %s in the live feed", serial)
                 return []

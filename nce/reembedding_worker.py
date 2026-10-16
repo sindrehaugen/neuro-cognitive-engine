@@ -619,14 +619,24 @@ class ReembeddingWorker:
                 for row in rows
                 if row.get("payload_ref") and len(row["payload_ref"]) == 24
             ]
+            ref_to_ns = {
+                row["payload_ref"]: row.get("namespace_id")
+                for row in rows
+                if row.get("payload_ref")
+            }
+            batch_namespaces = [
+                ns for ns in {row.get("namespace_id") for row in rows} if ns is not None
+            ]
             wrapped_by_ref: dict[str, bytes | None] = {}
             if all_payload_refs:
                 try:
                     async with pool.acquire(timeout=10.0) as dek_conn:
                         dek_rows = await dek_conn.fetch(
                             "SELECT payload_ref, wrapped_dek "
-                            "FROM memories WHERE payload_ref = ANY($1::text[])",
+                            "FROM memories WHERE payload_ref = ANY($1::text[]) "
+                            "AND ($2::uuid[] IS NULL OR namespace_id = ANY($2::uuid[]))",
                             all_payload_refs,
+                            batch_namespaces or None,
                         )
                     for dek_row in dek_rows:
                         wd = dek_row["wrapped_dek"]
@@ -662,8 +672,9 @@ class ReembeddingWorker:
                             "SET metadata = jsonb_set("
                             "    COALESCE(metadata, '{}'::jsonb),"
                             "    '{dek_unreadable}', 'true'::jsonb, true"
-                            ") WHERE payload_ref = $1",
+                            ") WHERE payload_ref = $1 AND namespace_id = $2::uuid",
                             failed_ref,
+                            ref_to_ns.get(failed_ref),
                         )
 
             texts: list[str] = []

@@ -217,3 +217,26 @@ async def test_central_sink_lands_digest_atomically(central_sink, make_namespace
     assert params["digest_payload_ref"] == ref
     assert params["anomaly_count"] == 2
     assert params["processed_lines"] == 512
+
+
+@pytest.mark.asyncio
+async def test_central_sink_insert_diag_anomalies_persists_rows() -> None:
+    """_insert_diag_anomalies inserts bounded rows into diag_anomalies linked to diag_ingestions."""
+    sink = CentralSink(AsyncMock())
+    conn = AsyncMock()
+    ingestion_uuid = uuid.uuid4()
+    conn.fetchval.return_value = ingestion_uuid
+
+    ns_str = str(uuid.uuid4())
+    digest = _sample_digest()
+    ret = await sink._insert_diag_anomalies(
+        conn,
+        namespace_id=ns_str,
+        ingest_id="ingest-unit-1",
+        device_slug="mtr-room-12",
+        digest=digest,
+    )
+    assert ret == ingestion_uuid
+    assert conn.execute.await_count == len(digest.anomalies)
+    first_sql = conn.execute.call_args_list[0][0][0]
+    assert "INSERT INTO diag_anomalies" in first_sql

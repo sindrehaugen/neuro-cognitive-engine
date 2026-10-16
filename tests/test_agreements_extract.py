@@ -124,3 +124,48 @@ async def test_extract_agreement_missing_doc_ref(
 
     with pytest.raises(ValueError, match="source_doc_ref is required"):
         await do_extract_agreement(engine, params)  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_extract_agreement_handles_predecoded_dict_metadata() -> None:
+    """Verify do_extract_agreement handles asyncpg JSONB metadata already decoded as a dict."""
+    import uuid
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    ns_id = str(uuid.uuid4())
+    doc_id = str(uuid.uuid4())
+
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(
+        return_value={
+            "content": "Supplier: Nordic Audio AS\nValid From: 2026-01-01\nValid To: 2026-12-31\n",
+            "metadata": {"source": "upload", "text": "Additional terms"},
+        }
+    )
+
+    @asynccontextmanager
+    async def _fake_session(_pool: Any, _ns: Any):
+        yield conn
+
+    mock_extracted = ExtractedAgreementModel(
+        supplierId=ExtractedFieldString(value="VENDOR:NORDIC", confidence=95.0),
+    )
+
+    engine = EngineStub(MagicMock())
+    with (
+        patch(
+            "nce.vertical_modules.agreements.extract.scoped_pg_session",
+            side_effect=_fake_session,
+        ),
+        patch(
+            "nce.vertical_modules.agreements.extract._call_ocr_extraction",
+            return_value=mock_extracted,
+        ),
+    ):
+        res = await do_extract_agreement(
+            engine,  # type: ignore[arg-type]
+            {"namespace_id": ns_id, "source_doc_ref": doc_id},
+        )
+    assert res["supplierId"]["value"] == "VENDOR:NORDIC"
+    assert res["supplierId"]["reviewStatus"] == "auto_green"

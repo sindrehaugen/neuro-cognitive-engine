@@ -129,7 +129,21 @@ async def do_room_tracker(engine: Any, params: dict[str, Any]) -> dict[str, Any]
         "last_updated_at": params.get("last_updated_at", "2026-09-05T20:00:00Z"),
         "estimated_readiness": params.get("estimated_readiness", "2026-10-15"),
         # Include raw params for allow-list redaction verification
-        **{k: v for k, v in params.items() if k not in ("bom_lines", "assets", "messy_context")},
+        **{
+            k: v
+            for k, v in params.items()
+            if k
+            not in (
+                "bom_lines",
+                "assets",
+                "messy_context",
+                "room_id",
+                "stage",
+                "percent_ready",
+                "status",
+                "summary",
+            )
+        },
     }
 
     return project_customer_safe(raw_response, "room_tracker")
@@ -166,7 +180,21 @@ async def do_room_overview(engine: Any, params: dict[str, Any]) -> dict[str, Any
         "total_rooms": total_rooms,
         "overall_percent_ready": overall_pct,
         "rooms": projected_rooms,
-        **{k: v for k, v in params.items() if k not in ("rooms",)},
+        **{
+            k: v
+            for k, v in params.items()
+            if k
+            not in (
+                "rooms",
+                "room_id",
+                "stage",
+                "percent_ready",
+                "status",
+                "summary",
+                "total_rooms",
+                "overall_percent_ready",
+            )
+        },
     }
 
     return project_customer_safe(raw_overview, "room_overview")

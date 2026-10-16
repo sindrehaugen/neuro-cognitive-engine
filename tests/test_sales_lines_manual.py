@@ -319,3 +319,32 @@ async def test_replaying_the_same_pick_creates_no_second_row(
             bom_line_label("QMAN01", "IDEM01"),
         )
     assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_zero_qty_rejected_in_manual_and_external_lines() -> None:
+    """do_add_quote_line and do_import_quote_lines reject qty <= 0 with ValueError."""
+    from unittest.mock import AsyncMock
+
+    from nce.vertical_modules.sales.external_lines import do_import_quote_lines
+
+    conn = AsyncMock()
+    ns_id = uuid.uuid4()
+
+    with pytest.raises(ValueError, match="qty must be positive"):
+        await do_add_quote_line(
+            conn,
+            ns_id,
+            quote_id="Q-ZERO-1",
+            line_ref="L1",
+            qty=0,
+            unit_price="100.00",
+        )
+
+    with pytest.raises(ValueError, match=r"lines\[0\]\.qty must be positive"):
+        await do_import_quote_lines(
+            conn,
+            ns_id,
+            quote_id="Q-ZERO-1",
+            lines=[{"line_ref": "L1", "qty": "0", "unit_price": "100.00"}],
+        )

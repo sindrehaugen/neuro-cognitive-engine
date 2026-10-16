@@ -24,6 +24,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from nce.auth import set_namespace_context
 from nce.event_log import append_event
 
 log = logging.getLogger("nce.vertical_modules.marketing.events")
@@ -51,6 +52,7 @@ async def emit_marketing_event(
     try:
         async with pool.acquire() as conn:
             async with conn.transaction():
+                await set_namespace_context(conn, ns_uuid)
                 await append_event(
                     conn,
                     namespace_id=ns_uuid,

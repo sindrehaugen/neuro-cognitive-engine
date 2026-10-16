@@ -43,6 +43,7 @@ Design invariants (uncle-bob-craft)
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 from uuid import UUID
@@ -744,7 +745,7 @@ async def do_inspect_signal_flow(
                 if r["cable_length_m"] is not None
                 else None,
                 "cable_type": r["cable_type"],
-                "meta": r["meta"] or {},
+                "meta": json.loads(r["meta"]) if isinstance(r["meta"], str) else (r["meta"] or {}),
             }
             for r in rows_geo
         }

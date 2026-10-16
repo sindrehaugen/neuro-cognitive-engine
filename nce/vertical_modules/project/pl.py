@@ -139,6 +139,7 @@ async def do_my_day(
                     "gate_blocking": False,
                     "deadline": None,
                     "value": 1.0,
+                    "assigned_to": None,
                 }
                 for label in task_labels
             }
@@ -157,10 +158,19 @@ async def do_my_day(
                     task_data[task_lbl]["deadline"] = parse_date(obj)
                 elif pred in ("value", "has_value"):
                     task_data[task_lbl]["value"] = parse_float(obj, 1.0)
+                elif pred in ("assigned_to", "assigned", "assignee"):
+                    task_data[task_lbl]["assigned_to"] = obj
+
+            employee_id = str(params.get("employee_id") or "").strip() or None
 
             # 3. Calculate priorities and rank tasks
             ranked_tasks = []
             for label, data in task_data.items():
+                if employee_id is not None and data["assigned_to"] not in (
+                    employee_id,
+                    f"EMPLOYEE:{employee_id}",
+                ):
+                    continue
                 p = calculate_priority(
                     gate_blocking=data["gate_blocking"],
                     deadline=data["deadline"],
@@ -174,6 +184,7 @@ async def do_my_day(
                         "gate_blocking": data["gate_blocking"],
                         "deadline": data["deadline"].isoformat() if data["deadline"] else None,
                         "value": data["value"],
+                        "assigned_to": data["assigned_to"],
                     }
                 )
 

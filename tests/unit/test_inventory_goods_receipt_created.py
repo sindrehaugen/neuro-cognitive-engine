@@ -201,3 +201,74 @@ class TestGoodsReceiptCreatedEmission:
             assert result["duplicate"] is True
             assert result["receipt_id"] == str(existing_receipt_id)
             mock_pub.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_partial_receipt_only_advances_matching_po_lines(self) -> None:
+        ns_id = uuid4()
+        location_id = uuid4()
+        receipt_id = uuid4()
+
+        mock_conn = AsyncMock()
+        mock_conn.fetchrow.side_effect = [
+            {"id": receipt_id},
+            {"qty_on_hand": 10.0},
+        ]
+        mock_conn.fetch.return_value = [
+            {
+                "line_ref": "L1",
+                "bom_line_label": "BOM_LINE:Q-200:L1",
+                "project_id": "proj-200",
+                "artnr": "SKU-B",
+                "quantity": Decimal("10"),
+                "status": "ORDERED",
+            },
+            {
+                "line_ref": "L2",
+                "bom_line_label": "BOM_LINE:Q-200:L2",
+                "project_id": "proj-200",
+                "artnr": "SKU-UNRECEIVED",
+                "quantity": Decimal("5"),
+                "status": "ORDERED",
+            },
+        ]
+
+        @asynccontextmanager
+        async def fake_scoped(pool, namespace_id):
+            yield mock_conn
+
+        mock_engine = MagicMock()
+
+        params = {
+            "namespace_id": str(ns_id),
+            "po_ref": "PO-TEST-2003",
+            "location_id": str(location_id),
+            "lines": [{"sku": "sku-b", "qty": 10}],
+        }
+
+        with (
+            patch(
+                "nce.vertical_modules.inventory.goods_receipt.scoped_pg_session",
+                side_effect=fake_scoped,
+            ),
+            patch(
+                "nce.vertical_modules.inventory.goods_receipt.assert_owner", new_callable=AsyncMock
+            ),
+            patch(
+                "nce.vertical_modules.inventory.goods_receipt.append_transaction",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "nce.vertical_modules.inventory.goods_receipt.emit_graph_write",
+                new_callable=AsyncMock,
+            ),
+            patch("nce.vertical_modules.inventory.goods_receipt.publish", new_callable=AsyncMock),
+        ):
+            await do_record_goods_receipt(mock_engine, params)
+
+        po_updates = [
+            call
+            for call in mock_conn.execute.call_args_list
+            if "UPDATE procurement_po_lines" in str(call[0][0])
+        ]
+        assert len(po_updates) == 1
+        assert po_updates[0][0][3] == "L1"

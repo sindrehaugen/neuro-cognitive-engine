@@ -298,9 +298,11 @@ async def do_open_ticket(
 
         sla_row = None
         if params.get("create_sla_clock", True):
-            sla_targets = _DEFAULT_SLA_TARGETS.get(priority, _DEFAULT_SLA_TARGETS["medium"])
-            first_response_due = now_dt + sla_targets["first_response"]
-            resolution_due = now_dt + sla_targets["resolution"]
+            from nce.vertical_modules.support.sla import calculate_sla_targets
+
+            first_response_due, resolution_due = calculate_sla_targets(
+                sla_profile, priority, now_dt
+            )
 
             sla_row = await conn.fetchrow(
                 """

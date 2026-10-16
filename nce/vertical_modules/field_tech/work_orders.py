@@ -544,6 +544,13 @@ async def handle_ticket_dispatched(
     if priority not in _ALLOWED_PRIORITIES:
         priority = "medium"
 
+    import asyncpg
+
+    from nce.auth import set_namespace_context
+
+    if isinstance(conn, asyncpg.Connection):
+        await set_namespace_context(conn, ns_uuid)
+
     # 1. Assert Contract-A single-writer ownership for WORK_ORDER node
     await assert_owner(conn, ns_uuid, _NODE_TYPE_WORK_ORDER, _FIELD_TECH_ENGINE)
 

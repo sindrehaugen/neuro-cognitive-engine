@@ -499,40 +499,42 @@ async def _sweep_namespace(
 
     async with scoped_pg_session(pg_pool, ns_uuid) as conn:
         rows = await _fetch_candidates(conn, ns_uuid, cutoff)
-        result["examined"] += len(rows)
-        for row in rows:
-            status = row["status"]
-            if not _is_candidate(status):
-                # Gate two.  Unreachable while gate one is intact — and that is
-                # the point: it is what a widened query predicate runs into.
-                result["skipped_not_candidate"] += 1
-                log.warning(
-                    "archive sweep: query returned ns=%s label=%s with status=%r — skipping",
-                    ns_uuid,
-                    row["node_label"],
-                    status,
-                )
-                continue
-            label = str(row["node_label"])
-            node_type = str(row["node_type"])
-            try:
+
+    result["examined"] += len(rows)
+    for row in rows:
+        status = row["status"]
+        if not _is_candidate(status):
+            # Gate two.  Unreachable while gate one is intact — and that is
+            # the point: it is what a widened query predicate runs into.
+            result["skipped_not_candidate"] += 1
+            log.warning(
+                "archive sweep: query returned ns=%s label=%s with status=%r — skipping",
+                ns_uuid,
+                row["node_label"],
+                status,
+            )
+            continue
+        label = str(row["node_label"])
+        node_type = str(row["node_type"])
+        try:
+            async with scoped_pg_session(pg_pool, ns_uuid) as node_conn:
                 await archive_and_drop_node(
-                    conn, minio_client, ns_uuid, label, node_type, bucket=bucket
+                    node_conn, minio_client, ns_uuid, label, node_type, bucket=bucket
                 )
-            except ArchiveNotReadableError as exc:
-                result["skipped_unreadable"] += 1
-                log.error("archive sweep: %s", exc)
-            except Exception as exc:  # noqa: BLE001 — one bad node must not stop the sweep
-                result["failed"] += 1
-                log.error(
-                    "archive sweep: ns=%s label=%s failed: %s: %s",
-                    ns_uuid,
-                    label,
-                    type(exc).__name__,
-                    exc,
-                )
-            else:
-                result["archived"] += 1
+        except ArchiveNotReadableError as exc:
+            result["skipped_unreadable"] += 1
+            log.error("archive sweep: %s", exc)
+        except Exception as exc:  # noqa: BLE001 — one bad node must not stop the sweep
+            result["failed"] += 1
+            log.error(
+                "archive sweep: ns=%s label=%s failed: %s: %s",
+                ns_uuid,
+                label,
+                type(exc).__name__,
+                exc,
+            )
+        else:
+            result["archived"] += 1
 
 
 async def run_design_archive_sweep(

@@ -60,6 +60,8 @@ EventType = Literal[
     "chain_verification_failed",
     "atms_cascade",
     "config_changed",
+    "config_reset",
+    "config_reload",
     "d365_sla_breach",
     # PROJECT_EVENTS — phase-transition audit trail (M7.W4a; Hendelser.jsx feed)
     "project_phase_advanced",
@@ -192,6 +194,8 @@ EVENT_REQUIRED_PARAM_KEYS: Final[dict[str, frozenset[str]]] = {
     "chain_verification_failed": frozenset({"first_break", "reason"}),
     "atms_cascade": frozenset({"contradiction_id", "invalidated_memory_id", "invalidated_ids"}),
     "config_changed": frozenset({"actor", "changes"}),
+    "config_reset": frozenset({"actor", "resets"}),
+    "config_reload": frozenset({"actor", "domain", "message"}),
     "ingestion_completed": frozenset(
         {
             "ingest_id",

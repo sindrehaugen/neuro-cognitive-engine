@@ -473,3 +473,38 @@ def test_portal_app_room_endpoints():
     assets_body = resp.json()
     assert assets_body["room_id"] == "room-101"
     assert "assets" in assets_body
+
+
+@pytest.mark.asyncio
+async def test_computed_room_fields_cannot_be_overwritten_by_params():
+    """Caller-supplied stage, percent_ready, status, total_rooms, or overall_percent_ready cannot overwrite computed values."""
+    tracker = await do_room_tracker(
+        None,
+        {
+            "namespace_id": str(_NAMESPACE_ID),
+            "customer_scope_id": str(_CUSTOMER_A_SCOPE),
+            "room_id": "room-1",
+            "bom_lines": [{"status": "ordered"}],
+            "stage": "ready",
+            "percent_ready": 100,
+            "status": "Ready",
+            "summary": "Spoofed summary",
+        },
+    )
+    assert tracker["stage"] == "ordered"
+    assert tracker["percent_ready"] == 25
+    assert tracker["summary"] != "Spoofed summary"
+
+    overview = await do_room_overview(
+        None,
+        {
+            "namespace_id": str(_NAMESPACE_ID),
+            "customer_scope_id": str(_CUSTOMER_A_SCOPE),
+            "site_id": "site-1",
+            "rooms": [{"room_id": "room-1", "bom_lines": [{"status": "ordered"}]}],
+            "total_rooms": 99,
+            "overall_percent_ready": 100,
+        },
+    )
+    assert overview["total_rooms"] == 1
+    assert overview["overall_percent_ready"] == 25

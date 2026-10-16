@@ -290,3 +290,147 @@ async def test_publish_content_cms_deferred_stub() -> None:
         )
 
     assert "CMS" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_approve_and_publish_content_asset_persists_and_reads_approver_in_seo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """do_approve_content persists approver in content_assets.seo and do_publish_content reads it."""
+    monkeypatch.setattr(
+        "nce.vertical_modules.marketing.approval.append_event",
+        AsyncMock(),
+    )
+    engine = _make_mock_engine()
+    conn = engine.pg_pool.acquire.return_value.__aenter__.return_value
+    conn.execute = AsyncMock(side_effect=["SET", "UPDATE 0", "UPDATE 1"])
+
+    res_approve = await do_approve_content(
+        engine,
+        {
+            "namespace_id": _NAMESPACE_ID,
+            "artifact_id": _ARTIFACT_ID,
+            "approver": "Jane Asset Approver",
+            "decision": "approved",
+        },
+    )
+    assert res_approve["ok"] is True
+
+    update_asset_call = conn.execute.call_args_list[2]
+    sql_text = update_asset_call[0][0]
+    assert "UPDATE content_assets" in sql_text
+    assert "jsonb_build_object('approver', $4::text)" in sql_text
+    assert update_asset_call[0][4] == "Jane Asset Approver"
+
+    # Now publish a content_assets row where approver is stored inside seo JSONB
+    engine_pub = _make_mock_engine()
+    conn_pub = engine_pub.pg_pool.acquire.return_value.__aenter__.return_value
+    conn_pub.fetchrow = AsyncMock(
+        side_effect=[
+            None,
+            {
+                "id": _ARTIFACT_ID,
+                "namespace_id": _NAMESPACE_ID,
+                "title": "Approved Content Asset",
+                "status": "approved",
+                "storage_uri": "s3://assets/item-1",
+                "seo": '{"approver": "Jane Asset Approver"}',
+                "marketing_source_id": "marketing:asset:001",
+            },
+        ]
+    )
+    res_pub = await do_publish_content(
+        engine_pub,
+        {
+            "namespace_id": _NAMESPACE_ID,
+            "artifact_id": _ARTIFACT_ID,
+            "transport": "manual",
+        },
+    )
+    assert res_pub["ok"] is True
+    assert res_pub["status"] == "published"
+
+
+@pytest.mark.asyncio
+async def test_marketing_sets_rls_namespace_context_and_scopes_testimonial_upsert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Marketing modules call set_namespace_context on asyncpg.Connection and scope testimonial upsert by namespace_id."""
+    import asyncpg
+
+    from nce.vertical_modules.marketing.advisor import do_suggest_content
+    from nce.vertical_modules.marketing.brief import do_query_marketing_a2a
+    from nce.vertical_modules.marketing.candidates import do_find_case_study_candidates
+    from nce.vertical_modules.marketing.events import emit_marketing_event
+    from nce.vertical_modules.marketing.testimonials import do_request_testimonial
+
+    rls_calls: list[UUID] = []
+
+    async def _fake_set_ns(conn: Any, ns_id: UUID) -> None:
+        rls_calls.append(ns_id)
+
+    for mod_path in (
+        "nce.vertical_modules.marketing.brief.set_namespace_context",
+        "nce.vertical_modules.marketing.candidates.set_namespace_context",
+        "nce.vertical_modules.marketing.advisor.set_namespace_context",
+        "nce.vertical_modules.marketing.approval.set_namespace_context",
+        "nce.vertical_modules.marketing.publish.set_namespace_context",
+        "nce.vertical_modules.marketing.testimonials.set_namespace_context",
+        "nce.vertical_modules.marketing.events.set_namespace_context",
+    ):
+        monkeypatch.setattr(mod_path, _fake_set_ns)
+
+    for guard_path in (
+        "nce.vertical_modules.marketing._guard.require_marketing_enabled",
+        "nce.vertical_modules.marketing.brief.require_marketing_enabled",
+    ):
+        monkeypatch.setattr(guard_path, AsyncMock())
+    monkeypatch.setattr(
+        "nce.vertical_modules.marketing.events.append_event",
+        AsyncMock(),
+    )
+
+    from contextlib import asynccontextmanager
+
+    conn = MagicMock(spec=asyncpg.Connection)
+    executed_sqls: list[str] = []
+
+    async def _exec(sql: str, *args: Any) -> str:
+        executed_sqls.append(sql)
+        return "INSERT 0 1"
+
+    conn.execute = AsyncMock(side_effect=_exec)
+    conn.fetch = AsyncMock(return_value=[])
+    conn.fetchrow = AsyncMock(return_value=None)
+
+    @asynccontextmanager
+    async def _fake_tx():
+        yield conn
+
+    conn.transaction = MagicMock(side_effect=_fake_tx)
+
+    @asynccontextmanager
+    async def _fake_acquire():
+        yield conn
+
+    pool = MagicMock()
+    pool.acquire = MagicMock(side_effect=_fake_acquire)
+    engine = MagicMock(pg_pool=pool, pool=pool)
+
+    await do_query_marketing_a2a(engine, {"namespace_id": _NAMESPACE_ID})
+    await do_find_case_study_candidates(engine, {"namespace_id": _NAMESPACE_ID})
+    await do_suggest_content(engine, {"namespace_id": _NAMESPACE_ID})
+    await emit_marketing_event(engine, _NAMESPACE_ID, "test_event", {})
+    await do_request_testimonial(
+        engine,
+        {
+            "namespace_id": _NAMESPACE_ID,
+            "customer_id": "CUST-1",
+            "project_id": "PRJ-1",
+            "nps_score": 9.5,
+        },
+    )
+
+    assert len(rls_calls) >= 5
+    assert all(ns == UUID(_NAMESPACE_ID) for ns in rls_calls)
+    assert any("WHERE testimonials.namespace_id = $2::uuid" in s for s in executed_sqls)

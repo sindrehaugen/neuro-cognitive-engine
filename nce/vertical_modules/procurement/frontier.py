@@ -437,7 +437,17 @@ async def _fetch_supplier_savings_stats(
         """,
         namespace_id,
     )
-    return [{"supplier_id": r["supplier_id"], "total_spend": float(r["total_spend"])} for r in rows]
+    return [
+        {
+            "supplier_id": r["supplier_id"],
+            "total_spend": float(r["total_spend"]),
+            "realised": float(r["realised"])
+            if "realised" in r and r["realised"] is not None
+            else 0.0,
+            "lost": float(r["lost"]) if "lost" in r and r["lost"] is not None else 0.0,
+        }
+        for r in rows
+    ]
 
 
 async def _fetch_supplier_margin_rebate_rates(

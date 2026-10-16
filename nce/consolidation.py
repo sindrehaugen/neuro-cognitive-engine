@@ -365,8 +365,10 @@ class ConsolidationWorker:
                 continue
             eid = await conn.fetchval(
                 "SELECT id FROM event_log WHERE params->>'memory_id' = $1 "
+                "AND namespace_id = $2::uuid "
                 "ORDER BY event_seq ASC LIMIT 1",
                 mid_str,
+                namespace_id,
             )
             if eid is not None:
                 source_event_ids.append(
@@ -448,8 +450,10 @@ class ConsolidationWorker:
             # Batch-fetch existing salience (Item H — O(1) vs O(N))
             existing_rows = await conn.fetch(
                 "SELECT memory_id, salience_score, updated_at FROM memory_salience "
-                "WHERE memory_id = ANY($1::uuid[]) AND agent_id = 'system'",
+                "WHERE memory_id = ANY($1::uuid[]) AND agent_id = 'system' "
+                "AND namespace_id = $2::uuid",
                 mem_ids,
+                namespace_id,
             )
             existing = {
                 str(row["memory_id"]): (row["salience_score"], row["updated_at"])
@@ -566,9 +570,11 @@ class ConsolidationWorker:
                 async with scoped_pg_session(self.pool, namespace_id) as conn:
                     await conn.execute(
                         "UPDATE consolidation_runs SET status = 'failed', "
-                        "error_message = $2, completed_at = now() WHERE id = $1",
+                        "error_message = $2, completed_at = now() "
+                        "WHERE id = $1 AND namespace_id = $3::uuid",
                         run_id,
                         str(e),
+                        namespace_id,
                     )
             raise
 
@@ -577,8 +583,9 @@ class ConsolidationWorker:
             async with scoped_pg_session(self.pool, namespace_id) as conn:
                 await conn.execute(
                     "UPDATE consolidation_runs SET status = 'completed', "
-                    "completed_at = now() WHERE id = $1",
+                    "completed_at = now() WHERE id = $1 AND namespace_id = $2::uuid",
                     run_id,
+                    namespace_id,
                 )
             return
 
@@ -590,8 +597,10 @@ class ConsolidationWorker:
                 log.info("Not enough embeddings to cluster.")
                 async with scoped_pg_session(self.pool, namespace_id) as conn:
                     await conn.execute(
-                        "UPDATE consolidation_runs SET status = 'completed', completed_at = now() WHERE id = $1",
+                        "UPDATE consolidation_runs SET status = 'completed', "
+                        "completed_at = now() WHERE id = $1 AND namespace_id = $2::uuid",
                         run_id,
+                        namespace_id,
                     )
                 return
 
@@ -646,12 +655,13 @@ class ConsolidationWorker:
                     UPDATE consolidation_runs
                     SET status = 'completed', completed_at = now(),
                         events_processed = $2, clusters_formed = $3, abstractions_created = $4
-                    WHERE id = $1
+                    WHERE id = $1 AND namespace_id = $5::uuid
                     """,
                     run_id,
                     len(valid_memories),
                     len(clusters),
                     abstractions_created,
+                    namespace_id,
                 )
 
         except Exception as e:
@@ -660,8 +670,10 @@ class ConsolidationWorker:
                 async with scoped_pg_session(self.pool, namespace_id) as conn:
                     await conn.execute(
                         "UPDATE consolidation_runs SET status = 'failed', "
-                        "error_message = $2, completed_at = now() WHERE id = $1",
+                        "error_message = $2, completed_at = now() "
+                        "WHERE id = $1 AND namespace_id = $3::uuid",
                         run_id,
                         str(e),
+                        namespace_id,
                     )
             raise

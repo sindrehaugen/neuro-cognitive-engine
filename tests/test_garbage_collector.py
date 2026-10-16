@@ -1086,3 +1086,175 @@ async def test_cascade_grace_stale_orphan_is_reaped(pg_pool, make_namespace) -> 
 
     assert sal_exists is None, "Stale memory_salience orphan must have been reaped"
     assert con_exists is None, "Stale contradictions orphan must have been reaped"
+
+
+@pytest.mark.asyncio
+async def test_clean_orphaned_cascade_joins_memory_b_id_independently() -> None:
+    """Verify the memory_b_id branch of orphan_memory_ids joins on c.memory_b_id."""
+    import re
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock
+
+    from nce.garbage_collector import _clean_orphaned_cascade
+
+    executed_sql: list[str] = []
+    conn = MagicMock()
+
+    @asynccontextmanager
+    async def _tx():
+        yield
+
+    conn.transaction = _tx
+    conn.execute = AsyncMock(return_value="SELECT 1")
+
+    async def _fetchrow(sql: str, *args):
+        executed_sql.append(sql)
+        return {"salience_count": 0, "contradictions_count": 0}
+
+    conn.fetchrow = AsyncMock(side_effect=_fetchrow)
+
+    @asynccontextmanager
+    async def _acquire(timeout=None):
+        yield conn
+
+    pool = MagicMock()
+    pool.acquire = _acquire
+
+    ns_id = uuid4()
+    counts = await _clean_orphaned_cascade(pool, ns_id)
+
+    assert counts == {"salience": 0, "contradictions": 0}
+    assert len(executed_sql) == 1
+    branch_match = re.search(
+        r"SELECT\s+c\.memory_b_id\s+FROM\s+contradictions\s+c\s+"
+        r"LEFT\s+JOIN\s+existing_memories\s+em\s+ON\s+([^\s]+)\s*=\s*em\.id",
+        executed_sql[0],
+        re.IGNORECASE,
+    )
+    assert branch_match is not None, "Expected SELECT c.memory_b_id branch in cascade query"
+    assert branch_match.group(1) == "c.memory_b_id"
+
+
+@pytest.mark.asyncio
+async def test_get_latest_anchor_closes_and_releases_minio_response() -> None:
+    """Verify _get_latest_anchor_for_namespace closes and releases the MinIO response."""
+    from types import SimpleNamespace
+
+    from nce.garbage_collector import _get_latest_anchor_for_namespace
+
+    ns_id = uuid4()
+    obj = SimpleNamespace(object_name=f"anchors/{ns_id}/00000000000000000042.json")
+
+    resp = MagicMock()
+    resp.read = MagicMock(return_value=b'{"max_seq": 42}')
+    resp.close = MagicMock()
+    resp.release_conn = MagicMock()
+
+    minio_client = MagicMock()
+    minio_client.list_objects = MagicMock(return_value=[obj])
+    minio_client.get_object = MagicMock(return_value=resp)
+
+    data = await _get_latest_anchor_for_namespace(minio_client, ns_id)
+    assert data == {"max_seq": 42}
+    resp.close.assert_called_once()
+    resp.release_conn.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_archive_partition_to_minio_binds_namespace_context() -> None:
+    """Verify _archive_partition_to_minio binds tenant RLS context before querying stats."""
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock
+
+    from nce.garbage_collector import _archive_partition_to_minio
+
+    ns_id = uuid4()
+    active_ns: list[str] = []
+    conn = AsyncMock()
+
+    async def _execute(sql: str, *args):
+        if "set_config('nce.namespace_id'" in sql:
+            active_ns.append(str(args[0]))
+        return "SELECT 1"
+
+    async def _fetchrow(sql: str, *args):
+        assert active_ns == [str(ns_id)], "RLS context must be bound before partition stats query"
+        return {
+            "row_count": 3,
+            "min_seq": 1,
+            "max_seq": 3,
+            "min_at": datetime(2020, 1, 1, tzinfo=timezone.utc),
+            "max_at": datetime(2020, 1, 2, tzinfo=timezone.utc),
+        }
+
+    conn.execute = AsyncMock(side_effect=_execute)
+    conn.fetchrow = AsyncMock(side_effect=_fetchrow)
+
+    @asynccontextmanager
+    async def _acquire(timeout=None):
+        yield conn
+
+    pool = MagicMock()
+    pool.acquire = _acquire
+    minio_client = MagicMock()
+
+    ok = await _archive_partition_to_minio(minio_client, pool, "event_log_2020_01", ns_id)
+    assert ok is True
+    assert active_ns == [str(ns_id)]
+    minio_client.put_object.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_run_partition_retention_falls_back_to_namespace_scoped_scan() -> None:
+    """Verify run_partition_retention scans per-namespace under RLS when unscoped GROUP BY is empty."""
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock
+
+    from nce.garbage_collector import run_partition_retention
+
+    ns_id = uuid4()
+    active_ns: list[str] = []
+    conn = AsyncMock()
+
+    async def _execute(sql: str, *args):
+        if "set_config('nce.namespace_id'" in sql:
+            active_ns.append(str(args[0]))
+        return "OK"
+
+    async def _fetch(sql: str, *args):
+        if "FROM pg_inherits" in sql:
+            return [
+                {
+                    "partition_name": "event_log_2020_01",
+                    "bound_expr": "FOR VALUES FROM ('2020-01-01') TO ('2020-02-01')",
+                }
+            ]
+        if "GROUP  BY namespace_id" in sql:
+            # Simulate non-superuser RLS connection with no active tenant context
+            return []
+        if "SELECT id FROM namespaces" in sql:
+            return [{"id": ns_id}]
+        return []
+
+    async def _fetchrow(sql: str, *args):
+        if "SELECT max(event_seq) AS max_seq" in sql and active_ns and active_ns[-1] == str(ns_id):
+            return {"max_seq": 15}
+        return {"max_seq": None}
+
+    conn.execute = AsyncMock(side_effect=_execute)
+    conn.fetch = AsyncMock(side_effect=_fetch)
+    conn.fetchrow = AsyncMock(side_effect=_fetchrow)
+
+    @asynccontextmanager
+    async def _acquire(timeout=None):
+        yield conn
+
+    pool = MagicMock()
+    pool.acquire = _acquire
+    minio_client = MagicMock()
+    minio_client.list_objects = MagicMock(return_value=[])
+
+    res = await run_partition_retention(pool, minio_client, retention_months=12)
+    assert res["checked"] == 1
+    assert res["skipped_unanchored"] == 1
+    assert res["dropped"] == 0

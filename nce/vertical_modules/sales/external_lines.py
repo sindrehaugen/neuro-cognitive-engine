@@ -61,7 +61,7 @@ def _require_text(value: Any, field: str) -> str:
     return text
 
 
-def _require_decimal(value: Any, field: str) -> Decimal:
+def _require_decimal(value: Any, field: str, *, allow_zero: bool = True) -> Decimal:
     """Coerce a JSON scalar to ``Decimal`` without going through ``float``.
 
     Identical contract to ``lines.py``'s helper of the same name (money and
@@ -85,6 +85,8 @@ def _require_decimal(value: Any, field: str) -> Decimal:
         raise ValueError(f"{field} must be finite")
     if candidate < 0:
         raise ValueError(f"{field} must not be negative")
+    if not allow_zero and candidate <= 0:
+        raise ValueError(f"{field} must be positive")
     return candidate
 
 
@@ -143,7 +145,7 @@ async def do_import_quote_lines(
             raise ValueError(f"lines[{idx}] must be an object")
 
         ref = _require_text(entry.get("line_ref"), f"lines[{idx}].line_ref")
-        quantity = _require_decimal(entry.get("qty"), f"lines[{idx}].qty")
+        quantity = _require_decimal(entry.get("qty"), f"lines[{idx}].qty", allow_zero=False)
         price = _require_decimal(entry.get("unit_price"), f"lines[{idx}].unit_price")
         raw_total = entry.get("line_total")
         total = (
@@ -180,6 +182,7 @@ async def do_import_quote_lines(
             line_total=total,
             currency=code,
             origin_ref=ref_note,
+            priced=bool(entry.get("priced", True)),
         )
         written.append(row)
 

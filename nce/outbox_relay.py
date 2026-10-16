@@ -85,7 +85,21 @@ from typing import Any
 
 import asyncpg
 
+from nce.auth import set_namespace_context
+
 log = logging.getLogger("nce.outbox_relay")
+
+_orig_set_namespace_context = set_namespace_context
+
+
+async def _bind_outbox_namespace(conn: Any, namespace_id: Any) -> None:
+    if (
+        set_namespace_context is not _orig_set_namespace_context
+        or isinstance(conn, asyncpg.Connection)
+        or callable(getattr(conn, "execute", None))
+    ):
+        await set_namespace_context(conn, namespace_id)
+
 
 _ALERT_THROTTLE_CACHE: dict[str, float] = {}
 _THROTTLE_WINDOW_SECONDS = 300.0
@@ -315,6 +329,10 @@ async def move_to_dead_letter_if_exhausted(
     if int(event["attempt_count"]) + 1 < MAX_OUTBOX_ATTEMPTS:
         return
 
+    ns_id = event.get("namespace_id")
+    if ns_id is not None:
+        await _bind_outbox_namespace(conn, ns_id)
+
     payload = event.get("payload") or {}
     if isinstance(payload, str):
         payload = json.loads(payload)
@@ -434,7 +452,9 @@ async def deliver_one(
     # C4 Outbound Webhooks (Wave A-7): discover active matching tenant webhooks
     matching_webhooks: list[Any] = []
     ns_id = event.get("namespace_id")
+    outer_in_tx = not isinstance(conn, asyncpg.Connection) or conn.is_in_transaction()
     if ns_id:
+        await _bind_outbox_namespace(conn, ns_id)
         try:
             from nce.outbound_webhooks import get_matching_webhooks
 
@@ -463,6 +483,8 @@ async def deliver_one(
                 event_type,
             )
             async with conn.transaction():
+                if ns_id and not outer_in_tx:
+                    await _bind_outbox_namespace(conn, ns_id)
                 await conn.fetchval(
                     """
                     INSERT INTO processed_outbox_events (event_id, namespace_id)
@@ -491,6 +513,8 @@ async def deliver_one(
     #     otherwise leave the relay's transaction aborted, so mark_failed and the
     #     DLQ insert would fail too.  ROLLBACK TO SAVEPOINT recovers it.
     async with conn.transaction():
+        if ns_id and not outer_in_tx:
+            await _bind_outbox_namespace(conn, ns_id)
         # Dedup check: INSERT ... ON CONFLICT DO NOTHING returns the inserted row count.
         # A zero row-count means the event was already processed; skip handler effects.
         inserted = await conn.fetchval(

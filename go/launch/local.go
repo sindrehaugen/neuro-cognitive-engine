@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/nce/tri-stack/internal/executil"
 )
@@ -89,8 +90,18 @@ func runLocal(ctx context.Context, n UserNotifier, log *slog.Logger, appRoot str
 }
 
 func resolveComposeFile(appRoot string) string {
-	if v := os.Getenv("NCE_COMPOSE_FILE"); v != "" {
-		return v
+	if override := strings.TrimSpace(os.Getenv("NCE_COMPOSE_FILE")); override != "" {
+		if filepath.IsAbs(override) {
+			return override
+		}
+		candidate := filepath.Join(appRoot, override)
+		if st, err := os.Stat(candidate); err == nil && !st.IsDir() {
+			return candidate
+		}
+		if st, err := os.Stat(override); err == nil && !st.IsDir() {
+			return override
+		}
+		return candidate
 	}
 	for _, name := range []string{"docker-compose.local.yml", "docker-compose.yml"} {
 		p := filepath.Join(appRoot, name)

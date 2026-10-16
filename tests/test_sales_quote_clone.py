@@ -285,3 +285,80 @@ async def test_through_the_real_mcp_handler(
     result = json.loads(payload)
     assert result["source_quote_id"] == source_id
     assert result["quote_number"] == "Q-SRC-004-COPY"
+
+
+@pytest.mark.asyncio
+async def test_clone_quote_preserves_unpriced_line_flag_unit() -> None:
+    """do_clone_quote forwards priced=False from source BOM lines to create_bom_line."""
+    from contextlib import asynccontextmanager
+    from decimal import Decimal
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from nce.vertical_modules.sales.quote_clone import do_clone_quote
+
+    ns_id = uuid.uuid4()
+    src_id = str(uuid.uuid4())
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(
+        return_value={
+            "id": uuid.UUID(src_id),
+            "quote_number": "Q-SRC-UNPRICED",
+            "title": "Source Quote",
+            "deal_id": None,
+            "customer_id": uuid.uuid4(),
+            "opportunity_id": None,
+            "total_ex_vat": Decimal("0.00"),
+            "total_inc_vat": Decimal("0.00"),
+            "currency": "NOK",
+            "valid_until": None,
+            "billing_method": "fixed",
+            "metadata": "{}",
+        }
+    )
+    conn.fetchval = AsyncMock(return_value=False)
+    conn.execute = AsyncMock(return_value="INSERT 0 1")
+
+    @asynccontextmanager
+    async def _fake_session(_pool: Any, _ns: Any):
+        yield conn
+
+    captured_priced: list[bool] = []
+
+    async def _fake_create_bom_line(_conn: Any, _ns: Any, **kwargs: Any) -> dict[str, Any]:
+        captured_priced.append(kwargs.get("priced", True))
+        return {"id": str(uuid.uuid4()), **kwargs}
+
+    with (
+        patch(
+            "nce.db_utils.scoped_pg_session",
+            side_effect=_fake_session,
+        ),
+        patch(
+            "nce.vertical_modules.sales.quote_clone.list_bom_lines_for_quote",
+            new=AsyncMock(
+                return_value=[
+                    {
+                        "line_ref": "L-UNPRICED",
+                        "qty": Decimal("2"),
+                        "unit_price": Decimal("0.00"),
+                        "line_total": Decimal("0.00"),
+                        "currency": "NOK",
+                        "origin_ref": "DESIGN_LINE:1",
+                        "priced": False,
+                    }
+                ]
+            ),
+        ),
+        patch(
+            "nce.vertical_modules.sales.external_lines.create_bom_line",
+            side_effect=_fake_create_bom_line,
+        ),
+    ):
+        res = await do_clone_quote(
+            MagicMock(),
+            ns_id,
+            quote_id=src_id,
+        )
+
+    assert res["lines_cloned"] == 1
+    assert captured_priced == [False]

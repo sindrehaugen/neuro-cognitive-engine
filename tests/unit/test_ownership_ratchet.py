@@ -39,36 +39,10 @@ _FILE_DYNAMIC_MAP: dict[str, list[str]] = {
 
 # Shrink-only allowlist: Vertical module files writing kg_nodes without assert_owner
 # Once a wave (e.g. FT-2 or HR-1) wraps graph writes in assert_owner, the file MUST be removed.
-KNOWN_UNGUARDED_GRAPH_WRITERS: dict[str, dict[str, str]] = {
-    "nce/vertical_modules/dynamics365/sync.py": {
-        "engine": "dynamics365",
-        "owner": "Core",
-        "reason": (
-            "Dynamics 365 external ERP sync bridge writes D365_Account and D365_KnowledgeArticle "
-            "nodes directly via ingestion without invoking Contract-A assert_owner."
-        ),
-    },
-}
+KNOWN_UNGUARDED_GRAPH_WRITERS: dict[str, dict[str, str]] = {}
 
 # Shrink-only allowlist: Entity types written by code lacking rows in node-ownership.json
-KNOWN_UNREGISTERED_ENTITY_TYPES: dict[str, dict[str, str]] = {
-    "D365_Account": {
-        "engine": "dynamics365",
-        "owner": "Core",
-        "reason": (
-            "Dynamics 365 customer account mirror node type authored during CRM sync; "
-            "external mirror entity outside standard vertical module Contract-A governance."
-        ),
-    },
-    "D365_KnowledgeArticle": {
-        "engine": "dynamics365",
-        "owner": "Core",
-        "reason": (
-            "Dynamics 365 knowledge base mirror node type authored during sync; "
-            "external mirror entity outside standard vertical module Contract-A governance."
-        ),
-    },
-}
+KNOWN_UNREGISTERED_ENTITY_TYPES: dict[str, dict[str, str]] = {}
 
 
 def _load_registered_ownership() -> tuple[set[str], dict[str, list[dict[str, Any]]]]:
@@ -313,10 +287,8 @@ def test_unregistered_entity_types_allowlist_is_shrink_only() -> None:
 
 
 def test_starting_baseline_matches_charter() -> None:
-    """Charter §6 verification: after FT-2, Lane E's HR wave (Wave E-14, #287), and Wave R-9
-    (F-14a), every vertical engine's kg_nodes writers are fully guarded and write registered
-    entity types -- hr/a2a.py's handle_project_assignment_query calls assert_owner(..., "EMPLOYEE",
-    "hr") and writes the registered "PROJECT_PROJECT" entity type alongside "EMPLOYEE"."""
+    """Charter §6 verification: every vertical module's kg_nodes writers are guarded by
+    assert_owner and write registered entity types, with both ratchet allowlists at zero."""
     writers, _, _ = _scan_kg_nodes_writers(_REPO_ROOT)
     unguarded_files_by_engine: dict[str, list[str]] = {}
 
@@ -325,16 +297,11 @@ def test_starting_baseline_matches_charter() -> None:
             engine = rel.split("/")[2]
             unguarded_files_by_engine.setdefault(engine, []).append(rel)
 
-    vertical_unguarded = {
-        eng: files for eng, files in unguarded_files_by_engine.items() if eng != "dynamics365"
-    }
-
-    assert set(vertical_unguarded.keys()) == set(), (
-        f"Charter §6 violation: Expected every vertical engine guarded, got: {list(vertical_unguarded.keys())}"
+    assert set(unguarded_files_by_engine.keys()) == set(), (
+        f"Charter §6 violation: Expected every vertical engine guarded, got: {list(unguarded_files_by_engine.keys())}"
     )
-    assert len(vertical_unguarded.get("field_tech", [])) == 0, (
-        f"Charter §6 violation: Expected 0 unguarded field_tech files, found {len(vertical_unguarded.get('field_tech', []))}"
-    )
+    assert KNOWN_UNGUARDED_GRAPH_WRITERS == {}
+    assert KNOWN_UNREGISTERED_ENTITY_TYPES == {}
 
 
 def test_positive_control_fails_on_unallowlisted_unguarded_writer() -> None:

@@ -7,6 +7,7 @@ RQ workers import these classes to download files after webhook enqueueing.
 
 from __future__ import annotations
 
+import functools
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Iterator
@@ -95,6 +96,7 @@ class BridgeProvider(ABC):
         )
 
 
+@functools.lru_cache(maxsize=1)
 def redis_client():
     """Shared sync Redis handle for cursors and dedupe (worker + bridges)."""
     from redis import Redis

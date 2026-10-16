@@ -15,10 +15,11 @@ from __future__ import annotations
 import json
 import os
 import re
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.getenv("COGNITIVE_PORT", "11435"))
 DIM = int(os.getenv("EMBEDDING_VECTOR_DIM", "768"))
+MAX_BODY_BYTES = 10 * 1024 * 1024
 
 _HEALTH = json.dumps({"status": "ok", "engine": "stub"}).encode()
 
@@ -115,7 +116,7 @@ def _embeddings_response(body: dict) -> bytes:
     ).encode()
 
 
-class _Handler(BaseHTTPRequestHandler):
+class StubHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args: object) -> None:  # silence request logs
         pass
 
@@ -126,34 +127,63 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _json(self, code: int, payload: dict[str, object]) -> None:
+        self._send(code, json.dumps(payload).encode())
+
     def do_GET(self) -> None:
-        if self.path == "/health":
+        path = self.path.split("?", 1)[0]
+        if path == "/health":
             self._send(200, _HEALTH)
         else:
             self._send(404, b'{"error":"not found"}')
 
     def do_POST(self) -> None:
-        length = int(self.headers.get("Content-Length", 0))
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            self._json(400, {"error": "Invalid Content-Length"})
+            return
+        if length < 0:
+            self._json(400, {"error": "Invalid Content-Length"})
+            return
+        if length > MAX_BODY_BYTES:
+            self._json(413, {"error": "Payload too large"})
+            return
         raw = self.rfile.read(length) if length else b"{}"
         try:
             body = json.loads(raw)
-        except json.JSONDecodeError:
-            body = {}
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            self._json(400, {"error": "Invalid JSON"})
+            return
+        if not isinstance(body, dict):
+            self._json(400, {"error": "JSON body must be an object"})
+            return
 
-        if self.path == "/v1/chat/completions":
+        path = self.path.split("?", 1)[0]
+        if path == "/v1/chat/completions":
             self._send(200, _chat_response(body))
-        elif self.path == "/v1/embeddings":
+        elif path == "/v1/embeddings":
             self._send(200, _embeddings_response(body))
-        elif self.path == "/v1/nlp/spacy":
+        elif path == "/v1/nlp/spacy":
             text = body.get("text", "")
+            if not isinstance(text, str):
+                self._json(400, {"error": "text must be a string"})
+                return
             self._send(200, json.dumps(_stub_regex_extract(text)).encode())
-        elif self.path == "/v1/nlp/nli":
+        elif path == "/v1/nlp/nli":
             self._send(200, b'{"score":0.0}')
         else:
             self._send(404, b'{"error":"not found"}')
 
 
-if __name__ == "__main__":
-    server = HTTPServer(("0.0.0.0", PORT), _Handler)
-    print(f"[cognitive-stub] listening on :{PORT}  dim={DIM}", flush=True)
+_Handler = StubHandler
+
+
+def main(port: int = PORT) -> None:
+    server = ThreadingHTTPServer(("0.0.0.0", port), StubHandler)
+    print(f"[cognitive-stub] listening on :{port}  dim={DIM}", flush=True)
     server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

@@ -586,3 +586,48 @@ def test_row_to_dict_still_converts_uuid_and_datetime_fields():
     assert result["id"] == str(ticket_id)
     assert result["created_at"] == now.isoformat()
     assert result["events"] == []
+
+
+@pytest.mark.asyncio
+async def test_open_ticket_uses_sla_profile_targets() -> None:
+    """do_open_ticket computes SLA clock deadlines using calculate_sla_targets for the requested sla_profile."""
+    conn = AsyncMock()
+    now_dt = datetime.datetime(2026, 6, 1, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    ticket_row = {
+        "id": UUID(_TICKET_ID_1),
+        "namespace_id": UUID(_NS_A),
+        "status": "open",
+        "priority": "high",
+        "summary": "Critical room outage",
+        "sla_profile": "mission_critical",
+        "ai_diagnosis": "{}",
+        "events": "[]",
+        "created_at": now_dt,
+    }
+    sla_row = {
+        "ticket_id": UUID(_TICKET_ID_1),
+        "namespace_id": UUID(_NS_A),
+        "sla_profile": "mission_critical",
+        "first_response_due": now_dt + datetime.timedelta(hours=1),
+        "resolution_due": now_dt + datetime.timedelta(hours=4),
+        "breached": False,
+        "paused_intervals": "[]",
+    }
+    conn.fetchrow.side_effect = [ticket_row, sla_row]
+    pool = _make_mock_pool(conn)
+
+    await do_open_ticket(
+        pool,
+        {
+            "namespace_id": _NS_A,
+            "summary": "Critical room outage",
+            "priority": "high",
+            "sla_profile": "mission_critical",
+        },
+    )
+
+    sla_insert_call = conn.fetchrow.call_args_list[1]
+    first_resp_arg = sla_insert_call[0][4]
+    res_due_arg = sla_insert_call[0][5]
+    # mission_critical + high priority -> 1h first response, 4h resolution (diff = 3h, vs 6h on standard)
+    assert (res_due_arg - first_resp_arg) == datetime.timedelta(hours=3)

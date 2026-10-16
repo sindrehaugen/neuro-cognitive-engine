@@ -345,7 +345,7 @@ async def do_get_asset_service_history(
                     "priority": wor["priority"],
                     "summary": wor["summary"],
                     "due_at": _iso(wor["due_at"]),
-                    "raw": wor["raw"] or {},
+                    "raw": _decode_jsonb(wor["raw"], {}),
                     "created_at": _iso(wor["created_at"]),
                     "updated_at": _iso(wor["updated_at"]),
                 }

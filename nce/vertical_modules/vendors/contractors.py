@@ -146,6 +146,11 @@ async def do_get_contractor(
     if not contractor_id:
         raise ValueError("contractor_id is required")
     contractor_id_str = str(contractor_id).strip()
+    label = (
+        f"CONTRACTOR:{contractor_id_str[len('CONTRACTOR:') :].strip().upper()}"
+        if contractor_id_str.upper().startswith("CONTRACTOR:")
+        else f"CONTRACTOR:{contractor_id_str.upper()}"
+    )
 
     partner_scope_raw = params.get("partner_scope_id")
 
@@ -166,7 +171,7 @@ async def do_get_contractor(
             FROM contractor_profiles
             WHERE contractor_id = $1 AND namespace_id = $2
             """,
-            contractor_id_str,
+            label,
             ns_uuid,
         )
 

@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
+from nce.auth import set_namespace_context
 from nce.vertical_modules.marketing._guard import assert_no_sensitive_financials
 
 log = logging.getLogger("nce.vertical_modules.marketing.advisor")
@@ -77,6 +78,7 @@ async def do_suggest_content(
     if pool is not None:
         try:
             async with pool.acquire() as conn:
+                await set_namespace_context(conn, UUID(ns_str))
                 rows = await conn.fetch(
                     """
                     SELECT id, project_id, title, raw
@@ -254,6 +256,7 @@ async def do_audit_seo(
     if asset_id_str and pool is not None:
         try:
             async with pool.acquire() as conn:
+                await set_namespace_context(conn, UUID(ns_str))
                 row = await conn.fetchrow(
                     """
                     SELECT id, title, body, marketing_source_id
@@ -388,6 +391,7 @@ async def do_audit_seo(
         merged_seo = {**existing_seo, **report}
         try:
             async with pool.acquire() as conn:
+                await set_namespace_context(conn, UUID(ns_str))
                 await conn.execute(
                     """
                     UPDATE content_assets

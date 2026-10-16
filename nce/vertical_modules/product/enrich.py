@@ -417,6 +417,10 @@ async def do_enrich_product(
                     "confidence": confidence,
                     "verbalized": verbalized,
                     "source": product_source_id,
+                    "provenance": {
+                        "source": proposal.get("source") or product_source_id,
+                        "reason": "auto_enriched",
+                    },
                 }
             }
             await conn.execute(
@@ -494,14 +498,17 @@ async def accept_enrichment_proposal(
     -------
     dict with status, enrichment_id, product_id, field_name, golden_record.
     """
+    ns_uuid = uuid.UUID(str(namespace_id))
     row = await conn.fetchrow(
         """
         SELECT id, product_id, field_name, field_value, confidence, product_source_id
         FROM   product_enrichment_log
         WHERE  id = $1::uuid
+          AND  namespace_id = $2::uuid
           AND  needs_review = true
         """,
         uuid.UUID(str(enrichment_id)),
+        ns_uuid,
     )
     if row is None:
         raise ValueError(f"enrichment proposal {enrichment_id!r} not found or already reviewed")
@@ -518,8 +525,10 @@ async def accept_enrichment_proposal(
         UPDATE product_enrichment_log
         SET    needs_review = false
         WHERE  id = $1::uuid
+          AND  namespace_id = $2::uuid
         """,
         row["id"],
+        ns_uuid,
     )
 
     # 2. Merge field into product_catalog.etim_specs
@@ -529,6 +538,10 @@ async def accept_enrichment_proposal(
             "confidence": confidence,
             "source": source or "human_accepted",
             "verbalized": "accepted",
+            "provenance": {
+                "source": source or "human_accepted",
+                "reason": "human_accepted",
+            },
         }
     }
     await conn.execute(

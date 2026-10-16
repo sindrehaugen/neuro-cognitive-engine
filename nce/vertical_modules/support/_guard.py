@@ -17,6 +17,7 @@ boundary -- NOT inside the ``do_*`` cores. One call, one check (DRY).
 
 from __future__ import annotations
 
+import inspect
 import logging
 from typing import Any
 
@@ -31,41 +32,46 @@ class SupportDisabledError(EngineDisabledError):
     """Raised when a namespace has not opted in to the Support vertical."""
 
 
+_SUPPORT_ENABLED_QUERY = """
+    SELECT COALESCE(
+               (metadata->'support'->>'enabled')::boolean,
+               false
+           ) AS support_enabled
+    FROM   namespaces
+    WHERE  id = $1::uuid
+"""
+
+
 async def require_support_enabled(
     pool: Any,
-    namespace_id: str,
+    namespace_id: str | Any,
 ) -> None:
     """Assert that ``metadata.support.enabled`` is ``true`` for *namespace_id*.
 
-    Acquires a short-lived unmanaged connection from *pool* and queries the
-    ``namespaces`` table. Raises :exc:`SupportDisabledError` when the
-    namespace is unknown or has not set ``metadata->'support'->>'enabled'``
-    to ``true``.
-
-    Applied at the MCP handler / REST route boundary only -- never inside a
-    ``do_*`` core, which stays ignorant of opt-in, of HTTP and of MCP.
+    Accepts either an ``asyncpg.Pool`` (acquiring a short-lived connection) or
+    an already-acquired ``asyncpg.Connection`` (calling ``fetchrow`` directly).
+    Raises :exc:`SupportDisabledError` when the namespace is unknown or has not
+    set ``metadata->'support'->>'enabled'`` to ``true``.
 
     Parameters
     ----------
     pool:
-        An ``asyncpg.Pool`` (or compatible mock with ``.acquire()`` as an
-        async context manager).
+        An ``asyncpg.Pool`` or ``asyncpg.Connection`` (or compatible mock).
     namespace_id:
-        The tenant namespace UUID string to check.
+        The tenant namespace UUID (or string) to check.
     """
     try:
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow(
-                """
-                SELECT COALESCE(
-                           (metadata->'support'->>'enabled')::boolean,
-                           false
-                       ) AS support_enabled
-                FROM   namespaces
-                WHERE  id = $1::uuid
-                """,
-                namespace_id,
-            )
+        if hasattr(pool, "acquire"):
+            ctx = pool.acquire()
+            if hasattr(ctx, "__aenter__"):
+                async with ctx as conn:
+                    row = await conn.fetchrow(_SUPPORT_ENABLED_QUERY, namespace_id)
+            else:
+                if inspect.iscoroutine(ctx):
+                    ctx.close()
+                row = await pool.fetchrow(_SUPPORT_ENABLED_QUERY, namespace_id)
+        else:
+            row = await pool.fetchrow(_SUPPORT_ENABLED_QUERY, namespace_id)
     except DataError as exc:
         log.info(
             "Support enabled-check got a malformed namespace_id=%r: %s",

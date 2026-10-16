@@ -77,6 +77,7 @@ Watcher invariants
 
 from __future__ import annotations
 
+import datetime
 import logging
 import uuid
 from typing import TYPE_CHECKING, Any
@@ -196,13 +197,24 @@ def aggregate_savings(
 # ---------------------------------------------------------------------------
 
 
+def _coerce_date(value: str | datetime.date) -> datetime.date:
+    """Convert an ISO-8601 date string or date/datetime object to datetime.date."""
+    if isinstance(value, datetime.datetime):
+        return value.date()
+    if isinstance(value, datetime.date):
+        return value
+    return datetime.date.fromisoformat(str(value))
+
+
 async def _fetch_spend_rows(
     conn: Any,
     namespace_id: uuid.UUID,
-    period_start: str,
-    period_end: str,
+    period_start: str | datetime.date,
+    period_end: str | datetime.date,
 ) -> list[dict[str, Any]]:
     """SELECT spend lines for the given period.  Read-only (Watcher)."""
+    start_date = _coerce_date(period_start)
+    end_date = _coerce_date(period_end)
     # procurement_spend_lines is wired by a later wave / Economy A2A feed. Until
     # it exists, the read-only savings Watcher reports no spend rather than
     # crashing (graceful degradation, same posture as the EOL Watcher). Detected
@@ -222,8 +234,8 @@ async def _fetch_spend_rows(
         ORDER  BY artnr
         """,
         namespace_id,
-        period_start,
-        period_end,
+        start_date,
+        end_date,
     )
     return [dict(r) for r in rows]
 
@@ -296,15 +308,18 @@ async def do_aggregate_savings(
     raw_ns = require_namespace_id(params)
     namespace_id = uuid.UUID(raw_ns)
 
-    period_start: str | None = params.get("period_start")
-    period_end: str | None = params.get("period_end")
+    period_start: str | datetime.date | None = params.get("period_start")
+    period_end: str | datetime.date | None = params.get("period_end")
     if not period_start:
         raise ValueError("do_aggregate_savings: 'period_start' is required")
     if not period_end:
         raise ValueError("do_aggregate_savings: 'period_end' is required")
 
+    start_date = _coerce_date(period_start)
+    end_date = _coerce_date(period_end)
+
     async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
-        spend_rows = await _fetch_spend_rows(conn, namespace_id, period_start, period_end)
+        spend_rows = await _fetch_spend_rows(conn, namespace_id, start_date, end_date)
 
         artnrs = list({r["artnr"] for r in spend_rows if r.get("artnr")})
         baselines = await _fetch_best_bids_for_artnrs(conn, namespace_id, artnrs)

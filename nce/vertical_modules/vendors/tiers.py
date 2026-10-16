@@ -320,7 +320,19 @@ async def do_record_outcome(
     if contractor_id:
         payload["contractor_id"] = str(contractor_id).strip()
 
-    for k in ("decision", "score", "rating", "amount", "volume", "value", "work_order_id"):
+    for k in (
+        "decision",
+        "score",
+        "rating",
+        "amount",
+        "volume",
+        "value",
+        "work_order_id",
+        "on_time",
+        "defect_rma",
+        "substituted",
+        "reliability",
+    ):
         if params.get(k) is not None:
             payload[k] = params.get(k)
 

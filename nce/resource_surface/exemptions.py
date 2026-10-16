@@ -375,4 +375,24 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     # _internal/work-docs/mlv16-orchestration/ECONOMY_SURFACE_DECISION.md),
     # after confirming each has a real governed sole writer that must stay the
     # only write path. No longer exempted.
+    # ---------------------------------------------------------------------------
+    # Dynamics 365 Vertical Module (External CRM/ERP Sync Bridge)
+    # ---------------------------------------------------------------------------
+    "D365_Account": ResourceExemption(
+        owner_engine="dynamics365",
+        reason=(
+            "kg_nodes-only external CRM mirror node populated by DataverseSyncEngine."
+            "sync_accounts (nce/vertical_modules/dynamics365/sync.py) with no dedicated "
+            "Postgres attribute table; exposed via Dynamics 365 MCP handlers rather than "
+            "a C12 ResourceSpec."
+        ),
+    ),
+    "D365_KnowledgeArticle": ResourceExemption(
+        owner_engine="dynamics365",
+        reason=(
+            "kg_nodes-only external knowledge-article anchor populated by DataverseSyncEngine."
+            "sync_knowledge_articles (nce/vertical_modules/dynamics365/sync.py) while article "
+            "bodies flow through semantic ingestion; no standalone Postgres attribute table exists."
+        ),
+    ),
 }

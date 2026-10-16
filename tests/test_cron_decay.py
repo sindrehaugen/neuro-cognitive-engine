@@ -63,3 +63,55 @@ async def test_cron_boot_registers_decay_prune():
                 pass
 
             assert "phase_2_2_decay_prune" in added_jobs
+
+
+@pytest.mark.asyncio
+async def test_decay_prune_tick_scopes_queries_per_namespace() -> None:
+    """Verify _decay_prune_tick iterates namespaces, sets RLS context, and filters by namespace_id."""
+    import uuid
+    from contextlib import asynccontextmanager
+
+    from nce.cron_lock import CronLock
+    from nce.temporal_decay import MemoryClass, _decay_prune_tick
+
+    ns_a = uuid.uuid4()
+    ns_b = uuid.uuid4()
+    active_ns: list[str] = []
+    prune_calls: list[tuple[str, str, object]] = []
+
+    conn = MagicMock()
+    conn.fetch = AsyncMock(return_value=[{"id": ns_a}, {"id": ns_b}])
+
+    async def _execute(sql: str, *args):
+        if "set_config('nce.namespace_id'" in sql:
+            active_ns.append(str(args[0]))
+            return "SELECT 1"
+        if "WITH candidates AS" in sql:
+            assert "namespace_id = $4::uuid" in sql
+            assert "m.namespace_id = $4::uuid" in sql
+            prune_calls.append((active_ns[-1] if active_ns else "", str(args[0]), args[3]))
+            return "UPDATE 1"
+        return "OK"
+
+    conn.execute = AsyncMock(side_effect=_execute)
+
+    @asynccontextmanager
+    async def _unmanaged(_pool, *, site: str):
+        yield conn
+
+    fake_lock = CronLock(job_id="decay_prune", key="k", token="t", ttl_seconds=3660)
+    with (
+        patch("nce.cron_lock.acquire_cron_lock", new_callable=AsyncMock, return_value=fake_lock),
+        patch("nce.cron_lock.release_cron_lock", new_callable=AsyncMock),
+        patch("nce.db_utils.unmanaged_pg_connection", _unmanaged),
+    ):
+        await _decay_prune_tick(MagicMock())
+
+    assert active_ns == [str(ns_a), str(ns_b)]
+    assert len(prune_calls) == 2 * len(MemoryClass)
+    for bound_ns, _mc, arg_ns in prune_calls[: len(MemoryClass)]:
+        assert bound_ns == str(ns_a)
+        assert arg_ns == ns_a
+    for bound_ns, _mc, arg_ns in prune_calls[len(MemoryClass) :]:
+        assert bound_ns == str(ns_b)
+        assert arg_ns == ns_b

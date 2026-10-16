@@ -250,3 +250,165 @@ async def test_outbox_relay_drains_catalogued_unconsumed_event(pg_pool, namespac
     assert res2 == 0
     assert res2.delivered == 0
     assert res2.drained_no_consumer == 0
+
+
+@pytest.mark.asyncio
+async def test_deliver_one_and_dlq_bind_namespace_context(monkeypatch) -> None:
+    """Verify deliver_one and move_to_dead_letter_if_exhausted bind tenant RLS context."""
+    from contextlib import asynccontextmanager
+    from datetime import datetime, timezone
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    ns_id = uuid.uuid4()
+    event_id = uuid.uuid4()
+    active_ns: list[str] = []
+    handler_saw_ns: list[str] = []
+    dlq_saw_ns: list[str] = []
+
+    conn = MagicMock()
+
+    @asynccontextmanager
+    async def _tx():
+        yield
+
+    conn.transaction = _tx
+
+    async def _execute(sql: str, *args):
+        if "set_config('nce.namespace_id'" in sql:
+            active_ns.append(str(args[0]))
+        elif "INSERT INTO dead_letter_queue" in sql:
+            dlq_saw_ns.append(active_ns[-1] if active_ns else "")
+        return "OK"
+
+    conn.execute = AsyncMock(side_effect=_execute)
+    conn.fetchval = AsyncMock(return_value=event_id)
+    conn.fetch = AsyncMock(return_value=[])
+
+    async def _handler(_c, _ev):
+        handler_saw_ns.append(active_ns[-1] if active_ns else "")
+        return None
+
+    monkeypatch.setitem(outbox_relay.OUTBOX_HANDLERS, "test.rls.event", [_handler])
+    event = {
+        "id": event_id,
+        "namespace_id": ns_id,
+        "aggregate_type": "test",
+        "aggregate_id": "1",
+        "event_type": "test.rls.event",
+        "payload": {"k": "v"},
+        "attempt_count": outbox_relay.MAX_OUTBOX_ATTEMPTS - 1,
+        "created_at": datetime.now(timezone.utc),
+    }
+
+    actions = await outbox_relay.deliver_one(conn, event)
+    assert actions == []
+    assert handler_saw_ns == [str(ns_id)]
+
+    active_ns.clear()
+    with patch.object(outbox_relay, "_dispatch_throttled_alert", new_callable=AsyncMock):
+        await outbox_relay.move_to_dead_letter_if_exhausted(conn, event, "boom")
+    assert dlq_saw_ns == [str(ns_id)]
+
+
+@pytest.mark.asyncio
+async def test_notification_subscribers_and_reminders_bind_namespace_context() -> None:
+    """Verify notification subscribers and reminders bind tenant RLS context before DB access."""
+    from contextlib import asynccontextmanager
+    from datetime import datetime, timezone
+    from unittest.mock import AsyncMock, MagicMock
+
+    from nce.vertical_modules.notifications.reminders import (
+        create_reminder,
+        fire_pending_reminders,
+    )
+    from nce.vertical_modules.notifications.subscribers import handle_ticket_sla_breached
+
+    ns_id = uuid.uuid4()
+    rem_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+    active_ns: list[str] = []
+    queries_saw_ns: list[tuple[str, str]] = []
+
+    conn = MagicMock()
+
+    @asynccontextmanager
+    async def _tx():
+        yield
+
+    conn.transaction = _tx
+
+    async def _execute(sql: str, *args):
+        if "set_config('nce.namespace_id'" in sql:
+            active_ns.append(str(args[0]))
+        elif "UPDATE reminders" in sql:
+            queries_saw_ns.append(("update_reminders", active_ns[-1] if active_ns else ""))
+        return "OK"
+
+    async def _fetch(sql: str, *args):
+        if "notification_subscriptions" in sql:
+            queries_saw_ns.append(
+                ("notification_subscriptions", active_ns[-1] if active_ns else "")
+            )
+            return [{"principal_id": "alice"}]
+        if "FROM reminders" in sql:
+            queries_saw_ns.append(("select_reminders", active_ns[-1] if active_ns else ""))
+            return [
+                {
+                    "id": rem_id,
+                    "namespace_id": ns_id,
+                    "principal_id": "alice",
+                    "node_type": "TICKET",
+                    "node_id": "T-1",
+                    "title": "Check ticket",
+                    "note": "",
+                    "remind_at": now,
+                    "status": "pending",
+                    "fired_at": None,
+                    "is_archived": False,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+            ]
+        return []
+
+    async def _fetchrow(sql: str, *args):
+        if "INSERT INTO notifications" in sql:
+            queries_saw_ns.append(("insert_notifications", active_ns[-1] if active_ns else ""))
+            return {"id": uuid.uuid4()}
+        if "INSERT INTO reminders" in sql:
+            queries_saw_ns.append(("insert_reminders", active_ns[-1] if active_ns else ""))
+            return {"id": rem_id, "namespace_id": ns_id}
+        return None
+
+    conn.execute = AsyncMock(side_effect=_execute)
+    conn.fetch = AsyncMock(side_effect=_fetch)
+    conn.fetchrow = AsyncMock(side_effect=_fetchrow)
+
+    await handle_ticket_sla_breached(
+        conn,
+        {
+            "namespace_id": str(ns_id),
+            "aggregate_id": "T-1",
+            "payload": {"ticket_id": "T-1", "breach_type": "response"},
+        },
+    )
+    active_ns.clear()
+    await create_reminder(
+        conn,
+        namespace_id=ns_id,
+        principal_id="alice",
+        node_type="TICKET",
+        node_id="T-1",
+        title="Check ticket",
+        remind_at=now,
+    )
+    active_ns.clear()
+    fired = await fire_pending_reminders(conn, namespace_id=ns_id, now=now)
+    assert len(fired) == 1
+    assert queries_saw_ns == [
+        ("notification_subscriptions", str(ns_id)),
+        ("insert_notifications", str(ns_id)),
+        ("insert_reminders", str(ns_id)),
+        ("select_reminders", str(ns_id)),
+        ("update_reminders", str(ns_id)),
+    ]

@@ -14,9 +14,21 @@ from uuid import UUID, uuid4
 
 import asyncpg  # type: ignore[import-untyped]
 
+from nce.auth import set_namespace_context
 from nce.events.bus import publish
 
 log = logging.getLogger("nce.notifications.reminders")
+
+_orig_set_namespace_context = set_namespace_context
+
+
+async def _bind_reminder_namespace(conn: Any, namespace_id: Any) -> None:
+    if (
+        set_namespace_context is not _orig_set_namespace_context
+        or isinstance(conn, asyncpg.Connection)
+        or callable(getattr(conn, "execute", None))
+    ):
+        await set_namespace_context(conn, namespace_id)
 
 
 async def create_reminder(
@@ -32,6 +44,7 @@ async def create_reminder(
 ) -> dict[str, Any]:
     """Create a new pending reminder on a node in the estate."""
     ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
+    await _bind_reminder_namespace(conn, ns_uuid)
     rem_id = uuid4()
     row = await conn.fetchrow(
         """
@@ -70,6 +83,7 @@ async def fire_pending_reminders(
 
     if namespace_id is not None:
         ns_uuid = UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id
+        await _bind_reminder_namespace(conn, ns_uuid)
         rows = await conn.fetch(
             """
             SELECT id, namespace_id, principal_id, node_type, node_id,
@@ -107,6 +121,8 @@ async def fire_pending_reminders(
         rem_id = r["id"]
         r_ns = r["namespace_id"]
         async with conn.transaction():
+            if r_ns is not None:
+                await _bind_reminder_namespace(conn, r_ns)
             await conn.execute(
                 """
                 UPDATE reminders

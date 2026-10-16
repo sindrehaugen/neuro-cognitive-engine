@@ -214,7 +214,7 @@ async def do_record_outcome(engine: Any, params: dict[str, Any]) -> dict[str, An
                     log.warning("do_record_outcome: vendors route failed: %s", exc)
 
             # Route to HR if internal employee assigned
-            if wo_row["assignee_kind"] == "internal" and "hr" in ns_modules:
+            if wo_row["assignee_kind"] in ("employee", "internal") and "hr" in ns_modules:
                 try:
                     routed_engines.append("hr")
                 except Exception as exc:

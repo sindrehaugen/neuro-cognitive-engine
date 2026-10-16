@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
+from nce.auth import set_namespace_context
 from nce.event_log import append_event
 
 EVENT_MARKETING_CONTENT_APPROVED: str = "marketing_content_approved"
@@ -75,6 +76,7 @@ async def do_approve_content(
         try:
             async with pool.acquire() as conn:
                 async with conn.transaction():
+                    await set_namespace_context(conn, UUID(ns_str))
                     # Update case_studies table if artifact is a case study
                     updated = await conn.execute(
                         """
@@ -98,6 +100,7 @@ async def do_approve_content(
                             """
                             UPDATE content_assets
                             SET    status = $3,
+                                   seo = COALESCE(seo, '{}'::jsonb) || jsonb_build_object('approver', $4::text),
                                    updated_at = now()
                             WHERE  namespace_id = $1::uuid
                               AND  id = $2::uuid
@@ -105,6 +108,7 @@ async def do_approve_content(
                             UUID(ns_str),
                             UUID(artifact_id_str),
                             new_status,
+                            approver,
                         )
 
                     # Re-home human approval audit from broken v3_cognitive_ledger onto event_log

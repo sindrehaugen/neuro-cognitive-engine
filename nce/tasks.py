@@ -343,16 +343,18 @@ def process_code_indexing(
                 )
             ) as conn:
                 async with conn.transaction():
-                    await conn.execute(
-                        "UPDATE memories SET valid_to = now() "
-                        "WHERE filepath = $1 AND (user_id IS NOT DISTINCT FROM $2) AND valid_to IS NULL",
-                        filepath,
-                        user_id,
-                    )
                     import uuid
                     from uuid import UUID
 
                     ns_uuid = UUID(namespace_id) if namespace_id else None
+                    await conn.execute(
+                        "UPDATE memories SET valid_to = now() "
+                        "WHERE filepath = $1 AND (user_id IS NOT DISTINCT FROM $2) "
+                        "AND valid_to IS NULL AND namespace_id = $3::uuid",
+                        filepath,
+                        user_id,
+                        ns_uuid,
+                    )
                     metadata = {}
                     if (
                         getattr(_embeddings, "degraded_embedding_flag", None)

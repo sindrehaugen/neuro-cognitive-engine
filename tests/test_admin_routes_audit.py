@@ -437,3 +437,59 @@ async def test_api_admin_signing_credentials_routes() -> None:
         assert data_status["configured"] is True
         assert data_status["secret_fingerprint"] == "••••1234"
         assert "client_secret" not in data_status
+
+
+@pytest.mark.asyncio
+async def test_serve_index_and_styles_resolve_repo_root_admin_dir() -> None:
+    """Verify serve_index and serve_styles serve files from <repo_root>/admin/."""
+    from pathlib import Path
+
+    from starlette.responses import FileResponse
+
+    from nce.admin_handlers.health import serve_index, serve_styles
+
+    repo_admin = Path(__file__).resolve().parent.parent / "admin"
+    req_index = Request({"type": "http", "method": "GET", "path": "/"})
+    resp_index = await serve_index(req_index)
+    assert resp_index.status_code == 200
+    assert isinstance(resp_index, FileResponse)
+    assert Path(resp_index.path).resolve() == (repo_admin / "index.html").resolve()
+
+    req_styles = Request({"type": "http", "method": "GET", "path": "/styles.css"})
+    resp_styles = await serve_styles(req_styles)
+    assert resp_styles.status_code == 200
+    assert isinstance(resp_styles, FileResponse)
+    assert Path(resp_styles.path).resolve() == (repo_admin / "styles.css").resolve()
+    assert resp_styles.media_type == "text/css"
+
+
+def test_admin_index_html_contracts() -> None:
+    """Verify frontend contracts in admin/index.html for HMAC signing, trace filter, null guard, and MinIO totals."""
+    from pathlib import Path
+
+    html = (Path(__file__).resolve().parent.parent / "admin" / "index.html").read_text(
+        encoding="utf-8"
+    )
+
+    # Signing credentials status passes query via options.query and signedFetch strips inline '?'
+    assert (
+        "signedFetch(\n              undefined,\n              '/api/admin/signing-credentials/status',\n              { query: { namespace_id: this.targetNs } }\n            )"
+        in html
+    )
+    assert "/api/admin/signing-credentials/status?namespace_id=" not in html
+    assert "if (pathname.includes('?') && !options.query)" in html
+
+    # Consolidation trace queries consolidation_run and shows event_type=consolidation_run in empty state
+    assert "event_type: 'consolidation_run'," in html
+    assert "event_type: 'consolidation'," not in html
+    assert "event_type=consolidation_run" in html
+
+    # Consolidation namespace details card guards both selectedNamespaceId and selectedNamespace
+    assert '<template x-if="selectedNamespaceId && selectedNamespace">' in html
+
+    # MinIO total bytes sums total_size_bytes once per bucket
+    assert (
+        "return (this.minioData.buckets || []).reduce((acc, curr) => acc + (curr.total_size_bytes || 0), 0);"
+        in html
+    )
+    assert "(curr.total_size_bytes || 0) + (curr.total_size_bytes || 0)" not in html

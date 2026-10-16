@@ -12,6 +12,7 @@ A standalone, rate-limited application surface:
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from typing import Any
 
@@ -36,9 +37,21 @@ class CustomerRateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: Any, max_requests_per_minute: int = 120):
         super().__init__(app)
         self.max_requests_per_minute = max_requests_per_minute
+        self.max_requests = max_requests_per_minute
+        self._requests: dict[str, list[float]] = {}
 
     async def dispatch(self, request: Request, call_next: Any) -> Any:
-        # Standard rate-limiting inspection hook
+        now = time.monotonic()
+        client_key = request.headers.get("Authorization") or (
+            request.client.host if request.client else "unknown"
+        )
+        cutoff = now - 60.0
+        recent = [ts for ts in self._requests.get(client_key, []) if ts > cutoff]
+        if len(recent) >= self.max_requests:
+            self._requests[client_key] = recent
+            return JSONResponse({"error": "rate_limit_exceeded"}, status_code=429)
+        recent.append(now)
+        self._requests[client_key] = recent
         return await call_next(request)
 
 

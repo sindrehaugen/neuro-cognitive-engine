@@ -22,6 +22,7 @@ Registered in ``nce/tool_registry.py`` via ``_h(procurement_mcp_handlers, "handl
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from typing import TYPE_CHECKING, Any
@@ -346,9 +347,6 @@ async def handle_procurement_generate_po(engine: NCEEngine, arguments: dict[str,
         raise ValueError("po_number is required")
 
     confirm = bool(arguments.get("confirm", False))
-    idempotency_key = str(arguments.get("idempotency_key") or "").strip()
-    if not idempotency_key:
-        idempotency_key = _derive_po_idempotency_key(str(namespace_id), po_number)
 
     weights = arguments.get("weights")
     if not weights:
@@ -360,6 +358,17 @@ async def handle_procurement_generate_po(engine: NCEEngine, arguments: dict[str,
     artnrs = arguments.get("artnrs") or []
     line_items = arguments.get("line_items")
     source_id = arguments.get("source_id")
+
+    idempotency_key = str(arguments.get("idempotency_key") or "").strip()
+    if not idempotency_key:
+        weights_hash = hashlib.sha256(
+            json.dumps(weights or {}, separators=(",", ":"), sort_keys=True, default=str).encode()
+        ).hexdigest()
+        idempotency_key = _derive_po_idempotency_key(
+            str(namespace_id),
+            [str(a) for a in artnrs],
+            weights_hash,
+        )
 
     async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
         result = await do_generate_po(

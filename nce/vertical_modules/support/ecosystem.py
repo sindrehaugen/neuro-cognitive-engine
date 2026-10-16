@@ -324,7 +324,7 @@ async def do_support_at_risk_aggregate(
             FROM service_tickets
             WHERE namespace_id = $1::uuid
               AND status IN ('open', 'in_progress', 'waiting_parts')
-              AND change_origin IN ('proactive_telemetry', 'proactive_health')
+              AND (change_origin IN ('proactive_telemetry', 'proactive_health') OR (change_origin = 'agent' AND source = 'nce'))
             ORDER BY created_at DESC
             LIMIT 50
             """,

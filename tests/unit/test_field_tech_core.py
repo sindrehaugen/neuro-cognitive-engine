@@ -822,3 +822,60 @@ async def test_cross_tenant_swap_mutants() -> None:
     # Tenant B cannot record outcome on Tenant A's work order
     with pytest.raises(ValueError, match="not found in namespace"):
         await do_record_outcome(pool, {"namespace_id": _NS_B, "work_order_id": _WO_ID_1})
+
+
+@pytest.mark.asyncio
+async def test_dispatch_load_statuses_and_outcome_employee_hr_routing() -> None:
+    """do_dispatch includes scheduled/dispatched in load query and do_record_outcome routes employee to hr."""
+    from unittest.mock import patch
+
+    conn = AsyncMock()
+    conn.fetchrow.return_value = {
+        "work_order_id": _WO_ID_1,
+        "namespace_id": UUID(_NS_A),
+        "kind": "service",
+        "location_id": "LOC-OSLO",
+        "raw": {},
+    }
+    conn.fetch.side_effect = [[], []]
+    pool = _make_mock_pool(conn)
+
+    await do_dispatch(
+        pool,
+        {
+            "namespace_id": _NS_A,
+            "work_order_id": _WO_ID_1,
+            "candidates": [{"id": "emp-1", "name": "Emp 1", "skills": []}],
+        },
+    )
+    load_sql = conn.fetch.call_args_list[0][0][0]
+    assert "'scheduled'" in load_sql and "'dispatched'" in load_sql
+
+    conn_out = AsyncMock()
+    conn_out.fetchrow.return_value = {
+        "id": UUID("12345678-1234-5678-1234-567812345678"),
+        "work_order_id": _WO_ID_1,
+        "namespace_id": UUID(_NS_A),
+        "partner_scope_id": None,
+        "kind": "service",
+        "assignee_id": "emp-1",
+        "assignee_kind": "employee",
+        "status": "in_progress",
+        "raw": "{}",
+    }
+    conn_out.execute = AsyncMock(return_value="INSERT 1")
+    pool_out = _make_mock_pool(conn_out)
+    engine_out = MagicMock()
+    engine_out.pg_pool = pool_out
+    engine_out.modules = {"hr": MagicMock()}
+
+    with patch(
+        "nce.vertical_modules.field_tech.outcome.record_decision_feedback",
+        new_callable=AsyncMock,
+        return_value={"id": "df-1"},
+    ):
+        res_out = await do_record_outcome(
+            engine_out,
+            {"namespace_id": _NS_A, "work_order_id": _WO_ID_1, "rating": 5.0},
+        )
+    assert "hr" in res_out["routed_engines"]

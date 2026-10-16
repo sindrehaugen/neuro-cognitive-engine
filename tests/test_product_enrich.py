@@ -554,3 +554,113 @@ async def test_enrich_never_bulk_single_product_only(
         f"Enrichment must be scoped to exactly one product_id: "
         f"product_b unexpectedly has {count_b} log rows"
     )
+
+
+@pytest.mark.asyncio
+async def test_enrich_product_auto_merge_includes_provenance_and_accept_scopes_namespace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify auto-merged fields include provenance and accept_enrichment_proposal filters by namespace_id."""
+    import json
+    from typing import Any
+    from unittest.mock import AsyncMock, MagicMock
+
+    import nce.vertical_modules.product.enrich as enrich_mod
+    from nce.vertical_modules.product.enrich import (
+        accept_enrichment_proposal,
+        do_enrich_product,
+    )
+
+    ns_id = uuid.uuid4()
+    product_id = uuid.uuid4()
+    log_id = uuid.uuid4()
+
+    executed_queries: list[tuple[str, tuple[Any, ...]]] = []
+
+    conn = AsyncMock()
+    conn._pool = None
+
+    async def fake_fetchrow(sql: str, *args: Any) -> Any:
+        executed_queries.append((sql, args))
+        if "FROM govern_idempotency_ledger" in sql or "FROM action_approval_queue" in sql:
+            return None
+        if "product_catalog" in sql:
+            return {
+                "id": product_id,
+                "manufacturer": "Acme",
+                "mfr_part_no": "SKU-PROV-1",
+                "product_source_id": "SRC-1",
+                "etim_specs": "{}",
+            }
+        if "product_enrichment_log" in sql:
+            return {
+                "id": log_id,
+                "product_id": product_id,
+                "field_name": "weight_kg",
+                "field_value": "12.5",
+                "product_source_id": "https://vendor.example/spec.pdf",
+                "confidence": 0.85,
+            }
+        return None
+
+    async def fake_execute(sql: str, *args: Any) -> str:
+        executed_queries.append((sql, args))
+        return "UPDATE 1"
+
+    conn.fetchrow.side_effect = fake_fetchrow
+    conn.execute.side_effect = fake_execute
+
+    async def fake_build_proposals(*_args: Any, **_kwargs: Any) -> list[dict[str, Any]]:
+        return [
+            {
+                "field_name": "power_watts",
+                "field_value": "500",
+                "confidence": 0.96,
+                "verbalized": "very high confidence",
+                "source": "https://vendor.example/datasheet.pdf",
+            }
+        ]
+
+    monkeypatch.setattr(enrich_mod, "_build_proposals", fake_build_proposals)
+    monkeypatch.setattr("nce.autonomy.governor._audit_execution", AsyncMock())
+
+    enrich_res = await do_enrich_product(
+        conn,
+        ns_id,
+        idempotency_key="idem-prov-1",
+        confirm=True,
+        product_id=str(product_id),
+        trigger_context={"missing_fields": ["power_watts"]},
+        provider=MagicMock(),
+    )
+    assert enrich_res["status"] == "executed"
+    catalog_updates = [args for sql, args in executed_queries if "UPDATE product_catalog" in sql]
+    assert len(catalog_updates) == 1
+    patch_payload = json.loads(catalog_updates[0][0])
+    assert "provenance" in patch_payload["power_watts"]
+    assert patch_payload["power_watts"]["provenance"] == {
+        "source": "https://vendor.example/datasheet.pdf",
+        "reason": "auto_enriched",
+    }
+
+    executed_queries.clear()
+    accept_res = await accept_enrichment_proposal(
+        conn,
+        ns_id,
+        enrichment_id=str(log_id),
+    )
+    assert accept_res["status"] == "accepted"
+
+    log_selects = [
+        (sql, args) for sql, args in executed_queries if "FROM   product_enrichment_log" in sql
+    ]
+    assert len(log_selects) == 1
+    assert "namespace_id = $2::uuid" in log_selects[0][0]
+    assert log_selects[0][1] == (log_id, ns_id)
+
+    log_updates = [
+        (sql, args) for sql, args in executed_queries if "UPDATE product_enrichment_log" in sql
+    ]
+    assert len(log_updates) == 1
+    assert "namespace_id = $2::uuid" in log_updates[0][0]
+    assert log_updates[0][1] == (log_id, ns_id)

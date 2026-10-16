@@ -24,9 +24,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import threading
 import urllib.error
 import urllib.request
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import numpy as np
 from openvino import Core
@@ -37,6 +38,7 @@ DEFAULT_MODEL_DIR = os.path.join(
 )
 PROXY_ROUTES = ("/v1/nlp/nli", "/v1/nlp/spacy", "/v1/chat/completions")
 NOT_FOUND = b'{"error":"not found"}'
+MAX_BODY_BYTES = 10 * 1024 * 1024
 # Load-bearing, not cosmetic: nce/embeddings.py probes /health and refuses to
 # start in production when it sees engine == "stub".
 ENGINE = "openvino-npu"
@@ -58,6 +60,7 @@ class NPUEmbedder:
         self.input_names = {name for port in self.compiled.inputs for name in port.get_names()}
         self.output_port = self.compiled.output(0)
         self.request = self.compiled.create_infer_request()
+        self._lock = threading.Lock()
         self.dim = int(list(self.output_port.shape)[-1])
 
     def embed(self, text: str) -> list[float]:
@@ -89,7 +92,9 @@ class NPUEmbedder:
             port_name = port.get_any_name()
             if port_name not in feeds:
                 feeds[port_name] = np.zeros(zeros_shape, dtype=np.int64)
-        last = np.asarray(self.request.infer(feeds)[self.output_port], dtype=np.float64)
+        with self._lock:
+            res = self.request.infer(feeds)[self.output_port].copy()
+        last = np.asarray(res, dtype=np.float64)
         # Mirror nce/embeddings.py: mean-pool over the attention mask, then
         # L2-normalise per row (torch.nn.functional.normalize, p=2, eps=1e-12).
         mask = np.asarray(encoded["attention_mask"], dtype=np.float64)[..., None]
@@ -114,8 +119,12 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _json(self, code: int, payload: dict[str, object]) -> None:
+        self._send(code, json.dumps(payload).encode())
+
     def do_GET(self) -> None:
-        if self.path == "/health":
+        path = self.path.split("?", 1)[0]
+        if path == "/health":
             embedder = self.server.embedder
             body = json.dumps(
                 {
@@ -151,18 +160,27 @@ class _Handler(BaseHTTPRequestHandler):
     def _embeddings(self, raw: bytes) -> None:
         try:
             body = json.loads(raw)
-        except json.JSONDecodeError:
-            body = {}
-        inputs = body.get("input", [""])
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            self._json(400, {"error": "Invalid JSON"})
+            return
+        if not isinstance(body, dict):
+            self._json(400, {"error": "JSON body must be an object"})
+            return
+        inputs = body.get("input") if "input" in body else body.get("texts")
         if isinstance(inputs, str):
-            inputs = [inputs]
+            texts: object = [inputs]
+        else:
+            texts = inputs
+        if not isinstance(texts, list) or not texts or not all(isinstance(t, str) for t in texts):
+            self._json(400, {"error": "texts must be a non-empty list of strings"})
+            return
         embedder = self.server.embedder
         # "model" in the request is ignored on purpose: NCE retries with
         # NCE_COGNITIVE_FALLBACK_MODEL on 429/timeout and must never be handed
         # a different vector space.
         data = [
-            {"object": "embedding", "index": i, "embedding": embedder.embed(str(text))}
-            for i, text in enumerate(inputs)
+            {"object": "embedding", "index": i, "embedding": embedder.embed(text)}
+            for i, text in enumerate(texts)
         ]
         payload = json.dumps(
             {
@@ -175,11 +193,22 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(200, payload)
 
     def do_POST(self) -> None:
-        length = int(self.headers.get("Content-Length", 0))
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            self._json(400, {"error": "Invalid Content-Length"})
+            return
+        if length < 0:
+            self._json(400, {"error": "Invalid Content-Length"})
+            return
+        if length > MAX_BODY_BYTES:
+            self._json(413, {"error": "Payload too large"})
+            return
         raw = self.rfile.read(length) if length else b"{}"
-        if self.path == "/v1/embeddings":
+        path = self.path.split("?", 1)[0]
+        if path == "/v1/embeddings":
             self._embeddings(raw)
-        elif self.path in PROXY_ROUTES:
+        elif path in PROXY_ROUTES:
             self._proxy(raw)
         else:
             self._send(404, NOT_FOUND)
@@ -197,16 +226,17 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
+    port = args.port
     # Load before binding the port, so a failed NPU compile is loud at boot
     # rather than on the first request.
     embedder = NPUEmbedder(args.model_dir, args.device, args.seq_len)
     print(
         f"[cognitive-sidecar] engine={ENGINE} device={args.device} "
         f"model_dir={args.model_dir} dim={embedder.dim} "
-        f"seq_len={args.seq_len} port={args.port} stub={args.stub_url}",
+        f"seq_len={args.seq_len} port={port} stub={args.stub_url}",
         flush=True,
     )
-    server = HTTPServer(("127.0.0.1", args.port), _Handler)
+    server = ThreadingHTTPServer(("0.0.0.0", port), _Handler)
     server.embedder = embedder
     server.stub_url = args.stub_url
     server.serve_forever()
