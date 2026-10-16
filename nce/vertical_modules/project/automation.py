@@ -672,6 +672,7 @@ def _enqueue_rq_task(fn: Any, **kwargs: Any) -> None:
     handler returned success and the dedup row committed either way. A dropped
     enqueue is logged and lost; treat the log line as the only signal.
     """
+    redis_conn = None
     try:
         from rq import Queue  # type: ignore[import-untyped]
 
@@ -690,6 +691,9 @@ def _enqueue_rq_task(fn: Any, **kwargs: Any) -> None:
             fn.__name__,
             exc,
         )
+    finally:
+        if redis_conn is not None:
+            redis_conn.close()
 
 
 # ---------------------------------------------------------------------------

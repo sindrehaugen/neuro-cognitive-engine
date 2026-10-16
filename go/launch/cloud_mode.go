@@ -5,14 +5,21 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/nce/tri-stack/auth"
+)
+
+var (
+	refreshCloudAccessToken = auth.RefreshCloudAccessToken
+	checkPostgresTLS        = CheckPostgresTLS
+	runCloudMCPServer       = runMCPServer
 )
 
 func runCloud(ctx context.Context, n UserNotifier, log *slog.Logger, appRoot string, env []string) error {
 	authCtx, cancel := context.WithTimeout(ctx, auth.RecommendedCloudOAuthTimeout)
 	defer cancel()
-	_, err := auth.RefreshCloudAccessToken(authCtx, log, "")
+	tok, err := refreshCloudAccessToken(authCtx, log, "")
 	if err != nil {
 		switch {
 		case errors.Is(err, auth.ErrCloudOAuthNotConfigured):
@@ -24,6 +31,9 @@ func runCloud(ctx context.Context, n UserNotifier, log *slog.Logger, appRoot str
 			log.Warn("msal_refresh_failed", "err", err)
 		}
 		return fmt.Errorf("msal: %w", err)
+	}
+	if strings.TrimSpace(tok.Token) != "" {
+		env = UpsertEnv(env, "NCE_CLOUD_ACCESS_TOKEN", tok.Token)
 	}
 
 	dsn := LookupEnv(env, "PG_DSN")
@@ -42,7 +52,7 @@ func runCloud(ctx context.Context, n UserNotifier, log *slog.Logger, appRoot str
 
 	tlsCtx, tcancel := context.WithTimeout(ctx, pgTLSTimeout)
 	defer tcancel()
-	if err := CheckPostgresTLS(tlsCtx, host, port); err != nil {
+	if err := checkPostgresTLS(tlsCtx, host, port); err != nil {
 		n.Error("NCE", "Cannot reach the secure database endpoint. Check VPN or firewall settings.")
 		if log != nil {
 			log.Warn("cloud_tls_failed", "host", host, "port", port, "err", err)
@@ -50,5 +60,5 @@ func runCloud(ctx context.Context, n UserNotifier, log *slog.Logger, appRoot str
 		return fmt.Errorf("postgres tls: %w", err)
 	}
 
-	return runMCPServer(ctx, n, appRoot, env, log)
+	return runCloudMCPServer(ctx, n, appRoot, env, log)
 }

@@ -280,3 +280,30 @@ async def test_manual_po_transport_contract():
     assert result["po_number"] == "PO-MANUAL-001"
     assert result["supplier_id"] == "sup-vendor-1"
     assert result["line_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_generate_po_derives_idempotency_key_when_omitted():
+    """handle_procurement_generate_po derives idempotency_key with 3 args when omitted."""
+    engine = MagicMock()
+    engine.redis_pool = None
+    conn = _make_mock_conn()
+    engine.pg_pool = _make_mock_pool(conn)
+
+    args = {
+        "namespace_id": _NAMESPACE_ID,
+        "po_number": "PO-AUTO-KEY-001",
+        "artnrs": ["ART-1", "ART-2"],
+        "weights": {"price": 0.6, "lead_time": 0.4},
+        "confirm": False,
+    }
+    raw = await handle_procurement_generate_po(engine, args)
+    res = json.loads(raw)
+    assert res.get("status") == "pending_approval"
+    assert isinstance(res.get("idempotency_key"), str)
+    assert len(res["idempotency_key"]) == 64
+
+    args_diff_weights = {**args, "weights": {"price": 0.9, "lead_time": 0.1}}
+    raw_diff = await handle_procurement_generate_po(engine, args_diff_weights)
+    res_diff = json.loads(raw_diff)
+    assert res_diff["idempotency_key"] != res["idempotency_key"]

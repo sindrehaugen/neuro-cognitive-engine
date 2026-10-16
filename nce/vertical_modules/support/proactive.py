@@ -93,7 +93,7 @@ async def do_open_proactive_telemetry_ticket(
             WHERE asset_id = $1::uuid
               AND namespace_id = $2::uuid
               AND status IN ('open', 'in_progress', 'waiting_parts')
-              AND change_origin = 'proactive_telemetry'
+              AND (change_origin = 'proactive_telemetry' OR (change_origin = 'agent' AND source = 'nce'))
             ORDER BY created_at DESC
             LIMIT 1
             """,
@@ -125,7 +125,7 @@ async def do_open_proactive_telemetry_ticket(
         "asset_id": str(asset_uuid),
         "summary": summary,
         "priority": priority,
-        "change_origin": "proactive_telemetry",
+        "change_origin": "agent",
         "source": "nce",
         "sla_profile": sla_profile,
         "ai_diagnosis": ai_diag,
@@ -146,7 +146,7 @@ async def do_open_proactive_telemetry_ticket(
             INSERT INTO kg_edges (
                 subject_label, predicate, object_label, confidence, namespace_id, change_origin
             ) VALUES (
-                $1, 'about', $2, 1.0, $3::uuid, 'proactive_telemetry'
+                $1, 'about', $2, 1.0, $3::uuid, 'agent'
             )
             ON CONFLICT (subject_label, predicate, object_label, namespace_id) DO NOTHING
             """,

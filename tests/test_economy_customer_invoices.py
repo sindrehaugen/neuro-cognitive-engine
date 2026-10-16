@@ -417,3 +417,55 @@ async def test_propose_customer_invoice_second_attempt_on_same_candidate_refuses
                 engine=None,
                 billing_candidate_id=str(candidate_id),
             )
+
+
+@pytest.mark.asyncio
+async def test_propose_customer_invoice_rejects_invalid_due_days_and_vat_rate() -> None:
+    """Verify do_propose_customer_invoice rejects negative due_date_days and invalid vat_rate_pct."""
+    from unittest.mock import AsyncMock
+
+    conn = AsyncMock()
+    conn.execute = AsyncMock(return_value="CREATE TABLE")
+    conn.fetchrow = AsyncMock(return_value=None)
+    ns_id = uuid.uuid4()
+    cand_id = str(uuid.uuid4())
+
+    with pytest.raises(ValueError, match="due_date_days must be an integer >= 0"):
+        await do_propose_customer_invoice(
+            conn,
+            ns_id,
+            idempotency_key="idem-neg-due",
+            confirm=True,
+            billing_candidate_id=cand_id,
+            due_date_days=-1,
+        )
+
+    with pytest.raises(ValueError, match="vat_rate_pct must be between 0 and 100"):
+        await do_propose_customer_invoice(
+            conn,
+            ns_id,
+            idempotency_key="idem-neg-vat",
+            confirm=True,
+            billing_candidate_id=cand_id,
+            vat_rate_pct=-5.0,
+        )
+
+    with pytest.raises(ValueError, match="vat_rate_pct must be between 0 and 100"):
+        await do_propose_customer_invoice(
+            conn,
+            ns_id,
+            idempotency_key="idem-high-vat",
+            confirm=True,
+            billing_candidate_id=cand_id,
+            vat_rate_pct=150.0,
+        )
+
+    with pytest.raises(ValueError, match="vat_rate_pct is not a valid number"):
+        await do_propose_customer_invoice(
+            conn,
+            ns_id,
+            idempotency_key="idem-nan-vat",
+            confirm=True,
+            billing_candidate_id=cand_id,
+            vat_rate_pct="not-a-number",  # type: ignore[arg-type]
+        )

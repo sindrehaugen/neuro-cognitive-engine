@@ -362,6 +362,8 @@ async def do_generate_billing_run(
     agreement_uuids = [_parse_uuid(a, "agreement_ids[]") for a in agreement_ids]
     period_start = _parse_date(period_start, "period_start")
     period_end = _parse_date(period_end, "period_end")
+    if period_end < period_start:
+        raise ValueError("period_end must be >= period_start")
 
     rows = await conn.fetch(
         """

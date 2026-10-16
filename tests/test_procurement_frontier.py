@@ -357,3 +357,23 @@ def test_a_real_zero_priced_row_is_not_reported_as_unpriced():
     assert result["unpriced_rows"] == 0
     assert result["confidence"] == "medium"
     assert "no unit_price" not in result["rationale"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_supplier_savings_stats_includes_realised_and_lost_keys() -> None:
+    """_fetch_supplier_savings_stats includes realised and lost keys defaulting to 0.0."""
+    import uuid
+    from unittest.mock import AsyncMock
+
+    from nce.vertical_modules.procurement.frontier import _fetch_supplier_savings_stats
+
+    conn = AsyncMock()
+    conn.fetchval = AsyncMock(return_value="procurement_spend_lines")
+    conn.fetch = AsyncMock(return_value=[{"supplier_id": "SUP-A", "total_spend": 5000.0}])
+
+    stats = await _fetch_supplier_savings_stats(conn, uuid.uuid4())
+    assert len(stats) == 1
+    assert stats[0]["supplier_id"] == "SUP-A"
+    assert stats[0]["total_spend"] == pytest.approx(5000.0)
+    assert stats[0]["realised"] == pytest.approx(0.0)
+    assert stats[0]["lost"] == pytest.approx(0.0)

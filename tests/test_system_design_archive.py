@@ -686,3 +686,65 @@ async def test_the_sweep_does_not_cross_the_tenant_boundary(
 
 def test_archive_not_readable_is_its_own_error_type() -> None:
     assert issubclass(ArchiveNotReadableError, RuntimeError)
+
+
+@pytest.mark.asyncio
+async def test_sweep_namespace_isolates_per_node_sessions() -> None:
+    """_sweep_namespace acquires a separate scoped_pg_session per candidate node so one failure does not abort others."""
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from nce.vertical_modules.system_design.archive import _sweep_namespace
+
+    ns_id = uuid.uuid4()
+    cutoff = datetime.now(timezone.utc)
+    session_conns: list[Any] = []
+
+    @asynccontextmanager
+    async def _fake_scoped_session(_pool: Any, _ns: Any):
+        c = MagicMock()
+        session_conns.append(c)
+        yield c
+
+    candidates = [
+        {"node_label": "DESIGN:BAD", "node_type": "DESIGN", "status": SWEEP_STATUS},
+        {"node_label": "DESIGN:GOOD", "node_type": "DESIGN", "status": SWEEP_STATUS},
+    ]
+
+    async def _fake_archive(
+        conn: Any, _minio: Any, _ns: Any, label: str, _ntype: str, *, bucket: str
+    ) -> dict[str, Any]:
+        if label == "DESIGN:BAD":
+            raise RuntimeError("simulated DB error on first node")
+        return {"archived": True}
+
+    result = {
+        "examined": 0,
+        "archived": 0,
+        "skipped_not_candidate": 0,
+        "skipped_unreadable": 0,
+        "failed": 0,
+    }
+
+    with (
+        patch(
+            "nce.db_utils.scoped_pg_session",
+            side_effect=_fake_scoped_session,
+        ),
+        patch(
+            "nce.vertical_modules.system_design.archive._fetch_candidates",
+            new=AsyncMock(return_value=candidates),
+        ),
+        patch(
+            "nce.vertical_modules.system_design.archive.archive_and_drop_node",
+            side_effect=_fake_archive,
+        ),
+    ):
+        await _sweep_namespace(MagicMock(), MagicMock(), ns_id, cutoff, _BUCKET, result)
+
+    assert result["examined"] == 2
+    assert result["failed"] == 1
+    assert result["archived"] == 1
+    # 1 session for _fetch_candidates + 1 session per candidate node = 3 distinct sessions
+    assert len(session_conns) == 3
+    assert session_conns[1] is not session_conns[2]

@@ -176,7 +176,15 @@ async def do_extract_agreement(
             "SELECT metadata FROM namespaces WHERE id = $1::uuid",
             uuid.UUID(str(namespace_id)),
         )
-        metadata = json.loads(row["metadata"]) if row and row["metadata"] else {}
+        metadata = (
+            (
+                json.loads(row["metadata"])
+                if isinstance(row["metadata"], str)
+                else (row["metadata"] or {})
+            )
+            if row
+            else {}
+        )
 
     provider = get_provider(metadata)
 

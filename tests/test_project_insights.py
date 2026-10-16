@@ -371,3 +371,93 @@ async def test_status_report_degrades_when_gate_missing(
 
     assert res["ok"] is True
     assert "Gate dwell: current phase is unknown (dwell: 0 days)" in res["narrative"]
+
+
+@pytest.mark.asyncio
+async def test_status_report_preserves_zero_estimates_and_uses_starts_with_delete() -> None:
+    """Verify explicit 0.0 estimates are preserved and stale fact cleanup uses starts_with."""
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    ns_id = str(uuid.uuid4())
+    executed_sql: list[tuple[str, tuple[Any, ...]]] = []
+
+    conn = AsyncMock()
+
+    async def fake_fetchrow(sql: str, *args: Any) -> Any:
+        if "FROM kg_nodes" in sql:
+            return {"id": uuid.uuid4(), "label": "PROJECT:Q_1"}
+        return None
+
+    async def fake_fetch(sql: str, *args: Any) -> list[Any]:
+        if "PROJECT_CHANGE_ORDER" in sql:
+            return []
+        if "FROM kg_edges" in sql and "subject_label = $1" in sql:
+            return [
+                {
+                    "predicate": "has_budget",
+                    "object_label": "BUDGET:Q_1",
+                    "confidence": 1.0,
+                    "created_at": None,
+                }
+            ]
+        return []
+
+    async def fake_execute(sql: str, *args: Any) -> str:
+        executed_sql.append((sql, args))
+        return "OK"
+
+    conn.fetchrow.side_effect = fake_fetchrow
+    conn.fetch.side_effect = fake_fetch
+    conn.execute.side_effect = fake_execute
+
+    @asynccontextmanager
+    async def _fake_session(_pool: Any, _ns: Any):
+        yield conn
+
+    captured_trinity_params: dict[str, Any] = {}
+
+    async def _fake_trinity(_eng: Any, t_params: dict[str, Any]) -> dict[str, Any]:
+        captured_trinity_params.update(t_params)
+        return {"estimated": {"margin_pct": 0.0}}
+
+    engine = _make_engine_stub(MagicMock())
+    with (
+        patch(
+            "nce.vertical_modules.project.insights.scoped_pg_session",
+            side_effect=_fake_session,
+        ),
+        patch(
+            "nce.vertical_modules.project.insights._read_signed_baseline",
+            new=AsyncMock(return_value={"signed_total_nok": 10000.0, "signed_margin_pct": 0.25}),
+        ),
+        patch(
+            "nce.vertical_modules.project.insights.build_margin_trinity",
+            side_effect=_fake_trinity,
+        ),
+        patch(
+            "nce.vertical_modules.project.insights.assert_owner",
+            new=AsyncMock(),
+        ),
+        patch(
+            "nce.vertical_modules.project.insights.ground",
+            new=AsyncMock(return_value={"prose": "Status Report", "citations": []}),
+        ),
+    ):
+        res = await do_status_report(
+            engine,
+            {
+                "namespace_id": ns_id,
+                "project_id": "PROJECT:Q_1",
+                "estimated_cost_nok": 0.0,
+                "estimated_revenue_nok": 0.0,
+            },
+        )
+    assert res["ok"] is True
+    assert captured_trinity_params["estimated_cost_nok"] == 0.0
+    assert captured_trinity_params["estimated_revenue_nok"] == 0.0
+
+    delete_nodes_sql = [(sql, args) for sql, args in executed_sql if "DELETE FROM kg_nodes" in sql]
+    assert len(delete_nodes_sql) == 1
+    assert "starts_with(label, $2)" in delete_nodes_sql[0][0]
+    assert "LIKE" not in delete_nodes_sql[0][0]

@@ -279,22 +279,27 @@ class SalesD365SyncEngine:
 
     async def _reconcile_deletions(self, entity_name: str, entity_set: str, pk_field: str) -> int:
         """Reconcile deletions during a full sync by marking missing items as is_deleted = true."""
-        active_ids = set()
-        async for rec in self._client.paginate(
-            entity_set, select=[pk_field], page_size=self._page_size
-        ):
-            source_id = rec.get(pk_field)
-            if source_id:
-                active_ids.add(str(source_id).lower())
+        active_lower = {
+            str(rec.get(pk_field)).lower()
+            for rec in [
+                r
+                async for r in self._client.paginate(
+                    entity_set, select=[pk_field], page_size=self._page_size
+                )
+            ]
+            if rec.get(pk_field)
+        }
 
         db_rows = await self._conn.fetch(
             "SELECT source_id FROM sales_read_model WHERE namespace_id = $1::uuid AND entity = $2 AND is_deleted = false",
             str(self._ns),
             entity_name,
         )
-        db_ids = {row["source_id"].lower() for row in db_rows if row["source_id"]}
-
-        missing_ids = list(db_ids - active_ids)
+        missing_ids = [
+            row["source_id"]
+            for row in db_rows
+            if row["source_id"] and str(row["source_id"]).lower() not in active_lower
+        ]
         if missing_ids:
             await self._conn.execute(
                 """

@@ -542,3 +542,25 @@ async def test_generate_billing_run_skips_agreement_that_is_entirely_custom_proj
     assert result["candidates"] == []
     assert result["skipped_agreements"] == [str(agreement_id)]
     assert result["custom_project_fl_labels"] != []
+
+
+@pytest.mark.asyncio
+async def test_generate_billing_run_rejects_inverted_period() -> None:
+    """Verify do_generate_billing_run raises ValueError when period_end < period_start."""
+    from unittest.mock import AsyncMock
+
+    conn = AsyncMock()
+    conn.execute = AsyncMock(return_value="CREATE TABLE")
+    conn.fetchrow = AsyncMock(return_value=None)
+    ns_id = uuid.uuid4()
+
+    with pytest.raises(ValueError, match="period_end must be >= period_start"):
+        await do_generate_billing_run(
+            conn,
+            ns_id,
+            idempotency_key="idem-inverted-period",
+            confirm=True,
+            period_start="2026-09-30",
+            period_end="2026-09-01",
+            agreement_ids=[str(uuid.uuid4())],
+        )

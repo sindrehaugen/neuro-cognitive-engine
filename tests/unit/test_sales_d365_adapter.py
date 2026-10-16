@@ -301,3 +301,29 @@ async def test_run_full_sync_all() -> None:
     assert res["mode"] == "full"
     assert len(res["results"]) == 1
     assert res["results"][0]["entity"] == "accounts"
+
+
+@pytest.mark.asyncio
+async def test_full_sync_reconciles_deletions_preserves_original_source_id_casing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_reconcile_deletions matches case-insensitively but passes original DB source_id casing to UPDATE."""
+    monkeypatch.setattr(cfg, "NCE_D365_CHANGE_TRACKING_ENABLED", False)
+
+    active_records = [{"accountid": "acc-active-mixed"}]
+    db_ids = [
+        {"source_id": "ACC-Active-Mixed"},
+        {"source_id": "ACC-To-Delete-Upper"},
+    ]
+    conn = _FakeConn(fetchrow_val=None, fetch_val=db_ids)
+    client = _FakeClient(paginate_results=active_records)
+
+    ns_id = uuid.uuid4()
+    engine = SalesD365SyncEngine(conn, ns_id, client)
+
+    res = await engine.sync_entity("accounts", incremental=False)
+    assert res["deleted"] == 1
+
+    deletes = [e for e in conn.executes if "UPDATE sales_read_model" in e[0]]
+    assert len(deletes) == 1
+    assert deletes[0][1][2] == ["ACC-To-Delete-Upper"]

@@ -583,3 +583,78 @@ class TestCrossEngineFacadeAndPredicateP10:
         for t in tools:
             assert t in TOOL_REGISTRY, f"Missing {t} in TOOL_REGISTRY"
             assert any(tool.name == t for tool in TOOLS), f"Missing {t} in TOOLS"
+
+    @pytest.mark.asyncio
+    async def test_merge_fl_nodes_avoids_duplicate_edges_when_survivor_shares_target(
+        self, sample_tree
+    ):
+        """merge_fl_nodes guards UPDATE kg_edges with AND NOT EXISTS and cleans up absorbed edges."""
+        from unittest.mock import AsyncMock
+
+        from nce.vertical_modules.system_design.fl_tree import _MEM_EDGES
+
+        dup_room = seed_mem_node(
+            _TEST_NS,
+            label="FL:CAMPUS:BLDG-A:FLR-01:RM-101-DUP2",
+            kind="room",
+            change_origin="sync",
+            parent_label="FL:CAMPUS:BLDG-A:FLR-01",
+        )
+        survivor = sample_tree["rm_101"]
+        # Both survivor and absorbed have a 'needs' edge to the same DESIGN_LINE
+        _MEM_EDGES.setdefault(_TEST_NS, []).append(
+            {
+                "subject_label": survivor["label"],
+                "predicate": "needs",
+                "object_label": "DESIGN_LINE:SHARED-1",
+                "confidence": 1.0,
+                "namespace_id": _TEST_NS,
+            }
+        )
+        _MEM_EDGES.setdefault(_TEST_NS, []).append(
+            {
+                "subject_label": dup_room["label"],
+                "predicate": "needs",
+                "object_label": "DESIGN_LINE:SHARED-1",
+                "confidence": 1.0,
+                "namespace_id": _TEST_NS,
+            }
+        )
+
+        executed_sqls: list[str] = []
+        conn = AsyncMock()
+
+        async def _exec(sql: str, *args):
+            executed_sqls.append(sql)
+            return "UPDATE 1"
+
+        conn.execute = AsyncMock(side_effect=_exec)
+        conn.fetchrow = AsyncMock(return_value=None)
+        conn.fetch = AsyncMock(return_value=[])
+
+        await merge_fl_nodes(
+            conn,
+            _TEST_NS,
+            survivor_id_or_label=survivor["label"],
+            absorbed_id_or_label=dup_room["label"],
+            reversible=True,
+            actor="tester",
+        )
+
+        update_edge_sqls = [s for s in executed_sqls if "UPDATE kg_edges" in s]
+        assert len(update_edge_sqls) == 2
+        assert all("AND NOT EXISTS" in s for s in update_edge_sqls)
+        assert any(
+            "DELETE FROM kg_edges" in s and "subject_label = $1 OR object_label = $1" in s
+            for s in executed_sqls
+        )
+
+        # In-memory edges should have exactly one (survivor, needs, DESIGN_LINE:SHARED-1) edge
+        shared_edges = [
+            e
+            for e in _MEM_EDGES[_TEST_NS]
+            if e["subject_label"] == survivor["label"]
+            and e["predicate"] == "needs"
+            and e["object_label"] == "DESIGN_LINE:SHARED-1"
+        ]
+        assert len(shared_edges) == 1

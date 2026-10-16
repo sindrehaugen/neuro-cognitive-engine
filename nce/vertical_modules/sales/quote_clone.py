@@ -181,6 +181,7 @@ async def do_clone_quote(
                     "line_total": ln["line_total"],
                     "currency": ln["currency"],
                     "origin_ref": ln.get("origin_ref"),
+                    "priced": ln.get("priced", True),
                 }
                 for ln in source_lines
             ]

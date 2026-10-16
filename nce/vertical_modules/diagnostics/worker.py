@@ -262,6 +262,8 @@ async def _run_pipeline(
             processed_lines=digest.processed_lines,
             anomaly_count=len(digest.anomalies),
             digest_payload_ref=digest_payload_ref,
+            digest=digest,
+            device_slug=device_ctx.get("device_slug") or device_slug,
         )
 
         return {
@@ -413,8 +415,12 @@ async def _mark_digested(
     processed_lines: int,
     anomaly_count: int,
     digest_payload_ref: str,
+    digest: Any = None,
+    device_slug: str | None = None,
 ) -> None:
     """Mark the row DIGESTED and record the bounded ingestion stats (RLS-scoped)."""
+    from datetime import datetime, timezone
+
     async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
         await conn.execute(
             """
@@ -434,6 +440,58 @@ async def _mark_digested(
             anomaly_count,
             digest_payload_ref,
         )
+        if digest is not None and getattr(digest, "anomalies", None):
+            row_id = await conn.fetchval(
+                "SELECT id FROM diag_ingestions WHERE namespace_id = $1::uuid AND ingest_id = $2",
+                namespace_id,
+                ingest_id,
+            )
+            if row_id is not None:
+                existing_count = await conn.fetchval(
+                    "SELECT count(*) FROM diag_anomalies WHERE namespace_id = $1::uuid AND ingestion_id = $2::uuid",
+                    namespace_id,
+                    row_id,
+                )
+                if not existing_count:
+                    resolved_slug = str(device_slug or "unknown")
+                    for a in digest.anomalies:
+                        w_starts = [
+                            w.window_start
+                            for w in getattr(digest, "windows", []) or []
+                            if w.anomaly_type == a.anomaly_type
+                        ]
+                        win_start = (
+                            datetime.fromtimestamp(min(w_starts), tz=timezone.utc)
+                            if w_starts
+                            else None
+                        )
+                        win_end = (
+                            datetime.fromtimestamp(max(w_starts) + 300, tz=timezone.utc)
+                            if w_starts
+                            else None
+                        )
+                        first_line = getattr(a, "first_line", None)
+                        sample_trunc = (a.sample or "")[:200]
+                        await conn.execute(
+                            """
+                            INSERT INTO diag_anomalies (
+                                namespace_id, ingestion_id, device_slug, anomaly_type,
+                                severity, first_line, occurrences, sample,
+                                window_start, window_end
+                            )
+                            VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10)
+                            """,
+                            namespace_id,
+                            row_id,
+                            resolved_slug,
+                            a.anomaly_type,
+                            int(a.severity),
+                            first_line,
+                            int(a.occurrences),
+                            sample_trunc,
+                            win_start,
+                            win_end,
+                        )
 
 
 # ---------------------------------------------------------------------------

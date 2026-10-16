@@ -533,3 +533,29 @@ async def test_api_support_tickets_link(mock_engine, sample_ns_id, sample_ticket
                 payload = json.loads(resp.body)
                 assert payload["ok"] is True
                 assert mock_bump.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_require_support_enabled_accepts_pool_and_connection(sample_ns_id):
+    """require_support_enabled works with both an asyncpg.Pool and a direct connection."""
+    from types import SimpleNamespace
+
+    from nce.vertical_modules.support._guard import require_support_enabled
+
+    # 1. Direct connection (no .acquire method)
+    direct_conn = SimpleNamespace(
+        fetchrow=AsyncMock(return_value={"support_enabled": True}),
+    )
+    await require_support_enabled(direct_conn, sample_ns_id)
+    direct_conn.fetchrow.assert_awaited_once()
+
+    # 2. Pool with .acquire() async context manager
+    inner_conn = SimpleNamespace(
+        fetchrow=AsyncMock(return_value={"support_enabled": True}),
+    )
+    acq_ctx = MagicMock()
+    acq_ctx.__aenter__ = AsyncMock(return_value=inner_conn)
+    acq_ctx.__aexit__ = AsyncMock(return_value=None)
+    pool_obj = SimpleNamespace(acquire=MagicMock(return_value=acq_ctx))
+    await require_support_enabled(pool_obj, sample_ns_id)
+    inner_conn.fetchrow.assert_awaited_once()

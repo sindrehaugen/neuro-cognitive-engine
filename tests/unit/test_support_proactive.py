@@ -45,7 +45,7 @@ async def test_proactive_telemetry_ticket_creation_and_edge():
         "summary": "Proactive telemetry alert: asset degradation detected",
         "priority": "high",
         "status": "open",
-        "change_origin": "proactive_telemetry",
+        "change_origin": "agent",
     }
 
     with (
@@ -90,10 +90,10 @@ async def test_proactive_telemetry_ticket_creation_and_edge():
         "support",
     )
 
-    # 3. do_open_ticket invoked with origin proactive_telemetry
+    # 3. do_open_ticket invoked with origin agent
     mock_do_open.assert_called_once()
     call_args = mock_do_open.call_args[0][1]
-    assert call_args["change_origin"] == "proactive_telemetry"
+    assert call_args["change_origin"] == "agent"
     assert call_args["asset_id"] == _ASSET_ID
     assert "packet_loss" in call_args["summary"]
 
@@ -102,6 +102,7 @@ async def test_proactive_telemetry_ticket_creation_and_edge():
     insert_sql = mock_conn.execute.call_args[0][0]
     assert "INSERT INTO kg_edges" in insert_sql
     assert "'about'" in insert_sql
+    assert "'agent'" in insert_sql
     edge_args = mock_conn.execute.call_args[0][1:]
     assert edge_args[0] == f"TICKET:{_TICKET_ID}"
     assert edge_args[1] == f"ASSET:{_ASSET_ID}"

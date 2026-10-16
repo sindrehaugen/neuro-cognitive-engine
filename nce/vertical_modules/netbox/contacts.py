@@ -96,8 +96,9 @@ class NetBoxContactSync:
             """
         )
 
-        # Enable RLS
+        # Enable and force RLS
         await conn.execute("ALTER TABLE on_call_routing ENABLE ROW LEVEL SECURITY")
+        await conn.execute("ALTER TABLE on_call_routing FORCE ROW LEVEL SECURITY")
 
         # Create isolation policy if it does not exist
         policy_exists = await conn.fetchval(
@@ -115,6 +116,7 @@ class NetBoxContactSync:
                 FOR ALL USING (namespace_id = get_nce_namespace())
                 """
             )
+        NetBoxContactSync._schema_ensured = True
 
     async def fetch_stress_records_for_operator(
         self, conn: asyncpg.Connection, namespace_id: uuid.UUID, operator_id: str, email: str

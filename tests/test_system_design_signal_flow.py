@@ -815,3 +815,87 @@ class TestSignalFlowIntegration:
             {"namespace_id": str(ns_b), "design_id": design_id, "node_label": dev_shared},
         )
         assert dev_b["capabilities"]["manufacturer"] == "TenantB_Mfg"
+
+
+@pytest.mark.asyncio
+async def test_do_inspect_signal_flow_decodes_json_string_geometry_meta() -> None:
+    """do_inspect_signal_flow decodes r['meta'] when asyncpg returns a JSON string."""
+    import uuid
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    conn = AsyncMock()
+    dev_lbl = "DEVICE:DES1:AMP1"
+
+    async def _fetch(sql: str, *args: Any) -> list[dict[str, Any]]:
+        if "FROM system_design_geometry" in sql:
+            return [
+                {
+                    "node_label": dev_lbl,
+                    "x": 10.0,
+                    "y": 20.0,
+                    "rack_position": 4.0,
+                    "rack_face": "front",
+                    "cable_length_m": None,
+                    "cable_type": None,
+                    "meta": '{"rack_units": 2}',
+                }
+            ]
+        return []
+
+    conn.fetch = AsyncMock(side_effect=_fetch)
+
+    @asynccontextmanager
+    async def _fake_session(_pool: Any, _ns: Any):
+        yield conn
+
+    captured_geo: dict[str, Any] = {}
+
+    def _spy_design_flow(**kwargs: Any) -> dict[str, Any]:
+        captured_geo.update(kwargs.get("geometry", {}))
+        return {"target_type": "DESIGN", "geometry": kwargs.get("geometry", {})}
+
+    with (
+        patch(
+            "nce.vertical_modules.system_design.signal_flow.scoped_pg_session",
+            side_effect=_fake_session,
+        ),
+        patch(
+            "nce.vertical_modules.system_design.signal_flow._fetch_design_scope_labels",
+            new=AsyncMock(return_value={dev_lbl}),
+        ),
+        patch(
+            "nce.vertical_modules.system_design.signal_flow._fetch_nodes_by_labels",
+            new=AsyncMock(
+                return_value=[
+                    {
+                        "label": dev_lbl,
+                        "entity_type": "DEVICE",
+                        "properties": {"name": "Amp"},
+                    }
+                ]
+            ),
+        ),
+        patch(
+            "nce.vertical_modules.system_design.signal_flow._fetch_edges_within",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "nce.vertical_modules.system_design.signal_flow._fetch_capabilities_by_labels",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "nce.vertical_modules.system_design.signal_flow.inspect_design_signal_flow",
+            side_effect=_spy_design_flow,
+        ),
+    ):
+        res = await do_inspect_signal_flow(
+            MagicMock(),
+            {
+                "namespace_id": str(uuid.uuid4()),
+                "design_id": "DES1",
+            },
+        )
+
+    assert res["target_type"] == "DESIGN"
+    assert captured_geo[dev_lbl]["meta"] == {"rack_units": 2}

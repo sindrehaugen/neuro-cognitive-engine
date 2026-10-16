@@ -524,3 +524,108 @@ async def test_api_sales_targets_put_invalid_metric():
             )
             assert r.status_code == 422
             assert "valid metric" in r.json()["error"]
+
+
+@pytest.mark.asyncio
+async def test_customer_profile_external_reader_filters_locations_by_customer_assets():
+    """do_customer_profile external_reader filters functionallocations to those linked via customerassets."""
+    from contextlib import asynccontextmanager
+    from typing import Any
+
+    from nce.vertical_modules.sales.source_mode import (
+        do_agreement_detail,
+        do_customer_profile,
+        do_quote_detail,
+    )
+
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(
+        return_value={
+            "source_json": json.dumps(
+                {"accountid": "acc-1", "name": "Acme AS", "AccountNumber": "1001"}
+            ),
+            "is_deleted": False,
+        }
+    )
+
+    async def _fetch(sql: str, *args: Any) -> list[dict[str, Any]]:
+        if "entity = 'customerassets'" in sql:
+            return [
+                {
+                    "source_json": json.dumps(
+                        {
+                            "msdyn_customerassetid": "asset-1",
+                            "_msdyn_account_value": "acc-1",
+                            "_msdyn_functionallocation_value": "fl-owned-1",
+                        }
+                    )
+                }
+            ]
+        if "entity = 'functionallocations'" in sql:
+            assert "source_id = ANY($2::text[])" in sql
+            assert args[1] == ["fl-owned-1"]
+            return [
+                {
+                    "source_json": json.dumps(
+                        {
+                            "msdyn_functionallocationid": "fl-owned-1",
+                            "msdyn_name": "HQ Room 1",
+                            "msdyn_address1": "Storgata 1",
+                            "msdyn_city": "Oslo",
+                        }
+                    )
+                }
+            ]
+        return []
+
+    conn.fetch = AsyncMock(side_effect=_fetch)
+
+    @asynccontextmanager
+    async def _fake_session(_pool: Any, _ns: Any):
+        yield conn
+
+    mock_engine = MagicMock()
+    with (
+        patch(
+            "nce.vertical_modules.sales.source_mode.resolve",
+            new=AsyncMock(return_value="d365"),
+        ),
+        patch(
+            "nce.vertical_modules.sales.source_mode.scoped_pg_session",
+            side_effect=_fake_session,
+        ),
+    ):
+        prof = await do_customer_profile(
+            mock_engine,
+            {"namespace_id": _NAMESPACE_ID, "account_id": "acc-1"},
+        )
+
+    assert len(prof["assets"]) == 1
+    assert len(prof["locations"]) == 1
+    assert prof["locations"][0]["id"] == "fl-owned-1"
+
+    with (
+        patch(
+            "nce.vertical_modules.sales.source_mode.resolve",
+            new=AsyncMock(return_value="nce"),
+        ),
+        patch(
+            "nce.vertical_modules.sales.source_mode.read_model.do_agreement_detail",
+            new=AsyncMock(return_value={"msdyn_name": "Agr 1"}),
+        ),
+        patch(
+            "nce.vertical_modules.sales.source_mode.read_model.do_quote_detail",
+            new=AsyncMock(return_value={"name": "Quote 1"}),
+        ),
+    ):
+        agr = await do_agreement_detail(
+            mock_engine,
+            {"namespace_id": _NAMESPACE_ID, "agreement_id": "AGR-SNAKE-1"},
+        )
+        assert agr["msdyn_name"] == "Agr 1"
+
+        qt = await do_quote_detail(
+            mock_engine,
+            {"namespace_id": _NAMESPACE_ID, "quote_id": "QT-SNAKE-1"},
+        )
+        assert qt["name"] == "Quote 1"

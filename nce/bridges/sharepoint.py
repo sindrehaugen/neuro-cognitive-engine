@@ -4,6 +4,7 @@ SharePoint / OneDrive via Microsoft Graph — delta + subscriptions (§10.3, App
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from typing import Any
@@ -85,7 +86,7 @@ class SharePointBridge(BridgeProvider):
     async def _delta_pages(self, site_id: str, drive_id: str) -> AsyncIterator[dict[str, Any]]:
         r = redis_client()
         ck = self._cursor_key(site_id, drive_id)
-        stored = r.get(ck)
+        stored = await asyncio.to_thread(r.get, ck)
         headers = {"Authorization": f"Bearer {self.bearer_token()}"}
         if stored:
             url: str | None = stored.decode("utf-8")
@@ -110,7 +111,7 @@ class SharePointBridge(BridgeProvider):
                 next_link = payload.get("@odata.nextLink")
                 delta_link = payload.get("@odata.deltaLink")
                 if delta_link:
-                    r.set(ck, delta_link)
+                    await asyncio.to_thread(r.set, ck, delta_link)
                 if next_link:
                     url = next_link
                 else:

@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
+from nce.auth import set_namespace_context
 from nce.vertical_modules.marketing._guard import (
     MarketingConsentMissingError,
     assert_positive_nps_only,
@@ -82,6 +83,7 @@ async def do_request_testimonial(
     if pool is not None:
         try:
             async with pool.acquire() as conn:
+                await set_namespace_context(conn, UUID(ns_str))
                 await conn.execute(
                     """
                     INSERT INTO testimonials (
@@ -114,6 +116,7 @@ async def do_request_testimonial(
                     ON CONFLICT (id) DO UPDATE
                         SET status = EXCLUDED.status,
                             updated_at = now()
+                    WHERE testimonials.namespace_id = $2::uuid
                     """,
                     UUID(testimonial_id),
                     UUID(ns_str),
@@ -211,6 +214,7 @@ async def do_capture_testimonial(
     if pool is not None:
         try:
             async with pool.acquire() as conn:
+                await set_namespace_context(conn, UUID(ns_str))
                 await conn.execute(
                     """
                     INSERT INTO testimonials (
@@ -317,6 +321,7 @@ async def do_retract_testimonial(
     if pool is not None:
         try:
             async with pool.acquire() as conn:
+                await set_namespace_context(conn, UUID(ns_str))
                 row = await conn.fetchrow(
                     """
                     UPDATE testimonials
@@ -337,7 +342,7 @@ async def do_retract_testimonial(
                     await conn.execute(
                         """
                         UPDATE content_assets
-                        SET    status = 'retracted'
+                        SET    status = 'archived'
                         WHERE  namespace_id = $1::uuid
                           AND  marketing_source_id = $2
                         """,

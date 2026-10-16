@@ -73,7 +73,7 @@ from __future__ import annotations
 
 import datetime
 import logging
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -221,6 +221,22 @@ async def do_propose_customer_invoice(
     ns_uuid = _parse_uuid(namespace_id, "namespace_id")
     candidate_uuid = _parse_uuid(billing_candidate_id, "billing_candidate_id")
 
+    if isinstance(due_date_days, bool) or not isinstance(due_date_days, int) or due_date_days < 0:
+        raise ValueError("due_date_days must be an integer >= 0")
+
+    rate_assumed = vat_rate_pct is None
+    if vat_rate_pct is not None:
+        if isinstance(vat_rate_pct, bool):
+            raise ValueError("vat_rate_pct must be a valid number between 0 and 100")
+        try:
+            rate = Decimal(str(vat_rate_pct))
+        except (InvalidOperation, ValueError) as exc:
+            raise ValueError(f"vat_rate_pct is not a valid number: {vat_rate_pct!r}") from exc
+        if not rate.is_finite() or rate < Decimal("0") or rate > Decimal("100"):
+            raise ValueError("vat_rate_pct must be between 0 and 100")
+    else:
+        rate = _DEFAULT_VAT_RATE_PCT
+
     candidate = await conn.fetchrow(
         """
         SELECT id, node_label, customer_id, currency, total_amount
@@ -235,8 +251,6 @@ async def do_propose_customer_invoice(
             f"BILLING_CANDIDATE {billing_candidate_id} not found in namespace {namespace_id}"
         )
 
-    rate_assumed = vat_rate_pct is None
-    rate = Decimal(str(vat_rate_pct)) if vat_rate_pct is not None else _DEFAULT_VAT_RATE_PCT
     subtotal = Decimal(str(candidate["total_amount"]))
     vat_amount = _quantise_money(subtotal * rate / Decimal("100"))
     total_amount = subtotal + vat_amount

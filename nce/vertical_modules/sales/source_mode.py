@@ -313,25 +313,50 @@ async def do_customer_profile(engine: NCEEngine, params: dict[str, Any]) -> dict
                     csj = json.loads(csj)
                 cases.append(csj)
 
-            locations = []
-            l_rows = await conn.fetch(
-                "SELECT source_json FROM sales_read_model WHERE namespace_id = $1 AND entity = 'functionallocations' AND is_deleted = false",
+            assets = []
+            fl_ids: list[str] = []
+            seen_fl_ids: set[str] = set()
+            a_rows = await conn.fetch(
+                "SELECT source_json FROM sales_read_model WHERE namespace_id = $1 AND entity = 'customerassets' AND is_deleted = false AND source_json->>'_msdyn_account_value' = $2",
                 str(ns_uuid),
+                accountid,
             )
-            for r in l_rows:
-                lj = r["source_json"]
-                if isinstance(lj, str):
-                    lj = json.loads(lj)
-                # Parse addressHQ from properties
-                locations.append(
-                    {
-                        "id": lj.get("msdyn_functionallocationid"),
-                        "name": lj.get("msdyn_name"),
-                        "address": f"{lj.get('msdyn_address1', '')}, {lj.get('msdyn_city', '')}".strip(
-                            ", "
-                        ),
-                    }
+            for r in a_rows:
+                aj = r["source_json"]
+                if isinstance(aj, str):
+                    aj = json.loads(aj)
+                assets.append(aj)
+                fl_id = aj.get("_msdyn_functionallocation_value") or aj.get(
+                    "_msdyn_Functionallocation_value"
                 )
+                if fl_id and fl_id not in seen_fl_ids:
+                    seen_fl_ids.add(fl_id)
+                    fl_ids.append(fl_id)
+
+            locations = []
+            if fl_ids:
+                l_rows = await conn.fetch(
+                    "SELECT source_json FROM sales_read_model WHERE namespace_id = $1 AND entity = 'functionallocations' AND is_deleted = false AND source_id = ANY($2::text[])",
+                    str(ns_uuid),
+                    fl_ids,
+                )
+                for r in l_rows:
+                    lj = r["source_json"]
+                    if isinstance(lj, str):
+                        lj = json.loads(lj)
+                    loc_id = lj.get("msdyn_functionallocationid")
+                    if loc_id is not None and loc_id not in seen_fl_ids:
+                        continue
+                    # Parse addressHQ from properties
+                    locations.append(
+                        {
+                            "id": loc_id,
+                            "name": lj.get("msdyn_name"),
+                            "address": f"{lj.get('msdyn_address1', '')}, {lj.get('msdyn_city', '')}".strip(
+                                ", "
+                            ),
+                        }
+                    )
 
             return {
                 "company": company,
@@ -339,7 +364,7 @@ async def do_customer_profile(engine: NCEEngine, params: dict[str, Any]) -> dict
                 "opportunities": opportunities,
                 "cases": cases,
                 "locations": locations,
-                "assets": [],
+                "assets": assets,
             }
 
     async def parity_check(native: dict[str, Any], external: dict[str, Any]) -> None:
@@ -578,7 +603,7 @@ async def do_agreement_detail(engine: NCEEngine, params: dict[str, Any]) -> dict
     if not namespace_id:
         raise ValueError("namespace_id is required")
     ns_uuid = UUID(str(namespace_id))
-    agreementid = params.get("agreementid")
+    agreementid = params.get("agreementid") or params.get("agreement_id")
     if not agreementid:
         raise ValueError("agreementid is required")
     mode = await resolve(
@@ -614,7 +639,7 @@ async def do_quote_detail(engine: NCEEngine, params: dict[str, Any]) -> dict[str
     if not namespace_id:
         raise ValueError("namespace_id is required")
     ns_uuid = UUID(str(namespace_id))
-    quoteid = params.get("quoteid")
+    quoteid = params.get("quoteid") or params.get("quote_id")
     if not quoteid:
         raise ValueError("quoteid is required")
     mode = await resolve(

@@ -234,8 +234,10 @@ async def do_status_report(
     signed_cost = signed_total * (1.0 - signed_margin)
 
     # Determine estimates (defaulting to baseline figures if absent)
-    est_cost = float(params.get("estimated_cost_nok") or signed_cost)
-    est_rev = float(params.get("estimated_revenue_nok") or signed_total)
+    raw_est_cost = params.get("estimated_cost_nok")
+    raw_est_rev = params.get("estimated_revenue_nok")
+    est_cost = float(raw_est_cost) if raw_est_cost is not None else signed_cost
+    est_rev = float(raw_est_rev) if raw_est_rev is not None else signed_total
 
     # Resolve margin trinity
     trinity_params = {
@@ -292,12 +294,12 @@ async def do_status_report(
             """
             DELETE FROM kg_nodes
             WHERE namespace_id = $1::uuid
-              AND (label LIKE $2 OR label LIKE $3 OR label LIKE $4)
+              AND (starts_with(label, $2) OR starts_with(label, $3) OR starts_with(label, $4))
             """,
             str(ns_uuid),
-            f"PROJECT:{quote_id}:STATUS:MARGIN:%",
-            f"PROJECT:{quote_id}:STATUS:GATE:%",
-            f"PROJECT:{quote_id}:STATUS:CREEP:%",
+            f"PROJECT:{quote_id}:STATUS:MARGIN:",
+            f"PROJECT:{quote_id}:STATUS:GATE:",
+            f"PROJECT:{quote_id}:STATUS:CREEP:",
         )
 
         # Format values for labels

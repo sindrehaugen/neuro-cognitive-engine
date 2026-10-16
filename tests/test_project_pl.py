@@ -380,3 +380,49 @@ async def test_do_capacity_aggregates_per_team_over_window(
     assert abs(teams["Unassigned"]["total_load"] - 1.0) < 1e-6
     assert len(teams["Unassigned"]["tasks"]) == 1
     assert teams["Unassigned"]["tasks"][0]["task_label"] == "TASK:T6"
+
+
+@pytest.mark.asyncio
+async def test_my_day_filters_by_employee_id() -> None:
+    """Verify do_my_day filters tasks by employee_id when provided."""
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    ns_id = str(uuid.uuid4())
+    conn = AsyncMock()
+
+    async def _fetch(sql: str, *_args: Any) -> list[dict[str, Any]]:
+        if "FROM kg_nodes" in sql:
+            return [{"label": "TASK:T1"}, {"label": "TASK:T2"}]
+        return [
+            {"subject_label": "TASK:T1", "predicate": "assigned_to", "object_label": "EMPLOYEE:E1"},
+            {"subject_label": "TASK:T1", "predicate": "due_date", "object_label": "2026-06-25"},
+            {"subject_label": "TASK:T2", "predicate": "assigned_to", "object_label": "EMPLOYEE:E2"},
+            {"subject_label": "TASK:T2", "predicate": "due_date", "object_label": "2026-06-25"},
+        ]
+
+    conn.fetch = AsyncMock(side_effect=_fetch)
+
+    @asynccontextmanager
+    async def _fake_session(_pool: Any, _ns: Any):
+        yield conn
+
+    engine = _make_engine_stub(MagicMock())
+
+    with patch(
+        "nce.vertical_modules.project.pl.scoped_pg_session",
+        side_effect=_fake_session,
+    ):
+        res_e1 = await do_my_day(
+            engine,
+            {"namespace_id": ns_id, "employee_id": "E1", "reference_date": "2026-06-25"},
+        )
+        assert res_e1["ok"] is True
+        assert [t["task_label"] for t in res_e1["tasks"]] == ["TASK:T1"]
+
+        res_all = await do_my_day(
+            engine,
+            {"namespace_id": ns_id, "reference_date": "2026-06-25"},
+        )
+        assert res_all["ok"] is True
+        assert {t["task_label"] for t in res_all["tasks"]} == {"TASK:T1", "TASK:T2"}

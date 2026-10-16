@@ -550,3 +550,80 @@ def test_decode_jsonb_passes_through_an_already_decoded_value():
     is ever handed in directly."""
     assert _decode_jsonb({"cause": "bad_cable"}, {}) == {"cause": "bad_cable"}
     assert _decode_jsonb([1, 2], []) == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_service_history_decodes_work_order_raw_json_string():
+    """do_get_asset_service_history decodes wor['raw'] when returned as a raw JSON string."""
+    mock_asset = _make_mock_asset()
+    ticket_edges = [
+        {
+            "id": uuid4(),
+            "subject_label": f"TICKET:{_TICKET_ID_1}",
+            "predicate": "dispatched_as",
+            "object_label": f"WORK_ORDER:{_WO_ID}",
+            "confidence": 1.0,
+            "change_origin": "agent",
+            "created_at": datetime(2026, 7, 2, 9, 0, tzinfo=timezone.utc),
+            "updated_at": datetime(2026, 7, 2, 9, 0, tzinfo=timezone.utc),
+        }
+    ]
+    tickets = [
+        {
+            "id": _TICKET_ID_1,
+            "source": "manual",
+            "source_id": "INC-1001",
+            "asset_id": _ASSET_ID,
+            "room_id": "ROOM-1",
+            "customer_id": "CUST-A",
+            "status": "resolved",
+            "priority": "high",
+            "summary": "Switch failure",
+            "description": "Port 3 down",
+            "sla_profile": "standard",
+            "first_response_at": None,
+            "resolved_at": None,
+            "ai_diagnosis": "{}",
+            "events": "[]",
+            "created_at": datetime(2026, 7, 1, 10, 0, tzinfo=timezone.utc),
+            "updated_at": datetime(2026, 7, 2, 16, 0, tzinfo=timezone.utc),
+        }
+    ]
+    work_orders = [
+        {
+            "id": uuid4(),
+            "work_order_id": _WO_ID,
+            "namespace_id": _NS_ID,
+            "partner_scope_id": None,
+            "kind": "service",
+            "source_kind": "ticket",
+            "source_ref": str(_TICKET_ID_1),
+            "location_id": "ROOM-1",
+            "assignee_id": "tech_bob",
+            "assignee_kind": "employee",
+            "status": "completed",
+            "priority": "high",
+            "summary": "Patch replacement",
+            "due_at": None,
+            "raw": '{"outcome": {"rating": 4.8, "quality_score": 0.96, "resolution_notes": "Fixed"}}',
+            "created_at": datetime(2026, 7, 2, 9, 30, tzinfo=timezone.utc),
+            "updated_at": datetime(2026, 7, 2, 15, 45, tzinfo=timezone.utc),
+        }
+    ]
+    conn = MockDBConn(
+        asset_row=mock_asset,
+        tickets=tickets,
+        ticket_edges=ticket_edges,
+        work_orders=work_orders,
+    )
+    with patch(
+        "nce.vertical_modules.assets.service_history.scoped_pg_session",
+        return_value=_async_ctx(conn),
+    ):
+        res = await do_get_asset_service_history(
+            MagicMock(),
+            {"namespace_id": str(_NS_ID), "asset_id": str(_ASSET_ID)},
+        )
+
+    assert isinstance(res["work_orders"][0]["raw"], dict)
+    assert res["work_orders"][0]["raw"]["outcome"]["rating"] == 4.8

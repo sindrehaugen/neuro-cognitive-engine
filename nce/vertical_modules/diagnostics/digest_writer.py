@@ -233,6 +233,15 @@ class CentralSink:
                 },
             )
 
+            # Persist anomalies into diag_anomalies (linked via diag_ingestions.id).
+            ingestion_uuid = await self._insert_diag_anomalies(
+                conn,
+                namespace_id=ns_str,
+                ingest_id=ingest_id,
+                device_slug=device_slug,
+                digest=digest,
+            )
+
             # Device-health rollup (idempotent upsert, Batch 73).
             await upsert_device_health(
                 conn,
@@ -241,7 +250,7 @@ class CentralSink:
                 health_state=health_state,
                 top_anomaly_type=top_anomaly_type,
                 anomaly_score=anomaly_score,
-                last_ingestion_id=None,
+                last_ingestion_id=ingestion_uuid,
             )
 
         log.debug(
@@ -356,6 +365,70 @@ class CentralSink:
             "agent",
         )
         return memory_id
+
+    async def _insert_diag_anomalies(
+        self,
+        conn: Any,
+        *,
+        namespace_id: str,
+        ingest_id: str,
+        device_slug: str,
+        digest: Digest,
+    ) -> uuid.UUID | None:
+        """Persist ``digest.anomalies`` into ``diag_anomalies`` inside the RLS session."""
+        if not digest.anomalies:
+            return None
+
+        ingestion_uuid = await conn.fetchval(
+            """
+            INSERT INTO diag_ingestions (
+                namespace_id, ingest_id, source, device_slug, status
+            )
+            VALUES ($1::uuid, $2, 'api', $3, 'PROCESSING')
+            ON CONFLICT (namespace_id, ingest_id)
+            DO UPDATE SET updated_at = diag_ingestions.updated_at
+            RETURNING id
+            """,
+            namespace_id,
+            ingest_id,
+            device_slug,
+        )
+        if ingestion_uuid is None:
+            return None
+
+        for a in digest.anomalies:
+            w_starts = [
+                w.window_start
+                for w in getattr(digest, "windows", []) or []
+                if w.anomaly_type == a.anomaly_type
+            ]
+            win_start = datetime.fromtimestamp(min(w_starts), tz=timezone.utc) if w_starts else None
+            win_end = (
+                datetime.fromtimestamp(max(w_starts) + 300, tz=timezone.utc) if w_starts else None
+            )
+            first_line = getattr(a, "first_line", None)
+            sample_trunc = (a.sample or "")[:_SAMPLE_MAX_CHARS]
+            await conn.execute(
+                """
+                INSERT INTO diag_anomalies (
+                    namespace_id, ingestion_id, device_slug, anomaly_type,
+                    severity, first_line, occurrences, sample,
+                    window_start, window_end
+                )
+                VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10)
+                """,
+                namespace_id,
+                ingestion_uuid,
+                device_slug,
+                a.anomaly_type,
+                int(a.severity),
+                first_line,
+                int(a.occurrences),
+                sample_trunc,
+                win_start,
+                win_end,
+            )
+        return ingestion_uuid
 
     # ------------------------------------------------------------------
     # Pure builders (no I/O)

@@ -13,6 +13,9 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from uuid import UUID
+
+from nce.auth import set_namespace_context
 
 log = logging.getLogger("nce.vertical_modules.marketing.candidates")
 
@@ -51,6 +54,7 @@ async def do_find_case_study_candidates(
     if pool is not None:
         try:
             async with pool.acquire() as conn:
+                await set_namespace_context(conn, UUID(ns_str))
                 # Query delivered projects with case-study links and outcome metrics
                 rows = await conn.fetch(
                     """

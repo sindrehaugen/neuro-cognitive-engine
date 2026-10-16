@@ -527,3 +527,135 @@ async def test_a2a_entry_points_refuse_ranking() -> None:
             engine,
             {"namespace_id": ns_id, "leaderboard": True},
         )
+
+
+@pytest.mark.asyncio
+async def test_a2a_handlers_support_canonical_helper_shapes() -> None:
+    """handle_project_assignment_query and handle_field_tech_dispatch_query consume eligible_set, capacities, and certifications."""
+    from unittest.mock import patch
+
+    ns_id = uuid4()
+    engine = MagicMock()
+
+    with (
+        patch(
+            "nce.vertical_modules.hr.a2a.do_match_skills",
+            new_callable=AsyncMock,
+            return_value={
+                "eligible_set": [
+                    {
+                        "employee_id": "EMP-201",
+                        "name": "Ingrid",
+                        "role": "Lead Engineer",
+                        "location_id": "OSLO-01",
+                        "matched_skills": ["DSP programming", "Dante Level 3"],
+                        "matched_certs": ["CTS-I"],
+                    }
+                ]
+            },
+        ),
+        patch(
+            "nce.vertical_modules.hr.a2a.do_capacity",
+            new_callable=AsyncMock,
+            return_value={"capacities": [{"employee_id": "EMP-201", "utilization_pct": 62.5}]},
+        ),
+        patch(
+            "nce.vertical_modules.hr.a2a.do_cert_status",
+            new_callable=AsyncMock,
+            return_value={
+                "certifications": [
+                    {"name": "CTS-I", "status": "expiring_soon"},
+                    {"name": "OldCert", "status": "expired"},
+                ],
+                "expired_count": 1,
+            },
+        ),
+    ):
+        proj_res = await handle_project_assignment_query(
+            engine,
+            {"namespace_id": str(ns_id), "project_id": "PRJ-900"},
+        )
+        assert proj_res["candidate_count"] == 1
+        cand = proj_res["candidates"][0]
+        assert cand["utilization_pct"] == 62.5
+        assert cand["skills_matched"] == ["DSP programming", "Dante Level 3"]
+        assert cand["certs_matched"] == ["CTS-I"]
+
+        ft_res = await handle_field_tech_dispatch_query(
+            engine,
+            {"namespace_id": str(ns_id), "work_order_id": "WO-900", "location_id": "OSLO-01"},
+        )
+        assert ft_res["candidate_count"] == 1
+        ft_cand = ft_res["candidates"][0]
+        assert ft_cand["utilization_pct"] == 62.5
+        assert ft_cand["has_expired_certs"] is True
+        assert ft_cand["expiring_certs_count"] == 1
+        assert ft_cand["dispatch_eligible"] is False
+
+
+@pytest.mark.asyncio
+async def test_morning_brief_hr_slice_compliance_milestones_and_thresholds() -> None:
+    """get_morning_brief_hr_slice reads compliance.milestones and reaches 7w and 26w thresholds."""
+    import json
+    from unittest.mock import patch
+
+    ns_id = uuid4()
+    mock_engine = MagicMock()
+    mock_conn = AsyncMock()
+
+    class FakeSession:
+        async def __aenter__(self):
+            return mock_conn
+
+        async def __aexit__(self, *args):
+            pass
+
+    mock_conn.fetch.side_effect = [
+        [],
+        [
+            {
+                "id": uuid4(),
+                "employee_id": "EMP-100",
+                "start_date": date.today() - timedelta(days=50),
+                "raw": json.dumps(
+                    {
+                        "compliance": {
+                            "milestones": {
+                                "plan_4w": {"completed": True},
+                                "dialogmote_1": {"completed": False},
+                            }
+                        }
+                    }
+                ),
+            },
+            {
+                "id": uuid4(),
+                "employee_id": "EMP-101",
+                "start_date": date.today() - timedelta(days=175),
+                "raw": json.dumps(
+                    {
+                        "compliance": {
+                            "milestones": {
+                                "plan_4w": {"completed": True},
+                                "dialogmote_1": {"completed": True},
+                                "dialogmote_2": {"completed": False},
+                            }
+                        }
+                    }
+                ),
+            },
+        ],
+        [],
+    ]
+
+    with patch("nce.vertical_modules.hr.a2a.scoped_pg_session", return_value=FakeSession()):
+        slice_data = await get_morning_brief_hr_slice(
+            mock_engine,
+            {"namespace_id": str(ns_id)},
+        )
+
+    pending = slice_data["operational_risk"]["statutory_deadlines_pending"]
+    assert pending["plan_4w_pending"] == 0
+    assert pending["dialogmote_7w_pending"] == 1
+    assert pending["dialogmote_26w_pending"] == 1
+    assert slice_data["operational_risk"]["open_statutory_deadlines_total"] == 2

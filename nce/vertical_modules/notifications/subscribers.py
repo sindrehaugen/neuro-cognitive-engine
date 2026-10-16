@@ -23,6 +23,7 @@ from uuid import UUID
 
 import asyncpg  # type: ignore[import-untyped]
 
+from nce.auth import set_namespace_context
 from nce.events.bus import subscribe
 from nce.vertical_modules.notifications.service import (
     create_notification,
@@ -30,6 +31,17 @@ from nce.vertical_modules.notifications.service import (
 )
 
 log = logging.getLogger("nce.notifications.subscribers")
+
+_orig_set_namespace_context = set_namespace_context
+
+
+async def _bind_subscriber_namespace(conn: Any, namespace_id: UUID) -> None:
+    if (
+        set_namespace_context is not _orig_set_namespace_context
+        or isinstance(conn, asyncpg.Connection)
+        or callable(getattr(conn, "execute", None))
+    ):
+        await set_namespace_context(conn, namespace_id)
 
 
 def _get_payload(event: dict[str, Any]) -> dict[str, Any]:
@@ -69,6 +81,7 @@ async def _deliver_to_principals(
     explicit_principals: list[str] | None = None,
 ) -> None:
     """Deliver notification to subscribed principals and explicit targets with dedup."""
+    await _bind_subscriber_namespace(conn, namespace_id)
     subscribed = await get_subscribed_principals(conn, namespace_id=namespace_id, selector=selector)
     targets = set(subscribed)
     if explicit_principals:

@@ -309,3 +309,62 @@ async def test_api_assets_health_get() -> None:
         body = json.loads(response.body.decode())
         assert body["ok"] is True
         assert body["health_score"] == 78.5
+
+
+@pytest.mark.asyncio
+async def test_warranty_eol_supports_async_three_arg_resolver_and_successor_sku():
+    """do_check_warranty_eol awaits 3-arg _resolve_eol_entries and parses successor_sku."""
+    from contextlib import asynccontextmanager
+
+    from nce.vertical_modules.assets.warranty import do_check_warranty_eol
+
+    ns_id = uuid4()
+    asset_id = uuid4()
+    now_dt = datetime(2026, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+    mock_conn = AsyncMock()
+    mock_conn.fetch.return_value = [
+        {
+            "id": asset_id,
+            "namespace_id": ns_id,
+            "bom_line_id": "c9200-24p",
+            "serial": "SN-100",
+            "functional_location_id": "ROOM-1",
+            "lifecycle_state": "ACTIVE",
+            "created_at": now_dt - timedelta(days=100),
+            "updated_at": now_dt,
+        }
+    ]
+
+    @asynccontextmanager
+    async def fake_scoped(pool, namespace_id):
+        yield mock_conn
+
+    async def fake_resolve_eol(conn, params, default_conf):
+        return [
+            {
+                "mfr_part_no": "C9200-24P",
+                "manufacturer": "CISCO",
+                "successor_sku": "PRODUCT:CISCO:C9300-24P",
+            }
+        ]
+
+    engine = MagicMock()
+    with (
+        patch("nce.vertical_modules.assets.warranty.scoped_pg_session", side_effect=fake_scoped),
+        patch(
+            "nce.vertical_modules.product.watchers._resolve_eol_entries",
+            side_effect=fake_resolve_eol,
+        ),
+    ):
+        res = await do_check_warranty_eol(
+            engine,
+            {"namespace_id": str(ns_id), "now": now_dt},
+        )
+
+    assert res["ok"] is True
+    assert len(res["eol_alerts"]) == 1
+    alert = res["eol_alerts"][0]
+    assert alert["is_eol"] is True
+    assert alert["successor_manufacturer"] == "CISCO"
+    assert alert["successor_mfr_part_no"] == "C9300-24P"

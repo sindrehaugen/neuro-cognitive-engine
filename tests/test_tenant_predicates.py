@@ -406,3 +406,208 @@ async def test_get_product_edges_exclude_other_tenants_edges(
 
     objects = sorted(e["object_label"] for e in result["edges"])
     assert objects == ["ALPHA_OBJECT"], f"kg_edges leaked another tenant's graph edges: {objects}"
+
+
+# ---------------------------------------------------------------------------
+# Background workers: tasks.py, reembedding_worker.py, consolidation.py
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_code_indexing_soft_delete_includes_namespace_predicate() -> None:
+    """Verify code-indexing soft-delete UPDATE filters memories by namespace_id."""
+    import inspect
+
+    from nce import tasks
+
+    src = inspect.getsource(tasks.process_code_indexing)
+    assert "WHERE filepath = $1 AND (user_id IS NOT DISTINCT FROM $2)" in src
+    assert "AND valid_to IS NULL AND namespace_id = $3::uuid" in src
+
+
+@pytest.mark.asyncio
+async def test_reembedding_worker_memories_phase_includes_namespace_predicates() -> None:
+    """Verify _run_memories_phase scopes wrapped_dek SELECT and dek_unreadable UPDATE by namespace_id."""
+    from contextlib import asynccontextmanager
+    from datetime import datetime, timezone
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from nce.reembedding_worker import ReembeddingWorker
+
+    ns_id = uuid.uuid4()
+    mem_id = uuid.uuid4()
+    ref = "a" * 24
+    now = datetime.now(timezone.utc)
+
+    row = {
+        "id": mem_id,
+        "created_at": now,
+        "payload_ref": ref,
+        "metadata": {},
+        "namespace_id": ns_id,
+    }
+
+    fetch_queries: list[tuple[str, tuple[Any, ...]]] = []
+    exec_queries: list[tuple[str, tuple[Any, ...]]] = []
+
+    conn = MagicMock()
+
+    async def _fetch(sql: str, *args):
+        fetch_queries.append((sql, args))
+        if "SELECT payload_ref, wrapped_dek" in sql:
+            return [{"payload_ref": ref, "wrapped_dek": b"wrapped"}]
+        return []
+
+    async def _execute(sql: str, *args):
+        exec_queries.append((sql, args))
+        return "UPDATE 1"
+
+    conn.fetch = AsyncMock(side_effect=_fetch)
+    conn.execute = AsyncMock(side_effect=_execute)
+
+    @asynccontextmanager
+    async def _tx():
+        yield
+
+    conn.transaction = _tx
+
+    @asynccontextmanager
+    async def _acquire(timeout=None):
+        yield conn
+
+    pool = MagicMock()
+    pool.acquire = _acquire
+
+    worker = ReembeddingWorker(batch_size=10)
+    with (
+        patch(
+            "nce.reembedding_worker._fetch_memories_batch",
+            new_callable=AsyncMock,
+            side_effect=[[row], []],
+        ),
+        patch(
+            "nce.reembedding_worker._resolve_texts_from_mongo",
+            new_callable=AsyncMock,
+            return_value=({}, {ref}),
+        ),
+        patch("nce.reembedding_worker.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        await worker._run_memories_phase(
+            pool,
+            MagicMock(),
+            uuid.uuid4(),
+            uuid.uuid4(),
+        )
+
+    dek_selects = [(q, a) for q, a in fetch_queries if "SELECT payload_ref, wrapped_dek" in q]
+    assert len(dek_selects) == 1
+    dek_sql, dek_args = dek_selects[0]
+    assert "namespace_id = ANY($2::uuid[])" in dek_sql
+    assert dek_args == ([ref], [ns_id])
+
+    flag_updates = [(q, a) for q, a in exec_queries if "dek_unreadable" in q]
+    assert len(flag_updates) == 1
+    flag_sql, flag_args = flag_updates[0]
+    assert "WHERE payload_ref = $1 AND namespace_id = $2::uuid" in flag_sql
+    assert flag_args == (ref, ns_id)
+
+
+@pytest.mark.asyncio
+async def test_consolidation_worker_queries_include_namespace_predicates(monkeypatch) -> None:
+    """Verify ConsolidationWorker scopes event_log, memory_salience, and consolidation_runs by namespace_id."""
+    from contextlib import asynccontextmanager
+    from datetime import datetime, timezone
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from nce import consolidation as cons_mod
+    from nce.config import cfg
+    from nce.consolidation import ConsolidatedAbstraction, ConsolidationWorker
+
+    ns_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+    mem_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+
+    fetchval_calls: list[tuple[str, tuple[Any, ...]]] = []
+    fetch_calls: list[tuple[str, tuple[Any, ...]]] = []
+    execute_calls: list[tuple[str, tuple[Any, ...]]] = []
+
+    conn = MagicMock()
+
+    async def _fetchval(sql: str, *args):
+        fetchval_calls.append((sql, args))
+        if "INSERT INTO consolidation_runs" in sql:
+            return run_id
+        if "SELECT id FROM event_log" in sql:
+            return uuid.uuid4()
+        return uuid.uuid4()
+
+    async def _fetch(sql: str, *args):
+        fetch_calls.append((sql, args))
+        if "FROM memories" in sql:
+            return []
+        if "FROM memory_salience" in sql:
+            return [{"memory_id": mem_id, "salience_score": 0.8, "updated_at": now}]
+        return []
+
+    async def _execute(sql: str, *args):
+        execute_calls.append((sql, args))
+        return "OK"
+
+    conn.fetchval = AsyncMock(side_effect=_fetchval)
+    conn.fetch = AsyncMock(side_effect=_fetch)
+    conn.execute = AsyncMock(side_effect=_execute)
+
+    @asynccontextmanager
+    async def _fake_scoped(_pool, _ns):
+        yield conn
+
+    monkeypatch.setattr(cons_mod, "scoped_pg_session", _fake_scoped)
+    monkeypatch.setattr(cfg, "CONSOLIDATION_DECAY_SOURCES", True)
+
+    worker = ConsolidationWorker(pool=MagicMock(), provider=MagicMock(), mongo_client=None)
+    abstraction = ConsolidatedAbstraction(
+        abstraction="Summary fact",
+        confidence=0.9,
+        key_entities=["NodeA"],
+        key_relations=[],
+        supporting_memory_ids=[str(mem_id)],
+    )
+
+    with patch.object(cons_mod, "append_event", new_callable=AsyncMock):
+        await worker._store_consolidated_memory(
+            conn,
+            namespace_id=ns_id,
+            abstraction=abstraction,
+            cluster_mems=[{"id": mem_id, "derivation_depth": 0}],
+            mem_ids=[str(mem_id)],
+            payload_ref="b" * 24,
+            embedding_vec="[0.1,0.2]",
+        )
+
+    event_log_queries = [(q, a) for q, a in fetchval_calls if "SELECT id FROM event_log" in q]
+    assert len(event_log_queries) == 1
+    el_sql, el_args = event_log_queries[0]
+    assert "AND namespace_id = $2::uuid" in el_sql
+    assert el_args == (str(mem_id), ns_id)
+
+    await worker._update_kg(
+        conn,
+        namespace_id=ns_id,
+        abstraction=abstraction,
+        mem_ids=[str(mem_id)],
+        new_depth=1,
+    )
+    sal_queries = [(q, a) for q, a in fetch_calls if "FROM memory_salience" in q]
+    assert len(sal_queries) == 1
+    sal_sql, sal_args = sal_queries[0]
+    assert "AND namespace_id = $2::uuid" in sal_sql
+    assert sal_args == ([str(mem_id)], ns_id)
+
+    execute_calls.clear()
+    await worker.run_consolidation(ns_id)
+    run_updates = [(q, a) for q, a in execute_calls if "UPDATE consolidation_runs" in q]
+    assert len(run_updates) == 1
+    upd_sql, upd_args = run_updates[0]
+    assert "WHERE id = $1 AND namespace_id = $2::uuid" in upd_sql
+    assert upd_args == (run_id, ns_id)

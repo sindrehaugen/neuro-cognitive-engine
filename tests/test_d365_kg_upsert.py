@@ -17,6 +17,7 @@ import pytest
 import pytest_asyncio
 
 from nce.auth import set_namespace_context
+from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
 from nce.vertical_modules.dynamics365.sync import DataverseSyncEngine
 
 # ---------------------------------------------------------------------------
@@ -47,16 +48,23 @@ async def test_ns(
     """Create a fresh namespace for the test and clean up kg_nodes after."""
     slug = f"pytest-d365-kg-{uuid.uuid4().hex[:8]}"
     async with pg_pool.acquire() as conn:
-        ns_id: uuid.UUID = await conn.fetchval(
-            "INSERT INTO namespaces (slug) VALUES ($1) RETURNING id",
-            slug,
-        )
-    assert ns_id is not None
+        async with conn.transaction():
+            ns_id: uuid.UUID = await conn.fetchval(
+                "INSERT INTO namespaces (slug) VALUES ($1) RETURNING id",
+                slug,
+            )
+            assert ns_id is not None
+            await set_namespace_context(conn, ns_id)
+            await seed_node_ownership_registry(conn, ns_id)
     yield ns_id
-    # Cleanup: remove any kg_nodes rows inserted by the test
+    # Cleanup: remove any kg_nodes and ownership rows inserted by the test
     async with pg_pool.acquire() as conn:
         await conn.execute(
             "DELETE FROM kg_nodes WHERE namespace_id = $1",
+            ns_id,
+        )
+        await conn.execute(
+            "DELETE FROM node_ownership_registry WHERE namespace_id = $1",
             ns_id,
         )
         await conn.execute(

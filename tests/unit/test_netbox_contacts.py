@@ -24,6 +24,7 @@ NS = uuid.UUID("bbbbbbbb-0000-0000-0000-000000000001")
 def setup_env(monkeypatch: pytest.MonkeyPatch) -> None:
     # Set a valid 32-byte master key
     monkeypatch.setenv("NCE_MASTER_KEY", "x" * 32)
+    NetBoxContactSync._schema_ensured = False
 
 
 class MockTransaction:
@@ -117,7 +118,16 @@ class TestNetBoxContactSync:
             "ALTER TABLE on_call_routing ENABLE ROW LEVEL SECURITY" in c[0]
             for c in conn.execute_calls
         )
+        assert any(
+            "ALTER TABLE on_call_routing FORCE ROW LEVEL SECURITY" in c[0]
+            for c in conn.execute_calls
+        )
         assert any("CREATE POLICY on_call_tenant_isolation" in c[0] for c in conn.execute_calls)
+        assert NetBoxContactSync._schema_ensured is True
+
+        calls_before = len(conn.execute_calls)
+        await sync.ensure_on_call_schema(conn)
+        assert len(conn.execute_calls) == calls_before
 
     async def test_evaluate_contact_stress_report(self):
         conn = MockConnection()

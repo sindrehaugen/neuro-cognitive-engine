@@ -12,6 +12,7 @@ A standalone, rate-limited application surface:
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from typing import Any
 
@@ -36,9 +37,21 @@ class CustomerRateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: Any, max_requests_per_minute: int = 120):
         super().__init__(app)
         self.max_requests_per_minute = max_requests_per_minute
+        self.max_requests = max_requests_per_minute
+        self._requests: dict[str, list[float]] = {}
 
     async def dispatch(self, request: Request, call_next: Any) -> Any:
-        # Standard rate-limiting inspection hook
+        now = time.monotonic()
+        client_key = request.headers.get("Authorization") or (
+            request.client.host if request.client else "unknown"
+        )
+        cutoff = now - 60.0
+        recent = [ts for ts in self._requests.get(client_key, []) if ts > cutoff]
+        if len(recent) >= self.max_requests:
+            self._requests[client_key] = recent
+            return JSONResponse({"error": "rate_limit_exceeded"}, status_code=429)
+        recent.append(now)
+        self._requests[client_key] = recent
         return await call_next(request)
 
 
@@ -328,11 +341,19 @@ async def api_portal_room_tracker(request: Request) -> JSONResponse:
     if chk is not None:
         return chk
 
+    _readonly_keys = {
+        "stage",
+        "percent_ready",
+        "status",
+        "summary",
+        "total_rooms",
+        "overall_percent_ready",
+    }
     params = {
         # Client-supplied values FIRST so the authoritative
         # namespace/scope assigned below cannot be overridden by a
         # client-controlled body or query parameter (cross-customer IDOR).
-        **dict(request.query_params),
+        **{k: v for k, v in request.query_params.items() if k not in _readonly_keys},
         "namespace_id": ns_id,
         "customer_scope_id": cust_scope,
         "room_id": room_id,
@@ -368,11 +389,19 @@ async def api_portal_room_overview(request: Request) -> JSONResponse:
     if chk is not None:
         return chk
 
+    _readonly_keys = {
+        "stage",
+        "percent_ready",
+        "status",
+        "summary",
+        "total_rooms",
+        "overall_percent_ready",
+    }
     params = {
         # Client-supplied values FIRST so the authoritative
         # namespace/scope assigned below cannot be overridden by a
         # client-controlled body or query parameter (cross-customer IDOR).
-        **dict(request.query_params),
+        **{k: v for k, v in request.query_params.items() if k not in _readonly_keys},
         "namespace_id": ns_id,
         "customer_scope_id": cust_scope,
     }

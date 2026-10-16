@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
 // ErrCloudOAuthNotConfigured is returned when bridges has no cloud/Azure section.
@@ -30,14 +31,34 @@ type CloudAzure struct {
 	MirrorMSALToKeychain bool `json:"mirror_msal_to_keychain,omitempty"`
 }
 
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
+func resolveNCEDataDir(goos, base string, dirExists func(string) bool) string {
+	switch goos {
+	case "windows", "darwin":
+		return filepath.Join(base, "NCE")
+	default:
+		lower := filepath.Join(base, "nce")
+		upper := filepath.Join(base, "NCE")
+		if dirExists != nil && !dirExists(lower) && dirExists(upper) {
+			return upper
+		}
+		return lower
+	}
+}
+
 // NCEDataDir resolves %APPDATA%/NCE (Windows), ~/Library/Application Support/NCE (macOS),
-// or XDG_CONFIG_HOME/NCE.
+// or XDG_CONFIG_HOME/nce (Linux, falling back to XDG_CONFIG_HOME/NCE only when the uppercase
+// directory exists and lowercase does not).
 func NCEDataDir() (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, "NCE"), nil
+	return resolveNCEDataDir(runtime.GOOS, base, isDir), nil
 }
 
 // DefaultBridgesPath is the documented location from §6.3.

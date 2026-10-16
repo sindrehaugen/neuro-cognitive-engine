@@ -208,3 +208,27 @@ def test_rest_route_mounted_in_admin_app() -> None:
             assert "POST" in route.methods
             break
     assert found, "Route /api/marketing/testimonials/retract not mounted in admin_app"
+
+
+@pytest.mark.asyncio
+async def test_retract_testimonial_sets_content_assets_status_to_archived() -> None:
+    """do_retract_testimonial updates content_assets status to 'archived' to satisfy CHECK constraint."""
+    from nce.vertical_modules.marketing.testimonials import do_retract_testimonial
+
+    engine = _make_mock_engine()
+    conn = engine.pg_pool.acquire.return_value.__aenter__.return_value
+
+    await do_retract_testimonial(
+        engine,
+        {
+            "namespace_id": _NAMESPACE_ID,
+            "testimonial_id": _TESTIMONIAL_ID,
+            "reason": "Retract consent",
+        },
+    )
+
+    executed_sqls = [call[0][0] for call in conn.execute.call_args_list]
+    content_asset_updates = [s for s in executed_sqls if "UPDATE content_assets" in s]
+    assert len(content_asset_updates) == 1
+    assert "status = 'archived'" in content_asset_updates[0]
+    assert "status = 'retracted'" not in content_asset_updates[0]

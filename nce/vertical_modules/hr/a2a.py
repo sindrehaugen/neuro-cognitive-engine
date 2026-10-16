@@ -89,7 +89,11 @@ async def handle_project_assignment_query(engine: Any, params: dict[str, Any]) -
             "required_certs": required_certs,
         },
     )
-    candidates = match_result.get("candidates", [])
+    candidates = (
+        match_result.get("candidates")
+        if "candidates" in match_result
+        else match_result.get("eligible_set", [])
+    )
 
     # 2. Augment candidate eligibility with capacity/utilization
     enriched_candidates: list[dict[str, Any]] = []
@@ -103,18 +107,31 @@ async def handle_project_assignment_query(engine: Any, params: dict[str, Any]) -
                 "horizon_days": horizon_days,
             },
         )
-        utilization = float(cap.get("utilization_pct", 0.0))
+        if "utilization_pct" in cap:
+            utilization = float(cap.get("utilization_pct") or 0.0)
+        elif cap.get("capacities"):
+            utilization = float(cap["capacities"][0].get("utilization_pct", 0.0) or 0.0)
+        else:
+            utilization = 0.0
+        skills_matched = (
+            cand.get("skills_matched")
+            if "skills_matched" in cand
+            else cand.get("matched_skills", [])
+        )
+        certs_matched = (
+            cand.get("certs_matched") if "certs_matched" in cand else cand.get("matched_certs", [])
+        )
         enriched_candidates.append(
             {
                 "employee_id": emp_id,
                 "name": cand.get("name"),
                 "role": cand.get("role"),
-                "skills_matched": cand.get("skills_matched", []),
-                "certs_matched": cand.get("certs_matched", []),
+                "skills_matched": skills_matched,
+                "certs_matched": certs_matched,
                 "utilization_pct": utilization,
                 "available": utilization < 100.0,
                 "rationale": (
-                    f"Meets requirements with {len(cand.get('skills_matched', []))} skills; "
+                    f"Meets requirements with {len(skills_matched)} skills; "
                     f"current utilization is {utilization:.1f}% over {horizon_days}d."
                 ),
             }
@@ -226,7 +243,11 @@ async def handle_field_tech_dispatch_query(engine: Any, params: dict[str, Any]) 
             "required_certs": required_certs,
         },
     )
-    candidates = match_result.get("candidates", [])
+    candidates = (
+        match_result.get("candidates")
+        if "candidates" in match_result
+        else match_result.get("eligible_set", [])
+    )
 
     # 2. Fetch cert status and capacity for each candidate
     dispatches: list[dict[str, Any]] = []
@@ -242,7 +263,12 @@ async def handle_field_tech_dispatch_query(engine: Any, params: dict[str, Any]) 
                 "horizon_days": horizon_days,
             },
         )
-        utilization = float(cap.get("utilization_pct", 0.0))
+        if "utilization_pct" in cap:
+            utilization = float(cap.get("utilization_pct") or 0.0)
+        elif cap.get("capacities"):
+            utilization = float(cap["capacities"][0].get("utilization_pct", 0.0) or 0.0)
+        else:
+            utilization = 0.0
 
         # Check cert expiration status
         cert_info = await do_cert_status(
@@ -252,16 +278,31 @@ async def handle_field_tech_dispatch_query(engine: Any, params: dict[str, Any]) 
                 "employee_id": emp_id,
             },
         )
-        has_expired_certs = len(cert_info.get("expired_certs", [])) > 0
-        expiring_soon = cert_info.get("expiring_certs", [])
+        if "expired_certs" in cert_info or "expiring_certs" in cert_info:
+            expired_list = cert_info.get("expired_certs", [])
+            expiring_soon = cert_info.get("expiring_certs", [])
+        else:
+            certs_list = cert_info.get("certifications", [])
+            expired_list = [c for c in certs_list if c.get("status") == "expired"]
+            expiring_soon = [c for c in certs_list if c.get("status") == "expiring_soon"]
+        has_expired_certs = len(expired_list) > 0 or int(cert_info.get("expired_count", 0) or 0) > 0
 
         # Location check
         cand_loc = cand.get("location_id")
         loc_match = bool(not location_id or cand_loc == location_id)
 
+        skills_matched = (
+            cand.get("skills_matched")
+            if "skills_matched" in cand
+            else cand.get("matched_skills", [])
+        )
+        certs_matched = (
+            cand.get("certs_matched") if "certs_matched" in cand else cand.get("matched_certs", [])
+        )
+
         # Plain-language assignment fit rationale
         rationale = (
-            f"Eligible: {len(cand.get('skills_matched', []))} skills matched; "
+            f"Eligible: {len(skills_matched)} skills matched; "
             f"load={utilization:.0f}%; certs_valid={not has_expired_certs}."
         )
 
@@ -272,8 +313,8 @@ async def handle_field_tech_dispatch_query(engine: Any, params: dict[str, Any]) 
                 "role": cand.get("role"),
                 "location_id": cand_loc,
                 "location_matched": loc_match,
-                "skills_matched": cand.get("skills_matched", []),
-                "certs_matched": cand.get("certs_matched", []),
+                "skills_matched": skills_matched,
+                "certs_matched": certs_matched,
                 "utilization_pct": utilization,
                 "has_expired_certs": has_expired_certs,
                 "expiring_certs_count": len(expiring_soon),
@@ -472,18 +513,30 @@ async def get_morning_brief_hr_slice(engine: Any, params: dict[str, Any]) -> dic
             raw_val = row["raw"]
             raw_data = json.loads(raw_val) if isinstance(raw_val, str) else (raw_val or {})
             completed = set(raw_data.get("compliance_completed_milestones") or [])
+            comp_milestones = (raw_data.get("compliance") or {}).get("milestones") or {}
+            if isinstance(comp_milestones, dict):
+                if (comp_milestones.get("plan_4w") or {}).get("completed"):
+                    completed.update(("oppfolgingsplan_4w", "plan_4w"))
+                if (comp_milestones.get("dialogmote_1") or {}).get("completed"):
+                    completed.update(("dialogmote_1_7w", "dialogmote_1"))
+                if (comp_milestones.get("dialogmote_2") or {}).get("completed"):
+                    completed.update(("dialogmote_2_26w", "dialogmote_2"))
             days_elapsed = (today - s_date).days if s_date else 0
 
+            plan_4w_done = bool(completed & {"oppfolgingsplan_4w", "plan_4w"})
+            dm1_done = bool(completed & {"dialogmote_1_7w", "dialogmote_1"})
+            dm2_done = bool(completed & {"dialogmote_2_26w", "dialogmote_2"})
+
             # Plan 4w
-            if days_elapsed >= 21 and "oppfolgingsplan_4w" not in completed:
+            if days_elapsed >= 21 and not plan_4w_done:
                 open_compliance_count += 1
                 milestone_pending_counts[COMPLIANCE_STATE_PLAN_4W_PENDING] += 1
             # Dialogmote 7w
-            elif days_elapsed >= 42 and "dialogmote_1_7w" not in completed:
+            if days_elapsed >= 42 and not dm1_done:
                 open_compliance_count += 1
                 milestone_pending_counts[COMPLIANCE_STATE_DIALOGMOTE_7W_PENDING] += 1
             # Dialogmote 26w
-            elif days_elapsed >= 168 and "dialogmote_2_26w" not in completed:
+            if days_elapsed >= 168 and not dm2_done:
                 open_compliance_count += 1
                 milestone_pending_counts[COMPLIANCE_STATE_DIALOGMOTE_26W_PENDING] += 1
 

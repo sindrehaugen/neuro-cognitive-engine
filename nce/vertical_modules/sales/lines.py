@@ -76,7 +76,7 @@ def _require_text(value: Any, field: str) -> str:
     return text
 
 
-def _require_decimal(value: Any, field: str) -> Decimal:
+def _require_decimal(value: Any, field: str, *, allow_zero: bool = True) -> Decimal:
     """Coerce a JSON scalar to ``Decimal`` without going through ``float``.
 
     Money and quantity are ``NUMERIC`` in Postgres; a decimal string on the
@@ -99,6 +99,8 @@ def _require_decimal(value: Any, field: str) -> Decimal:
         raise ValueError(f"{field} must be finite")
     if candidate < 0:
         raise ValueError(f"{field} must not be negative")
+    if not allow_zero and candidate <= 0:
+        raise ValueError(f"{field} must be positive")
     return candidate
 
 
@@ -136,7 +138,7 @@ async def do_add_quote_line(
     """
     quote = _require_text(quote_id, "quote_id")
     ref = _require_text(line_ref, "line_ref")
-    quantity = _require_decimal(qty, "qty")
+    quantity = _require_decimal(qty, "qty", allow_zero=False)
     price = _require_decimal(unit_price, "unit_price")
     total = quantity * price if line_total is None else _require_decimal(line_total, "line_total")
 

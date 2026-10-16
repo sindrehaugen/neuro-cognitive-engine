@@ -242,8 +242,9 @@ async def test_audit_seo_preserves_existing_seo_metadata_on_writeback() -> None:
     assert res["json_ld"]["description"] == "Verified 99.99% uptime across campus rooms."
 
     conn = engine.pg_pool.acquire.return_value.__aenter__.return_value
-    assert conn.execute.await_count == 1
-    sql_arg, _ns_arg, _id_arg, payload_arg = conn.execute.await_args.args
+    update_calls = [c for c in conn.execute.await_args_list if "UPDATE content_assets" in c.args[0]]
+    assert len(update_calls) == 1
+    sql_arg, _ns_arg, _id_arg, payload_arg = update_calls[0].args
     assert "COALESCE(seo, '{}'::jsonb) || $3::jsonb" in sql_arg
     written_seo = json.loads(payload_arg)
     assert written_seo["meta_title"] == "Original SEO Title"

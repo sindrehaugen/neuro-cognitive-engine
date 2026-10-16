@@ -1271,7 +1271,7 @@ async def do_record_goods_receipt(engine: NCEEngine, params: dict[str, Any]) -> 
         try:
             po_line_rows = await conn.fetch(
                 """
-                SELECT line_ref, bom_line_label, project_id, artnr, status
+                SELECT line_ref, bom_line_label, project_id, artnr, quantity, status
                 FROM procurement_po_lines
                 WHERE namespace_id = $1 AND po_number = $2
                 """,
@@ -1281,11 +1281,16 @@ async def do_record_goods_receipt(engine: NCEEngine, params: dict[str, Any]) -> 
         except Exception as exc:
             log.debug("Could not query procurement_po_lines for po_ref %s: %s", po_ref, exc)
 
+        received_qty_by_sku: dict[str, Decimal] = {}
+        for sku, qty, _ in lines:
+            norm_sku = str(sku).strip().upper()
+            received_qty_by_sku[norm_sku] = received_qty_by_sku.get(norm_sku, Decimal("0")) + qty
+        received_skus = set(received_qty_by_sku.keys())
+
         matched_targets: list[tuple[str, str]] = []
         if project_id and bom_line_label:
             matched_targets.append((project_id, bom_line_label))
         elif po_line_rows:
-            received_skus = {sku for sku, _, _ in lines}
             for plr in po_line_rows:
                 plr_pid = str(plr["project_id"] or "").strip()
                 plr_bll = str(plr["bom_line_label"] or "").strip()
@@ -1302,19 +1307,40 @@ async def do_record_goods_receipt(engine: NCEEngine, params: dict[str, Any]) -> 
             # Advance matching PO_LINE rows from ORDERED to RECEIVED
             try:
                 for plr in po_line_rows:
-                    if plr["status"] == "ORDERED":
-                        await conn.execute(
-                            """
-                            UPDATE procurement_po_lines
-                            SET status = 'RECEIVED',
-                                status_changed_at = now(),
-                                updated_at = now()
-                            WHERE namespace_id = $1 AND po_number = $2 AND line_ref = $3
-                            """,
-                            ns_uuid,
-                            po_ref,
-                            plr["line_ref"],
-                        )
+                    if plr["status"] != "ORDERED":
+                        continue
+                    plr_artnr = str(plr["artnr"] or "").strip().upper()
+                    if received_skus and plr_artnr not in received_skus:
+                        continue
+                    rec_qty = received_qty_by_sku.get(plr_artnr, Decimal("0"))
+                    if "quantity_received" in plr and plr["quantity_received"] is not None:
+                        try:
+                            rec_qty = Decimal(str(plr["quantity_received"]))
+                        except Exception:
+                            pass
+                    ord_raw = (
+                        plr["quantity_ordered"]
+                        if "quantity_ordered" in plr and plr["quantity_ordered"] is not None
+                        else (plr["quantity"] if "quantity" in plr else None)
+                    )
+                    if ord_raw is not None:
+                        try:
+                            if rec_qty < Decimal(str(ord_raw)):
+                                continue
+                        except Exception:
+                            pass
+                    await conn.execute(
+                        """
+                        UPDATE procurement_po_lines
+                        SET status = 'RECEIVED',
+                            status_changed_at = now(),
+                            updated_at = now()
+                        WHERE namespace_id = $1 AND po_number = $2 AND line_ref = $3
+                        """,
+                        ns_uuid,
+                        po_ref,
+                        plr["line_ref"],
+                    )
             except Exception as exc:
                 log.debug("Could not advance procurement_po_lines to RECEIVED: %s", exc)
 

@@ -16,6 +16,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from nce.auth import set_namespace_context
 from nce.vertical_modules.marketing._guard import require_marketing_enabled
 
 log = logging.getLogger("nce.vertical_modules.marketing.brief")
@@ -58,6 +59,7 @@ async def get_marketing_morning_brief_slice(
     if pool is not None:
         try:
             async with pool.acquire() as conn:
+                await set_namespace_context(conn, UUID(ns_str))
                 # Harvested candidate projects
                 cand_row = await conn.fetchrow(
                     """
@@ -170,6 +172,7 @@ async def do_query_marketing_a2a(
     if pool is not None:
         try:
             async with pool.acquire() as conn:
+                await set_namespace_context(conn, UUID(ns_str))
                 rows = await conn.fetch(
                     """
                     SELECT id, title, body, anonymized, marketing_source_id

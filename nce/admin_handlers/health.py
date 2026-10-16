@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from nce.admin_handlers import _shared
 from nce.admin_handlers._shared import *  # noqa: F403
 
@@ -117,7 +119,8 @@ async def api_search(request):
 
 
 async def serve_index(request):
-    index_path = os.path.join(os.path.dirname(__file__), "admin", "index.html")
+    admin_dir = Path(__file__).resolve().parents[2] / "admin"
+    index_path = os.path.join(admin_dir, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
     return HTMLResponse("Admin UI not found", status_code=404)
@@ -125,7 +128,8 @@ async def serve_index(request):
 
 async def serve_styles(request):
     """GET /styles.css — serve the admin dashboard stylesheet."""
-    styles_path = os.path.join(os.path.dirname(__file__), "admin", "styles.css")
+    admin_dir = Path(__file__).resolve().parents[2] / "admin"
+    styles_path = os.path.join(admin_dir, "styles.css")
     if os.path.exists(styles_path):
         return FileResponse(styles_path, media_type="text/css")
     return HTMLResponse("styles.css not found", status_code=404)

@@ -285,3 +285,28 @@ def test_pure_core_has_no_db_import() -> None:
         "asyncpg appeared in savings module globals — the module has a top-level "
         "asyncpg import that would break unit tests in environments without the extension."
     )
+
+
+@pytest.mark.asyncio
+async def test_fetch_spend_rows_coerces_iso_date_strings_to_datetime_date() -> None:
+    """_fetch_spend_rows converts ISO date strings to datetime.date before binding to $2::date and $3::date."""
+    import datetime
+    import uuid
+    from unittest.mock import AsyncMock
+
+    from nce.vertical_modules.procurement.savings import _fetch_spend_rows
+
+    conn = AsyncMock()
+    conn.fetchval = AsyncMock(return_value="procurement_spend_lines")
+    conn.fetch = AsyncMock(return_value=[])
+
+    ns_id = uuid.uuid4()
+    rows = await _fetch_spend_rows(conn, ns_id, "2026-01-01", "2026-04-01")
+
+    assert rows == []
+    conn.fetch.assert_awaited_once()
+    call_args = conn.fetch.call_args[0]
+    assert isinstance(call_args[2], datetime.date)
+    assert isinstance(call_args[3], datetime.date)
+    assert call_args[2] == datetime.date(2026, 1, 1)
+    assert call_args[3] == datetime.date(2026, 4, 1)

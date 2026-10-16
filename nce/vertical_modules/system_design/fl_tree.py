@@ -568,6 +568,13 @@ async def merge_fl_nodes(
                 WHERE subject_label = $2
                   AND predicate = $3
                   AND namespace_id = $4::uuid
+                  AND NOT EXISTS (
+                      SELECT 1 FROM kg_edges e2
+                      WHERE e2.subject_label = $1
+                        AND e2.predicate = kg_edges.predicate
+                        AND e2.object_label = kg_edges.object_label
+                        AND e2.namespace_id = $4::uuid
+                  )
                 """,
                 survivor_label,
                 absorbed_label,
@@ -595,10 +602,27 @@ async def merge_fl_nodes(
                 WHERE subject_label = $2
                   AND predicate = $3
                   AND namespace_id = $4::uuid
+                  AND NOT EXISTS (
+                      SELECT 1 FROM kg_edges e2
+                      WHERE e2.subject_label = $1
+                        AND e2.predicate = kg_edges.predicate
+                        AND e2.object_label = kg_edges.object_label
+                        AND e2.namespace_id = $4::uuid
+                  )
                 """,
                 survivor_label,
                 absorbed_label,
                 _PRED_NEEDS,
+                ns_str,
+            )
+            # Remove any remaining duplicate edges on absorbed
+            await conn.execute(
+                """
+                DELETE FROM kg_edges
+                WHERE (subject_label = $1 OR object_label = $1)
+                  AND namespace_id = $2::uuid
+                """,
+                absorbed_label,
                 ns_str,
             )
             # Mark absorbed node as merged
@@ -618,17 +642,28 @@ async def merge_fl_nodes(
 
     # 2. In-memory updates
     edges = _MEM_EDGES.setdefault(ns_str, [])
-    for e in edges:
-        if e["subject_label"] == absorbed_label and e["predicate"] == _PRED_PARENT_OF:
-            e["subject_label"] = survivor_label
-        elif e["subject_label"] == absorbed_label and e["predicate"] == _PRED_NEEDS:
-            e["subject_label"] = survivor_label
-
-    _MEM_EDGES[ns_str] = [
-        e
+    existing_survivor_edges = {
+        (e["subject_label"], e["predicate"], e["object_label"])
         for e in edges
-        if not (e["object_label"] == absorbed_label and e["predicate"] == _PRED_PARENT_OF)
-    ]
+        if e["subject_label"] == survivor_label
+    }
+    new_edges: list[dict[str, Any]] = []
+    for e in edges:
+        if e["object_label"] == absorbed_label:
+            continue
+        if e["subject_label"] == absorbed_label and e["predicate"] in (
+            _PRED_PARENT_OF,
+            _PRED_NEEDS,
+        ):
+            key = (survivor_label, e["predicate"], e["object_label"])
+            if key in existing_survivor_edges:
+                continue
+            e["subject_label"] = survivor_label
+            existing_survivor_edges.add(key)
+        elif e["subject_label"] == absorbed_label:
+            continue
+        new_edges.append(e)
+    _MEM_EDGES[ns_str] = new_edges
 
     bucket = _MEM_NODES.get(ns_str, {})
     if absorbed_label in bucket:

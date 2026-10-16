@@ -835,3 +835,36 @@ def test_kill_switch_registry_blocks_rq_task() -> None:
     finally:
         _REDIS_REGISTRY.clear()
         register_engine(None)
+
+
+def test_enqueue_rq_task_closes_redis_connection() -> None:
+    """Verify _enqueue_rq_task closes the synchronous Redis connection in a finally block."""
+    from unittest.mock import patch
+
+    from nce.vertical_modules.project.automation import _enqueue_rq_task
+
+    def _dummy_task(**_kwargs: Any) -> None:
+        pass
+
+    fake_redis_conn = MagicMock()
+    fake_queue = MagicMock()
+
+    with (
+        patch("redis.Redis.from_url", return_value=fake_redis_conn),
+        patch("rq.Queue", return_value=fake_queue),
+    ):
+        _enqueue_rq_task(_dummy_task, namespace_id="ns-1")
+        fake_queue.enqueue.assert_called_once()
+        fake_redis_conn.close.assert_called_once()
+
+    # Also verify close() is called even when Queue.enqueue raises
+    fake_redis_conn_err = MagicMock()
+    fake_queue_err = MagicMock()
+    fake_queue_err.enqueue.side_effect = RuntimeError("queue failure")
+
+    with (
+        patch("redis.Redis.from_url", return_value=fake_redis_conn_err),
+        patch("rq.Queue", return_value=fake_queue_err),
+    ):
+        _enqueue_rq_task(_dummy_task, namespace_id="ns-1")
+        fake_redis_conn_err.close.assert_called_once()

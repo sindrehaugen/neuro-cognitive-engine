@@ -1125,6 +1125,8 @@ _additional_fork_provenance_types: tuple[str, ...] = (
     "chain_verification_failed",
     "atms_cascade",
     "config_changed",
+    "config_reset",
+    "config_reload",
     "d365_sla_breach",
     "project_phase_advanced",
     "sales_ai_decision",

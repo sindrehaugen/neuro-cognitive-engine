@@ -50,6 +50,21 @@ def _parse_now(raw: Any) -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _parse_successor_sku(
+    raw_sku: Any, default_mfr: str | None = None
+) -> tuple[str | None, str | None]:
+    """Parse a successor SKU string into ``(manufacturer, mfr_part_no)``."""
+    s = str(raw_sku or "").strip()
+    if not s:
+        return default_mfr, None
+    parts = [p.strip() for p in s.split(":") if p.strip()]
+    if len(parts) >= 3 and parts[0].upper() in ("PRODUCT", "PRODUCT_SKU"):
+        return parts[1], ":".join(parts[2:])
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    return default_mfr, s
+
+
 async def do_check_warranty_eol(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
     """Check assets for expiring warranty, firmware/product EOL, or exceeded lifespan.
 
@@ -89,26 +104,27 @@ async def do_check_warranty_eol(engine: Any, params: dict[str, Any]) -> dict[str
     filter_asset_id = (params.get("asset_id") or "").strip()
     filter_loc_id = (params.get("functional_location_id") or "").strip()
 
-    # Load EOL entries from Product vertical module if available
     eol_entries: list[dict[str, Any]] = []
-    try:
-        from nce.vertical_modules.product.watchers import _resolve_eol_entries
-
-        eol_entries = _resolve_eol_entries()
-    except Exception as exc:
-        log.debug("Could not load product EOL entries: %s", exc)
-
-    # Build EOL match map keyed by lower-cased part numbers
-    eol_by_part: dict[str, dict[str, Any]] = {}
-    for entry in eol_entries:
-        part = str(entry.get("mfr_part_no") or "").strip().lower()
-        if part:
-            eol_by_part[part] = entry
-
     warranty_alerts: list[dict[str, Any]] = []
     eol_alerts: list[dict[str, Any]] = []
 
     async with scoped_pg_session(engine.pg_pool, ns_uuid) as conn:
+        # Load EOL entries from Product vertical module if available
+        try:
+            import inspect
+
+            from nce.vertical_modules.product.watchers import _resolve_eol_entries
+
+            try:
+                res = _resolve_eol_entries(conn, params, 0.0)
+            except TypeError:
+                res = _resolve_eol_entries()
+            if inspect.isawaitable(res):
+                res = await res
+            eol_entries = list(res or [])
+        except Exception as exc:
+            log.debug("Could not load product EOL entries: %s", exc)
+
         query = """
             SELECT id, namespace_id, bom_line_id, serial, functional_location_id,
                    lifecycle_state, created_at, updated_at
@@ -126,6 +142,13 @@ async def do_check_warranty_eol(engine: Any, params: dict[str, Any]) -> dict[str
 
         query += " ORDER BY created_at ASC"
         rows = await conn.fetch(query, *query_args)
+
+    # Build EOL match map keyed by lower-cased part numbers
+    eol_by_part: dict[str, dict[str, Any]] = {}
+    for entry in eol_entries:
+        part = str(entry.get("mfr_part_no") or "").strip().lower()
+        if part:
+            eol_by_part[part] = entry
 
     for row in rows:
         asset_id_str = str(row["id"])
@@ -168,6 +191,11 @@ async def do_check_warranty_eol(engine: Any, params: dict[str, Any]) -> dict[str
             is_eol = True
             successor_part = matched_eol_entry.get("successor_mfr_part_no")
             successor_mfr = matched_eol_entry.get("successor_manufacturer")
+            if not successor_part and matched_eol_entry.get("successor_sku"):
+                successor_mfr, successor_part = _parse_successor_sku(
+                    matched_eol_entry.get("successor_sku"),
+                    successor_mfr or matched_eol_entry.get("manufacturer"),
+                )
             reasons.append(f"Manufacturer EOL: {matched_eol_entry.get('mfr_part_no', bom_line_id)}")
 
         lifespan_exceeded = age_days >= lifespan_days

@@ -296,7 +296,7 @@ async def _clean_orphaned_cascade(
                             UNION
                             SELECT c.memory_b_id
                             FROM contradictions c
-                            LEFT JOIN existing_memories em ON c.memory_a_id = em.id
+                            LEFT JOIN existing_memories em ON c.memory_b_id = em.id
                             WHERE em.id IS NULL
                               AND c.namespace_id = $1::uuid
                               AND c.detected_at < $3
@@ -843,7 +843,15 @@ async def _get_latest_anchor_for_namespace(
         _seq, latest_name = max(candidates, key=lambda t: t[0])
         try:
             resp = minio_client.get_object(bucket, latest_name)
-            data = resp.read()
+            try:
+                data = resp.read()
+            finally:
+                close_fn = getattr(resp, "close", None)
+                if callable(close_fn):
+                    close_fn()
+                release_fn = getattr(resp, "release_conn", None)
+                if callable(release_fn):
+                    release_fn()
             return json.loads(data.decode("utf-8"))
         except Exception as exc:
             log.warning(
@@ -869,23 +877,40 @@ async def _archive_partition_to_minio(
     rather than a full row export — full serialisation is deferred to a future
     export pipeline.  Returns True on success.
     """
-    # Gather partition stats without RLS (superuser read is required here).
-    # We use an unmanaged connection so there is no SET LOCAL namespace binding.
+    # Bind tenant RLS context so partition stats queries succeed on non-superuser connections.
     try:
         async with pg_pool.acquire(timeout=30.0) as conn:
-            row = await conn.fetchrow(
-                f"""
-                SELECT
-                    count(*)                            AS row_count,
-                    min(event_seq)                      AS min_seq,
-                    max(event_seq)                      AS max_seq,
-                    min(occurred_at)                    AS min_at,
-                    max(occurred_at)                    AS max_at
-                FROM {partition_name}
-                WHERE namespace_id = $1
-                """,  # noqa: S608 — partition_name from pg_class, not user input
-                namespace_id,
-            )
+            if isinstance(conn, asyncpg.Connection):
+                async with conn.transaction():
+                    await set_namespace_context(conn, namespace_id)
+                    row = await conn.fetchrow(
+                        f"""
+                        SELECT
+                            count(*)                            AS row_count,
+                            min(event_seq)                      AS min_seq,
+                            max(event_seq)                      AS max_seq,
+                            min(occurred_at)                    AS min_at,
+                            max(occurred_at)                    AS max_at
+                        FROM {partition_name}
+                        WHERE namespace_id = $1
+                        """,  # noqa: S608 — partition_name from pg_class, not user input
+                        namespace_id,
+                    )
+            else:
+                await set_namespace_context(conn, namespace_id)
+                row = await conn.fetchrow(
+                    f"""
+                    SELECT
+                        count(*)                            AS row_count,
+                        min(event_seq)                      AS min_seq,
+                        max(event_seq)                      AS max_seq,
+                        min(occurred_at)                    AS min_at,
+                        max(occurred_at)                    AS max_at
+                    FROM {partition_name}
+                    WHERE namespace_id = $1
+                    """,  # noqa: S608 — partition_name from pg_class, not user input
+                    namespace_id,
+                )
     except Exception as exc:
         log.error(
             "retention: failed to gather stats for partition=%s ns=%s: %s",
@@ -1015,7 +1040,8 @@ async def run_partition_retention(
         result["checked"] += 1
 
         # Determine if this partition is fully anchored for ALL namespaces that
-        # have events in it.  We read the per-namespace max_seq directly.
+        # have events in it.  We read the per-namespace max_seq directly, falling
+        # back to per-namespace RLS-scoped reads when unscoped reads return empty.
         async with pg_pool.acquire(timeout=30.0) as conn:
             ns_seq_rows = await conn.fetch(
                 f"""
@@ -1024,6 +1050,58 @@ async def run_partition_retention(
                 GROUP  BY namespace_id
                 """,  # noqa: S608 — partition_name from pg_class, not user input
             )
+            if not ns_seq_rows:
+                try:
+                    ns_candidates = await conn.fetch("SELECT id FROM namespaces")
+                except Exception:
+                    ns_candidates = []
+                if isinstance(ns_candidates, (list, tuple)):
+                    reconstructed: list[dict[str, Any]] = []
+                    for ns_cand in ns_candidates:
+                        try:
+                            cand_id = ns_cand["id"]
+                        except Exception:
+                            continue
+                        if not isinstance(cand_id, (UUID, str)):
+                            continue
+                        if isinstance(conn, asyncpg.Connection):
+                            async with conn.transaction():
+                                await set_namespace_context(conn, cand_id)
+                                max_row = await conn.fetchrow(
+                                    f"""
+                                    SELECT max(event_seq) AS max_seq
+                                    FROM   {partition_name}
+                                    WHERE  namespace_id = $1::uuid
+                                    """,  # noqa: S608 — partition_name from pg_class, not user input
+                                    cand_id,
+                                )
+                        else:
+                            await set_namespace_context(conn, cand_id)
+                            max_row = await conn.fetchrow(
+                                f"""
+                                SELECT max(event_seq) AS max_seq
+                                FROM   {partition_name}
+                                WHERE  namespace_id = $1::uuid
+                                """,  # noqa: S608 — partition_name from pg_class, not user input
+                                cand_id,
+                            )
+                        if max_row is not None:
+                            try:
+                                max_seq_val = max_row["max_seq"]
+                            except Exception:
+                                max_seq_val = None
+                            if isinstance(max_seq_val, int):
+                                reconstructed.append(
+                                    {
+                                        "namespace_id": (
+                                            cand_id
+                                            if isinstance(cand_id, UUID)
+                                            else UUID(str(cand_id))
+                                        ),
+                                        "max_seq": max_seq_val,
+                                    }
+                                )
+                    ns_seq_rows = reconstructed
 
         if not ns_seq_rows:
             # Empty partition — safe to drop without archiving.

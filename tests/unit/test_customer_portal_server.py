@@ -128,3 +128,50 @@ def test_compose_customer_portal_service_contract() -> None:
     assert "customer-portal" not in caddy_depends, (
         "Caddy must NOT have a healthy dependency on customer-portal (independent lifecycle)"
     )
+
+
+def test_customer_rate_limit_middleware_enforces_sliding_window(monkeypatch) -> None:
+    """Verify CustomerRateLimitMiddleware enforces per-client sliding-window rate limits and returns 429."""
+    from starlette.applications import Starlette
+    from starlette.middleware import Middleware
+    from starlette.responses import JSONResponse
+    from starlette.routing import Route
+
+    from nce.vertical_modules.customer_portal import app as portal_app_mod
+    from nce.vertical_modules.customer_portal.app import CustomerRateLimitMiddleware
+
+    clock = [1000.0]
+    monkeypatch.setattr(portal_app_mod.time, "monotonic", lambda: clock[0])
+
+    async def _ping(_request):
+        return JSONResponse({"ok": True})
+
+    test_app = Starlette(
+        routes=[Route("/health", _ping, methods=["GET"])],
+        middleware=[Middleware(CustomerRateLimitMiddleware, max_requests_per_minute=3)],
+    )
+    client = TestClient(test_app)
+
+    # 3 requests within 60s succeed for client A
+    for _ in range(3):
+        resp = client.get("/health", headers={"Authorization": "Bearer token-a"})
+        assert resp.status_code == 200
+
+    # 4th request within 60s for client A is rejected with 429
+    resp_exceeded = client.get("/health", headers={"Authorization": "Bearer token-a"})
+    assert resp_exceeded.status_code == 429
+    assert resp_exceeded.json() == {"error": "rate_limit_exceeded"}
+
+    # Client B (different Authorization header) has an independent bucket
+    resp_other = client.get("/health", headers={"Authorization": "Bearer token-b"})
+    assert resp_other.status_code == 200
+
+    # Unauthenticated client falls back to request.client.host
+    for _ in range(3):
+        assert client.get("/health").status_code == 200
+    assert client.get("/health").status_code == 429
+
+    # Advance clock past the 60s window; client A is allowed again
+    clock[0] = 1061.0
+    resp_after_window = client.get("/health", headers={"Authorization": "Bearer token-a"})
+    assert resp_after_window.status_code == 200

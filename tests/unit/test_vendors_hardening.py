@@ -1033,3 +1033,50 @@ class TestVendorsContractorsAndPartnerView:
             )
 
         assert res is None
+
+    @pytest.mark.asyncio
+    async def test_do_get_contractor_normalizes_id_and_do_record_outcome_copies_keys(self) -> None:
+        from nce.vertical_modules.vendors.contractors import do_get_contractor
+        from nce.vertical_modules.vendors.tiers import do_record_outcome
+
+        engine = _MockEngine(pg_pool=MagicMock())
+        conn = _make_mock_conn()
+        conn.fetchrow = AsyncMock(
+            return_value={
+                "contractor_id": "CONTRACTOR:ACME",
+                "namespace_id": _NS,
+                "partner_scope_id": uuid4(),
+                "profile": {},
+                "rates": {},
+                "skills": [],
+                "availability": {},
+                "performance_score": 90.0,
+                "updated_at": datetime.now(),
+            }
+        )
+
+        with _scoped_session_patch("nce.vertical_modules.vendors.contractors", conn):
+            got = await do_get_contractor(engine, {"namespace_id": _NS, "contractor_id": "acme"})
+        assert got is not None
+        assert conn.fetchrow.call_args[0][1] == "CONTRACTOR:ACME"
+
+        conn_out = _make_mock_conn()
+        with _scoped_session_patch("nce.vertical_modules.vendors.tiers", conn_out):
+            out = await do_record_outcome(
+                engine,
+                {
+                    "namespace_id": _NS,
+                    "event_type": "po_delivery",
+                    "vendor_id": "VENDOR:ACME",
+                    "on_time": True,
+                    "defect_rma": False,
+                    "substituted": False,
+                    "reliability": 98.5,
+                },
+            )
+        assert out["ok"] is True
+        stored_payload = json.loads(conn_out.execute.call_args[0][4])
+        assert stored_payload["on_time"] is True
+        assert stored_payload["defect_rma"] is False
+        assert stored_payload["substituted"] is False
+        assert stored_payload["reliability"] == 98.5

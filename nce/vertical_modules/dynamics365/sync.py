@@ -29,6 +29,7 @@ from typing import Any
 import asyncpg
 
 from nce.config import cfg
+from nce.entity_resolution.ownership import assert_owner
 from nce.events.emit import emit_graph_write
 from nce.vertical_modules.dynamics365.client import CURSOR_OVERLAP_SECONDS, DataverseClient
 
@@ -171,6 +172,7 @@ class DataverseSyncEngine:
     ) -> None:
         self._conn = conn
         self._ns = namespace_id
+        self._ns_id = namespace_id
         self._client = client
         self._page_size = cfg.NCE_D365_SYNC_PAGE_SIZE
         # Incremental-sync watermark; set by run_full_sync when
@@ -1162,6 +1164,7 @@ class DataverseSyncEngine:
         COALESCE on conflict so a later untagged write never clears an existing tag.
         Authority-precedence: 'sync' outranks every other origin on conflict.
         """
+        await assert_owner(self._conn, self._ns_id, entity_type, "dynamics365")
         await self._conn.execute(
             """
             INSERT INTO kg_nodes (label, entity_type, namespace_id, d365_source_id,

@@ -17,12 +17,14 @@ Enforces:
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 from uuid import UUID
 
+from nce.auth import set_namespace_context
 from nce.vertical_modules.marketing._guard import (
     MarketingConsentMissingError,
     MarketingUnapprovedPublishError,
@@ -85,6 +87,7 @@ async def do_publish_content(
     if pool is not None:
         try:
             async with pool.acquire() as conn:
+                await set_namespace_context(conn, UUID(ns_str))
                 row = await conn.fetchrow(
                     """
                     SELECT id, namespace_id, title, body, status, approver,
@@ -134,8 +137,24 @@ async def do_publish_content(
 
     # Enforce MK-1 Human Gate:
     # A content item MUST have status='approved' and a non-empty approver
+    seo_raw = artifact_row.get("seo") if artifact_row else None
+    seo_dict: dict[str, Any] = {}
+    if isinstance(seo_raw, dict):
+        seo_dict = seo_raw
+    elif isinstance(seo_raw, str) and seo_raw.strip():
+        try:
+            parsed_seo = json.loads(seo_raw)
+            if isinstance(parsed_seo, dict):
+                seo_dict = parsed_seo
+        except (ValueError, TypeError):
+            pass
+
     status = (artifact_row.get("status") if artifact_row else params.get("status")) or "draft"
-    approver = artifact_row.get("approver") if artifact_row else params.get("approver")
+    approver = (
+        (artifact_row.get("approver") if artifact_row else None)
+        or seo_dict.get("approver")
+        or params.get("approver")
+    )
 
     if status != "approved" or not approver:
         raise MarketingUnapprovedPublishError(
@@ -176,6 +195,7 @@ async def do_publish_content(
     if pool is not None:
         try:
             async with pool.acquire() as conn:
+                await set_namespace_context(conn, UUID(ns_str))
                 await conn.execute(
                     """
                     UPDATE case_studies

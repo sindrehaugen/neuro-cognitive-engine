@@ -1212,7 +1212,7 @@
               Select a namespace to load and manage maintenance configurations.
             </div>
           </template>
-          <template x-if="selectedNamespaceId">
+          <template x-if="selectedNamespaceId && selectedNamespace">
             <div class="space-y-4 font-mono text-[10px]">
               <div>
                 <span class="block text-slate-400 uppercase tracking-wider mb-0.5">Namespace Slug</span>
@@ -1489,7 +1489,7 @@
                 </div>
               </div>
             </template>
-            <p x-show="!traceEvents.length && !traceLoading" class="text-xs text-slate-400">No consolidation events in this namespace</p>
+            <p x-show="!traceEvents.length && !traceLoading" class="text-xs text-slate-400">No consolidation events (event_type=consolidation_run) in this namespace</p>
           </div>
         </div>
       </div>
@@ -3348,6 +3348,12 @@
         throw new Error(msg);
       }
       const method = (options.method || 'GET').toUpperCase();
+      let inlineQuery = '';
+      if (pathname.includes('?') && !options.query) {
+        const qParts = pathname.split('?');
+        pathname = qParts[0];
+        inlineQuery = qParts.slice(1).join('?');
+      }
       let bodyStr = '';
       if (options.body !== undefined && options.body !== null) {
         bodyStr = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
@@ -3375,10 +3381,11 @@
       }
 
       let url = pathname;
-      if (options.query) {
-        const qs = typeof options.query === 'string'
-          ? options.query
-          : new URLSearchParams(options.query).toString();
+      const effectiveQuery = options.query || inlineQuery;
+      if (effectiveQuery) {
+        const qs = typeof effectiveQuery === 'string'
+          ? effectiveQuery
+          : new URLSearchParams(effectiveQuery).toString();
         if (qs) url += '?' + qs;
       }
 
@@ -4030,7 +4037,8 @@
           try {
             const r = await signedFetch(
               undefined,
-              '/api/admin/signing-credentials/status?namespace_id=' + encodeURIComponent(this.targetNs)
+              '/api/admin/signing-credentials/status',
+              { query: { namespace_id: this.targetNs } }
             );
             const j = await r.json();
             if (!r.ok) throw new Error(j.error || j.detail || 'signing creds status');
@@ -4738,7 +4746,7 @@
         },
 
         totalMinioBytes() {
-          return (this.minioData.buckets || []).reduce((acc, curr) => acc + (curr.total_size_bytes || 0) + (curr.total_size_bytes || 0), 0);
+          return (this.minioData.buckets || []).reduce((acc, curr) => acc + (curr.total_size_bytes || 0), 0);
         }
       }));
 
@@ -4843,7 +4851,7 @@
           try {
             const q = new URLSearchParams({
               namespace_id: this.selectedNamespaceId,
-              event_type: 'consolidation',
+              event_type: 'consolidation_run',
               limit: '25',
               page: '1',
               include_details: '1',

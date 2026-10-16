@@ -681,3 +681,76 @@ def test_reload_reschedules_cron_job_dynamically(mock_engine, mock_conn):
 
     # Cleanup
     nce.cron.scheduler = None
+
+
+def test_config_reset_and_reload_event_contracts(mock_engine, mock_conn):
+    """Verify config_reset and config_reload are registered in EventType, EVENT_REQUIRED_PARAM_KEYS, and ForkedReplay, and pass _validate_event_params during reset/reload."""
+    import datetime
+    import json
+    import uuid
+
+    from nce.event_log import AppendResult, _validate_event_params
+    from nce.event_types import EVENT_REQUIRED_PARAM_KEYS, VALID_EVENT_TYPES
+    from nce.replay import _HANDLER_REGISTRY, ForkedReplay
+
+    assert "config_reset" in VALID_EVENT_TYPES
+    assert "config_reload" in VALID_EVENT_TYPES
+    assert EVENT_REQUIRED_PARAM_KEYS["config_reset"] == frozenset({"actor", "resets"})
+    assert EVENT_REQUIRED_PARAM_KEYS["config_reload"] == frozenset({"actor", "domain", "message"})
+    assert "config_reset" in _HANDLER_REGISTRY
+    assert "config_reload" in _HANDLER_REGISTRY
+    ForkedReplay(AsyncMock())
+
+    mock_conn.fetchval.return_value = "00000000-0000-0000-0000-000000000000"
+    mock_conn.execute.return_value = "DELETE 1"
+
+    validated_events: list[tuple[str, dict]] = []
+
+    async def validating_append_event(*args, **kwargs):
+        et = kwargs["event_type"]
+        params = kwargs["params"]
+        _validate_event_params(et, params)
+        validated_events.append((et, params))
+        return AppendResult(
+            event_id=uuid.uuid4(),
+            event_seq=len(validated_events),
+            occurred_at=datetime.datetime.now(datetime.timezone.utc),
+        )
+
+    mock_reschedule = AsyncMock(return_value="rescheduled 2 jobs")
+
+    with (
+        patch("nce.admin_state.engine", mock_engine),
+        patch("nce.event_log.append_event", validating_append_event),
+        patch("nce.cron.reschedule_jobs", mock_reschedule),
+    ):
+        key = cfg.NCE_API_KEY or "test_key"
+        with patch.object(cfg, "NCE_API_KEY", key):
+            ts = int(time.time())
+            reset_bytes = json.dumps({"key": "NCE_ADMIN_HTTP_RATE_LIMIT"}).encode("utf-8")
+            reset_headers = admin_hmac_headers(
+                hex_key_material=key,
+                method="POST",
+                path="/api/admin/settings/reset",
+                timestamp=ts,
+                body=reset_bytes,
+            )
+            reload_bytes = json.dumps({"domains": ["cron"]}).encode("utf-8")
+            reload_headers = admin_hmac_headers(
+                hex_key_material=key,
+                method="POST",
+                path="/api/admin/settings/reload",
+                timestamp=ts,
+                body=reload_bytes,
+            )
+            with TestClient(app) as client:
+                r_reset = client.post(
+                    "/api/admin/settings/reset", content=reset_bytes, headers=reset_headers
+                )
+                r_reload = client.post(
+                    "/api/admin/settings/reload", content=reload_bytes, headers=reload_headers
+                )
+
+            assert r_reset.status_code == 200
+            assert r_reload.status_code == 200
+            assert [e[0] for e in validated_events] == ["config_reset", "config_reload"]

@@ -9,9 +9,12 @@ Registered in ``nce/tool_registry.py`` following the standard
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 from typing import TYPE_CHECKING, Any
+
+import asyncpg
 
 if TYPE_CHECKING:
     from nce.orchestrator import NCEEngine
@@ -42,6 +45,7 @@ async def handle_d365_query_case(engine: NCEEngine, arguments: dict[str, Any]) -
     from nce.vertical_modules.dynamics365.auth import DataverseTokenManager
     from nce.vertical_modules.dynamics365.client import DataverseClient
 
+    redis_client: Any = None
     try:
         import redis.asyncio as aioredis
 
@@ -112,6 +116,13 @@ async def handle_d365_query_case(engine: NCEEngine, arguments: dict[str, Any]) -
     except Exception as exc:
         log.exception("handle_d365_query_case failed case_id=%s", case_id)
         return json.dumps({"error": str(exc)})
+    finally:
+        if (
+            redis_client is not None
+            and hasattr(redis_client, "aclose")
+            and inspect.iscoroutinefunction(redis_client.aclose)
+        ):
+            await redis_client.aclose()
 
 
 async def handle_d365_sync_now(engine: NCEEngine, arguments: dict[str, Any]) -> str:
@@ -135,6 +146,7 @@ async def handle_d365_sync_now(engine: NCEEngine, arguments: dict[str, Any]) -> 
     from nce.vertical_modules.dynamics365.client import DataverseClient
     from nce.vertical_modules.dynamics365.sync import DataverseSyncEngine
 
+    redis_client: Any = None
     try:
         import uuid
 
@@ -155,6 +167,13 @@ async def handle_d365_sync_now(engine: NCEEngine, arguments: dict[str, Any]) -> 
     except Exception as exc:
         log.exception("handle_d365_sync_now failed namespace=%s", namespace_id)
         return json.dumps({"error": str(exc)})
+    finally:
+        if (
+            redis_client is not None
+            and hasattr(redis_client, "aclose")
+            and inspect.iscoroutinefunction(redis_client.aclose)
+        ):
+            await redis_client.aclose()
 
 
 async def handle_d365_case_stress_report(engine: NCEEngine, arguments: dict[str, Any]) -> str:
@@ -228,10 +247,12 @@ async def handle_d365_case_stress_report(engine: NCEEngine, arguments: dict[str,
                 namespace_id,
             )
 
-        frustration_trend = [
-            float(row["empathic_tensor"][5]) if row["empathic_tensor"] else 0.0
-            for row in tensor_rows
-        ]
+        frustration_trend: list[float] = []
+        for row in tensor_rows:
+            tensor_val = row["empathic_tensor"]
+            if isinstance(tensor_val, str):
+                tensor_val = json.loads(tensor_val) if tensor_val.strip() else None
+            frustration_trend.append(float(tensor_val[5]) if tensor_val else 0.0)
 
         # Burnout alert: last 5 readings all above threshold
         burnout_threshold = 7.0
@@ -300,15 +321,20 @@ async def handle_d365_list_sla_breaches(engine: NCEEngine, arguments: dict[str, 
                 limit,
             )
 
-        breaches = [
-            {
-                "event_id": str(r["id"]),
-                "agent_id": r["agent_id"],
-                "params": r["params"] if isinstance(r["params"], dict) else {},
-                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
-            }
-            for r in rows
-        ]
+        breaches = []
+        for r in rows:
+            raw_params = r["params"]
+            if isinstance(raw_params, str):
+                raw_params = json.loads(raw_params) if raw_params.strip() else {}
+            params = raw_params if isinstance(raw_params, dict) else {}
+            breaches.append(
+                {
+                    "event_id": str(r["id"]),
+                    "agent_id": r["agent_id"],
+                    "params": params,
+                    "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                }
+            )
 
         return json.dumps(
             {
@@ -347,6 +373,8 @@ async def handle_d365_netbox_mappings(engine: NCEEngine, arguments: dict[str, An
         return json.dumps({"error": "namespace_id is required"})
 
     try:
+        from nce.auth import set_namespace_context
+
         where = ["namespace_id = $1::uuid"]
         args: list[Any] = [namespace_id]
         i = 2
@@ -359,21 +387,27 @@ async def handle_d365_netbox_mappings(engine: NCEEngine, arguments: dict[str, An
             where.append("confirmed = TRUE")
 
         where_sql = "WHERE " + " AND ".join(where)
+        sql = f"""
+            SELECT id, d365_entity_type, d365_entity_name, d365_entity_id,
+                   nb_entity_type, nb_entity_name, nb_entity_slug, nb_entity_id,
+                   match_method, match_confidence, confirmed, created_at, updated_at
+            FROM d365_netbox_mappings
+            {where_sql}
+            ORDER BY match_confidence DESC, d365_entity_name
+            LIMIT ${i}
+        """
 
         async with engine.pg_pool.acquire(timeout=10.0) as conn:
-            rows = await conn.fetch(
-                f"""
-                SELECT id, d365_entity_type, d365_entity_name, d365_entity_id,
-                       nb_entity_type, nb_entity_name, nb_entity_slug, nb_entity_id,
-                       match_method, match_confidence, confirmed, created_at, updated_at
-                FROM d365_netbox_mappings
-                {where_sql}
-                ORDER BY match_confidence DESC, d365_entity_name
-                LIMIT ${i}
-                """,
-                *args,
-                limit,
-            )
+            if isinstance(conn, asyncpg.Connection):
+                async with conn.transaction():
+                    await set_namespace_context(conn, namespace_id)
+                    rows = await conn.fetch(sql, *args, limit)
+            else:
+                try:
+                    await set_namespace_context(conn, namespace_id)
+                except TypeError:
+                    pass
+                rows = await conn.fetch(sql, *args, limit)
 
         mappings = [
             {

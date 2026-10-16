@@ -42,7 +42,9 @@ class _FakeConn:
         self._row = row
         self.executes: list[str] = []
 
-    async def fetchrow(self, *_args, **_kwargs):
+    async def fetchrow(self, sql="", *_args, **_kwargs):
+        if isinstance(sql, str) and "node_ownership_registry" in sql:
+            return {"owner_engine": "dynamics365"}
         return self._row
 
     async def execute(self, sql, *_args, **_kwargs):
@@ -146,3 +148,31 @@ async def test_run_full_sync_records_error_row_then_reraises(monkeypatch):
         await eng.run_full_sync(entity_types=["accounts"])
     inserts = [s for s in conn.executes if "INSERT INTO d365_sync_runs" in s]
     assert len(inserts) == 1  # error row recorded before the re-raise
+
+
+@pytest.mark.asyncio
+async def test_upsert_kg_node_enforces_assert_owner(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from nce.entity_resolution.ownership import OwnershipError
+
+    monkeypatch.setattr(
+        "nce.vertical_modules.dynamics365.sync.emit_graph_write",
+        AsyncMock(),
+    )
+
+    conn = _FakeConn()
+    eng = _engine(conn=conn)
+    await eng._upsert_kg_node("Account:Acme", "D365_Account", source_id="acc-1")
+    await eng._upsert_kg_node("KnowledgeArticle:KB-1", "D365_KnowledgeArticle", source_id="kb-1")
+    assert len([s for s in conn.executes if "INSERT INTO kg_nodes" in s]) == 2
+
+    class _UnownedConn(_FakeConn):
+        async def fetchrow(self, sql="", *_args, **_kwargs):
+            if isinstance(sql, str) and "node_ownership_registry" in sql:
+                return None
+            return self._row
+
+    unowned_eng = _engine(conn=_UnownedConn())
+    with pytest.raises(OwnershipError):
+        await unowned_eng._upsert_kg_node("Account:Denied", "D365_Account")

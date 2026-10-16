@@ -181,7 +181,7 @@ async def do_dispatch(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
             SELECT assignee_id, COUNT(*) as open_count
             FROM work_orders
             WHERE namespace_id = $1::uuid
-              AND status IN ('assigned', 'in_progress')
+              AND status IN ('scheduled', 'dispatched', 'in_progress', 'assigned')
               AND assignee_id = ANY($2::text[])
             GROUP BY assignee_id
             """,

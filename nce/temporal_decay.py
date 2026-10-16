@@ -291,10 +291,17 @@ async def _decay_prune_tick(pool: object) -> None:  # pool: asyncpg.Pool
 
     Lock: distributed cron lock 'decay_prune' with TTL = DECAY_PRUNE_INTERVAL_MINUTES * 60 + 60.
     """
+    from contextlib import asynccontextmanager
+
     import asyncpg  # local import — keeps module importable without asyncpg installed
 
+    from nce.auth import set_namespace_context
     from nce.cron_lock import acquire_cron_lock, release_cron_lock
     from nce.db_utils import unmanaged_pg_connection
+
+    @asynccontextmanager
+    async def _null_async_context():
+        yield
 
     # -S * ln(RETENTION_PRUNE_THRESHOLD) per memory class, pre-computed.
     # Update this dict if _STABILITY values change.
@@ -312,51 +319,77 @@ async def _decay_prune_tick(pool: object) -> None:  # pool: asyncpg.Pool
     total_pruned = 0
     try:
         async with unmanaged_pg_connection(pool, site="cron.decay_prune") as conn:  # type: ignore[arg-type]
-            for mc_value, age_threshold in prune_ages.items():
-                try:
-                    # TD-DECAY-1 fix: PostgreSQL does not support UPDATE...LIMIT
-                    # (that is MySQL-only syntax). Use a CTE to select candidates
-                    # with LIMIT first, then JOIN in the UPDATE.
-                    # TD-DECAY-2 fix: memories has no 'updated_at' column.
-                    # Use 'valid_from' — the timestamp that resets when a memory
-                    # is reinforced, which is the correct Ebbinghaus clock origin.
-                    result = await conn.execute(
-                        """
-                        WITH candidates AS (
-                            SELECT id, created_at
-                            FROM   memories
-                            WHERE  memory_type = $1
-                              AND  valid_to IS NULL
-                              AND  extract(epoch from now() - valid_from) / 86400.0 > $2
-                            LIMIT  $3
-                        )
-                        UPDATE memories m
-                        SET    valid_to = now()
-                        FROM   candidates c
-                        WHERE  m.id = c.id
-                          AND  m.created_at = c.created_at
-                        """,
-                        mc_value,
-                        age_threshold,
-                        DECAY_PRUNE_BATCH_SIZE,
-                    )
-                    # asyncpg returns "UPDATE N" — extract the row count.
-                    pruned = int(result.split()[-1]) if result else 0
-                    total_pruned += pruned
-                    if pruned > 0:
-                        log.info(
-                            "decay_prune: soft-deleted %d memories class=%s age_threshold=%.2f days",
-                            pruned,
+            namespace_ids: list[object] = []
+            fetch_fn = getattr(conn, "fetch", None)
+            if callable(fetch_fn):
+                ns_rows = await fetch_fn("SELECT id FROM namespaces")
+                if isinstance(ns_rows, (list, tuple)):
+                    namespace_ids = [
+                        row["id"]
+                        for row in ns_rows
+                        if isinstance(row, dict) or hasattr(row, "__getitem__")
+                    ]
+            if not namespace_ids:
+                namespace_ids = [None]
+
+            for ns_id in namespace_ids:
+                if ns_id is not None and not isinstance(conn, asyncpg.Connection):
+                    await set_namespace_context(conn, ns_id)  # type: ignore[arg-type]
+                for mc_value, age_threshold in prune_ages.items():
+                    try:
+                        # TD-DECAY-1 fix: PostgreSQL does not support UPDATE...LIMIT
+                        # (that is MySQL-only syntax). Use a CTE to select candidates
+                        # with LIMIT first, then JOIN in the UPDATE.
+                        # TD-DECAY-2 fix: memories has no 'updated_at' column.
+                        # Use 'valid_from' — the timestamp that resets when a memory
+                        # is reinforced, which is the correct Ebbinghaus clock origin.
+                        async with (
+                            conn.transaction()
+                            if isinstance(conn, asyncpg.Connection) and ns_id is not None
+                            else _null_async_context()
+                        ):
+                            if isinstance(conn, asyncpg.Connection) and ns_id is not None:
+                                await set_namespace_context(conn, ns_id)  # type: ignore[arg-type]
+                            result = await conn.execute(
+                                """
+                                WITH candidates AS (
+                                    SELECT id, created_at
+                                    FROM   memories
+                                    WHERE  memory_type = $1
+                                      AND  valid_to IS NULL
+                                      AND  extract(epoch from now() - valid_from) / 86400.0 > $2
+                                      AND  ($4::uuid IS NULL OR namespace_id = $4::uuid)
+                                    LIMIT  $3
+                                )
+                                UPDATE memories m
+                                SET    valid_to = now()
+                                FROM   candidates c
+                                WHERE  m.id = c.id
+                                  AND  m.created_at = c.created_at
+                                  AND  ($4::uuid IS NULL OR m.namespace_id = $4::uuid)
+                                """,
+                                mc_value,
+                                age_threshold,
+                                DECAY_PRUNE_BATCH_SIZE,
+                                ns_id,
+                            )
+                        # asyncpg returns "UPDATE N" — extract the row count.
+                        pruned = int(result.split()[-1]) if result else 0
+                        total_pruned += pruned
+                        if pruned > 0:
+                            log.info(
+                                "decay_prune: soft-deleted %d memories class=%s age_threshold=%.2f days",
+                                pruned,
+                                mc_value,
+                                age_threshold,
+                            )
+                    except (asyncpg.PostgresError, ValueError) as exc:
+                        log.exception(
+                            "decay_prune: failed for class=%s threshold=%.2f: %s",
                             mc_value,
                             age_threshold,
+                            exc,
                         )
-                except (asyncpg.PostgresError, ValueError) as exc:
-                    log.exception(
-                        "decay_prune: failed for class=%s threshold=%.2f: %s",
-                        mc_value,
-                        age_threshold,
-                        exc,
-                    )
     except (asyncpg.PostgresError, OSError, TimeoutError) as exc:
         log.exception("decay_prune tick failed: %s", exc)
     finally:

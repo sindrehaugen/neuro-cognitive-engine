@@ -22,6 +22,7 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
+import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -30,15 +31,19 @@ from nce.bridge_renewal import renew_expiring_subscriptions
 from nce.config import cfg
 from nce.cron_lock import CronLock, acquire_cron_lock, release_cron_lock
 from nce.db_utils import scoped_pg_session, unmanaged_pg_connection
+from nce.mcp_errors import BusinessRefusalError
 from nce.reembedding_worker import CRON_INTERVAL_MINUTES as _REEMBED_INTERVAL
 from nce.reembedding_worker import ReembeddingWorker
-from nce.temporal_decay import _decay_prune_tick, register_decay_jobs
+from nce.temporal_decay import DECAY_PRUNE_INTERVAL_MINUTES, _decay_prune_tick, register_decay_jobs
 
 log = logging.getLogger("nce.cron")
 
 # Cron ticks must never crash the scheduler; catch operational failures only.
 _CRON_TICK_ERRORS: tuple[type[BaseException], ...] = (
     asyncpg.PostgresError,
+    httpx.HTTPError,
+    BusinessRefusalError,
+    RuntimeError,
     OSError,
     TimeoutError,
     ValueError,
@@ -1474,8 +1479,13 @@ async def _reminders_watcher_tick(pool: asyncpg.Pool) -> None:
                         )
             except _CRON_TICK_ERRORS:
                 log.exception("reminders_watcher tick failed for namespace=%s", ns_id)
-    except _CRON_TICK_ERRORS:
+    except _CRON_TICK_ERRORS as exc:
         log.exception("reminders_watcher tick failed unexpectedly")
+        await _dispatch_throttled_alert(
+            "cron.reminders_watcher",
+            "Cron Job Failed: reminders_watcher",
+            f"Reminders watcher tick failed with {type(exc).__name__}: {exc}",
+        )
     finally:
         await release_cron_lock(lock)
 
@@ -2047,6 +2057,219 @@ async def reschedule_jobs() -> str:
     except Exception:
         pass
 
+    # 9. saga_recovery
+    try:
+        saga_min = await store_get("NCE_SAGA_RECOVERY_INTERVAL_MINUTES", 5)
+        scheduler.reschedule_job(
+            "saga_recovery", trigger=IntervalTrigger(minutes=max(1, int(saga_min)))
+        )
+        rescheduled.append("saga_recovery")
+    except Exception:
+        pass
+
+    # 10. actor_trust_scores
+    try:
+        trust_min = await store_get("NCE_ACTOR_TRUST_INTERVAL_MINUTES", 60)
+        scheduler.reschedule_job(
+            "actor_trust_scores", trigger=IntervalTrigger(minutes=max(1, int(trust_min)))
+        )
+        rescheduled.append("actor_trust_scores")
+    except Exception:
+        pass
+
+    # 11. phase_2_2_decay_prune
+    try:
+        decay_min = await store_get("DECAY_PRUNE_INTERVAL_MINUTES", DECAY_PRUNE_INTERVAL_MINUTES)
+        scheduler.reschedule_job(
+            "phase_2_2_decay_prune", trigger=IntervalTrigger(minutes=max(1, int(decay_min)))
+        )
+        rescheduled.append("phase_2_2_decay_prune")
+    except Exception:
+        pass
+
+    # 12. product_eol_watcher
+    try:
+        eol_min = await store_get(
+            "NCE_PRODUCT_EOL_WATCHER_INTERVAL_MINUTES",
+            cfg.NCE_PRODUCT_EOL_WATCHER_INTERVAL_MINUTES,
+        )
+        scheduler.reschedule_job(
+            "product_eol_watcher", trigger=IntervalTrigger(minutes=max(5, int(eol_min)))
+        )
+        rescheduled.append("product_eol_watcher")
+    except Exception:
+        pass
+
+    # 13. inventory_stock_watcher
+    try:
+        stock_min = await store_get(
+            "NCE_INVENTORY_STOCK_WATCHER_INTERVAL_MINUTES",
+            cfg.NCE_INVENTORY_STOCK_WATCHER_INTERVAL_MINUTES,
+        )
+        scheduler.reschedule_job(
+            "inventory_stock_watcher", trigger=IntervalTrigger(minutes=max(5, int(stock_min)))
+        )
+        rescheduled.append("inventory_stock_watcher")
+    except Exception:
+        pass
+
+    # 14. agreements_coverage_watcher
+    try:
+        cov_min = await store_get(
+            "NCE_AGREEMENTS_COVERAGE_WATCHER_INTERVAL_MINUTES",
+            cfg.NCE_AGREEMENTS_COVERAGE_WATCHER_INTERVAL_MINUTES,
+        )
+        scheduler.reschedule_job(
+            "agreements_coverage_watcher", trigger=IntervalTrigger(minutes=max(5, int(cov_min)))
+        )
+        rescheduled.append("agreements_coverage_watcher")
+    except Exception:
+        pass
+
+    # 15. economy_recurring_recognition
+    try:
+        rec_min = await store_get(
+            "NCE_ECONOMY_RECURRING_INTERVAL_MINUTES",
+            _ECONOMY_RECURRING_INTERVAL_MINUTES,
+        )
+        scheduler.reschedule_job(
+            "economy_recurring_recognition", trigger=IntervalTrigger(minutes=max(60, int(rec_min)))
+        )
+        rescheduled.append("economy_recurring_recognition")
+    except Exception:
+        pass
+
+    # 16. economy_contract_renewal_watcher
+    try:
+        ren_min = await store_get(
+            "NCE_ECONOMY_RENEWAL_WATCHER_INTERVAL_MINUTES",
+            _ECONOMY_RENEWAL_WATCHER_INTERVAL_MINUTES,
+        )
+        scheduler.reschedule_job(
+            "economy_contract_renewal_watcher",
+            trigger=IntervalTrigger(minutes=max(60, int(ren_min))),
+        )
+        rescheduled.append("economy_contract_renewal_watcher")
+    except Exception:
+        pass
+
+    # 17. event_retention
+    try:
+        ret_min = await store_get(
+            "NCE_RETENTION_INTERVAL_MINUTES", cfg.NCE_RETENTION_INTERVAL_MINUTES
+        )
+        scheduler.reschedule_job(
+            "event_retention", trigger=IntervalTrigger(minutes=max(1, int(ret_min)))
+        )
+        rescheduled.append("event_retention")
+    except Exception:
+        pass
+
+    # 18. assets_telemetry_sync
+    try:
+        assets_tel_min = await store_get("NCE_ASSETS_TELEMETRY_INTERVAL_MINUTES", 5)
+        scheduler.reschedule_job(
+            "assets_telemetry_sync",
+            trigger=IntervalTrigger(minutes=max(1, int(assets_tel_min))),
+        )
+        rescheduled.append("assets_telemetry_sync")
+    except Exception:
+        pass
+
+    # 19. assets_warranty_eol_watcher
+    try:
+        assets_eol_min = await store_get(
+            "NCE_ASSETS_WARRANTY_EOL_WATCHER_INTERVAL_MINUTES",
+            getattr(cfg, "NCE_ASSETS_WARRANTY_EOL_WATCHER_INTERVAL_MINUTES", 1440),
+        )
+        scheduler.reschedule_job(
+            "assets_warranty_eol_watcher",
+            trigger=IntervalTrigger(minutes=max(5, int(assets_eol_min))),
+        )
+        rescheduled.append("assets_warranty_eol_watcher")
+    except Exception:
+        pass
+
+    # 20. hr_cert_expiry_watcher
+    try:
+        hr_cert_min = await store_get(
+            "NCE_HR_CERT_EXPIRY_WATCHER_INTERVAL_MINUTES",
+            _HR_CERT_EXPIRY_WATCHER_INTERVAL_MINUTES,
+        )
+        scheduler.reschedule_job(
+            "hr_cert_expiry_watcher", trigger=IntervalTrigger(minutes=max(5, int(hr_cert_min)))
+        )
+        rescheduled.append("hr_cert_expiry_watcher")
+    except Exception:
+        pass
+
+    # 21. vendors_cert_expiry_watcher
+    try:
+        vendors_cert_min = await store_get(
+            "NCE_VENDORS_CERT_EXPIRY_WATCHER_INTERVAL_MINUTES",
+            _VENDORS_CERT_EXPIRY_WATCHER_INTERVAL_MINUTES,
+        )
+        scheduler.reschedule_job(
+            "vendors_cert_expiry_watcher",
+            trigger=IntervalTrigger(minutes=max(5, int(vendors_cert_min))),
+        )
+        rescheduled.append("vendors_cert_expiry_watcher")
+    except Exception:
+        pass
+
+    # 22. support_sla_watcher
+    try:
+        sla_min = await store_get(
+            "NCE_SUPPORT_SLA_WATCHER_INTERVAL_MINUTES",
+            _SUPPORT_SLA_WATCHER_INTERVAL_MINUTES,
+        )
+        scheduler.reschedule_job(
+            "support_sla_watcher", trigger=IntervalTrigger(minutes=max(1, int(sla_min)))
+        )
+        rescheduled.append("support_sla_watcher")
+    except Exception:
+        pass
+
+    # 23. hr_compliance_watcher
+    try:
+        hr_comp_min = await store_get(
+            "NCE_HR_COMPLIANCE_WATCHER_INTERVAL_MINUTES",
+            _HR_COMPLIANCE_WATCHER_INTERVAL_MINUTES,
+        )
+        scheduler.reschedule_job(
+            "hr_compliance_watcher", trigger=IntervalTrigger(minutes=max(1, int(hr_comp_min)))
+        )
+        rescheduled.append("hr_compliance_watcher")
+    except Exception:
+        pass
+
+    # 24. sales_stalled_deal_watcher
+    try:
+        stalled_min = await store_get(
+            "NCE_SALES_STALLED_DEAL_WATCHER_INTERVAL_MINUTES",
+            _SALES_STALLED_DEAL_WATCHER_INTERVAL_MINUTES,
+        )
+        scheduler.reschedule_job(
+            "sales_stalled_deal_watcher",
+            trigger=IntervalTrigger(minutes=max(1, int(stalled_min))),
+        )
+        rescheduled.append("sales_stalled_deal_watcher")
+    except Exception:
+        pass
+
+    # 25. reminders_watcher
+    try:
+        rem_min = await store_get(
+            "NCE_REMINDERS_WATCHER_INTERVAL_MINUTES",
+            _REMINDERS_WATCHER_INTERVAL_MINUTES,
+        )
+        scheduler.reschedule_job(
+            "reminders_watcher", trigger=IntervalTrigger(minutes=max(1, int(rem_min)))
+        )
+        rescheduled.append("reminders_watcher")
+    except Exception:
+        pass
+
     return f"rescheduled {len(rescheduled)} jobs"
 
 
@@ -2179,34 +2402,32 @@ async def _assets_telemetry_tick(pool: asyncpg.Pool) -> None:
                 conn, terminal_lifecycle_state, cursor
             )
 
+        if rows:
+            engine = NCEEngine()
+            engine.pg_pool = pool
+
+            for row in rows:
+                ns_id = row["namespace_id"]
+                asset_id = row["asset_id"]
+                try:
+                    await do_pull_telemetry(
+                        engine,
+                        {
+                            "namespace_id": str(ns_id),
+                            "asset_id": str(asset_id),
+                            "platform": "ymcs",
+                        },
+                    )
+                except Exception as exc:
+                    log.warning(
+                        "assets_telemetry_tick failed for asset=%s ns=%s: %s",
+                        asset_id,
+                        ns_id,
+                        exc,
+                    )
+
         if next_cursor != cursor:
             await store_set(_ASSETS_TICK_CURSOR_KEY, next_cursor, pool=pool)
-
-        if not rows:
-            return
-
-        engine = NCEEngine()
-        engine.pg_pool = pool
-
-        for row in rows:
-            ns_id = row["namespace_id"]
-            asset_id = row["asset_id"]
-            try:
-                await do_pull_telemetry(
-                    engine,
-                    {
-                        "namespace_id": str(ns_id),
-                        "asset_id": str(asset_id),
-                        "platform": "ymcs",
-                    },
-                )
-            except Exception as exc:
-                log.warning(
-                    "assets_telemetry_tick failed for asset=%s ns=%s: %s",
-                    asset_id,
-                    ns_id,
-                    exc,
-                )
     except _CRON_TICK_ERRORS as exc:
         log.exception("assets_telemetry_tick failed unexpectedly")
         await _dispatch_throttled_alert(
@@ -2713,6 +2934,7 @@ async def async_main() -> None:
         _support_sla_watcher_tick(pool),
         _hr_compliance_watcher_tick(pool),
         _sales_stalled_deal_watcher_tick(pool),
+        _assets_telemetry_tick(pool),
         _assets_warranty_eol_tick(pool),
         _reminders_watcher_tick(pool),
     ]

@@ -87,7 +87,7 @@ async def do_summarise_ticket(
     ticket_uuid = _parse_uuid(ticket_id_raw, "ticket_id")
 
     async with scoped_pg_session(pool, ns_uuid) as conn:
-        await require_support_enabled(conn, ns_uuid)
+        await require_support_enabled(pool, ns_uuid)
 
         # 1. Fetch ticket record
         ticket_row = await conn.fetchrow(
@@ -284,7 +284,7 @@ async def do_get_ticket_links(
     ticket_uuid = _parse_uuid(ticket_id_raw, "ticket_id")
 
     async with scoped_pg_session(pool, ns_uuid) as conn:
-        await require_support_enabled(conn, ns_uuid)
+        await require_support_enabled(pool, ns_uuid)
 
         ticket_row = await conn.fetchrow(
             """
@@ -494,7 +494,7 @@ async def do_link_ticket(
     ticket_subject_label = f"TICKET:{ticket_uuid}"
 
     async with scoped_pg_session(pool, ns_uuid) as conn:
-        await require_support_enabled(conn, ns_uuid)
+        await require_support_enabled(pool, ns_uuid)
 
         ticket_row = await conn.fetchrow(
             """
