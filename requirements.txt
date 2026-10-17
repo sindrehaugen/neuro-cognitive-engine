@@ -19,7 +19,7 @@ PyJWT>=2.15.1                # JWT Bearer token validation (RS256/ES256 via cryp
 
 # --- Async Database Drivers --------------------------------------------------
 redis>=8.1.0
-asyncpg>=0.31.0
+asyncpg>=0.32.0
 motor>=3.7.1
 pypika>=0.51.1
 
