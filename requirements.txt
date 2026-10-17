@@ -58,7 +58,7 @@ cachetools>=7.2.0            # Signing key cache TTL eviction
 
 # --- ML / Embeddings (Poly-Semantic Projection) ------------------------------
 sentence-transformers>=6.1.0
-transformers>=5.18.0
+transformers>=5.19.0
 torch>=2.14.1
 openvino>=2026.4.1           # OpenVINONPUBackend: RAW runtime, never optimum-intel (D45)
 
