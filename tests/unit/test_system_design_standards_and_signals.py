@@ -86,12 +86,35 @@ class TestSystemDesignStandards:
         assert "cabling_audio" in cat_keys
         assert "mounting_display" in cat_keys
         assert "power_poe" in cat_keys
+        # Wave E-7 expanded categories
+        assert "electrical_nek_en" in cat_keys
+        assert "cabling_nek700_emc" in cat_keys
+        assert "marine_dnv_norsok" in cat_keys
+        assert "hazardous_atex_iso" in cat_keys
+        assert "electronics_ecss_ipc" in cat_keys
 
     def test_get_standards_filter_category(self) -> None:
         res = do_get_standards(None, {"category": "cabling_hdmi"})
         assert res["total"] > 0
         for s in res["standards"]:
             assert s["category"] == "cabling_hdmi"
+
+    def test_get_standards_filter_expanded_categories(self) -> None:
+        """Wave E-7: Verify each of the 5 new categories returns curated items."""
+        expanded_cats = [
+            ("electrical_nek_en", "NEK-400-2022"),
+            ("cabling_nek700_emc", "NEK-700-EN-50174-2"),
+            ("marine_dnv_norsok", "DNV-RU-SHIP-PT4-CH8"),
+            ("hazardous_atex_iso", "ATEX-2014-34-EU"),
+            ("electronics_ecss_ipc", "ECSS-Q-ST-30-11C-DERATING"),
+        ]
+        for cat, sample_id in expanded_cats:
+            res = do_get_standards(None, {"category": cat})
+            assert res["total"] > 0
+            cat_ids = {s["id"] for s in res["standards"]}
+            assert sample_id in cat_ids
+            for s in res["standards"]:
+                assert s["category"] == cat
 
     def test_get_standards_filter_standard_id(self) -> None:
         res = do_get_standards(None, {"standard_id": "HDMI-2.0"})
@@ -100,6 +123,29 @@ class TestSystemDesignStandards:
         assert std["id"] == "HDMI-2.0"
         assert "HDMI 2.0" in std["name"]
 
+    def test_get_standards_filter_expanded_standard_ids(self) -> None:
+        """Wave E-7: Verify all 12 new reference standard IDs resolve."""
+        target_ids = [
+            "NEK-400-2022",
+            "EN-61439-SWITCHGEAR",
+            "CPR-EN-50575",
+            "NEK-700-EN-50174-2",
+            "DNV-RU-SHIP-PT4-CH8",
+            "IEC-60092-350-MARINE",
+            "ATEX-2014-34-EU",
+            "ISO-13849-1-EN-60204",
+            "ISO-12944-CORROSION",
+            "ECSS-Q-ST-30-11C-DERATING",
+            "ROHS3-REACH-JSTD033",
+            "EN-61340-5-1-ESD",
+        ]
+        for sid in target_ids:
+            res = do_get_standards(None, {"standard_id": sid})
+            assert res["total"] == 1
+            std = res["standards"][0]
+            assert std["id"] == sid
+            assert "usage_rule" in std
+
     def test_get_standards_search(self) -> None:
         res = do_get_standards(None, {"search": "HDBaseT"})
         assert res["total"] >= 1
@@ -107,6 +153,17 @@ class TestSystemDesignStandards:
             s["name"] + " " + s.get("usage_rule", "") for s in res["standards"]
         )
         assert "HDBaseT" in names_and_rules
+
+    def test_get_standards_search_expanded_engineering_terms(self) -> None:
+        """Wave E-7: Verify search indexing across maritime, ATEX, and electronics rules."""
+        search_terms = ["IEC 60092", "RoHS", "ATEX", "NEK 400", "ESD"]
+        for term in search_terms:
+            res = do_get_standards(None, {"search": term})
+            assert res["total"] >= 1
+            corpus = " ".join(
+                s["id"] + " " + s["name"] + " " + s.get("usage_rule", "") for s in res["standards"]
+            ).lower()
+            assert term.lower() in corpus
 
     def test_get_standards_non_matching_filter(self) -> None:
         res = do_get_standards(None, {"category": "non_existent_category"})
@@ -122,6 +179,18 @@ class TestSystemDesignStandards:
         assert all(s["category"] == "mounting_display" for s in data["standards"])
 
     @pytest.mark.asyncio
+    async def test_mcp_handler_get_standards_expanded_category(self) -> None:
+        """Wave E-7: MCP tool retrieval for marine_dnv_norsok."""
+        engine = _EngineStub()
+        payload = await handle_system_design_get_standards(
+            engine, {"category": "marine_dnv_norsok"}
+        )
+        data = json.loads(payload)
+        assert "standards" in data
+        assert len(data["standards"]) >= 2
+        assert all(s["category"] == "marine_dnv_norsok" for s in data["standards"])
+
+    @pytest.mark.asyncio
     async def test_api_route_get_standards(self) -> None:
         req = _StubRequest(query_params={"category": "cabling_hdmi"})
         resp = await admin_routes.api_system_design_get_standards(req)
@@ -129,6 +198,17 @@ class TestSystemDesignStandards:
         data = json.loads(resp.body)
         assert "standards" in data
         assert len(data["standards"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_api_route_get_standards_expanded_category(self) -> None:
+        """Wave E-7: Admin route query for electrical_nek_en."""
+        req = _StubRequest(query_params={"category": "electrical_nek_en"})
+        resp = await admin_routes.api_system_design_get_standards(req)
+        assert resp.status_code == 200
+        data = json.loads(resp.body)
+        assert "standards" in data
+        assert len(data["standards"]) >= 3
+        assert all(s["category"] == "electrical_nek_en" for s in data["standards"])
 
 
 # ---------------------------------------------------------------------------

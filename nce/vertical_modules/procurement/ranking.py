@@ -55,11 +55,110 @@ silently dropping the candidate, per spec rule.  Each default is documented at i
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from nce.vertical_modules.procurement.tco import (
     do_calculate_tco,
 )
+
+# ---------------------------------------------------------------------------
+# Regulatory scope specifications & aliases
+# ---------------------------------------------------------------------------
+
+_REGULATORY_SCOPE_MAP: dict[str, list[str]] = {
+    "dnv_marine": ["DNV_TAC", "ISO_9001"],
+    "atex_ex": ["ATEX", "ISO_9001"],
+    "electrical_lv": ["CE", "ROHS_3"],
+    "electronics_pcba": ["ROHS_3", "REACH", "ISO_9001"],
+}
+
+_REGULATORY_SCOPE_ALIASES: dict[str, str] = {
+    "marine": "dnv_marine",
+    "dnv": "dnv_marine",
+    "atex": "atex_ex",
+    "ex": "atex_ex",
+    "lv": "electrical_lv",
+    "electrical": "electrical_lv",
+    "pcba": "electronics_pcba",
+    "electronics": "electronics_pcba",
+}
+
+_CERT_ALIASES: dict[str, set[str]] = {
+    "DNV_TAC": {"DNV_TAC", "DNV", "DNV_GL", "DNV_TYPE_APPROVAL", "DNV_GL_TAC"},
+    "ISO_9001": {"ISO_9001", "ISO9001", "ISO_9001_2015", "ISO9001_2015"},
+    "ROHS_3": {
+        "ROHS_3",
+        "ROHS3",
+        "ROHS",
+        "2015_863",
+        "2015_863_EU",
+        "ROHS_2015_863",
+        "ROHS_COMPLIANT",
+    },
+    "ATEX": {"ATEX", "ATEX_2014_34_EU", "ATEX_EX", "EX", "2014_34_EU"},
+    "ATEX_2014_34_EU": {"ATEX_2014_34_EU", "ATEX", "ATEX_EX", "EX", "2014_34_EU"},
+    "CE": {"CE", "CE_MARK", "CE_MARKED", "CE_CONFORMITY"},
+    "REACH": {"REACH", "SVHC", "EC_1907_2006"},
+    "DSB_ELVIRKSOMHET": {"DSB_ELVIRKSOMHET", "DSB", "DSB_GODKJENT"},
+}
+
+
+def _normalize_cert(s: str) -> str:
+    """Normalize certification string to uppercase alphanumeric with single underscores."""
+    return re.sub(r"[\s\-_/]+", "_", str(s).strip().upper())
+
+
+def _extract_candidate_certifications(candidate: dict[str, Any]) -> set[str]:
+    """Extract set of normalized certification tokens held by the candidate."""
+    certs_held: set[str] = set()
+    raw_certs = candidate.get("certifications")
+    if isinstance(raw_certs, dict):
+        for k, v in raw_certs.items():
+            if bool(v):
+                certs_held.add(_normalize_cert(k))
+    elif isinstance(raw_certs, (list, set, tuple)):
+        for item in raw_certs:
+            if item:
+                certs_held.add(_normalize_cert(str(item)))
+
+    # Also check known boolean flags if present on candidate
+    if candidate.get("rohs_compliant"):
+        certs_held.add("ROHS")
+        certs_held.add("ROHS_3")
+    if candidate.get("ce_marked"):
+        certs_held.add("CE")
+    if candidate.get("dnv_tac"):
+        certs_held.add("DNV_TAC")
+    if candidate.get("atex"):
+        certs_held.add("ATEX")
+    if candidate.get("iso_9001"):
+        certs_held.add("ISO_9001")
+
+    return certs_held
+
+
+def _check_cert_satisfied(req_cert: str, active_certs: set[str]) -> bool:
+    """Check if the candidate holds the required certification or an equivalent alias."""
+    norm_req = _normalize_cert(req_cert)
+    if norm_req in active_certs:
+        return True
+    aliases = _CERT_ALIASES.get(norm_req)
+    if aliases and any(a in active_certs for a in aliases):
+        return True
+    for c in active_certs:
+        if c == norm_req:
+            return True
+        if norm_req.startswith("ATEX") and c.startswith("ATEX"):
+            return True
+        if norm_req.startswith("ROHS") and c.startswith("ROHS"):
+            return True
+        if norm_req.startswith("ISO_9001") and c.startswith("ISO_9001"):
+            return True
+        if norm_req.startswith("DNV") and c.startswith("DNV"):
+            return True
+    return False
+
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -81,32 +180,43 @@ def do_rank_suppliers(
     bom_line:
         The BOM line being sourced.  Required key: ``quantity`` (int).
         Optional keys:
-          ``unit_price``       — buyer reference cost per unit (passed to TCO).
-          ``required_by_day``  — int; days from now by which delivery is needed.
-                                 When absent, the delivery-deadline step is skipped
-                                 (all candidates pass step 2).
+          ``unit_price``            — buyer reference cost per unit (passed to TCO).
+          ``required_by_day``       — int; days from now by which delivery is needed.
+                                      When absent, the delivery-deadline step is skipped
+                                      (all candidates pass step 2).
+          ``required_certifications`` — list[str]; list of mandatory regulatory certifications
+                                      (e.g. DNV_TAC, ISO_9001, ROHS_3, ATEX).
+          ``regulatory_scope``      — str; pre-configured certification bundle (e.g.
+                                      "dnv_marine", "atex_ex", "electrical_lv", "electronics_pcba").
+          ``strict_regulatory_gate`` — bool; when True, zeroes composite score (0.0)
+                                      for non-compliant suppliers instead of default 0.1 penalty.
     candidates:
         List of supplier dicts.  Each must contain ``unit_price`` (float).
         Optional (conservative defaults applied when absent):
-          ``own_stock``          — bool; default False.
-          ``lead_time_days``     — int; default conservatively large (9999) so the
-                                   candidate misses any tight deadline.
-          ``delivery_reliability`` — float 0–1; default 0.0 (conservative).
-          ``supplier_tier``      — int 1–4; default 4 (lowest tier, conservative).
-          ``rebate_proximity`` — float 0–1; default 0.5 (neutral, per spec intent).
-          ``bundles_well``       — bool; default False (conservative).
-          ``supplier_id``        — str; used in rationale messages.
+          ``own_stock``             — bool; default False.
+          ``lead_time_days``        — int; default conservatively large (9999) so the
+                                      candidate misses any tight deadline.
+          ``delivery_reliability``  — float 0–1; default 0.0 (conservative).
+          ``supplier_tier``         — int 1–4; default 4 (lowest tier, conservative).
+          ``rebate_proximity``    — float 0–1; default 0.5 (neutral, per spec intent).
+          ``bundles_well``          — bool; default False (conservative).
+          ``supplier_id``           — str; used in rationale messages.
+          ``certifications``        — list[str] or dict[str, bool]; regulatory certificates held.
 
     Returns
     -------
     dict with keys:
-      ``ranked``          — list of candidate dicts, sorted descending by
-                            ``composite_score``, each annotated with:
-                              ``composite_score``  float
-                              ``score_breakdown``  dict (one entry per step)
-                              ``tco``              dict (Wave-1 TCO result)
-      ``rebate_override`` — bool; True when step-5 changes the winner vs best-TCO.
-      ``rebate_rationale`` — str; human-readable reason (empty string when not overridden).
+      ``ranked``                 — list of candidate dicts, sorted descending by
+                                   ``composite_score``, each annotated with:
+                                     ``composite_score``        float
+                                     ``score_breakdown``        dict (one entry per step)
+                                     ``tco``                    dict (Wave-1 TCO result)
+                                     ``regulatory_compliant``   bool (when gating active)
+                                     ``missing_certifications`` list[str] (when gating active)
+      ``rebate_override``        — bool; True when step-5 changes the winner vs best-TCO.
+      ``rebate_rationale``       — str; human-readable reason (empty string when not overridden).
+      ``disqualified_suppliers`` — list[str]; candidate IDs of non-compliant suppliers
+                                   (only present when regulatory gating is active).
 
     Raises
     ------
@@ -249,13 +359,36 @@ def do_rank_suppliers(
     w_lead_time = float(scoring_w.get("lead_time", scoring_w.get("lead_time_weight", 0.0)))
 
     valid_leads = [
-        int(c.get("lead_time_days"))
+        int(str(c["lead_time_days"]))
         for c in candidates
         if c.get("lead_time_days") is not None
         and str(c.get("lead_time_days")).isdigit()
-        and int(c.get("lead_time_days")) > 0
+        and int(str(c["lead_time_days"])) > 0
     ]
     min_lead = min(valid_leads) if valid_leads else 1
+
+    # -----------------------------------------------------------------------
+    # Regulatory compliance gating setup
+    # -----------------------------------------------------------------------
+    has_regulatory_gating = (
+        "required_certifications" in bom_line and bom_line["required_certifications"] is not None
+    ) or ("regulatory_scope" in bom_line and bom_line["regulatory_scope"] is not None)
+
+    required_certs: list[str] = []
+    if has_regulatory_gating:
+        scope = bom_line.get("regulatory_scope")
+        if scope:
+            scope_str = str(scope).strip().lower()
+            if scope_str in _REGULATORY_SCOPE_MAP:
+                required_certs.extend(_REGULATORY_SCOPE_MAP[scope_str])
+            elif scope_str in _REGULATORY_SCOPE_ALIASES:
+                required_certs.extend(_REGULATORY_SCOPE_MAP[_REGULATORY_SCOPE_ALIASES[scope_str]])
+
+        explicit_certs = bom_line.get("required_certifications")
+        if isinstance(explicit_certs, list):
+            for c in explicit_certs:
+                if c not in required_certs:
+                    required_certs.append(c)
 
     scored: list[dict[str, Any]] = []
     for idx, (candidate, tco_result) in enumerate(zip(candidates, tco_results)):
@@ -284,20 +417,32 @@ def do_rank_suppliers(
             )
             composite += s_lead * w_lead_time
 
-        scored.append(
-            {
-                **candidate,
-                "composite_score": composite,
-                "score_breakdown": {
-                    "step1_own_stock": s1,
-                    "step2_delivery_reliability": s2,
-                    "step3_tco": s3,
-                    "step4_bid_price": s4,
-                    "step5_tier_kickback_bundling": s5,
-                },
-                "tco": tco_result,
-            }
-        )
+        cand_entry: dict[str, Any] = {
+            **candidate,
+            "composite_score": composite,
+            "score_breakdown": {
+                "step1_own_stock": s1,
+                "step2_delivery_reliability": s2,
+                "step3_tco": s3,
+                "step4_bid_price": s4,
+                "step5_tier_kickback_bundling": s5,
+            },
+            "tco": tco_result,
+        }
+
+        if has_regulatory_gating:
+            active_certs = _extract_candidate_certifications(candidate)
+            missing = [c for c in required_certs if not _check_cert_satisfied(c, active_certs)]
+            is_compliant = len(missing) == 0
+            cand_entry["regulatory_compliant"] = is_compliant
+            cand_entry["missing_certifications"] = missing
+
+            if not is_compliant:
+                strict = bool(bom_line.get("strict_regulatory_gate", False))
+                composite = 0.0 if strict else composite * 0.1
+                cand_entry["composite_score"] = composite
+
+        scored.append(cand_entry)
 
     ranked = sorted(scored, key=lambda c: c["composite_score"], reverse=True)
 
@@ -323,11 +468,17 @@ def do_rank_suppliers(
             f"This override requires compliance review before order placement."
         )
 
-    return {
+    res: dict[str, Any] = {
         "ranked": ranked,
         "rebate_override": rebate_override,
         "rebate_rationale": rebate_rationale,
     }
+    if has_regulatory_gating:
+        res["disqualified_suppliers"] = [
+            _candidate_id(c) for c in ranked if not c.get("regulatory_compliant", True)
+        ]
+
+    return res
 
 
 # ---------------------------------------------------------------------------

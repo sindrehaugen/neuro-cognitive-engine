@@ -19,6 +19,9 @@ from uuid import UUID
 from nce.bom_lines import update_bom_line_status
 from nce.db_utils import scoped_pg_session
 from nce.entity_resolution.ownership import assert_owner
+from nce.vertical_modules.system_design.electronics_qc import (
+    validate_eu_electronics_compliance,
+)
 
 log = logging.getLogger("nce.vertical_modules.field_tech.scan")
 
@@ -248,7 +251,7 @@ async def do_scan_serial(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
                 ns_uuid,
             )
 
-        # 8. Component lot/reel traceability (Wave E-6)
+        # 8. Component lot/reel traceability (Wave E-6 & E-8)
         traceability: dict[str, Any] = {}
         for key in ("lot_code", "date_code", "reel_id", "msl_level", "rohs_compliant"):
             if key in params and params[key] is not None:
@@ -275,7 +278,43 @@ async def do_scan_serial(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
                         raise ValueError(f"{key} must not be empty string if provided")
                     traceability[key] = s_val
 
+        # Wave E-8: Parse additional traceability & compliance fields
+        if "elnummer" in params and params["elnummer"] is not None:
+            s_el = str(params["elnummer"]).strip()
+            if s_el:
+                traceability["elnummer"] = s_el
+
+        if "rohs_status" in params and params["rohs_status"] is not None:
+            r_stat = params["rohs_status"]
+            traceability["rohs_status"] = r_stat
+            if "rohs_compliant" not in traceability:
+                if isinstance(r_stat, bool):
+                    traceability["rohs_compliant"] = r_stat
+                elif isinstance(r_stat, str):
+                    traceability["rohs_compliant"] = r_stat.strip().lower() in (
+                        "compliant",
+                        "true",
+                        "1",
+                        "yes",
+                    )
+                else:
+                    traceability["rohs_compliant"] = bool(r_stat)
+
+        if "exposure_hours" in params and params["exposure_hours"] is not None:
+            try:
+                traceability["exposure_hours"] = float(params["exposure_hours"])
+            except (ValueError, TypeError):
+                pass
+
+        if "reach_svhc_ppm" in params and params["reach_svhc_ppm"] is not None:
+            try:
+                traceability["reach_svhc_ppm"] = float(params["reach_svhc_ppm"])
+            except (ValueError, TypeError):
+                pass
+
         lot_code_val = traceability.get("lot_code") or str(params.get("lot_code") or "").strip()
+        elnummer_val = traceability.get("elnummer") or str(params.get("elnummer") or "").strip()
+
         if params.get("record_lot_edge") is True:
             if not lot_code_val:
                 raise ValueError("lot_code is required when record_lot_edge is True")
@@ -289,6 +328,75 @@ async def do_scan_serial(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
                 lot_label,
                 asset_label,
                 ns_uuid,
+            )
+
+        # Deterministic QC check using validate_eu_electronics_compliance (Wave E-8)
+        qc_compliance: dict[str, Any] | None = None
+        if (
+            "msl_level" in traceability
+            or "rohs_status" in params
+            or "rohs_status" in traceability
+            or "reach_svhc_ppm" in params
+            or "reach_svhc_ppm" in traceability
+        ):
+            bom_item: dict[str, Any] = {
+                "part_number": str(params.get("product_id") or bom_line_id or serial),
+            }
+            if "rohs_compliant" in traceability:
+                bom_item["rohs_compliant"] = traceability["rohs_compliant"]
+            elif "rohs_status" in traceability:
+                r_stat = traceability["rohs_status"]
+                bom_item["rohs_compliant"] = (
+                    r_stat
+                    if isinstance(r_stat, bool)
+                    else str(r_stat).strip().lower() in ("compliant", "true", "1", "yes")
+                )
+
+            if "msl_level" in traceability:
+                bom_item["msl_level"] = traceability["msl_level"]
+
+            if "exposure_hours" in traceability:
+                bom_item["exposure_hours"] = traceability["exposure_hours"]
+            elif "exposure_hours" in params and params["exposure_hours"] is not None:
+                bom_item["exposure_hours"] = float(params["exposure_hours"])
+
+            if "reach_svhc_ppm" in traceability:
+                bom_item["reach_svhc_ppm"] = traceability["reach_svhc_ppm"]
+            elif "reach_svhc_ppm" in params and params["reach_svhc_ppm"] is not None:
+                bom_item["reach_svhc_ppm"] = float(params["reach_svhc_ppm"])
+
+            require_rohs = (
+                "rohs_compliant" in traceability
+                or "rohs_status" in traceability
+                or "rohs_status" in params
+            )
+            require_reach = "reach_svhc_ppm" in traceability or "reach_svhc_ppm" in params
+            qc_res = validate_eu_electronics_compliance(
+                [bom_item],
+                require_rohs=require_rohs,
+                require_reach=require_reach,
+            )
+            qc_compliance = {
+                "passed": qc_res["passed"],
+                "violations": qc_res["violations"],
+            }
+
+        traceability_graph_edges: list[dict[str, str]] = []
+        if lot_code_val:
+            traceability_graph_edges.append(
+                {
+                    "subject": f"work_order:{work_order_id}",
+                    "predicate": "installed_from_lot",
+                    "object": f"lot:{lot_code_val}",
+                }
+            )
+        if elnummer_val:
+            traceability_graph_edges.append(
+                {
+                    "subject": f"work_order:{work_order_id}",
+                    "predicate": "uses_elnummer",
+                    "object": f"elnummer:{elnummer_val}",
+                }
             )
 
     res: dict[str, Any] = {
@@ -316,4 +424,8 @@ async def do_scan_serial(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
             "object": asset_label,
             "raw": f"LOT:{lot_code_val.upper()} -[used_in]-> {asset_label}",
         }
+    if qc_compliance is not None:
+        res["qc_compliance"] = qc_compliance
+    if traceability_graph_edges:
+        res["traceability_graph_edges"] = traceability_graph_edges
     return res

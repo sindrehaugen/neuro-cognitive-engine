@@ -114,6 +114,80 @@ async def _find_upstream_root_cause_ticket(
     return None
 
 
+def correlate_lot_defect_recall(
+    scanned_records: list[dict[str, Any]],
+    defective_lot_codes: list[str] | set[str],
+    defective_elnummers: list[str] | set[str] | None = None,
+) -> dict[str, Any]:
+    """Identify work_order_ids, asset_ids, and serial_numbers affected by recalled component lots or elnummers.
+
+    Complies with IPC-1782 (Standard for Component Traceability) and ISO 9001 lot recall management.
+    """
+    target_lots = {
+        str(x).strip().upper() for x in defective_lot_codes if x is not None and str(x).strip()
+    }
+    target_elnummers = (
+        {str(x).strip() for x in defective_elnummers if x is not None and str(x).strip()}
+        if defective_elnummers
+        else set()
+    )
+
+    matches: list[dict[str, Any]] = []
+    affected_wo_set: set[str] = set()
+    affected_serials_set: set[str] = set()
+
+    for rec in scanned_records:
+        if not isinstance(rec, dict):
+            continue
+
+        lot_code = rec.get("lot_code")
+        elnummer = rec.get("elnummer")
+        traceability = rec.get("traceability")
+        if isinstance(traceability, dict):
+            if not lot_code:
+                lot_code = traceability.get("lot_code")
+            if not elnummer:
+                elnummer = traceability.get("elnummer")
+
+        norm_lot = str(lot_code).strip().upper() if lot_code is not None else ""
+        norm_el = str(elnummer).strip() if elnummer is not None else ""
+
+        reasons: list[str] = []
+        if norm_lot and norm_lot in target_lots:
+            reasons.append("defective_lot_code")
+        if norm_el and norm_el in target_elnummers:
+            reasons.append("defective_elnummer")
+
+        if reasons:
+            wo_id = rec.get("work_order_id") or rec.get("wo_id")
+            asset_id = rec.get("asset_id")
+            serial = rec.get("serial_number") or rec.get("serial")
+
+            if wo_id:
+                affected_wo_set.add(str(wo_id))
+            if serial:
+                affected_serials_set.add(str(serial))
+
+            matches.append(
+                {
+                    "work_order_id": str(wo_id) if wo_id else None,
+                    "asset_id": str(asset_id) if asset_id else None,
+                    "serial_number": str(serial) if serial else None,
+                    "lot_code": norm_lot or None,
+                    "elnummer": norm_el or None,
+                    "recall_reasons": reasons,
+                    "raw_record": rec,
+                }
+            )
+
+    return {
+        "recalled_count": len(matches),
+        "affected_work_orders": sorted(affected_wo_set),
+        "affected_serials": sorted(affected_serials_set),
+        "matches": matches,
+    }
+
+
 async def do_open_proactive_telemetry_ticket(
     engine_or_pool: Any,
     params: dict[str, Any],
@@ -140,6 +214,13 @@ async def do_open_proactive_telemetry_ticket(
     dict[str, Any]:
         {"ok": True, "ticket_id": str, "ticket": dict, "edge": str, "proactive": True}
     """
+    lot_recall_summary: dict[str, Any] | None = None
+    if params.get("recalled_lot_codes") and params.get("scanned_records"):
+        lot_recall_summary = correlate_lot_defect_recall(
+            params["scanned_records"],
+            params["recalled_lot_codes"],
+            params.get("recalled_elnummers"),
+        )
     pool = _extract_pool(engine_or_pool)
     ns_uuid = _parse_uuid(params.get("namespace_id"), "namespace_id")
     asset_uuid = _parse_uuid(params.get("asset_id"), "asset_id")
@@ -189,7 +270,7 @@ async def do_open_proactive_telemetry_ticket(
                 asset_uuid,
                 existing_ticket_id,
             )
-            return {
+            ret_idem: dict[str, Any] = {
                 "ok": True,
                 "ticket_id": existing_ticket_id,
                 "idempotent_replay": True,
@@ -197,6 +278,9 @@ async def do_open_proactive_telemetry_ticket(
                 "summary": existing["summary"],
                 "edge": f"{ticket_subject_prefix}{existing_ticket_id} -[about]-> {asset_object}",
             }
+            if lot_recall_summary is not None:
+                ret_idem["lot_recall_summary"] = lot_recall_summary
+            return ret_idem
 
         # 1b. Upstream Topological Root-Cause Correlation (I-VERT-01)
         if params.get("correlate_upstream", True):
@@ -212,13 +296,16 @@ async def do_open_proactive_telemetry_ticket(
                     upstream_ticket_id,
                     upstream_asset_id,
                 )
-                return {
+                ret_up: dict[str, Any] = {
                     "ok": True,
                     "status": "correlated_to_upstream",
                     "ticket_id": str(upstream_ticket_id),
                     "root_cause_asset_id": str(upstream_asset_id) if upstream_asset_id else None,
                     "created": False,
                 }
+                if lot_recall_summary is not None:
+                    ret_up["lot_recall_summary"] = lot_recall_summary
+                return ret_up
 
         # 2. Contract A Ownership Guard: Assert Support owns TICKET
         await assert_owner(conn, ns_uuid, _NODE_TYPE_TICKET, _SUPPORT_ENGINE)
@@ -259,7 +346,7 @@ async def do_open_proactive_telemetry_ticket(
             ns_uuid,
         )
 
-    return {
+    res: dict[str, Any] = {
         "ok": True,
         "ticket_id": str(ticket_id),
         "ticket": open_res["ticket"],
@@ -267,6 +354,9 @@ async def do_open_proactive_telemetry_ticket(
         "edge": f"{ticket_subject} -[about]-> {asset_object}",
         "proactive": True,
     }
+    if lot_recall_summary is not None:
+        res["lot_recall_summary"] = lot_recall_summary
+    return res
 
 
 do_proactive_ticket_from_anomaly = do_open_proactive_telemetry_ticket

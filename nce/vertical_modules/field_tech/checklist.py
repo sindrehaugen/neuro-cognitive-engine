@@ -22,6 +22,10 @@ from nce.bom_lines import update_bom_line_status
 from nce.db_utils import scoped_pg_session
 from nce.entity_resolution.ownership import assert_owner
 from nce.mcp_errors import BusinessRefusalError
+from nce.vertical_modules.field_tech.samsvar import (
+    generate_eu_declaration_of_conformity,
+    generate_samsvarserklaering,
+)
 
 log = logging.getLogger("nce.vertical_modules.field_tech.checklist")
 
@@ -86,6 +90,40 @@ def _load_template_kind(template_id: str) -> str:
     except Exception as exc:
         log.warning("Failed to read checklist template kind %s: %s", template_id, exc)
     return "install"
+
+
+async def _insert_checklist_memory(
+    conn: Any,
+    ns_uuid: UUID,
+    work_order_id: str,
+    checklist_id: str,
+    content: dict[str, Any],
+) -> str:
+    """Store checklist verification & compliance declaration memory into memories table."""
+    memory_id = str(uuid4())
+    content_json = json.dumps(content)
+    await conn.execute(
+        """
+        INSERT INTO memories (
+            id, namespace_id, agent_id, content_fts,
+            payload_ref, memory_type, assertion_type,
+            pii_redacted, metadata
+        ) VALUES (
+            $1::uuid, $2::uuid, $3, to_tsvector('english', $4),
+            $5, $6, $7, $8, $9::jsonb
+        )
+        """,
+        memory_id,
+        ns_uuid,
+        _OWNER_ENGINE,
+        content_json[:4000],
+        f"CHECKLIST:{checklist_id}",
+        "episodic",
+        "observation",
+        False,
+        content_json,
+    )
+    return memory_id
 
 
 async def do_submit_checklist(engine: Any, params: dict[str, Any]) -> dict[str, Any]:
@@ -207,6 +245,10 @@ async def do_submit_checklist(engine: Any, params: dict[str, Any]) -> dict[str, 
     partner_scope_uuid: UUID | None = None
     if partner_scope_id:
         partner_scope_uuid = _parse_uuid(partner_scope_id, "partner_scope_id")
+
+    samsvar_doc: dict[str, Any] | None = None
+    eu_doc: dict[str, Any] | None = None
+    stored_memory_id: str | None = None
 
     async with scoped_pg_session(pool, ns_uuid) as conn:
         # Assert work order exists in this namespace
@@ -352,6 +394,41 @@ async def do_submit_checklist(engine: Any, params: dict[str, Any]) -> dict[str, 
                     except Exception as exc:
                         log.warning("Could not update BOM_LINE status to TESTED: %s", exc)
 
+        # Wave E-8: Sluttkontroll -> Signed Samsvarserklæring / EU DoC closed loop
+        if passed and params.get("samsvar_params"):
+            s_payload = {
+                **params["samsvar_params"],
+                "work_order_id": work_order_id,
+                "sluttkontroll_passed": True,
+                "sluttkontroll_summary": {
+                    "kind": kind,
+                    "completed_count": completed_count,
+                    "total_count": total_count,
+                },
+            }
+            samsvar_doc = generate_samsvarserklaering(s_payload)
+            mem_content: dict[str, Any] = {
+                "work_order_id": work_order_id,
+                "checklist_id": checklist_id,
+                "kind": kind,
+                "passed": passed,
+                "samsvarserklaering": samsvar_doc,
+            }
+            if params.get("eu_doc_params"):
+                eu_p = dict(params["eu_doc_params"])
+                eu_p.setdefault("work_order_id", work_order_id)
+                eu_doc = generate_eu_declaration_of_conformity(eu_p)
+                mem_content["eu_declaration_of_conformity"] = eu_doc
+
+            stored_memory_id = await _insert_checklist_memory(
+                conn, ns_uuid, work_order_id, checklist_id, mem_content
+            )
+
+        if passed and params.get("eu_doc_params") and eu_doc is None:
+            eu_p = dict(params["eu_doc_params"])
+            eu_p.setdefault("work_order_id", work_order_id)
+            eu_doc = generate_eu_declaration_of_conformity(eu_p)
+
     res = dict(row)
     res["id"] = str(res["id"])
     res["namespace_id"] = str(res["namespace_id"])
@@ -379,7 +456,20 @@ async def do_submit_checklist(engine: Any, params: dict[str, Any]) -> dict[str, 
     res["completed_count"] = completed_count
     res["total_count"] = total_count
     res["kind"] = kind
-    res["memory_id"] = str(params.get("memory_id") or res["id"])
+    res["memory_id"] = str(params.get("memory_id") or stored_memory_id or res["id"])
+
+    if samsvar_doc is not None:
+        res["samsvarserklaering"] = samsvar_doc
+    if eu_doc is not None:
+        res["eu_declaration_of_conformity"] = eu_doc
+    if measurement_violations:
+        res["safety_alert"] = {
+            "trigger_atms_invalidation": True,
+            "work_order_id": work_order_id,
+            "kind": kind,
+            "violation_count": len(measurement_violations),
+            "violations": measurement_violations,
+        }
     return res
 
 

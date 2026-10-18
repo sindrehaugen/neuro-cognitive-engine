@@ -137,6 +137,8 @@ async def _append_validation_ledger(
     decisions: list[dict[str, Any]],
     passed: bool,
     reasons: list[str],
+    regulatory_scope: Any = None,
+    applied_standards: Any = None,
 ) -> None:
     """Append accept/override decisions to ``v3_cognitive_ledger``.
 
@@ -158,10 +160,45 @@ async def _append_validation_ledger(
                 "line_id": d.get("line_id", ""),
                 "verdict": d.get("verdict", ""),
                 "reason": d.get("reason", ""),
+                **({"regulatory_scope": d["regulatory_scope"]} if "regulatory_scope" in d else {}),
+                **(
+                    {"applied_standards": d["applied_standards"]}
+                    if "applied_standards" in d
+                    else {}
+                ),
             }
             for d in decisions
         ],
     }
+
+    # Extract regulatory_scope from argument, or fallback to individual decisions
+    effective_reg_scope = regulatory_scope
+    if effective_reg_scope is None:
+        for d in decisions:
+            if "regulatory_scope" in d and d["regulatory_scope"] is not None:
+                effective_reg_scope = d["regulatory_scope"]
+                break
+
+    if effective_reg_scope is not None:
+        payload["regulatory_scope"] = effective_reg_scope
+
+    # Extract applied_standards from argument, or fallback to individual decisions
+    effective_standards = applied_standards
+    if effective_standards is None:
+        collected: list[Any] = []
+        for d in decisions:
+            if "applied_standards" in d and d["applied_standards"] is not None:
+                stds = d["applied_standards"]
+                if isinstance(stds, list):
+                    collected.extend(stds)
+                else:
+                    collected.append(stds)
+        if collected:
+            effective_standards = collected
+
+    if effective_standards is not None:
+        payload["applied_standards"] = effective_standards
+
     await conn.execute(
         """
         INSERT INTO v3_cognitive_ledger (
@@ -186,6 +223,10 @@ async def _append_validation_ledger(
         json.dumps({}),
         _VALIDATION_MODEL_VERSION,
     )
+
+
+# Alias for backwards compatibility / alternate naming
+_append_decisions_to_ledger = _append_validation_ledger
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +322,16 @@ async def do_validate_design(
         await _bump_design_version(conn, ns_uuid, design_lbl, source_id)
 
         # Append accept/override decisions to v3_cognitive_ledger.
-        await _append_validation_ledger(conn, ns_uuid, design_id_raw, decisions, passed, reasons)
+        await _append_validation_ledger(
+            conn,
+            ns_uuid,
+            design_id_raw,
+            decisions,
+            passed,
+            reasons,
+            regulatory_scope=params.get("regulatory_scope"),
+            applied_standards=params.get("applied_standards"),
+        )
 
     log.info(
         "do_validate_design: ns=%s design=%s passed=%s overrides=%d decisions=%d",
