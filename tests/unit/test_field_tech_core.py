@@ -2373,3 +2373,256 @@ async def test_do_scan_serial_record_lot_edge_requires_lot_code() -> None:
                 "record_lot_edge": True,
             },
         )
+
+
+# ===========================================================================
+# 5. Wave E-8: Sluttkontroll -> Signed Samsvarserklæring, EU DoC, ATMS Alert, Traceability QC
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_do_submit_checklist_generates_samsvarserklaering_and_stores_memory() -> None:
+    """Sluttkontroll passing generates signed Samsvarserklæring and stores compliance memory."""
+    conn = AsyncMock()
+    conn.fetchrow.side_effect = [
+        {"partner_scope_id": None},
+        {
+            "id": UUID("11111111-2222-3333-4444-555555555555"),
+            "checklist_id": "CL-NEK400-SAMSVAR-01",
+            "work_order_id": _WO_ID_1,
+            "namespace_id": UUID(_NS_A),
+            "partner_scope_id": None,
+            "template_id": "nek400_en61557_sluttkontroll",
+            "items": "[]",
+            "completed_at": None,
+            "raw": "{}",
+            "created_at": None,
+            "updated_at": None,
+        },
+    ]
+    conn.execute = AsyncMock(return_value="INSERT 1")
+    pool = _make_mock_pool(conn)
+
+    items = [
+        {"id": "visual_inspection", "ticked": True},
+        {"id": "pe_continuity_ohm", "ticked": True, "measured_value": 0.25},
+        {"id": "insulation_resistance_mohm", "ticked": True, "measured_value": 350.0},
+        {"id": "rcd_trip_time_ms", "ticked": True, "measured_value": 24.5},
+        {"id": "fault_loop_impedance_verified", "ticked": True},
+        {"id": "polarity_and_phase_sequence", "ticked": True},
+    ]
+
+    samsvar_params = {
+        "enterprise_name": "Installatør Gruppen AS",
+        "enterprise_org_nr": "987654321",
+        "faglig_ansvarlig": "Ola Nordmann (Faglig Ansvarlig)",
+        "dsb_elvirksomhet_id": "ELV-9999",
+        "installation_address": "Storgata 1, 0155 Oslo",
+        "earthing_system": "TN-C-S",
+    }
+
+    res = await do_submit_checklist(
+        pool,
+        {
+            "namespace_id": _NS_A,
+            "work_order_id": _WO_ID_1,
+            "template_id": "nek400_en61557_sluttkontroll",
+            "checklist_id": "CL-NEK400-SAMSVAR-01",
+            "items": items,
+            "samsvar_params": samsvar_params,
+        },
+    )
+
+    assert res["passed"] is True
+    assert "samsvarserklaering" in res
+    doc = res["samsvarserklaering"]
+    assert doc["work_order_id"] == _WO_ID_1
+    assert doc["enterprise_name"] == "Installatør Gruppen AS"
+    assert doc["faglig_ansvarlig"] == "Ola Nordmann (Faglig Ansvarlig)"
+    assert doc["earthing_system"] == "TN-C-S"
+    assert len(doc["content_hash"]) == 64
+    assert len(doc["signature"]) > 0
+    assert doc["sluttkontroll_summary"]["kind"] == "sluttkontroll"
+    assert doc["sluttkontroll_summary"]["completed_count"] == 6
+
+    # Verify memory insertion in conn.execute
+    mem_calls = [c for c in conn.execute.call_args_list if "INSERT INTO memories" in str(c[0][0])]
+    assert len(mem_calls) == 1
+    call_args = mem_calls[0][0]
+    assert call_args[2] == UUID(_NS_A)
+    assert call_args[3] == "field_tech"
+    # Metadata includes samsvarserklaering
+    meta_json = json.loads(call_args[9])
+    assert "samsvarserklaering" in meta_json
+    assert meta_json["samsvarserklaering"]["content_hash"] == doc["content_hash"]
+
+
+@pytest.mark.asyncio
+async def test_do_submit_checklist_generates_eu_declaration_of_conformity() -> None:
+    """Checklist with eu_doc_params generates signed EU Declaration of Conformity."""
+    conn = AsyncMock()
+    conn.fetchrow.side_effect = [
+        {"partner_scope_id": None},
+        {
+            "id": UUID("11111111-2222-3333-4444-555555555555"),
+            "checklist_id": "CL-EUDOC-01",
+            "work_order_id": _WO_ID_1,
+            "namespace_id": UUID(_NS_A),
+            "partner_scope_id": None,
+            "template_id": "install_standard",
+            "items": "[]",
+            "completed_at": None,
+            "raw": "{}",
+            "created_at": None,
+            "updated_at": None,
+        },
+    ]
+    conn.execute = AsyncMock(return_value="INSERT 1")
+    pool = _make_mock_pool(conn)
+
+    eu_doc_params = {
+        "manufacturer_name": "Steps Systems Nordic AS",
+        "product_name": "NCE Industrial AV Control Rack",
+        "authorized_signatory": "Kari Installatør",
+        "machinery_applicable": True,
+    }
+
+    res = await do_submit_checklist(
+        pool,
+        {
+            "namespace_id": _NS_A,
+            "work_order_id": _WO_ID_1,
+            "template_id": "install_standard",
+            "checklist_id": "CL-EUDOC-01",
+            "items": [{"id": "pre_site_inspection", "ticked": True}],
+            "eu_doc_params": eu_doc_params,
+        },
+    )
+
+    assert res["passed"] is True
+    assert "eu_declaration_of_conformity" in res
+    doc = res["eu_declaration_of_conformity"]
+    assert doc["manufacturer_name"] == "Steps Systems Nordic AS"
+    assert doc["signatory"]["name"] == "Kari Installatør"
+    assert len(doc["content_hash"]) == 64
+    assert len(doc["signature"]) > 0
+    directive_ids = [d["directive"] for d in doc["directives"]]
+    assert "2014/35/EU" in directive_ids
+    assert "EU 2023/1230" in directive_ids
+
+
+@pytest.mark.asyncio
+async def test_do_submit_checklist_safety_alert_for_atms_invalidation() -> None:
+    """Measurement violations produce safety_alert payload with trigger_atms_invalidation."""
+    conn = AsyncMock()
+    conn.fetchrow.side_effect = [
+        {"partner_scope_id": None},
+        {
+            "id": UUID("11111111-2222-3333-4444-555555555555"),
+            "checklist_id": "CL-FAIL-SAFETY-01",
+            "work_order_id": _WO_ID_1,
+            "namespace_id": UUID(_NS_A),
+            "partner_scope_id": None,
+            "template_id": "dnv_hat_sat_marine",
+            "items": "[]",
+            "completed_at": None,
+            "raw": "{}",
+            "created_at": None,
+            "updated_at": None,
+        },
+    ]
+    conn.execute = AsyncMock(return_value="INSERT 1")
+    pool = _make_mock_pool(conn)
+
+    # Violate msb_esb_blackout_changeover_s (55.0s > max 45.0s) and hot_cold_insulation_mohm (0.4 MOhm < min 1.0 MOhm)
+    items = [
+        {"id": "imd_alarm_test_pass", "ticked": True},
+        {"id": "msb_esb_blackout_changeover_s", "ticked": True, "measured_value": 55.0},
+        {"id": "hot_cold_insulation_mohm", "ticked": True, "measured_value": 0.4},
+        {"id": "harmonic_thd_pct", "ticked": True, "measured_value": 4.2},
+    ]
+
+    res = await do_submit_checklist(
+        pool,
+        {
+            "namespace_id": _NS_A,
+            "work_order_id": _WO_ID_1,
+            "template_id": "dnv_hat_sat_marine",
+            "checklist_id": "CL-FAIL-SAFETY-01",
+            "items": items,
+        },
+    )
+
+    assert res["passed"] is False
+    assert len(res["measurement_violations"]) == 2
+    assert "safety_alert" in res
+    alert = res["safety_alert"]
+    assert alert["trigger_atms_invalidation"] is True
+    assert alert["work_order_id"] == _WO_ID_1
+    assert alert["kind"] == "marine"
+    assert alert["violation_count"] == 2
+    violated_ids = [v["item_id"] for v in alert["violations"]]
+    assert "msb_esb_blackout_changeover_s" in violated_ids
+    assert "hot_cold_insulation_mohm" in violated_ids
+
+
+@pytest.mark.asyncio
+async def test_do_scan_serial_qc_compliance_and_traceability_graph_edges() -> None:
+    """do_scan_serial runs EU electronics QC check and returns traceability_graph_edges."""
+    conn = _make_mock_scan_conn()
+    pool = _make_mock_pool(conn)
+
+    # Case A: Compliant scan
+    res_pass = await do_scan_serial(
+        pool,
+        {
+            "namespace_id": _NS_ID,
+            "work_order_id": _WO_ID,
+            "bom_line_id": "BOM-RELAY-01",
+            "serial": "SN-RELAY-100",
+            "lot_code": "LOT-REL-2026-A",
+            "elnummer": "1234567",
+            "msl_level": "MSL 2",
+            "exposure_hours": 100.0,
+            "rohs_status": "compliant",
+            "reach_svhc_ppm": 200.0,
+        },
+    )
+
+    assert res_pass["status"] == "scanned"
+    assert "qc_compliance" in res_pass
+    assert res_pass["qc_compliance"]["passed"] is True
+    assert len(res_pass["qc_compliance"]["violations"]) == 0
+
+    assert "traceability_graph_edges" in res_pass
+    edges = res_pass["traceability_graph_edges"]
+    assert len(edges) == 2
+    edge_map = {e["predicate"]: e for e in edges}
+    assert "installed_from_lot" in edge_map
+    assert edge_map["installed_from_lot"]["subject"] == f"work_order:{_WO_ID}"
+    assert edge_map["installed_from_lot"]["object"] == "lot:LOT-REL-2026-A"
+    assert "uses_elnummer" in edge_map
+    assert edge_map["uses_elnummer"]["object"] == "elnummer:1234567"
+
+    # Case B: Non-compliant scan (REACH SVHC > 1000 ppm & MSL floor life exceeded)
+    res_fail = await do_scan_serial(
+        pool,
+        {
+            "namespace_id": _NS_ID,
+            "work_order_id": _WO_ID,
+            "bom_line_id": "BOM-IC-01",
+            "serial": "SN-IC-200",
+            "lot_code": "LOT-BAD-99",
+            "msl_level": "MSL 3",
+            "exposure_hours": 250.0,  # > 168h limit
+            "reach_svhc_ppm": 2500.0,  # > 1000 ppm limit
+        },
+    )
+
+    assert res_fail["status"] == "scanned"
+    assert "qc_compliance" in res_fail
+    assert res_fail["qc_compliance"]["passed"] is False
+    assert len(res_fail["qc_compliance"]["violations"]) == 2
+    violation_issues = [v.get("issue") for v in res_fail["qc_compliance"]["violations"]]
+    assert "reach_svhc_ppm_limit" in violation_issues
+    assert "msl_floor_life_exceeded" in violation_issues

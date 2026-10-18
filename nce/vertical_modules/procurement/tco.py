@@ -149,7 +149,7 @@ def do_calculate_tco(
 
     total = price + freight + warranty + stock + delivery_risk
 
-    return {
+    result: dict[str, Any] = {
         "price": price,
         "freight": freight,
         "warranty": warranty,
@@ -158,10 +158,83 @@ def do_calculate_tco(
         "total": total,
     }
 
+    surcharge = _extract_metal_surcharge(bom_line, supplier, quantity)
+    if surcharge is not None:
+        total += surcharge
+        result["metal_surcharge"] = round(surcharge, 2)
+        result["total"] = total
+
+    return result
+
 
 # ---------------------------------------------------------------------------
 # Private helpers — single level of abstraction
 # ---------------------------------------------------------------------------
+
+
+def _extract_metal_surcharge(
+    bom_line: dict[str, Any],
+    supplier: dict[str, Any],
+    quantity: int,
+) -> float | None:
+    """Calculate Norwegian wholesaler cable metal surcharge (Kobbertillegg) if configured.
+
+    Returns the surcharge in NOK rounded to 2 decimal places, or None if no metal
+    surcharge parameters are present in bom_line or supplier.
+    """
+    # 1. Direct or precomputed metal surcharge per unit
+    surcharge_per_unit = supplier.get("metal_surcharge_per_unit")
+    if surcharge_per_unit is None:
+        surcharge_per_unit = bom_line.get("metal_surcharge_per_unit")
+
+    if surcharge_per_unit is not None:
+        unit_val = float(surcharge_per_unit)
+        if unit_val < 0:
+            raise ValueError("metal_surcharge_per_unit must not be negative")
+        length_m = float(bom_line.get("cable_length_m", quantity))
+        return round(unit_val * length_m, 2)
+
+    # Direct total metal surcharge
+    direct_surcharge = supplier.get("metal_surcharge")
+    if direct_surcharge is None:
+        direct_surcharge = bom_line.get("metal_surcharge")
+
+    if direct_surcharge is not None:
+        val = float(direct_surcharge)
+        if val < 0:
+            raise ValueError("metal_surcharge must not be negative")
+        return round(val, 2)
+
+    # 2. Formula-based Norwegian wholesaler Kobbertillegg / Aluminiumstillegg
+    metal_weight = bom_line.get("metal_weight_kg_per_km")
+    if metal_weight is None:
+        metal_weight = bom_line.get("copper_weight_kg_per_km")
+    if metal_weight is None:
+        metal_weight = supplier.get("metal_weight_kg_per_km")
+    if metal_weight is None:
+        metal_weight = supplier.get("copper_weight_kg_per_km")
+
+    lme_rate = supplier.get("lme_rate_nok_per_kg")
+    if lme_rate is None:
+        lme_rate = bom_line.get("lme_rate_nok_per_kg")
+
+    if metal_weight is not None and lme_rate is not None:
+        from nce.vertical_modules.product.enrich import calculate_cable_metal_surcharge
+
+        baseline_rate = supplier.get("baseline_rate_nok_per_kg")
+        if baseline_rate is None:
+            baseline_rate = bom_line.get("baseline_rate_nok_per_kg", 0.0)
+
+        length_m = float(bom_line.get("cable_length_m", quantity))
+        surcharge_dict = calculate_cable_metal_surcharge(
+            length_m=length_m,
+            metal_weight_kg_per_km=float(metal_weight),
+            lme_rate_nok_per_kg=float(lme_rate),
+            baseline_rate_nok_per_kg=float(baseline_rate),
+        )
+        return round(float(surcharge_dict["surcharge_amount_nok"]), 2)
+
+    return None
 
 
 def _require_positive_float(d: dict[str, Any], key: str, context: str) -> float:

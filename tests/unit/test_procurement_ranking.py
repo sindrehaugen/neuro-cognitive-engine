@@ -648,3 +648,259 @@ def test_optional_lead_time_weight_promotes_faster_supplier() -> None:
     slow_entry = next(e for e in result["ranked"] if e["supplier_id"] == "SLOW-LEAD")
 
     assert fast_entry["composite_score"] > slow_entry["composite_score"]
+
+
+# ---------------------------------------------------------------------------
+# 17-21. Wave E-9: Metal surcharge (Kobbertillegg) in TCO & cognitive ranking
+# ---------------------------------------------------------------------------
+
+
+def test_tco_metal_surcharge_calculated_from_lme_and_copper_weight() -> None:
+    """TCO includes Kobbertillegg when metal weight and LME rate are provided."""
+    from nce.vertical_modules.procurement.tco import do_calculate_tco
+
+    supplier = {
+        "supplier_id": "CABLE-SUPP-1",
+        "unit_price": 50.0,
+        "lme_rate_nok_per_kg": 85.0,
+        "baseline_rate_nok_per_kg": 50.0,
+    }
+    # 200m of cable, 150 kg/km copper
+    # metal_weight = (200 / 1000) * 150 = 30 kg
+    # rate_diff = 85.0 - 50.0 = 35.0 NOK/kg
+    # surcharge = 30 * 35 = 1050.0 NOK
+    bom_line = {
+        "quantity": 200,
+        "metal_weight_kg_per_km": 150.0,
+    }
+
+    tco = do_calculate_tco(_WEIGHTS_A, {}, supplier, bom_line)
+
+    assert "metal_surcharge" in tco
+    assert tco["metal_surcharge"] == 1050.0
+    expected_sum = (
+        tco["price"]
+        + tco["freight"]
+        + tco["warranty"]
+        + tco["stock"]
+        + tco["delivery_risk"]
+        + tco["metal_surcharge"]
+    )
+    assert abs(tco["total"] - expected_sum) < 1e-9
+
+
+def test_tco_metal_surcharge_from_precomputed_unit_rate() -> None:
+    """TCO calculates metal surcharge using metal_surcharge_per_unit."""
+    from nce.vertical_modules.procurement.tco import do_calculate_tco
+
+    supplier = {
+        "supplier_id": "CABLE-SUPP-UNIT",
+        "unit_price": 100.0,
+        "metal_surcharge_per_unit": 12.50,
+    }
+    bom_line = {"quantity": 80}
+
+    tco = do_calculate_tco(_WEIGHTS_A, {}, supplier, bom_line)
+
+    assert "metal_surcharge" in tco
+    assert tco["metal_surcharge"] == round(12.50 * 80, 2)
+    assert tco["metal_surcharge"] == 1000.0
+
+
+def test_metal_surcharge_shifts_supplier_ranking() -> None:
+    """A supplier with lower base price but high metal surcharge loses to lower TCO supplier."""
+    from nce.vertical_modules.procurement.ranking import do_rank_suppliers
+
+    # Candidate 1: base unit price 65 NOK, high metal surcharge (LME 200 NOK/kg, base 0 NOK/kg)
+    # 1000m * 200 kg/km = 200 kg metal * 200 NOK/kg = 40,000 NOK metal surcharge
+    c_cheap_base_high_surcharge = {
+        "supplier_id": "S-CHEAP-BASE",
+        "unit_price": 65.0,
+        "lme_rate_nok_per_kg": 200.0,
+        "baseline_rate_nok_per_kg": 0.0,
+        "delivery_reliability": 0.9,
+    }
+    # Candidate 2: base unit price 70 NOK, but fixed baseline absorbs surcharge (baseline 200 NOK/kg)
+    # surcharge = 0 NOK
+    c_higher_base_low_surcharge = {
+        "supplier_id": "S-STABLE-PRICE",
+        "unit_price": 70.0,
+        "lme_rate_nok_per_kg": 200.0,
+        "baseline_rate_nok_per_kg": 200.0,
+        "delivery_reliability": 0.9,
+    }
+
+    bom_cable = {
+        "quantity": 1000,
+        "metal_weight_kg_per_km": 200.0,
+    }
+
+    result = do_rank_suppliers(
+        _WEIGHTS_A, bom_cable, [c_cheap_base_high_surcharge, c_higher_base_low_surcharge]
+    )
+
+    ranked = result["ranked"]
+    entry_cheap_base = next(e for e in ranked if e["supplier_id"] == "S-CHEAP-BASE")
+    entry_stable = next(e for e in ranked if e["supplier_id"] == "S-STABLE-PRICE")
+
+    # S-STABLE-PRICE has higher unit price, but much lower metal surcharge (0 vs 40,000)
+    assert entry_cheap_base["tco"]["metal_surcharge"] == 40000.0
+    assert entry_stable["tco"]["metal_surcharge"] == 0.0
+    assert entry_stable["tco"]["total"] < entry_cheap_base["tco"]["total"]
+    # S-STABLE-PRICE outranks S-CHEAP-BASE in total TCO
+    assert entry_stable["composite_score"] > entry_cheap_base["composite_score"]
+    assert ranked[0]["supplier_id"] == "S-STABLE-PRICE"
+
+
+# ---------------------------------------------------------------------------
+# 22-26. Wave E-9: Regulatory compliance gating (DNV TAC, ISO 9001, ATEX, RoHS 3)
+# ---------------------------------------------------------------------------
+
+
+def test_regulatory_compliance_gating_dnv_and_iso_penalty() -> None:
+    """Non-compliant candidate missing DNV_TAC suffers compliance penalty and is outranked."""
+    from nce.vertical_modules.procurement.ranking import do_rank_suppliers
+
+    bom_marine = {
+        "quantity": 10,
+        "required_certifications": ["DNV_TAC", "ISO_9001"],
+    }
+
+    # Cheap supplier missing DNV_TAC
+    c_cheap_noncompliant = {
+        "supplier_id": "S-CHEAP-NONCOMPLIANT",
+        "unit_price": 50.0,
+        "delivery_reliability": 0.95,
+        "certifications": ["ISO_9001"],
+    }
+    # More expensive supplier with full DNV TAC and ISO 9001 compliance
+    c_compliant = {
+        "supplier_id": "S-COMPLIANT-MARINE",
+        "unit_price": 100.0,
+        "delivery_reliability": 0.90,
+        "certifications": ["DNV_TAC", "ISO_9001"],
+    }
+
+    result = do_rank_suppliers(_WEIGHTS_A, bom_marine, [c_cheap_noncompliant, c_compliant])
+
+    # Result includes disqualified_suppliers
+    assert "disqualified_suppliers" in result
+    assert result["disqualified_suppliers"] == ["S-CHEAP-NONCOMPLIANT"]
+
+    ranked = result["ranked"]
+    winner = ranked[0]
+    assert winner["supplier_id"] == "S-COMPLIANT-MARINE"
+    assert winner["regulatory_compliant"] is True
+    assert winner["missing_certifications"] == []
+
+    loser = ranked[1]
+    assert loser["supplier_id"] == "S-CHEAP-NONCOMPLIANT"
+    assert loser["regulatory_compliant"] is False
+    assert loser["missing_certifications"] == ["DNV_TAC"]
+    # Penalty applied: composite was reduced by * 0.1
+    assert loser["composite_score"] < winner["composite_score"]
+
+
+def test_strict_regulatory_gate_zeroes_score() -> None:
+    """When strict_regulatory_gate is True, non-compliant composite_score is 0.0."""
+    from nce.vertical_modules.procurement.ranking import do_rank_suppliers
+
+    bom_strict = {
+        "quantity": 5,
+        "required_certifications": ["ATEX_2014_34_EU", "ISO_9001"],
+        "strict_regulatory_gate": True,
+    }
+
+    c1 = {
+        "supplier_id": "S-EX-COMPLIANT",
+        "unit_price": 120.0,
+        "certifications": ["ATEX", "ISO_9001"],
+    }
+    c2 = {
+        "supplier_id": "S-EX-DEFICIENT",
+        "unit_price": 80.0,
+        "certifications": ["ISO_9001"],
+    }
+
+    result = do_rank_suppliers(_WEIGHTS_A, bom_strict, [c1, c2])
+
+    deficient_entry = next(e for e in result["ranked"] if e["supplier_id"] == "S-EX-DEFICIENT")
+    compliant_entry = next(e for e in result["ranked"] if e["supplier_id"] == "S-EX-COMPLIANT")
+
+    assert deficient_entry["composite_score"] == 0.0
+    assert compliant_entry["composite_score"] > 0.0
+    assert result["disqualified_suppliers"] == ["S-EX-DEFICIENT"]
+
+
+def test_regulatory_scope_dnv_marine_and_atex() -> None:
+    """regulatory_scope='dnv_marine' requires DNV_TAC and ISO_9001 automatically."""
+    from nce.vertical_modules.procurement.ranking import do_rank_suppliers
+
+    bom_scope = {
+        "quantity": 10,
+        "regulatory_scope": "dnv_marine",
+    }
+
+    c_full = {
+        "supplier_id": "S-FULL-DNV",
+        "unit_price": 100.0,
+        "certifications": {"DNV_TAC": True, "ISO_9001": True},
+    }
+    c_partial = {
+        "supplier_id": "S-PARTIAL-DNV",
+        "unit_price": 70.0,
+        "certifications": {"DNV_TAC": True, "ISO_9001": False},
+    }
+
+    result = do_rank_suppliers(_WEIGHTS_A, bom_scope, [c_full, c_partial])
+
+    assert result["disqualified_suppliers"] == ["S-PARTIAL-DNV"]
+    partial_entry = next(e for e in result["ranked"] if e["supplier_id"] == "S-PARTIAL-DNV")
+    assert partial_entry["regulatory_compliant"] is False
+    assert partial_entry["missing_certifications"] == ["ISO_9001"]
+
+
+def test_regulatory_scope_electrical_lv_and_pcba_with_rohs() -> None:
+    """electrical_lv checks CE/ROHS_3, and electronics_pcba checks ROHS_3/REACH/ISO_9001."""
+    from nce.vertical_modules.procurement.ranking import do_rank_suppliers
+
+    bom_lv = {
+        "quantity": 10,
+        "regulatory_scope": "electrical_lv",
+    }
+
+    c_ce_rohs = {
+        "supplier_id": "S-LV-COMPLIANT",
+        "unit_price": 90.0,
+        "certifications": ["CE", "ROHS_3"],
+    }
+    c_no_rohs = {
+        "supplier_id": "S-LV-NO-ROHS",
+        "unit_price": 80.0,
+        "certifications": ["CE"],
+    }
+
+    result = do_rank_suppliers(_WEIGHTS_A, bom_lv, [c_ce_rohs, c_no_rohs])
+    assert result["disqualified_suppliers"] == ["S-LV-NO-ROHS"]
+
+    no_rohs_entry = next(e for e in result["ranked"] if e["supplier_id"] == "S-LV-NO-ROHS")
+    assert no_rohs_entry["missing_certifications"] == ["ROHS_3"]
+
+
+def test_no_regulatory_keys_when_gating_not_requested() -> None:
+    """When required_certifications and regulatory_scope are absent, no compliance keys are added."""
+    from nce.vertical_modules.procurement.ranking import do_rank_suppliers
+
+    bom_standard = {"quantity": 5}
+    candidates = [
+        {"supplier_id": "C1", "unit_price": 50.0},
+        {"supplier_id": "C2", "unit_price": 60.0},
+    ]
+
+    result = do_rank_suppliers(_WEIGHTS_A, bom_standard, candidates)
+
+    assert set(result.keys()) == {"ranked", "rebate_override", "rebate_rationale"}
+    assert "disqualified_suppliers" not in result
+    for entry in result["ranked"]:
+        assert "regulatory_compliant" not in entry
+        assert "missing_certifications" not in entry

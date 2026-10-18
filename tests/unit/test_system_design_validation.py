@@ -13,7 +13,9 @@ Unit tests for Wave E-1:
 
 from __future__ import annotations
 
+import json
 import math
+import uuid
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -32,8 +34,11 @@ from nce.vertical_modules.system_design.electrical_nek import (
     validate_short_circuit_and_rcd,
 )
 from nce.vertical_modules.system_design.sow import generate_sow
+from nce.vertical_modules.system_design.validate import _append_validation_ledger
 from nce.vertical_modules.system_design.validation_queries import (
+    check_dnv_marine_compliance,
     check_electrical_nek_compliance,
+    check_electronics_qc_compliance,
     run_all_validations,
     validate_design_graph,
 )
@@ -736,3 +741,388 @@ class TestSoWIntegration:
             assert kurs["earthing_system"] == "TN_S_400V_3P"
             assert kurs["total_circuits"] == 1
             assert kurs["passed"] is True
+
+
+# ===========================================================================
+# 11. check_dnv_marine_compliance (Wave E-7)
+# ===========================================================================
+
+
+class TestDNVMarineCompliance:
+    """Tests for check_dnv_marine_compliance."""
+
+    def test_empty_config_passes_skipped(self) -> None:
+        res = check_dnv_marine_compliance(None)
+        assert res["passed"] is True
+        assert any("skipped" in r for r in res["reasons"])
+
+    def test_compliant_marine_setup_passes(self) -> None:
+        marine_config = {
+            "switchboard": {
+                "earthing_system": "IT_230V_3P",
+                "has_imd": True,
+                "msb_location_id": "COMPARTMENT_A",
+                "esb_location_id": "COMPARTMENT_B",
+                "essential_consumers": [
+                    {
+                        "name": "NavRadar",
+                        "feed_count": 2,
+                        "ups_autonomy_sec": 64800.0,
+                        "is_emergency_lighting": True,
+                    }
+                ],
+                "thd_voltage_pct": 3.5,
+            },
+            "cables": [
+                {
+                    "cable_type": "BFOU 0.6/1kV",
+                    "sheath_type": "SHF2",
+                    "flame_retardant": True,
+                    "fire_resistant": True,
+                    "is_emergency_circuit": True,
+                }
+            ],
+            "atex_checks": [
+                {
+                    "device_spec": {
+                        "epl": "Gb",
+                        "temperature_class": "T4",
+                        "ip_rating": "IP56",
+                        "ik_rating": "IK08",
+                        "corrosion_class": "C5",
+                    },
+                    "location_env": {
+                        "ex_zone": "zone_1",
+                        "min_temp_class": "T3",
+                        "min_ip_rating": "IP56",
+                        "min_ik_rating": "IK08",
+                        "min_corrosion_class": "C5",
+                    },
+                }
+            ],
+        }
+        res = check_dnv_marine_compliance(marine_config)
+        assert res["passed"] is True
+        assert any("DNV maritime & ATEX safety compliance passed" in r for r in res["reasons"])
+
+    def test_prohibited_earthing_fails(self) -> None:
+        marine_config = {
+            "switchboard": {
+                "earthing_system": "TN-C",
+                "has_imd": True,
+                "msb_location_id": "COMP_1",
+                "esb_location_id": "COMP_2",
+                "essential_consumers": [],
+            }
+        }
+        res = check_dnv_marine_compliance(marine_config)
+        assert res["passed"] is False
+        assert any("prohibited on marine vessels" in r for r in res["reasons"])
+
+    def test_non_shf_cable_fails(self) -> None:
+        marine_config = {
+            "cables": [
+                {
+                    "cable_type": "PVC-Standard",
+                    "sheath_type": "PVC",
+                    "flame_retardant": False,
+                }
+            ]
+        }
+        res = check_dnv_marine_compliance(marine_config)
+        assert res["passed"] is False
+        assert any("halogen-free" in r for r in res["reasons"])
+
+    def test_atex_epl_insufficient_fails(self) -> None:
+        marine_config = {
+            "atex_checks": [
+                {
+                    "device_spec": {
+                        "epl": "Gc",
+                        "ip_rating": "IP66",
+                        "ik_rating": "IK10",
+                        "corrosion_class": "CX",
+                    },
+                    "location_env": {
+                        "ex_zone": "zone_0",
+                        "min_ip_rating": "IP66",
+                    },
+                }
+            ]
+        }
+        res = check_dnv_marine_compliance(marine_config)
+        assert res["passed"] is False
+        assert any("insufficient for zone_0" in r for r in res["reasons"])
+
+
+# ===========================================================================
+# 12. check_electronics_qc_compliance (Wave E-7)
+# ===========================================================================
+
+
+class TestElectronicsQCCompliance:
+    """Tests for check_electronics_qc_compliance."""
+
+    def test_empty_config_passes_skipped(self) -> None:
+        res = check_electronics_qc_compliance(None)
+        assert res["passed"] is True
+        assert any("skipped" in r for r in res["reasons"])
+
+    def test_compliant_electronics_setup_passes(self) -> None:
+        elec_cfg = {
+            "components": [
+                {
+                    "part_number": "C101",
+                    "type": "capacitor",
+                    "voltage_applied": 12.0,
+                    "voltage_rated": 25.0,
+                }
+            ],
+            "bom_lines": [
+                {
+                    "part_number": "R101",
+                    "rohs_compliant": True,
+                    "reach_compliant": True,
+                    "substances": {"lead": 150.0},
+                }
+            ],
+            "esd": {
+                "wrist_strap_mohm": 2.5,
+                "mat_to_ground_ohm": 1.0e7,
+                "relative_humidity_pct": 40.0,
+            },
+        }
+        res = check_electronics_qc_compliance(elec_cfg)
+        assert res["passed"] is True
+        assert any("Electronics QC compliance passed" in r for r in res["reasons"])
+
+    def test_derating_stress_ratio_violation_fails(self) -> None:
+        elec_cfg = {
+            "components": [
+                {
+                    "part_number": "C201",
+                    "type": "capacitor",
+                    "voltage_applied": 20.0,
+                    "voltage_rated": 25.0,  # 20/25 = 0.80 > 0.60
+                }
+            ]
+        }
+        res = check_electronics_qc_compliance(elec_cfg)
+        assert res["passed"] is False
+        assert any("Voltage stress ratio" in r for r in res["reasons"])
+
+    def test_rohs_substance_exceeded_fails(self) -> None:
+        elec_cfg = {
+            "bom_lines": [
+                {
+                    "part_number": "IC101",
+                    "substances": {"lead": 5000.0},  # > 1000 ppm
+                }
+            ]
+        }
+        res = check_electronics_qc_compliance(elec_cfg)
+        assert res["passed"] is False
+        assert any("exceeds RoHS 3 threshold" in r for r in res["reasons"])
+
+    def test_esd_wrist_strap_out_of_range_fails(self) -> None:
+        elec_cfg = {
+            "esd": {
+                "wrist_strap_mohm": 0.20,  # < 0.75 Mohm
+                "mat_to_ground_ohm": 1.0e7,
+            }
+        }
+        res = check_electronics_qc_compliance(elec_cfg)
+        assert res["passed"] is False
+        assert any("operator electric shock hazard" in r for r in res["reasons"])
+
+
+# ===========================================================================
+# 13. run_all_validations & validate_design_graph Multi-Domain (Wave E-7)
+# ===========================================================================
+
+
+class TestMultiDomainValidationQueries:
+    """Tests for run_all_validations and validate_design_graph multi-domain expansion."""
+
+    def test_run_all_validations_selective_inclusion(self) -> None:
+        # Default: exactly 5 baseline checks
+        assert len(run_all_validations()) == 5
+
+        # With marine_config only: 6 checks
+        m_cfg = {
+            "switchboard": {
+                "earthing_system": "IT_230V_3P",
+                "has_imd": True,
+                "msb_location_id": "M",
+                "esb_location_id": "E",
+            }
+        }
+        res_m = run_all_validations(marine_config=m_cfg)
+        assert len(res_m) == 6
+        assert res_m[-1]["passed"] is True
+
+        # With electronics_config only: 6 checks
+        e_cfg = {"esd": {"wrist_strap_mohm": 1.5, "mat_to_ground_ohm": 1.0e6}}
+        res_e = run_all_validations(electronics_config=e_cfg)
+        assert len(res_e) == 6
+        assert res_e[-1]["passed"] is True
+
+        # With electrical, marine, and electronics: 8 checks total
+        elec_circuits = [
+            {
+                "course_no": 1,
+                "in_a": 16.0,
+                "curve": "C",
+                "cable_mm2": 2.5,
+                "length_m": 10.0,
+                "power_w": 1000.0,
+                "rcd_ma": 30.0,
+            }
+        ]
+        res_all = run_all_validations(
+            electrical_circuits=elec_circuits,
+            marine_config=m_cfg,
+            electronics_config=e_cfg,
+        )
+        assert len(res_all) == 8
+        assert all(c["passed"] for c in res_all)
+
+    @pytest.mark.asyncio
+    async def test_validate_design_graph_with_marine_and_electronics(self) -> None:
+        engine = AsyncMock()
+        engine.pg_pool = AsyncMock()
+
+        with (
+            patch(
+                "nce.vertical_modules.system_design.validation_queries.scoped_pg_session"
+            ) as mock_sess,
+            patch(
+                "nce.vertical_modules.system_design.validation_queries._fetch_port_directions",
+                return_value=([], set()),
+            ),
+            patch(
+                "nce.vertical_modules.system_design.validation_queries._fetch_connections_and_capabilities",
+                return_value=([], {}),
+            ),
+            patch(
+                "nce.vertical_modules.system_design.validation_queries._fetch_device_capabilities",
+                return_value=[],
+            ),
+            patch(
+                "nce.vertical_modules.system_design.validation_queries._fetch_port_capabilities",
+                return_value=[],
+            ),
+        ):
+            mock_conn = AsyncMock()
+            mock_sess.return_value.__aenter__.return_value = mock_conn
+
+            params = {
+                "namespace_id": str(uuid.uuid4()),
+                "design_id": "DES-OFFSHORE-001",
+                "marine_config": {
+                    "switchboard": {
+                        "earthing_system": "IT_230V_3P",
+                        "has_imd": True,
+                        "msb_location_id": "FWD_SWITCH",
+                        "esb_location_id": "AFT_EMERG",
+                    }
+                },
+                "electronics_config": {
+                    "esd": {"wrist_strap_mohm": 2.0, "mat_to_ground_ohm": 1.0e6}
+                },
+            }
+            res = await validate_design_graph(engine, params)
+            assert res["passed"] is True
+            assert any("DNV maritime" in r for r in res["reasons"])
+            assert any("Electronics QC" in r for r in res["reasons"])
+
+
+# ===========================================================================
+# 14. v3_cognitive_ledger Regulatory Learning (Wave E-7)
+# ===========================================================================
+
+
+class TestCognitiveLedgerRegulatoryLearning:
+    """Tests for regulatory_scope and applied_standards recording in v3_cognitive_ledger."""
+
+    @pytest.mark.asyncio
+    async def test_validate_design_records_regulatory_scope_in_ledger(self) -> None:
+        ns_id = uuid.uuid4()
+        design_id = "DESIGN-REG-001"
+        mock_conn = AsyncMock()
+
+        await _append_validation_ledger(
+            mock_conn,
+            ns_id,
+            design_id,
+            decisions=[{"line_id": "LINE-1", "verdict": "accept"}],
+            passed=True,
+            reasons=[],
+            regulatory_scope="marine_dnv_norsok",
+            applied_standards=["DNV-RU-SHIP-PT4-CH8", "NEK-410-2021"],
+        )
+
+        mock_conn.execute.assert_awaited_once()
+        call_args = mock_conn.execute.call_args[0]
+        sql = call_args[0]
+        assert "INSERT INTO v3_cognitive_ledger" in sql
+        tlx_scores_raw = call_args[3]
+        payload = json.loads(tlx_scores_raw)
+        assert payload["event"] == "design_validation"
+        assert payload["design_id"] == design_id
+        assert payload["passed"] is True
+        assert payload["regulatory_scope"] == "marine_dnv_norsok"
+        assert payload["applied_standards"] == ["DNV-RU-SHIP-PT4-CH8", "NEK-410-2021"]
+
+    @pytest.mark.asyncio
+    async def test_validate_design_records_decision_level_regulatory_metadata(self) -> None:
+        ns_id = uuid.uuid4()
+        design_id = "DESIGN-REG-002"
+        mock_conn = AsyncMock()
+
+        await _append_validation_ledger(
+            mock_conn,
+            ns_id,
+            design_id,
+            decisions=[
+                {
+                    "line_id": "LINE-EX",
+                    "verdict": "accept",
+                    "regulatory_scope": "hazardous_atex_iso",
+                    "applied_standards": ["ATEX-2014-34-EU"],
+                }
+            ],
+            passed=True,
+            reasons=[],
+        )
+
+        mock_conn.execute.assert_awaited_once()
+        tlx_scores_raw = mock_conn.execute.call_args[0][3]
+        payload = json.loads(tlx_scores_raw)
+        assert payload["regulatory_scope"] == "hazardous_atex_iso"
+        assert payload["applied_standards"] == ["ATEX-2014-34-EU"]
+        assert payload["decisions"][0]["regulatory_scope"] == "hazardous_atex_iso"
+        assert payload["decisions"][0]["applied_standards"] == ["ATEX-2014-34-EU"]
+
+    @pytest.mark.asyncio
+    async def test_validate_design_without_regulatory_scope_preserves_default_payload(self) -> None:
+        ns_id = uuid.uuid4()
+        design_id = "DESIGN-REG-003"
+        mock_conn = AsyncMock()
+
+        await _append_validation_ledger(
+            mock_conn,
+            ns_id,
+            design_id,
+            decisions=[{"line_id": "LINE-PLAIN", "verdict": "accept"}],
+            passed=True,
+            reasons=[],
+        )
+
+        mock_conn.execute.assert_awaited_once()
+        tlx_scores_raw = mock_conn.execute.call_args[0][3]
+        payload = json.loads(tlx_scores_raw)
+        assert "regulatory_scope" not in payload
+        assert "applied_standards" not in payload
+        assert "regulatory_scope" not in payload["decisions"][0]
+        assert "applied_standards" not in payload["decisions"][0]

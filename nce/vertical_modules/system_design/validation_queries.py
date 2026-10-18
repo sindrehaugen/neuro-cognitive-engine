@@ -426,6 +426,230 @@ def check_electrical_nek_compliance(
     }
 
 
+# ---------------------------------------------------------------------------
+# Pure check #7 — maritime & offshore DNV / IEC 60092 / ATEX compliance.
+# ---------------------------------------------------------------------------
+
+
+def check_dnv_marine_compliance(
+    marine_config: dict[str, Any] | None = None,
+) -> CheckResult:
+    """Check maritime and offshore installation compliance per DNV / IEC 60092 / ATEX.
+
+    Parameters
+    ----------
+    marine_config:
+        Optional dictionary containing maritime switchboard parameters,
+        cable specifications, and hazardous area / environmental specs.
+        If None or empty, check passes cleanly with skipped notice.
+
+    Returns
+    -------
+    CheckResult
+        ``{"passed": bool, "reasons": list[str]}``
+    """
+    from nce.vertical_modules.system_design.dnv_marine import (
+        validate_atex_and_environment,
+        validate_dnv_switchboard_and_bus,
+        validate_marine_cable_iec60092,
+    )
+
+    if not marine_config:
+        return {
+            "passed": True,
+            "reasons": [
+                "No maritime/offshore configuration provided; DNV compliance check skipped."
+            ],
+        }
+
+    reasons: list[str] = []
+    passed = True
+
+    # 1. Switchboard and busbar validation (DNV-RU-SHIP Pt.4 Ch.8 / NEK 410 / SOLAS)
+    sw_cfg = marine_config.get("switchboard") or marine_config
+    if (
+        "earthing_system" in sw_cfg
+        or "essential_consumers" in sw_cfg
+        or "msb_location_id" in sw_cfg
+        or "esb_location_id" in sw_cfg
+        or "switchboard" in marine_config
+    ):
+        earthing = str(sw_cfg.get("earthing_system") or "IT_230V_3P")
+        has_imd = bool(sw_cfg.get("has_imd", True))
+        msb_loc = str(sw_cfg.get("msb_location_id") or "ZONE_MSB")
+        esb_loc = str(sw_cfg.get("esb_location_id") or "ZONE_ESB")
+        consumers = sw_cfg.get("essential_consumers") or []
+        thd_pct = float(sw_cfg.get("thd_voltage_pct", 0.0))
+
+        sw_res = validate_dnv_switchboard_and_bus(
+            earthing_system=earthing,
+            has_imd=has_imd,
+            msb_location_id=msb_loc,
+            esb_location_id=esb_loc,
+            essential_consumers=consumers,
+            thd_voltage_pct=thd_pct,
+        )
+        if not sw_res.get("compliant", False):
+            passed = False
+            reasons.extend(sw_res.get("violations", []))
+
+    # 2. Marine cabling validation (IEC 60092-350/360, IEC 60332-3-22, IEC 60331)
+    cables = (
+        marine_config.get("cables")
+        or marine_config.get("marine_cables")
+        or marine_config.get("cable_specs")
+    )
+    if not cables and "cable_spec" in marine_config:
+        cables = [marine_config["cable_spec"]]
+
+    if cables:
+        for c in cables:
+            is_emerg = bool(c.get("is_emergency_circuit", False))
+            c_res = validate_marine_cable_iec60092(cable_spec=c, is_emergency_circuit=is_emerg)
+            if not c_res.get("compliant", False):
+                passed = False
+                reasons.extend(c_res.get("violations", []))
+
+    # 3. Hazardous area & environmental validation (ATEX 2014/34/EU, EN 60079, IP/IK/ISO 12944)
+    atex_items = (
+        marine_config.get("atex_checks")
+        or marine_config.get("hazardous_areas")
+        or marine_config.get("equipment")
+    )
+    if not atex_items and ("device_spec" in marine_config or "location_env" in marine_config):
+        dev = marine_config.get("device_spec") or {}
+        env = marine_config.get("location_env") or {}
+        atex_items = [{"device_spec": dev, "location_env": env}]
+
+    if atex_items:
+        for item in atex_items:
+            dev = item.get("device_spec") or item.get("device") or item
+            env = (
+                item.get("location_env")
+                or item.get("environment")
+                or marine_config.get("location_env", {})
+            )
+            a_res = validate_atex_and_environment(device_spec=dev, location_env=env)
+            if not a_res.get("compliant", False):
+                passed = False
+                reasons.extend(a_res.get("violations", []))
+
+    if passed and not reasons:
+        reasons = [
+            "DNV maritime & ATEX safety compliance passed: switchboard, marine cabling, "
+            "and environmental protection verified."
+        ]
+
+    return {
+        "passed": passed,
+        "reasons": reasons,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Pure check #8 — electronics QC, stress derating & RoHS/IPC/ESD compliance.
+# ---------------------------------------------------------------------------
+
+
+def check_electronics_qc_compliance(
+    electronics_config: dict[str, Any] | None = None,
+) -> CheckResult:
+    """Check electronics R&D and PCBA quality control compliance per ECSS/RoHS/IPC/ESD.
+
+    Parameters
+    ----------
+    electronics_config:
+        Optional dictionary containing component derating specs, BOM lines for
+        RoHS/REACH/MSL, and ESD workstation measurements.
+        If None or empty, check passes cleanly with skipped notice.
+
+    Returns
+    -------
+    CheckResult
+        ``{"passed": bool, "reasons": list[str]}``
+    """
+    from nce.vertical_modules.system_design.electronics_qc import (
+        validate_component_derating,
+        validate_en61340_esd_workstation,
+        validate_eu_electronics_compliance,
+    )
+
+    if not electronics_config:
+        return {
+            "passed": True,
+            "reasons": [
+                "No electronics QC configuration provided; electronics compliance check skipped."
+            ],
+        }
+
+    reasons: list[str] = []
+    passed = True
+
+    # 1. Component derating validation (ECSS-Q-ST-30-11C / IEC 61508 / ISO 26262)
+    comps = (
+        electronics_config.get("components")
+        or electronics_config.get("derating_components")
+        or electronics_config.get("derating")
+    )
+    if comps and isinstance(comps, list):
+        s_class = str(electronics_config.get("safety_class", "industrial"))
+        derate_res = validate_component_derating(components=comps, safety_class=s_class)
+        if not derate_res.get("passed", False):
+            passed = False
+            for v in derate_res.get("violations", []):
+                reasons.append(v.get("message", str(v)) if isinstance(v, dict) else str(v))
+
+    # 2. EU electronics compliance (RoHS 3, REACH SVHC, IPC/JEDEC J-STD-033 MSL)
+    bom = electronics_config.get("bom_lines") or electronics_config.get("bom")
+    if bom and isinstance(bom, list):
+        rohs_req = bool(electronics_config.get("require_rohs", True))
+        reach_req = bool(electronics_config.get("require_reach", True))
+        ce_req = bool(electronics_config.get("require_ce", False))
+        eu_res = validate_eu_electronics_compliance(
+            bom_lines=bom,
+            require_rohs=rohs_req,
+            require_reach=reach_req,
+            require_ce=ce_req,
+        )
+        if not eu_res.get("passed", False):
+            passed = False
+            for v in eu_res.get("violations", []):
+                reasons.append(v.get("message", str(v)) if isinstance(v, dict) else str(v))
+
+    # 3. EN 61340-5-1 ESD Workstation validation
+    esd_cfg = (
+        electronics_config.get("esd")
+        or electronics_config.get("esd_workstation")
+        or electronics_config
+    )
+    w_strap = esd_cfg.get("wrist_strap_mohm")
+    mat_ground = esd_cfg.get("mat_to_ground_ohm")
+    if w_strap is not None and mat_ground is not None:
+        foot_ohm = esd_cfg.get("footwear_ohm")
+        foot_val = float(foot_ohm) if foot_ohm is not None else None
+        rh_pct = float(esd_cfg.get("relative_humidity_pct", 45.0))
+        esd_res = validate_en61340_esd_workstation(
+            wrist_strap_mohm=float(w_strap),
+            mat_to_ground_ohm=float(mat_ground),
+            footwear_ohm=foot_val,
+            relative_humidity_pct=rh_pct,
+        )
+        if not esd_res.get("passed", False):
+            passed = False
+            reasons.extend(esd_res.get("violations", []))
+
+    if passed and not reasons:
+        reasons = [
+            "Electronics QC compliance passed: stress derating, EU RoHS/REACH/MSL, "
+            "and EN 61340-5-1 ESD protection verified."
+        ]
+
+    return {
+        "passed": passed,
+        "reasons": reasons,
+    }
+
+
 def run_all_validations(
     *,
     input_port_labels: list[str] | None = None,
@@ -436,10 +660,13 @@ def run_all_validations(
     port_caps: list[dict[str, Any]] | None = None,
     electrical_circuits: list[dict[str, Any]] | None = None,
     earthing_system: str = "TN_S_400V_3P",
+    marine_config: dict[str, Any] | None = None,
+    electronics_config: dict[str, Any] | None = None,
 ) -> list[CheckResult]:
     """Run pure validation checks on pre-fetched data structures.
 
-    Returns a list of CheckResult dicts. If electrical_circuits is None,
+    Returns a list of CheckResult dicts. If optional domain configurations
+    (electrical_circuits, marine_config, electronics_config) are None,
     returns exactly the 5 baseline checks for full backward-compatibility.
     """
     r1 = check_signal_flow_continuity(input_port_labels or [], connected_to_targets or set())
@@ -450,6 +677,10 @@ def run_all_validations(
     checks = [r1, r2, r3, r4, r5]
     if electrical_circuits is not None:
         checks.append(check_electrical_nek_compliance(electrical_circuits, earthing_system))
+    if marine_config is not None:
+        checks.append(check_dnv_marine_compliance(marine_config))
+    if electronics_config is not None:
+        checks.append(check_electronics_qc_compliance(electronics_config))
     return checks
 
 
@@ -479,6 +710,8 @@ async def validate_design_graph(
             "design_id": str,             # required
             "electrical_circuits": list,  # optional Wave E-1 circuits
             "earthing_system": str,       # optional Wave E-1 earthing system
+            "marine_config": dict,        # optional Wave E-2 maritime/ATEX config
+            "electronics_config": dict,   # optional Wave E-3 electronics QC config
         }``
 
     Returns
@@ -535,6 +768,12 @@ async def validate_design_graph(
             earthing_system=params.get("earthing_system", "TN_S_400V_3P"),
         )
         all_checks.append(r6)
+    if params.get("marine_config") is not None:
+        r_marine = check_dnv_marine_compliance(params.get("marine_config"))
+        all_checks.append(r_marine)
+    if params.get("electronics_config") is not None:
+        r_elec = check_electronics_qc_compliance(params.get("electronics_config"))
+        all_checks.append(r_elec)
 
     all_reasons: list[str] = []
     for chk in all_checks:

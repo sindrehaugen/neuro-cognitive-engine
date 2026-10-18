@@ -18,6 +18,7 @@ from uuid import UUID
 import pytest
 
 from nce.vertical_modules.support.proactive import (
+    correlate_lot_defect_recall,
     do_open_proactive_telemetry_ticket,
     do_proactive_ticket_from_anomaly,
 )
@@ -245,3 +246,182 @@ async def test_proactive_ticket_correlated_to_upstream_via_param_ids():
     assert res["ticket_id"] == _UPSTREAM_TICKET_ID
     assert res["root_cause_asset_id"] == _UPSTREAM_ASSET_ID
     mock_do_open.assert_not_called()
+
+
+def test_correlate_lot_defect_recall_pure_helper():
+    """Validates IPC-1782 lot and Norwegian elnummer recall correlation over scanned records."""
+    records = [
+        # Affected by lot code
+        {
+            "work_order_id": "WO-101",
+            "asset_id": "ASSET-1",
+            "serial": "SN-A1",
+            "lot_code": "LOT-RECALL-99",
+        },
+        # Affected by lot code inside traceability dict
+        {
+            "work_order_id": "WO-101",
+            "asset_id": "ASSET-2",
+            "serial_number": "SN-A2",
+            "traceability": {"lot_code": "lot-recall-99", "reel_id": "REEL-1"},
+        },
+        # Affected by Norwegian elnummer
+        {
+            "work_order_id": "WO-102",
+            "asset_id": "ASSET-3",
+            "serial": "SN-B1",
+            "elnummer": "6912345",
+            "lot_code": "LOT-CLEAN-01",
+        },
+        # Clean record - not affected
+        {
+            "work_order_id": "WO-103",
+            "asset_id": "ASSET-4",
+            "serial": "SN-C1",
+            "lot_code": "LOT-CLEAN-02",
+            "elnummer": "9999999",
+        },
+    ]
+
+    recall = correlate_lot_defect_recall(
+        scanned_records=records,
+        defective_lot_codes=["LOT-RECALL-99", "LOT-RECALL-100"],
+        defective_elnummers=["6912345"],
+    )
+
+    assert recall["recalled_count"] == 3
+    assert recall["affected_work_orders"] == ["WO-101", "WO-102"]
+    assert recall["affected_serials"] == ["SN-A1", "SN-A2", "SN-B1"]
+    assert len(recall["matches"]) == 3
+
+    # Check match structure
+    m0 = recall["matches"][0]
+    assert m0["work_order_id"] == "WO-101"
+    assert m0["serial_number"] == "SN-A1"
+    assert m0["lot_code"] == "LOT-RECALL-99"
+    assert "defective_lot_code" in m0["recall_reasons"]
+
+    m2 = recall["matches"][2]
+    assert m2["work_order_id"] == "WO-102"
+    assert m2["elnummer"] == "6912345"
+    assert "defective_elnummer" in m2["recall_reasons"]
+
+
+@pytest.mark.asyncio
+async def test_do_proactive_ticket_from_anomaly_with_lot_recall_correlation():
+    """Validates that do_proactive_ticket_from_anomaly attaches lot_recall_summary when recall params are passed."""
+    mock_conn = AsyncMock()
+    mock_conn.fetchrow.return_value = None
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+
+    pool = MagicMock()
+
+    mock_ticket = {
+        "id": _TICKET_ID,
+        "namespace_id": _NAMESPACE_ID,
+        "asset_id": _ASSET_ID,
+        "summary": "Proactive ticket with recall correlation",
+        "priority": "high",
+        "status": "open",
+        "change_origin": "agent",
+    }
+
+    scanned_records = [
+        {
+            "work_order_id": "WO-RECALL-01",
+            "asset_id": _ASSET_ID,
+            "serial": "SN-REC-001",
+            "lot_code": "LOT-DEFECT-2026",
+        },
+        {
+            "work_order_id": "WO-CLEAN-01",
+            "asset_id": "OTHER-ASSET",
+            "serial": "SN-CLEAN-001",
+            "lot_code": "LOT-OK",
+        },
+    ]
+
+    with (
+        patch(
+            "nce.vertical_modules.support.proactive.scoped_pg_session",
+            return_value=mock_session,
+        ),
+        patch(
+            "nce.vertical_modules.support.proactive.assert_owner",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "nce.vertical_modules.support.proactive.do_open_ticket",
+            new_callable=AsyncMock,
+            return_value={
+                "ticket": mock_ticket,
+                "sla_clock": {"resolution_due": "2026-10-18T20:00:00Z"},
+            },
+        ),
+    ):
+        res = await do_proactive_ticket_from_anomaly(
+            pool,
+            {
+                "namespace_id": _NAMESPACE_ID,
+                "asset_id": _ASSET_ID,
+                "recalled_lot_codes": ["LOT-DEFECT-2026"],
+                "scanned_records": scanned_records,
+            },
+        )
+
+    assert res["ok"] is True
+    assert res["proactive"] is True
+    assert "lot_recall_summary" in res
+    recall_summary = res["lot_recall_summary"]
+    assert recall_summary["recalled_count"] == 1
+    assert recall_summary["affected_work_orders"] == ["WO-RECALL-01"]
+    assert recall_summary["affected_serials"] == ["SN-REC-001"]
+
+
+@pytest.mark.asyncio
+async def test_do_proactive_ticket_idempotent_replay_attaches_lot_recall_summary():
+    """Idempotent replay branch preserves lot_recall_summary when recall parameters are passed."""
+    existing_row = {
+        "id": UUID(_TICKET_ID),
+        "status": "open",
+        "summary": "Existing ticket",
+        "created_at": "2026-10-18T10:00:00Z",
+    }
+    mock_conn = AsyncMock()
+    mock_conn.fetchrow.return_value = existing_row
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+
+    pool = MagicMock()
+
+    records = [
+        {"work_order_id": "WO-EL-01", "serial": "SN-EL-01", "elnummer": "1234567"},
+    ]
+
+    with (
+        patch(
+            "nce.vertical_modules.support.proactive.scoped_pg_session",
+            return_value=mock_session,
+        ),
+    ):
+        res = await do_open_proactive_telemetry_ticket(
+            pool,
+            {
+                "namespace_id": _NAMESPACE_ID,
+                "asset_id": _ASSET_ID,
+                "recalled_lot_codes": ["NO-LOT"],
+                "recalled_elnummers": ["1234567"],
+                "scanned_records": records,
+            },
+        )
+
+    assert res["ok"] is True
+    assert res["idempotent_replay"] is True
+    assert "lot_recall_summary" in res
+    assert res["lot_recall_summary"]["recalled_count"] == 1
+    assert res["lot_recall_summary"]["affected_work_orders"] == ["WO-EL-01"]
