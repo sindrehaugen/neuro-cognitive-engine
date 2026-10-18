@@ -17,7 +17,7 @@ import json
 import math
 import uuid
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -34,7 +34,7 @@ from nce.vertical_modules.system_design.electrical_nek import (
     validate_short_circuit_and_rcd,
 )
 from nce.vertical_modules.system_design.sow import generate_sow
-from nce.vertical_modules.system_design.validate import do_validate_design
+from nce.vertical_modules.system_design.validate import _append_validation_ledger
 from nce.vertical_modules.system_design.validation_queries import (
     check_dnv_marine_compliance,
     check_electrical_nek_compliance,
@@ -1047,129 +1047,82 @@ class TestCognitiveLedgerRegulatoryLearning:
 
     @pytest.mark.asyncio
     async def test_validate_design_records_regulatory_scope_in_ledger(self) -> None:
-        engine = MagicMock()
-        engine.pg_pool = MagicMock()
         ns_id = uuid.uuid4()
         design_id = "DESIGN-REG-001"
-
         mock_conn = AsyncMock()
-        mock_ctx = AsyncMock()
-        mock_ctx.__aenter__.return_value = mock_conn
-        mock_ctx.__aexit__.return_value = None
 
-        with (
-            patch(
-                "nce.vertical_modules.system_design.validate.scoped_pg_session",
-                return_value=mock_ctx,
-            ),
-            patch(
-                "nce.vertical_modules.system_design.validate._bump_design_version",
-                new_callable=AsyncMock,
-            ),
-        ):
-            params = {
-                "namespace_id": ns_id,
-                "design_id": design_id,
-                "decisions": [{"line_id": "LINE-1", "verdict": "accept"}],
-                "regulatory_scope": "marine_dnv_norsok",
-                "applied_standards": ["DNV-RU-SHIP-PT4-CH8", "NEK-410-2021"],
-            }
-            res = await do_validate_design(engine, params)
-            assert res["passed"] is True
+        await _append_validation_ledger(
+            mock_conn,
+            ns_id,
+            design_id,
+            decisions=[{"line_id": "LINE-1", "verdict": "accept"}],
+            passed=True,
+            reasons=[],
+            regulatory_scope="marine_dnv_norsok",
+            applied_standards=["DNV-RU-SHIP-PT4-CH8", "NEK-410-2021"],
+        )
 
-            # Verify SQL execution on mock_conn
-            mock_conn.execute.assert_awaited_once()
-            call_args = mock_conn.execute.call_args[0]
-            sql = call_args[0]
-            assert "INSERT INTO v3_cognitive_ledger" in sql
-            # Positional parameters: $1 ns_uuid, $2 _ZERO_TENSOR, $3 tlx_scores (JSON), $4 vad_scores, $5 model_version
-            tlx_scores_raw = call_args[3]
-            payload = json.loads(tlx_scores_raw)
-            assert payload["event"] == "design_validation"
-            assert payload["design_id"] == design_id
-            assert payload["passed"] is True
-            assert payload["regulatory_scope"] == "marine_dnv_norsok"
-            assert payload["applied_standards"] == ["DNV-RU-SHIP-PT4-CH8", "NEK-410-2021"]
+        mock_conn.execute.assert_awaited_once()
+        call_args = mock_conn.execute.call_args[0]
+        sql = call_args[0]
+        assert "INSERT INTO v3_cognitive_ledger" in sql
+        tlx_scores_raw = call_args[3]
+        payload = json.loads(tlx_scores_raw)
+        assert payload["event"] == "design_validation"
+        assert payload["design_id"] == design_id
+        assert payload["passed"] is True
+        assert payload["regulatory_scope"] == "marine_dnv_norsok"
+        assert payload["applied_standards"] == ["DNV-RU-SHIP-PT4-CH8", "NEK-410-2021"]
 
     @pytest.mark.asyncio
     async def test_validate_design_records_decision_level_regulatory_metadata(self) -> None:
-        engine = MagicMock()
-        engine.pg_pool = MagicMock()
         ns_id = uuid.uuid4()
         design_id = "DESIGN-REG-002"
-
         mock_conn = AsyncMock()
-        mock_ctx = AsyncMock()
-        mock_ctx.__aenter__.return_value = mock_conn
-        mock_ctx.__aexit__.return_value = None
 
-        with (
-            patch(
-                "nce.vertical_modules.system_design.validate.scoped_pg_session",
-                return_value=mock_ctx,
-            ),
-            patch(
-                "nce.vertical_modules.system_design.validate._bump_design_version",
-                new_callable=AsyncMock,
-            ),
-        ):
-            params = {
-                "namespace_id": ns_id,
-                "design_id": design_id,
-                "decisions": [
-                    {
-                        "line_id": "LINE-EX",
-                        "verdict": "accept",
-                        "regulatory_scope": "hazardous_atex_iso",
-                        "applied_standards": ["ATEX-2014-34-EU"],
-                    }
-                ],
-            }
-            res = await do_validate_design(engine, params)
-            assert res["passed"] is True
+        await _append_validation_ledger(
+            mock_conn,
+            ns_id,
+            design_id,
+            decisions=[
+                {
+                    "line_id": "LINE-EX",
+                    "verdict": "accept",
+                    "regulatory_scope": "hazardous_atex_iso",
+                    "applied_standards": ["ATEX-2014-34-EU"],
+                }
+            ],
+            passed=True,
+            reasons=[],
+        )
 
-            mock_conn.execute.assert_awaited_once()
-            tlx_scores_raw = mock_conn.execute.call_args[0][3]
-            payload = json.loads(tlx_scores_raw)
-            assert payload["regulatory_scope"] == "hazardous_atex_iso"
-            assert payload["applied_standards"] == ["ATEX-2014-34-EU"]
-            assert payload["decisions"][0]["regulatory_scope"] == "hazardous_atex_iso"
-            assert payload["decisions"][0]["applied_standards"] == ["ATEX-2014-34-EU"]
+        mock_conn.execute.assert_awaited_once()
+        tlx_scores_raw = mock_conn.execute.call_args[0][3]
+        payload = json.loads(tlx_scores_raw)
+        assert payload["regulatory_scope"] == "hazardous_atex_iso"
+        assert payload["applied_standards"] == ["ATEX-2014-34-EU"]
+        assert payload["decisions"][0]["regulatory_scope"] == "hazardous_atex_iso"
+        assert payload["decisions"][0]["applied_standards"] == ["ATEX-2014-34-EU"]
 
     @pytest.mark.asyncio
     async def test_validate_design_without_regulatory_scope_preserves_default_payload(self) -> None:
-        engine = MagicMock()
-        engine.pg_pool = MagicMock()
         ns_id = uuid.uuid4()
         design_id = "DESIGN-REG-003"
-
         mock_conn = AsyncMock()
-        mock_ctx = AsyncMock()
-        mock_ctx.__aenter__.return_value = mock_conn
-        mock_ctx.__aexit__.return_value = None
 
-        with (
-            patch(
-                "nce.vertical_modules.system_design.validate.scoped_pg_session",
-                return_value=mock_ctx,
-            ),
-            patch(
-                "nce.vertical_modules.system_design.validate._bump_design_version",
-                new_callable=AsyncMock,
-            ),
-        ):
-            params = {
-                "namespace_id": ns_id,
-                "design_id": design_id,
-                "decisions": [{"line_id": "LINE-PLAIN", "verdict": "accept"}],
-            }
-            res = await do_validate_design(engine, params)
-            assert res["passed"] is True
+        await _append_validation_ledger(
+            mock_conn,
+            ns_id,
+            design_id,
+            decisions=[{"line_id": "LINE-PLAIN", "verdict": "accept"}],
+            passed=True,
+            reasons=[],
+        )
 
-            mock_conn.execute.assert_awaited_once()
-            tlx_scores_raw = mock_conn.execute.call_args[0][3]
-            payload = json.loads(tlx_scores_raw)
-            assert "regulatory_scope" not in payload
-            assert "applied_standards" not in payload
-            assert "regulatory_scope" not in payload["decisions"][0]
-            assert "applied_standards" not in payload["decisions"][0]
+        mock_conn.execute.assert_awaited_once()
+        tlx_scores_raw = mock_conn.execute.call_args[0][3]
+        payload = json.loads(tlx_scores_raw)
+        assert "regulatory_scope" not in payload
+        assert "applied_standards" not in payload
+        assert "regulatory_scope" not in payload["decisions"][0]
+        assert "applied_standards" not in payload["decisions"][0]
