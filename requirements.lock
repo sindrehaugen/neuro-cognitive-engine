@@ -563,7 +563,7 @@ traitlets==5.16.1
     # via
     #   jupyter-core
     #   nbformat
-transformers==5.19.0
+transformers==5.20.1
     # via
     #   -r requirements.txt
     #   sentence-transformers
