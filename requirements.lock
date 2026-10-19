@@ -116,7 +116,7 @@ extract-msg==0.56.1
     # via -r requirements.txt
 ezdxf==1.4.4
     # via -r requirements.txt
-fastapi==0.142.4
+fastapi==0.146.0
     # via -r requirements.txt
 fastjsonschema==2.22.2
     # via nbformat
