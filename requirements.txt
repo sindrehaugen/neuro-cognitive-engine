@@ -32,7 +32,7 @@ python-dotenv>=1.2.4
 # --- ASGI / API Layer --------------------------------------------------------
 mcp>=1.30.0,<2               # MCP SDK (cap: 2.0 removes Server.list_tools, used by server.py + nce/mcp_stdio_main.py)
 starlette>=1.7.0             # ASGI server core (>=1.0: 0.4x testclient demanded nonexistent httpx2; see #23)
-fastapi>=0.143.2             # REST + WebSocket interface layer
+fastapi>=0.161.1             # REST + WebSocket interface layer
 uvicorn>=0.54.0              # ASGI process runner
 sse-starlette>=3.4.11         # Server-Sent Events for live telemetry feed
 httpx>=0.28.1                # Async HTTP client
