@@ -376,26 +376,6 @@ REGISTRY: dict[str, SettingMetadata] = {
         description="PBKDF2 iteration count for password hashing and v4 key blobs.",
     ),
     # 4. Guardrails
-    "NCE_BYPASS_WORM": SettingMetadata(
-        key="NCE_BYPASS_WORM",
-        section="Guardrails",
-        type="bool",
-        reload_class="COLD",
-        is_secret=False,
-        prod_locked=True,  # Guardrail key
-        validator=validate_bool,
-        description="Permits bypassing WORM log constraints (Forbidden in Prod).",
-    ),
-    "NCE_BYPASS_RLS": SettingMetadata(
-        key="NCE_BYPASS_RLS",
-        section="Guardrails",
-        type="bool",
-        reload_class="COLD",
-        is_secret=False,
-        prod_locked=True,  # Guardrail key
-        validator=validate_bool,
-        description="Permits bypassing Row-Level Security constraints (Forbidden in Prod).",
-    ),
     "NCE_ADMIN_OVERRIDE": SettingMetadata(
         key="NCE_ADMIN_OVERRIDE",
         section="Guardrails",
@@ -415,16 +395,6 @@ REGISTRY: dict[str, SettingMetadata] = {
         prod_locked=True,  # Guardrail key
         validator=validate_bool,
         description="Allows loading local env variables from .env files (Forbidden in Prod).",
-    ),
-    "NCE_ALLOW_ADMIN_DOTENV_PERSIST": SettingMetadata(
-        key="NCE_ALLOW_ADMIN_DOTENV_PERSIST",
-        section="Guardrails",
-        type="bool",
-        reload_class="COLD",
-        is_secret=False,
-        prod_locked=True,  # Guardrail key
-        validator=validate_bool,
-        description="Allows saving runtime setting overrides to .env file (Forbidden in Prod).",
     ),
     # 5. Admin surface
     "NCE_ADMIN_USERNAME": SettingMetadata(

@@ -203,9 +203,6 @@ async def verify_worm_on_table(conn: asyncpg.Connection, table_name: str) -> Non
         Propagated for unexpected DB errors (e.g. table missing).
     """
     table_name = _validate_identifier(table_name)
-    if cfg.NCE_BYPASS_WORM:
-        log.warning("[worm-probe] Bypassing WORM verification for table %s", table_name)
-        return
 
     # Set dummy namespace ID session setting so RLS policies don't fail during WORM checks
     try:
@@ -520,9 +517,6 @@ async def verify_rls_enforcement(conn: asyncpg.Connection, table_name: str) -> N
         Propagated for unexpected DB errors (e.g. table missing).
     """
     table_name = _validate_identifier(table_name)
-    if cfg.NCE_BYPASS_RLS:
-        log.warning("[rls-probe] Bypassing RLS verification for table %s", table_name)
-        return
 
     try:
         count = await conn.fetchval(f"SELECT count(*) FROM {table_name}")

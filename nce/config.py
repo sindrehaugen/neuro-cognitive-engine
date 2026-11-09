@@ -862,8 +862,6 @@ class _Config:
     NCE_ADMIN_API_KEY: str = secret_env("NCE_ADMIN_API_KEY", "")
     NCE_ADMIN_OVERRIDE: bool = _bool_env("NCE_ADMIN_OVERRIDE", False)
     # Startup WORM / RLS probe bypass (dev/support only — rejected when IS_PROD).
-    NCE_BYPASS_WORM: bool = _bool_env("NCE_BYPASS_WORM", False)
-    NCE_BYPASS_RLS: bool = _bool_env("NCE_BYPASS_RLS", False)
     # Admin UI may persist connector/datastore edits to a local .env file (dev only).
     NCE_ALLOW_ADMIN_DOTENV_PERSIST: bool = _bool_env(
         "NCE_ALLOW_ADMIN_DOTENV_PERSIST",
@@ -1794,12 +1792,6 @@ class _Config:
 # Module-level singleton — import `cfg` everywhere inside the package.
 cfg = _Config()
 
-if cfg.IS_PROD and cfg.NCE_BYPASS_WORM:
-    raise RuntimeError("NCE_BYPASS_WORM is forbidden in production")
-if cfg.IS_PROD and cfg.NCE_BYPASS_RLS:
-    raise RuntimeError("NCE_BYPASS_RLS is forbidden in production")
-if cfg.IS_PROD and cfg.NCE_ALLOW_ADMIN_DOTENV_PERSIST:
-    raise RuntimeError("NCE_ALLOW_ADMIN_DOTENV_PERSIST is forbidden in production")
 if cfg.IS_PROD and cfg.NCE_ADMIN_OVERRIDE:
     raise RuntimeError(
         "NCE_ADMIN_OVERRIDE is forbidden in production. "

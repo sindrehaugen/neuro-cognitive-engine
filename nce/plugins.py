@@ -1,0 +1,126 @@
+"""NCE Plugin Spine & Discovery System.
+
+Defines the NCEPlugin protocol and dynamically discovers and registers
+external plugins (such as nce-vertical-engines) via Python's entry_points API.
+"""
+
+from __future__ import annotations
+
+import importlib.metadata
+import logging
+from pathlib import Path
+from typing import Any, Protocol, runtime_checkable
+
+log = logging.getLogger(__name__)
+
+ENTRY_POINT_GROUP = "nce.plugins"
+
+
+@runtime_checkable
+class NCEPlugin(Protocol):
+    """Protocol that all NCE plugins must implement."""
+
+    plugin_id: str
+
+    def register_tools(self, registry: Any) -> None:
+        """Register MCP tools into the central TOOL_REGISTRY dictionary."""
+        ...
+
+    def register_routes(self, app: Any) -> None:
+        """Mount HTTP/REST routes onto FastAPI/Starlette applications."""
+        ...
+
+    def register_workers(self, worker_registry: Any) -> None:
+        """Register background job handlers and queue definitions."""
+        ...
+
+    def register_cognitive_hooks(self, cognitive_engine: Any) -> None:
+        """Register cognitive hooks (spreading activation, consolidation, NLI)."""
+        ...
+
+    def get_migration_dir(self) -> Path | None:
+        """Return the directory containing PostgreSQL migration files for this plugin."""
+        ...
+
+
+_DISCOVERED_PLUGINS: dict[str, NCEPlugin] | None = None
+
+
+def load_plugins(*, force_reload: bool = False) -> dict[str, NCEPlugin]:
+    """Discover and instantiate all plugins registered under 'nce.plugins'."""
+    global _DISCOVERED_PLUGINS
+    if _DISCOVERED_PLUGINS is not None and not force_reload:
+        return _DISCOVERED_PLUGINS
+
+    plugins: dict[str, NCEPlugin] = {}
+    try:
+        entry_points = importlib.metadata.entry_points(group=ENTRY_POINT_GROUP)
+    except Exception as exc:
+        log.warning("Failed to query entry points for %s: %s", ENTRY_POINT_GROUP, exc)
+        entry_points = []
+
+    for ep in entry_points:
+        try:
+            plugin_cls = ep.load()
+            plugin_instance = plugin_cls() if callable(plugin_cls) else plugin_cls
+            plugin_id = getattr(plugin_instance, "plugin_id", ep.name)
+            plugins[plugin_id] = plugin_instance
+            log.info("Discovered and loaded NCE plugin: %s (%s)", plugin_id, ep.value)
+        except Exception as exc:
+            log.exception("Failed to load NCE plugin %s: %s", ep.name, exc)
+
+    _DISCOVERED_PLUGINS = plugins
+    return plugins
+
+
+def register_all_plugin_tools(registry: Any) -> None:
+    """Invoke register_tools on all discovered plugins."""
+    for plugin_id, plugin in load_plugins().items():
+        try:
+            plugin.register_tools(registry)
+            log.info("Registered tools from plugin: %s", plugin_id)
+        except Exception as exc:
+            log.exception("Error registering tools from plugin %s: %s", plugin_id, exc)
+
+
+def register_all_plugin_routes(app: Any) -> None:
+    """Invoke register_routes on all discovered plugins."""
+    for plugin_id, plugin in load_plugins().items():
+        try:
+            plugin.register_routes(app)
+            log.info("Registered routes from plugin: %s", plugin_id)
+        except Exception as exc:
+            log.exception("Error registering routes from plugin %s: %s", plugin_id, exc)
+
+
+def register_all_plugin_workers(worker_registry: Any) -> None:
+    """Invoke register_workers on all discovered plugins."""
+    for plugin_id, plugin in load_plugins().items():
+        try:
+            plugin.register_workers(worker_registry)
+            log.info("Registered workers from plugin: %s", plugin_id)
+        except Exception as exc:
+            log.exception("Error registering workers from plugin %s: %s", plugin_id, exc)
+
+
+def register_all_plugin_cognitive_hooks(cognitive_engine: Any) -> None:
+    """Invoke register_cognitive_hooks on all discovered plugins."""
+    for plugin_id, plugin in load_plugins().items():
+        try:
+            plugin.register_cognitive_hooks(cognitive_engine)
+            log.info("Registered cognitive hooks from plugin: %s", plugin_id)
+        except Exception as exc:
+            log.exception("Error registering cognitive hooks from plugin %s: %s", plugin_id, exc)
+
+
+def get_all_plugin_migration_dirs() -> dict[str, Path]:
+    """Collect non-None migration directories from all discovered plugins."""
+    migration_dirs: dict[str, Path] = {}
+    for plugin_id, plugin in load_plugins().items():
+        try:
+            mdir = plugin.get_migration_dir()
+            if mdir is not None and Path(mdir).is_dir():
+                migration_dirs[plugin_id] = Path(mdir)
+        except Exception as exc:
+            log.exception("Error obtaining migration dir from plugin %s: %s", plugin_id, exc)
+    return migration_dirs
