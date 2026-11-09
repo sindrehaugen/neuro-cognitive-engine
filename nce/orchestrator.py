@@ -204,6 +204,7 @@ class NCEEngine(OrchestratorBase):
 
         await self._init_pg_schema()
         await self._apply_pg_migrations()
+        await self._apply_plugin_pg_migrations()
         # Verification is cheap and read-only; seeding is expensive and mutating.
         # Validate first so a drifted deployment fails in ~1 s instead of paying
         # the full seed cost and *then* refusing to start.  Seeding depends only
@@ -635,6 +636,43 @@ class NCEEngine(OrchestratorBase):
         if skipped:
             log.debug("[PG] %d migration(s) already applied — skipped", skipped)
 
+    async def _apply_plugin_pg_migrations(self) -> None:
+        """Apply SQL migrations from installed plugins scoped by (plugin_scope, filename)."""
+        try:
+            from nce.migration_ledger import (
+                applied_checksums,
+                migration_checksum,
+                record_applied,
+                should_skip,
+            )
+            from nce.plugins import (
+                get_all_plugin_migration_dirs,
+                register_all_plugin_cognitive_hooks,
+            )
+
+            register_all_plugin_cognitive_hooks(self)
+            plugin_dirs = get_all_plugin_migration_dirs()
+            if not plugin_dirs:
+                return
+            async with self.pg_pool.acquire(timeout=60.0) as conn:
+                applied = await applied_checksums(conn)
+            for plugin_scope, p_dir in sorted(plugin_dirs.items()):
+                if not p_dir or not p_dir.is_dir():
+                    continue
+                for p_path in sorted(p_dir.glob("*.sql")):
+                    scoped_name = f"{plugin_scope}:{p_path.name}"
+                    p_sql = p_path.read_text(encoding="utf-8")
+                    p_checksum = migration_checksum(p_sql)
+                    if should_skip(scoped_name, p_checksum, applied):
+                        continue
+                    async with self.pg_pool.acquire(timeout=60.0) as conn:
+                        async with conn.transaction():
+                            await conn.execute(_ADVISORY_LOCK_SQL, SCHEMA_ADVISORY_LOCK_ID)
+                            await conn.execute(p_sql)
+                            await record_applied(conn, scoped_name, p_checksum)
+        except Exception as exc:
+            log.debug("[PG] plugin migration / hook registration skipped: %s", exc)
+
     async def _verify_schema_version(self) -> None:
         """Report (and in production, refuse) an image older than its database.
 
@@ -668,7 +706,7 @@ class NCEEngine(OrchestratorBase):
 
         try:
             async with self.pg_pool.acquire(timeout=10.0) as conn:
-                recorded = list(await applied_checksums(conn))
+                recorded = [k for k in await applied_checksums(conn) if ':' not in k]
         except Exception as exc:
             log.warning("[PG] schema-version check skipped: %s", exc)
             return

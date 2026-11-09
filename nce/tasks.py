@@ -586,7 +586,10 @@ def process_d365_event(payload: dict) -> dict:
 
     Follows the same poison-pill / DLQ pattern as ``process_bridge_event``.
     """
-    from nce_verticals.dynamics365.webhooks import D365WebhookValidator
+    try:
+        from nce_verticals.dynamics365.webhooks import D365WebhookValidator
+    except ImportError:
+        return {"status": "skipped", "reason": "nce-vertical-engines not installed"}
 
     job_id = _get_job_id()
     redis_client = _get_redis()
@@ -657,10 +660,13 @@ async def _dispatch_d365_event(
     import asyncpg
     import redis.asyncio as aioredis
     from motor.motor_asyncio import AsyncIOMotorClient
-    from nce_verticals.dynamics365.auth import DataverseTokenManager
-    from nce_verticals.dynamics365.client import DataverseClient
-    from nce_verticals.dynamics365.ingestion import DataverseIngestionWorker
-    from nce_verticals.dynamics365.sync import DataverseSyncEngine
+    try:
+        from nce_verticals.dynamics365.auth import DataverseTokenManager
+        from nce_verticals.dynamics365.client import DataverseClient
+        from nce_verticals.dynamics365.ingestion import DataverseIngestionWorker
+        from nce_verticals.dynamics365.sync import DataverseSyncEngine
+    except ImportError:
+        return {"status": "skipped", "reason": "nce-vertical-engines not installed"}
 
     from nce.config import cfg
     from nce.db_utils import scoped_pg_session
@@ -835,7 +841,10 @@ def process_diag_bundle(
     * transient failures (download / PG / Mongo) are re-raised here so the
       poison-pill governor decides retry-vs-DLQ via the shared attempt counter.
     """
-    from nce_verticals.diagnostics.worker import _diag_async
+    try:
+        from nce_verticals.diagnostics.worker import _diag_async
+    except ImportError:
+        return {"status": "skipped", "reason": "nce-vertical-engines not installed"}
 
     job_id = _get_job_id()
     redis_client = _get_redis()

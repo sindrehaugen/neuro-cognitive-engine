@@ -1855,10 +1855,13 @@ async def _retention_tick(pool: asyncpg.Pool) -> None:
         # one place (archive.sweep_enabled) rather than being restated at the
         # schedule.  It shares this tick because it is the same kind of work on
         # the same cadence and needs the same MinIO client and cron lock.
-        from nce_verticals.system_design.archive import run_design_archive_sweep
+        try:
+            from nce_verticals.system_design.archive import run_design_archive_sweep
 
-        design_stats = await run_design_archive_sweep(pool, minio_client)
-        log.info("system_design archive sweep complete: %s", design_stats)
+            design_stats = await run_design_archive_sweep(pool, minio_client)
+            log.info("system_design archive sweep complete: %s", design_stats)
+        except ImportError:
+            pass
 
     except _CRON_TICK_ERRORS as exc:
         log.exception("event_retention tick failed unexpectedly")

@@ -864,7 +864,10 @@ async def _dispatch_skill(
         if not node_id:
             raise ValueError("node_id is required")
 
-        from nce_verticals.vendors.partner_view import do_partner_view
+        try:
+            from nce_verticals.vendors.partner_view import do_partner_view
+        except ImportError as exc:
+            raise ValueError("nce-vertical-engines plugin is not installed") from exc
 
         view_params = {
             "namespace_id": ns_id,
@@ -881,7 +884,10 @@ async def _dispatch_skill(
         if not isinstance(job, dict):
             raise ValueError("job parameter must be a dictionary")
 
-        from nce_verticals.vendors.matching import do_match_contractor
+        try:
+            from nce_verticals.vendors.matching import do_match_contractor
+        except ImportError as exc:
+            raise ValueError("nce-vertical-engines plugin is not installed") from exc
 
         return await do_match_contractor(_engine, {"namespace_id": ns_id, "job": job})
 
@@ -890,7 +896,10 @@ async def _dispatch_skill(
         contractor_id = _require_param(params, "contractor_id")
         window = params.get("window")
 
-        from nce_verticals.vendors.performance import do_compute_performance
+        try:
+            from nce_verticals.vendors.performance import do_compute_performance
+        except ImportError as exc:
+            raise ValueError("nce-vertical-engines plugin is not installed") from exc
 
         return await do_compute_performance(
             _engine,
@@ -907,7 +916,10 @@ async def _dispatch_skill(
         contractor_id = params.get("contractor_id")
         limit = params.get("limit") or params.get("top_k", 5)
 
-        from nce_verticals.vendors.performance import do_recall_similar_jobs
+        try:
+            from nce_verticals.vendors.performance import do_recall_similar_jobs
+        except ImportError as exc:
+            raise ValueError("nce-vertical-engines plugin is not installed") from exc
 
         return await do_recall_similar_jobs(
             _engine,
@@ -922,7 +934,10 @@ async def _dispatch_skill(
     if skill == "vendors_reliability_radar":
         ns_id = _resolve_skill_namespace(params, caller_ctx)
 
-        from nce_verticals.vendors.frontier import do_reliability_radar
+        try:
+            from nce_verticals.vendors.frontier import do_reliability_radar
+        except ImportError as exc:
+            raise ValueError("nce-vertical-engines plugin is not installed") from exc
 
         return await do_reliability_radar(_engine, {"namespace_id": ns_id})
 

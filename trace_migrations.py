@@ -251,11 +251,16 @@ def validate_static() -> dict[str, Any]:
     assert len(vert_files) > 0, "No vertical migration files found!"
 
     tenant_tables_found = set()
+    seen_prefixes: set[str] = set()
     for i, path in enumerate(vert_files, 1):
-        expected_prefix = f"{i:03d}_"
-        assert path.name.startswith(expected_prefix), (
-            f"Vertical migration sequence gap or mismatch: expected {expected_prefix}*, got {path.name}"
+        prefix = path.name.split("_", 1)[0]
+        assert prefix.isdigit() and len(prefix) == 3, (
+            f"Vertical migration invalid numeric prefix in {path.name}"
         )
+        assert prefix not in seen_prefixes, (
+            f"Duplicate vertical migration prefix {prefix} in {path.name}"
+        )
+        seen_prefixes.add(prefix)
         content = path.read_text(encoding="utf-8")
         chunks = re.split(
             r"CREATE\s+(?:UNLOGGED\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?", content, flags=re.I

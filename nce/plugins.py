@@ -114,13 +114,20 @@ def register_all_plugin_cognitive_hooks(cognitive_engine: Any) -> None:
 
 
 def get_all_plugin_migration_dirs() -> dict[str, Path]:
-    """Collect non-None migration directories from all discovered plugins."""
+    """Collect unique non-None migration directories from all discovered plugins."""
     migration_dirs: dict[str, Path] = {}
-    for plugin_id, plugin in load_plugins().items():
+    seen_resolved: set[Path] = set()
+    plugins = load_plugins()
+    ordered_ids = sorted(plugins.keys(), key=lambda k: (0 if k == "nce_verticals" else 1, k))
+    for plugin_id in ordered_ids:
+        plugin = plugins[plugin_id]
         try:
             mdir = plugin.get_migration_dir()
             if mdir is not None and Path(mdir).is_dir():
-                migration_dirs[plugin_id] = Path(mdir)
+                resolved = Path(mdir).resolve()
+                if resolved not in seen_resolved:
+                    seen_resolved.add(resolved)
+                    migration_dirs[plugin_id] = Path(mdir)
         except Exception as exc:
             log.exception("Error obtaining migration dir from plugin %s: %s", plugin_id, exc)
     return migration_dirs

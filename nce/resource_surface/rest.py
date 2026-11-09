@@ -2041,8 +2041,11 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             "1",
         )
 
-        from nce_verticals.documents.resources import DOCUMENT_SPEC
-        from nce_verticals.documents.service import list_entity_documents
+        try:
+            from nce_verticals.documents.resources import DOCUMENT_SPEC
+            from nce_verticals.documents.service import list_entity_documents
+        except ImportError as exc:
+            return admin_error_response("Documents plugin not installed", exc, status_code=501)
 
         session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
@@ -2110,7 +2113,10 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         doc_id_raw = body.get("document_id") or body.get("doc_id")
         doc_data = body.get("document") if isinstance(body.get("document"), dict) else None
 
-        from nce_verticals.documents.service import link_document, register_document
+        try:
+            from nce_verticals.documents.service import link_document, register_document
+        except ImportError as exc:
+            return admin_error_response("Documents plugin not installed", exc, status_code=501)
 
         session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
 
@@ -2282,7 +2288,10 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                 f"Invalid document UUID: {doc_id_raw}", exc, status_code=400
             )
 
-        from nce_verticals.documents.service import unlink_document
+        try:
+            from nce_verticals.documents.service import unlink_document
+        except ImportError as exc:
+            return admin_error_response("Documents plugin not installed", exc, status_code=501)
 
         session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
 
