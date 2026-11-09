@@ -456,7 +456,7 @@ async def dynamics365_webhook(request: Request):
     signature = request.headers.get("x-ms-signaturecontent", "")
     body = await _read_body_bounded(request)
 
-    from nce.vertical_modules.dynamics365.webhooks import D365WebhookValidator
+    from nce_verticals.dynamics365.webhooks import D365WebhookValidator
 
     if not D365WebhookValidator.validate_signature(body, signature, _D365_WEBHOOK_SECRET):
         log.warning("D365 webhook invalid signature — rejecting")
@@ -618,7 +618,7 @@ async def signing_webhook(
             detail=f"Quote session '{session_id_str}' not found in read model",
         )
 
-    from nce.vertical_modules.sales.signing import do_on_signed_callback
+    from nce_verticals.sales.signing import do_on_signed_callback
 
     params = {
         "namespace_id": ns_str,

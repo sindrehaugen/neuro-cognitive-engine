@@ -427,9 +427,6 @@ The following environment variables exist exclusively for local development conv
 | Variable | Effect | Production Status |
 | :--- | :--- | :--- |
 | `NCE_ADMIN_OVERRIDE` | Bypasses `require_scope("admin")` key validation entirely — any caller is treated as an authorized admin. | **Forbidden** (`RuntimeError` raised at startup) |
-| `NCE_BYPASS_WORM` | Skips the WORM (write-once append-only) integrity probe at startup. | **Forbidden** |
-| `NCE_BYPASS_RLS` | Skips the Row-Level Security isolation probe at startup. | **Forbidden** |
-| `NCE_ALLOW_ADMIN_DOTENV_PERSIST` | Permits the admin UI to write connector/datastore secrets to a local `.env` file. | **Forbidden** (secrets must come from a secret manager) |
 | `NCE_LOAD_DOTENV` | Loads a `.env` file at process start. Its default is `"true"`, so an **unset** value is also treated as enabled and triggers the production `RuntimeError`. | **Forbidden unless explicitly `false`** — under `NCE_ENV=prod`, both an explicit truthy value **and** leaving it unset raise `RuntimeError`. The safe action is to set it explicitly to `false`. |
 | `NCE_MTLS_ACKNOWLEDGE_DISABLED` | Bypasses the mandatory production mTLS requirement. Default `false`. | **Permitted only with explicit operator acknowledgment**; when `true` in production, logs a `CRITICAL` alert and records a WORM security audit event. |
 

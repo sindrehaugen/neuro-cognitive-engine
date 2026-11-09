@@ -110,7 +110,6 @@ async def test_signature_version_2_integration(pg_pool, make_namespace, monkeypa
     """
     import json
 
-    from nce.config import cfg
     from nce.event_log import _sign_event, append_event, verify_event_signature
 
     ns_id = await make_namespace()
@@ -149,8 +148,7 @@ async def test_signature_version_2_integration(pg_pool, make_namespace, monkeypa
             await verify_event_signature(conn, row)
 
     # Tamper parameters of row 2 and verify it raises DataIntegrityError
-    monkeypatch.setenv("NCE_BYPASS_WORM", "true")
-    with patch.object(cfg, "NCE_BYPASS_WORM", True):
+    if True:
         async with scoped_pg_session(pg_pool, ns_id) as conn:
             await conn.execute("ALTER TABLE event_log DISABLE TRIGGER trg_event_log_worm")
             try:
@@ -176,7 +174,7 @@ async def test_signature_version_2_integration(pg_pool, make_namespace, monkeypa
     # What if we alter row 2's chain_hash?
     # Let's alter row 2's chain_hash, then verify row 3. Since row 3's signature binds row 2's chain_hash,
     # if row 2's chain_hash doesn't match what was signed, row 3 should fail signature verification!
-    with patch.object(cfg, "NCE_BYPASS_WORM", True):
+    if True:
         async with scoped_pg_session(pg_pool, ns_id) as conn:
             await conn.execute("ALTER TABLE event_log DISABLE TRIGGER trg_event_log_worm")
             try:
@@ -223,7 +221,7 @@ async def test_signature_version_2_integration(pg_pool, make_namespace, monkeypa
         )
 
         # Manually insert it with signature_version = 1 using bypass
-        with patch.object(cfg, "NCE_BYPASS_WORM", True):
+        if True:
             await conn.execute("ALTER TABLE event_log DISABLE TRIGGER trg_event_log_worm")
             try:
                 await conn.execute(

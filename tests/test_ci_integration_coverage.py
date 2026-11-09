@@ -60,10 +60,6 @@ _WORKFLOWS_DIR = _REPO_ROOT / ".github" / "workflows"
 # into the integration job in ci.yml instead.
 KNOWN_UNWIRED: frozenset[str] = frozenset(
     {
-        "tests/diagnostics/test_diag_worker.py",
-        "tests/diagnostics/test_diagnostic_ingest.py",
-        "tests/diagnostics/test_digest_writer.py",
-        "tests/test_batch49_pii_derivation.py",
         "tests/test_c4_donewhen.py",
         "tests/test_chain_and_decay_integration.py",
         "tests/test_cron_chain_verify.py",
@@ -77,17 +73,10 @@ KNOWN_UNWIRED: frozenset[str] = frozenset(
         "tests/test_garbage_collector.py",
         "tests/test_governed_decorator.py",
         "tests/test_me_app.py",
-        "tests/test_product_enrich.py",
-        "tests/test_product_ingestion.py",
         "tests/test_replay_handlers_integration.py",
-        "tests/test_sales_graph.py",
-        "tests/test_sales_public_quote.py",
-        "tests/test_sales_sign_to_project.py",
         "tests/test_shred_memory_integration.py",
         "tests/test_snapshot_mcp_handlers.py",
         "tests/test_tamper_anchor.py",
-        "tests/test_vendors_cert_watcher.py",
-        "tests/test_vendors_registry.py",
         "tests/test_webhook_clientstate.py",
         "tests/test_worker_inflight_recovery.py",
     }
@@ -105,21 +94,8 @@ KNOWN_UNWIRED: frozenset[str] = frozenset(
 # This list may SHRINK freely.  Adding to it is a conscious admission.
 GLOBBED_UNMARKED_BY_DESIGN: frozenset[str] = frozenset(
     {
-        # Pure-unit A2A/seam test for Module 9.Wave 7; mocks the DB boundary and
-        # says so in its own module docstring.  Matched by tests/test_assets_*.py.
-        "tests/test_assets_sla.py",
-        # Pure-unit / hermetic mock test for Wave A-3 (warranty/EOL + NetBox sync);
-        # mocks DB and external HTTP NetBox boundaries. Matched by tests/test_assets_*.py.
-        "tests/test_assets_warranty_netbox.py",
-        # Pure-unit test for Wave A-4 (QR generator & room register);
-        # mocks DB boundary. Matched by tests/test_assets_*.py.
-        "tests/test_assets_qr_register.py",
-        # Pure-unit test for Wave A-5 (Assets failure pattern recording);
-        # mocks DB boundary and verifies Contract-A. Matched by tests/test_assets_*.py.
-        "tests/test_assets_failure_pattern.py",
-        # Pure-unit test for Wave IN-2 (Inventory kitting & package reservation);
-        # tests in-memory domain logic and mocks DB boundary. Matched by tests/test_inventory_*.py.
-        "tests/test_inventory_kitting.py",
+        "tests/test_event_log_append.py",
+        "tests/test_event_log_worm_privileges_pg.py",
     }
 )
 

@@ -1,0 +1,4 @@
+-- 014_a2a_one_time.sql
+-- Migration 017: Optional one-time A2A grants
+ALTER TABLE a2a_grants ADD COLUMN IF NOT EXISTS one_time BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE a2a_grants ADD COLUMN IF NOT EXISTS usage_count INTEGER NOT NULL DEFAULT 0;

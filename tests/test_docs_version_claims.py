@@ -76,10 +76,6 @@ _EXEMPT_V1_0_SITES: dict[tuple[str, str], str] = {
         "SP[PATCH /v1.0/subscriptions/id",
     ): "Microsoft Graph API v1.0 mermaid renewal flow",
     (
-        "docs/engines/system-design-admin.md",
-        "https://graph.microsoft.com/v1.0",
-    ): "Microsoft Graph API v1.0 endpoint documentation",
-    (
         "docs/service_integrations.md",
         "PATCH https://graph.microsoft.com/v1.0/subscriptions/{id}",
     ): "Microsoft Graph API v1.0 subscription renewal table entry",

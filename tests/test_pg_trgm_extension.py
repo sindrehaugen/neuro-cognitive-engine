@@ -7,7 +7,7 @@ from pathlib import Path
 import asyncpg  # type: ignore[import-untyped]
 import pytest
 
-MIGRATION_PATH = Path("nce/migrations/026_pg_trgm_extension.sql")
+MIGRATION_PATH = Path("nce/migrations/021_pg_trgm_extension.sql")
 
 
 def _migration_sql() -> str:

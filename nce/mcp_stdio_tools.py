@@ -9478,3 +9478,22 @@ if cfg.NCE_DIAG_ENABLED:
 
 # Auto-advertise all C12 Resource Surface tools
 TOOLS.extend(build_all_resource_tool_definitions())
+
+
+# Filter TOOLS to registered tools in TOOL_REGISTRY (Core + active plugins)
+def _sync_tools_with_registry() -> None:
+    try:
+        from nce.tool_registry import TOOL_REGISTRY
+
+        registered = set(TOOL_REGISTRY.keys())
+        TOOLS[:] = [
+            t
+            for t in TOOLS
+            if t.name in registered
+            or (cfg.NCE_DISABLE_MIGRATION_MCP and t.name in {m.name for m in _MIGRATION_TOOLS})
+        ]
+    except Exception:
+        pass
+
+
+_sync_tools_with_registry()

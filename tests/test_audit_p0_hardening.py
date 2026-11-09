@@ -98,9 +98,8 @@ async def test_datastores_save_rejects_when_persist_disabled() -> None:
 
     with (
         patch("nce.admin_state.engine", MagicMock()),
-        patch("nce.admin_handlers._shared.cfg") as mock_cfg,
+        patch("nce.admin_handlers._shared.cfg"),
     ):
-        mock_cfg.NCE_ALLOW_ADMIN_DOTENV_PERSIST = False
         resp = await api_admin_datastores_save(request)
 
     assert resp.status_code == 403

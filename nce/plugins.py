@@ -57,7 +57,7 @@ def load_plugins(*, force_reload: bool = False) -> dict[str, NCEPlugin]:
         entry_points = importlib.metadata.entry_points(group=ENTRY_POINT_GROUP)
     except Exception as exc:
         log.warning("Failed to query entry points for %s: %s", ENTRY_POINT_GROUP, exc)
-        entry_points = []
+        entry_points = ()  # type: ignore[assignment]
 
     for ep in entry_points:
         try:

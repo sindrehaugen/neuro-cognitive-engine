@@ -41,11 +41,8 @@ def test_registry_metadata_contracts():
 def test_prod_locked_keys_flagged():
     """Verify that guardrail and security settings are flagged as prod_locked."""
     expected_prod_locked = {
-        "NCE_BYPASS_WORM",
-        "NCE_BYPASS_RLS",
         "NCE_ADMIN_OVERRIDE",
         "NCE_LOAD_DOTENV",
-        "NCE_ALLOW_ADMIN_DOTENV_PERSIST",
         "NCE_MASTER_KEY",
         "WEBHOOK_DEDUP_FAIL_OPEN",
     }

@@ -79,8 +79,8 @@ def test_predicate_p6_migration_and_rls_registration():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[2]
-    mig = root / "nce" / "migrations" / "093_principal_bindings.sql"
-    assert mig.exists(), "093_principal_bindings.sql must exist"
+    mig = root / "nce" / "migrations" / "033_principal_bindings.sql"
+    assert mig.exists(), "033_principal_bindings.sql must exist"
     content = mig.read_text(encoding="utf-8")
     assert "CREATE TABLE IF NOT EXISTS principal_bindings" in content
     assert "tenant_isolation_policy" in content

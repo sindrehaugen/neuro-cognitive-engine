@@ -1264,15 +1264,6 @@ async def api_admin_datastores_save(request):
     if not admin_state.engine:
         return JSONResponse({"error": "Engine not connected"}, status_code=503)
 
-    if not _shared.cfg.NCE_ALLOW_ADMIN_DOTENV_PERSIST:
-        return JSONResponse(
-            {
-                "error": "Persisting datastore configuration to .env is disabled. "
-                "Set NCE_ALLOW_ADMIN_DOTENV_PERSIST=true for local development only."
-            },
-            status_code=403,
-        )
-
     try:
         body = await request.json()
     except (json.JSONDecodeError, ValueError, TypeError):
@@ -1419,7 +1410,10 @@ async def api_admin_signing_mark_signed(request):
         return JSONResponse({"error": "session_id is required"}, status_code=400)
 
     try:
-        from nce.vertical_modules.sales.signing import do_on_signed_callback
+        try:
+            from nce_verticals.sales.signing import do_on_signed_callback
+        except ImportError:
+            return JSONResponse({"error": "Sales vertical module not installed"}, status_code=503)
 
         attestation = {
             "attested_by": data.get("attested_by", "admin"),

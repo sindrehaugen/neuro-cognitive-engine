@@ -399,10 +399,6 @@ async def test_replay_reconstructive_repeatable_uuids(pg_pool, make_namespace, m
     event_id1 = events1[0]["id"]
 
     # Clear target namespace tables
-    from nce.config import cfg
-
-    monkeypatch.setenv("NCE_BYPASS_WORM", "true")
-    monkeypatch.setattr(cfg, "NCE_BYPASS_WORM", True)
 
     async with scoped_pg_session(pool_proxy, target_ns) as conn:
         await conn.execute("DELETE FROM memory_salience WHERE namespace_id = $1", target_ns)

@@ -194,7 +194,7 @@ async def test_rollback_dry_run_inverse_diff_and_guardrails():
             "is_secret": False,
         },
         {
-            "key": "NCE_BYPASS_WORM",
+            "key": "NCE_ADMIN_OVERRIDE",
             "value": "true",
             "has_secret": False,
             "is_secret": False,
@@ -224,8 +224,8 @@ async def test_rollback_dry_run_inverse_diff_and_guardrails():
         "new_value": 120,
     }
     # prod-locked guardrail is never silently re-enabled — it is skipped.
-    assert "NCE_BYPASS_WORM" in data["skipped_prod_locked"]
-    assert data["skipped_prod_locked"]["NCE_BYPASS_WORM"]["reason"] == "prod_locked"
+    assert "NCE_ADMIN_OVERRIDE" in data["skipped_prod_locked"]
+    assert data["skipped_prod_locked"]["NCE_ADMIN_OVERRIDE"]["reason"] == "prod_locked"
     # secret that changed since T is flagged for manual re-entry, not fabricated.
     assert "NCE_GEMINI_API_KEY" in data["flagged_secrets"]
     flagged = data["flagged_secrets"]["NCE_GEMINI_API_KEY"]

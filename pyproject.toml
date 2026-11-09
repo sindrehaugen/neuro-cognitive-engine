@@ -8,6 +8,9 @@ requires-python = ">=3.10"  # TDL-8: declared floor; enforced by the unit test m
 #                             2026-09-08 was the one interpreter CI never exercised.
 # Runtime deps remain in requirements.txt; this stanza anchors tooling.
 
+[tool.setuptools.packages.find]
+include = ["nce*"]
+
 [tool.ruff]
 target-version = "py310"
 line-length = 100

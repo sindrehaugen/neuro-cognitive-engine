@@ -98,7 +98,6 @@ NCE exposes a thin **secrets-provider seam** (`nce/config.py`) so this is a drop
 **Production guardrails** (enforced by `cfg.validate()` and at import):
 
 - `NCE_LOAD_DOTENV` must be `false` — no `.env` is loaded at runtime.
-- `NCE_ALLOW_ADMIN_DOTENV_PERSIST` must be `false` — the admin UI cannot persist connector/datastore secrets to a local `.env`. `cfg.validate()` raises if it is true under `NCE_ENV=prod`.
 
 > Default-path stacks that still rely on `bootstrap-compose-secrets.py` are acceptable for dev and air-gapped single-host installs; for managed/cloud production, prefer the secret-manager injection above and leave `compose.stack.env.generated` unused.
 

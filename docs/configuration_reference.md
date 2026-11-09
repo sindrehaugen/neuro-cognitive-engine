@@ -66,9 +66,6 @@ No other module calls `os.getenv()` directly.
 | `NCE_MCP_API_KEY` | `str` | `""` | **P1 (prod)** | Configuration/defence-in-depth value for MCP stdio tenant tools, **not** a secret validated against a caller: the stdio client spawns the server and supplies its own env, so it already holds this value — the OS process boundary is what authenticates, not this key. Tenant isolation is enforced separately by `NCE_MCP_NAMESPACE_ID` (below). (`NCE_MCP_API_KEY_FILE` supported). Required in production. |
 | `NCE_MCP_NAMESPACE_ID` | `str` | `""` | **P1 (prod)** | Tenant namespace UUID bound to MCP stdio tools. Required in production when `NCE_MCP_API_KEY` is set; must be a valid UUID. |
 | `NCE_ADMIN_OVERRIDE` | `bool` | `false` | **Dev only** | Bypass admin scope checks during development. **Raises `RuntimeError` at module import when `NCE_ENV=prod`.** |
-| `NCE_BYPASS_WORM` | `bool` | `false` | **Dev only** | Bypass WORM / immutability probe during startup. Forbidden in production (raises `RuntimeError`). |
-| `NCE_BYPASS_RLS` | `bool` | `false` | **Dev only** | Bypass Row Level Security probe during startup. Forbidden in production (raises `RuntimeError`). |
-| `NCE_ALLOW_ADMIN_DOTENV_PERSIST` | `bool` | `true` (dev) / `false` (prod) | **Dev only** | Allow admin UI to persist datastore/connector configuration edits to a local `.env` file. Forbidden in production. |
 | `NCE_SECRETS_PROVIDER` | `str` | `env` | No | Secrets provider backend identifier (`env`). Production deployments can register external secret managers (Vault, AWS, Azure KV) via `set_secrets_provider()`. `NCE_MASTER_KEY` remains env-only. |
 | `NCE_LOAD_DOTENV` | `bool` | `true` | No | Set `false` to prevent loading `.env` at module import. **Must be `false` in production** — raises `RuntimeError` at startup if truthy when `NCE_ENV=prod`. |
 | `NCE_CLOCK_SKEW_TOLERANCE_S` | `int` | `90` | No | Maximum allowed timestamp drift in seconds for HMAC replay protection (tightened from 300 s in Batch 116). |
@@ -549,8 +546,6 @@ Processes asynchronous background queues (`nce-tasks`), including source code AS
 
 ### P0 — Production-Only Failures (`NCE_ENV=prod`)
 - `PG_DSN`, `MONGO_URI`, or `REDIS_URL` configured with default development connection strings.
-- `NCE_BYPASS_WORM=true` or `NCE_BYPASS_RLS=true` (evaluated at import time).
-- `NCE_ALLOW_ADMIN_DOTENV_PERSIST=true` (evaluated at import time and in `validate_secrets_provider`).
 - `NCE_ADMIN_OVERRIDE=true` (evaluated at import time).
 - `NCE_LOAD_DOTENV=true` (evaluated at import time).
 

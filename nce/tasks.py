@@ -586,7 +586,7 @@ def process_d365_event(payload: dict) -> dict:
 
     Follows the same poison-pill / DLQ pattern as ``process_bridge_event``.
     """
-    from nce.vertical_modules.dynamics365.webhooks import D365WebhookValidator
+    from nce_verticals.dynamics365.webhooks import D365WebhookValidator
 
     job_id = _get_job_id()
     redis_client = _get_redis()
@@ -657,14 +657,14 @@ async def _dispatch_d365_event(
     import asyncpg
     import redis.asyncio as aioredis
     from motor.motor_asyncio import AsyncIOMotorClient
+    from nce_verticals.dynamics365.auth import DataverseTokenManager
+    from nce_verticals.dynamics365.client import DataverseClient
+    from nce_verticals.dynamics365.ingestion import DataverseIngestionWorker
+    from nce_verticals.dynamics365.sync import DataverseSyncEngine
 
     from nce.config import cfg
     from nce.db_utils import scoped_pg_session
     from nce.observability import ECHO_SUPPRESSED_TOTAL
-    from nce.vertical_modules.dynamics365.auth import DataverseTokenManager
-    from nce.vertical_modules.dynamics365.client import DataverseClient
-    from nce.vertical_modules.dynamics365.ingestion import DataverseIngestionWorker
-    from nce.vertical_modules.dynamics365.sync import DataverseSyncEngine
     from nce.webhook_receiver.main import check_echo
 
     entity_type = entity_ctx.get("entity_type", "")
@@ -825,7 +825,7 @@ def process_diag_bundle(
     """RQ worker: Stream-and-Reduce a diagnostic bundle into the cognitive layers.
 
     Thin sync wrapper around the async pipeline body
-    (:func:`nce.vertical_modules.diagnostics.worker._diag_async`), mirroring the
+    (:func:`nce_verticals.diagnostics.worker._diag_async`), mirroring the
     other ``traced_worker_job`` tasks in this module.  The body handles bounded-
     memory download (stream-to-disk + ``try/finally`` cleanup), idempotency
     (``DIGESTED`` short-circuit), and the retryable-vs-non-retryable error split:
@@ -835,7 +835,7 @@ def process_diag_bundle(
     * transient failures (download / PG / Mongo) are re-raised here so the
       poison-pill governor decides retry-vs-DLQ via the shared attempt counter.
     """
-    from nce.vertical_modules.diagnostics.worker import _diag_async
+    from nce_verticals.diagnostics.worker import _diag_async
 
     job_id = _get_job_id()
     redis_client = _get_redis()

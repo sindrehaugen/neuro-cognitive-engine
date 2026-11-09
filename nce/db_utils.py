@@ -76,22 +76,6 @@ UNMANAGED_PG_AUDITED_SITES: Final[frozenset[str]] = frozenset(
         "cron.sales_stalled_deal_watcher.namespace_scan",
         # Wave A-3: Reminders watcher tick -- scans active namespaces
         "cron.reminders_watcher.namespace_scan",
-        # Wave F-11: geodata_osm_elements is a GLOBAL table (migration 086,
-        # same reasoning as product_catalog) -- import and bbox-query both
-        # read/write it with no namespace_id to scope against.
-        "geodata.osm.import",
-        "geodata.osm.bbox_query",
-        # Wave F-12: geodata_n50_land_cover is a GLOBAL table (migration
-        # 089, same reasoning as product_catalog) -- import and
-        # bbox-query both read/write it with no namespace_id to scope
-        # against.
-        "geodata.n50.import",
-        "geodata.n50.bbox_query",
-        # Wave F-13: geodata_place_names is a GLOBAL table (migration 090,
-        # same reasoning as product_catalog) -- import and nearest-lookup
-        # both read/write it with no namespace_id to scope against.
-        "geodata.place_names.import",
-        "geodata.place_names.nearest",
         # Wave F-15: pricing_fx_rates is a GLOBAL table (migration 092,
         # same reasoning as product_catalog) -- an exchange rate is not
         # tenant data. Persist and load both read/write it with no

@@ -43,6 +43,9 @@ _ROOT = pathlib.Path(__file__).resolve().parent.parent
 _ENGINES_DIR = _ROOT / "docs" / "engines"
 _SURFACE_DOC = _ROOT / "docs" / "_generated" / "surface.md"
 
+if not _ENGINES_DIR.is_dir():
+    pytestmark = pytest.mark.skip(reason="docs/engines migrated to nce-vertical-engines")
+
 # `dynamics365` and `netbox` are the charter's "supporting integrations", not one of the
 # 17 numbered vertical engines -- they predate and use a different, older documentation
 # convention (a single technical-reference doc under docs/, not a docs/engines/<slug>-user.md

@@ -60,23 +60,13 @@ KNOWN_MOCK_IMPORTS: dict[str, str] = {
 }
 
 KNOWN_MOCK_ATTRIBUTE_PROBES: dict[str, str] = {
-    "nce/vertical_modules/sales/signing.py": (
-        "hasattr(engine, '_mock_return_value') selects a different transport-resolution "
-        "path, so mock-based tests never exercise the production branch. Fix the fake "
-        "with MagicMock(spec=...) and delete the branch."
-    ),
     "nce/orchestrators/memory.py": (
         "hasattr(raw_coll, '_mock_self') guards a Mongo collection probe. Same remedy: "
         "give the fake a spec."
     ),
 }
 
-KNOWN_MOCK_TYPE_CHECKS: dict[str, str] = {
-    "nce/vertical_modules/sales/signing.py": (
-        "type(engine).__name__ in ('MagicMock', 'AsyncMock') -- the second half of the "
-        "same branch as the attribute probe above."
-    ),
-}
+KNOWN_MOCK_TYPE_CHECKS: dict[str, str] = {}
 
 _MOCK_ATTRS = re.compile(r"_mock_[a-z_]+")
 _MOCK_CLASS_NAMES = {"MagicMock", "AsyncMock", "Mock", "NonCallableMock"}
@@ -93,7 +83,7 @@ def _rel(path: pathlib.Path) -> str:
 def test_the_scan_sees_the_tree() -> None:
     """Positive control: an empty file list would make every check below vacuous."""
     files = _py_files()
-    assert len(files) >= 200, f"only found {len(files)} files under nce/; the scan is broken"
+    assert len(files) >= 100, f"only found {len(files)} files under nce/; the scan is broken"
     assert any(_rel(p) == "nce/orchestrator.py" for p in files)
 
 

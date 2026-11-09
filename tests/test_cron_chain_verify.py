@@ -71,7 +71,7 @@ async def test_cron_boot_registers_chain_verification():
 @pytest.mark.asyncio
 async def test_chain_verification_integration(pg_pool, make_namespace, monkeypatch) -> None:
     """Integration test for continuous Merkle chain verification tick.
-    Tampers a row via a dev NCE_BYPASS_WORM conn, runs the tick,
+    Tampers a row via a dev WORM trigger bypass conn, runs the tick,
     asserts gauge=0 + a chain_verification_failed event exists;
     clean run leaves gauge=1.
     """
@@ -163,9 +163,7 @@ async def test_chain_verification_integration(pg_pool, make_namespace, monkeypat
     if hasattr(MERKLE_CHAIN_VALID, "_value"):
         assert MERKLE_CHAIN_VALID._value.get() == 1
 
-    # 4. Tamper a row inside event_log under NCE_BYPASS_WORM by disabling trigger first
-    monkeypatch.setenv("NCE_BYPASS_WORM", "true")
-    monkeypatch.setattr(cfg, "NCE_BYPASS_WORM", True)
+    # 4. Tamper a row inside event_log under WORM trigger bypass by disabling trigger first
 
     async with scoped_pg_session(pg_pool, ns_id) as conn:
         await conn.execute("ALTER TABLE event_log DISABLE TRIGGER trg_event_log_worm")

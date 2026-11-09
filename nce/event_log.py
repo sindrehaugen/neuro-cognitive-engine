@@ -70,7 +70,6 @@ from typing import Any, Final
 
 import asyncpg
 
-from nce.config import cfg
 from nce.correlation import get_correlation_id
 from nce.event_types import (
     EVENT_FORBIDDEN_PARAM_KEYS,

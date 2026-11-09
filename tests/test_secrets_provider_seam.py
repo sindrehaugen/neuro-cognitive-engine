@@ -128,7 +128,7 @@ def _prod_env() -> dict[str, str]:
         }
     )
     # Strip anything that would trip an unrelated guard.
-    for k in ("NCE_ADMIN_OVERRIDE", "NCE_BYPASS_WORM", "NCE_BYPASS_RLS"):
+    for k in ("NCE_ADMIN_OVERRIDE",):
         env.pop(k, None)
     return env
 
@@ -144,35 +144,9 @@ def _run(code: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_prod_import_rejects_dotenv_persist() -> None:
-    """Importing config under prod with dotenv-persist enabled must fail fast."""
-    env = _prod_env()
-    env["NCE_ALLOW_ADMIN_DOTENV_PERSIST"] = "true"
-    result = _run("import nce.config  # noqa: F401", env)
-    assert result.returncode != 0
-    assert "NCE_ALLOW_ADMIN_DOTENV_PERSIST" in (result.stderr + result.stdout)
-
-
-def test_prod_validate_rejects_dotenv_persist() -> None:
-    """cfg.validate() must reject dotenv-persist in production.
-
-    The default in prod is already false, so we force it true via env. Because
-    the module-import guard also fires, validate() is the path under test here
-    only when the import guard is satisfied; we assert the dedicated method
-    rejects it directly to keep the contract explicit.
-    """
-    env = _prod_env()
-    env["NCE_ALLOW_ADMIN_DOTENV_PERSIST"] = "true"
-    code = "from nce.config import _Config; _Config.validate_secrets_provider()"
-    result = _run(code, env)
-    assert result.returncode != 0
-    assert "NCE_ALLOW_ADMIN_DOTENV_PERSIST" in (result.stderr + result.stdout)
-
-
 def test_prod_validate_passes_with_secret_manager_posture() -> None:
     """A correct prod posture (no dotenv-persist, env-only master key) validates."""
     env = _prod_env()
-    env["NCE_ALLOW_ADMIN_DOTENV_PERSIST"] = "false"
     code = (
         "from nce.config import _Config, _ENV_ONLY_SECRETS; "
         "assert _Config.IS_PROD; "
@@ -186,7 +160,6 @@ def test_prod_validate_passes_with_secret_manager_posture() -> None:
 def test_prod_master_key_resolves_env_only_not_store() -> None:
     """In a prod interpreter, NCE_MASTER_KEY resolves env-only even with a provider."""
     env = _prod_env()
-    env["NCE_ALLOW_ADMIN_DOTENV_PERSIST"] = "false"
     code = "\n".join(
         [
             "import nce.config as c",

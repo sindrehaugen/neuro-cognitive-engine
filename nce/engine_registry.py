@@ -261,7 +261,7 @@ def populate_engine_modules(
     engine: Any,
     module_names: tuple[str, ...] = VERTICAL_MODULE_NAMES,
 ) -> EngineRegistry:
-    """Populate and attach ``engine.modules`` from ``nce.vertical_modules.*``.
+    """Populate and attach ``engine.modules`` from ``nce_verticals.*``.
 
     Works for both ``NCEEngine`` instances and relay ducks (such as
     ``SimpleNamespace(pg_pool=pool)`` in ``nce/cron.py``).
@@ -281,10 +281,10 @@ def populate_engine_modules(
     registry = EngineRegistry(engine=engine)
     for name in module_names:
         try:
-            module = importlib.import_module(f"nce.vertical_modules.{name}")
+            module = importlib.import_module(f"nce_verticals.{name}")
             registry.register(name, module)
         except Exception as exc:
-            log.warning("Could not register vertical module %s: %s", name, exc)
+            log.debug("Could not register vertical module %s: %s", name, exc)
 
     try:
         setattr(engine, "modules", registry)

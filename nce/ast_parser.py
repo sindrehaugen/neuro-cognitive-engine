@@ -249,6 +249,7 @@ def _try_treesitter_parse(raw_code: str, language: str) -> list[CodeChunk] | Non
         },
         "zig": {
             "Decl",
+            "function_declaration",
         },
     }
     targets = target_types.get(language, set())

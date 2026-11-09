@@ -1,3 +1,4 @@
+-- 001_enable_rls.sql
 -- ============================================================================
 -- TriMCP Migration: Row-Level Security hardening (idempotent)
 -- Complements nce/schema.sql — safe to re-run on existing databases.

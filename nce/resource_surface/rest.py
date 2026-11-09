@@ -76,13 +76,13 @@ def _clear_mem_store() -> None:
     _MEM_COMMENTS.clear()
     _MEM_TAGS.clear()
     try:
-        from nce.vertical_modules.documents.service import _clear_mem_store as _clear_docs
+        from nce_verticals.documents.service import _clear_mem_store as _clear_docs
 
         _clear_docs()
     except Exception:
         pass
     try:
-        from nce.vertical_modules.legal_entities.service import _clear_mem_store as _clear_le
+        from nce_verticals.legal_entities.service import _clear_mem_store as _clear_le
 
         _clear_le()
     except Exception:
@@ -1236,8 +1236,8 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             created = dict(data)
             if spec.engine == "documents" and spec.entity == "documents":
                 try:
-                    from nce.vertical_modules.documents.models import DocumentRecord
-                    from nce.vertical_modules.documents.service import _MEM_DOCUMENTS
+                    from nce_verticals.documents.models import DocumentRecord
+                    from nce_verticals.documents.service import _MEM_DOCUMENTS
 
                     doc_rec = DocumentRecord(
                         id=UUID(item_id),
@@ -1261,8 +1261,8 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                     pass
             elif spec.engine == "legal_entities" and spec.entity == "legal_entities":
                 try:
-                    from nce.vertical_modules.legal_entities.models import LegalEntityRecord
-                    from nce.vertical_modules.legal_entities.service import _MEM_LEGAL_ENTITIES
+                    from nce_verticals.legal_entities.models import LegalEntityRecord
+                    from nce_verticals.legal_entities.service import _MEM_LEGAL_ENTITIES
 
                     le_rec = LegalEntityRecord(
                         id=UUID(item_id),
@@ -2041,8 +2041,8 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             "1",
         )
 
-        from nce.vertical_modules.documents.resources import DOCUMENT_SPEC
-        from nce.vertical_modules.documents.service import list_entity_documents
+        from nce_verticals.documents.resources import DOCUMENT_SPEC
+        from nce_verticals.documents.service import list_entity_documents
 
         session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
@@ -2110,7 +2110,7 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         doc_id_raw = body.get("document_id") or body.get("doc_id")
         doc_data = body.get("document") if isinstance(body.get("document"), dict) else None
 
-        from nce.vertical_modules.documents.service import link_document, register_document
+        from nce_verticals.documents.service import link_document, register_document
 
         session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
 
@@ -2282,7 +2282,7 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
                 f"Invalid document UUID: {doc_id_raw}", exc, status_code=400
             )
 
-        from nce.vertical_modules.documents.service import unlink_document
+        from nce_verticals.documents.service import unlink_document
 
         session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
 
