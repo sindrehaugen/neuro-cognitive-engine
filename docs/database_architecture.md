@@ -375,6 +375,6 @@ To guarantee that newly added tables cannot be deployed without tenant isolation
 * Raises `RuntimeError` and halts server startup if any unisolated tenant table is detected.
 
 > [!NOTE]
-> **Deployment Reality vs. DDL Invariants:** While `verify_rls_catalog_consistency()` asserts that RLS policies are enabled and attached in PostgreSQL catalog metadata, runtime application connections connect as `mcp_user` (`rolsuper = true`, `rolbypassrls = true`). Zero policies target `mcp_user`, rendering RLS inert during live execution; active tenant isolation is enforced by application `WHERE`-clause predicates (see [`docs/vertical_engines/_security/enforcement-census.md`](vertical_engines/_security/enforcement-census.md)).
+> **Deployment Reality vs. DDL Invariants:** While `verify_rls_catalog_consistency()` asserts that RLS policies are enabled and attached in PostgreSQL catalog metadata, runtime application connections connect as `mcp_user` (`rolsuper = true`, `rolbypassrls = true`). Zero policies target `mcp_user`, rendering RLS inert during live execution; active tenant isolation is enforced by application `WHERE`-clause predicates (see [`docs/vertical_engines/_security/enforcement-census.md`](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/_security/enforcement-census.md)).
 
 

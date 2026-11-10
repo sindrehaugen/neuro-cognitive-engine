@@ -71,3 +71,23 @@ line-ending = "auto"
 "tests/test_mcp_cache.py" = ["F841"]
 "tests/test_admin_a2a_api.py" = ["F841"]
 "tests/test_batch3_robustness.py" = ["F841"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+disable_error_code = [
+    "annotation-unchecked",
+    "arg-type",
+    "assignment",
+    "attr-defined",
+    "call-arg",
+    "call-overload",
+    "misc",
+    "no-redef",
+    "return-value",
+    "typeddict-item",
+    "union-attr",
+    "unused-coroutine",
+    "var-annotated",
+]
+

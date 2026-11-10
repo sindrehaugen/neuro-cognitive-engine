@@ -416,3 +416,69 @@ async def test_handle_neuromorphic_search_success():
         alpha=1.1,
         ticks=3,
     )
+
+
+@pytest.mark.asyncio
+async def test_plugin_descriptors_and_admin_endpoint():
+    """Verify get_plugin_descriptors and /api/admin/plugins support type & category filters."""
+    import json
+
+    from admin_server import api_admin_plugins
+    from starlette.requests import Request
+
+    from nce.plugins import get_plugin_descriptors, load_plugins
+
+    class DummyMultiEnginePlugin:
+        plugin_id = "dummy_multi"
+
+        def get_plugin_descriptors(self):
+            return [
+                {
+                    "id": "engine_alpha",
+                    "name": "Alpha Engine",
+                    "types": ["type-a", "type-shared"],
+                    "categories": ["cat-one"],
+                    "installed": True,
+                    "enabled": True,
+                },
+                {
+                    "id": "engine_beta",
+                    "name": "Beta Engine",
+                    "types": ["type-b", "type-shared"],
+                    "categories": ["cat-two"],
+                    "installed": True,
+                    "enabled": False,
+                },
+            ]
+
+    fake_ep = MagicMock()
+    fake_ep.name = "dummy_multi"
+    fake_ep.load.return_value = DummyMultiEnginePlugin
+
+    with patch("importlib.metadata.entry_points", return_value=[fake_ep]):
+        load_plugins(force_reload=True)
+        all_desc = get_plugin_descriptors()
+        assert len(all_desc) == 2
+        by_type = get_plugin_descriptors(type_filter="type-a")
+        assert [d["id"] for d in by_type] == ["engine_alpha"]
+        by_cat = get_plugin_descriptors(category_filter="cat-two")
+        assert [d["id"] for d in by_cat] == ["engine_beta"]
+        by_both = get_plugin_descriptors(type_filter="type-shared", category_filter="cat-one")
+        assert [d["id"] for d in by_both] == ["engine_alpha"]
+
+        req = Request(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/api/admin/plugins",
+                "query_string": b"type=type-shared&category=cat-two",
+            }
+        )
+        resp = await api_admin_plugins(req)
+        assert resp.status_code == 200
+        payload = json.loads(resp.body.decode())
+        assert payload["total"] == 1
+        assert payload["plugins"][0]["id"] == "engine_beta"
+        assert payload["facets"]["types"] == ["type-a", "type-b", "type-shared"]
+        assert payload["facets"]["categories"] == ["cat-one", "cat-two"]
+    load_plugins(force_reload=True)

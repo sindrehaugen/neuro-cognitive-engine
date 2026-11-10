@@ -282,14 +282,14 @@ Tools are dispatched through `nce/mcp_stdio_dispatch.py`, which enforces auth, q
 | `connect_bridge` / `complete_bridge_auth` / `list_bridges` / `force_resync_bridge` | Document-bridge lifecycle |
 | `manage_namespace` · `manage_quotas` · `trigger_consolidation` · `rotate_signing_key` · `get_health` · `list_dlq` | `[ADMIN]` operations |
 
-Migration tools (`start_migration`, `validate_migration`, `commit_migration`, …) are included unless disabled, and vertical-engine tool families (`product_*`, `procurement_*`, `vendors_*`, `sales_*`, `system_design_*`, `project_*`, `d365_*`, `diag_*`, …) register when their engine is enabled. The authoritative registry is [`nce/tool_registry.py`](nce/tool_registry.py), pinned by `_EXPECTED_TOTAL` in [`tests/test_tool_registry.py`](tests/test_tool_registry.py); current per-engine and shared counts are generated in [`docs/_generated/surface.md`](docs/_generated/surface.md) and [`docs/vertical_engines/ENGINE_STATUS.md`](docs/vertical_engines/ENGINE_STATUS.md).
+Migration tools (`start_migration`, `validate_migration`, `commit_migration`, …) are included unless disabled, and vertical-engine tool families (`product_*`, `procurement_*`, `vendors_*`, `sales_*`, `system_design_*`, `project_*`, `d365_*`, `diag_*`, …) register when their engine is enabled. The authoritative registry is [`nce/tool_registry.py`](nce/tool_registry.py), pinned by `_EXPECTED_TOTAL` in [`tests/test_tool_registry.py`](tests/test_tool_registry.py); current per-engine and shared counts are generated in [`docs/_generated/surface.md`](docs/_generated/surface.md) and [`ENGINE_STATUS.md`](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/ENGINE_STATUS.md).
 
 ---
 
 ## Security Model
 
 - **Multi-tenant by construction.** Every application checkout passes through `scoped_pg_session`, which sets `SET LOCAL nce.namespace_id = '<tenant-uuid>'`. All relational tables have RLS **enabled and forced**; policies validate via `get_nce_namespace()`. Privileged GC runs under a separate `BYPASSRLS` role, out of band.
-- **Encryption at rest.** PII, credentials, and biometric tensors are AES-256-GCM encrypted under `NCE_MASTER_KEY`. An automated PII pipeline (Presidio/regex) supports redaction and reversible pseudonymisation — see [docs/pii.md](docs/pii.md).
+- **Encryption at rest.** PII, credentials, and sensitive cognitive payloads are AES-256-GCM encrypted under `NCE_MASTER_KEY`. An automated PII pipeline (Presidio/regex) supports redaction and reversible pseudonymisation — see [docs/pii.md](docs/pii.md).
 - **Integrity & non-repudiation.** The `event_log` is append-only (a `prevent_mutation` trigger blocks edits) and hash-chained; entries are HMAC-SHA256 signed over RFC 8785 (JCS) canonical JSON, with rotatable signing keys. See [docs/signing.md](docs/signing.md).
 - **AuthN/Z.** HMAC-authenticated admin HTTP with optional Redis-backed replay protection; JWT (HS256 secret or RS256 public key) for A2A and protected routes; optional **mTLS** behind your edge proxy.
 - **A2A federation.** Sharing tokens are stored only as SHA-256 hashes mapped to expirations and JSONB scopes; inbound queries are scope-checked then executed bound to the *owner's* RLS namespace.
@@ -302,9 +302,9 @@ Full guide: [docs/enterprise_security.md](docs/enterprise_security.md) · [docs/
 
 NCE provides a decoupled, pluggable architecture. Operational business engines, domain-specific tooling, and enterprise ERP/IT integrations are maintained as official extension packages:
 
-- **[NCE Vertical Engines](https://github.com/sindrehaugen/nce-vertical-engines)**: 20 domain engines spanning Sales, Procurement, Product, Agreements, Vendors, Inventory, Economy, System Design, Project, Field Tech, HR, Assets, Support, NetBox, Dynamics 365, Diagnostics, and Customer Portal.
-  - Installable via entry points (pip install -e . or package distribution).
-  - Dynamically mounts MCP tools and REST endpoints via the NCE Plugin interface.
+- **[NCE Vertical Engines](https://github.com/sindrehaugen/nce-vertical-engines)**: 23 modular domain engines spanning Sales, Procurement, Product, Agreements, Vendors, Inventory, Economy, System Design, Project, Field Tech, HR, Marketing, Business Insights, Resources, Assets, Support, NetBox, Dynamics 365, Odoo, Salesforce, Lighting DALI, Diagnostics, and Customer Portal.
+  - Installable via entry points (`pip install "nce-vertical-engines[all]"` or per-engine/type/category extras).
+  - Dynamically mounts MCP tools and REST endpoints via the NCE Plugin interface (`nce.plugins`).
   - Enables full tenant-scoped operational automation on top of the NCE cognitive memory substrate.
 
 For installation, engine documentation, and domain specifications, see the [nce-vertical-engines repository](https://github.com/sindrehaugen/nce-vertical-engines).

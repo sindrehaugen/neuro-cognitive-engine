@@ -131,3 +131,74 @@ def get_all_plugin_migration_dirs() -> dict[str, Path]:
         except Exception as exc:
             log.exception("Error obtaining migration dir from plugin %s: %s", plugin_id, exc)
     return migration_dirs
+
+
+def _normalize_filter_tokens(raw: str | None) -> set[str]:
+    if not raw:
+        return set()
+    return {tok.strip().lower() for tok in raw.split(",") if tok.strip()}
+
+
+def _normalize_descriptor(raw: dict[str, Any], default_id: str) -> dict[str, Any]:
+    types_raw = raw.get("types") or ()
+    categories_raw = raw.get("categories") or ()
+    types_list = sorted({str(t).strip() for t in types_raw if str(t).strip()})
+    categories_list = sorted({str(c).strip() for c in categories_raw if str(c).strip()})
+    plugin_id = str(raw.get("id") or raw.get("plugin_id") or default_id)
+    return {
+        **raw,
+        "id": plugin_id,
+        "plugin_id": str(raw.get("plugin_id") or default_id),
+        "name": str(raw.get("name") or plugin_id),
+        "types": types_list,
+        "categories": categories_list,
+        "installed": bool(raw.get("installed", True)),
+        "enabled": bool(raw.get("enabled", True)),
+    }
+
+
+def get_plugin_descriptors(
+    *,
+    type_filter: str | None = None,
+    category_filter: str | None = None,
+) -> list[dict[str, Any]]:
+    """Collect and optionally filter plugin descriptors by type and/or category facets."""
+    wanted_types = _normalize_filter_tokens(type_filter)
+    wanted_categories = _normalize_filter_tokens(category_filter)
+    descriptors: list[dict[str, Any]] = []
+
+    for plugin_id, plugin in load_plugins().items():
+        raw_items: list[dict[str, Any]] = []
+        getter = getattr(plugin, "get_plugin_descriptors", None)
+        if callable(getter):
+            try:
+                res = getter()
+                if isinstance(res, list):
+                    raw_items.extend(d for d in res if isinstance(d, dict))
+            except Exception as exc:
+                log.exception("Error reading descriptors from plugin %s: %s", plugin_id, exc)
+        if not raw_items:
+            raw_items.append(
+                {
+                    "id": plugin_id,
+                    "plugin_id": plugin_id,
+                    "name": getattr(plugin, "name", plugin_id),
+                    "types": list(getattr(plugin, "types", ()) or ()),
+                    "categories": list(getattr(plugin, "categories", ()) or ()),
+                    "installed": bool(getattr(plugin, "installed", True)),
+                    "enabled": bool(getattr(plugin, "enabled", True)),
+                }
+            )
+        for item in raw_items:
+            norm = _normalize_descriptor(item, plugin_id)
+            if wanted_types:
+                item_types = {t.lower() for t in norm["types"]}
+                if not (item_types & wanted_types):
+                    continue
+            if wanted_categories:
+                item_cats = {c.lower() for c in norm["categories"]}
+                if not (item_cats & wanted_categories):
+                    continue
+            descriptors.append(norm)
+
+    return descriptors

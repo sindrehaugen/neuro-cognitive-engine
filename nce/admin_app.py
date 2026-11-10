@@ -211,6 +211,8 @@ def build_admin_routes() -> list[Route]:
             endpoint=h.api_admin_tools_toggle,
             methods=["POST"],
         ),
+        Route("/api/admin/plugins", endpoint=h.api_admin_plugins, methods=["GET"]),
+        Route("/admin/plugins", endpoint=h.api_admin_plugins, methods=["GET"]),
         Route("/api/admin/a2a/grants", endpoint=h.api_admin_a2a_grants, methods=["GET"]),
         Route(
             "/api/admin/a2a/grants/summary",

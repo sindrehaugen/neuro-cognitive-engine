@@ -660,6 +660,7 @@ async def _dispatch_d365_event(
     import asyncpg
     import redis.asyncio as aioredis
     from motor.motor_asyncio import AsyncIOMotorClient
+
     try:
         from nce_verticals.dynamics365.auth import DataverseTokenManager
         from nce_verticals.dynamics365.client import DataverseClient

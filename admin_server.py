@@ -54,6 +54,7 @@ from nce.admin_http_handlers import (
     api_admin_security_verify_memory_sample,
     api_admin_security_test_rls_isolation,
     api_admin_verify_chain,
+    api_admin_plugins,
     trigger_gc,
     api_search,
 )

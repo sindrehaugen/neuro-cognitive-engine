@@ -55,6 +55,10 @@ import pytest
 
 _ROOT = pathlib.Path(__file__).resolve().parent.parent
 _SEAMS_DOC = _ROOT / "docs" / "_generated" / "golden_thread_seams.md"
+_GOLDEN_THREAD_TEST = _ROOT / "tests" / "integration" / "test_golden_thread.py"
+
+if not _GOLDEN_THREAD_TEST.exists():
+    pytestmark = pytest.mark.skip(reason="test_golden_thread.py migrated to nce-vertical-engines")
 
 # Mirrors gen_engine_figures.py's normalize_volatile() regex shape for the
 # identical "> **Status:** ... **Verified-against:** ... **Last-audited:**

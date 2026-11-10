@@ -8,7 +8,7 @@ The NCE Shared Core Row-Level Security (RLS) model includes a specialized securi
 
 > [!WARNING]
 > **Deployment Reality (2026-09-16, Wave A-T6 / PR #148):**
-> On the running estate, the connecting database role is `mcp_user` (`rolsuper = true, rolbypassrls = true`), not `nce_app`. Zero RLS policies target `mcp_user`, and `scoped_pg_session` never issues `SET ROLE`. Consequently, **PostgreSQL Row-Level Security (RLS) is completely INERT as deployed**. SQL queries must explicitly filter by `partner_scope_id` in their `WHERE` clause (e.g. `WHERE contractor_id = $1 AND namespace_id = $2 AND partner_scope_id = $3`). Omitting the predicate under the assumption that RLS will filter rows exposes data across partners. See full proof in [`docs/vertical_engines/_security/c3-external-scope-adversarial-review.md`](../vertical_engines/_security/c3-external-scope-adversarial-review.md).
+> On the running estate, the connecting database role is `mcp_user` (`rolsuper = true, rolbypassrls = true`), not `nce_app`. Zero RLS policies target `mcp_user`, and `scoped_pg_session` never issues `SET ROLE`. Consequently, **PostgreSQL Row-Level Security (RLS) is completely INERT as deployed**. SQL queries must explicitly filter by `partner_scope_id` in their `WHERE` clause (e.g. `WHERE contractor_id = $1 AND namespace_id = $2 AND partner_scope_id = $3`). Omitting the predicate under the assumption that RLS will filter rows exposes data across partners. See full proof in [`docs/vertical_engines/_security/c3-external-scope-adversarial-review.md`](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/_security/c3-external-scope-adversarial-review.md).
 
 > [!NOTE]
 > **CI Execution Reality (ML-CI1):**

@@ -68,17 +68,17 @@ The C1–C9 substrate every business engine builds on:
 
 Per-engine user + admin runbooks (engines are per-namespace opt-in):
 
-- **Product** — [User Guide](engines/product-user.md) · [Admin Guide](engines/product-admin.md)
-- **Procurement** — [User Guide](engines/procurement-user.md) · [Admin Guide](engines/procurement-admin.md)
-- **Agreements** — [User Guide](engines/agreements-user.md) · [Admin Guide](engines/agreements-admin.md)
-- **Vendors & Contractors** — [User Guide](engines/vendors-user.md) · [Admin Guide](engines/vendors-admin.md)
-- **Sales** — [User Guide](engines/sales-user.md) · [Admin Guide](engines/sales-admin.md)
-- **System Design** — [User Guide](engines/system-design-user.md) · [Admin Guide](engines/system-design-admin.md)
-- **Project** — [User Guide](engines/project-user.md) · [Admin Guide](engines/project-admin.md)
-- **NetBox** — [Integration & Cognitive Extensions](netbox_and_cognitive_extensions.md): topology activation, asset discovery, operator stress tracking, active-learning queue, and the Phase-3 cognitive specs (ATMS, chrono-branching, spiking activation).
-- **Dynamics 365** — [Integration Reference](d365_integration_reference.md): D365/Dataverse admin REST routes and MCP tool surface.
+- **Product** — [User Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/product-user.md) · [Admin Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/product-admin.md)
+- **Procurement** — [User Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/procurement-user.md) · [Admin Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/procurement-admin.md)
+- **Agreements** — [User Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/agreements-user.md) · [Admin Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/agreements-admin.md)
+- **Vendors & Contractors** — [User Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/vendors-user.md) · [Admin Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/vendors-admin.md)
+- **Sales** — [User Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/sales-user.md) · [Admin Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/sales-admin.md)
+- **System Design** — [User Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/system-design-user.md) · [Admin Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/system-design-admin.md)
+- **Project** — [User Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/project-user.md) · [Admin Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/project-admin.md)
+- **NetBox** — [Integration & Cognitive Extensions](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/netbox_and_cognitive_extensions.md): topology activation, asset discovery, operator stress tracking, active-learning queue, and the Phase-3 cognitive specs (ATMS, chrono-branching, spiking activation).
+- **Dynamics 365** — [Integration Reference](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/d365_integration_reference.md): D365/Dataverse admin REST routes and MCP tool surface.
 
-Design specs for all engines (including not-yet-shipped ones) live under [**Vertical Engine Specifications**](vertical_engines/00-ENGINES-ROADMAP.md).
+Design specs for all engines (including not-yet-shipped ones) live under [**Vertical Engine Specifications**](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/00-ENGINES-ROADMAP.md).
 
 ---
 
@@ -112,7 +112,7 @@ Design specs for all engines (including not-yet-shipped ones) live under [**Vert
 - [**Architecture Decision Records**](adr/README.md): Ratified ADRs 0001–0007 (WORM log, Quad-DB, forced RLS, signing v2, shadow re-embedding, env-only master key, snapshot/replay).
 - [**Data-Source Modes**](DATA_SOURCE_MODES.md): Per-function `d365 | both | nce` switch — living architecture spec.
 - [**Frontend Readiness**](FRONTEND_READINESS.md): Living spec for making NCE fully front-end-ready; NCE-FE-1..6 build list.
-- [**Vertical Module Pattern**](vertical_engines/VERTICAL_MODULE_PATTERN.md): Authoring guide for NCE vertical modules.
+- [**Vertical Module Pattern**](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/VERTICAL_MODULE_PATTERN.md): Authoring guide for NCE vertical modules.
 - [**Plugin Overview (Non-Technical)**](plugin-overview-nontechnical.md): Plain-language overview of NCE plugins for non-technical colleagues.
 
 ---
@@ -121,6 +121,6 @@ Design specs for all engines (including not-yet-shipped ones) live under [**Vert
 
 Guides are added as each implementation ships to `main`:
 
-- **Remaining engine guides** — Economy, Assets, Support, Inventory, Field Tech, HR, Marketing, Staff Resources, Business Insights, Customer Portal, Network Ops, Remote Access & RMM. Design specs already live under [**Vertical Engine Specifications**](vertical_engines/00-ENGINES-ROADMAP.md).
+- **Remaining engine guides** — Economy, Assets, Support, Inventory, Field Tech, HR, Marketing, Staff Resources, Business Insights, Customer Portal, Network Ops, Remote Access & RMM. Design specs already live under [**Vertical Engine Specifications**](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/00-ENGINES-ROADMAP.md).
 - **Cognitive-muscles / diagnostics / innovation docs** — governance-rails, diagnostic log digestion, pipeline governor, self-healing actuation, transport hub (tracking the refactor pipeline as it merges).
 - **Day-2 operator runbooks & upgrade guide** — backup/restore, DR, key rotation, version-to-version upgrades.

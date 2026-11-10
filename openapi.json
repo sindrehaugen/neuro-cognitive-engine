@@ -2959,6 +2959,70 @@
         ]
       }
     },
+    "/admin/plugins": {
+      "get": {
+        "description": "List discovered NCE plugins and engine descriptors with optional\n?type=<type> and ?category=<category> facet filtering.",
+        "operationId": "get_admin_plugins",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "GET /api/admin/plugins (and GET /admin/plugins)",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/a2a/grants": {
       "get": {
         "description": "List all A2A grants owned by the given namespace.\nToken hashes are never returned.",
@@ -6581,6 +6645,70 @@
           }
         },
         "summary": "GET /api/admin/pii-redactions \u2014 paginated vault rows (no ciphertext).",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/plugins": {
+      "get": {
+        "description": "List discovered NCE plugins and engine descriptors with optional\n?type=<type> and ?category=<category> facet filtering.",
+        "operationId": "get_api_admin_plugins",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "GET /api/admin/plugins (and GET /admin/plugins)",
         "tags": [
           "admin"
         ]

@@ -640,4 +640,4 @@ register_tool(
 - [Enterprise Security](enterprise_security.md) — Three-header HMAC protocol and mTLS boot guards
 - [Database Architecture](database_architecture.md) — 57-table Row-Level Security (RLS) policies
 - [Agent-to-Agent Protocol](a2a.md) — Cross-namespace trust and memory federation
-- [Vertical Engine Guides](engines/) — Individual User and Admin manuals for all 12 modules
+- [Vertical Engine Guides](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines) — Individual User and Admin manuals for all 12 modules

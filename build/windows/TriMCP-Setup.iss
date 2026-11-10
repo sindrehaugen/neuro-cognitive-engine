@@ -41,7 +41,7 @@ Source: "assets\wheels\*"; DestDir: "{app}\wheels"; Flags: ignoreversion recurse
 Source: "..\..\docker-compose.yml"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\Caddyfile"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\trimcp\*"; DestDir: "{app}\trimcp"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\nce\*"; DestDir: "{app}\nce"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\..\admin\*"; DestDir: "{app}\admin"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\..\deploy\multiuser\Dockerfile"; DestDir: "{app}\deploy\multiuser"; Flags: ignoreversion
 Source: "..\..\deploy\multiuser\docker-compose.yml"; DestDir: "{app}\deploy\multiuser"; Flags: ignoreversion

@@ -51,19 +51,12 @@ _BASELINE = "HEAD"
 
 
 def test_010_is_optional_only_not_never_allocated() -> None:
-    """The concrete case this whole finding is about: 010_citus_sharding.sql
-    is a real migration under optional/, not a true gap."""
+    """Post-clean-slate migration split: Core base migrations 001..034 are strictly
+    contiguous, so 010 is present in base (010_event_log_sig_version.sql) and
+    neither optional_only_nums nor never_allocated_nums contains 010."""
     stats = extract_migration_stats(_REPO, _BASELINE)
-    assert 10 in stats["optional_only_nums"], (
-        "010 has a real file under nce/migrations/optional/ -- it must be "
-        "categorised as optional-only, not silently absent from both lists"
-    )
-    assert 10 not in stats["never_allocated_nums"], (
-        "010 is NOT a true gap (a migration exists for it); treating it as "
-        "never-allocated would make a billing-run-shaped false refusal out "
-        "of documentation -- exactly the false-positive class this session "
-        "keeps finding in other guises"
-    )
+    assert 10 not in stats["optional_only_nums"]
+    assert 10 not in stats["never_allocated_nums"]
 
 
 def test_never_allocated_and_optional_only_are_disjoint() -> None:
@@ -84,31 +77,24 @@ def test_never_allocated_and_optional_only_are_disjoint() -> None:
 
 
 def test_known_true_gaps_are_never_allocated() -> None:
-    """002, 009, 059 have no migration file anywhere (base or optional) --
-    confirmed by tests/test_migration_number_uniqueness.py's own
-    _KNOWN_GAPS, the independent source of truth for these three. If this
-    ever disagrees with that file, one of the two ratchets is wrong."""
+    """Post-clean-slate migration split: Core migrations 001..034 are strictly
+    contiguous with zero gaps (confirmed by tests/test_migration_number_uniqueness.py's
+    empty _KNOWN_GAPS). Both ratchets must agree that there are zero base gaps."""
     stats = extract_migration_stats(_REPO, _BASELINE)
-    never = set(stats["never_allocated_nums"])
-    for true_gap in (2, 9, 59):
-        assert true_gap in never, (
-            f"{true_gap:03d} is a known true gap (see "
-            "tests/test_migration_number_uniqueness.py's _KNOWN_GAPS) but "
-            "did not land in never_allocated_nums"
-        )
-        assert true_gap not in stats["optional_only_nums"]
+    assert stats["never_allocated_nums"] == []
+    assert stats["optional_only_nums"] == []
 
 
 def test_gaps_display_names_both_categories_distinctly() -> None:
-    """The rendered string both docs consumers interpolate must actually
-    distinguish the two categories in its own text, not just internally --
-    a reader of the doc, not just the code, needs the distinction."""
+    """When base migrations are contiguous, gaps_display reports 'no gaps',
+    while synthetic inputs with both categories name both distinctly."""
     stats = extract_migration_stats(_REPO, _BASELINE)
-    display = stats["gaps_display"]
-    assert "never allocated" in display
-    assert "`010`" in display
-    assert "only under" in display
-    assert "`nce/migrations/optional/`" in display
+    assert stats["gaps_display"] == "no gaps"
+    synthetic_display = render_migration_gaps_display([2, 9, 59], [10])
+    assert "never allocated" in synthetic_display
+    assert "`010`" in synthetic_display
+    assert "only under" in synthetic_display
+    assert "`nce/migrations/optional/`" in synthetic_display
 
 
 def test_render_omits_optional_clause_when_none_exist() -> None:

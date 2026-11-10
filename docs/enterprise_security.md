@@ -291,7 +291,7 @@ All MCP tool invocations and JSON-RPC APIs return structured errors adhering to 
 
 ## 8. PostgreSQL Row-Level Security (RLS) Policies
 
-NCE specifies tenant isolation policies at the database layer via PostgreSQL Row-Level Security (RLS). **However, in deployment, the application connects as `mcp_user` (`rolsuper = true`, `rolbypassrls = true`), not `nce_app`.** Because `scoped_pg_session` does not issue `SET ROLE`, PostgreSQL RLS policies are **completely inert at runtime** — tenant isolation is actively enforced solely by `WHERE`-clause predicates in application queries (see live diagnostic evidence in [`docs/vertical_engines/_security/c3-external-scope-adversarial-review.md`](vertical_engines/_security/c3-external-scope-adversarial-review.md), PR #148).
+NCE specifies tenant isolation policies at the database layer via PostgreSQL Row-Level Security (RLS). **However, in deployment, the application connects as `mcp_user` (`rolsuper = true`, `rolbypassrls = true`), not `nce_app`.** Because `scoped_pg_session` does not issue `SET ROLE`, PostgreSQL RLS policies are **completely inert at runtime** — tenant isolation is actively enforced solely by `WHERE`-clause predicates in application queries (see live diagnostic evidence in [`docs/vertical_engines/_security/c3-external-scope-adversarial-review.md`](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/_security/c3-external-scope-adversarial-review.md), PR #148).
 
 ### 8a. The Fail-Safe Namespace Resolver
 Postgres resolves tenant identity using the session settings variable `nce.namespace_id`. This is wrapped by the stable PL/pgSQL function `get_nce_namespace()`:
@@ -341,7 +341,7 @@ CREATE POLICY tenant_isolation_policy ON memories
 > - `tests/test_cron_chain_verify.py` (Merkle provenance hash chain verification)
 > - `tests/test_tamper_anchor.py` (MinIO Object Lock anchoring)
 > - `tests/test_batch44_worm_pii_sidesinks.py` & `tests/test_batch49_pii_derivation.py` (PII side-sink leak prevention)
-> Wiring these test suites into CI is queued under estate decision **Q-12** in `C:\Claude\QUESTIONS_CHARTER.md`. See [`docs/vertical_engines/_security/enforcement-census.md`](vertical_engines/_security/enforcement-census.md) for the complete estate census.
+> Wiring these test suites into CI is queued under estate decision **Q-12** in `C:\Claude\QUESTIONS_CHARTER.md`. See [`docs/vertical_engines/_security/enforcement-census.md`](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/_security/enforcement-census.md) for the complete estate census.
 
 ---
 
