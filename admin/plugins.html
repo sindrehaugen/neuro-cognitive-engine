@@ -1,0 +1,1452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NCE Modular Engine &amp; Plugin Console</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* Dark Slate Glassmorphic Theme Tokens */
+    :root {
+      --bg-base: #080c14;
+      --bg-surface: #0d1525;
+      --bg-surface-elevated: #131f36;
+      --border-subtle: #1e2c47;
+      --border-accent: #2563eb;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --accent-primary: #3b82f6;
+      --accent-green: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-rose: #f43f5e;
+      --accent-violet: #8b5cf6;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      line-height: 1.5;
+    }
+
+    /* Top Navigation Bar */
+    .top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background-color: rgba(13, 21, 37, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 0.875rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .nav-brand-group {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+    }
+
+    .nav-back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      color: var(--accent-primary);
+      text-decoration: none;
+      font-size: 0.875rem;
+      font-weight: 600;
+      padding: 0.375rem 0.75rem;
+      border-radius: 0.5rem;
+      background-color: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+      transition: all 0.15s ease;
+    }
+
+    .nav-back-link:hover {
+      background-color: rgba(59, 130, 246, 0.2);
+      border-color: rgba(59, 130, 246, 0.4);
+      color: #60a5fa;
+    }
+
+    .nav-title-group h1 {
+      font-size: 1.125rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+    }
+
+    .badge-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.125rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.6875rem;
+      font-weight: 600;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .badge-core {
+      background-color: rgba(139, 92, 246, 0.15);
+      color: #c4b5fd;
+      border: 1px solid rgba(139, 92, 246, 0.3);
+    }
+
+    /* Main Console Container */
+    .console-container {
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      flex: 1;
+    }
+
+    /* KPI Header Cards */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+    }
+
+    .kpi-card {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 0.75rem;
+      padding: 1.125rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.375rem;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .kpi-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.4), transparent);
+    }
+
+    .kpi-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+    }
+
+    .kpi-value {
+      font-size: 1.75rem;
+      font-weight: 800;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      color: var(--text-main);
+    }
+
+    .kpi-desc {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    /* Filter Matrix & Controls */
+    .control-panel {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    .search-status-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .search-box {
+      flex: 1;
+      min-width: 280px;
+      position: relative;
+    }
+
+    .search-input {
+      width: 100%;
+      background-color: var(--bg-base);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-main);
+      padding: 0.625rem 1rem 0.625rem 2.25rem;
+      border-radius: 0.5rem;
+      font-size: 0.875rem;
+      outline: none;
+      transition: all 0.15s ease;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-dim);
+      pointer-events: none;
+    }
+
+    .status-segmented {
+      display: inline-flex;
+      background-color: var(--bg-base);
+      border: 1px solid var(--border-subtle);
+      border-radius: 0.5rem;
+      padding: 0.25rem;
+      gap: 0.25rem;
+    }
+
+    .segmented-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      padding: 0.375rem 0.875rem;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      border-radius: 0.375rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .segmented-btn:hover {
+      color: var(--text-main);
+    }
+
+    .segmented-btn.is-active {
+      background-color: var(--bg-surface-elevated);
+      color: var(--accent-primary);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    }
+
+    .btn-reset {
+      background-color: transparent;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      padding: 0.5rem 1rem;
+      border-radius: 0.5rem;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .btn-reset:hover {
+      background-color: rgba(244, 63, 94, 0.1);
+      border-color: rgba(244, 63, 94, 0.3);
+      color: var(--accent-rose);
+    }
+
+    .matrix-axis-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .axis-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .axis-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+    }
+
+    .pills-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .filter-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background-color: var(--bg-base);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      padding: 0.3125rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.15s ease;
+    }
+
+    .filter-pill:hover {
+      border-color: rgba(59, 130, 246, 0.4);
+      color: var(--text-main);
+    }
+
+    .filter-pill.is-active {
+      background-color: rgba(59, 130, 246, 0.15);
+      border-color: var(--accent-primary);
+      color: #93c5fd;
+      font-weight: 600;
+    }
+
+    .pill-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background-color: var(--bg-surface-elevated);
+      color: var(--text-dim);
+      font-size: 0.6875rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      padding: 0.125rem 0.375rem;
+      border-radius: 9999px;
+      min-width: 1.25rem;
+    }
+
+    .filter-pill.is-active .pill-count {
+      background-color: rgba(59, 130, 246, 0.3);
+      color: #bfdbfe;
+    }
+
+    /* Snippet Drawer */
+    .snippet-drawer {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    .drawer-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .drawer-title {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+    }
+
+    .snippets-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+      gap: 1rem;
+    }
+
+    .snippet-box {
+      background-color: var(--bg-base);
+      border: 1px solid var(--border-subtle);
+      border-radius: 0.5rem;
+      padding: 0.875rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .snippet-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .snippet-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .copy-btn {
+      background-color: var(--bg-surface-elevated);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      padding: 0.25rem 0.625rem;
+      border-radius: 0.375rem;
+      font-size: 0.6875rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      transition: all 0.15s ease;
+    }
+
+    .copy-btn:hover {
+      background-color: rgba(59, 130, 246, 0.2);
+      border-color: rgba(59, 130, 246, 0.4);
+      color: var(--text-main);
+    }
+
+    .copy-btn.copied {
+      background-color: rgba(16, 185, 129, 0.2);
+      border-color: rgba(16, 185, 129, 0.5);
+      color: #6ee7b7;
+    }
+
+    .snippet-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.75rem;
+      color: #93c5fd;
+      white-space: pre-wrap;
+      word-break: break-all;
+      background-color: rgba(0, 0, 0, 0.3);
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.375rem;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      max-height: 120px;
+      overflow-y: auto;
+    }
+
+    /* Engine Cards Grid */
+    .grid-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 0.5rem;
+    }
+
+    .grid-count-title {
+      font-size: 0.875rem;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+
+    .engines-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .engine-card {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      transition: transform 0.15s ease, border-color 0.15s ease;
+      position: relative;
+    }
+
+    .engine-card:hover {
+      border-color: rgba(59, 130, 246, 0.3);
+      transform: translateY(-2px);
+    }
+
+    .card-header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.75rem;
+    }
+
+    .card-title-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .card-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-main);
+      line-height: 1.3;
+    }
+
+    .slug-badge {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.6875rem;
+      color: var(--text-dim);
+      display: inline-block;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      padding: 0.1875rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.6875rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      flex-shrink: 0;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+    }
+
+    .status-active {
+      background-color: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+    }
+
+    .status-active .status-dot {
+      background-color: var(--accent-green);
+      box-shadow: 0 0 6px var(--accent-green);
+    }
+
+    .status-disabled {
+      background-color: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: #fbbf24;
+    }
+
+    .status-disabled .status-dot {
+      background-color: var(--accent-amber);
+    }
+
+    .status-uninstalled {
+      background-color: rgba(100, 116, 139, 0.15);
+      border: 1px solid rgba(100, 116, 139, 0.3);
+      color: #94a3b8;
+    }
+
+    .status-uninstalled .status-dot {
+      background-color: var(--text-dim);
+    }
+
+    .card-body {
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      flex: 1;
+    }
+
+    .card-desc {
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .meta-tags-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .meta-tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.375rem;
+    }
+
+    .meta-tag-label {
+      font-size: 0.6875rem;
+      font-weight: 700;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      margin-right: 0.25rem;
+    }
+
+    .tag-chip {
+      font-size: 0.6875rem;
+      padding: 0.125rem 0.4375rem;
+      border-radius: 0.25rem;
+      background-color: var(--bg-base);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+    }
+
+    .tag-chip-type {
+      border-color: rgba(59, 130, 246, 0.25);
+      color: #93c5fd;
+    }
+
+    .tag-chip-cat {
+      border-color: rgba(139, 92, 246, 0.25);
+      color: #c4b5fd;
+    }
+
+    .tag-chip-schema {
+      border-color: rgba(245, 158, 11, 0.25);
+      color: #fde68a;
+    }
+
+    .metrics-row {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      padding-top: 0.5rem;
+      border-top: 1px dashed var(--border-subtle);
+    }
+
+    .metric-item {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .metric-val {
+      font-weight: 700;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      color: var(--text-main);
+    }
+
+    .card-footer {
+      padding: 0.875rem 1.25rem;
+      background-color: rgba(8, 12, 20, 0.4);
+      border-top: 1px solid var(--border-subtle);
+      border-bottom-left-radius: 0.75rem;
+      border-bottom-right-radius: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+    }
+
+    /* Toggle Switch */
+    .toggle-wrapper {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.625rem;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle-switch {
+      position: relative;
+      width: 40px;
+      height: 22px;
+      background-color: var(--bg-base);
+      border: 1px solid var(--border-subtle);
+      border-radius: 9999px;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+
+    .toggle-switch.is-on {
+      background-color: var(--accent-green);
+      border-color: var(--accent-green);
+    }
+
+    .toggle-knob {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      background-color: #ffffff;
+      border-radius: 50%;
+      transition: transform 0.2s ease;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    }
+
+    .toggle-switch.is-on .toggle-knob {
+      transform: translateX(18px);
+    }
+
+    .toggle-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    /* Empty state */
+    .empty-state {
+      grid-column: 1 / -1;
+      background-color: var(--bg-surface);
+      border: 1px dashed var(--border-subtle);
+      border-radius: 0.75rem;
+      padding: 3.5rem 1.5rem;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .empty-state h3 {
+      font-size: 1.125rem;
+      color: var(--text-main);
+    }
+
+    .empty-state p {
+      font-size: 0.875rem;
+      color: var(--text-dim);
+      max-width: 420px;
+    }
+
+    /* Toast Notification */
+    .toast-container {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      pointer-events: none;
+    }
+
+    .toast-msg {
+      background-color: var(--bg-surface-elevated);
+      border: 1px solid var(--border-accent);
+      color: var(--text-main);
+      padding: 0.75rem 1.25rem;
+      border-radius: 0.5rem;
+      font-size: 0.8125rem;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      animation: toastIn 0.2s ease-out;
+      pointer-events: auto;
+    }
+
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header class="top-nav">
+    <div class="nav-brand-group">
+      <a href="/admin/index.html" class="nav-back-link" id="back-link">&larr; Admin Dashboard</a>
+      <div class="nav-title-group">
+        <h1>NCE Modular Engine &amp; Plugin Console <span class="badge-pill badge-core">Air-Gapped Core</span></h1>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Console -->
+  <main class="console-container">
+
+    <!-- KPI Summary Header (4 Metric Cards) -->
+    <section class="kpi-grid">
+      <div class="kpi-card">
+        <span class="kpi-label">Catalog Engines</span>
+        <span class="kpi-value" id="kpi-catalog">0</span>
+        <span class="kpi-desc">Total discovered plugin engines</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Installed Extras</span>
+        <span class="kpi-value" id="kpi-installed">0</span>
+        <span class="kpi-desc">Packages installed in environment</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Active Runtime</span>
+        <span class="kpi-value" id="kpi-active">0</span>
+        <span class="kpi-desc">Enabled and serving requests</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Matched Filter</span>
+        <span class="kpi-value" id="kpi-matched">0</span>
+        <span class="kpi-desc">Engines matching query &amp; facets</span>
+      </div>
+    </section>
+
+    <!-- Dual-Axis Filter Matrix & Search Controls -->
+    <section class="control-panel">
+      <!-- Search & Status Row -->
+      <div class="search-status-row">
+        <div class="search-box">
+          <span class="search-icon">&#128269;</span>
+          <input type="text"
+                 id="search-input"
+                 class="search-input"
+                 placeholder="Search engines by name, slug, description, type, or category..."
+                 autocomplete="off">
+        </div>
+
+        <div class="status-segmented" id="status-segmented">
+          <button type="button" class="segmented-btn is-active" data-status="all">All</button>
+          <button type="button" class="segmented-btn" data-status="active">Active</button>
+          <button type="button" class="segmented-btn" data-status="installed">Installed</button>
+          <button type="button" class="segmented-btn" data-status="uninstalled">Not Installed</button>
+        </div>
+
+        <button type="button" id="reset-filters-btn" class="btn-reset">Reset Filters</button>
+      </div>
+
+      <!-- Axis 1: Component Type Filter Pills -->
+      <div class="matrix-axis-group">
+        <div class="axis-header">
+          <span class="axis-title">Axis 1 &mdash; Component Type (Multi-Select OR)</span>
+        </div>
+        <div class="pills-container" id="type-filter-pills">
+          <!-- Dynamically populated from data.facets.types -->
+        </div>
+      </div>
+
+      <!-- Axis 2: Business Category Filter Pills -->
+      <div class="matrix-axis-group">
+        <div class="axis-header">
+          <span class="axis-title">Axis 2 &mdash; Business Category (Multi-Select OR &amp; Intersect Type)</span>
+        </div>
+        <div class="pills-container" id="category-filter-pills">
+          <!-- Dynamically populated from data.facets.categories -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Live Deployment Snippet Drawer -->
+    <section class="snippet-drawer" id="snippets-panel">
+      <div class="drawer-title-row">
+        <span class="drawer-title">Live Deployment Snippet Drawer</span>
+      </div>
+      <div class="snippets-grid">
+        <div class="snippet-box">
+          <div class="snippet-header">
+            <span class="snippet-label">pip install extras</span>
+            <button type="button" class="copy-btn" id="copy-pip-btn">Copy pip install</button>
+          </div>
+          <code class="snippet-code" id="snippet-pip-code">pip install nce-vertical-engines</code>
+        </div>
+        <div class="snippet-box">
+          <div class="snippet-header">
+            <span class="snippet-label">.env configuration</span>
+            <button type="button" class="copy-btn" id="copy-env-btn">Copy .env</button>
+          </div>
+          <code class="snippet-code" id="snippet-env-code">NCE_ENABLED_ENGINES=</code>
+        </div>
+      </div>
+    </section>
+
+    <!-- Responsive Engine Cards Grid Header -->
+    <div class="grid-header">
+      <span class="grid-count-title" id="grid-status-title">Modular Engines</span>
+    </div>
+
+    <!-- Responsive Engine Cards Grid -->
+    <section class="engines-grid" id="engines-grid">
+      <!-- Dynamically populated engine cards -->
+    </section>
+
+  </main>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Client-Side Controller -->
+  <script>
+    (function () {
+      "use strict";
+
+      // Application State
+      var state = {
+        selectedTypes: [],
+        selectedCategories: [],
+        status: "all",
+        q: "",
+        searchDebounceTimer: null,
+        data: null
+      };
+
+      // DOM Elements
+      var kpiCatalog = document.getElementById("kpi-catalog");
+      var kpiInstalled = document.getElementById("kpi-installed");
+      var kpiActive = document.getElementById("kpi-active");
+      var kpiMatched = document.getElementById("kpi-matched");
+
+      var searchInput = document.getElementById("search-input");
+      var statusSegmented = document.getElementById("status-segmented");
+      var resetFiltersBtn = document.getElementById("reset-filters-btn");
+      var typeFilterPills = document.getElementById("type-filter-pills");
+      var categoryFilterPills = document.getElementById("category-filter-pills");
+
+      var snippetPipCode = document.getElementById("snippet-pip-code");
+      var snippetEnvCode = document.getElementById("snippet-env-code");
+      var copyPipBtn = document.getElementById("copy-pip-btn");
+      var copyEnvBtn = document.getElementById("copy-env-btn");
+
+      var gridStatusTitle = document.getElementById("grid-status-title");
+      var enginesGrid = document.getElementById("engines-grid");
+      var toastContainer = document.getElementById("toast-container");
+
+      // Toast Notification Helper
+      function showToast(message) {
+        var toast = document.createElement("div");
+        toast.className = "toast-msg";
+        toast.textContent = message;
+        toastContainer.appendChild(toast);
+        setTimeout(function () {
+          if (toast.parentNode) {
+            toast.parentNode.removeChild(toast);
+          }
+        }, 2800);
+      }
+
+      // Clipboard Helper
+      function copyToClipboard(text, btnElement, successMsg) {
+        if (!text) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () {
+            if (btnElement) {
+              var orig = btnElement.textContent;
+              btnElement.textContent = "Copied!";
+              btnElement.classList.add("copied");
+              setTimeout(function () {
+                btnElement.textContent = orig;
+                btnElement.classList.remove("copied");
+              }, 1600);
+            }
+            showToast(successMsg || "Copied to clipboard");
+          }).catch(function () {
+            fallbackCopy(text);
+          });
+        } else {
+          fallbackCopy(text);
+        }
+      }
+
+      function fallbackCopy(text) {
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand("copy");
+          showToast("Copied to clipboard");
+        } catch (e) {
+          showToast("Copy failed: please copy manually");
+        }
+        document.body.removeChild(ta);
+      }
+
+      // Parse URL Search Parameters into State
+      function readUrlState() {
+        var params = new URLSearchParams(window.location.search);
+        var typeParam = params.get("type");
+        var catParam = params.get("category");
+        var statusParam = params.get("status");
+        var qParam = params.get("q");
+
+        state.selectedTypes = typeParam ? typeParam.split(",").filter(Boolean) : [];
+        state.selectedCategories = catParam ? catParam.split(",").filter(Boolean) : [];
+        state.status = (statusParam && ["all", "active", "installed", "uninstalled"].indexOf(statusParam) !== -1)
+          ? statusParam
+          : "all";
+        state.q = qParam || "";
+
+        searchInput.value = state.q;
+        updateStatusButtons();
+      }
+
+      // Sync State to URL Search Parameters
+      function syncStateToUrl() {
+        var params = new URLSearchParams();
+        if (state.selectedTypes.length > 0) {
+          params.set("type", state.selectedTypes.join(","));
+        }
+        if (state.selectedCategories.length > 0) {
+          params.set("category", state.selectedCategories.join(","));
+        }
+        if (state.status && state.status !== "all") {
+          params.set("status", state.status);
+        }
+        if (state.q && state.q.trim()) {
+          params.set("q", state.q.trim());
+        }
+
+        var qs = params.toString();
+        var newUrl = window.location.pathname + (qs ? "?" + qs : "");
+        window.history.replaceState(null, "", newUrl);
+      }
+
+      function updateStatusButtons() {
+        var btns = statusSegmented.querySelectorAll(".segmented-btn");
+        for (var i = 0; i < btns.length; i++) {
+          var btn = btns[i];
+          if (btn.getAttribute("data-status") === state.status) {
+            btn.classList.add("is-active");
+          } else {
+            btn.classList.remove("is-active");
+          }
+        }
+      }
+
+      // Fetch Catalog API with current filters
+      function fetchCatalog() {
+        var params = new URLSearchParams();
+        if (state.selectedTypes.length > 0) {
+          params.set("type", state.selectedTypes.join(","));
+        }
+        if (state.selectedCategories.length > 0) {
+          params.set("category", state.selectedCategories.join(","));
+        }
+        if (state.status && state.status !== "all") {
+          params.set("status", state.status);
+        }
+        if (state.q && state.q.trim()) {
+          params.set("q", state.q.trim());
+        }
+
+        var qs = params.toString();
+        var endpoint = "/admin/plugins/api" + (qs ? "?" + qs : "");
+
+        fetch(endpoint, {
+          method: "GET",
+          headers: {
+            "Accept": "application/json"
+          }
+        })
+          .then(function (res) {
+            if (!res.ok) {
+              throw new Error("HTTP " + res.status + " " + res.statusText);
+            }
+            return res.json();
+          })
+          .then(function (data) {
+            state.data = data;
+            renderConsole(data);
+          })
+          .catch(function (err) {
+            showToast("Failed to load plugin catalog: " + err.message);
+          });
+      }
+
+      // Render Console Components
+      function renderConsole(data) {
+        renderKPIs(data.summary || {});
+        renderFilterPills(data.facets || {});
+        renderSnippets(data.snippets || {});
+        renderEnginesGrid(data.engines || data.plugins || []);
+      }
+
+      function renderKPIs(summary) {
+        kpiCatalog.textContent = summary.catalog != null ? String(summary.catalog) : "0";
+        kpiInstalled.textContent = summary.installed != null ? String(summary.installed) : "0";
+        kpiActive.textContent = summary.active != null ? String(summary.active) : "0";
+        kpiMatched.textContent = summary.matched != null ? String(summary.matched) : "0";
+      }
+
+      // Build Dynamic Filter Pills for Axis 1 & 2
+      function renderFilterPills(facets) {
+        // Types
+        var typesList = facets.types || [];
+        var typeElements = [];
+        for (var i = 0; i < typesList.length; i++) {
+          var item = typesList[i];
+          var pill = createPill(item, "type", state.selectedTypes);
+          typeElements.push(pill);
+        }
+        typeFilterPills.replaceChildren.apply(typeFilterPills, typeElements);
+
+        // Categories
+        var categoriesList = facets.categories || [];
+        var catElements = [];
+        for (var j = 0; j < categoriesList.length; j++) {
+          var catItem = categoriesList[j];
+          var catPill = createPill(catItem, "category", state.selectedCategories);
+          catElements.push(catPill);
+        }
+        categoryFilterPills.replaceChildren.apply(categoryFilterPills, catElements);
+      }
+
+      function createPill(item, axis, selectedArray) {
+        var name = item.name || item;
+        var count = item.count != null ? item.count : 0;
+        var isSelected = selectedArray.indexOf(name) !== -1;
+
+        var pill = document.createElement("button");
+        pill.type = "button";
+        pill.className = "filter-pill" + (isSelected ? " is-active" : "");
+
+        var nameSpan = document.createElement("span");
+        nameSpan.textContent = name;
+        pill.appendChild(nameSpan);
+
+        var countBadge = document.createElement("span");
+        countBadge.className = "pill-count";
+        countBadge.textContent = String(count);
+        pill.appendChild(countBadge);
+
+        pill.addEventListener("click", function () {
+          toggleFacet(axis, name);
+        });
+
+        return pill;
+      }
+
+      function toggleFacet(axis, value) {
+        var targetArray = axis === "type" ? state.selectedTypes : state.selectedCategories;
+        var idx = targetArray.indexOf(value);
+        if (idx === -1) {
+          targetArray.push(value);
+        } else {
+          targetArray.splice(idx, 1);
+        }
+        syncStateToUrl();
+        fetchCatalog();
+      }
+
+      function renderSnippets(snippets) {
+        snippetPipCode.textContent = snippets.pip_install || "pip install nce-vertical-engines";
+        snippetEnvCode.textContent = snippets.env_vars || "NCE_ENABLED_ENGINES=";
+      }
+
+      // Render Dynamic Engine Cards Grid
+      function renderEnginesGrid(engines) {
+        gridStatusTitle.textContent = "Modular Engines (" + engines.length + " matched)";
+
+        if (engines.length === 0) {
+          var emptyBox = document.createElement("div");
+          emptyBox.className = "empty-state";
+
+          var h3 = document.createElement("h3");
+          h3.textContent = "No modular engines matched";
+          emptyBox.appendChild(h3);
+
+          var p = document.createElement("p");
+          p.textContent = "No engines match your current filter matrix or search query. Try resetting filters to view all catalog engines.";
+          emptyBox.appendChild(p);
+
+          var resetBtn = document.createElement("button");
+          resetBtn.type = "button";
+          resetBtn.className = "btn-reset";
+          resetBtn.textContent = "Reset All Filters";
+          resetBtn.addEventListener("click", resetAllFilters);
+          emptyBox.appendChild(resetBtn);
+
+          enginesGrid.replaceChildren(emptyBox);
+          return;
+        }
+
+        var cardElements = [];
+        for (var i = 0; i < engines.length; i++) {
+          cardElements.push(createEngineCard(engines[i]));
+        }
+        enginesGrid.replaceChildren.apply(enginesGrid, cardElements);
+      }
+
+      function createEngineCard(engine) {
+        var card = document.createElement("div");
+        card.className = "engine-card";
+
+        // 1. Header
+        var header = document.createElement("div");
+        header.className = "card-header";
+
+        var titleGroup = document.createElement("div");
+        titleGroup.className = "card-title-group";
+
+        var cardTitle = document.createElement("div");
+        cardTitle.className = "card-title";
+        cardTitle.textContent = engine.title || engine.name || engine.slug;
+        titleGroup.appendChild(cardTitle);
+
+        var slugBadge = document.createElement("span");
+        slugBadge.className = "slug-badge";
+        slugBadge.textContent = engine.slug;
+        titleGroup.appendChild(slugBadge);
+
+        header.appendChild(titleGroup);
+
+        // Status Badge
+        var statusBadge = document.createElement("div");
+        var statusDot = document.createElement("span");
+        statusDot.className = "status-dot";
+        statusBadge.appendChild(statusDot);
+
+        var statusText = document.createElement("span");
+        if (!engine.installed) {
+          statusBadge.className = "status-badge status-uninstalled";
+          statusText.textContent = "Not Installed";
+        } else if (engine.enabled) {
+          statusBadge.className = "status-badge status-active";
+          statusText.textContent = "Active";
+        } else {
+          statusBadge.className = "status-badge status-disabled";
+          statusText.textContent = "Disabled";
+        }
+        statusBadge.appendChild(statusText);
+        header.appendChild(statusBadge);
+
+        card.appendChild(header);
+
+        // 2. Body
+        var body = document.createElement("div");
+        body.className = "card-body";
+
+        var desc = document.createElement("p");
+        desc.className = "card-desc";
+        desc.textContent = engine.description || engine.title || "NCE modular domain engine extension.";
+        body.appendChild(desc);
+
+        var tagsGroup = document.createElement("div");
+        tagsGroup.className = "meta-tags-group";
+
+        // Types tag row
+        if (engine.types && engine.types.length > 0) {
+          var typeRow = document.createElement("div");
+          typeRow.className = "meta-tag-row";
+          var typeLabel = document.createElement("span");
+          typeLabel.className = "meta-tag-label";
+          typeLabel.textContent = "Type:";
+          typeRow.appendChild(typeLabel);
+
+          for (var t = 0; t < engine.types.length; t++) {
+            var typeChip = document.createElement("span");
+            typeChip.className = "tag-chip tag-chip-type";
+            typeChip.textContent = engine.types[t];
+            typeRow.appendChild(typeChip);
+          }
+          tagsGroup.appendChild(typeRow);
+        }
+
+        // Categories tag row
+        if (engine.categories && engine.categories.length > 0) {
+          var catRow = document.createElement("div");
+          catRow.className = "meta-tag-row";
+          var catLabel = document.createElement("span");
+          catLabel.className = "meta-tag-label";
+          catLabel.textContent = "Cat:";
+          catRow.appendChild(catLabel);
+
+          for (var c = 0; c < engine.categories.length; c++) {
+            var catChip = document.createElement("span");
+            catChip.className = "tag-chip tag-chip-cat";
+            catChip.textContent = engine.categories[c];
+            catRow.appendChild(catChip);
+          }
+          tagsGroup.appendChild(catRow);
+        }
+
+        // Required Schemas tag row
+        if (engine.requires_schemas && engine.requires_schemas.length > 0) {
+          var schemaRow = document.createElement("div");
+          schemaRow.className = "meta-tag-row";
+          var schemaLabel = document.createElement("span");
+          schemaLabel.className = "meta-tag-label";
+          schemaLabel.textContent = "Requires:";
+          schemaRow.appendChild(schemaLabel);
+
+          for (var s = 0; s < engine.requires_schemas.length; s++) {
+            var schemaChip = document.createElement("span");
+            schemaChip.className = "tag-chip tag-chip-schema";
+            schemaChip.textContent = engine.requires_schemas[s];
+            schemaRow.appendChild(schemaChip);
+          }
+          tagsGroup.appendChild(schemaRow);
+        }
+
+        body.appendChild(tagsGroup);
+
+        // Metrics Row
+        var metricsRow = document.createElement("div");
+        metricsRow.className = "metrics-row";
+
+        var toolMetric = document.createElement("div");
+        toolMetric.className = "metric-item";
+        var toolVal = document.createElement("span");
+        toolVal.className = "metric-val";
+        toolVal.textContent = engine.tool_count != null ? String(engine.tool_count) : "0";
+        toolMetric.appendChild(toolVal);
+        var toolLbl = document.createElement("span");
+        toolLbl.textContent = "MCP Tools";
+        toolMetric.appendChild(toolLbl);
+        metricsRow.appendChild(toolMetric);
+
+        var routeMetric = document.createElement("div");
+        routeMetric.className = "metric-item";
+        var routeVal = document.createElement("span");
+        routeVal.className = "metric-val";
+        routeVal.textContent = engine.route_count != null ? String(engine.route_count) : "0";
+        routeMetric.appendChild(routeVal);
+        var routeLbl = document.createElement("span");
+        routeLbl.textContent = "REST Routes";
+        routeMetric.appendChild(routeLbl);
+        metricsRow.appendChild(routeMetric);
+
+        body.appendChild(metricsRow);
+        card.appendChild(body);
+
+        // 3. Footer Action
+        var footer = document.createElement("div");
+        footer.className = "card-footer";
+
+        if (engine.installed) {
+          var toggleWrapper = document.createElement("label");
+          toggleWrapper.className = "toggle-wrapper";
+
+          var toggleSwitch = document.createElement("button");
+          toggleSwitch.type = "button";
+          toggleSwitch.setAttribute("role", "switch");
+          toggleSwitch.setAttribute("aria-checked", engine.enabled ? "true" : "false");
+          toggleSwitch.className = "toggle-switch" + (engine.enabled ? " is-on" : "");
+
+          var toggleKnob = document.createElement("span");
+          toggleKnob.className = "toggle-knob";
+          toggleSwitch.appendChild(toggleKnob);
+
+          var toggleLabel = document.createElement("span");
+          toggleLabel.className = "toggle-label";
+          toggleLabel.textContent = engine.enabled ? "Runtime Enabled" : "Runtime Disabled";
+
+          toggleSwitch.addEventListener("click", function (ev) {
+            ev.preventDefault();
+            toggleEngineRuntime(engine.slug, !engine.enabled);
+          });
+
+          toggleWrapper.appendChild(toggleSwitch);
+          toggleWrapper.appendChild(toggleLabel);
+          footer.appendChild(toggleWrapper);
+        } else {
+          var lockedBadge = document.createElement("span");
+          lockedBadge.className = "tag-chip";
+          lockedBadge.textContent = "Extra Not Installed";
+          footer.appendChild(lockedBadge);
+
+          var installBtn = document.createElement("button");
+          installBtn.type = "button";
+          installBtn.className = "copy-btn";
+          installBtn.textContent = "Copy pip install";
+          installBtn.addEventListener("click", function () {
+            var extraCmd = 'pip install "' + (engine.install_extra || ("nce-vertical-engines[" + engine.slug + "]")) + '"';
+            copyToClipboard(extraCmd, installBtn, "Copied installation command");
+          });
+          footer.appendChild(installBtn);
+        }
+
+        card.appendChild(footer);
+        return card;
+      }
+
+      // POST /admin/plugins/api/toggle
+      function toggleEngineRuntime(slug, targetState) {
+        fetch("/admin/plugins/api/toggle", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+          body: JSON.stringify({
+            slug: slug,
+            enabled: targetState
+          })
+        })
+          .then(function (res) {
+            if (!res.ok) {
+              return res.json().then(function (body) {
+                throw new Error(body.error || body.message || ("HTTP " + res.status));
+              }).catch(function (parseErr) {
+                if (parseErr.message) throw parseErr;
+                throw new Error("HTTP " + res.status);
+              });
+            }
+            return res.json();
+          })
+          .then(function () {
+            showToast("Engine '" + slug + "' " + (targetState ? "enabled" : "disabled"));
+            fetchCatalog();
+          })
+          .catch(function (err) {
+            showToast("Toggle failed: " + err.message);
+          });
+      }
+
+      function resetAllFilters() {
+        state.selectedTypes = [];
+        state.selectedCategories = [];
+        state.status = "all";
+        state.q = "";
+        searchInput.value = "";
+        updateStatusButtons();
+        syncStateToUrl();
+        fetchCatalog();
+      }
+
+      // Event Listeners
+      searchInput.addEventListener("input", function () {
+        clearTimeout(state.searchDebounceTimer);
+        state.searchDebounceTimer = setTimeout(function () {
+          state.q = searchInput.value;
+          syncStateToUrl();
+          fetchCatalog();
+        }, 180);
+      });
+
+      statusSegmented.addEventListener("click", function (e) {
+        var target = e.target;
+        if (target && target.classList.contains("segmented-btn")) {
+          var val = target.getAttribute("data-status");
+          if (val && val !== state.status) {
+            state.status = val;
+            updateStatusButtons();
+            syncStateToUrl();
+            fetchCatalog();
+          }
+        }
+      });
+
+      resetFiltersBtn.addEventListener("click", resetAllFilters);
+
+      copyPipBtn.addEventListener("click", function () {
+        copyToClipboard(snippetPipCode.textContent, copyPipBtn, "Copied pip install command");
+      });
+
+      copyEnvBtn.addEventListener("click", function () {
+        copyToClipboard(snippetEnvCode.textContent, copyEnvBtn, "Copied .env configuration");
+      });
+
+      // Handle popstate for back/forward navigation
+      window.addEventListener("popstate", function () {
+        readUrlState();
+        fetchCatalog();
+      });
+
+      // Initialization
+      readUrlState();
+      fetchCatalog();
+
+    })();
+  </script>
+</body>
+</html>

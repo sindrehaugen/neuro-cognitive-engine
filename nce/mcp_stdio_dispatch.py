@@ -107,6 +107,33 @@ async def execute_call_tool(
             if spec is None:
                 raise UnknownToolError(name)
 
+            # Engine runtime disable gate: fail-closed if Redis unavailable in prod; block if disabled
+            if spec.engine:
+                try:
+                    from nce.admin_plugins import is_engine_disabled
+
+                    if await is_engine_disabled(
+                        spec.engine,
+                        redis_client=engine.redis_client,
+                        is_prod=cfg.IS_PROD,
+                    ):
+                        return _jsonrpc_error_response(
+                            -32001,
+                            f"Engine '{spec.engine}' is currently disabled by administrator.",
+                        )
+                except GovernanceUnavailable:
+                    return _jsonrpc_error_response(
+                        -32005,
+                        "Scope forbidden",
+                        detail="Tool governance registry unavailable; dispatch blocked.",
+                    )
+                except Exception as engine_gov_exc:
+                    if cfg.IS_PROD:
+                        raise GovernanceUnavailable(
+                            "Engine governance unavailable in production"
+                        ) from engine_gov_exc
+                    log.warning("Engine governance check failed: %s", engine_gov_exc)
+
             # Migration gate: disabled tools return a plain message, no error envelope.
             if spec.migration and cfg.NCE_DISABLE_MIGRATION_MCP:
                 return [

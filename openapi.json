@@ -2961,7 +2961,7 @@
     },
     "/admin/plugins": {
       "get": {
-        "description": "List discovered NCE plugins and engine descriptors with optional\n?type=<type> and ?category=<category> facet filtering.",
+        "description": "Serve admin/plugins.html console UI, or return catalog JSON if requested.",
         "operationId": "get_admin_plugins",
         "parameters": [],
         "responses": {
@@ -3017,7 +3017,147 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "GET /api/admin/plugins (and GET /admin/plugins)",
+        "summary": "GET /admin/plugins",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/plugins/api": {
+      "get": {
+        "description": "Dual-axis faceted catalog query API.",
+        "operationId": "get_admin_plugins_api",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "GET /admin/plugins/api and GET /api/admin/plugins",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/plugins/api/toggle": {
+      "post": {
+        "description": "Dynamically enable or disable an engine runtime state in Redis.",
+        "operationId": "post_admin_plugins_api_toggle",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "POST /admin/plugins/api/toggle and POST /api/admin/plugins/toggle",
         "tags": [
           "admin"
         ]
@@ -6652,7 +6792,7 @@
     },
     "/api/admin/plugins": {
       "get": {
-        "description": "List discovered NCE plugins and engine descriptors with optional\n?type=<type> and ?category=<category> facet filtering.",
+        "description": "Dual-axis faceted catalog query API.",
         "operationId": "get_api_admin_plugins",
         "parameters": [],
         "responses": {
@@ -6708,7 +6848,83 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "GET /api/admin/plugins (and GET /admin/plugins)",
+        "summary": "GET /admin/plugins/api and GET /api/admin/plugins",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/plugins/toggle": {
+      "post": {
+        "description": "Dynamically enable or disable an engine runtime state in Redis.",
+        "operationId": "post_api_admin_plugins_toggle",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Request payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "POST /admin/plugins/api/toggle and POST /api/admin/plugins/toggle",
         "tags": [
           "admin"
         ]

@@ -9,11 +9,31 @@ from __future__ import annotations
 import importlib.metadata
 import logging
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, TypedDict, runtime_checkable
 
 log = logging.getLogger(__name__)
 
 ENTRY_POINT_GROUP = "nce.plugins"
+
+
+class EngineDescriptor(TypedDict, total=False):
+    """Typed descriptor contract for an engine/module exported by an NCEPlugin."""
+
+    slug: str
+    id: str
+    name: str
+    plugin_id: str
+    description: str
+    version: str
+    types: list[str]
+    categories: list[str]
+    installed: bool
+    enabled: bool
+    enabled_by_env: bool
+    tool_count: int
+    route_count: int
+    requires_schemas: list[str]
+    install_extra: str
 
 
 @runtime_checkable
@@ -142,34 +162,50 @@ def _normalize_filter_tokens(raw: str | None) -> set[str]:
 def _normalize_descriptor(raw: dict[str, Any], default_id: str) -> dict[str, Any]:
     types_raw = raw.get("types") or ()
     categories_raw = raw.get("categories") or ()
+    requires_raw = raw.get("requires_schemas") or ()
     types_list = sorted({str(t).strip() for t in types_raw if str(t).strip()})
     categories_list = sorted({str(c).strip() for c in categories_raw if str(c).strip()})
-    plugin_id = str(raw.get("id") or raw.get("plugin_id") or default_id)
+    requires_list = [str(r).strip() for r in requires_raw if str(r).strip()]
+    slug = str(raw.get("slug") or raw.get("id") or raw.get("plugin_id") or default_id)
+    plugin_id = str(raw.get("plugin_id") or default_id)
+    installed = bool(raw.get("installed", True))
+    enabled_by_env = bool(raw.get("enabled_by_env", raw.get("enabled", installed)))
+    enabled = bool(raw.get("enabled", enabled_by_env and installed))
     return {
         **raw,
-        "id": plugin_id,
-        "plugin_id": str(raw.get("plugin_id") or default_id),
-        "name": str(raw.get("name") or plugin_id),
+        "slug": slug,
+        "id": str(raw.get("id") or slug),
+        "plugin_id": plugin_id,
+        "name": str(raw.get("name") or slug),
+        "description": str(raw.get("description") or ""),
+        "version": str(raw.get("version") or "3.0.0"),
         "types": types_list,
         "categories": categories_list,
-        "installed": bool(raw.get("installed", True)),
-        "enabled": bool(raw.get("enabled", True)),
+        "installed": installed,
+        "enabled": enabled,
+        "enabled_by_env": enabled_by_env,
+        "tool_count": int(raw.get("tool_count") or 0),
+        "route_count": int(raw.get("route_count") or 0),
+        "requires_schemas": requires_list,
+        "install_extra": str(raw.get("install_extra") or slug),
     }
 
 
-def get_plugin_descriptors(
+def list_plugin_engine_descriptors(
     *,
     type_filter: str | None = None,
     category_filter: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Collect and optionally filter plugin descriptors by type and/or category facets."""
+    """Collect and optionally filter normalized engine descriptors across all plugins."""
     wanted_types = _normalize_filter_tokens(type_filter)
     wanted_categories = _normalize_filter_tokens(category_filter)
     descriptors: list[dict[str, Any]] = []
 
     for plugin_id, plugin in load_plugins().items():
         raw_items: list[dict[str, Any]] = []
-        getter = getattr(plugin, "get_plugin_descriptors", None)
+        getter = getattr(plugin, "get_plugin_descriptors", None) or getattr(
+            plugin, "get_engine_descriptors", None
+        )
         if callable(getter):
             try:
                 res = getter()
@@ -180,13 +216,20 @@ def get_plugin_descriptors(
         if not raw_items:
             raw_items.append(
                 {
+                    "slug": plugin_id,
                     "id": plugin_id,
                     "plugin_id": plugin_id,
                     "name": getattr(plugin, "name", plugin_id),
+                    "description": getattr(plugin, "description", ""),
                     "types": list(getattr(plugin, "types", ()) or ()),
                     "categories": list(getattr(plugin, "categories", ()) or ()),
                     "installed": bool(getattr(plugin, "installed", True)),
                     "enabled": bool(getattr(plugin, "enabled", True)),
+                    "enabled_by_env": bool(getattr(plugin, "enabled_by_env", True)),
+                    "tool_count": int(getattr(plugin, "tool_count", 0) or 0),
+                    "route_count": int(getattr(plugin, "route_count", 0) or 0),
+                    "requires_schemas": list(getattr(plugin, "requires_schemas", ()) or ()),
+                    "install_extra": str(getattr(plugin, "install_extra", plugin_id)),
                 }
             )
         for item in raw_items:
@@ -202,3 +245,15 @@ def get_plugin_descriptors(
             descriptors.append(norm)
 
     return descriptors
+
+
+def get_plugin_descriptors(
+    *,
+    type_filter: str | None = None,
+    category_filter: str | None = None,
+) -> list[dict[str, Any]]:
+    """Collect and optionally filter plugin descriptors by type and/or category facets."""
+    return list_plugin_engine_descriptors(
+        type_filter=type_filter,
+        category_filter=category_filter,
+    )

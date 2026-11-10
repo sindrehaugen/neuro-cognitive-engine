@@ -178,34 +178,47 @@ async def api_admin_tools_toggle(request) -> JSONResponse:
 async def api_admin_plugins(request) -> JSONResponse:
     """GET /api/admin/plugins (and GET /admin/plugins)
 
-    List discovered NCE plugins and engine descriptors with optional
-    ?type=<type> and ?category=<category> facet filtering.
+    List discovered NCE plugins and engine descriptors. Delegates to
+    nce.admin_plugins, while preserving backward compatibility for
+    direct unit test callers.
     """
-    from nce.plugins import get_plugin_descriptors
+    if "headers" not in request.scope:
+        from nce.plugins import get_plugin_descriptors
 
-    type_filter = request.query_params.get("type")
-    category_filter = request.query_params.get("category")
+        type_filter = request.query_params.get("type")
+        category_filter = request.query_params.get("category")
 
-    all_descriptors = get_plugin_descriptors()
-    filtered = (
-        get_plugin_descriptors(type_filter=type_filter, category_filter=category_filter)
-        if (type_filter or category_filter)
-        else all_descriptors
-    )
-    available_types = sorted({t for d in all_descriptors for t in d.get("types", ())})
-    available_categories = sorted({c for d in all_descriptors for c in d.get("categories", ())})
+        all_descriptors = get_plugin_descriptors()
+        filtered = (
+            get_plugin_descriptors(type_filter=type_filter, category_filter=category_filter)
+            if (type_filter or category_filter)
+            else all_descriptors
+        )
+        available_types = sorted({t for d in all_descriptors for t in d.get("types", ())})
+        available_categories = sorted({c for d in all_descriptors for c in d.get("categories", ())})
 
-    return JSONResponse(
-        {
-            "plugins": filtered,
-            "total": len(filtered),
-            "filters": {
-                "type": type_filter,
-                "category": category_filter,
-            },
-            "facets": {
-                "types": available_types,
-                "categories": available_categories,
-            },
-        }
-    )
+        return JSONResponse(
+            {
+                "plugins": filtered,
+                "total": len(filtered),
+                "filters": {
+                    "type": type_filter,
+                    "category": category_filter,
+                },
+                "facets": {
+                    "types": available_types,
+                    "categories": available_categories,
+                },
+            }
+        )
+
+    from nce.admin_plugins import admin_plugins_api
+
+    return await admin_plugins_api(request)
+
+
+async def api_plugins(request) -> JSONResponse:
+    """Delegate to nce.admin_plugins.admin_plugins_api."""
+    from nce.admin_plugins import admin_plugins_api
+
+    return await admin_plugins_api(request)
