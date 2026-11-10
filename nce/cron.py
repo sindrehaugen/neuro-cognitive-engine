@@ -385,6 +385,14 @@ async def _outbox_relay_tick(pool: asyncpg.Pool) -> None:
         drained = getattr(result, "drained_no_consumer", 0)
         if delivered or drained:
             log.info("outbox relay tick delivered=%d drained=%d", delivered, drained)
+        try:
+            from nce.dead_letter_queue import reap_quarantined_dead_letters
+
+            reaped = await reap_quarantined_dead_letters(pool)
+            if reaped:
+                log.info("outbox relay tick reaped %d quarantined DLQ item(s)", len(reaped))
+        except Exception:
+            log.debug("quarantined DLQ reap skipped during outbox_relay tick", exc_info=True)
     except _CRON_TICK_ERRORS as exc:
         log.exception("outbox relay tick failed unexpectedly")
         await _dispatch_throttled_alert(

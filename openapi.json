@@ -9831,7 +9831,7 @@
     },
     "/healthz": {
       "get": {
-        "description": "Wave I-13. This returned a literal ``{\"status\": \"ok\"}`` regardless of the engine's\nreal state, so the compose healthcheck it backs could not fail. It now reports the\nengine's verdict and its security block, and answers 503 when a degradation is\nblocking. Still unauthenticated, so it exposes only status strings -- never a key,\na fingerprint, or a row.",
+        "description": "get_health (/healthz)",
         "operationId": "get_healthz",
         "parameters": [],
         "responses": {
@@ -9887,9 +9887,9 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "Unauthenticated liveness probe that actually probes.",
+        "summary": "get_health (/healthz)",
         "tags": [
-          "admin"
+          "a2a"
         ]
       }
     },

@@ -231,13 +231,6 @@ BEGIN
     END IF;
 END $$;
 
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='kg_nodes' AND column_name='procurement_source_id') THEN
-        ALTER TABLE kg_nodes ADD COLUMN procurement_source_id TEXT;
-    END IF;
-END $$;
-
 -- Phase 1 hardening: namespace_id + RLS for kg_nodes
 DO $$
 DECLARE
@@ -335,13 +328,6 @@ BEGIN
         -- Do not revert to 3-column; namespace_id is required for multi-tenant isolation.
         ON CONFLICT (subject_label, predicate, object_label, namespace_id) DO NOTHING;
         DROP TABLE kg_edges_old CASCADE;
-    END IF;
-END $$;
-
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='kg_edges' AND column_name='procurement_source_id') THEN
-        ALTER TABLE kg_edges ADD COLUMN procurement_source_id TEXT;
     END IF;
 END $$;
 

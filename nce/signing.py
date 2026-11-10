@@ -693,6 +693,10 @@ def _argon2id_derive_aes_key(master_key: MasterKey, salt: bytes) -> bytes:
     ``argon2-cffi`` is not installed.
     """
     if not _HAS_ARGON2:
+        if cfg.IS_PROD:
+            raise SigningError(
+                "argon2-cffi is required in production (IS_PROD=True); refusing to fall back to PBKDF2."
+            )
         return _pbkdf2_derive_aes_key_v4(master_key, salt)
     if master_key._zeroed:
         raise ValueError("MasterKey has been zeroed and is no longer usable.")
@@ -729,6 +733,10 @@ def encrypt_signing_key(raw_key: bytes, master_key: MasterKey) -> bytes:
         derived = _argon2id_derive_aes_key(master_key, salt)
         prefix = _ENCRYPTED_KEY_BLOB_V3
     else:
+        if cfg.IS_PROD:
+            raise SigningError(
+                "argon2-cffi is required in production (IS_PROD=True); refusing to fall back to PBKDF2 v4."
+            )
         derived = _pbkdf2_derive_aes_key_v4(master_key, salt)
         prefix = _ENCRYPTED_KEY_BLOB_V4
     nonce = os.urandom(_NONCE_SIZE)

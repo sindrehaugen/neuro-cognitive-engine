@@ -200,7 +200,7 @@ jobs:
         NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: '1'
       run: pytest tests/test_rls_isolation_integration.py tests/test_schema_bootstrap.py tests/test_rls_catalog.py tests/test_outbox_fanout.py
         tests/test_event_log_hardening.py tests/test_node_ownership_seed_bulk.py tests/test_namespace_fk_cascade.py tests/test_namespace_fixture_teardown.py
-        tests/test_worm_registry.py::test_memory_salience_not_in_worm_tables tests/test_worm_registry.py::test_worm_tables_contains_expected_entries
+        tests/test_worm_registry.py
         -m integration -q --tb=short
     - name: "Integration \u2014 WORM TRUNCATE guard (RL-H18)"
       env:

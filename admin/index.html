@@ -3404,6 +3404,173 @@
     </div>
     <!-- /Tab: Relux & DALI-2 -->
 
+    <!-- Tab: Standalone Super-Intelligent Odoo Vertical Engine & LLM Cross-Talker -->
+    <div id="panel-odoo" x-show="adminTab === 'odoo'" x-cloak class="space-y-8" x-data="odooPanel" x-init="init()">
+      <div class="border-b border-slate-200 pb-2.5 mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div>
+          <h2 class="text-xl font-bold font-hanken tracking-tight bg-gradient-to-r from-purple-700 via-fuchsia-600 to-indigo-600 bg-clip-text text-transparent uppercase">Odoo Super-Intelligent Engine & LLM Cross-Talker</h2>
+          <p class="text-xs text-slate-500 mt-1">JSON-RPC / XML-RPC / OAuth2 · 6 ERP/CRM/MRP/Accounting Domains · Autonomous Anomaly Radar · Bidirectional Chatter & Cross-Engine LLM Talker</p>
+        </div>
+        <span class="self-start sm:self-auto text-[10px] font-mono text-purple-900 uppercase tracking-widest font-bold bg-purple-50 px-2.5 py-1 rounded-md border border-purple-200">SUPER-INTELLIGENT ERP & CROSS-TALKER</span>
+      </div>
+
+      <!-- Connection & Protocol Config -->
+      <section class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50">
+          <h3 class="text-[11px] font-bold uppercase tracking-widest text-slate-700">Odoo Connection, Protocol & Entra ID Gate</h3>
+          <div class="flex gap-2">
+            <button type="button" @click="fetchPulse()" class="rounded-lg bg-purple-600 text-white px-3 py-1 text-[10px] font-bold hover:bg-purple-700 transition">Run 360° AI Pulse</button>
+            <button type="button" @click="fetchAll()" class="text-[10px] font-bold text-indigo-600 hover:underline">Refresh</button>
+          </div>
+        </div>
+        <div class="p-5 grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+          <label class="block">
+            <span class="font-bold text-slate-600 uppercase text-[10px]">Odoo Instance URL</span>
+            <input type="text" x-model="form.url" placeholder="https://erp.company.no" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 font-mono text-xs">
+          </label>
+          <label class="block">
+            <span class="font-bold text-slate-600 uppercase text-[10px]">Database Name</span>
+            <input type="text" x-model="form.db_name" placeholder="odoo_prod" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 font-mono text-xs">
+          </label>
+          <label class="block">
+            <span class="font-bold text-slate-600 uppercase text-[10px]">RPC / API Protocol</span>
+            <select x-model="form.protocol" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold">
+              <option value="jsonrpc">JSON-RPC 2.0 (/jsonrpc)</option>
+              <option value="xmlrpc">XML-RPC (/xmlrpc/2/object)</option>
+              <option value="rest_oauth2">REST / OAuth 2.0 Bearer</option>
+            </select>
+          </label>
+          <label class="block">
+            <span class="font-bold text-slate-600 uppercase text-[10px]">Chatter Bot Handle</span>
+            <input type="text" x-model="form.bot_handle" placeholder="@nce" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 font-mono text-xs">
+          </label>
+          <label class="block">
+            <span class="font-bold text-slate-600 uppercase text-[10px]">Username / Login</span>
+            <input type="text" x-model="form.username" placeholder="admin@company.no" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 font-mono text-xs">
+          </label>
+          <label class="block">
+            <span class="font-bold text-slate-600 uppercase text-[10px]">Odoo API Key / Token</span>
+            <input type="password" x-model="form.api_key" placeholder="Leave blank to keep existing" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 font-mono text-xs">
+          </label>
+          <div class="flex items-end gap-4 md:col-span-2 justify-end">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" x-model="form.require_entra_gate" class="rounded border-slate-300 text-purple-600">
+              <span class="font-bold text-slate-700">Enforce Entra ID Gate</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" x-model="form.crosstalk_enabled" class="rounded border-slate-300 text-purple-600">
+              <span class="font-bold text-slate-700">Enable LLM Cross-Talk</span>
+            </label>
+            <button type="button" @click="saveConfig()" class="rounded-lg bg-indigo-600 text-white px-4 py-2 text-xs font-bold hover:bg-indigo-700 transition">Save Odoo Config</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 360° Super-Intelligence KPI Cards -->
+      <template x-if="pulse && pulse.finance_and_margins">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Blended Sales Margin</p>
+            <p class="text-2xl font-bold font-mono text-slate-900 mt-1" x-text="pulse.finance_and_margins.blended_margin_pct + '%'"></p>
+            <p class="text-[11px] text-rose-600 font-bold mt-1" x-text="pulse.finance_and_margins.margin_anomalies_count + ' low-margin order alerts'"></p>
+          </div>
+          <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Net Working Capital (AR - AP)</p>
+            <p class="text-2xl font-bold font-mono text-emerald-700 mt-1" x-text="pulse.finance_and_margins.net_working_capital_balance + ' NOK'"></p>
+            <p class="text-[11px] text-amber-700 font-bold mt-1" x-text="'Overdue AR: ' + pulse.finance_and_margins.accounts_receivable_overdue + ' NOK'"></p>
+          </div>
+          <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Inventory & MRP Replenishment</p>
+            <p class="text-2xl font-bold font-mono text-indigo-700 mt-1" x-text="pulse.inventory_and_mrp.replenishment_proposals_count + ' Reorders'"></p>
+            <p class="text-[11px] text-slate-500 font-mono mt-1" x-text="'Est. PO: ' + pulse.inventory_and_mrp.total_estimated_replenishment_cost + ' NOK'"></p>
+          </div>
+          <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">AI Weighted CRM Pipeline</p>
+            <p class="text-2xl font-bold font-mono text-purple-700 mt-1" x-text="pulse.crm_and_pipeline.weighted_pipeline_value + ' NOK'"></p>
+            <p class="text-[11px] text-slate-500 mt-1" x-text="pulse.crm_and_pipeline.total_leads + ' opportunities scored'"></p>
+          </div>
+        </div>
+      </template>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Bidirectional LLM Cross-Talker & Cross-Engine Bridge -->
+        <section class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div class="px-5 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+            <h3 class="text-[11px] font-bold uppercase tracking-widest text-slate-700">Bidirectional LLM Cross-Talker (Odoo ↔ Claude ↔ Salesforce ↔ Relux/Glamox)</h3>
+          </div>
+          <div class="p-5 space-y-3 text-xs">
+            <div class="grid grid-cols-2 gap-3">
+              <label class="block">
+                <span class="font-bold text-slate-600 uppercase text-[10px]">Target Odoo Model</span>
+                <select x-model="crosstalkForm.model" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold">
+                  <option value="sale.order">sale.order (Sales Order)</option>
+                  <option value="crm.lead">crm.lead (CRM Opportunity)</option>
+                  <option value="mrp.production">mrp.production (MRP Order)</option>
+                  <option value="account.move">account.move (Invoice / Bill)</option>
+                  <option value="project.project">project.project (Project)</option>
+                </select>
+              </label>
+              <label class="block">
+                <span class="font-bold text-slate-600 uppercase text-[10px]">Record ID</span>
+                <input type="number" x-model.number="crosstalkForm.record_id" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 font-mono text-xs">
+              </label>
+            </div>
+            <label class="block">
+              <span class="font-bold text-slate-600 uppercase text-[10px]">@nce Chatter / LLM Cross-Talk Prompt</span>
+              <textarea x-model="crosstalkForm.prompt" rows="3" class="mt-1 w-full rounded-lg border border-slate-300 p-2 font-mono text-xs"></textarea>
+            </label>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" @click="sendCrossTalk('prompt')" class="rounded-lg bg-purple-600 text-white px-3.5 py-2 text-xs font-bold hover:bg-purple-700 transition">Send @nce Cross-Talk</button>
+              <button type="button" @click="sendCrossTalk('bridge_relux')" class="rounded-lg bg-amber-600 text-white px-3.5 py-2 text-xs font-bold hover:bg-amber-700 transition">Bridge Relux/Glamox → Odoo Order</button>
+              <button type="button" @click="sendCrossTalk('bridge_salesforce')" class="rounded-lg bg-cyan-600 text-white px-3.5 py-2 text-xs font-bold hover:bg-cyan-700 transition">Bridge Salesforce → Odoo CRM</button>
+            </div>
+            <template x-if="lastCrossTalkReply">
+              <pre class="rounded-lg bg-slate-900 text-emerald-300 p-3 font-mono text-[11px] whitespace-pre-wrap overflow-x-auto" x-text="lastCrossTalkReply"></pre>
+            </template>
+          </div>
+        </section>
+
+        <!-- Multi-Domain Odoo Model Explorer -->
+        <section class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div class="px-5 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+            <h3 class="text-[11px] font-bold uppercase tracking-widest text-slate-700">6-Domain Odoo ERP Explorer & Chatter Log</h3>
+            <select x-model="selectedModel" @change="fetchModelRecords()" class="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-mono font-bold">
+              <option value="sale.order">sale.order</option>
+              <option value="crm.lead">crm.lead</option>
+              <option value="res.partner">res.partner</option>
+              <option value="stock.quant">stock.quant</option>
+              <option value="mrp.production">mrp.production</option>
+              <option value="account.move">account.move</option>
+              <option value="project.project">project.project</option>
+              <option value="helpdesk.ticket">helpdesk.ticket</option>
+              <option value="mail.message">mail.message (Chatter)</option>
+            </select>
+          </div>
+          <div class="p-4 overflow-x-auto max-h-80 overflow-y-auto">
+            <table class="min-w-full text-left text-xs">
+              <thead class="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th class="px-3 py-2 font-bold">ID</th>
+                  <th class="px-3 py-2 font-bold">Name / Subject</th>
+                  <th class="px-3 py-2 font-bold">State / Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="r in modelRecords" :key="r.id">
+                  <tr class="border-b border-slate-100">
+                    <td class="px-3 py-2 font-mono text-[10px]" x-text="'#' + r.id"></td>
+                    <td class="px-3 py-2 font-bold text-slate-800" x-text="r.name || r.body || (r.product_id && r.product_id[1]) || 'Record'"></td>
+                    <td class="px-3 py-2 font-mono text-[10px] text-slate-600" x-text="r.state || r.stage_name || (r.expected_revenue ? r.expected_revenue + ' NOK' : '') || (r.available_quantity !== undefined ? 'Avail: ' + r.available_quantity : '')"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </div>
+    <!-- /Tab: Odoo Super-Engine -->
+
     <!-- Tab: Settings (auto-generated from the config registry · V.3) -->
     <div id="panel-settings" x-show="adminTab === 'settings'" x-cloak class="space-y-8" x-data="settingsPanel" x-init="init()">
       <div class="border-b border-slate-200 pb-2.5 mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
@@ -4435,6 +4602,7 @@
           { slug: 'entra', label: 'Entra ID Gate' },
           { slug: 'salesforce', label: 'Salesforce' },
           { slug: 'lighting_dali', label: 'Relux & DALI-2' },
+          { slug: 'odoo', label: 'Odoo Super-Engine' },
         ],
         adminTab: 'fleet',
         cortexEnv: localStorage.getItem('nce_cortex_env') || 'daylight',
@@ -6489,6 +6657,115 @@
             const data = await resp.json();
             if (!resp.ok || data.error) throw new Error(data.error || 'Project analysis failed');
             this.projectReport = data.report;
+          } catch (err) {
+            trimcpShellToast(err.message || String(err), 'error');
+          }
+        },
+      }));
+
+      Alpine.data('odooPanel', () => ({
+        form: {
+          url: '',
+          db_name: 'odoo',
+          protocol: 'jsonrpc',
+          username: 'admin',
+          api_key: '',
+          bot_handle: '@nce',
+          require_entra_gate: true,
+          crosstalk_enabled: true,
+        },
+        crosstalkForm: {
+          model: 'sale.order',
+          record_id: 301,
+          prompt: '@nce Analyze sales order margins, check Glamox DALI-2 stockout risks, and summarize CRM pipeline',
+        },
+        selectedModel: 'sale.order',
+        modelRecords: [],
+        pulse: null,
+        lastCrossTalkReply: '',
+
+        async init() {
+          await this.fetchAll();
+        },
+
+        async fetchAll() {
+          await Promise.all([this.fetchConfig(), this.fetchPulse(), this.fetchModelRecords()]);
+        },
+
+        async fetchConfig() {
+          try {
+            const resp = await signedFetch(undefined, '/api/admin/odoo/config');
+            if (resp.ok) {
+              const d = await resp.json();
+              const c = d.config || {};
+              this.form.url = c.url || '';
+              this.form.db_name = c.db_name || 'odoo';
+              this.form.protocol = c.protocol || 'jsonrpc';
+              this.form.username = c.username || 'admin';
+              this.form.bot_handle = c.bot_handle || '@nce';
+              this.form.require_entra_gate = c.require_entra_gate !== false;
+              this.form.crosstalk_enabled = c.crosstalk_enabled !== false;
+            }
+          } catch (err) {
+            console.warn('odooPanel fetchConfig error', err);
+          }
+        },
+
+        async saveConfig() {
+          try {
+            const resp = await signedFetch(undefined, '/api/admin/odoo/config', {
+              method: 'POST',
+              body: this.form,
+            });
+            if (!resp.ok) throw new Error((await resp.json()).error || 'Failed to save Odoo config');
+            trimcpShellToast('Saved Odoo Super-Engine configuration', 'ok');
+            await this.fetchConfig();
+          } catch (err) {
+            trimcpShellToast(err.message || String(err), 'error');
+          }
+        },
+
+        async fetchPulse() {
+          try {
+            const resp = await signedFetch(undefined, '/api/admin/odoo/intelligence');
+            if (resp.ok) {
+              this.pulse = await resp.json();
+            }
+          } catch (err) {
+            console.warn('odooPanel fetchPulse error', err);
+          }
+        },
+
+        async fetchModelRecords() {
+          try {
+            const resp = await signedFetch(undefined, '/api/admin/odoo/records', {
+              query: { model: this.selectedModel, limit: 50 },
+            });
+            if (resp.ok) {
+              this.modelRecords = (await resp.json()).items || [];
+            }
+          } catch (err) {
+            console.warn('odooPanel fetchModelRecords error', err);
+          }
+        },
+
+        async sendCrossTalk(action) {
+          try {
+            const resp = await signedFetch(undefined, '/api/admin/odoo/crosstalk', {
+              method: 'POST',
+              body: {
+                action,
+                model: this.crosstalkForm.model,
+                record_id: this.crosstalkForm.record_id,
+                prompt: this.crosstalkForm.prompt,
+              },
+            });
+            const data = await resp.json();
+            if (!resp.ok || data.error) throw new Error(data.error || 'Cross-Talk failed');
+            this.lastCrossTalkReply = data.reply || data.summary || JSON.stringify(data, null, 2);
+            trimcpShellToast('Odoo LLM Cross-Talk executed', 'ok');
+            await this.fetchPulse();
+            await this.fetchModelRecords();
           } catch (err) {
             trimcpShellToast(err.message || String(err), 'error');
           }

@@ -1056,6 +1056,7 @@ app = Starlette(
     ],
     routes=[
         Route("/health", endpoint=get_health, methods=["GET"]),
+        Route("/healthz", endpoint=get_health, methods=["GET"]),
         Route("/.well-known/agent-card", endpoint=get_agent_card, methods=["GET"]),
         Route("/tasks/send", endpoint=tasks_send, methods=["POST"]),
         Route("/tasks/{task_id}", endpoint=tasks_get, methods=["GET"]),

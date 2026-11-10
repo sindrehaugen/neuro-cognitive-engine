@@ -549,6 +549,60 @@ async def _mark_auto_replay(pg_pool: Any, dlq_id: str, backoff_s: int) -> None:
         )
 
 
+async def reap_quarantined_dead_letters(
+    pg_pool: Any,
+    enqueue_fn: Any | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """Batch 130: Claim due auto-replay DLQ entries whose ``quarantined_until <= now()``.
+
+    Atomically clears ``quarantined_until = NULL`` while preserving ``status = 'replayed'``
+    so ``_count_replayed_for_fingerprint`` continues to count prior auto-replays toward
+    ``cfg.NCE_DLQ_AUTO_REPLAY_MAX``. If ``enqueue_fn`` is provided, calls
+    ``enqueue_fn(task_name, kwargs)`` for each claimed entry.
+    """
+    limit = max(1, min(int(limit), 200))
+    async with pg_pool.acquire(timeout=10.0) as conn:
+        rows = await conn.fetch(
+            """
+            UPDATE dead_letter_queue
+            SET quarantined_until = NULL,
+                replayed_at = now()
+            WHERE id IN (
+                SELECT id
+                FROM dead_letter_queue
+                WHERE status = 'replayed'
+                  AND quarantined_until IS NOT NULL
+                  AND quarantined_until <= now()
+                ORDER BY quarantined_until ASC
+                LIMIT $1
+                FOR UPDATE SKIP LOCKED
+            )
+            RETURNING id, namespace_id, task_name, job_id, kwargs, attempt_count
+            """,
+            limit,
+        )
+
+    claimed: list[dict[str, Any]] = []
+    for r in rows:
+        raw_kwargs = r["kwargs"]
+        kwargs_dict = json.loads(raw_kwargs) if isinstance(raw_kwargs, str) else (raw_kwargs or {})
+        item = {
+            "id": str(r["id"]),
+            "namespace_id": str(r["namespace_id"]) if r["namespace_id"] else None,
+            "task_name": r["task_name"],
+            "job_id": r["job_id"],
+            "kwargs": kwargs_dict,
+            "attempt_count": r["attempt_count"],
+        }
+        if enqueue_fn is not None:
+            res = enqueue_fn(item["task_name"], item["kwargs"])
+            if hasattr(res, "__await__"):
+                await res
+        claimed.append(item)
+    return claimed
+
+
 async def _refresh_backlog_gauge(pg_pool: Any, task_name: str | None = None) -> None:
     """Update the TASK_DLQ_BACKLOG gauge(s) from the current DB state."""
     try:

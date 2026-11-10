@@ -178,6 +178,8 @@ def test_detect_records_contradiction_when_llm_confident(
     assert row["confidence"] == pytest.approx(0.88)
     assert any(s["source"] == "llm" for s in row["signals"])
     conn.execute.assert_awaited()
+    executed_sqls = [str(c.args[0]) for c in conn.execute.await_args_list if c.args]
+    assert any("INSERT INTO actor_trust" in s for s in executed_sqls)
 
 
 def test_detect_no_insert_when_llm_rejects_contradiction(
