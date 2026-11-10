@@ -656,7 +656,7 @@ class NCEEngine(OrchestratorBase):
                 return
             async with self.pg_pool.acquire(timeout=60.0) as conn:
                 applied = await applied_checksums(conn)
-            for plugin_scope, p_dir in sorted(plugin_dirs.items()):
+            for plugin_scope, p_dir in plugin_dirs.items():
                 if not p_dir or not p_dir.is_dir():
                     continue
                 for p_path in sorted(p_dir.glob("*.sql")):

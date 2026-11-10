@@ -201,7 +201,16 @@ def list_plugin_engine_descriptors(
     wanted_categories = _normalize_filter_tokens(category_filter)
     descriptors: list[dict[str, Any]] = []
 
-    for plugin_id, plugin in load_plugins().items():
+    plugins_map = load_plugins()
+    umbrella_modules: set[str] = set()
+    for p in plugins_map.values():
+        if callable(
+            getattr(p, "get_plugin_descriptors", None) or getattr(p, "get_engine_descriptors", None)
+        ):
+            umbrella_modules.add(p.__class__.__module__)
+
+    seen_slugs: set[str] = set()
+    for plugin_id, plugin in plugins_map.items():
         raw_items: list[dict[str, Any]] = []
         getter = getattr(plugin, "get_plugin_descriptors", None) or getattr(
             plugin, "get_engine_descriptors", None
@@ -213,7 +222,7 @@ def list_plugin_engine_descriptors(
                     raw_items.extend(d for d in res if isinstance(d, dict))
             except Exception as exc:
                 log.exception("Error reading descriptors from plugin %s: %s", plugin_id, exc)
-        if not raw_items:
+        elif plugin.__class__.__module__ not in umbrella_modules:
             raw_items.append(
                 {
                     "slug": plugin_id,
@@ -234,6 +243,10 @@ def list_plugin_engine_descriptors(
             )
         for item in raw_items:
             norm = _normalize_descriptor(item, plugin_id)
+            slug_key = norm["slug"]
+            if slug_key in seen_slugs:
+                continue
+            seen_slugs.add(slug_key)
             if wanted_types:
                 item_types = {t.lower() for t in norm["types"]}
                 if not (item_types & wanted_types):

@@ -11,7 +11,7 @@
       --cortex-canvas: #F7F6F2;
       --cortex-surface: #FFFFFF;
       --cortex-subtle: #EFECE6;
-      --cortex-border: #E4E2DA;
+      --cortex-border: #E4E3DA;
       --cortex-ink: #141413;
       --cortex-muted: #575653;
       --cortex-accent: #1E3A8A;
@@ -3326,91 +3326,6 @@
     </div>
     <!-- /Tab: Salesforce -->
 
-    <!-- Tab: Relux / Light Design & DALI-2 / Glamox System Design Engine -->
-    <div id="panel-lighting-dali" x-show="adminTab === 'lighting_dali'" x-cloak class="space-y-8" x-data="lightingDaliPanel" x-init="init()">
-      <div class="border-b border-slate-200 pb-2.5 mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-        <div>
-          <h2 class="text-xl font-bold font-hanken tracking-tight bg-gradient-to-r from-amber-600 via-orange-600 to-indigo-600 bg-clip-text text-transparent uppercase">Relux Light Design & IEC 62386 DALI-2 / Glamox Analyser</h2>
-          <p class="text-xs text-slate-500 mt-1">EN 12464-1 photometric engine · EULUMDAT (.ldt) & IES parser · Glamox C95/C80/C77/D70/i80/MAX decoder · DALI-2 bus & MCB sizing</p>
-        </div>
-        <span class="self-start sm:self-auto text-[10px] font-mono text-amber-900 uppercase tracking-widest font-bold bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200">LIGHTING & DALI-2 ENGINE</span>
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Glamox Decoder & DALI-2 Bus Calculator -->
-        <section class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div class="px-5 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-            <h3 class="text-[11px] font-bold uppercase tracking-widest text-slate-700">Glamox Product Decoder & IEC 62386 DALI-2 Bus Analyser</h3>
-            <button type="button" @click="runDecodeAndBus()" class="rounded-lg bg-amber-600 text-white px-3 py-1 text-[10px] font-bold hover:bg-amber-700 transition">Run Engineering Check</button>
-          </div>
-          <div class="p-5 space-y-4 text-xs">
-            <label class="block">
-              <span class="font-bold text-slate-600 uppercase text-[10px]">Glamox Luminaire Designation / Part Description</span>
-              <input type="text" x-model="glamoxCode" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 font-mono text-xs">
-            </label>
-            <div class="grid grid-cols-3 gap-3">
-              <label class="block">
-                <span class="font-bold text-slate-600 uppercase text-[10px]">DALI-2 ECG Count</span>
-                <input type="number" x-model.number="busForm.ecg_count" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 font-mono text-xs">
-              </label>
-              <label class="block">
-                <span class="font-bold text-slate-600 uppercase text-[10px]">DALI-2 PIR/Lux Sensors</span>
-                <input type="number" x-model.number="busForm.ecd_sensor_count" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 font-mono text-xs">
-              </label>
-              <label class="block">
-                <span class="font-bold text-slate-600 uppercase text-[10px]">Cable Length (m @ 1.5mm²)</span>
-                <input type="number" x-model.number="busForm.cable_length_m" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 font-mono text-xs">
-              </label>
-            </div>
-            <template x-if="decodedResult">
-              <div class="rounded-lg bg-slate-50 p-3 border border-slate-200 font-mono text-[11px] space-y-1">
-                <p class="font-bold text-slate-800" x-text="decodedResult.title + ' (' + decodedResult.control_type + ')'"></p>
-                <p x-text="'Flux: ' + decodedResult.flux_lm + ' lm · Power: ' + decodedResult.wattage_w + ' W · Optic: ' + decodedResult.optic_code + ' (UGR<=' + decodedResult.ugr_rating + ')'"></p>
-                <p x-text="'DALI-2 Types: ' + (decodedResult.dali2_device_types || []).join(', ')"></p>
-              </div>
-            </template>
-            <template x-if="busResult">
-              <div class="rounded-lg p-3 border font-mono text-[11px] space-y-1"
-                   :class="busResult.compliant ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-rose-50 border-rose-200 text-rose-900'">
-                <p class="font-bold" x-text="busResult.compliant ? '✓ IEC 62386 DALI-2 & NEK 400 COMPLIANT' : '✗ DALI-2 BUS VIOLATION DETECTED'"></p>
-                <p x-text="'ECG: ' + busResult.ecg_addresses_used + '/64 · ECD: ' + busResult.ecd_addresses_used + '/64 · Current: ' + busResult.bus_current_ma + '/' + busResult.psu_rated_current_ma + ' mA · Drop: ' + busResult.voltage_drop_v + ' V (max 2.0V)'"></p>
-                <template x-for="v in (busResult.violations || [])" :key="v">
-                  <p class="text-rose-700 font-bold" x-text="'• ' + v"></p>
-                </template>
-              </div>
-            </template>
-          </div>
-        </section>
-
-        <!-- Relux / DIALux Project Reader & EN 12464-1 Analyser -->
-        <section class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div class="px-5 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-            <h3 class="text-[11px] font-bold uppercase tracking-widest text-slate-700">Relux / DIALux Project Connector & EN 12464-1 Analyser</h3>
-            <button type="button" @click="analyzeProject()" class="rounded-lg bg-indigo-600 text-white px-3 py-1 text-[10px] font-bold hover:bg-indigo-700 transition">Analyze Project</button>
-          </div>
-          <div class="p-5 space-y-3 text-xs">
-            <label class="block">
-              <span class="font-bold text-slate-600 uppercase text-[10px]">Relux / DIALux Project Payload (JSON, XML, or CSV)</span>
-              <textarea x-model="projectPayload" rows="6" class="mt-1 w-full rounded-lg border border-slate-300 p-2 font-mono text-[11px]"></textarea>
-            </label>
-            <template x-if="projectReport">
-              <div class="rounded-lg bg-slate-50 p-3 border border-slate-200 space-y-2">
-                <div class="flex justify-between items-center">
-                  <span class="font-bold text-slate-800" x-text="projectReport.project_name"></span>
-                  <span class="px-2 py-0.5 rounded text-[10px] font-bold"
-                        :class="projectReport.compliance_passed ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'"
-                        x-text="projectReport.compliance_passed ? 'EN 12464-1 & DALI-2 PASS' : 'NEEDS ADJUSTMENT'"></span>
-                </div>
-                <p class="font-mono text-[10px] text-slate-600"
-                   x-text="'Rooms: ' + projectReport.summary.rooms_count + ' · Luminaires: ' + projectReport.summary.total_luminaires + ' · Power: ' + projectReport.summary.total_wattage_w + ' W (' + projectReport.summary.average_lpd_w_m2 + ' W/m²) · DALI-2 Subnets: ' + projectReport.summary.total_dali2_subnets + ' · Glamox Ethernet2DALI Controllers: ' + projectReport.summary.glamox_eth2dali_controllers"></p>
-              </div>
-            </template>
-          </div>
-        </section>
-      </div>
-    </div>
-    <!-- /Tab: Relux & DALI-2 -->
-
     <!-- Tab: Standalone Super-Intelligent Odoo Vertical Engine & LLM Cross-Talker -->
     <div id="panel-odoo" x-show="adminTab === 'odoo'" x-cloak class="space-y-8" x-data="odooPanel" x-init="init()">
       <div class="border-b border-slate-200 pb-2.5 mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
@@ -3503,7 +3418,7 @@
         <!-- Bidirectional LLM Cross-Talker & Cross-Engine Bridge -->
         <section class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           <div class="px-5 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-            <h3 class="text-[11px] font-bold uppercase tracking-widest text-slate-700">Bidirectional LLM Cross-Talker (Odoo ↔ Claude ↔ Salesforce ↔ Relux/Glamox)</h3>
+            <h3 class="text-[11px] font-bold uppercase tracking-widest text-slate-700">Bidirectional LLM Cross-Talker (Odoo ↔ Claude ↔ Salesforce)</h3>
           </div>
           <div class="p-5 space-y-3 text-xs">
             <div class="grid grid-cols-2 gap-3">
@@ -3528,7 +3443,6 @@
             </label>
             <div class="flex flex-wrap gap-2">
               <button type="button" @click="sendCrossTalk('prompt')" class="rounded-lg bg-purple-600 text-white px-3.5 py-2 text-xs font-bold hover:bg-purple-700 transition">Send @nce Cross-Talk</button>
-              <button type="button" @click="sendCrossTalk('bridge_relux')" class="rounded-lg bg-amber-600 text-white px-3.5 py-2 text-xs font-bold hover:bg-amber-700 transition">Bridge Relux/Glamox → Odoo Order</button>
               <button type="button" @click="sendCrossTalk('bridge_salesforce')" class="rounded-lg bg-cyan-600 text-white px-3.5 py-2 text-xs font-bold hover:bg-cyan-700 transition">Bridge Salesforce → Odoo CRM</button>
             </div>
             <template x-if="lastCrossTalkReply">
@@ -4608,7 +4522,6 @@
           { slug: 'd365', label: 'Dynamics 365' },
           { slug: 'entra', label: 'Entra ID Gate' },
           { slug: 'salesforce', label: 'Salesforce' },
-          { slug: 'lighting_dali', label: 'Relux & DALI-2' },
           { slug: 'odoo', label: 'Odoo Super-Engine' },
         ],
         adminTab: 'fleet',
@@ -6491,7 +6404,7 @@
           sobject: 'Account',
           action: 'create',
           record_id: '',
-          payloadJson: '{"Name": "Glamox Nordic AS", "Industry": "Lighting & Marine Electronics"}',
+          payloadJson: '{"Name": "Nordic Systems AS", "Industry": "Enterprise Technology"}',
         },
         soqlQuery: 'SELECT Id, Name, Industry FROM Account LIMIT 25',
         records: [],
@@ -6583,93 +6496,6 @@
         },
       }));
 
-      Alpine.data('lightingDaliPanel', () => ({
-        glamoxCode: 'Glamox C95-R 600x600 4000 DALI 840 MP EM 3H',
-        busForm: {
-          ecg_count: 36,
-          ecd_sensor_count: 6,
-          cable_length_m: 140,
-        },
-        decodedResult: null,
-        busResult: null,
-        projectPayload: JSON.stringify({
-          project_name: 'Oslo HQ Glamox DALI-2 Lighting Plan',
-          source_tool: 'relux',
-          rooms: [
-            {
-              room_id: 'RM-201',
-              name: 'Open Office Landscape 2F',
-              zone_code: 'OFFICE_WRITING',
-              length_m: 12.0,
-              width_m: 8.0,
-              height_m: 2.8,
-              sensors_count: 4,
-              pushbuttons_count: 2,
-              luminaires: [
-                { code: 'Glamox C95-R 600x600 4000 TWH 827-865 MP', quantity: 18 },
-                { code: 'Glamox C95-R 600x600 4000 DALI 840 MP DA-EM 3H', quantity: 4 }
-              ]
-            },
-            {
-              room_id: 'RM-202',
-              name: 'CAD & Engineering Studio',
-              zone_code: 'CAD_WORKSTATION',
-              length_m: 8.0,
-              width_m: 6.0,
-              height_m: 2.8,
-              sensors_count: 2,
-              pushbuttons_count: 1,
-              luminaires: [
-                { code: 'Glamox C77-R 600x600 4200 DALI 840 SI', quantity: 14 }
-              ]
-            }
-          ]
-        }, null, 2),
-        projectReport: null,
-
-        async init() {
-          await this.runDecodeAndBus();
-          await this.analyzeProject();
-        },
-
-        async runDecodeAndBus() {
-          try {
-            const [decResp, busResp] = await Promise.all([
-              signedFetch(undefined, '/api/admin/lighting-dali/decode-glamox', {
-                method: 'POST',
-                body: { code: this.glamoxCode, zone_code: 'OFFICE_WRITING' },
-              }),
-              signedFetch(undefined, '/api/admin/lighting-dali/analyze-bus', {
-                method: 'POST',
-                body: this.busForm,
-              }),
-            ]);
-            if (decResp.ok) {
-              this.decodedResult = (await decResp.json()).decoded;
-            }
-            if (busResp.ok) {
-              this.busResult = (await busResp.json()).bus_analysis;
-            }
-          } catch (err) {
-            console.warn('lightingDaliPanel error', err);
-          }
-        },
-
-        async analyzeProject() {
-          try {
-            const resp = await signedFetch(undefined, '/api/admin/lighting-dali/analyze-project', {
-              method: 'POST',
-              body: { content: this.projectPayload },
-            });
-            const data = await resp.json();
-            if (!resp.ok || data.error) throw new Error(data.error || 'Project analysis failed');
-            this.projectReport = data.report;
-          } catch (err) {
-            trimcpShellToast(err.message || String(err), 'error');
-          }
-        },
-      }));
-
       Alpine.data('odooPanel', () => ({
         form: {
           url: '',
@@ -6684,7 +6510,7 @@
         crosstalkForm: {
           model: 'sale.order',
           record_id: 301,
-          prompt: '@nce Analyze sales order margins, check Glamox DALI-2 stockout risks, and summarize CRM pipeline',
+          prompt: '@nce Analyze sales order margins, check inventory stockout risks, and summarize CRM pipeline',
         },
         selectedModel: 'sale.order',
         modelRecords: [],
