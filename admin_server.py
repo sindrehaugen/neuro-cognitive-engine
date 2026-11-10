@@ -55,6 +55,8 @@ from nce.admin_http_handlers import (
     api_admin_security_test_rls_isolation,
     api_admin_verify_chain,
     api_admin_plugins,
+    api_source_mode_get,
+    api_source_mode_put,
     trigger_gc,
     api_search,
 )
