@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  TriMCP MSI (WiX v4) — enterprise / GPO silent deploy.
+
+  Shim artifact: trimcp-launch.exe must live next to this .wxs (build/windows/).
+  CI builds it from ./go/cmd/trimcp-launch → ../../../build/windows/trimcp-launch.exe
+  (see .github/workflows/release.yml).
+
+  Scope: MSI installs the trimcp-launch shim plus Patch/Write PowerShell helpers under
+  %ProgramFiles%/TriMCP. For the full embedded Python + app tree, use Inno Setup (TriMCP-Setup.iss).
+
+  Public properties (set on command line, e.g. msiexec /i TriMCP.msi MODE=cloud TENANT=contoso.onmicrosoft.com):
+    MODE       — local | multiuser | cloud
+    SERVERADDR — Office Shared server base URL (multiuser)
+    TENANT     — Entra tenant domain or ID (cloud)
+    BRIDGES    — comma-separated: sharepoint,gdrive,dropbox
+    BACKEND    — cpu | cuda | rocm | openvino_npu | mps | auto
+
+  Post-install: immediate (non-deferred) custom action runs Write-UserConfig.ps1 so [MODE] and other
+  public properties expand correctly (deferred/commit actions do not resolve [Property] in ExeCommand).
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="TriMCP"
+      Manufacturer="TriMCP Enterprise"
+      Version="1.0.0.0"
+      UpgradeCode="6f2e9a10-8c3b-4a1d-9f2e-0c1d2e3f4a5b"
+      InstallerVersion="500"
+      Scope="perMachine">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+
+    <!-- Public (uppercase) properties for GPO / msiexec -->
+    <Property Id="MODE" Value="multiuser" />
+    <Property Id="SERVERADDR" Value="" />
+    <Property Id="TENANT" Value="" />
+    <Property Id="BRIDGES" Value="" />
+    <Property Id="BACKEND" Value="auto" />
+
+    <Feature Id="MainFeature" Title="TriMCP Core" Level="1">
+      <ComponentGroupRef Id="CoreComponents" />
+    </Feature>
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="TriMCP" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="System64Folder" />
+
+    <ComponentGroup Id="CoreComponents" Directory="INSTALLFOLDER">
+      <Component Id="MainExecutable" Guid="87654321-4321-4321-4321-210987654321">
+        <File Id="TrimcpLaunchExe" Source="trimcp-launch.exe" KeyPath="yes" />
+      </Component>
+      <Component Id="UserConfigScript" Guid="A0B1C2D3-E4F5-6789-ABCD-EF0123456789">
+        <File Id="WriteUserConfigPs1" Source="scripts\Write-UserConfig.ps1" KeyPath="yes" />
+      </Component>
+      <Component Id="PatchIDEConfigScript" Guid="B1C2D3E4-F567-89AB-CDEF-0123456789AB">
+        <File Id="PatchIDEConfigPs1" Source="scripts\Patch-IDEConfig.ps1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <CustomAction
+        Id="PatchTriMCPIDEConfig"
+        Directory="System64Folder"
+        ExeCommand='powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[#PatchIDEConfigPs1]&quot; -AppRoot &quot;[INSTALLFOLDER]&quot;'
+        Execute="immediate"
+        Impersonate="yes"
+        Return="check" />
+
+    <CustomAction
+        Id="WriteTriMCPUserConfig"
+        Directory="System64Folder"
+        ExeCommand='powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[#WriteUserConfigPs1]&quot; -Mode &quot;[MODE]&quot; -ServerAddr &quot;[SERVERADDR]&quot; -Tenant &quot;[TENANT]&quot; -Bridges &quot;[BRIDGES]&quot; -Backend &quot;[BACKEND]&quot; -AppRoot &quot;[INSTALLFOLDER]&quot;'
+        Execute="immediate"
+        Impersonate="yes"
+        Return="check" />
+
+    <InstallExecuteSequence>
+      <Custom Action="WriteTriMCPUserConfig" After="InstallFiles" Condition="NOT REMOVE" />
+      <Custom Action="PatchTriMCPIDEConfig" After="WriteTriMCPUserConfig" Condition="NOT REMOVE" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>
