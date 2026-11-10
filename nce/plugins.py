@@ -257,3 +257,69 @@ def get_plugin_descriptors(
         type_filter=type_filter,
         category_filter=category_filter,
     )
+
+
+# ---------------------------------------------------------------------------
+# Plugin Execution Telemetry & Observability (Zero-PII)
+# ---------------------------------------------------------------------------
+
+_PLUGIN_METRICS: dict[str, dict[str, int | float]] = {}
+
+
+def record_plugin_tool_execution(
+    plugin_id: str,
+    engine_slug: str,
+    tool_name: str,
+    duration_s: float,
+    *,
+    error: bool = False,
+) -> None:
+    """Record lightweight, zero-PII plugin tool execution metrics.
+
+    Records invocation count, error count, and cumulative duration in
+    _PLUGIN_METRICS[f"{plugin_id}:{engine_slug}:{tool_name}"] (strictly
+    metadata-only: never logs or stores tool arguments or tenant PII).
+    Emits an OpenTelemetry span event or attributes if opentelemetry.trace
+    has an active recording span (wrapped in try/except Exception: pass).
+    """
+    key = f"{plugin_id}:{engine_slug}:{tool_name}"
+    metrics = _PLUGIN_METRICS.setdefault(
+        key,
+        {
+            "invocations": 0,
+            "errors": 0,
+            "total_duration_s": 0.0,
+        },
+    )
+    metrics["invocations"] = int(metrics.get("invocations", 0)) + 1
+    if error:
+        metrics["errors"] = int(metrics.get("errors", 0)) + 1
+    metrics["total_duration_s"] = float(metrics.get("total_duration_s", 0.0)) + float(duration_s)
+
+    try:
+        from opentelemetry import trace  # type: ignore[import-not-found]
+
+        span = trace.get_current_span()
+        if span.is_recording():
+            span.set_attribute("plugin.id", plugin_id)
+            span.set_attribute("plugin.engine_slug", engine_slug)
+            span.set_attribute("plugin.tool_name", tool_name)
+            span.set_attribute("plugin.duration_s", float(duration_s))
+            span.set_attribute("plugin.error", bool(error))
+            span.add_event(
+                "plugin_tool_execution",
+                {
+                    "plugin.id": plugin_id,
+                    "plugin.engine_slug": engine_slug,
+                    "plugin.tool_name": tool_name,
+                    "plugin.duration_s": float(duration_s),
+                    "plugin.error": bool(error),
+                },
+            )
+    except Exception:
+        pass
+
+
+def get_plugin_metrics_snapshot() -> dict[str, dict[str, int | float]]:
+    """Return a shallow copy of _PLUGIN_METRICS for observability / diagnostics inspection."""
+    return {k: dict(v) for k, v in _PLUGIN_METRICS.items()}

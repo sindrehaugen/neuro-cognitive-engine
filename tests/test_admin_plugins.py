@@ -635,3 +635,164 @@ def test_live_installed_plugin_descriptors_contract():
         assert isinstance(d["tool_count"], int) and d["tool_count"] >= 0
         assert isinstance(d["route_count"], int) and d["route_count"] >= 0
         assert isinstance(d["install_extra"], str) and d["install_extra"]
+
+
+# ===========================================================================
+# Area 7: Stage 3 & Stage 4 Enterprise Hardening Edge Cases
+# ===========================================================================
+
+
+def test_admin_plugins_filter_edge_cases():
+    """Verify empty query params, unknown facets, whitespace/case normalization, and zero-match intersection."""
+    mock_engine = MagicMock()
+    mock_engine.redis_client = MockRedisClient()
+    mock_plugin = DummyPlugin("test_verticals", MOCK_ENGINES)
+    headers = {"X-Admin-Api-Key": "test-admin-key"}
+
+    with (
+        patch.object(cfg, "NCE_ADMIN_OVERRIDE", True),
+        patch.dict(os.environ, {"NCE_ADMIN_API_KEY": "test-admin-key"}),
+        patch("nce.admin_state.engine", mock_engine),
+        patch("nce.plugins.load_plugins", return_value={"test_verticals": mock_plugin}),
+    ):
+        with TestClient(app, raise_server_exceptions=False) as client:
+            # 1. Empty query params (?type=&category=) should return all engines
+            resp_empty = client.get("/admin/plugins/api?type=&category=", headers=headers)
+            assert resp_empty.status_code == 200
+            d_empty = resp_empty.json()
+            assert d_empty["summary"]["matched"] == 5
+            assert len(d_empty["engines"]) == 5
+
+            # 2. Unknown facet (?type=nonexistent_type) returns 0 matched engines but keeps facets intact
+            resp_unknown = client.get("/admin/plugins/api?type=nonexistent_type", headers=headers)
+            assert resp_unknown.status_code == 200
+            d_unknown = resp_unknown.json()
+            assert d_unknown["summary"]["matched"] == 0
+            assert d_unknown["engines"] == []
+            assert len(d_unknown["facets"]["types"]) > 0
+            assert len(d_unknown["facets"]["categories"]) > 0
+
+            # 3. Whitespace & Case normalization (?type= ERP-CRM &category= COMMERCIAL )
+            resp_norm = client.get(
+                "/admin/plugins/api?type=%20ERP-CRM%20&category=%20COMMERCIAL%20",
+                headers=headers,
+            )
+            assert resp_norm.status_code == 200
+            d_norm = resp_norm.json()
+            matched_slugs = {e["slug"] for e in d_norm["engines"]}
+            assert matched_slugs == {"crm_core"}
+
+            # 4. Zero-match intersection returning engines == [] while keeping full facets list populated
+            resp_zero = client.get(
+                "/admin/plugins/api?type=observability&category=finance-erp",
+                headers=headers,
+            )
+            assert resp_zero.status_code == 200
+            d_zero = resp_zero.json()
+            assert d_zero["summary"]["matched"] == 0
+            assert d_zero["engines"] == []
+            assert len(d_zero["facets"]["types"]) == 3  # erp-crm, infra-iot, observability
+            assert (
+                len(d_zero["facets"]["categories"]) == 3
+            )  # av-it-integrator, commercial, finance-erp
+
+
+def test_live_admin_override_blocked_in_production():
+    """Verify live_admin_override_enabled() returns False when IS_PROD=True or NCE_ENV=production."""
+    from nce.config import live_admin_override_enabled
+
+    # Case A: IS_PROD is True, env has NCE_ADMIN_OVERRIDE=true
+    with (
+        patch.object(cfg, "IS_PROD", True),
+        patch.dict(os.environ, {"NCE_ADMIN_OVERRIDE": "true", "NCE_ENV": "development"}),
+    ):
+        assert live_admin_override_enabled() is False
+
+    # Case B: NCE_ENV is "production", env has NCE_ADMIN_OVERRIDE=true
+    with (
+        patch.object(cfg, "IS_PROD", False),
+        patch.dict(os.environ, {"NCE_ADMIN_OVERRIDE": "true", "NCE_ENV": "production"}),
+    ):
+        assert live_admin_override_enabled() is False
+
+    # Case C: NCE_ENV is "prod", env has NCE_ADMIN_OVERRIDE=1
+    with (
+        patch.object(cfg, "IS_PROD", False),
+        patch.dict(os.environ, {"NCE_ADMIN_OVERRIDE": "1", "NCE_ENV": "prod"}),
+    ):
+        assert live_admin_override_enabled() is False
+
+    # Case D: Non-production with NCE_ADMIN_OVERRIDE=true returns True
+    with (
+        patch.object(cfg, "IS_PROD", False),
+        patch.dict(os.environ, {"NCE_ADMIN_OVERRIDE": "true", "NCE_ENV": "development"}),
+    ):
+        assert live_admin_override_enabled() is True
+
+
+def test_resource_surface_sql_identifier_validation():
+    """Verify _validate_sql_ident accepts valid SQL identifiers and rejects injection payloads."""
+    from nce.resource_surface.mcp import _validate_sql_ident
+
+    # Valid identifiers
+    assert _validate_sql_ident("sales_contacts") == "sales_contacts"
+    assert _validate_sql_ident("id") == "id"
+    assert _validate_sql_ident("table_123") == "table_123"
+    assert _validate_sql_ident("_internal_id") == "_internal_id"
+
+    # Invalid identifiers / SQL injection payloads
+    invalid_idents = [
+        "users; DROP TABLE x",
+        'col"name',
+        "123bad",
+        "table name",
+        "drop table users",
+        "id--",
+        "id/*comment*/",
+        "",
+        None,
+        123,
+    ]
+    for bad_ident in invalid_idents:
+        with pytest.raises(ValueError, match="Unsafe SQL identifier"):
+            _validate_sql_ident(bad_ident)  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_a2a_verify_token_one_time_atomic_replay_rejection():
+    """Verify atomic replay rejection: UPDATE returning 'UPDATE 0' on one_time=True raises A2AAuthorizationError."""
+    import uuid
+    from datetime import datetime, timedelta, timezone
+
+    from nce.a2a import A2AAuthorizationError, verify_token
+    from nce.auth import NamespaceContext
+
+    owner_ns = uuid.uuid4()
+    consumer_ns = uuid.uuid4()
+    grant_id = uuid.uuid4()
+
+    conn = AsyncMock()
+    row_data = {
+        "id": grant_id,
+        "owner_namespace_id": owner_ns,
+        "owner_agent_id": "agent-a",
+        "target_namespace_id": consumer_ns,
+        "target_agent_id": None,
+        "scopes": '[{"resource_type": "namespace", "resource_id": "'
+        + str(owner_ns)
+        + '", "permissions": ["read"]}]',
+        "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
+        "status": "active",
+        "can_delegate": False,
+        "one_time": True,
+        "usage_count": 0,
+    }
+    conn.fetchrow = AsyncMock(return_value=row_data)
+    # Simulate race condition: another concurrent worker already updated the grant, returning "UPDATE 0"
+    conn.execute = AsyncMock(return_value="UPDATE 0")
+
+    consumer = NamespaceContext(namespace_id=consumer_ns, agent_id="agent-b")
+    with pytest.raises(
+        A2AAuthorizationError, match="One-time sharing token has already been used."
+    ):
+        await verify_token(conn, "nce_a2a_race_token", consumer)

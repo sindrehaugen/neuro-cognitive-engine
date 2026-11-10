@@ -21,7 +21,13 @@ if __name__ == "__main__":
     from nce.config import assert_admin_override_not_in_production
 
     assert_admin_override_not_in_production()
-    uvicorn.run(app, host="0.0.0.0", port=8003)
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8003,
+        timeout_keep_alive=30,
+        timeout_graceful_shutdown=15,
+    )
 
 # Re-export handlers for existing tests
 from nce.admin_http_handlers import (

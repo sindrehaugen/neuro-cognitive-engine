@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -43,6 +44,14 @@ from nce.resource_surface.spec import ResourceSpec
 
 if TYPE_CHECKING:
     from nce.tool_registry import ToolSpec
+
+_SAFE_SQL_IDENT_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+def _validate_sql_ident(ident: str) -> str:
+    if not isinstance(ident, str) or not _SAFE_SQL_IDENT_RE.match(ident):
+        raise ValueError(f"Unsafe SQL identifier: {ident!r}")
+    return ident
 
 
 def resolve_mcp_principal_tier(arguments: dict[str, Any]) -> str:
@@ -787,6 +796,10 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                                     }
                                 )
 
+                        _validate_sql_ident(spec.table_name)
+                        _validate_sql_ident(spec.id_field)
+                        [_validate_sql_ident(k) for k in primary_data.keys()]
+
                         vals = list(primary_data.values())
                         if is_global:
                             set_items = [
@@ -808,6 +821,10 @@ def build_mcp_tool_specs(spec: ResourceSpec) -> dict[str, ToolSpec]:
                                 *vals,
                             )
                     else:
+                        _validate_sql_ident(spec.table_name)
+                        _validate_sql_ident(spec.id_field)
+                        [_validate_sql_ident(k) for k in primary_data.keys()]
+
                         cols = list(primary_data.keys())
                         vals = [primary_data[c] for c in cols]
                         placeholders = [f"${i + 1}" for i in range(len(cols))]

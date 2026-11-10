@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import random
+import signal
 import time
 from types import SimpleNamespace
 from typing import Any
@@ -1848,7 +1849,8 @@ async def _retention_tick(pool: asyncpg.Pool) -> None:
 
         from nce.garbage_collector import run_retention_pass
 
-        minio_client = Minio(
+        minio_client = await asyncio.to_thread(
+            Minio,
             cfg.MINIO_ENDPOINT,
             access_key=cfg.MINIO_ACCESS_KEY,
             secret_key=cfg.MINIO_SECRET_KEY,
@@ -1857,19 +1859,16 @@ async def _retention_tick(pool: asyncpg.Pool) -> None:
         stats = await run_retention_pass(pool, minio_client)
         log.info("event_retention tick complete: %s", stats)
 
-        # B067h2 — M6.W17b retired-archive sweep.  OFF by default behind
-        # NCE_SYSTEM_DESIGN_ARCHIVE_SWEEP_ENABLED; the call is unconditional
-        # here and the flag is checked inside, so the default lives in exactly
-        # one place (archive.sweep_enabled) rather than being restated at the
-        # schedule.  It shares this tick because it is the same kind of work on
-        # the same cadence and needs the same MinIO client and cron lock.
-        try:
-            from nce_verticals.system_design.archive import run_design_archive_sweep
+        from nce.plugins import load_plugins
 
-            design_stats = await run_design_archive_sweep(pool, minio_client)
-            log.info("system_design archive sweep complete: %s", design_stats)
-        except ImportError:
-            pass
+        for _plugin_id, _plugin in load_plugins().items():
+            _sweep_fn = getattr(_plugin, "run_retention_sweep", None)
+            if callable(_sweep_fn):
+                try:
+                    _sweep_stats = await _sweep_fn(pool, minio_client)
+                    log.info("plugin %s retention sweep complete: %s", _plugin_id, _sweep_stats)
+                except Exception:
+                    log.exception("plugin %s retention sweep failed", _plugin_id)
 
     except _CRON_TICK_ERRORS as exc:
         log.exception("event_retention tick failed unexpectedly")
@@ -2994,8 +2993,17 @@ async def async_main() -> None:
         if isinstance(_result, BaseException):
             log.error("Startup tick raised uncaught exception: %s", _result)
 
+    stop_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, stop_event.set)
+        except NotImplementedError:
+            # Fall back gracefully on non-POSIX platforms where add_signal_handler is not implemented
+            pass
+
     try:
-        await asyncio.Event().wait()
+        await stop_event.wait()
     finally:
         await asyncio.to_thread(scheduler.shutdown, wait=True)
         await pool.close()

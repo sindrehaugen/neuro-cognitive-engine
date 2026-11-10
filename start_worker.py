@@ -148,7 +148,10 @@ def start_worker() -> None:
     worker = RecoveringWorker(queues, connection=redis_conn)
     # Recover anything abandoned by a previous worker crash before we start.
     maintain_started_registries(queues, redis_conn)
-    worker.work(with_scheduler=True)
+    try:
+        worker.work(with_scheduler=True)
+    finally:
+        redis_conn.close()
 
 
 if __name__ == "__main__":
