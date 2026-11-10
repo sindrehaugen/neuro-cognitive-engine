@@ -811,15 +811,19 @@ async def verify_token(
             raise A2AAuthorizationError("Token is not valid for this agent.")
 
     # Successful verification - increment usage count and deactivate if one_time
-    await conn.execute(
+    update_res = await conn.execute(
         """
         UPDATE a2a_grants
-        SET usage_count = usage_count + 1,
+        SET usage_count = COALESCE(usage_count, 0) + 1,
             status = CASE WHEN one_time = true THEN 'expired' ELSE status END
         WHERE id = $1
+          AND status = 'active'
+          AND (NOT COALESCE(one_time, FALSE) OR COALESCE(usage_count, 0) = 0)
         """,
         row["id"],
     )
+    if isinstance(update_res, str) and update_res.endswith(" 0"):
+        raise A2AAuthorizationError("One-time sharing token has already been used.")
 
     scopes_data = json.loads(row["scopes"])
     scopes = [A2AScope.model_validate(s) for s in scopes_data]

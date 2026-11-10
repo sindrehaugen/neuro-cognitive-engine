@@ -404,6 +404,8 @@ def live_env_str(name: str, *, default: str = "") -> str:
 
 
 def live_admin_override_enabled() -> bool:
+    if cfg.IS_PROD or live_env_str("NCE_ENV").lower() in {"production", "prod"}:
+        return False
     return live_env_str("NCE_ADMIN_OVERRIDE").lower() in {"1", "true", "yes", "on"}
 
 

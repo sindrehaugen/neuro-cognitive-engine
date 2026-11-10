@@ -498,6 +498,13 @@ class MemoryOrchestrator(OrchestratorBase):
                         await conn.execute(
                             "DELETE FROM pii_redactions WHERE memory_id = $1", memory_id
                         )
+                        try:
+                            await conn.execute(
+                                "DELETE FROM outbox_events WHERE aggregate_id = $1 AND status = 'pending'",
+                                str(memory_id),
+                            )
+                        except Exception:
+                            pass
                         await conn.execute(
                             "DELETE FROM kg_node_embeddings "
                             "WHERE node_id IN (SELECT id FROM kg_nodes WHERE payload_ref = $1)",
@@ -540,6 +547,7 @@ class MemoryOrchestrator(OrchestratorBase):
             try:
                 async with self.pg_pool.acquire(timeout=10.0) as conn:
                     async with conn.transaction():
+                        await set_namespace_context(conn, payload.namespace_id)
                         await conn.execute(
                             "DELETE FROM kg_edges WHERE payload_ref = $1", inserted_mongo_id
                         )

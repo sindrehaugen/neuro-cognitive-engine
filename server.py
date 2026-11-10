@@ -20,7 +20,9 @@ nonce ledger.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
+import signal
 import uuid
 from typing import Any
 
@@ -74,9 +76,46 @@ async def main() -> None:
 
     global engine
     engine = NCEEngine()
+
+    loop = asyncio.get_running_loop()
+    main_task = asyncio.current_task()
+
+    def _signal_handler(sig_name: str) -> None:
+        log.info("Received signal %s, initiating graceful MCP server shutdown...", sig_name)
+        if main_task and not main_task.done():
+            main_task.cancel()
+
+    registered_signals: list[int] = []
+    for sig, sig_name in ((signal.SIGTERM, "SIGTERM"), (signal.SIGINT, "SIGINT")):
+        try:
+            loop.add_signal_handler(sig, _signal_handler, sig_name)
+            registered_signals.append(sig)
+        except (NotImplementedError, RuntimeError):
+            pass
+
     try:
         await run_stdio_server(app=app, engine=engine)
+    except asyncio.CancelledError:
+        log.info("MCP server task cancelled (graceful shutdown).")
     finally:
+        for sig in registered_signals:
+            try:
+                loop.remove_signal_handler(sig)
+            except (NotImplementedError, RuntimeError):
+                pass
+
+        if engine is not None:
+            try:
+                if hasattr(engine, "disconnect"):
+                    res = engine.disconnect()
+                    if inspect.isawaitable(res):
+                        await res
+                elif hasattr(engine, "close"):
+                    res = engine.close()
+                    if inspect.isawaitable(res):
+                        await res
+            except Exception:
+                pass
         engine = None
 
 
