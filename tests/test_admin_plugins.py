@@ -796,3 +796,25 @@ async def test_a2a_verify_token_one_time_atomic_replay_rejection():
         A2AAuthorizationError, match="One-time sharing token has already been used."
     ):
         await verify_token(conn, "nce_a2a_race_token", consumer)
+
+
+def test_plugin_migration_dirs_preserves_nce_verticals_first_order(tmp_path):
+    """Ensure get_all_plugin_migration_dirs orders nce_verticals before lexicographically earlier external plugins."""
+    from nce.plugins import get_all_plugin_migration_dirs
+
+    dir_ext = tmp_path / "ext_migrations"
+    dir_vert = tmp_path / "vert_migrations"
+    dir_ext.mkdir()
+    dir_vert.mkdir()
+
+    ext_plugin = MagicMock()
+    ext_plugin.get_migration_dir.return_value = dir_ext
+    vert_plugin = MagicMock()
+    vert_plugin.get_migration_dir.return_value = dir_vert
+
+    with patch(
+        "nce.plugins.load_plugins",
+        return_value={"alpha_external": ext_plugin, "nce_verticals": vert_plugin},
+    ):
+        dirs = get_all_plugin_migration_dirs()
+        assert list(dirs.keys()) == ["nce_verticals", "alpha_external"]

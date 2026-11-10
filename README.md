@@ -302,7 +302,7 @@ Full guide: [docs/enterprise_security.md](docs/enterprise_security.md) · [docs/
 
 NCE provides a decoupled, pluggable architecture. Operational business engines, domain-specific tooling, and enterprise ERP/IT integrations are maintained as official extension packages:
 
-- **[NCE Vertical Engines](https://github.com/sindrehaugen/nce-vertical-engines)**: 23 modular domain engines spanning Sales, Procurement, Product, Agreements, Vendors, Inventory, Economy, System Design, Project, Field Tech, HR, Marketing, Business Insights, Resources, Assets, Support, NetBox, Dynamics 365, Odoo, Salesforce, Lighting DALI, Diagnostics, and Customer Portal.
+- **[NCE Vertical Engines](https://github.com/sindrehaugen/nce-vertical-engines)**: 22 modular domain engines spanning Sales, Procurement, Product, Agreements, Vendors, Inventory, Economy, System Design, Project, Field Tech, HR, Marketing, Business Insights, Resources, Assets, Support, NetBox, Dynamics 365, Odoo, Salesforce, Diagnostics, and Customer Portal.
   - Installable via entry points (`pip install "nce-vertical-engines[all]"` or per-engine/type/category extras).
   - Dynamically mounts MCP tools and REST endpoints via the NCE Plugin interface (`nce.plugins`).
   - Enables full tenant-scoped operational automation on top of the NCE cognitive memory substrate.

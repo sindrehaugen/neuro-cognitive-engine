@@ -10,7 +10,7 @@ Thank you for contributing to the **Neuro-Cognitive Engine (NCE)**! This documen
 > **Never hardcode vertical engine slugs or industry-specific domain logic in NCE Core.**
 
 NCE Core is strictly a domain-agnostic cognitive memory, reasoning, and multi-tenant substrate.
-- Specific business domains (such as Sales, Procurement, System Design, Economy, Odoo, Salesforce, DALI lighting) belong exclusively in the [`sindrehaugen/nce-vertical-engines`](https://github.com/sindrehaugen/nce-vertical-engines) repository.
+- Specific business domains (such as Sales, Procurement, System Design, Economy, Odoo, and Salesforce) belong exclusively in external plugin packages such as [`sindrehaugen/nce-vertical-engines`](https://github.com/sindrehaugen/nce-vertical-engines).
 - Core interacts with domain extensions solely through declared entry-point interfaces (`nce.plugins`), generic resource surfaces (`nce/resource_surface/`), and standard events (`nce/events.py`).
 - Pull requests introducing domain-specific table names, business logic, or vertical module imports into Core will be rejected.
 
