@@ -1513,14 +1513,14 @@ class TestEnforceMcpToolAuth:
         monkeypatch.setenv("NCE_ADMIN_API_KEY", "admin-secret")
         monkeypatch.setenv("NCE_MCP_API_KEY", "tenant-secret")
         args = {"admin_api_key": "admin-secret"}
-        enforce_mcp_tool_auth("system_design_delete_planned", args)
+        enforce_mcp_tool_auth("shred_memory", args)
 
     def test_registry_admin_only_tool_refused_with_only_mcp_key(self, monkeypatch) -> None:
         monkeypatch.setenv("NCE_ADMIN_API_KEY", "admin-secret")
         monkeypatch.setenv("NCE_MCP_API_KEY", "mcp-secret")
         with pytest.raises(ScopeError, match="missing admin_api_key"):
             enforce_mcp_tool_auth(
-                "system_design_delete_planned",
+                "shred_memory",
                 {"mcp_api_key": "mcp-secret", "admin_api_key": "   "},
             )
 
@@ -1548,7 +1548,7 @@ class TestEnforceMcpToolAuth:
         monkeypatch.setenv("NCE_MCP_API_KEY", "mcp-secret")
         with pytest.raises(ScopeError, match="missing admin_api_key"):
             enforce_mcp_tool_auth(
-                "vendors_calibrate_weights",
+                "decision_feedback_record",
                 {
                     "mcp_api_key": "mcp-secret",
                     "namespace_id": "11111111-2222-4333-8444-555555555555",
@@ -1562,7 +1562,7 @@ class TestEnforceMcpToolAuth:
             "admin_api_key": "admin-secret",
             "namespace_id": "11111111-2222-4333-8444-555555555555",
         }
-        enforce_mcp_tool_auth("vendors_calibrate_weights", args)
+        enforce_mcp_tool_auth("decision_feedback_record", args)
 
     def test_sibling_vendors_tool_stays_tenant_callable(self, monkeypatch) -> None:
         """Proves the gate is specific to vendors_calibrate_weights, not a
@@ -1572,7 +1572,7 @@ class TestEnforceMcpToolAuth:
         alone."""
         monkeypatch.setenv("NCE_MCP_API_KEY", "mcp-secret")
         args = {"mcp_api_key": "mcp-secret", "namespace_id": "11111111-2222-4333-8444-555555555555"}
-        enforce_mcp_tool_auth("vendors_match_contractor", args)
+        enforce_mcp_tool_auth("semantic_search", args)
 
 
 class TestRequireScopeDecorator:

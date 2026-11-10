@@ -8,7 +8,7 @@ BOM_LINE is referenced by five-or-more engines (sales/dealroom.py,
 project/convert.py, project/tasks.py all SELECT it) but no wave in the
 original 231 was ever assigned to WRITE it. This module is that write path.
 It is top-level, shared foundation — deliberately NOT under
-``vertical_modules/`` — because both ``system_design`` (manual design
+``nce_verticals/`` — because both ``system_design`` (manual design
 authoring) and ``sales`` (manual pick, package expansion, external ingest)
 write it, and ``system_design`` must not import ``sales``.
 
@@ -47,7 +47,7 @@ content is frozen -- freezing content must never block a status transition.
 Freeze helper
 --------------
 ``freeze_bom_lines_for_quote`` is exposed here for Batch 132i to call from
-``do_freeze_baseline`` (``nce/vertical_modules/sales/baseline.py``) -- this
+``do_freeze_baseline`` (``nce_verticals/sales/baseline.py``) -- this
 wave does NOT edit ``baseline.py``. Every creator path's "is this quote
 frozen" check must import THIS helper, never reimplement the question --
 Batches 123 and 126 are both records of what happens when a rule gets a
@@ -108,7 +108,7 @@ _CHANGE_ORIGIN: str = "agent"
 def bom_line_label(quote_id: str, line_ref: str) -> str:
     """The one place the BOM_LINE label convention is built.
 
-    Verbatim in shape from ``nce/vertical_modules/project/convert.py:144``
+    Verbatim in shape from ``nce_verticals/project/convert.py:144``
     (``_bom_line_label``) -- that engine only ever RECONSTRUCTS this label to
     write a ``contains`` edge; this module is the sole AUTHOR of the
     underlying node and content row, so the convention lives here and every
@@ -197,7 +197,7 @@ async def create_bom_line(
     ``priced`` (default ``True``) is the D48 discriminator: ``unit_price`` /
     ``line_total`` stay NOT NULL NUMERIC, so a caller with no real price yet
     (e.g. a design-generated line -- see
-    ``vertical_modules/system_design/to_quote.py``) passes ``priced=False``
+    ``nce_verticals/system_design/to_quote.py``) passes ``priced=False``
     alongside a ``0.00`` placeholder. That keeps the placeholder zero
     distinguishable from a line genuinely priced at zero, so
     ``freeze_bom_lines_for_quote`` can refuse to freeze it.
@@ -381,7 +381,7 @@ async def freeze_bom_lines_for_quote(
 
     Exposed here for Batch 132i to call from ``do_freeze_baseline`` /
     ``_do_freeze_baseline_direct``
-    (``nce/vertical_modules/sales/baseline.py:120-210``) -- that function
+    (``nce_verticals/sales/baseline.py:120-210``) -- that function
     already runs in one ``scoped_pg_session`` transaction and is already
     idempotent; this helper is written to be safe to call from inside it (no
     nested transaction, no re-entrant ownership check per row).
@@ -398,7 +398,7 @@ async def freeze_bom_lines_for_quote(
     D48: refuses the WHOLE freeze -- raises ``ValueError`` and updates
     nothing -- if any not-yet-frozen line for this quote is ``priced =
     FALSE`` (a design-generated placeholder, see
-    ``vertical_modules/system_design/to_quote.py``). This is an all-or-
+    ``nce_verticals/system_design/to_quote.py``). This is an all-or-
     nothing decision, not "freeze the priced lines and report the rest":
     the caller (``do_freeze_baseline``) treats this function's return value
     as "this quote's baseline is now frozen" and has no field of its own to

@@ -10,7 +10,7 @@ callers" **after** M0.W20d gave them callers, and nothing failed.
 
 So a claim may opt in to being checked:
 
-    # @claim: no-callers nce.vertical_modules.project.automation.register_engine
+    # @claim: no-callers nce_verticals.project.automation.register_engine
 
 and this gate fails when the claim stops being true.
 

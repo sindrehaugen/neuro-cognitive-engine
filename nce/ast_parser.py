@@ -38,7 +38,7 @@ try:
         _MANIFEST_LANGUAGES = frozenset(tree_sitter_language_pack.manifest_languages())
     else:
         _MANIFEST_LANGUAGES = frozenset()
-except ImportError:
+except Exception:
     _MANIFEST_LANGUAGES = frozenset()
 
 
@@ -249,6 +249,7 @@ def _try_treesitter_parse(raw_code: str, language: str) -> list[CodeChunk] | Non
         },
         "zig": {
             "Decl",
+            "function_declaration",
         },
     }
     targets = target_types.get(language, set())

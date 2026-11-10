@@ -108,7 +108,7 @@ class SecondaryTable:
     Python -- not the DDL -- must not be a ``SecondaryTable`` target without
     an explicit pre-write validation hook (not yet built; this dataclass has
     none). The known instance: ``system_design_geometry``. Its writer,
-    ``nce/vertical_modules/system_design/geometry.py``'s ``validate_geometry()``,
+    ``nce_verticals/system_design/geometry.py``'s ``validate_geometry()``,
     enforces half-U ``rack_position`` granularity, an exact-precision
     float-max bound, and ``rack_face``/``cable_type`` vocabularies that no
     CHECK constraint captures, and that function's own docstring states the
@@ -190,7 +190,7 @@ class ResourceSpec:
                             namespace_id)`` at the top of every generated MCP handler
                             and REST route for a tenant-scoped spec, before any read
                             or write -- mirrors the hand-written boundary convention
-                            (see e.g. ``nce/vertical_modules/inventory/_guard.py``'s
+                            (see e.g. ``nce_verticals/inventory/_guard.py``'s
                             own docstring: apply at the handler/route boundary, never
                             inside a ``do_*`` core). Expected to raise a subclass of
                             ``nce.engine_registry.EngineDisabledError`` when the

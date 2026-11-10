@@ -1,2 +1,0 @@
-recursive-include nce_netbox_plugin/templates *
-recursive-include nce_netbox_plugin/static *

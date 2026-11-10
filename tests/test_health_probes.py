@@ -192,8 +192,6 @@ async def test_check_health_integration_corrupted_chain(pg_pool, make_namespace,
             )
 
     # Now tamper with one event in the database to corrupt the Merkle chain.
-    monkeypatch.setenv("NCE_BYPASS_WORM", "true")
-    monkeypatch.setattr(cfg, "NCE_BYPASS_WORM", True)
 
     async with scoped_pg_session(pg_pool, ns_id) as conn:
         await conn.execute("ALTER TABLE event_log DISABLE TRIGGER trg_event_log_worm")

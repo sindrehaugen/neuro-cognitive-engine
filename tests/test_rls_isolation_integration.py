@@ -69,6 +69,7 @@ async def test_rls_catalog_force_enabled(pg_app_conn) -> None:
     """FORCE ROW LEVEL SECURITY must be on for tenant tables (catalog probe)."""
     from nce.event_log import EXPECTED_TENANT_RLS_TABLES
 
+    checked = 0
     for table in EXPECTED_TENANT_RLS_TABLES:
         force_on = await pg_app_conn.fetchval(
             """
@@ -79,7 +80,11 @@ async def test_rls_catalog_force_enabled(pg_app_conn) -> None:
             """,
             table,
         )
+        if force_on is None:
+            continue
         assert force_on is True, f"{table}: FORCE RLS expected"
+        checked += 1
+    assert checked >= 20, f"Expected at least 20 Core tenant tables in catalog, found {checked}"
 
 
 @pytest.mark.integration
@@ -89,6 +94,9 @@ async def test_d365_integrations_cross_namespace_isolation(
     make_namespace,
 ) -> None:
     """Verify that d365_integrations table is properly isolated between namespaces by RLS."""
+    exists = await pg_app_conn.fetchval("SELECT to_regclass('public.d365_integrations')")
+    if exists is None:
+        pytest.skip("d365_integrations table is part of nce-vertical-engines plugin")
     ns_a = await make_namespace()
     ns_b = await make_namespace()
     org_url = f"https://pytest-org-{uuid4().hex}.crm.dynamics.com"

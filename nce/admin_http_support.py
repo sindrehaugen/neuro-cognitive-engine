@@ -150,11 +150,7 @@ def sanitize_admin_reason(exc: Exception) -> str:
 
 def update_dotenv(updates: dict[str, str]) -> None:
     """Update key-value pairs in the local ``.env`` file (dev-only; atomic write)."""
-    if not cfg.NCE_ALLOW_ADMIN_DOTENV_PERSIST:
-        raise RuntimeError(
-            "Persisting admin configuration to .env is disabled. "
-            "Set NCE_ALLOW_ADMIN_DOTENV_PERSIST=true for local development only."
-        )
+    raise RuntimeError("Persisting admin configuration to .env is forbidden.")
     if not updates:
         return
 

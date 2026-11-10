@@ -601,7 +601,7 @@ class _Config:
     # Dynamics 365 / Dataverse publisher prefix of the CRM organisation this
     # deployment reads from. Every D365 org has its own, so the sales read model
     # cannot carry one tenant's prefix in source. Resolved through the single seam
-    # nce/vertical_modules/sales/source_adapters/d365.py::publisher_prefix(), which
+    # nce_verticals/sales/source_adapters/d365.py::publisher_prefix(), which
     # validates it against ^[a-z][a-z0-9_]{0,31}$ and raises on first use when unset
     # or malformed -- the value is interpolated into SQL and OData, so it is never
     # sanitised, repaired or defaulted (D34a). Deployments with no D365 integration
@@ -861,14 +861,6 @@ class _Config:
     NCE_MCP_NAMESPACE_ID: str = os.getenv("NCE_MCP_NAMESPACE_ID", "")
     NCE_ADMIN_API_KEY: str = secret_env("NCE_ADMIN_API_KEY", "")
     NCE_ADMIN_OVERRIDE: bool = _bool_env("NCE_ADMIN_OVERRIDE", False)
-    # Startup WORM / RLS probe bypass (dev/support only — rejected when IS_PROD).
-    NCE_BYPASS_WORM: bool = _bool_env("NCE_BYPASS_WORM", False)
-    NCE_BYPASS_RLS: bool = _bool_env("NCE_BYPASS_RLS", False)
-    # Admin UI may persist connector/datastore edits to a local .env file (dev only).
-    NCE_ALLOW_ADMIN_DOTENV_PERSIST: bool = _bool_env(
-        "NCE_ALLOW_ADMIN_DOTENV_PERSIST",
-        ENVIRONMENT not in {"prod", "production"},
-    )
     NCE_ADMIN_USERNAME: str = os.getenv("NCE_ADMIN_USERNAME", "")
     NCE_ADMIN_PASSWORD: str = os.getenv("NCE_ADMIN_PASSWORD", "")
     NCE_MASTER_KEY: str = secret_env("NCE_MASTER_KEY", "")
@@ -1265,7 +1257,7 @@ class _Config:
     # --- Economy vertical module — outbound EHF/PEPPOL (Module 8 Wave 13) ---
     # Safety interlock, OFF by default (roadmap 08 External blocker: "PEPPOL
     # prod in/out pending provider (Tickstar/Pagero) — sandbox-only today").
-    # With this false, nce.vertical_modules.economy.peppol.do_generate_ehf
+    # With this false, nce_verticals.economy.peppol.do_generate_ehf
     # returns the built EHF document without ever resolving
     # NCE_ECONOMY_PEPPOL_API_KEY / NCE_ECONOMY_PEPPOL_BASE_URL (env-only,
     # resolved via resolve_secret — never registered here, same as System
@@ -1647,22 +1639,11 @@ class _Config:
         """Enforce the production secrets-provider posture (VI.1 / R3).
 
         In production:
-          * the dev ``NCE_ALLOW_ADMIN_DOTENV_PERSIST`` path (admin UI writing
-            connector/datastore secrets to a local ``.env``) is rejected —
-            production must source secrets from a real manager, never a
-            committed/written file; and
           * ``NCE_MASTER_KEY`` must resolve from the environment / secret
             manager only — never through a database- or file-backed provider.
         """
         if not cls.IS_PROD:
             return
-        if cls.NCE_ALLOW_ADMIN_DOTENV_PERSIST:
-            raise RuntimeError(
-                "CRITICAL CONFIGURATION FAILURE: NCE_ALLOW_ADMIN_DOTENV_PERSIST must be "
-                "false in production. Production secrets must come from a secret manager "
-                "(Vault / AWS Secrets Manager / Azure Key Vault) injected into the "
-                "environment, not written to a local .env file."
-            )
         # R3: the master key is env-only; it must never be sourced from a store.
         if "NCE_MASTER_KEY" not in _ENV_ONLY_SECRETS:
             raise RuntimeError(
@@ -1794,12 +1775,6 @@ class _Config:
 # Module-level singleton — import `cfg` everywhere inside the package.
 cfg = _Config()
 
-if cfg.IS_PROD and cfg.NCE_BYPASS_WORM:
-    raise RuntimeError("NCE_BYPASS_WORM is forbidden in production")
-if cfg.IS_PROD and cfg.NCE_BYPASS_RLS:
-    raise RuntimeError("NCE_BYPASS_RLS is forbidden in production")
-if cfg.IS_PROD and cfg.NCE_ALLOW_ADMIN_DOTENV_PERSIST:
-    raise RuntimeError("NCE_ALLOW_ADMIN_DOTENV_PERSIST is forbidden in production")
 if cfg.IS_PROD and cfg.NCE_ADMIN_OVERRIDE:
     raise RuntimeError(
         "NCE_ADMIN_OVERRIDE is forbidden in production. "

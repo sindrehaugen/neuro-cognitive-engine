@@ -56,14 +56,14 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     # System Design Engine (Lane C Waves C-1, C-3 / Lane E)
     # ---------------------------------------------------------------------------
     # FUNCTIONAL_LOCATION: registered (Wave E-19, 2026-09-20) --
-    # nce/vertical_modules/system_design/resources.py. Thin, identity-only
+    # nce_verticals/system_design/resources.py. Thin, identity-only
     # (kind/as_built are derived at read time by fl_tree.py, not stored --
     # exposing them would give the same fact a second home). excluded_verbs=
     # {"list"} closes the system_design_list_functional_locations collision
     # the same way RESOURCE_SPEC does. See FUNCTIONAL_LOCATION_SPEC's own
     # comment for the full reasoning.
     # DESIGN: registered (Wave E-20, 2026-09-20) --
-    # nce/vertical_modules/system_design/resources.py. Identity-only --
+    # nce_verticals/system_design/resources.py. Identity-only --
     # is_active is real, stored data but lives on system_design_geometry.meta,
     # the same validation-choke-point table DEVICE/RACK/CABLE's geometry
     # fields already couldn't route through. excluded_verbs={"list"} closes
@@ -100,7 +100,7 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     # Project Engine (Lane C Wave C-6 / Lane E)
     # ---------------------------------------------------------------------------
     # PROJECT_PROJECT: registered (Wave C-6, 2026-09-20) --
-    # nce/vertical_modules/project/resources.py. Thin kg_nodes-primary
+    # nce_verticals/project/resources.py. Thin kg_nodes-primary
     # identity only (label/entity_type/change_origin/timestamps) -- kg_nodes
     # itself has no attribute storage (confirmed empty for every PROJECT_*
     # node type, Q-47, still open). Phase gates/capacity/my-day/reports stay
@@ -149,7 +149,7 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
     # Staff & Resources Engine (Lane E / Resources wave)
     # ---------------------------------------------------------------------------
     # RESOURCE: registered (Wave E-19, 2026-09-20) --
-    # nce/vertical_modules/resources/resources.py. excluded_verbs={"list"}
+    # nce_verticals/resources/resources.py. excluded_verbs={"list"}
     # closes the resources_list_resources collision without renaming the
     # entity or touching collision detection -- see RESOURCE_SPEC's own
     # comment for the full reasoning.
@@ -317,7 +317,7 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
             "customer_scope_id), not a missing field list -- needs either a "
             "resource_surface capability for dual-key RLS tables or a decision "
             "that this table is only ever queried from the separate customer_portal "
-            "app (nce/vertical_modules/customer_portal/app.py), which does "
+            "app (nce_verticals/customer_portal/app.py), which does "
             "establish the external scope. Confirmed the table itself is fine: "
             "grep -n \"CREATE TABLE IF NOT EXISTS portal_users\" nce/schema.sql."
         ),
@@ -344,7 +344,7 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
         owner_engine="business_insights",
         reason=(
             "provenance.py documents this as a graph node type, but grep -rn "
-            "\"INSERT INTO kg_nodes\" nce/vertical_modules/business_insights/ has zero "
+            "\"INSERT INTO kg_nodes\" nce_verticals/business_insights/ has zero "
             "matches. brief.py builds the briefing dict in memory and returns it "
             "directly in the HTTP response payload; it is never persisted anywhere, "
             "not even as a kg_nodes row -- worse than a kg_nodes-only stub. No "
@@ -382,7 +382,7 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
         owner_engine="dynamics365",
         reason=(
             "kg_nodes-only external CRM mirror node populated by DataverseSyncEngine."
-            "sync_accounts (nce/vertical_modules/dynamics365/sync.py) with no dedicated "
+            "sync_accounts (nce_verticals/dynamics365/sync.py) with no dedicated "
             "Postgres attribute table; exposed via Dynamics 365 MCP handlers rather than "
             "a C12 ResourceSpec."
         ),
@@ -391,7 +391,7 @@ RESOURCE_SURFACE_EXEMPTIONS: dict[str, ResourceExemption] = {
         owner_engine="dynamics365",
         reason=(
             "kg_nodes-only external knowledge-article anchor populated by DataverseSyncEngine."
-            "sync_knowledge_articles (nce/vertical_modules/dynamics365/sync.py) while article "
+            "sync_knowledge_articles (nce_verticals/dynamics365/sync.py) while article "
             "bodies flow through semantic ingestion; no standalone Postgres attribute table exists."
         ),
     ),

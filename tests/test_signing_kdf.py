@@ -247,3 +247,20 @@ def test_v4_derive_aes_key_rejects_short_salt():
     with pytest.raises(SigningError, match="PBKDF2 salt"):
         _pbkdf2_derive_aes_key_v4(mk, b"short")
     mk.zero()
+
+
+def test_encrypt_signing_key_fails_closed_in_prod_without_argon2(monkeypatch):
+    """TDL-14: When IS_PROD is True and argon2-cffi is absent, fail closed."""
+    import nce.signing as signing_mod
+    from nce.config import cfg
+
+    monkeypatch.setattr(signing_mod, "_HAS_ARGON2", False)
+    monkeypatch.setattr(cfg, "IS_PROD", True)
+    mk = MasterKey(b"P" * 32)
+    try:
+        with pytest.raises(SigningError, match="argon2-cffi is required in production"):
+            encrypt_signing_key(b"secret-key", mk)
+        with pytest.raises(SigningError, match="argon2-cffi is required in production"):
+            _argon2id_derive_aes_key(mk, b"0123456789abcdef")
+    finally:
+        mk.zero()

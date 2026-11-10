@@ -32,6 +32,7 @@ Dependencies point inward: no web, HTTP, admin, or framework imports here.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 from uuid import UUID
@@ -48,6 +49,19 @@ SourceMode = Literal["d365", "both", "nce"]
 
 # Conservative external-source fallback: no row → still on D365 (not yet migrated).
 _DEFAULT_MODE: SourceMode = "d365"
+
+
+def get_default_source_mode() -> SourceMode:
+    """Return default source mode when no row is configured in database.
+
+    Reads ``NCE_DEFAULT_SOURCE_MODE`` from environment. If set to ``"nce"`` or ``"both"``
+    (case-insensitive, whitespace-trimmed), returns that mode; otherwise falls back to
+    ``_DEFAULT_MODE`` (``"d365"``).
+    """
+    env_mode = os.environ.get("NCE_DEFAULT_SOURCE_MODE", "").strip().lower()
+    if env_mode in ("nce", "both"):
+        return env_mode  # type: ignore[return-value]
+    return _DEFAULT_MODE
 
 
 # ---------------------------------------------------------------------------
@@ -92,13 +106,13 @@ async def resolve(
         )
 
     if row is None:
-        return _DEFAULT_MODE
+        return get_default_source_mode()
 
     mode: str = row["mode"]
     # Belt-and-braces: the CHECK constraint on the table enforces valid values,
     # but we guard here so mypy and callers get the narrowed type.
     if mode not in ("d365", "both", "nce"):  # pragma: no cover
-        return _DEFAULT_MODE
+        return get_default_source_mode()
 
     if mode == "both":
         # Flip-gate staleness heartbeat (follow-on from flip.py's own
@@ -113,6 +127,62 @@ async def resolve(
         # throttles its actual write, and a missed write just reads as
         # staleness on flip_status() -- exactly the signal this feature
         # exists to produce, unlike failing the caller's read would be).
+        from nce.source_mode.divergence import record_comparison_heartbeat
+
+        await record_comparison_heartbeat(pool, namespace_id=namespace_id, engine=engine)
+
+    return mode  # type: ignore[return-value]
+
+
+# ---------------------------------------------------------------------------
+# resolve_native_first
+# ---------------------------------------------------------------------------
+
+
+async def resolve_native_first(
+    pool: asyncpg.Pool,  # type: ignore[type-arg]
+    *,
+    engine: str,
+    function: str,
+    namespace_id: str | UUID,
+) -> SourceMode:
+    """Look up active source mode for ``(engine, function)`` in ``namespace_id``, defaulting to native.
+
+    Queries ``source_mode_config`` for ``(namespace_id, engine, function)`` and returns
+    the configured mode, or ``"nce"`` when no row is configured (so NCE Cortex native
+    endpoints operate 100% NCE-native out of the box without needing D365).
+
+    Args:
+        pool:         asyncpg pool; a scoped connection is acquired internally.
+        engine:       Engine name key (e.g. ``"d365_sync"``).
+        function:     Function name key (e.g. ``"read_contacts"``).
+        namespace_id: Active namespace UUID (string or UUID).
+
+    Returns:
+        One of ``"d365"``, ``"both"``, or ``"nce"``.
+    """
+    async with scoped_pg_session(pool, namespace_id) as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT mode
+              FROM source_mode_config
+             WHERE namespace_id = $1
+               AND engine = $2
+               AND function = $3
+            """,
+            UUID(str(namespace_id)) if not isinstance(namespace_id, UUID) else namespace_id,
+            engine,
+            function,
+        )
+
+    if row is None:
+        return "nce"
+
+    mode: str = row["mode"]
+    if mode not in ("d365", "both", "nce"):  # pragma: no cover
+        return "nce"
+
+    if mode == "both":
         from nce.source_mode.divergence import record_comparison_heartbeat
 
         await record_comparison_heartbeat(pool, namespace_id=namespace_id, engine=engine)

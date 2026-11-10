@@ -28,7 +28,7 @@ The engine is **provider-agnostic** (BYO LLM — local, OpenAI, Anthropic, Gemin
 - [Connecting an MCP Client](#connecting-an-mcp-client)
 - [MCP Tool Surface](#mcp-tool-surface)
 - [Security Model](#security-model)
-- [Vertical Modules](#vertical-modules)
+- [Official Plugins](#official-plugins)
 - [Tech Stack](#tech-stack)
 - [Testing & Quality Gates](#testing--quality-gates)
 - [Documentation](#documentation)
@@ -74,7 +74,7 @@ NCE treats memory the way a mind does — as a lifecycle, not a bucket.
 - **Belief revision (ATMS).** An Assumption-Based Truth Maintenance System tracks `ASSUMPTION` / `PREMISE` / `DERIVED` nodes and their justifications, propagating deprecation through the justification graph (cycle-safe) when an assumption is retracted.
 - **Causal reasoning.** A do-calculus causal engine and counterfactual **chrono-branching** let agents ask *"what if"* — overlaying hypothetical mutations on an isolated timeline without ever touching production rows.
 
-See [docs/cognitive_layer.md](docs/cognitive_layer.md) and [docs/netbox_and_cognitive_extensions.md](docs/netbox_and_cognitive_extensions.md).
+See [docs/cognitive_layer.md](docs/cognitive_layer.md).
 
 ---
 
@@ -282,14 +282,14 @@ Tools are dispatched through `nce/mcp_stdio_dispatch.py`, which enforces auth, q
 | `connect_bridge` / `complete_bridge_auth` / `list_bridges` / `force_resync_bridge` | Document-bridge lifecycle |
 | `manage_namespace` · `manage_quotas` · `trigger_consolidation` · `rotate_signing_key` · `get_health` · `list_dlq` | `[ADMIN]` operations |
 
-Migration tools (`start_migration`, `validate_migration`, `commit_migration`, …) are included unless disabled, and vertical-engine tool families (`product_*`, `procurement_*`, `vendors_*`, `sales_*`, `system_design_*`, `project_*`, `d365_*`, `diag_*`, …) register when their engine is enabled. The authoritative registry is [`nce/tool_registry.py`](nce/tool_registry.py), pinned by `_EXPECTED_TOTAL` in [`tests/test_tool_registry.py`](tests/test_tool_registry.py); current per-engine and shared counts are generated in [`docs/_generated/surface.md`](docs/_generated/surface.md) and [`docs/vertical_engines/ENGINE_STATUS.md`](docs/vertical_engines/ENGINE_STATUS.md).
+Migration tools (`start_migration`, `validate_migration`, `commit_migration`, …) are included unless disabled, and vertical-engine tool families (`product_*`, `procurement_*`, `vendors_*`, `sales_*`, `system_design_*`, `project_*`, `d365_*`, `diag_*`, …) register when their engine is enabled. The authoritative registry is [`nce/tool_registry.py`](nce/tool_registry.py), pinned by `_EXPECTED_TOTAL` in [`tests/test_tool_registry.py`](tests/test_tool_registry.py); current per-engine and shared counts are generated in [`docs/_generated/surface.md`](docs/_generated/surface.md) and [`ENGINE_STATUS.md`](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/ENGINE_STATUS.md).
 
 ---
 
 ## Security Model
 
 - **Multi-tenant by construction.** Every application checkout passes through `scoped_pg_session`, which sets `SET LOCAL nce.namespace_id = '<tenant-uuid>'`. All relational tables have RLS **enabled and forced**; policies validate via `get_nce_namespace()`. Privileged GC runs under a separate `BYPASSRLS` role, out of band.
-- **Encryption at rest.** PII, credentials, and biometric tensors are AES-256-GCM encrypted under `NCE_MASTER_KEY`. An automated PII pipeline (Presidio/regex) supports redaction and reversible pseudonymisation — see [docs/pii.md](docs/pii.md).
+- **Encryption at rest.** PII, credentials, and sensitive cognitive payloads are AES-256-GCM encrypted under `NCE_MASTER_KEY`. An automated PII pipeline (Presidio/regex) supports redaction and reversible pseudonymisation — see [docs/pii.md](docs/pii.md).
 - **Integrity & non-repudiation.** The `event_log` is append-only (a `prevent_mutation` trigger blocks edits) and hash-chained; entries are HMAC-SHA256 signed over RFC 8785 (JCS) canonical JSON, with rotatable signing keys. See [docs/signing.md](docs/signing.md).
 - **AuthN/Z.** HMAC-authenticated admin HTTP with optional Redis-backed replay protection; JWT (HS256 secret or RS256 public key) for A2A and protected routes; optional **mTLS** behind your edge proxy.
 - **A2A federation.** Sharing tokens are stored only as SHA-256 hashes mapped to expirations and JSONB scopes; inbound queries are scope-checked then executed bound to the *owner's* RLS namespace.
@@ -298,90 +298,18 @@ Full guide: [docs/enterprise_security.md](docs/enterprise_security.md) · [docs/
 
 ---
 
-## Vertical Modules
+## Official Plugins
 
-NCE ships domain verticals that turn the cognitive core into an operational tool.
+NCE provides a decoupled, pluggable architecture. Operational business engines, domain-specific tooling, and enterprise ERP/IT integrations are maintained as official extension packages:
 
-### Shared-Core Foundation
+- **[NCE Vertical Engines](https://github.com/sindrehaugen/nce-vertical-engines)**: 23 modular domain engines spanning Sales, Procurement, Product, Agreements, Vendors, Inventory, Economy, System Design, Project, Field Tech, HR, Marketing, Business Insights, Resources, Assets, Support, NetBox, Dynamics 365, Odoo, Salesforce, Lighting DALI, Diagnostics, and Customer Portal.
+  - Installable via entry points (`pip install "nce-vertical-engines[all]"` or per-engine/type/category extras).
+  - Dynamically mounts MCP tools and REST endpoints via the NCE Plugin interface (`nce.plugins`).
+  - Enables full tenant-scoped operational automation on top of the NCE cognitive memory substrate.
 
-All business engines sit on a common cross-engine foundation (C1–C9): **entity resolution** with a merge-review queue and survivorship rules, **autonomy governance** (`@governed` confirm-first gates, value/volume ceilings, allowlists, kill switch), **external-principal RLS** scoping for partner/customer access, **allow-list field redaction**, a per-function **`d365 | both | nce` source-mode** switch with divergence logging, deterministic **pricing resolution**, a cryptographic **signing ceremony** for documents that leave the system, and **structural grounding guards** (citation-required answers, no-ranked-people rule). Guide: [docs/shared-core/overview.md](docs/shared-core/overview.md).
-
-### Engines
-
-Per-namespace opt-in; documented under [docs/engines/](docs/engines/) (see the [docs index](docs/README.md#vertical-engine-guides)):
-
-**20 module packages** live under `nce/vertical_modules/` — 17 business engines plus the `diagnostics`, `dynamics365` and `netbox` integrations. Per-engine tool/route/core counts are measured in [`docs/vertical_engines/ENGINE_STATUS.md`](docs/vertical_engines/ENGINE_STATUS.md) and the generated [`docs/_generated/surface.md`](docs/_generated/surface.md).
-
-- **Product** — catalog search & on-demand enrichment, related-product/BOM matching, golden-record survivorship, EOL watchers.
-- **Procurement** — TCO calculation, supplier ranking, three-way match, and PO generation/submission behind confirm-first autonomy ceilings (real money never moves without a human).
-- **Agreements** — OCR → structured agreement extraction with a human review queue (money/legal terms never auto-promote), kickback reconciliation, coverage analysis.
-- **Vendors & Contractors** — vendor registry with scorecards (sparse data scores neutral, not bad), contractor matching & dispatch, partner-scoped views.
-- **Sales** — D365-mirrored lead → opportunity → quote read model, dealroom pricing via the shared pricing resolver, a **single immutable signed-baseline freeze per quote** (append-only at the database grant level), public customer quote links (HMAC-tokenised, redacted), and source-mode divergence tracking.
-- **System Design** — propose-only design generation with a human validation gate, device/topology capability checks, SoW generation with freeze-on-issue *(design ↔ quote round-trip planned)*.
-- **Project** — G0–G6 phase gates with config-as-IP criteria, signed-quote conversion (reads the Sales baseline), event-driven BOM→task sync, My-Day/capacity/scope-creep insights *(partial — some surfaces REST-only or not yet wired)*.
-- **Economy** — owns `INVOICE`/`POSTING`/`MARGIN`: 130-point invoice matching, NGAAP periodisation, a WORM balance trigger, the 7-effect cascade and MRR/ARR roll-ups.
-- **Warehouse & Inventory** — owns `STOCK_LOCATION`/`GOODS_RECEIPT`: append-only transactions, reservation algebra, row-locked decrements, kitting and restock advice.
-- **Assets** — owns `ASSET`/`TELEMETRY`: a 14-state lifecycle, seeding from BOM lines, SLA attachment and health scoring.
-- **Support** — owns `TICKET` and the SLA clock: query/open/resolve/triage, SLA clocks with a breach sweep on cron, customer-health scoring.
-- **Staff & Resources** — owns `RESOURCE`/`ALLOCATION`: double-booking made impossible at the database (`EXCLUDE USING gist`), capacity, travel and material-flow planning.
-- **Field Tech** — owns `WORK_ORDER`: work orders under dual RLS (namespace + partner scope), ISO 9001 checklists, time entries and outcome feedback.
-- **HR** — owns `EMPLOYEE`/`SKILL`/`CERTIFICATION`: profiles, skills matching, capacity, certification status with an expiry watcher on cron, absences and onboarding.
-- **Marketing** — case-study candidates and grounded drafting, anonymise-by-default, testimonials with consent tiers, AEO/GEO content.
-- **Business Insights** — KPI cockpit, executive morning brief with a provenance graph, cross-engine risk radar, Monte-Carlo scenarios and board pack.
-- **Customer Portal** — the external customer surface, owning `PORTAL_USER`/`SERVICE_REQUEST` on its own app shell, with a four-layer security spine over the C3 external-scope model.
-- **NetBox** — GraphQL topology activation (sites/racks/devices/cables → adjacency graph), unregistered-asset discovery against live telemetry, a do-calculus circuit-provider escalator, longitudinal **operator stress tracking** with on-call weight redistribution, and an **active-learning queue** (low-confidence memories quarantined for gamified operator review). There is also a NetBox **Cognitive Dashboard** Django plugin under `src/nce-netbox-plugin/`.
-- **Dynamics 365** — case enrichment with graph context, entity sync to `kg_edges`, empathic-tensor frustration/burnout reports, SLA-breach records from the WORM log, and a D365 ↔ NetBox cross-reference mapper.
-- **Diagnostics** — log-bundle digestion pipeline (streaming ingest, digest writer, enrichment, source profiles) surfaced through `diag_*` tools.
-
-Details: [docs/netbox_and_cognitive_extensions.md](docs/netbox_and_cognitive_extensions.md) · [docs/d365_integration_reference.md](docs/d365_integration_reference.md).
+For installation, engine documentation, and domain specifications, see the [nce-vertical-engines repository](https://github.com/sindrehaugen/nce-vertical-engines).
 
 ---
-
-## Terminology: "kickback"
-
-This codebase uses the word **kickback** in its Norwegian commercial sense, where *kickback* is the
-ordinary term for a **volume-based supplier rebate** — a discount a supplier pays back once agreed
-purchase thresholds are met. It is a standard, openly negotiated clause in Nordic framework agreements
-and it appears on invoices, in contracts and in accounting records.
-
-**It does not mean a bribe, a secret commission, or any improper payment.**
-
-The distinction is enforced in the code, not just asserted here. In
-`nce/vertical_modules/agreements/compliance.py`, the clause matcher scans supplier agreements for a set
-of flags in which `kickback_prohibited` and `anti_bribery` are **separate entries** — a rebate clause and
-a bribery clause are different things, detected independently.
-
-Where the word appears, it is one of three things:
-
-| appearance | why it stays |
-|---|---|
-| Clause keywords in `compliance.py` (`no_kickback`, `kickback_prohibited`) | These are **search terms for text in third-party contracts.** A contract that literally says "no kickback" must still match. Renaming them would silently break detection. |
-| `procurement_kickback_tiers` | A **database table this project does not own.** It is queried defensively and degrades to empty when absent; renaming it would break the lookup against the table's real name. |
-| `kickback_tiers`, `do_reconcile_kickback`, `kickback_accrued` | The domain itself: reconciling accrued supplier rebates against general-ledger spend. |
-
-One thing was deliberately renamed. The supplier-**scoring** weight `kickback_proximity` is now
-`rebate_proximity`, because that name described *our own ranking behaviour* rather than a term in
-someone else's contract — "rank suppliers by kickback proximity" reads as scoring suppliers by bribe, and
-the project's own spec review had already flagged it as the single biggest reputational risk in the
-suite. The legacy key is still honoured so existing configurations keep working.
-
-The rule applied: **rename what describes our behaviour; keep and document what describes the documents
-we read.**
-
-### A false friend, for the amused
-
-Norwegian and English part ways on this word. In Norwegian, a *kickback* is something you negotiate in
-the open, write into the contract, and reconcile against the general ledger at year end. In English, it
-is something you get arrested for. Same eight letters, meaningfully different consequences.
-
-It survives in this codebase for the least glamorous reason imaginable: the contracts are written in
-Norwegian, and a clause matcher has to look for the word the vendor actually typed. So we renamed the one
-place where *we* used it to describe our own behaviour, and left the rest as the false friend it is —
-with `anti_bribery` sitting two lines below it in the same list, quietly doing the job everyone assumes
-`kickback` is doing.
-
-If you are reading this because you grepped the repository for something alarming: this was the
-alarming thing, and it is a discount.
 
 ## Tech Stack
 
@@ -428,7 +356,7 @@ The [`docs/`](docs/) tree is the source of truth. Start here:
 | Time & simulation | [time_travel.md](docs/time_travel.md) · [replay.md](docs/replay.md) · [migrations.md](docs/migrations.md) |
 | Integrations | [service_integrations.md](docs/service_integrations.md) · [bridge_setup_guide.md](docs/bridge_setup_guide.md) · [a2a.md](docs/a2a.md) |
 | Edge | [airgapped_deployment.md](docs/airgapped_deployment.md) · [vram_monitoring.md](docs/vram_monitoring.md) |
-| Business engines | [shared-core/overview.md](docs/shared-core/overview.md) · [engines/](docs/engines/) |
+| Plugins & Verticals | [shared-core/overview.md](docs/shared-core/overview.md) · [nce-vertical-engines](https://github.com/sindrehaugen/nce-vertical-engines) |
 | Design decisions | [adr/](docs/adr/) |
 
 ---
@@ -436,8 +364,8 @@ The [`docs/`](docs/) tree is the source of truth. Start here:
 ## Production Checklist
 
 - Set `NCE_ENV=production`; supply strong random `NCE_API_KEY`, `NCE_ADMIN_API_KEY`, `NCE_MASTER_KEY` (≥32 bytes).
-- `NCE_ADMIN_PASSWORD` must be a `$pbkdf2$…` hash; set `NCE_LOAD_DOTENV=false`, `NCE_ALLOW_ADMIN_DOTENV_PERSIST=false`.
-- Keep guardrails on: `NCE_ADMIN_OVERRIDE=false`, `NCE_BYPASS_WORM=false`, `NCE_BYPASS_RLS=false`.
+- `NCE_ADMIN_PASSWORD` must be a `$pbkdf2$…` hash; set `NCE_LOAD_DOTENV=false`.
+- Keep guardrails on: `NCE_ADMIN_OVERRIDE=false`.
 - Enforce TLS everywhere (`?sslmode=require` for Postgres); prefer `NCE_ADMIN_MTLS_ENABLED=true` behind your edge proxy.
 - Leave the `prevent_mutation` trigger on `event_log` in place — never disable WORM.
 - Migration MCP tools stay disabled in prod (`NCE_DISABLE_MIGRATION_MCP=true`) outside controlled windows.

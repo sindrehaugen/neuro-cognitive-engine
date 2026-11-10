@@ -5,7 +5,7 @@
 This document provides the API reference and specification for the Neuro-Cognitive Engine (NCE) platform, reconciling the dual API surface of NCE:
 
 1. **Admin REST HTTP Surface**: Generated routes served by the Starlette application (`nce/admin_app.py::build_admin_routes()`), authenticated via HMAC-SHA256 signature verification and mutual TLS (mTLS). (See [API.md](API.md) for generated routes).
-2. **Model Context Protocol (MCP) Tool Surface**: Tools registered in `nce/tool_registry.py::TOOL_REGISTRY` backed by declarative `ToolSpec` dispatch metadata. (See [docs/API.md](API.md), [`docs/_generated/surface.md`](_generated/surface.md), and [`docs/vertical_engines/ENGINE_STATUS.md`](vertical_engines/ENGINE_STATUS.md) for generated tool listings).
+2. **Model Context Protocol (MCP) Tool Surface**: Tools registered in `nce/tool_registry.py::TOOL_REGISTRY` backed by declarative `ToolSpec` dispatch metadata. (See [docs/API.md](API.md), [`docs/_generated/surface.md`](_generated/surface.md), and [`docs/vertical_engines/ENGINE_STATUS.md`](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/ENGINE_STATUS.md) for generated tool listings).
 3. **Stdio Discovery Gap**: An architectural audit of the tool gap between registered MCP tools and stdio-exposed tools (`nce/mcp_stdio_tools.py::TOOLS`), referencing [`FINDINGS_OQ3_tool_surface.md`](https://github.com/sindrehaugen/NCE/blob/main/FINDINGS_OQ3_tool_surface.md).
 
 ---

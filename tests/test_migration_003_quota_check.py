@@ -8,7 +8,7 @@ from pathlib import Path
 import asyncpg
 import pytest
 
-MIGRATION_PATH = Path("nce/migrations/003_quota_check.sql")
+MIGRATION_PATH = Path("nce/migrations/002_quota_check.sql")
 
 
 def _migration_sql() -> str:

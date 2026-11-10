@@ -35,9 +35,8 @@ import re
 _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 _MIGRATIONS_DIRS = [
     _REPO_ROOT / "nce" / "migrations",
-    _REPO_ROOT / "nce" / "migrations" / "optional",
 ]
-_CONVENTION_STARTS_AT = 81
+_CONVENTION_STARTS_AT = 1
 
 
 def _migration_files() -> list[pathlib.Path]:
@@ -54,7 +53,7 @@ def test_discovery_floor_finds_migration_files() -> None:
     """Guard the guard: if the glob above ever stops matching anything, the
     main test below would vacuously pass on zero files."""
     files = _migration_files()
-    assert len(files) >= 25, (
+    assert len(files) >= 30, (
         f"Only {len(files)} migration files (>= {_CONVENTION_STARTS_AT}) discovered -- "
         "the glob or the numeric filter is broken, not the estate"
     )

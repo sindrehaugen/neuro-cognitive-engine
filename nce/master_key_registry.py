@@ -131,23 +131,6 @@ WRAPPED_COLUMNS: tuple[WrappedColumn, ...] = (
         owner_module="nce.bridge_repo",
         note="OAuth access tokens for outbound bridges; also renewed by nce.bridge_renewal.",
     ),
-    WrappedColumn(
-        table="d365_integrations",
-        column="token_enc",
-        owner_module="nce.bridge_repo",
-        note="Dynamics 365 integration token.",
-    ),
-    WrappedColumn(
-        table="d365_integrations",
-        column="webhook_secret_enc",
-        owner_module="nce.bridge_repo",
-        note=(
-            "D365 webhook shared secret. NB: no Python writer was found for this column "
-            "when the registry was built -- it is either written through a path the search "
-            "missed or it is dead. Registered anyway: a rotation that skipped a live column "
-            "would be unrecoverable, whereas re-wrapping a dead one is harmless."
-        ),
-    ),
 )
 
 
@@ -206,12 +189,6 @@ WRAPS_WITHOUT_PERSISTING: dict[str, str] = {
         "Returns the blob to its caller rather than storing it (stress/benchmark helper). "
         "No table to re-wrap."
     ),
-    "nce.vertical_modules.netbox.contacts": (
-        "Encrypts at contacts.py:207 and decrypts the same value at :210, then INSERTs into "
-        "on_call_routing -- which has NO bytea column. The encryption there appears to be a "
-        "no-op round trip and is worth a look on its own; either way there is nothing "
-        "persisted for a rotation to re-wrap."
-    ),
 }
 
 
@@ -240,7 +217,6 @@ FORCE_RLS_WRAPPED_TABLES: Final[frozenset[str]] = frozenset(
         "pii_redactions",
         "signing_credentials",
         "bridge_subscriptions",
-        "d365_integrations",
     }
 )
 

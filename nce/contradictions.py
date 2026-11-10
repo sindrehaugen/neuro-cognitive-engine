@@ -679,7 +679,7 @@ async def _detect_contradictions_impl(
         )
 
         async with scoped_pg_session(pg_pool, namespace_id) as conn:
-            await conn.execute(
+            insert_status = await conn.execute(
                 """
                 INSERT INTO contradictions (
                     namespace_id, memory_a_id, memory_b_id, agent_id,
@@ -696,6 +696,20 @@ async def _detect_contradictions_impl(
                 signals_payload,
                 final_confidence,
             )
+            if agent_id and str(insert_status or "").endswith("1"):
+                await conn.execute(
+                    """
+                    INSERT INTO actor_trust (
+                        namespace_id, actor_id, actor_kind, contradictions_sourced, updated_at
+                    )
+                    VALUES ($1::uuid, $2, 'agent', 1, NOW())
+                    ON CONFLICT (namespace_id, actor_id, actor_kind) DO UPDATE
+                        SET contradictions_sourced = actor_trust.contradictions_sourced + 1,
+                            updated_at = NOW()
+                    """,
+                    namespace_id,
+                    agent_id,
+                )
 
         detected.append(
             {

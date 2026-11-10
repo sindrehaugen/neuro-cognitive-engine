@@ -58,7 +58,7 @@ _ROW_LINK_RE = re.compile(
 # floor is either a deliberate deletion (move the floor in the same commit, and
 # say why) or a reworded link format the pattern no longer sees, which is the
 # blindness D13 is filed for.
-_MIN_TABLE_ROWS = 58
+_MIN_TABLE_ROWS = 34
 
 # Measured: nce/migrations/ (recursively, including optional/) holds **60**
 # *.sql files. A typo'd MIGRATIONS_DIR or a directory rename makes rglob()
@@ -73,7 +73,7 @@ _MIN_TABLE_ROWS = 58
 # here (the ledger keys on filename, and missing_from_image() exists to alarm
 # when a database has applied one this image lacks), so any count that goes DOWN
 # is news.
-_MIN_MIGRATION_FILES = 58
+_MIN_MIGRATION_FILES = 34
 
 
 def _table_rows(doc_text: str) -> list[str]:

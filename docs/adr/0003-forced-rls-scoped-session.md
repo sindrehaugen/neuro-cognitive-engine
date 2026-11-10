@@ -4,7 +4,7 @@
 
 ## Status
 
-Shipped (DDL & Scoped Sessions) · 🔴 **Deployment Reality Audited (2026-09-16)**: While DDL migrations configure RLS policies for role `nce_app`, the deployed runtime connects as `mcp_user` (`rolsuper = true, rolbypassrls = true`), making RLS **inert at runtime**. Tenant isolation in production is enforced entirely by application-level `WHERE`-clause predicates (see [`docs/vertical_engines/_security/c3-external-scope-adversarial-review.md`](../vertical_engines/_security/c3-external-scope-adversarial-review.md)).
+Shipped (DDL & Scoped Sessions) · 🔴 **Deployment Reality Audited (2026-09-16)**: While DDL migrations configure RLS policies for role `nce_app`, the deployed runtime connects as `mcp_user` (`rolsuper = true, rolbypassrls = true`), making RLS **inert at runtime**. Tenant isolation in production is enforced entirely by application-level `WHERE`-clause predicates (see [`docs/vertical_engines/_security/c3-external-scope-adversarial-review.md`](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/_security/c3-external-scope-adversarial-review.md)).
 
 ## Context
 

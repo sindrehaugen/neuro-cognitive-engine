@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from nce.config import cfg
 from nce.cron import _decay_prune_tick, async_main
 from nce.cron_lock import CronLock
 from nce.db_utils import scoped_pg_session
@@ -54,8 +53,6 @@ async def test_chain_tamper_detection_integration(pg_pool, make_namespace, monke
         assert res_valid["first_break"] is None
 
     # Tamper a row (event_seq = 2) in the event_log by bypassing WORM check
-    monkeypatch.setenv("NCE_BYPASS_WORM", "true")
-    monkeypatch.setattr(cfg, "NCE_BYPASS_WORM", True)
 
     async with scoped_pg_session(pg_pool, ns_id) as conn:
         await conn.execute("ALTER TABLE event_log DISABLE TRIGGER trg_event_log_worm")

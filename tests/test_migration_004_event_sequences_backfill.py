@@ -9,7 +9,7 @@ from pathlib import Path
 import asyncpg
 import pytest
 
-MIGRATION_PATH = Path("nce/migrations/004_event_sequences_backfill.sql")
+MIGRATION_PATH = Path("nce/migrations/003_event_sequences_backfill.sql")
 
 
 def _migration_sql() -> str:

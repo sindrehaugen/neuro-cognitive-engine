@@ -6,7 +6,7 @@ Reads gate status and flips a ``(namespace_id, engine, function)`` from
 over the parity window.
 
 Wave D-9 (2026-09-20): generalizes
-``nce/vertical_modules/sales/flip.py``'s ``do_flip_function`` and
+``nce_verticals/sales/flip.py``'s ``do_flip_function`` and
 ``do_read_sales_divergence``. Both independently re-implemented the exact
 same ``divergence_log`` query that :func:`nce.source_mode.divergence.flip_blocked`
 already provides generically -- with ``'sales'`` hardcoded as a literal
@@ -22,7 +22,7 @@ existing test suites for both, run unchanged against the new wrappers.
 
 NOT EVERY divergence_log / alert_threshold CONSUMER IS A FLIP-GATE CANDIDATE
 -----------------------------------------------------------------------------
-``nce/vertical_modules/economy/finago.py``'s GL reconciliation
+``nce_verticals/economy/finago.py``'s GL reconciliation
 (``do_reconcile_gl``) is READ + COMPARE + LOG only, by explicit design
 (roadmap Section 9.2, restated in that module's own docstring): Finago is
 the permanent legal system-of-record and NCE is authoritative for
@@ -96,7 +96,7 @@ async def flip_status(
 
     Generic GET-status view of the flip gate for any ``(namespace_id,
     engine)`` pair. Same response shape
-    ``nce/vertical_modules/sales/flip.py``'s ``do_read_sales_divergence``
+    ``nce_verticals/sales/flip.py``'s ``do_read_sales_divergence``
     has always returned, with ``engine`` promoted from a hardcoded literal
     to a parameter.
 

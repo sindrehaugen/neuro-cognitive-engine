@@ -38,8 +38,13 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 _REPO = Path(__file__).resolve().parents[1]
 _ENGINE_DOCS = _REPO / "docs" / "engines"
+
+if not _ENGINE_DOCS.is_dir():
+    pytestmark = pytest.mark.skip(reason="docs/engines migrated to nce-vertical-engines")
 
 #: Top-level directories that make a citation repo-anchored, i.e. resolvable
 #: without guessing. A bare `foo.py:12` names no directory and is out of scope.

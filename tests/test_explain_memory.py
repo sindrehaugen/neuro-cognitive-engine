@@ -1,10 +1,9 @@
 import json
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from nce.config import cfg
 from nce.db_utils import scoped_pg_session
 from nce.event_log import append_event
 from nce.replay import get_event_provenance
@@ -59,8 +58,7 @@ async def test_explain_memory_tamper_detection(pg_pool, make_namespace, monkeypa
     assert explain_res["signature"] == provenance["chain"][0]["signature"]
 
     # Tamper parameters of the event while keeping memory_id intact
-    monkeypatch.setenv("NCE_BYPASS_WORM", "true")
-    with patch.object(cfg, "NCE_BYPASS_WORM", True):
+    if True:
         async with scoped_pg_session(pg_pool, ns_id) as conn:
             await conn.execute("ALTER TABLE event_log DISABLE TRIGGER trg_event_log_worm")
             try:

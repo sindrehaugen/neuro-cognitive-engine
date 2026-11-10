@@ -260,11 +260,11 @@ async def test_echo_suppression_skips_semantic_track(
         ),
         # Patch the Dataverse client dependencies (not needed for annotation echo path)
         patch(
-            "nce.vertical_modules.dynamics365.auth.DataverseTokenManager",
+            "nce_verticals.dynamics365.auth.DataverseTokenManager",
             return_value=mock_token_mgr,
         ),
         patch(
-            "nce.vertical_modules.dynamics365.client.DataverseClient",
+            "nce_verticals.dynamics365.client.DataverseClient",
             return_value=MagicMock(),
         ),
     ):
@@ -344,15 +344,15 @@ async def test_non_echo_webhook_ingests_normally(
         patch("motor.motor_asyncio.AsyncIOMotorClient", return_value=mock_mongo),
         patch("redis.asyncio.from_url", return_value=mock_redis_async),
         patch(
-            "nce.vertical_modules.dynamics365.auth.DataverseTokenManager",
+            "nce_verticals.dynamics365.auth.DataverseTokenManager",
             return_value=mock_token_mgr,
         ),
         patch(
-            "nce.vertical_modules.dynamics365.client.DataverseClient",
+            "nce_verticals.dynamics365.client.DataverseClient",
             return_value=MagicMock(),
         ),
         patch(
-            "nce.vertical_modules.dynamics365.ingestion.DataverseIngestionWorker",
+            "nce_verticals.dynamics365.ingestion.DataverseIngestionWorker",
             return_value=mock_worker,
         ),
     ):

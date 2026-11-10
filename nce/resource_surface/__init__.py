@@ -65,15 +65,18 @@ def get_all_resource_specs() -> list[ResourceSpec]:
 
 
 def load_all_engine_resources() -> None:
-    """Discover and import all resources.py modules in nce.vertical_modules."""
-    import nce.vertical_modules as vm_pkg
+    """Discover and import all resources.py modules in nce_verticals."""
+    try:
+        import nce_verticals as vm_pkg
+    except ModuleNotFoundError:
+        return
 
     if not hasattr(vm_pkg, "__path__"):
         return
 
     for _, module_name, is_pkg in pkgutil.iter_modules(vm_pkg.__path__):
         if is_pkg:
-            full_mod_name = f"nce.vertical_modules.{module_name}.resources"
+            full_mod_name = f"nce_verticals.{module_name}.resources"
             try:
                 importlib.import_module(full_mod_name)
             except ModuleNotFoundError:

@@ -25,7 +25,7 @@ import yaml
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _COMPOSE = _REPO_ROOT / "docker-compose.yml"
 _SCHEMA = _REPO_ROOT / "nce" / "schema.sql"
-_MIGRATION = _REPO_ROOT / "nce" / "migrations" / "019_halfvec_embeddings.sql"
+_MIGRATION = _REPO_ROOT / "nce" / "migrations" / "016_halfvec_embeddings.sql"
 
 # Services that stage/extract artifacts and so must get the tmpfs staging mount.
 _STAGING_SERVICES = ("worker", "cron", "admin", "a2a", "webhook-receiver")

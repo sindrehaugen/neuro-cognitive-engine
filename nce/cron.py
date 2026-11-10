@@ -385,6 +385,14 @@ async def _outbox_relay_tick(pool: asyncpg.Pool) -> None:
         drained = getattr(result, "drained_no_consumer", 0)
         if delivered or drained:
             log.info("outbox relay tick delivered=%d drained=%d", delivered, drained)
+        try:
+            from nce.dead_letter_queue import reap_quarantined_dead_letters
+
+            reaped = await reap_quarantined_dead_letters(pool)
+            if reaped:
+                log.info("outbox relay tick reaped %d quarantined DLQ item(s)", len(reaped))
+        except Exception:
+            log.debug("quarantined DLQ reap skipped during outbox_relay tick", exc_info=True)
     except _CRON_TICK_ERRORS as exc:
         log.exception("outbox relay tick failed unexpectedly")
         await _dispatch_throttled_alert(
@@ -449,10 +457,11 @@ async def _d365_sync_tick(pool: asyncpg.Pool) -> None:
 
     redis_client = aioredis.from_url(cfg.REDIS_URL)
     try:
+        from nce_verticals.dynamics365.auth import DataverseTokenManager
+        from nce_verticals.dynamics365.client import DataverseClient
+        from nce_verticals.dynamics365.sync import DataverseSyncEngine
+
         from nce.db_utils import scoped_pg_session
-        from nce.vertical_modules.dynamics365.auth import DataverseTokenManager
-        from nce.vertical_modules.dynamics365.client import DataverseClient
-        from nce.vertical_modules.dynamics365.sync import DataverseSyncEngine
 
         token_mgr = DataverseTokenManager(redis_client)
 
@@ -542,10 +551,11 @@ async def _d365_weekly_full_sync_tick(pool: asyncpg.Pool) -> None:
 
     redis_client = aioredis.from_url(cfg.REDIS_URL)
     try:
+        from nce_verticals.dynamics365.auth import DataverseTokenManager
+        from nce_verticals.dynamics365.client import DataverseClient
+        from nce_verticals.dynamics365.sync import DataverseSyncEngine
+
         from nce.db_utils import scoped_pg_session
-        from nce.vertical_modules.dynamics365.auth import DataverseTokenManager
-        from nce.vertical_modules.dynamics365.client import DataverseClient
-        from nce.vertical_modules.dynamics365.sync import DataverseSyncEngine
 
         token_mgr = DataverseTokenManager(redis_client)
 
@@ -629,13 +639,14 @@ async def _d365_netbox_bridge_tick(pool: asyncpg.Pool) -> None:
 
     redis_client = aioredis.from_url(cfg.REDIS_URL)
     try:
-        from nce.db_utils import scoped_pg_session
-        from nce.vertical_modules.dynamics365.auth import DataverseTokenManager
-        from nce.vertical_modules.dynamics365.client import DataverseClient
-        from nce.vertical_modules.dynamics365.netbox_bridge import (
+        from nce_verticals.dynamics365.auth import DataverseTokenManager
+        from nce_verticals.dynamics365.client import DataverseClient
+        from nce_verticals.dynamics365.netbox_bridge import (
             D365NetBoxBridge,
             NetBoxBridgeClient,
         )
+
+        from nce.db_utils import scoped_pg_session
 
         token_mgr = DataverseTokenManager(redis_client)
 
@@ -706,7 +717,7 @@ async def _product_eol_watcher_tick(pool: asyncpg.Pool) -> None:
         log.debug("Skipping product_eol_watcher — lock held by another instance")
         return
     try:
-        from nce.vertical_modules.product.watchers import do_check_eol
+        from nce_verticals.product.watchers import do_check_eol
 
         class _PoolEngine:
             def __init__(self, p: asyncpg.Pool) -> None:
@@ -779,7 +790,7 @@ async def _inventory_stock_watcher_tick(pool: asyncpg.Pool) -> None:
         log.debug("Skipping inventory_stock_watcher — lock held by another instance")
         return
     try:
-        from nce.vertical_modules.inventory.watchers import do_flag_stock_alerts
+        from nce_verticals.inventory.watchers import do_flag_stock_alerts
 
         class _PoolEngine:
             def __init__(self, p: asyncpg.Pool) -> None:
@@ -880,7 +891,7 @@ async def _agreements_coverage_watcher_tick(pool: asyncpg.Pool) -> None:
         log.debug("Skipping agreements_coverage_watcher — lock held by another instance")
         return
     try:
-        from nce.vertical_modules.agreements.coverage import do_coverage_matrix
+        from nce_verticals.agreements.coverage import do_coverage_matrix
 
         class _PoolEngine:
             def __init__(self, p: asyncpg.Pool) -> None:
@@ -989,7 +1000,7 @@ async def _economy_recurring_recognition_tick(pool: asyncpg.Pool) -> None:
     explicit ``WHERE namespace_id = ...`` filter it issues). Wave 9 sourced
     this list from ``namespaces.metadata->'economy'->'recurring_contracts'``
     as a temporary, no-migration substitute — see
-    ``nce/vertical_modules/economy/recurring.py``'s module docstring for why
+    ``nce_verticals/economy/recurring.py``'s module docstring for why
     that shim is gone and ``do_recognize_recurring`` itself needed no change
     (it was always contract-source-agnostic).
     """
@@ -1001,8 +1012,8 @@ async def _economy_recurring_recognition_tick(pool: asyncpg.Pool) -> None:
     try:
         from datetime import datetime, timezone
 
-        from nce.vertical_modules.economy.contracts import fetch_contracts_for_recognition
-        from nce.vertical_modules.economy.recurring import do_recognize_recurring
+        from nce_verticals.economy.contracts import fetch_contracts_for_recognition
+        from nce_verticals.economy.recurring import do_recognize_recurring
 
         class _PoolEngine:
             def __init__(self, p: asyncpg.Pool) -> None:
@@ -1096,7 +1107,7 @@ async def _economy_contract_renewal_watcher_tick(pool: asyncpg.Pool) -> None:
         log.debug("Skipping economy_contract_renewal_watcher — lock held by another instance")
         return
     try:
-        from nce.vertical_modules.economy.contracts import do_scan_renewals
+        from nce_verticals.economy.contracts import do_scan_renewals
 
         class _PoolEngine:
             def __init__(self, p: asyncpg.Pool) -> None:
@@ -1175,7 +1186,7 @@ async def _hr_cert_expiry_watcher_tick(pool: asyncpg.Pool) -> None:
         log.debug("Skipping hr_cert_expiry_watcher — lock held by another instance")
         return
     try:
-        from nce.vertical_modules.hr.certs import do_check_hr_cert_expiry
+        from nce_verticals.hr.certs import do_check_hr_cert_expiry
 
         class _PoolEngine:
             def __init__(self, p: asyncpg.Pool) -> None:
@@ -1229,7 +1240,7 @@ async def _vendors_cert_expiry_watcher_tick(pool: asyncpg.Pool, mongo_client: An
         log.debug("Skipping vendors_cert_expiry_watcher — lock held by another instance")
         return
     try:
-        from nce.vertical_modules.vendors.certs import do_check_cert_expiry
+        from nce_verticals.vendors.certs import do_check_cert_expiry
 
         class _PoolEngine:
             def __init__(self, p: asyncpg.Pool, m: Any = None) -> None:
@@ -1287,7 +1298,7 @@ async def _support_sla_watcher_tick(pool: asyncpg.Pool) -> None:
         log.debug("Skipping support_sla_watcher — lock held by another instance")
         return
     try:
-        from nce.vertical_modules.support.sla import do_check_sla_breaches
+        from nce_verticals.support.sla import do_check_sla_breaches
 
         class _PoolEngine:
             def __init__(self, p: asyncpg.Pool) -> None:
@@ -1357,7 +1368,7 @@ async def _hr_compliance_watcher_tick(pool: asyncpg.Pool) -> None:
         log.debug("Skipping hr_compliance_watcher — lock held by another instance")
         return
     try:
-        from nce.vertical_modules.hr.compliance import do_check_compliance_deadlines
+        from nce_verticals.hr.compliance import do_check_compliance_deadlines
 
         class _PoolEngine:
             def __init__(self, p: asyncpg.Pool) -> None:
@@ -1426,7 +1437,7 @@ async def _sales_stalled_deal_watcher_tick(pool: asyncpg.Pool) -> None:
         log.debug("Skipping sales_stalled_deal_watcher — lock held by another instance")
         return
     try:
-        from nce.vertical_modules.sales.flip import do_stalled_deal_watcher
+        from nce_verticals.sales.flip import do_stalled_deal_watcher
 
         class _PoolEngine:
             def __init__(self, p: asyncpg.Pool) -> None:
@@ -1521,12 +1532,15 @@ async def _reminders_watcher_tick(pool: asyncpg.Pool) -> None:
         log.debug("Skipping reminders_watcher — lock held by another instance")
         return
     try:
-        from nce.vertical_modules.notifications.reminders import fire_pending_reminders
-
         async with unmanaged_pg_connection(
             pool, site="cron.reminders_watcher.namespace_scan"
         ) as conn:
             rows = await conn.fetch("SELECT id FROM namespaces")
+
+        try:
+            from nce_verticals.notifications.reminders import fire_pending_reminders
+        except ModuleNotFoundError:
+            return
 
         for row in rows:
             ns_id: UUID = row["id"]
@@ -1849,10 +1863,13 @@ async def _retention_tick(pool: asyncpg.Pool) -> None:
         # one place (archive.sweep_enabled) rather than being restated at the
         # schedule.  It shares this tick because it is the same kind of work on
         # the same cadence and needs the same MinIO client and cron lock.
-        from nce.vertical_modules.system_design.archive import run_design_archive_sweep
+        try:
+            from nce_verticals.system_design.archive import run_design_archive_sweep
 
-        design_stats = await run_design_archive_sweep(pool, minio_client)
-        log.info("system_design archive sweep complete: %s", design_stats)
+            design_stats = await run_design_archive_sweep(pool, minio_client)
+            log.info("system_design archive sweep complete: %s", design_stats)
+        except ImportError:
+            pass
 
     except _CRON_TICK_ERRORS as exc:
         log.exception("event_retention tick failed unexpectedly")
@@ -2436,11 +2453,12 @@ async def _assets_telemetry_tick(pool: asyncpg.Pool) -> None:
         return
 
     try:
+        from nce_verticals.assets.lifecycle import load_lifecycle_config
+        from nce_verticals.assets.telemetry import do_pull_telemetry
+
         from nce.orchestrator import NCEEngine
         from nce.settings_store import get as store_get
         from nce.settings_store import set as store_set
-        from nce.vertical_modules.assets.lifecycle import load_lifecycle_config
-        from nce.vertical_modules.assets.telemetry import do_pull_telemetry
 
         # ``assets`` has no ``status`` column -- the lifecycle column is
         # ``lifecycle_state`` (migration 054).  ``status``/'decommissioned' was the
@@ -2516,8 +2534,9 @@ async def _assets_warranty_eol_tick(pool: asyncpg.Pool) -> None:
         return
 
     try:
+        from nce_verticals.assets.warranty import do_check_warranty_eol
+
         from nce.orchestrator import NCEEngine
-        from nce.vertical_modules.assets.warranty import do_check_warranty_eol
 
         async with unmanaged_pg_connection(pool, site="cron.assets_warranty_eol.scan") as conn:
             rows = await conn.fetch(
@@ -2665,55 +2684,20 @@ async def async_main() -> None:
     # OUTBOX_HANDLERS is per-process state -- registering in only one of them
     # leaves the other dead-lettering every System Design authoring event it polls.
     from nce.read_model_subscribers import register_read_model_subscribers
-    from nce.vertical_modules.field_tech.work_orders import (
-        register_field_tech_subscribers,
-    )
-    from nce.vertical_modules.hr.compliance import (
-        register_hr_compliance_subscribers,
-    )
-    from nce.vertical_modules.notifications.subscribers import (
-        register_notifications_subscribers,
-    )
-    from nce.vertical_modules.project import automation as project_automation
-    from nce.vertical_modules.project import tasks as project_tasks
-    from nce.vertical_modules.resources import watcher as resources_watcher
-    from nce.vertical_modules.resources.watcher import (
-        register_resources_event_subscribers,
-    )
-    from nce.vertical_modules.system_design.subscribers import (
-        register_system_design_subscribers,
-    )
 
-    register_system_design_subscribers()
     register_read_model_subscribers()
-    register_field_tech_subscribers()
-    register_resources_event_subscribers()
-    register_hr_compliance_subscribers()
-    register_notifications_subscribers()
 
-    # Module 7's three C4 selectors (M0.W20d) -- PO_LINE.status_changed,
-    # GOODS_RECEIPT.created and BOM_LINE.status_changed. Their handlers were
-    # registered by NO process, so each would fast-fail to the DLQ the moment a
-    # producer exists. Registered in cron too, for the same per-process reason
-    # as the block above.
-    #
-    # tasks._handle_bom_line_status_changed reads an engine registry at delivery
-    # time and raises EngineNotRegisteredError without one. cron has no
-    # NCEEngine, only the pool -- and the handler path touches exactly
-    # ``engine.pg_pool`` (verified), which is the same duck-type the cron ticks
-    # already build for their own core calls. Module-qualified because
-    # automation and tasks each define a DIFFERENT register_engine.
     _relay_engine = SimpleNamespace(pg_pool=pool)
     from nce.engine_registry import populate_engine_modules
 
     populate_engine_modules(_relay_engine)
-    project_tasks.register_engine(_relay_engine)
-    project_automation.register_engine(_relay_engine)
-    # RS-4's on_hr_cert_event opens its own scoped_pg_session off engine.pg_pool,
-    # which is exactly what this SimpleNamespace carries.
-    resources_watcher.register_engine(_relay_engine)
-    project_tasks.register_bom_task_subscriber()
-    project_automation.register_automation_subscribers()
+
+    try:
+        from nce.plugins import register_all_plugin_workers
+
+        register_all_plugin_workers(_relay_engine)
+    except Exception as exc:
+        log.warning("Plugin workers registration error in cron: %s", exc)
 
     outbox_seconds = max(1, int(cfg.OUTBOX_RELAY_INTERVAL_SECONDS))
     scheduler.add_job(

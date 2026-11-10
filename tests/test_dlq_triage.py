@@ -346,3 +346,48 @@ def test_classify_error_deterministic_assertion():
     from nce.dead_letter_queue import classify_error
 
     assert classify_error("AssertionError", "expected True") == "deterministic"
+
+
+@pytest.mark.asyncio
+async def test_reap_quarantined_dead_letters_claims_due_rows():
+    """Batch 130: reap_quarantined_dead_letters claims due rows and invokes enqueue_fn."""
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock, MagicMock
+
+    from nce.dead_letter_queue import reap_quarantined_dead_letters
+
+    row_id = uuid.uuid4()
+    ns_id = uuid.uuid4()
+    mock_conn = AsyncMock()
+    mock_conn.fetch = AsyncMock(
+        return_value=[
+            {
+                "id": row_id,
+                "namespace_id": ns_id,
+                "task_name": "process_code_indexing",
+                "job_id": "job-123",
+                "kwargs": '{"filepath": "/app/main.py"}',
+                "attempt_count": 1,
+            }
+        ]
+    )
+    mock_pool = MagicMock()
+
+    @asynccontextmanager
+    async def _acquire(*_a, **_kw):
+        yield mock_conn
+
+    mock_pool.acquire = _acquire
+    enqueued: list[tuple[str, dict]] = []
+
+    def _enqueue(task_name: str, kwargs: dict) -> None:
+        enqueued.append((task_name, kwargs))
+
+    claimed = await reap_quarantined_dead_letters(mock_pool, enqueue_fn=_enqueue, limit=25)
+    assert len(claimed) == 1
+    assert claimed[0]["id"] == str(row_id)
+    assert claimed[0]["task_name"] == "process_code_indexing"
+    assert enqueued == [("process_code_indexing", {"filepath": "/app/main.py"})]
+    sql = str(mock_conn.fetch.await_args.args[0])
+    assert "quarantined_until <= now()" in sql
+    assert "SET quarantined_until = NULL" in sql

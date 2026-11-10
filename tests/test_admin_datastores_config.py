@@ -75,7 +75,6 @@ async def test_datastores_save_endpoint_with_secret_masked():
         mock_cfg.MINIO_ACCESS_KEY = "minio_user"
         mock_cfg.MINIO_SECRET_KEY = "real_password"
         mock_cfg.MINIO_SECURE = False
-        mock_cfg.NCE_ALLOW_ADMIN_DOTENV_PERSIST = True
 
         from admin_server import api_admin_datastores_save
 

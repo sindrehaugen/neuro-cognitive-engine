@@ -52,8 +52,8 @@ def test_predicate_migration_094_and_rls_registration():
     assert EXPECTED_TENANT_RLS_TABLES["outbound_webhooks"] == "namespace_id"
 
     root = Path(__file__).resolve().parents[2]
-    mig = root / "nce" / "migrations" / "094_outbound_webhooks.sql"
-    assert mig.exists(), "094_outbound_webhooks.sql migration must exist"
+    mig = root / "nce" / "migrations" / "034_outbound_webhooks.sql"
+    assert mig.exists(), "034_outbound_webhooks.sql migration must exist"
 
     content = mig.read_text(encoding="utf-8")
     assert "CREATE TABLE IF NOT EXISTS outbound_webhooks" in content

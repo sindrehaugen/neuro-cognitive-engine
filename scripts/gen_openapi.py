@@ -131,7 +131,7 @@ def generate_openapi_spec() -> dict[str, Any]:
         pass
 
     try:
-        from nce.vertical_modules.customer_portal.app import build_customer_portal_app
+        from nce_verticals.customer_portal.app import build_customer_portal_app
 
         secondary_routes.append(("customer_portal", build_customer_portal_app().routes))
     except Exception:

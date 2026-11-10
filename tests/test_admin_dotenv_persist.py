@@ -14,28 +14,8 @@ os.environ.setdefault("NCE_MASTER_KEY", "dev-test-key-32chars-long!!")
 def test_update_dotenv_raises_when_persist_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     from admin_server import update_dotenv
 
-    with patch("nce.admin_http_support.cfg") as mock_cfg:
-        mock_cfg.NCE_ALLOW_ADMIN_DOTENV_PERSIST = False
-        with pytest.raises(RuntimeError, match="disabled"):
-            update_dotenv({"FOO": "bar"})
-
-
-def test_update_dotenv_atomic_write(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from admin_server import update_dotenv
-
-    dotenv = tmp_path / ".env"
-    dotenv.write_text("EXISTING=old\nOTHER=keep\n", encoding="utf-8")
-    monkeypatch.chdir(tmp_path)
-
-    with patch("nce.admin_http_support.cfg") as mock_cfg:
-        mock_cfg.NCE_ALLOW_ADMIN_DOTENV_PERSIST = True
-        update_dotenv({"EXISTING": "new", "ADDED": "yes"})
-
-    text = dotenv.read_text(encoding="utf-8")
-    assert "EXISTING=new" in text
-    assert "ADDED=yes" in text
-    assert "OTHER=keep" in text
-    assert "EXISTING=old" not in text
+    with pytest.raises(RuntimeError, match="forbidden"):
+        update_dotenv({"FOO": "bar"})
 
 
 def test_admin_error_response_hides_detail_in_prod() -> None:

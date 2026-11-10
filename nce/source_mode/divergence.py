@@ -13,7 +13,7 @@ Responsibilities (each function does exactly one thing — SRP):
         the row is still written, so no divergence is ever lost, but nothing
         pages. For a caller whose materiality rule has not been calibrated
         against real data yet (see
-        ``vertical_modules/economy/reconcile_agreements.py``'s own gate for
+        ``nce_verticals/economy/reconcile_agreements.py``'s own gate for
         the worked example) — a noisy, uncalibrated page trains people to
         ignore the channel, which defeats the alert for every OTHER caller
         sharing it too.
@@ -39,7 +39,7 @@ Design constraints (uncle-bob-craft / §9.2):
     (default 0.1 — 10 %).  Read at call time via the public
     ``alert_threshold()`` accessor so monkeypatching in tests works
     correctly.  Other modules that need this same rule (e.g.
-    ``vertical_modules/economy/finago.py``) import and call
+    ``nce_verticals/economy/finago.py``) import and call
     ``alert_threshold()`` directly rather than reimplementing the env-var
     parse, so there is exactly one implementation of it.
     ``_alert_threshold()`` is kept as a thin backward-compatible delegate to
@@ -76,7 +76,7 @@ def alert_threshold() -> float:
     Public accessor and the ONE shared implementation of
     ``NCE_DIVERGENCE_ALERT_THRESHOLD`` parsing. Any module that needs to
     know "is this materiality above the alert threshold" (e.g.
-    ``vertical_modules/economy/finago.py``'s own ``material: true/false``
+    ``nce_verticals/economy/finago.py``'s own ``material: true/false``
     classification, which must never disagree with whether this module
     actually paged anyone for that same row) MUST import and call this
     function rather than reimplementing the same env-var parse locally --

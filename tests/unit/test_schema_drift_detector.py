@@ -156,7 +156,7 @@ def test_expected_columns_parses_the_real_schema_and_finds_the_known_ten() -> No
     would look safe while silently dropping it.
     """
     exp = expected_columns()
-    assert len(exp) > 50, "schema.sql should yield many tables; the parser likely broke"
+    assert len(exp) >= 25, "schema.sql should yield many tables; the parser likely broke"
     for table, col in [
         ("kg_nodes", "namespace_id"),
         ("kg_edges", "namespace_id"),
@@ -202,7 +202,7 @@ def test_migration_081_covers_every_schema_only_column(table: str, col: str) -> 
         Path(__file__).resolve().parents[2]
         / "nce"
         / "migrations"
-        / "081_schema_sql_only_ddl_baseline.sql"
+        / "029_schema_sql_only_ddl_baseline.sql"
     ).read_text(encoding="utf-8")
     assert f"ALTER TABLE {table}" in mig, f"081 no longer touches {table}"
     assert col in mig, f"081 no longer provides {table}.{col}"
@@ -232,7 +232,7 @@ def test_the_dynamic_tenant_loop_is_expanded_not_skipped() -> None:
     schema = Path(__file__).resolve().parents[2] / "nce" / "schema.sql"
     looped = tenant_tables_loop(_strip_sql_comments(schema.read_text(encoding="utf-8")))
 
-    assert len(looped) > 30, f"the tenant_tables array should be large; parsed {len(looped)}"
+    assert len(looped) >= 18, f"the tenant_tables array should be large; parsed {len(looped)}"
     for core in ("memories", "kg_nodes", "kg_edges"):
         assert core in looped, f"{core} fell out of the tenant-isolation loop"
 
@@ -303,7 +303,7 @@ def test_migration_082_covers_every_schema_only_policy(table: str, policy: str) 
         Path(__file__).resolve().parents[2]
         / "nce"
         / "migrations"
-        / "082_schema_sql_only_rls_baseline.sql"
+        / "030_schema_sql_only_rls_baseline.sql"
     ).read_text(encoding="utf-8")
     assert "ENABLE ROW LEVEL SECURITY" in mig
     assert table in mig, f"082 no longer covers {table}"
@@ -325,7 +325,7 @@ def test_migration_082_reproduces_topology_graph_weakly_on_purpose() -> None:
         Path(__file__).resolve().parents[2]
         / "nce"
         / "migrations"
-        / "082_schema_sql_only_rls_baseline.sql"
+        / "030_schema_sql_only_rls_baseline.sql"
     ).read_text(encoding="utf-8")
     start = mig.index("CREATE POLICY topology_graph_tenant_isolation")
     body = mig[start : mig.index(";", start)]
@@ -436,7 +436,7 @@ def test_object_kinds_are_all_populated() -> None:
     from check_schema_drift import expected_objects
 
     objs = expected_objects()
-    for kind, floor in (("index", 100), ("trigger", 3), ("function", 3), ("constraint", 10)):
+    for kind, floor in (("index", 45), ("trigger", 3), ("function", 3), ("constraint", 10)):
         assert len(objs[kind]) >= floor, (
             f"{kind} parsed {len(objs[kind])} from schema.sql, below the floor of {floor} — "
             "the pattern probably stopped matching"
@@ -601,6 +601,6 @@ def test_expected_column_nullability_against_the_real_schema_file() -> None:
     elsewhere in this suite -- confirms three concrete, already-verified
     facts rather than only synthetic SQL strings."""
     result = expected_column_nullability()
-    assert result["system_design_node_state"]["status"] is True
-    assert result["system_design_node_state"]["node_type"] is False
-    assert result["sales_contacts"]["name"] is True
+    assert result["memories"]["metadata"] is False
+    assert result["memories"]["wrapped_dek"] is True
+    assert result["namespaces"]["parent_id"] is True

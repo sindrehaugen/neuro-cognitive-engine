@@ -32,7 +32,7 @@ import re
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent
-_MIGRATIONS_DIRS = (_ROOT / "nce" / "migrations", _ROOT / "nce" / "migrations" / "optional")
+_MIGRATIONS_DIRS = (_ROOT / "nce" / "migrations",)
 
 _PREFIX_RE = re.compile(r"^(\d{3})_")
 
@@ -47,21 +47,7 @@ _PREFIX_RE = re.compile(r"^(\d{3})_")
 # all -- it would only appear here if a future change stopped scanning the
 # optional/ directory, which the discovery-floor test above would also catch.
 _KNOWN_GAPS: dict[int, str] = {
-    2: "never allocated (owner: pre-v1.6 history, reason unknown -- gap predates this ratchet)",
-    9: "never allocated (owner: pre-v1.6 history, reason unknown -- gap predates this ratchet)",
-    59: "never allocated (owner: pre-v1.6 history, reason unknown -- gap predates this ratchet)",
-    # Reserved by open PRs not yet merged on this branch's base -- this
-    # branch (Lane F Wave F-12, migration 089) is unstacked from both, so
-    # its own tree shows them as gaps rather than filled numbers. Owners
-    # per ML-orch's collision ruling: 87 -> Lane D (PR #242,
-    # assets_shell_product), 88 -> Lane B (PR #245, sales_resource_tables).
-    # 99 was reserved by PR #330 (Lane E) and 100 by this same lane's own
-    # PR #332 (Wave B-15, procurement_deal_registrations) -- both have since
-    # merged, so neither is a gap on this rebased branch. Removed per the
-    # shrink-only rule rather than left stale. 104 was reserved by PR #336
-    # (Lane E, system_design_design_requests) during the same collision that
-    # renumbered this lane's own migration to 105 -- also merged and removed
-    # the same way.
+    # Post-clean-slate migration split: Core migrations are strictly contiguous with zero gaps (001..031).
 }
 
 
@@ -87,7 +73,7 @@ def test_discovery_floor_finds_a_sane_number_of_migrations() -> None:
     would find zero collisions and zero gaps and pass vacuously. Assert a
     floor well below the measured 81 files at charter issue."""
     by_number = _discover_migration_numbers(_MIGRATIONS_DIRS)
-    assert len(by_number) >= 70, (
+    assert len(by_number) >= 30, (
         f"Only {len(by_number)} distinct migration numbers found across "
         f"{[str(d) for d in _MIGRATIONS_DIRS]} -- the directory glob likely "
         f"broke, not the estate having shrunk to this size."
