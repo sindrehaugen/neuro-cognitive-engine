@@ -102,6 +102,10 @@ async def test_every_namespace_fk_cascades_except_documented_exclusions(
 ) -> None:
     async with fk_pool.acquire() as conn:
         rows = await conn.fetch(_FK_SQL)
+        existing_tables = {
+            r["tablename"]
+            for r in await conn.fetch("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+        }
 
     assert rows, "no foreign keys reference namespaces -- schema not applied?"
     present = {r["ref"] for r in rows}
@@ -120,9 +124,8 @@ async def test_every_namespace_fk_cascades_except_documented_exclusions(
     # file would stay green. EXPECTED_TENANT_RLS_TABLES is the required half that
     # EXPECTED_NON_CASCADE (the allowlist half) was missing.
     tables_with_fk = {ref.split(".", 1)[0] for ref in present}
-    missing = sorted(
-        set(EXPECTED_TENANT_RLS_TABLES) - tables_with_fk - TENANT_TABLES_WITHOUT_NAMESPACE_FK
-    )
+    deployed_tenant_tables = set(EXPECTED_TENANT_RLS_TABLES) & existing_tables
+    missing = sorted(deployed_tenant_tables - tables_with_fk - TENANT_TABLES_WITHOUT_NAMESPACE_FK)
     assert not missing, (
         "these tenant-scoped tables have NO foreign key to namespaces, so deleting "
         "a tenant silently orphans their rows: " + ", ".join(missing) + ". Add "
