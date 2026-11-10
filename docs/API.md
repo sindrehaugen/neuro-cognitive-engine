@@ -11,7 +11,9 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | Method | Path | Handler |
 |---|---|---|
 | GET | `/` | `serve_index` |
-| GET | `/admin/plugins` | `api_admin_plugins` |
+| GET | `/admin/plugins` | `admin_plugins_console` |
+| GET | `/admin/plugins/api` | `admin_plugins_api` |
+| POST | `/admin/plugins/api/toggle` | `admin_plugins_toggle` |
 | GET | `/api/a2a/grants` | `api_a2a_list_grants` |
 | POST | `/api/a2a/grants/create` | `api_a2a_create_grant` |
 | POST | `/api/a2a/grants/{grant_id}/revoke` | `api_a2a_revoke_grant` |
@@ -61,7 +63,8 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/admin/namespaces/{namespace_id}/signing-credentials` | `api_admin_signing_credentials_save` |
 | DELETE | `/api/admin/namespaces/{namespace_id}/signing-credentials/{provider}` | `api_admin_signing_credentials_delete` |
 | GET | `/api/admin/pii-redactions` | `api_admin_pii_redactions_list` |
-| GET | `/api/admin/plugins` | `api_admin_plugins` |
+| GET | `/api/admin/plugins` | `admin_plugins_api` |
+| POST | `/api/admin/plugins/toggle` | `admin_plugins_toggle` |
 | POST | `/api/admin/pricing/resolve` | `api_pricing_resolve` |
 | GET | `/api/admin/quotas` | `api_admin_quotas` |
 | GET | `/api/admin/quotas/summary` | `api_admin_quotas_summary` |
@@ -181,4 +184,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `validate_migration` |  |  |  | yes |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 93 REST endpoints, 70 MCP tools._
+_Totals: 96 REST endpoints, 70 MCP tools._

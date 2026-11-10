@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from contextlib import asynccontextmanager
+from typing import Any
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -15,6 +16,11 @@ from nce import admin_http_handlers as h
 from nce import admin_state
 from nce.admin_handlers import entity_resolution as entity_resolution_handlers
 from nce.admin_handlers import pricing as pricing_handlers
+from nce.admin_plugins import (
+    admin_plugins_api,
+    admin_plugins_console,
+    admin_plugins_toggle,
+)
 from nce.auth import (
     AdminHTTPRateLimitMiddleware,
     BasicAuthMiddleware,
@@ -169,7 +175,21 @@ def build_admin_middleware() -> list[Middleware]:
     ]
 
 
-def build_admin_routes() -> list[Route]:
+def _bind(handler: Any, ctx: Any = None) -> Any:
+    """Bind an admin handler to context or request."""
+
+    async def _endpoint(request: Any) -> Any:
+        try:
+            return await handler(request, ctx)
+        except TypeError:
+            return await handler(request)
+
+    _endpoint.__name__ = getattr(handler, "__name__", "_endpoint")
+    _endpoint.__doc__ = getattr(handler, "__doc__", None)
+    return _endpoint
+
+
+def build_admin_routes(ctx: Any = None) -> list[Route]:
     routes: list[Route] = [
         Route("/healthz", endpoint=get_healthz, methods=["GET"]),
         Route("/", endpoint=h.serve_index),
@@ -211,8 +231,11 @@ def build_admin_routes() -> list[Route]:
             endpoint=h.api_admin_tools_toggle,
             methods=["POST"],
         ),
-        Route("/api/admin/plugins", endpoint=h.api_admin_plugins, methods=["GET"]),
-        Route("/admin/plugins", endpoint=h.api_admin_plugins, methods=["GET"]),
+        Route("/admin/plugins", _bind(admin_plugins_console, ctx), methods=["GET"]),
+        Route("/admin/plugins/api", _bind(admin_plugins_api, ctx), methods=["GET"]),
+        Route("/admin/plugins/api/toggle", _bind(admin_plugins_toggle, ctx), methods=["POST"]),
+        Route("/api/admin/plugins", _bind(admin_plugins_api, ctx), methods=["GET"]),
+        Route("/api/admin/plugins/toggle", _bind(admin_plugins_toggle, ctx), methods=["POST"]),
         Route("/api/admin/source-mode", endpoint=h.api_source_mode_get, methods=["GET"]),
         Route("/api/admin/source-mode", endpoint=h.api_source_mode_put, methods=["PUT"]),
         Route("/api/admin/a2a/grants", endpoint=h.api_admin_a2a_grants, methods=["GET"]),
