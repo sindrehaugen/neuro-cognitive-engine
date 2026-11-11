@@ -6,7 +6,7 @@ import asyncio
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -91,7 +91,7 @@ async def test_hybrid_rrf_ranks_exact_sku_orgnr_ip_first_under_noisy_vectors(
     id_noisy_1 = uuid.uuid4()
     id_noisy_2 = uuid.uuid4()
     id_exact = uuid.uuid4()
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
 
     rrf_rows = [
         {
@@ -232,7 +232,7 @@ async def test_hybrid_rrf_ranks_exact_sku_orgnr_ip_first_under_noisy_vectors(
 @pytest.mark.asyncio
 async def test_compile_working_memory_token_budget_cycle_guard_and_as_of() -> None:
     ns_id = uuid.uuid4()
-    cutoff = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
+    cutoff = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
     captured_sql_calls: list[tuple[str, tuple[Any, ...]]] = []
 
     async def _fetch(sql: str, *args: Any) -> list[dict[str, Any]]:

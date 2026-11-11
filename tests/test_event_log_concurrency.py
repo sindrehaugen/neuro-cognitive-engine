@@ -7,7 +7,7 @@ import json
 import os
 import uuid
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import patch
 
@@ -125,7 +125,7 @@ class _SimulatedAsyncpgConn:
     async def fetchval(self, sql: str, *args: Any) -> Any:
         await asyncio.sleep(0)
         if "clock_timestamp()" in sql:
-            return datetime.now(UTC)
+            return datetime.now(timezone.utc)
         if "SELECT seq FROM event_sequences" in sql:
             ns_id = args[0]
             return self._db.sequences.get(ns_id)
