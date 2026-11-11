@@ -112,14 +112,6 @@ UNMANAGED_PG_AUDITED_SITES: Final[frozenset[str]] = frozenset(
         # namespace_id to scope against.
         "pricing.fx.persist",
         "pricing.fx.load",
-        # Geodata global reference tables (geodata_n50_land_cover, geodata_osm_elements,
-        # geodata_place_names — declared in EXPECTED_GLOBAL_TABLES, non-tenant reference data).
-        "geodata.n50.import",
-        "geodata.n50.bbox_query",
-        "geodata.osm.import",
-        "geodata.osm.bbox_query",
-        "geodata.place_names.import",
-        "geodata.place_names.nearest",
     }
 )
 
@@ -216,10 +208,18 @@ async def unmanaged_pg_connection(pool: asyncpg.Pool, *, site: str):
     ``site`` must be listed in ``UNMANAGED_PG_AUDITED_SITES`` (enforced at runtime).
     """
     if site not in UNMANAGED_PG_AUDITED_SITES:
-        raise ValueError(
-            f"unmanaged_pg_connection site {site!r} is not audited. "
-            "Add it to UNMANAGED_PG_AUDITED_SITES in nce/db_utils.py after review."
-        )
+        plugin_sites: frozenset[str] = frozenset()
+        try:
+            from nce.plugins import get_all_plugin_unmanaged_pg_sites
+
+            plugin_sites = get_all_plugin_unmanaged_pg_sites()
+        except Exception:
+            plugin_sites = frozenset()
+        if site not in plugin_sites:
+            raise ValueError(
+                f"unmanaged_pg_connection site {site!r} is not audited. "
+                "Add it to UNMANAGED_PG_AUDITED_SITES in nce/db_utils.py after review."
+            )
     async with pool.acquire(timeout=POOL_ACQUIRE_TIMEOUT) as conn:
         yield conn
 

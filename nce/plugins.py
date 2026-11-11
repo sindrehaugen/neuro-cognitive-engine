@@ -205,6 +205,23 @@ def get_all_plugin_tenant_rls_tables() -> dict[str, str]:
     return tables
 
 
+def get_all_plugin_unmanaged_pg_sites() -> frozenset[str]:
+    """Collect audited global/non-tenant unmanaged PG call-site IDs declared by plugins."""
+    sites: set[str] = set()
+    for plugin_id, plugin in load_plugins().items():
+        getter = getattr(plugin, "get_unmanaged_pg_sites", None)
+        if callable(getter):
+            try:
+                declared = getter()
+                if isinstance(declared, (set, frozenset, list, tuple)):
+                    for item in declared:
+                        if isinstance(item, str) and item.strip():
+                            sites.add(item.strip())
+            except Exception as exc:
+                log.exception("Error reading unmanaged PG sites from plugin %s: %s", plugin_id, exc)
+    return frozenset(sites)
+
+
 def _normalize_filter_tokens(raw: str | None) -> set[str]:
     if not raw:
         return set()
