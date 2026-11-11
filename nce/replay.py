@@ -204,17 +204,7 @@ async def _create_run(
     # Mark target namespace as replay sandbox when column exists
     try:
         await conn.execute(
-            """
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'namespaces' AND column_name = 'is_replay_sandbox'
-                ) THEN
-                    UPDATE namespaces SET is_replay_sandbox = TRUE WHERE id = $1;
-                END IF;
-            END $$;
-            """,
+            "UPDATE namespaces SET is_replay_sandbox = TRUE WHERE id = $1",
             target_namespace_id,
         )
     except Exception as exc:

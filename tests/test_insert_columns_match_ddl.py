@@ -886,4 +886,8 @@ def test_constraint_bodies_do_not_leak_columns() -> None:
         "parent_id",
         "metadata",
         "created_at",
+        "embedding_provider",
+        "embedding_model",
+        "embedding_dim",
+        "is_replay_sandbox",
     }, f"constraint body leaked into the column set: {sorted(columns)}"

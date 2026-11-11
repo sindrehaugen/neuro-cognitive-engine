@@ -172,6 +172,15 @@ UNWRAPPED_BYTEA_COLUMNS: tuple[UnwrappedByteaColumn, ...] = (
         column="response_hash",
         reason="Idempotency response hash. Derived, not encrypted.",
     ),
+    UnwrappedByteaColumn(
+        table="encryption_deks",
+        column="wrapped_key",
+        reason=(
+            "DEK wrapped under the versioned KMS/HKDF KEK ring (nce.crypto.envelope.KEKRing, "
+            "tracked via encryption_deks.kek_version and rotated via KEKRing.rewrap_dek), "
+            "not nce.signing.encrypt_signing_key."
+        ),
+    ),
 )
 
 

@@ -1417,13 +1417,12 @@ class HMACAuthMiddleware(BaseHTTPMiddleware):
         if self._nonce_store is None:
             if is_prod:
                 log.error(
-                    "HMAC nonce required in production but NonceStore is not configured — rejecting (prod fail-closed 503)"
+                    "HMAC nonce required in production but NonceStore is not configured — rejecting (prod fail-closed)"
                 )
-                return jsonrpc_error_response(
+                return _jsonrpc_error(
                     _CODE_REPLAY,
                     "NonceStore required in production",
                     "nonce_store_unavailable",
-                    status_code=503,
                 )
             if not self._nonce_required:
                 return None
