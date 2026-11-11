@@ -147,28 +147,6 @@ async def test_a_to_b_dispatch_fires_handler_exactly_once(
     # a prior failed run) so the relay drain sees exactly the one row we publish.
     await _pre_clean_outbox(pg_pool, event_type)
 
-    # --- Step 1: Producer A publishes the event ---
-    async with pg_pool.acquire(timeout=10.0) as conn:
-        async with conn.transaction():
-            await publish(
-                conn,
-                namespace_id=namespace_id,
-                node_type=node_type,
-                op=op,
-                aggregate_id=aggregate_id,
-                payload={"node_type": node_type, "op": op, "id": aggregate_id},
-            )
-
-    # Retrieve the outbox row id so we can check processed_outbox_events later.
-    async with pg_pool.acquire(timeout=10.0) as conn:
-        outbox_id: uuid.UUID = await conn.fetchval(
-            "SELECT id FROM outbox_events WHERE aggregate_id = $1 AND namespace_id = $2",
-            aggregate_id,
-            namespace_id,
-        )
-    assert outbox_id is not None, "publish() must insert a row into outbox_events"
-
-    # --- Step 2: Subscriber B registers an idempotent handler ---
     call_count = 0
 
     async def _b_handler(
@@ -181,10 +159,34 @@ async def test_a_to_b_dispatch_fires_handler_exactly_once(
 
     snapshot = _save_and_clear_handlers()
     try:
+        # --- Step 1: Subscriber B registers an unwrapped handler ---
+        # Wave R-14 drops unconsumed events in publish() unless a subscriber or
+        # matching webhook is registered at publish time.
         # Registered UNWRAPPED: deliver_one inserts the dedup row before calling
         # the handler, so a make_idempotent_handler wrapper here would observe its
         # own row and skip the business logic entirely.
         subscribe({"node_type": node_type, "op": op}, _b_handler)
+
+        # --- Step 2: Producer A publishes the event ---
+        async with pg_pool.acquire(timeout=10.0) as conn:
+            async with conn.transaction():
+                await publish(
+                    conn,
+                    namespace_id=namespace_id,
+                    node_type=node_type,
+                    op=op,
+                    aggregate_id=aggregate_id,
+                    payload={"node_type": node_type, "op": op, "id": aggregate_id},
+                )
+
+        # Retrieve the outbox row id so we can check processed_outbox_events later.
+        async with pg_pool.acquire(timeout=10.0) as conn:
+            outbox_id: uuid.UUID = await conn.fetchval(
+                "SELECT id FROM outbox_events WHERE aggregate_id = $1 AND namespace_id = $2",
+                aggregate_id,
+                namespace_id,
+            )
+        assert outbox_id is not None, "publish() must insert a row into outbox_events"
 
         # --- Step 3: dispatch_once drains the outbox ---
         # OUTBOX_HANDLERS contains ONLY our test's handler (snapshot cleared it).
@@ -333,34 +335,6 @@ async def test_cert_expiry_fires_allocation_invalidation_without_polling(
     # relay drain only sees the one row we publish below.
     await _pre_clean_outbox(pg_pool, event_type)
 
-    # --- Step 1: HR engine (A) publishes cert-expiry event ---
-    async with pg_pool.acquire(timeout=10.0) as conn:
-        async with conn.transaction():
-            await publish(
-                conn,
-                namespace_id=namespace_id,
-                node_type=node_type,
-                op=op,
-                aggregate_id=cert_aggregate_id,
-                payload={
-                    "node_type": node_type,
-                    "op": op,
-                    "id": cert_aggregate_id,
-                    "namespace": str(namespace_id),
-                    "reason": "cert_expiry",
-                },
-            )
-
-    # Retrieve the outbox row id.
-    async with pg_pool.acquire(timeout=10.0) as conn:
-        outbox_id: uuid.UUID = await conn.fetchval(
-            "SELECT id FROM outbox_events WHERE aggregate_id = $1 AND namespace_id = $2",
-            cert_aggregate_id,
-            namespace_id,
-        )
-    assert outbox_id is not None, "HR cert-expiry event must be inserted into outbox_events"
-
-    # --- Step 2: Resources engine (B) registers handler ---
     async def _invalidate_allocations(
         conn: asyncpg.Connection,
         event: dict[str, Any],
@@ -386,8 +360,36 @@ async def test_cert_expiry_fires_allocation_invalidation_without_polling(
 
     snapshot = _save_and_clear_handlers()
     try:
-        # Registered UNWRAPPED — see the note in test 1.
+        # --- Step 1: Resources engine (B) registers handler ---
+        # Registered UNWRAPPED before publish() per Wave R-14 — see note in test 1.
         subscribe({"node_type": node_type, "op": op}, _invalidate_allocations)
+
+        # --- Step 2: HR engine (A) publishes cert-expiry event ---
+        async with pg_pool.acquire(timeout=10.0) as conn:
+            async with conn.transaction():
+                await publish(
+                    conn,
+                    namespace_id=namespace_id,
+                    node_type=node_type,
+                    op=op,
+                    aggregate_id=cert_aggregate_id,
+                    payload={
+                        "node_type": node_type,
+                        "op": op,
+                        "id": cert_aggregate_id,
+                        "namespace": str(namespace_id),
+                        "reason": "cert_expiry",
+                    },
+                )
+
+        # Retrieve the outbox row id.
+        async with pg_pool.acquire(timeout=10.0) as conn:
+            outbox_id: uuid.UUID = await conn.fetchval(
+                "SELECT id FROM outbox_events WHERE aggregate_id = $1 AND namespace_id = $2",
+                cert_aggregate_id,
+                namespace_id,
+            )
+        assert outbox_id is not None, "HR cert-expiry event must be inserted into outbox_events"
 
         # --- Step 3: dispatch_once drains without any polling loop ---
         delivered = await dispatch_once(pg_pool)

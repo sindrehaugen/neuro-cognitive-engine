@@ -1,0 +1,4 @@
+# Optional pre-built NCE plugin wheels installed at image build time by deploy/multiuser/Dockerfile.
+# Keep this directory tracked, ignore staged .whl artifacts.
+*
+!.gitignore

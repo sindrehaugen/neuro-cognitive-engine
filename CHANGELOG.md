@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.4.1] - 2026-11-11
+
+### Fixed
+- **Streamable HTTP `/mcp` Gateway Lifespan & Multi-Worker Sessions:** Wired ASGI lifespan connection management (`engine.connect()` / `disconnect()`) in `mcp_gateway_server.py`, added Redis-backed multi-worker session synchronization and `DELETE /mcp` cross-worker session eviction in `nce/mcp_http_gateway.py`, and broadened progressive `nce_discover_tools` discovery across third-party plugin tools.
+- **Admin Plugins REST Auth Routing:** Excluded `/admin/plugins/api` from browser-only `BasicAuthMiddleware` interception in `nce/admin_app.py` and read request bodies prior to HMAC verification in `nce/admin_plugins.py` so `GET /admin/plugins/api` and `POST /admin/plugins/api/mint-token` authenticate cleanly via `X-Admin-Api-Key` or HMAC-SHA256 while remaining default-deny.
+- **Dynamic Plugin Tenant RLS Catalog Verification:** Added vendor-neutral `get_all_plugin_tenant_rls_tables()` discovery in `nce/plugins.py` and wired runtime preflight checks (`nce/event_log.py`, `nce/orchestrator.py`, `nce/resource_surface/spec.py`) so installed plugin RLS tables pass strict catalog consistency verification without mutating Core's static `EXPECTED_TENANT_RLS_TABLES`.
+- **Docker Compose TLS & Image Hardening:** Switched Compose MinIO services to `alpine/minio:RELEASE.2025-10-15T17-29-55Z` with explicit privilege drop (`minio:minio`), added explicit `localhost` / `127.0.0.1` SANs with `auto_https disable_redirects` in `Caddyfile`, included `mcp_gateway_server.py` and optional offline plugin wheelhouse installation in `deploy/multiuser/Dockerfile`, and aligned `verify_v1_launch.py` with non-blocking health degradation semantics.
+
+---
+
 ## [3.4.0] - 2026-11-11
 
 ### Added

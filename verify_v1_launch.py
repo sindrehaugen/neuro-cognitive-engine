@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NCE v3.4.0 launch verification.
+NCE v3.4.1 launch verification.
 
 Checks (in order):
   1. Admin REST ``GET /api/health`` — Postgres, Mongo, Redis up (HMAC auth).
@@ -97,10 +97,24 @@ async def _step_health(client: httpx.AsyncClient, api_key: str) -> None:
         _fail("Admin /api/health/v1", f"HTTP {r.status_code}: {body}")
     data = r.json()
 
-    if data.get("status") != "ok":
+    status = data.get("status")
+    degraded_reasons = data.get("degraded_reasons") or []
+    blocking_reasons = [
+        item
+        for item in degraded_reasons
+        if not isinstance(item, dict) or item.get("blocking", True)
+    ]
+    if status == "ok":
+        pass
+    elif status == "degraded" and degraded_reasons and not blocking_reasons:
+        non_blocking_names = ", ".join(str(item.get("reason")) for item in degraded_reasons)
+        print(
+            f"[WARN] Admin /api/health/v1 reported non-blocking posture advisory: {non_blocking_names}"
+        )
+    else:
         _fail(
             "Admin /api/health/v1",
-            f"Status is {data.get('status')!r} — Full report: {json.dumps(data)}",
+            f"Status is {status!r} — Full report: {json.dumps(data)}",
         )
 
     # Specific database checks
@@ -300,7 +314,7 @@ async def _async_main(admin_base: str, a2a_base: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="NCE v3.4.0 launch verification")
+    parser = argparse.ArgumentParser(description="NCE v3.4.1 launch verification")
     parser.add_argument(
         "--admin-url",
         default=os.environ.get(
@@ -317,7 +331,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    print("=== NCE v3.4.0 Launch Verification ===")
+    print("=== NCE v3.4.1 Launch Verification ===")
     print()
 
     try:

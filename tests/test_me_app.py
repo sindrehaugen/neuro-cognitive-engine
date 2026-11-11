@@ -800,11 +800,17 @@ class TestMeAppIntegration:
         await privileged_engine.connect()
 
         try:
-            # Create a clean namespace and seed an active embedding model if not exists
+            # Create a clean namespace with PII policy 'flag' so raw subject PII
+            # is envelope-encrypted intact and verified across DSAR export + erase.
             ns_slug = f"test-ns-dsar-{int(time.time())}"
             async with pg_pool.acquire() as conn:
                 res = await conn.fetchrow(
-                    "INSERT INTO namespaces (slug) VALUES ($1) RETURNING id", ns_slug
+                    """
+                    INSERT INTO namespaces (slug, metadata)
+                    VALUES ($1, '{"pii": {"policy": "flag"}}'::jsonb)
+                    RETURNING id
+                    """,
+                    ns_slug,
                 )
                 ns_id = res["id"]
 

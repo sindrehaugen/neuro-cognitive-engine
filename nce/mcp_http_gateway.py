@@ -62,6 +62,9 @@ _IN_MEMORY_MCP_CLIENT_TOKENS: dict[str, dict[str, Any]] = {}
 # Active gateway sessions keyed by session_id
 _GATEWAY_SESSIONS: dict[str, MCPGatewaySession] = {}
 
+# Shared Redis hash key for multi-worker session synchronization
+_REDIS_MCP_SESSIONS_KEY = "nce:mcp:sessions"
+
 # Cached tools/list definition fragments keyed by (exposure_mode, allowed_engines, expanded_tools, count)
 _TOOLS_LIST_CACHE: dict[
     tuple[str, tuple[str, ...], tuple[str, ...], int],
@@ -419,16 +422,105 @@ async def _enqueue_session_event(session: MCPGatewaySession, event_data: dict[st
         pass
 
 
+def _all_gateway_tools() -> list[dict[str, Any]]:
+    """Return canonical tool metadata dicts across Core + all registered plugins."""
+    from nce.mcp_stdio_tools import TOOLS
+    from nce.plugins import load_plugins
+    from nce.tool_registry import TOOL_REGISTRY
+
+    result: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for tool in TOOLS:
+        result.append(
+            {
+                "name": tool.name,
+                "description": tool.description or "",
+                "inputSchema": tool.inputSchema,
+            }
+        )
+        seen.add(tool.name)
+
+    plugin_defs: dict[str, dict[str, Any]] = {}
+    try:
+        for _pid, plugin in load_plugins().items():
+            getter = getattr(plugin, "get_mcp_tool_definitions", None)
+            defs = getter() if callable(getter) else None
+            if defs is None:
+                mod_name = type(plugin).__module__
+                pkg_root = mod_name.split(".")[0] if mod_name else ""
+                if pkg_root:
+                    try:
+                        import importlib
+
+                        tmod = importlib.import_module(f"{pkg_root}.tools")
+                        defs = getattr(tmod, "MCP_TOOL_DEFINITIONS", None)
+                    except Exception:
+                        defs = None
+            if isinstance(defs, list):
+                for d in defs:
+                    if isinstance(d, dict) and d.get("name"):
+                        plugin_defs[str(d["name"])] = d
+    except Exception:
+        pass
+
+    for name, spec in TOOL_REGISTRY.items():
+        if name in seen:
+            continue
+        pdef = plugin_defs.get(name)
+        if pdef is not None:
+            result.append(
+                {
+                    "name": name,
+                    "description": str(pdef.get("description") or ""),
+                    "inputSchema": pdef.get("inputSchema") or {"type": "object"},
+                }
+            )
+        else:
+            doc = getattr(spec.handler, "__doc__", None) or f"Registered plugin tool {name}"
+            result.append(
+                {
+                    "name": name,
+                    "description": str(doc).strip(),
+                    "inputSchema": {"type": "object"},
+                }
+            )
+        seen.add(name)
+
+    return result
+
+
+async def _persist_session_redis(redis_client: Any, session: MCPGatewaySession) -> None:
+    if redis_client is None:
+        return
+    try:
+        payload = json.dumps(
+            {
+                "session_id": session.session_id,
+                "namespace_id": session.namespace_id,
+                "principal_id": session.principal_id,
+                "scopes": session.scopes,
+                "allowed_engines": session.allowed_engines,
+                "tool_exposure_mode": session.tool_exposure_mode,
+                "expanded_tools": sorted(session.expanded_tools),
+                "rate_limit_rpm": session.rate_limit_rpm,
+            }
+        )
+        await redis_client.hset(_REDIS_MCP_SESSIONS_KEY, session.session_id, payload)
+    except Exception:
+        pass
+
+
 async def discover_tools_handler(
     session: MCPGatewaySession,
     arguments: dict[str, Any],
+    *,
+    redis_client: Any = None,
 ) -> dict[str, Any]:
     """Handler for discover_tools meta-tool."""
     query = str(arguments.get("query") or "").strip().lower()
     type_filter = arguments.get("type_filter")
     category_filter = arguments.get("category_filter")
 
-    from nce.mcp_stdio_tools import TOOLS
     from nce.plugins import list_plugin_engine_descriptors
     from nce.tool_registry import TOOL_REGISTRY, infer_tool_engine
 
@@ -440,8 +532,11 @@ async def discover_tools_handler(
 
     matched_tools: list[dict[str, Any]] = []
 
-    for tool in TOOLS:
-        spec = TOOL_REGISTRY.get(tool.name)
+    for tool_dict in _all_gateway_tools():
+        t_name = tool_dict["name"]
+        t_desc = tool_dict["description"]
+        t_schema = tool_dict["inputSchema"]
+        spec = TOOL_REGISTRY.get(t_name)
         tool_engine = infer_tool_engine(spec) if spec else None
 
         if not is_engine_allowed_for_session(tool_engine, session.allowed_engines, descriptors):
@@ -460,8 +555,8 @@ async def discover_tools_handler(
                 continue
 
         if query:
-            name_match = query in tool.name.lower()
-            desc_match = query in (tool.description or "").lower()
+            name_match = query in t_name.lower()
+            desc_match = query in (t_desc or "").lower()
             eng_match = (query in tool_engine.lower()) if tool_engine else False
             eng_desc_match = (
                 (
@@ -474,14 +569,16 @@ async def discover_tools_handler(
             if not (name_match or desc_match or eng_match or eng_desc_match):
                 continue
 
-        session.expanded_tools.add(tool.name)
+        session.expanded_tools.add(t_name)
         matched_tools.append(
             {
-                "name": tool.name,
-                "description": tool.description,
-                "inputSchema": tool.inputSchema,
+                "name": t_name,
+                "description": t_desc,
+                "inputSchema": t_schema,
             }
         )
+
+    await _persist_session_redis(redis_client, session)
 
     notification = {
         "jsonrpc": "2.0",
@@ -508,7 +605,7 @@ def _check_session_rate_limit(session: MCPGatewaySession) -> bool:
     return True
 
 
-def create_mcp_gateway_app(engine: Any = None) -> Starlette:
+def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlette:
     """Construct and configure the Starlette ASGI application for the /mcp gateway."""
 
     async def healthz_endpoint(request: Request) -> JSONResponse:
@@ -516,7 +613,7 @@ def create_mcp_gateway_app(engine: Any = None) -> Starlette:
             {
                 "status": "ok",
                 "service": "mcp-gateway",
-                "version": "3.3.0",
+                "version": "3.4.1",
             }
         )
 
@@ -525,6 +622,40 @@ def create_mcp_gateway_app(engine: Any = None) -> Starlette:
     ) -> tuple[MCPGatewaySession | None, JSONResponse | None]:
         session_id = request.headers.get("mcp-session-id") or request.query_params.get("session_id")
         auth_header = request.headers.get("authorization", "")
+        redis_client = getattr(engine, "redis_client", None) if engine else None
+
+        if session_id and redis_client is not None:
+            try:
+                raw_redis_sess = await redis_client.hget(_REDIS_MCP_SESSIONS_KEY, session_id)
+                if raw_redis_sess is None:
+                    # Evict if revoked on another worker process
+                    _GATEWAY_SESSIONS.pop(session_id, None)
+                else:
+                    s_data = json.loads(
+                        raw_redis_sess.decode("utf-8")
+                        if isinstance(raw_redis_sess, bytes)
+                        else str(raw_redis_sess)
+                    )
+                    if session_id not in _GATEWAY_SESSIONS:
+                        _GATEWAY_SESSIONS[session_id] = MCPGatewaySession(
+                            session_id=session_id,
+                            namespace_id=str(s_data["namespace_id"]),
+                            principal_id=str(s_data["principal_id"]),
+                            scopes=list(s_data.get("scopes", ["tools:read", "tools:call"])),
+                            allowed_engines=list(s_data.get("allowed_engines", ["*"])),
+                            tool_exposure_mode=str(s_data.get("tool_exposure_mode", "compact")),
+                            expanded_tools=set(s_data.get("expanded_tools", [])),
+                            rate_limit_rpm=int(s_data.get("rate_limit_rpm", 120)),
+                            event_queue=asyncio.Queue(maxsize=256),
+                            last_event_id=0,
+                        )
+                    else:
+                        _GATEWAY_SESSIONS[session_id].expanded_tools.update(
+                            s_data.get("expanded_tools", [])
+                        )
+            except Exception:
+                pass
+
         if session_id and session_id in _GATEWAY_SESSIONS:
             session = _GATEWAY_SESSIONS[session_id]
             if auth_header.lower().startswith("bearer "):
@@ -581,6 +712,7 @@ def create_mcp_gateway_app(engine: Any = None) -> Starlette:
             last_event_id=0,
         )
         _GATEWAY_SESSIONS[new_session_id] = session
+        await _persist_session_redis(redis_client, session)
 
         if not _check_session_rate_limit(session):
             return None, JSONResponse(
@@ -616,7 +748,7 @@ def create_mcp_gateway_app(engine: Any = None) -> Starlette:
                     },
                     "serverInfo": {
                         "name": "nce-memory-gateway",
-                        "version": "3.3.0",
+                        "version": "3.4.1",
                     },
                 },
             }
@@ -628,15 +760,15 @@ def create_mcp_gateway_app(engine: Any = None) -> Starlette:
             return {"jsonrpc": "2.0", "id": req_id, "result": {}}
 
         if method == "tools/list":
-            from nce.mcp_stdio_tools import TOOLS
             from nce.plugins import list_plugin_engine_descriptors
             from nce.tool_registry import TOOL_REGISTRY, infer_tool_engine
 
+            all_tools = _all_gateway_tools()
             cache_key = (
                 session.tool_exposure_mode,
                 tuple(sorted(session.allowed_engines)),
                 tuple(sorted(session.expanded_tools)),
-                len(TOOLS),
+                len(all_tools),
             )
 
             if cache_key in _TOOLS_LIST_CACHE:
@@ -650,43 +782,27 @@ def create_mcp_gateway_app(engine: Any = None) -> Starlette:
                 exposed_tools = [DISCOVER_TOOLS_TOOL]
 
                 if session.tool_exposure_mode == "compact":
-                    for tool in TOOLS:
-                        spec = TOOL_REGISTRY.get(tool.name)
+                    for tool_dict in all_tools:
+                        t_name = tool_dict["name"]
+                        spec = TOOL_REGISTRY.get(t_name)
                         tool_engine = infer_tool_engine(spec) if spec else None
                         if tool_engine is None:
                             # Core memory tool
-                            exposed_tools.append(
-                                {
-                                    "name": tool.name,
-                                    "description": tool.description,
-                                    "inputSchema": tool.inputSchema,
-                                }
-                            )
-                        elif tool.name in session.expanded_tools:
+                            exposed_tools.append(tool_dict)
+                        elif t_name in session.expanded_tools:
                             if is_engine_allowed_for_session(
                                 tool_engine, session.allowed_engines, descriptors
                             ):
-                                exposed_tools.append(
-                                    {
-                                        "name": tool.name,
-                                        "description": tool.description,
-                                        "inputSchema": tool.inputSchema,
-                                    }
-                                )
+                                exposed_tools.append(tool_dict)
                 else:
-                    for tool in TOOLS:
-                        spec = TOOL_REGISTRY.get(tool.name)
+                    for tool_dict in all_tools:
+                        t_name = tool_dict["name"]
+                        spec = TOOL_REGISTRY.get(t_name)
                         tool_engine = infer_tool_engine(spec) if spec else None
                         if is_engine_allowed_for_session(
                             tool_engine, session.allowed_engines, descriptors
                         ):
-                            exposed_tools.append(
-                                {
-                                    "name": tool.name,
-                                    "description": tool.description,
-                                    "inputSchema": tool.inputSchema,
-                                }
-                            )
+                            exposed_tools.append(tool_dict)
 
                 _TOOLS_LIST_CACHE[cache_key] = exposed_tools
 
@@ -710,7 +826,8 @@ def create_mcp_gateway_app(engine: Any = None) -> Starlette:
                 }
 
             if tool_name == "discover_tools":
-                res = await discover_tools_handler(session, arguments)
+                redis_c = getattr(engine, "redis_client", None) if engine else None
+                res = await discover_tools_handler(session, arguments, redis_client=redis_c)
                 return {
                     "jsonrpc": "2.0",
                     "id": req_id,
@@ -1045,8 +1162,20 @@ def create_mcp_gateway_app(engine: Any = None) -> Starlette:
             return JSONResponse({"error": "Forbidden: invalid origin"}, status_code=403)
 
         session_id = request.headers.get("mcp-session-id") or request.query_params.get("session_id")
-        if session_id and session_id in _GATEWAY_SESSIONS:
-            del _GATEWAY_SESSIONS[session_id]
+        found = False
+        if session_id:
+            if session_id in _GATEWAY_SESSIONS:
+                del _GATEWAY_SESSIONS[session_id]
+                found = True
+            redis_c = getattr(engine, "redis_client", None) if engine else None
+            if redis_c is not None:
+                try:
+                    removed = await redis_c.hdel(_REDIS_MCP_SESSIONS_KEY, session_id)
+                    if removed:
+                        found = True
+                except Exception:
+                    pass
+        if found:
             return Response(status_code=204)
         return JSONResponse({"error": "Session not found"}, status_code=404)
 
@@ -1061,4 +1190,5 @@ def create_mcp_gateway_app(engine: Any = None) -> Starlette:
         debug=False,
         routes=routes,
         middleware=[Middleware(BoundedBodyMiddleware)],
+        lifespan=lifespan,
     )

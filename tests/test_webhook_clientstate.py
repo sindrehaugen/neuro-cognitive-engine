@@ -336,86 +336,98 @@ async def _seed_bridges(_patch_receiver_pool, make_namespace):
 
 
 @pytest.mark.integration
+@pytest.mark.asyncio
 @pytest.mark.usefixtures("_seed_bridges")
-def test_graph_real_db_per_bridge(client):
-    good = client.post(
-        "/webhooks/graph",
-        json={
-            "value": [
-                {
-                    "subscriptionId": SHAREPOINT_SUB_ID,
-                    "clientState": KNOWN_SHAREPOINT_STATE,
-                    "resource": "/sites/site-1/drives/drive-1/root",
-                    "changeType": "updated",
-                }
-            ]
-        },
-    )
-    assert good.status_code == 200
-    assert good.json()["status"] == "queued"
+async def test_graph_real_db_per_bridge():
+    import httpx
 
-    bad = client.post(
-        "/webhooks/graph",
-        json={
-            "value": [
-                {
-                    "subscriptionId": SHAREPOINT_SUB_ID,
-                    "clientState": "wrong",
-                    "resource": "/sites/site-1/drives/drive-1/root",
-                    "changeType": "updated",
-                }
-            ]
-        },
-    )
-    assert bad.status_code == 403
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=wh.app), base_url="http://test"
+    ) as async_client:
+        good = await async_client.post(
+            "/webhooks/graph",
+            json={
+                "value": [
+                    {
+                        "subscriptionId": SHAREPOINT_SUB_ID,
+                        "clientState": KNOWN_SHAREPOINT_STATE,
+                        "resource": "/sites/site-1/drives/drive-1/root",
+                        "changeType": "updated",
+                    }
+                ]
+            },
+        )
+        assert good.status_code == 200
+        assert good.json()["status"] == "queued"
 
-    unknown = client.post(
-        "/webhooks/graph",
-        json={
-            "value": [
-                {
-                    "subscriptionId": "missing-sub",
-                    "clientState": KNOWN_SHAREPOINT_STATE,
-                    "resource": "/sites/site-1/drives/drive-1/root",
-                    "changeType": "updated",
-                }
-            ]
-        },
-    )
-    assert unknown.status_code == 403
+        bad = await async_client.post(
+            "/webhooks/graph",
+            json={
+                "value": [
+                    {
+                        "subscriptionId": SHAREPOINT_SUB_ID,
+                        "clientState": "wrong",
+                        "resource": "/sites/site-1/drives/drive-1/root",
+                        "changeType": "updated",
+                    }
+                ]
+            },
+        )
+        assert bad.status_code == 403
+
+        unknown = await async_client.post(
+            "/webhooks/graph",
+            json={
+                "value": [
+                    {
+                        "subscriptionId": "missing-sub",
+                        "clientState": KNOWN_SHAREPOINT_STATE,
+                        "resource": "/sites/site-1/drives/drive-1/root",
+                        "changeType": "updated",
+                    }
+                ]
+            },
+        )
+        assert unknown.status_code == 403
 
 
 @pytest.mark.integration
+@pytest.mark.asyncio
 @pytest.mark.usefixtures("_seed_bridges")
-def test_drive_real_db_per_bridge(client):
-    good = client.post(
-        "/webhooks/drive",
-        headers={
-            "X-Goog-Channel-Token": KNOWN_DRIVE_TOKEN,
-            "X-Goog-Resource-State": "update",
-            "X-Goog-Channel-Id": DRIVE_CHANNEL_ID,
-            "X-Goog-Resource-Id": "res-1",
-        },
-    )
-    assert good.status_code == 200
-    assert good.json()["status"] == "queued"
+async def test_drive_real_db_per_bridge():
+    import httpx
 
-    bad = client.post(
-        "/webhooks/drive",
-        headers={
-            "X-Goog-Channel-Token": "wrong",
-            "X-Goog-Resource-State": "update",
-            "X-Goog-Channel-Id": DRIVE_CHANNEL_ID,
-        },
-    )
-    assert bad.status_code == 403
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=wh.app), base_url="http://test"
+    ) as async_client:
+        good = await async_client.post(
+            "/webhooks/drive",
+            headers={
+                "X-Goog-Channel-Token": KNOWN_DRIVE_TOKEN,
+                "X-Goog-Resource-State": "update",
+                "X-Goog-Channel-Id": DRIVE_CHANNEL_ID,
+                "X-Goog-Resource-Id": "res-1",
+            },
+        )
+        assert good.status_code == 200
+        assert good.json()["status"] == "queued"
 
-    unknown = client.post(
-        "/webhooks/drive",
-        headers={
-            "X-Goog-Channel-Token": KNOWN_DRIVE_TOKEN,
-            "X-Goog-Resource-State": "update",
-            "X-Goog-Channel-Id": "missing-channel",
-        },
-    )
-    assert unknown.status_code == 403
+        bad = await async_client.post(
+            "/webhooks/drive",
+            headers={
+                "X-Goog-Channel-Token": "wrong",
+                "X-Goog-Resource-State": "update",
+                "X-Goog-Channel-Id": DRIVE_CHANNEL_ID,
+            },
+        )
+        assert bad.status_code == 403
+
+        unknown = await async_client.post(
+            "/webhooks/drive",
+            headers={
+                "X-Goog-Channel-Token": KNOWN_DRIVE_TOKEN,
+                "X-Goog-Resource-State": "update",
+                "X-Goog-Channel-Id": "missing-channel",
+            },
+        )
+        assert unknown.status_code == 403

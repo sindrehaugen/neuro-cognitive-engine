@@ -439,6 +439,7 @@ async def admin_plugins_toggle(request: Request, ctx: Any = None) -> JSONRespons
 
     Dynamically enable or disable an engine runtime state in Redis.
     """
+    await request.body()
     auth_err = _check_admin_auth(request)
     if auth_err is not None:
         return auth_err
@@ -544,6 +545,7 @@ async def admin_plugins_mint_token(request: Request, ctx: Any = None) -> JSONRes
     Mint a scoped bearer token for Streamable HTTP /mcp gateway access and return
     zero-secret desktop/IDE mcp_config.json snippet.
     """
+    await request.body()
     auth_err = _check_admin_auth(request)
     if auth_err is not None:
         return auth_err

@@ -288,12 +288,13 @@ async def test_governed_pending_does_not_touch_db(
 
     idem_key = f"idem-pending-{uuid.uuid4().hex}"
 
-    result = await handler(
-        None,
-        namespace_id,
-        idempotency_key=idem_key,
-        confirm=False,
-    )
+    async with scoped_pg_session(pg_pool, namespace_id) as conn:
+        result = await handler(
+            conn,
+            namespace_id,
+            idempotency_key=idem_key,
+            confirm=False,
+        )
 
     assert result["status"] == "pending_approval"
 

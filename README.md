@@ -4,7 +4,7 @@
 > Persistent, multi-tenant, time-travelling memory across a four-database stack — with a brain on top.
 
 <p>
-  <img alt="version" src="https://img.shields.io/badge/version-3.4.0-blue">
+  <img alt="version" src="https://img.shields.io/badge/version-3.4.1-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.10%20--%203.12-3776ab">
   <img alt="protocol" src="https://img.shields.io/badge/MCP-JSON--RPC%202.0-6e40c9">
   <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-blue">
@@ -396,5 +396,5 @@ The [`docs/`](docs/) tree is the source of truth. Start here:
 
 ---
 
-<sub>NCE — Neuro-Cognitive Engine · v3.4.0 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.</sub>
+<sub>NCE — Neuro-Cognitive Engine · v3.4.1 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.</sub>
 

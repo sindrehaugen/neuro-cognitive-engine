@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import asynccontextmanager
+from typing import Any
 
 from nce import NCEEngine
 from nce.mcp_http_gateway import create_mcp_gateway_app
@@ -25,7 +27,21 @@ except Exception as exc:
     logger.warning("Initializing NCEEngine in lazy/stub mode: %s", exc)
     engine = None
 
-app = create_mcp_gateway_app(engine=engine)
+
+@asynccontextmanager
+async def _gateway_lifespan(_app: Any):
+    if engine is not None and getattr(engine, "pg_pool", None) is None:
+        await engine.connect()
+        logger.info("MCP Gateway connected NCEEngine.")
+    try:
+        yield
+    finally:
+        if engine is not None and getattr(engine, "pg_pool", None) is not None:
+            await engine.disconnect()
+            logger.info("MCP Gateway disconnected NCEEngine.")
+
+
+app = create_mcp_gateway_app(engine=engine, lifespan=_gateway_lifespan)
 
 __all__ = ["app", "engine"]
 

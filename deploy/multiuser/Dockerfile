@@ -45,12 +45,19 @@ RUN pip install --no-cache-dir -r requirements.lock --no-index --find-links=/whe
 # Copy application code
 COPY nce ./nce
 COPY start_worker.py health_probe.py ./
-COPY admin_server.py server.py ./
+COPY admin_server.py mcp_gateway_server.py server.py ./
 COPY admin ./admin
 COPY deploy/multiuser/entrypoint.sh ./entrypoint.sh
+COPY deploy/plugins /tmp/nce-plugin-wheels
 
-# Ensure the app directory is owned by our non-root user
-RUN chmod 0755 /app/entrypoint.sh \
+# Install any optional pre-built plugin wheels staged in deploy/plugins/,
+# then ensure the app directory is owned by our non-root user.
+RUN set -e; \
+    if ls /tmp/nce-plugin-wheels/*.whl >/dev/null 2>&1; then \
+        pip install --no-cache-dir --no-index --find-links=/tmp/nce-plugin-wheels /tmp/nce-plugin-wheels/*.whl; \
+    fi \
+    && rm -rf /tmp/nce-plugin-wheels \
+    && chmod 0755 /app/entrypoint.sh \
     && chown -R nce:nce /app
 
 USER nce
