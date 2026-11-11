@@ -563,7 +563,7 @@ def update_engine_status(
 
     text = re.sub(
         r"> \*\*Status:\*\* [^\n]*· \*\*Verified-against:\*\* `[a-f0-9]+`[^\n]*",
-        f"> **Status:** shipped · **Verified-against:** `{baseline_sha}` (public `main`) · **Last-audited:** {datetime.date.today().isoformat()}",
+        f"> **Status:** shipped · **Verified-against:** `{baseline_sha}` (public `main`) · **Last-audited:** {datetime.datetime.now(datetime.timezone.utc).date().isoformat()}",
         text,
         count=1,
     )

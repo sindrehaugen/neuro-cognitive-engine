@@ -15,6 +15,7 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import uuid
@@ -63,6 +64,8 @@ from nce.mcp_http_gateway import (
 from nce.outbox_relay import is_namespace_replay_sandbox
 from nce.salience_buffer import buffer_salience_boost
 from nce.storage import build_write_once_object_key, put_write_once_object
+
+_VERT_ROOT = Path(__file__).resolve().parents[3] / "nce-vertical-engines"
 
 
 def test_mcp_gateway_origin_rebinding_defense() -> None:
@@ -437,11 +440,12 @@ async def test_jwt_algorithm_confusion_and_sandbox_and_replay_fencing(
     monkeypatch.setenv("NCE_REPLAY_SANDBOX", "true")
     assert await is_namespace_replay_sandbox(None, uuid.uuid4()) is True
 
+    import os
     import sys
 
-    vert_root = Path(__file__).resolve().parents[3] / "nce-vertical-engines"
+    vert_root = _VERT_ROOT
     added_path = False
-    if vert_root.is_dir() and str(vert_root) not in sys.path:
+    if await asyncio.to_thread(os.path.isdir, str(vert_root)) and str(vert_root) not in sys.path:
         sys.path.insert(0, str(vert_root))
         added_path = True
     try:

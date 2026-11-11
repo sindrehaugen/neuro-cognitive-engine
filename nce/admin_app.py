@@ -29,6 +29,7 @@ from nce.auth import (
     optional_hmac_nonce_store,
 )
 from nce.config import cfg
+from nce.http_body_limit import BoundedBodyMiddleware
 from nce.mtls import MTLSAuthMiddleware
 from nce.notifications import dispatcher
 from nce.observability import OpenTelemetryTraceMiddleware
@@ -148,6 +149,7 @@ async def get_healthz(request):
 
 def build_admin_middleware() -> list[Middleware]:
     return [
+        Middleware(BoundedBodyMiddleware),
         Middleware(OpenTelemetryTraceMiddleware),
         Middleware(AdminHTTPRateLimitMiddleware),
         Middleware(
@@ -586,12 +588,13 @@ def build_app(
     set equals :func:`build_admin_routes` and the middleware equals
     :func:`build_admin_middleware`.
     """
-    return Starlette(
+    app = Starlette(
         debug=False,
         lifespan=admin_lifespan,
         middleware=list(extra_middleware) + build_admin_middleware(),
         routes=list(extra_routes) + build_admin_routes(),
     )
+    return app
 
 
 def create_admin_app() -> Starlette:

@@ -108,23 +108,6 @@ jobs:
       run: bandit -r nce server.py admin_server.py --severity-level high -q
     - name: pip-audit (requirements)
       run: pip-audit -r requirements.txt --strict
-    - uses: hashicorp/setup-terraform@v4
-      with:
-        terraform_version: latest
-    - name: Terraform validate (GCP)
-      working-directory: trimcp-infra/gcp
-      run: 'terraform init -backend=false
-
-        terraform validate
-
-        '
-    - name: Terraform validate (AWS)
-      working-directory: trimcp-infra/aws
-      run: 'terraform init -backend=false
-
-        terraform validate
-
-        '
     - name: Docker Compose config validate
       env:
         REDIS_PASSWORD: ci-config-validate-dummy

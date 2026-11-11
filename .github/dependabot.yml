@@ -69,20 +69,6 @@ updates:
     commit-message:
       prefix: "ci"
 
-  # Node (Tailwind admin build)
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule:
-      interval: "monthly"
-      day: "monday"
-      time: "06:00"
-      timezone: "Europe/Oslo"
-    labels:
-      - "dependencies"
-      - "frontend"
-    commit-message:
-      prefix: "deps(node)"
-
   # Go module (go/ -- the nce-launch auth/launcher CLI: MSAL, keyring, JWT handling).
   # Added 2026-09-08, and it should have been in the first pass: enabling alerts immediately
   # surfaced THREE advisories here and none anywhere else --

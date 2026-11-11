@@ -19,7 +19,7 @@ logging.basicConfig(level=logging.ERROR)
 async def probe():
     # 0. P0 Security Check: Master Key
     if not cfg.NCE_MASTER_KEY or len(cfg.NCE_MASTER_KEY) < 32:
-        print("CRITICAL: TRIMCP_MASTER_KEY is missing or too short")
+        print("CRITICAL: NCE_MASTER_KEY is missing or too short")
         return False
 
     # 1. Config Validation
@@ -75,7 +75,7 @@ async def probe():
             # but log it for the container health status.
             print(f"Cognitive Engine Probe Warning: {e}")
     else:
-        print("Cognitive Engine Probe: Skipped (no TRIMCP_COGNITIVE_BASE_URL set)")
+        print("Cognitive Engine Probe: Skipped (no NCE_COGNITIVE_BASE_URL set)")
 
     return True
 

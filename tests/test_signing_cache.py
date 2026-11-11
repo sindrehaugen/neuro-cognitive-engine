@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from unittest.mock import AsyncMock, MagicMock
 
@@ -229,7 +230,7 @@ class TestGetActiveKeyTTLCache:
         short_cache[_ACTIVE_KEY_CACHE_KEY] = entry
 
         # Wait for TTL to expire
-        time.sleep(0.02)
+        await asyncio.sleep(0.02)
 
         # Access should now miss (TTL expired)
         with pytest.raises(KeyError):

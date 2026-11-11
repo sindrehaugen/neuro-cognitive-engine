@@ -201,6 +201,44 @@ TOOLS = [
         },
     ),
     Tool(
+        name="compile_working_memory",
+        description=(
+            "Compile working memory context for an agent goal. Synthesizes relevant "
+            "episodic/consolidated memories via 3-way Hybrid RRF, procedural heuristics, "
+            "KG neighborhood context, and active contradiction alerts, strictly constrained "
+            "to a token budget."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "goal": {
+                    "type": "string",
+                    "description": "Natural language goal or task to compile context for.",
+                },
+                "namespace_id": {
+                    "type": "string",
+                    "description": "Target namespace UUID.",
+                },
+                "agent_id": {
+                    "type": "string",
+                    "description": "Filter by agent. None = all agents in namespace.",
+                },
+                "max_tokens": {
+                    "type": "integer",
+                    "default": 4000,
+                    "minimum": 64,
+                    "maximum": 32768,
+                    "description": "Maximum token budget for compiled context.",
+                },
+                "as_of": {
+                    "type": "string",
+                    "description": "ISO-8601 timestamp for time-travel point-in-time compilation.",
+                },
+            },
+            "required": ["goal"],
+        },
+    ),
+    Tool(
         name="index_code_file",
         description=(
             "Index a source code file into the Tri-Stack. "

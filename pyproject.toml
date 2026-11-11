@@ -1,18 +1,67 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "neuro-cognitive-engine"
-version = "3.3.0"
+version = "3.4.0"
 readme = "README.md"
-requires-python = ">=3.10"  # TDL-8: declared floor; enforced by the unit test matrix across
-#                             3.10, 3.11 and 3.12. 3.12 is not the floor -- it is the runtime
-#                             image's Python (python:3.12-slim-bookworm), which until
-#                             2026-09-08 was the one interpreter CI never exercised.
-# Runtime deps remain in requirements.txt; this stanza anchors tooling.
+requires-python = ">=3.10"
+dependencies = [
+    "asyncpg>=0.32.0",
+    "cryptography>=50.0.2",
+    "defusedxml>=0.7.1",
+    "fastapi>=0.143.2",
+    "httpx>=0.28.1",
+    "mcp>=1.30.0,<2",
+    "motor>=3.7.1",
+    "networkx>=3.4.2",
+    "numpy>=2.2.6",
+    "orjson>=3.10.15",
+    "pydantic>=2.13.5",
+    "PyJWT>=2.15.1",
+    "python-dotenv>=1.2.4",
+    "redis>=8.1.0",
+    "starlette>=1.7.0",
+    "StrEnum>=0.4.15; python_version < '3.11'",
+    "uvicorn>=0.54.0",
+]
+
+[project.optional-dependencies]
+ml = [
+    "openvino",
+    "scikit-learn",
+    "scipy",
+    "sentence-transformers",
+    "spacy",
+    "torch",
+    "transformers",
+]
+full = [
+    "openvino",
+    "scikit-learn",
+    "scipy",
+    "sentence-transformers",
+    "spacy",
+    "torch",
+    "transformers",
+]
 
 [project.scripts]
 nce-mcp-proxy = "nce.mcp_client_proxy:main"
 
 [tool.setuptools.packages.find]
 include = ["nce*"]
+
+[tool.setuptools.package-data]
+nce = [
+    "*.sql",
+    "migrations/*.sql",
+    "migrations/optional/*.sql",
+    "config_data/*.json",
+    "config_data/**/*.json",
+    "py.typed",
+]
 
 [tool.ruff]
 target-version = "py310"
@@ -52,9 +101,8 @@ extend-exclude = [
 # a replacement -- confirmed with `ruff check --select W605 .` before adding
 # it here, which found zero violations on this tree, run separately from
 # (and before) editing this list.
-select = ["E", "F", "I", "UP", "G004", "W605"]
-# E501 conflicts with legacy long lines; formatter + 100-col cap handle style incrementally.
-ignore = ["E501"]
+select = ["E", "F", "I", "UP", "G004", "W605", "ASYNC", "DTZ", "S"]
+ignore = ["E501", "S101", "S104", "S105", "S106", "S107", "S108", "S110", "S112", "S311", "S603", "S607", "S608"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["nce"]

@@ -490,43 +490,89 @@ async def _collect_reverse_orphans(
             )
 
         async with scoped_mongo_session(mongo_client, ns_id) as s_db:
-            for memory_id, payload_ref in candidates:
-                try:
-                    doc = await s_db.episodes.find_one({"_id": ObjectId(payload_ref)}, {"_id": 1})
-                except Exception as exc:
-                    # Malformed ObjectId or a transient Mongo error: skip — never
-                    # soft-retire on uncertainty.
-                    log.error(
-                        "GC reverse sweep: Mongo lookup failed for memory=%s ns=%s: %s",
-                        memory_id,
-                        ns_id,
-                        type(exc).__name__,
-                    )
-                    continue
+            # Batch MongoDB document presence check in chunks of 500
+            chunk_size = 500
+            for start_idx in range(0, len(candidates), chunk_size):
+                chunk = candidates[start_idx : start_idx + chunk_size]
+                valid_chunk_oids: list[ObjectId] = []
+                malformed_mids: set[str] = set()
 
-                if doc is not None:
-                    continue  # healthy — Mongo doc present, leave untouched
+                for memory_id, payload_ref in chunk:
+                    try:
+                        valid_chunk_oids.append(ObjectId(payload_ref))
+                    except Exception as exc:
+                        malformed_mids.add(memory_id)
+                        log.error(
+                            "GC reverse sweep: Mongo lookup failed for memory=%s ns=%s: %s",
+                            memory_id,
+                            ns_id,
+                            type(exc).__name__,
+                        )
 
-                try:
-                    did_retire = await _soft_retire_dangling(pg_pool, ns_id, memory_id)
-                except Exception as exc:
-                    log.error(
-                        "GC reverse sweep: soft-retire failed for memory=%s ns=%s: %s",
-                        memory_id,
-                        ns_id,
-                        type(exc).__name__,
-                    )
-                    continue
+                present_oids: set[ObjectId] = set()
+                used_batch = False
+                if valid_chunk_oids and hasattr(s_db.episodes, "find"):
+                    try:
+                        cursor = s_db.episodes.find({"_id": {"$in": valid_chunk_oids}}, {"_id": 1})
+                        if hasattr(cursor, "to_list") and callable(cursor.to_list):
+                            docs = await cursor.to_list(length=len(valid_chunk_oids))
+                            if isinstance(docs, list):
+                                present_oids = {
+                                    d["_id"] for d in docs if isinstance(d, dict) and "_id" in d
+                                }
+                                used_batch = True
+                    except Exception:
+                        used_batch = False
 
-                if did_retire:
-                    retired += 1
-                    log.warning(
-                        "GC reverse sweep: soft-retired dangling memory=%s ns=%s "
-                        "(payload_ref=%s missing in Mongo episodes).",
-                        memory_id,
-                        ns_id,
-                        payload_ref,
-                    )
+                for memory_id, payload_ref in chunk:
+                    if memory_id in malformed_mids:
+                        continue  # Malformed ObjectId: skip — never soft-retire on uncertainty
+
+                    if used_batch:
+                        try:
+                            oid = ObjectId(payload_ref)
+                            if oid in present_oids:
+                                continue  # Healthy — doc present
+                        except Exception:
+                            continue
+                    else:
+                        # Fallback for mock collections or non-batching test stubs
+                        try:
+                            doc = await s_db.episodes.find_one(
+                                {"_id": ObjectId(payload_ref)}, {"_id": 1}
+                            )
+                        except Exception as exc:
+                            log.error(
+                                "GC reverse sweep: Mongo lookup failed for memory=%s ns=%s: %s",
+                                memory_id,
+                                ns_id,
+                                type(exc).__name__,
+                            )
+                            continue
+
+                        if doc is not None:
+                            continue  # Healthy — doc present
+
+                    try:
+                        did_retire = await _soft_retire_dangling(pg_pool, ns_id, memory_id)
+                    except Exception as exc:
+                        log.error(
+                            "GC reverse sweep: soft-retire failed for memory=%s ns=%s: %s",
+                            memory_id,
+                            ns_id,
+                            type(exc).__name__,
+                        )
+                        continue
+
+                    if did_retire:
+                        retired += 1
+                        log.warning(
+                            "GC reverse sweep: soft-retired dangling memory=%s ns=%s "
+                            "(payload_ref=%s missing in Mongo episodes).",
+                            memory_id,
+                            ns_id,
+                            payload_ref,
+                        )
                     await _dispatch_reverse_alert(
                         "Dangling memory payload",
                         f"Memory {memory_id} (namespace {ns_id}) referenced a missing "

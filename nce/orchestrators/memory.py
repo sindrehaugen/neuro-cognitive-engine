@@ -1030,23 +1030,28 @@ class MemoryOrchestrator(OrchestratorBase):
         with tracer.start_as_current_span("orchestrator.store_artifact") as span:
             span.set_attribute("nce.artifact_type", payload.media_type)
             with SagaMetrics("store_artifact"):
-                import pathlib
 
-                staging_root = cfg.NCE_ARTIFACT_STAGING_DIR
-                if staging_root:
-                    base = pathlib.Path(staging_root).resolve()
-                    candidate = (base / pathlib.Path(payload.file_path_on_disk).name).resolve()
-                    if not (candidate.is_file() and base in candidate.parents):
-                        raise FileNotFoundError(
-                            f"Artifact not found or outside staging dir: {payload.file_path_on_disk!r}"
-                        )
-                else:
-                    candidate = pathlib.Path(payload.file_path_on_disk).resolve()
-                    if not candidate.is_file():
-                        raise FileNotFoundError(
-                            f"Artifact file not found: {payload.file_path_on_disk!r}"
-                        )
-                safe_path = str(candidate)
+                def _resolve_and_validate_path(staging_dir: str | None, file_path: str) -> str:
+                    import pathlib
+
+                    if staging_dir:
+                        base = pathlib.Path(staging_dir).resolve()
+                        cand = (base / pathlib.Path(file_path).name).resolve()
+                        if not (cand.is_file() and base in cand.parents):
+                            raise FileNotFoundError(
+                                f"Artifact not found or outside staging dir: {file_path!r}"
+                            )
+                    else:
+                        cand = pathlib.Path(file_path).resolve()
+                        if not cand.is_file():
+                            raise FileNotFoundError(f"Artifact file not found: {file_path!r}")
+                    return str(cand)
+
+                safe_path = await asyncio.to_thread(
+                    _resolve_and_validate_path,
+                    cfg.NCE_ARTIFACT_STAGING_DIR,
+                    payload.file_path_on_disk,
+                )
 
                 if self.minio_client is None:
                     raise RuntimeError("MinIO client not configured — cannot store media.")

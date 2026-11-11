@@ -102,7 +102,7 @@ def test_validate_write_timestamp_past_plus0800_ok(
 
 
 def test_normalize_to_utc_naive_matches_explicit_utc() -> None:
-    naive = datetime(2026, 1, 1, 12, 0, 0)
+    naive = datetime(2026, 1, 1, 12, 0, 0)  # noqa: DTZ001 — intentional test of naive datetime normalization
     assert _normalize_to_utc(naive) == _normalize_to_utc(naive.replace(tzinfo=TZ_UTC))
 
 

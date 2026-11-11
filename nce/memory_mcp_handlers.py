@@ -23,6 +23,7 @@ from nce.mcp_errors import mcp_handler
 from nce.models import (
     ArtifactPayload,
     BoostMemoryRequest,
+    CompileWorkingMemoryRequest,
     ForgetMemoryRequest,
     GetRecentContextRequest,
     SemanticSearchRequest,
@@ -31,6 +32,7 @@ from nce.models import (
     UnredactMemoryRequest,
 )
 from nce.orchestrator import NCEEngine
+from nce.working_memory import compile_working_memory
 
 # ── Private response formatters ───────────────────────────────────────────────
 
@@ -161,5 +163,20 @@ async def handle_unredact_memory(engine: NCEEngine, arguments: dict[str, Any]) -
         memory_id=str(req.memory_id),
         namespace_id=str(req.namespace_id),
         agent_id=req.agent_id,
+    )
+    return _serialize(result)
+
+
+@mcp_handler
+async def handle_compile_working_memory(engine: NCEEngine, arguments: dict[str, Any]) -> str:
+    """Compile working memory context synthesizing episodic/procedural/KG memory."""
+    req = CompileWorkingMemoryRequest(**model_kwargs(arguments))
+    result = await compile_working_memory(
+        engine,
+        goal=req.goal,
+        namespace_id=req.namespace_id,
+        agent_id=req.agent_id,
+        max_tokens=req.max_tokens,
+        as_of=req.as_of,
     )
     return _serialize(result)

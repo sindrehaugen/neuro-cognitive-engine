@@ -22,10 +22,12 @@ ships with openvino; torch is deliberately not required):
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -143,17 +145,24 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _proxy(self, raw: bytes) -> None:
         url = self.server.stub_url.rstrip("/") + self.path
-        req = urllib.request.Request(
-            url,
-            data=raw,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.scheme not in ("http", "https"):
+            self._send(400, b'{"error": "Unsupported scheme"}')
+            return
+
+        req_path = parsed.path or "/"
+        if parsed.query:
+            req_path += f"?{parsed.query}"
+
         try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                self._send(resp.status, resp.read())
-        except urllib.error.HTTPError as exc:
-            self._send(exc.code, exc.read())
+            if parsed.scheme == "https":
+                conn = http.client.HTTPSConnection(parsed.hostname, parsed.port or 443, timeout=120)
+            else:
+                conn = http.client.HTTPConnection(parsed.hostname, parsed.port or 80, timeout=120)
+            conn.request("POST", req_path, body=raw, headers={"Content-Type": "application/json"})
+            resp = conn.getresponse()
+            self._send(resp.status, resp.read())
+            conn.close()
         except OSError as exc:
             self._send(502, json.dumps({"error": f"upstream: {exc}"}).encode())
 

@@ -535,8 +535,19 @@ class ReplayContext:
             return target_ref
 
         try:
+            doc = None
             async with scoped_mongo_session(self.mongo_client, ns_to_use) as src_db:
-                doc = await src_db.episodes.find_one({"_id": src_oid})
+                if hasattr(src_db.episodes, "find"):
+                    try:
+                        cursor = src_db.episodes.find({"_id": {"$in": [src_oid]}})
+                        if hasattr(cursor, "to_list") and callable(cursor.to_list):
+                            docs = await cursor.to_list(length=1)
+                            if isinstance(docs, list) and docs:
+                                doc = docs[0]
+                    except Exception:
+                        pass
+                if doc is None and hasattr(src_db.episodes, "find_one"):
+                    doc = await src_db.episodes.find_one({"_id": src_oid})
 
             if doc is not None:
                 # Prepare target document
@@ -564,6 +575,83 @@ class ReplayContext:
             log.warning("Failed to copy MongoDB document for payload_ref %s: %s", src_ref, e)
 
         return target_ref
+
+    async def copy_mongo_docs_batch(
+        self,
+        src_refs: list[str],
+        source_namespace_id: uuid.UUID | None = None,
+        chunk_size: int = 500,
+    ) -> dict[str, str]:
+        """Copy a batch of MongoDB documents using batched $in hydration."""
+        result_map: dict[str, str] = {}
+        to_fetch_refs = [r for r in src_refs if r and r not in self._copied_refs]
+        for r in src_refs:
+            if r:
+                result_map[r] = self.remap_mongo_ref(r)
+
+        if not to_fetch_refs:
+            return result_map
+
+        from bson import ObjectId
+
+        from nce.db_utils import scoped_mongo_session
+
+        ns_to_use = source_namespace_id or self.source_namespace_id or self.target_namespace_id
+
+        for i in range(0, len(to_fetch_refs), chunk_size):
+            chunk = to_fetch_refs[i : i + chunk_size]
+            chunk_oids: list[ObjectId] = []
+            valid_chunk_refs: list[str] = []
+            for ref in chunk:
+                try:
+                    chunk_oids.append(ObjectId(ref))
+                    valid_chunk_refs.append(ref)
+                except Exception:
+                    pass
+
+            if not chunk_oids:
+                continue
+
+            try:
+                docs_by_id: dict[str, dict] = {}
+                async with scoped_mongo_session(self.mongo_client, ns_to_use) as src_db:
+                    if hasattr(src_db.episodes, "find"):
+                        cursor = src_db.episodes.find({"_id": {"$in": chunk_oids}})
+                        if hasattr(cursor, "to_list") and callable(cursor.to_list):
+                            fetched = await cursor.to_list(length=len(chunk_oids))
+                            if isinstance(fetched, list):
+                                for d in fetched:
+                                    if isinstance(d, dict) and "_id" in d:
+                                        docs_by_id[str(d["_id"])] = d
+
+                # Fallback for mock collections
+                if not docs_by_id:
+                    async with scoped_mongo_session(self.mongo_client, ns_to_use) as src_db:
+                        if hasattr(src_db.episodes, "find_one"):
+                            for ref, oid in zip(valid_chunk_refs, chunk_oids, strict=False):
+                                try:
+                                    d = await src_db.episodes.find_one({"_id": oid})
+                                    if d:
+                                        docs_by_id[ref] = d
+                                except Exception:
+                                    pass
+
+                async with scoped_mongo_session(
+                    self.mongo_client, self.target_namespace_id
+                ) as tgt_db:
+                    for src_ref_str, doc in docs_by_id.items():
+                        target_ref = self.remap_mongo_ref(src_ref_str)
+                        target_doc = dict(doc)
+                        target_doc["_id"] = ObjectId(target_ref)
+                        target_doc["namespace_id"] = str(self.target_namespace_id)
+                        await tgt_db.episodes.replace_one(
+                            {"_id": target_doc["_id"]}, target_doc, upsert=True
+                        )
+                        self._copied_refs.add(src_ref_str)
+            except Exception as exc:
+                log.warning("Batch copy MongoDB documents failed for chunk: %s", exc)
+
+        return result_map
 
 
 # A handler is a coroutine:

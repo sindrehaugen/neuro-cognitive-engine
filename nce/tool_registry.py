@@ -114,6 +114,9 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
     "get_recent_context": ToolSpec(
         _h(memory_mcp_handlers, "handle_get_recent_context"),
     ),
+    "compile_working_memory": ToolSpec(
+        _h(memory_mcp_handlers, "handle_compile_working_memory"),
+    ),
     "boost_memory": ToolSpec(
         _h(memory_mcp_handlers, "handle_boost_memory"),
         mutation=True,

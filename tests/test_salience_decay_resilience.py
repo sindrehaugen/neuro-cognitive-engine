@@ -61,7 +61,7 @@ class TestZeroAndNegativeDelta:
 
     def test_zero_delta_naive_datetime_handled(self):
         """Naive datetime (no tzinfo) is treated as timezone.utc — zero delta still works."""
-        naive_now = datetime(2026, 5, 8, 12, 0, 0)  # no tzinfo
+        naive_now = datetime(2026, 5, 8, 12, 0, 0)  # noqa: DTZ001 — intentional test of naive datetime handling
         score = compute_decayed_score(
             1.0,
             naive_now,

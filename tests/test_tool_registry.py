@@ -27,7 +27,7 @@ _C12_MUTATION_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.mutat
 _C12_CACHEABLE_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.cacheable)
 _C12_ADMIN_ONLY_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.admin_only)
 
-_EXPECTED_STATIC_TOTAL = 70
+_EXPECTED_STATIC_TOTAL = 71
 _EXPECTED_TOTAL = _EXPECTED_STATIC_TOTAL + len(_C12_TOOL_NAMES)
 
 
@@ -328,6 +328,10 @@ def test_toolspec_is_frozen():
             "suggest_queries",
             {"mutation": False, "cacheable": False, "admin_only": False, "migration": False},
         ),
+        (
+            "compile_working_memory",
+            {"mutation": False, "cacheable": False, "admin_only": False, "migration": False},
+        ),
     ],
 )
 def test_tool_flags(tool_name: str, expected_flags: dict):
@@ -482,3 +486,285 @@ async def test_plugin_descriptors_and_admin_endpoint():
         assert payload["facets"]["types"] == ["type-a", "type-b", "type-shared"]
         assert payload["facets"]["categories"] == ["cat-one", "cat-two"]
     load_plugins(force_reload=True)
+
+
+@pytest.mark.asyncio
+async def test_handle_compile_working_memory_success():
+    """Verify handle_compile_working_memory routes through tool registry and serializes result."""
+    import json
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from nce.memory_mcp_handlers import handle_compile_working_memory
+
+    mock_engine = MagicMock()
+    mock_engine.default_namespace_id = "00000000-0000-4000-8000-000000000001"
+    mock_engine.pg_pool = MagicMock()
+    mock_engine.mongo_client = MagicMock()
+    mock_engine.embedding_fn = AsyncMock(return_value=[0.1] * 768)
+
+    with patch(
+        "nce.memory_mcp_handlers.compile_working_memory", new_callable=AsyncMock
+    ) as mock_cwm:
+        mock_cwm.return_value = {
+            "goal": "Verify system telemetry",
+            "token_count": 120,
+            "top_memories": [],
+            "procedural_guardrails": [],
+            "knowledge_subgraph": [],
+            "contradiction_alerts": [],
+            "provenance_citations": [],
+        }
+        args = {
+            "goal": "Verify system telemetry",
+            "namespace_id": "00000000-0000-4000-8000-000000000001",
+            "max_tokens": 2000,
+        }
+        res_json = await handle_compile_working_memory(mock_engine, args)
+        res = json.loads(res_json)
+        assert res["goal"] == "Verify system telemetry"
+        assert res["token_count"] == 120
+        mock_cwm.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_compile_working_memory_parallel_branches_and_token_budget():
+    """Verify compile_working_memory executes parallel branches and bounds token budget."""
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from nce.working_memory import compile_working_memory
+
+    mock_pool = MagicMock()
+    mock_conn = AsyncMock()
+    mock_conn.fetch = AsyncMock(return_value=[])
+
+    @asynccontextmanager
+    async def _scoped(_pool, _ns):
+        yield mock_conn
+
+    mock_engine = MagicMock()
+    mock_engine.pg_pool = mock_pool
+    mock_engine.default_namespace_id = "00000000-0000-4000-8000-000000000001"
+    mock_engine.semantic_search = AsyncMock(
+        return_value=[
+            {
+                "memory_id": "00000000-0000-4000-8000-000000000010",
+                "payload_ref": "ref1",
+                "score": 0.95,
+                "raw_data": "Important configuration state details " * 20,
+                "confidence_score": 0.9,
+                "epistemic_warnings": [],
+            }
+        ]
+    )
+
+    with patch("nce.working_memory.scoped_pg_session", _scoped):
+        result = await compile_working_memory(
+            mock_engine,
+            goal="Configure telemetry pipeline",
+            namespace_id="00000000-0000-4000-8000-000000000001",
+            max_tokens=500,
+        )
+
+        assert result["goal"] == "Configure telemetry pipeline"
+        assert result["token_count"] <= 500
+        assert len(result["provenance_citations"]) >= 1
+        assert (
+            result["provenance_citations"][0]["memory_id"] == "00000000-0000-4000-8000-000000000010"
+        )
+
+
+@pytest.mark.asyncio
+async def test_procedural_memory_distillation_and_retrieval():
+    """Verify distill_procedural_heuristics synthesizes rules and fetch retrieves them."""
+    import json
+    import uuid
+    from datetime import datetime, timezone
+    from unittest.mock import AsyncMock
+
+    from nce.procedural_memory import (
+        distill_procedural_heuristics,
+    )
+
+    ns = uuid.UUID("00000000-0000-4000-8000-000000000001")
+    mock_conn = AsyncMock()
+
+    aaq_rows = [
+        {
+            "id": uuid.uuid4(),
+            "action_type": "upgrade_firmware",
+            "target_system": "edge_switch_01",
+            "status": "approved",
+            "resolved_by": "sec_admin",
+        }
+    ]
+    feedback_rows = [
+        {
+            "id": uuid.uuid4(),
+            "params": json.dumps(
+                {"decision": "allow", "engine": "procurement", "context_id": "ctx-1"}
+            ),
+        }
+    ]
+    contra_rows = [
+        {
+            "id": uuid.uuid4(),
+            "resolution": "memory A superseded by manual review",
+            "memory_a_id": uuid.uuid4(),
+            "memory_b_id": uuid.uuid4(),
+        }
+    ]
+    mock_conn.fetch.side_effect = [
+        aaq_rows,
+        feedback_rows,
+        contra_rows,
+        [],  # existing procedural_heuristics
+    ]
+    mock_conn.fetchrow.return_value = {
+        "id": uuid.uuid4(),
+        "namespace_id": ns,
+        "memory_id": None,
+        "rule_text": "ALLOW: Verified execution of upgrade_firmware on edge_switch_01.",
+        "trigger_condition": "action_type == 'upgrade_firmware' and target_system == 'edge_switch_01'",
+        "action_guidance": "Proceed with upgrade_firmware on edge_switch_01.",
+        "source_type": "governed_decision",
+        "source_refs": [],
+        "confidence_weight": 0.85,
+        "support_count": 1,
+        "valid_from": datetime.now(timezone.utc),
+        "valid_to": None,
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+    }
+
+    distilled = await distill_procedural_heuristics(mock_conn, ns)
+    assert len(distilled) >= 1
+    assert "upgrade_firmware" in distilled[0]["rule_text"]
+
+
+def test_exact_identifier_extraction_and_epistemic_warnings():
+    """Verify regex extraction of SKU, Norwegian orgnr, IPv4/IPv6."""
+    from nce.semantic_search import extract_exact_identifiers
+
+    query = "Find order for SKU-9942-X from org 987654321 at host 10.42.0.15 and 2001:db8::1"
+    identifiers = extract_exact_identifiers(query)
+    assert "SKU-9942-X" in identifiers
+    assert "987654321" in identifiers
+    assert "10.42.0.15" in identifiers
+    assert "2001:db8::1" in identifiers
+
+
+@pytest.mark.asyncio
+async def test_semantic_search_exact_identifier_boost_and_epistemic_confidence():
+    """Verify exact SKU boost to #1 and calibrated epistemic confidence scoring."""
+    import uuid
+    from contextlib import asynccontextmanager
+    from datetime import datetime, timedelta, timezone
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from bson import ObjectId
+
+    from nce.semantic_search import semantic_search
+
+    ns = "00000000-0000-4000-8000-000000000001"
+    mid_sku = uuid.UUID("00000000-0000-4000-8000-0000000000aa")
+    mid_other = uuid.UUID("00000000-0000-4000-8000-0000000000bb")
+    oid_sku = str(ObjectId())
+    oid_other = str(ObjectId())
+
+    # Candidate 'mid_other' had higher initial DB score (0.90) than 'mid_sku' (0.40)
+    pg_rows = [
+        {
+            "payload_ref": oid_other,
+            "memory_id": mid_other,
+            "final_score": 0.90,
+            "raw_salience": 1.0,
+        },
+        {"payload_ref": oid_sku, "memory_id": mid_sku, "final_score": 0.40, "raw_salience": 1.0},
+    ]
+
+    mem_meta_rows = [
+        {
+            "id": mid_sku,
+            "payload_ref": oid_sku,
+            "wrapped_dek": None,
+            "valid_to": None,
+            "assertion_type": "fact",
+            "derivation_depth": 0,
+            "metadata": {},
+        },
+        {
+            "id": mid_other,
+            "payload_ref": oid_other,
+            "wrapped_dek": None,
+            "valid_to": datetime.now(timezone.utc) - timedelta(days=1),  # ATMS invalidated
+            "assertion_type": "opinion",  # Low provenance tier
+            "derivation_depth": 2,  # High derivation depth
+            "metadata": {"provenance_tier": "unverified"},
+        },
+    ]
+
+    mock_conn = AsyncMock()
+    mock_conn.fetchrow = AsyncMock(return_value=None)
+    mock_conn.fetchval = AsyncMock(return_value=None)
+    # 1st fetch: ranking query; 2nd fetch: memories table meta; 3rd fetch: contradictions
+    mock_conn.fetch.side_effect = [
+        pg_rows,
+        mem_meta_rows,
+        [{"memory_a_id": mid_other, "memory_b_id": uuid.uuid4()}],  # mid_other in contradiction
+    ]
+
+    @asynccontextmanager
+    async def _scoped(_pool, _namespace_id):
+        yield mock_conn
+
+    # Mongo docs: mid_sku has the matching SKU
+    async def _find(query, projection=None):
+        ids = query.get("_id", {}).get("$in", [])
+        for oid in ids:
+            if str(oid) == oid_sku:
+                yield {
+                    "_id": ObjectId(oid_sku),
+                    "raw_data": "Warehouse item record: SKU-9942-X active.",
+                }
+            elif str(oid) == oid_other:
+                yield {
+                    "_id": ObjectId(oid_other),
+                    "raw_data": "General overview without identifier.",
+                }
+
+    episodes = MagicMock()
+    episodes.find = MagicMock(side_effect=_find)
+    mongo = MagicMock()
+    mongo.memory_archive.episodes = episodes
+
+    async def _embed(_q: str):
+        return [0.0] * 768
+
+    with patch("nce.semantic_search.scoped_pg_session", _scoped):
+        with patch(
+            "nce.semantic_search.asyncio.create_task",
+            side_effect=lambda coro: (coro.close(), MagicMock())[1],
+        ):
+            results = await semantic_search(
+                pg_pool=MagicMock(),
+                mongo_client=mongo,
+                embedding_fn=_embed,
+                query="Find part SKU-9942-X",
+                namespace_id=ns,
+                agent_id="test-agent",
+            )
+
+    assert len(results) == 2
+    # Exact SKU candidate should be boosted to rank #1 despite lower vector score
+    assert results[0]["memory_id"] == mid_sku
+    assert results[0]["confidence_score"] > 0.8
+    assert results[0]["epistemic_warnings"] == []
+
+    # Other candidate should be rank #2 and carry epistemic warnings + decayed confidence
+    assert results[1]["memory_id"] == mid_other
+    assert results[1]["confidence_score"] < 0.25
+    assert "atms_invalidated" in results[1]["epistemic_warnings"]
+    assert "unresolved_contradiction" in results[1]["epistemic_warnings"]
+    assert "derived_inference_depth_2" in results[1]["epistemic_warnings"]
+    assert "low_provenance_tier" in results[1]["epistemic_warnings"]

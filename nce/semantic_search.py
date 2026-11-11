@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from typing import Any
 from uuid import UUID
 
@@ -19,6 +20,7 @@ from pypika import Field, Order, Parameter, Query, Table
 from pypika.enums import JoinType
 from pypika.terms import Term
 
+from nce.config import cfg
 from nce.db_utils import assert_namespace_filter, scoped_pg_session
 from nce.embeddings import VECTOR_DIM
 from nce.models import _MAX_TOP_K, NamespaceCognitiveConfig
@@ -27,6 +29,37 @@ log = logging.getLogger("nce-semantic-search")
 
 _EMBED_TIMEOUT_SECONDS: float = 10.0
 _MAX_RAW_DATA_CHARS: int = 16_000
+
+_SKU_RE = re.compile(r"\b[A-Za-z]{2,6}-\d{2,8}(?:-[A-Za-z0-9]+)*\b")
+_NOR_ORGNR_RE = re.compile(r"\b\d{9}\b")
+_IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+_IPV6_RE = re.compile(
+    r"\b(?:[0-9a-fA-F]{1,4}:)+(?::[0-9a-fA-F]{1,4})+\b|\b(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b"
+)
+
+
+def extract_exact_identifiers(query: str) -> list[str]:
+    """Extract structured identifiers (SKU codes, Norwegian orgnr, IPv4/IPv6)."""
+    identifiers: list[str] = []
+    for match in _SKU_RE.finditer(query):
+        identifiers.append(match.group(0))
+    for match in _NOR_ORGNR_RE.finditer(query):
+        identifiers.append(match.group(0))
+    for match in _IPV4_RE.finditer(query):
+        parts = match.group(0).split(".")
+        if all(0 <= int(p) <= 255 for p in parts if p.isdigit()):
+            identifiers.append(match.group(0))
+    for match in _IPV6_RE.finditer(query):
+        identifiers.append(match.group(0))
+
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for ident in identifiers:
+        lower = ident.lower()
+        if lower not in seen:
+            seen.add(lower)
+            deduped.append(ident)
+    return deduped
 
 
 class RawExpression(Term):
@@ -375,18 +408,40 @@ async def semantic_search(
             )
         )
 
+        exact_identifiers = extract_exact_identifiers(query)
+
+        # Build extra lexical matching conditions for structured identifiers
+        ident_predicates = []
+        for ident in exact_identifiers:
+            p_ident = builder.param(ident)
+            ident_predicates.append(
+                f"m.metadata::text ILIKE '%' || {p_ident} || '%' "
+                f"OR COALESCE(m.search_tsv, m.content_fts) @@ plainto_tsquery('simple', {p_ident})"
+            )
+        ident_sql_cond = ""
+        if ident_predicates:
+            ident_sql_cond = " OR (" + " OR ".join(ident_predicates) + ")"
+
         fts_cand_query = (
             Query.from_(m)
             .left_join(s)  # type: ignore[arg-type]
             .on((m.id == s.memory_id) & (s.agent_id == p_agent_id))
             .left_join(s_sys)  # type: ignore[arg-type]
             .on((m.id == s_sys.memory_id) & RawExpression("s_sys.agent_id = 'system'"))
-            .join(RawTable(f"LATERAL websearch_to_tsquery('english', {p_query}) AS query"))
+            .join(
+                RawTable(
+                    f"LATERAL (SELECT plainto_tsquery('english', {p_query}) AS q_eng, "
+                    f"plainto_tsquery('simple', {p_query}) AS q_simple) AS query"
+                )
+            )
             .on(RawExpression("true"))  # type: ignore[arg-type]
             .select(
                 m.payload_ref,
                 m.id.as_("memory_id"),
-                RawExpression("ts_rank_cd(m.content_fts, query)").as_("ts_score"),
+                RawExpression(
+                    "COALESCE(ts_rank_cd(COALESCE(m.search_tsv, m.content_fts), query.q_eng), 0.0) + "
+                    "COALESCE(ts_rank_cd(COALESCE(m.search_tsv, m.content_fts), query.q_simple), 0.0)"
+                ).as_("ts_score"),
                 RawExpression(
                     "LEAST(COALESCE(s.salience_score, 1.0), COALESCE(s_sys.salience_score, 1.0))"
                 ).as_("raw_salience"),
@@ -395,7 +450,54 @@ async def semantic_search(
                 ),
             )
             .where(m.namespace_id == p_namespace_id)
-            .where(RawExpression("m.content_fts @@ query"))
+            .where(
+                RawExpression(
+                    f"(COALESCE(m.search_tsv, m.content_fts) @@ query.q_eng "
+                    f"OR COALESCE(m.search_tsv, m.content_fts) @@ query.q_simple{ident_sql_cond})"
+                )
+            )
+            .where(RawExpression("m.memory_type IN ('episodic', 'consolidated', 'semantic')"))
+            .where(
+                RawExpression(
+                    "LEAST(COALESCE(s.salience_score, 1.0), COALESCE(s_sys.salience_score, 1.0)) > 0.0"
+                )
+            )
+        )
+
+        kg_cand_query = (
+            Query.from_(m)
+            .left_join(s)  # type: ignore[arg-type]
+            .on((m.id == s.memory_id) & (s.agent_id == p_agent_id))
+            .left_join(s_sys)  # type: ignore[arg-type]
+            .on((m.id == s_sys.memory_id) & RawExpression("s_sys.agent_id = 'system'"))
+            .join(
+                RawTable(
+                    f"""(
+                        SELECT payload_ref, 1.0 AS kg_score
+                        FROM kg_nodes
+                        WHERE namespace_id = {p_namespace_id} AND payload_ref IS NOT NULL
+                          AND label ILIKE '%' || {p_query} || '%'
+                        UNION
+                        SELECT payload_ref, 0.9 AS kg_score
+                        FROM kg_edges
+                        WHERE namespace_id = {p_namespace_id} AND payload_ref IS NOT NULL
+                          AND (subject_label ILIKE '%' || {p_query} || '%' OR object_label ILIKE '%' || {p_query} || '%')
+                    ) AS kg"""
+                )
+            )
+            .on(m.payload_ref == RawExpression("kg.payload_ref"))
+            .select(
+                m.payload_ref,
+                m.id.as_("memory_id"),
+                RawExpression("kg.kg_score").as_("kg_score"),
+                RawExpression(
+                    "LEAST(COALESCE(s.salience_score, 1.0), COALESCE(s_sys.salience_score, 1.0))"
+                ).as_("raw_salience"),
+                RawExpression("COALESCE(s.updated_at, s_sys.updated_at, m.created_at)").as_(
+                    "last_updated"
+                ),
+            )
+            .where(m.namespace_id == p_namespace_id)
             .where(RawExpression("m.memory_type IN ('episodic', 'consolidated', 'semantic')"))
             .where(
                 RawExpression(
@@ -411,19 +513,25 @@ async def semantic_search(
             )
             v_cand_query = v_cand_query.where(retention_expr)
             fts_cand_query = fts_cand_query.where(retention_expr)
+            kg_cand_query = kg_cand_query.where(retention_expr)
 
         if as_of:
             p_as_of = builder.param(as_of)
             as_of_expr = RawExpression(f"m.created_at <= {p_as_of}")
             v_cand_query = v_cand_query.where(as_of_expr)
             fts_cand_query = fts_cand_query.where(as_of_expr)
+            kg_cand_query = kg_cand_query.where(as_of_expr)
         else:
             valid_expr = RawExpression("m.valid_to IS NULL")
             v_cand_query = v_cand_query.where(valid_expr)
             fts_cand_query = fts_cand_query.where(valid_expr)
+            kg_cand_query = kg_cand_query.where(valid_expr)
 
         v_cand_query = v_cand_query.orderby(Field("distance")).limit(p_candidate_k)  # type: ignore[arg-type]
         fts_cand_query = fts_cand_query.orderby(Field("ts_score"), order=Order.desc).limit(
+            p_candidate_k
+        )  # type: ignore[arg-type]
+        kg_cand_query = kg_cand_query.orderby(Field("kg_score"), order=Order.desc).limit(
             p_candidate_k
         )  # type: ignore[arg-type]
 
@@ -443,8 +551,17 @@ async def semantic_search(
             )
         ).as_("fts_ranked")
 
+        kg_candidates = kg_cand_query.as_("kg_candidates")
+        kg_ranked = (
+            Query.from_(Table("kg_candidates")).select(
+                RawExpression("*"),
+                RawExpression("ROW_NUMBER() OVER (ORDER BY kg_score DESC)").as_("rank"),
+            )
+        ).as_("kg_ranked")
+
         v_tbl = Table("vector_ranked").as_("v")
         f_tbl = Table("fts_ranked").as_("f")
+        k_tbl = Table("kg_ranked").as_("k")
 
         p_alpha = builder.param(float(cognitive_config.alpha))
         p_half_life = builder.param(float(cognitive_config.half_life_days))
@@ -455,23 +572,33 @@ async def semantic_search(
             .with_(vector_ranked, "vector_ranked")
             .with_(fts_candidates, "fts_candidates")
             .with_(fts_ranked, "fts_ranked")
+            .with_(kg_candidates, "kg_candidates")
+            .with_(kg_ranked, "kg_ranked")
             .from_(v_tbl)
             .join(f_tbl, JoinType.full_outer)
             .on(v_tbl.memory_id == f_tbl.memory_id)
+            .join(k_tbl, JoinType.full_outer)
+            .on(RawExpression("COALESCE(v.memory_id, f.memory_id) = k.memory_id"))
             .select(
-                RawExpression("COALESCE(v.payload_ref, f.payload_ref)").as_("payload_ref"),
-                RawExpression("COALESCE(v.memory_id, f.memory_id)").as_("memory_id"),
+                RawExpression("COALESCE(v.payload_ref, f.payload_ref, k.payload_ref)").as_(
+                    "payload_ref"
+                ),
+                RawExpression("COALESCE(v.memory_id, f.memory_id, k.memory_id)").as_("memory_id"),
                 RawExpression(
-                    f"(COALESCE(1.0 / (60 + v.rank), 0.0) + COALESCE(1.0 / (60 + f.rank), 0.0))"
+                    f"(COALESCE(1.0 / (60 + v.rank), 0.0) + COALESCE(1.0 / (60 + f.rank), 0.0) + COALESCE(1.0 / (60 + k.rank), 0.0))"
                     f" * ({p_alpha}::double precision + (1.0::double precision - {p_alpha}::double precision) "
-                    f"* nce_decayed_score(COALESCE(v.raw_salience, f.raw_salience), "
-                    f"COALESCE(v.last_updated, f.last_updated), {p_half_life}::double precision))"
+                    f"* nce_decayed_score(COALESCE(v.raw_salience, f.raw_salience, k.raw_salience), "
+                    f"COALESCE(v.last_updated, f.last_updated, k.last_updated), {p_half_life}::double precision))"
                 ).as_("final_score"),
-                RawExpression("COALESCE(v.raw_salience, f.raw_salience)").as_("raw_salience"),
-                RawExpression("COALESCE(v.last_updated, f.last_updated)").as_("last_updated"),
+                RawExpression("COALESCE(v.raw_salience, f.raw_salience, k.raw_salience)").as_(
+                    "raw_salience"
+                ),
+                RawExpression("COALESCE(v.last_updated, f.last_updated, k.last_updated)").as_(
+                    "last_updated"
+                ),
             )
             .orderby(Field("final_score"), order=Order.desc)
-            .orderby(RawExpression("COALESCE(v.memory_id, f.memory_id)"))
+            .orderby(RawExpression("COALESCE(v.memory_id, f.memory_id, k.memory_id)"))
             .limit(p_need)  # type: ignore[arg-type]
         )
 
@@ -499,21 +626,44 @@ async def semantic_search(
         # can be decrypted on hydration; legacy rows return NULL → plaintext.
         memory_ids = [r["memory_id"] for r in top_results if r.get("memory_id")]
         wrapped_by_ref: dict[str, bytes | None] = {}
+        memory_meta_by_id: dict[UUID, dict[str, Any]] = {}
+        unresolved_contradiction_ids: set[UUID] = set()
+
         if memory_ids:
             try:
-                dek_rows = await conn.fetch(
-                    "SELECT payload_ref, wrapped_dek FROM memories WHERE id = ANY($1::uuid[])",
+                mem_rows = await conn.fetch(
+                    "SELECT id, payload_ref, wrapped_dek, valid_to, assertion_type, derivation_depth, metadata FROM memories WHERE id = ANY($1::uuid[])",
                     memory_ids,
                 )
-                for dek_row in dek_rows:
-                    wd = dek_row.get("wrapped_dek") if hasattr(dek_row, "get") else None
-                    if wd is None:
-                        continue
-                    wrapped_by_ref[str(dek_row["payload_ref"] or "")] = bytes(wd)
+                for mem_row in mem_rows:
+                    if hasattr(mem_row, "get"):
+                        m_id = mem_row.get("id")
+                        if m_id:
+                            memory_meta_by_id[m_id] = dict(mem_row)
+                        pref = str(mem_row.get("payload_ref") or "")
+                        wd = mem_row.get("wrapped_dek")
+                        if wd is not None:
+                            wrapped_by_ref[pref] = bytes(wd)
             except Exception:
-                # Defensive: a DEK lookup failure must not break search; rows
-                # then read as plaintext (only encrypted rows would be affected).
                 wrapped_by_ref = {}
+                memory_meta_by_id = {}
+
+            try:
+                c_rows = await conn.fetch(
+                    "SELECT memory_a_id, memory_b_id FROM contradictions WHERE namespace_id = $1 AND (memory_a_id = ANY($2::uuid[]) OR memory_b_id = ANY($2::uuid[])) AND resolved_at IS NULL",
+                    UUID(namespace_id),
+                    memory_ids,
+                )
+                for c_row in c_rows:
+                    if hasattr(c_row, "get"):
+                        a_id = c_row.get("memory_a_id")
+                        b_id = c_row.get("memory_b_id")
+                        if a_id:
+                            unresolved_contradiction_ids.add(a_id)
+                        if b_id:
+                            unresolved_contradiction_ids.add(b_id)
+            except Exception:
+                unresolved_contradiction_ids = set()
 
     if as_of is None and not is_replay:
         asyncio.create_task(
@@ -582,23 +732,105 @@ async def semantic_search(
             except Exception:
                 pass
 
+        mid = res["memory_id"]
+        meta_row = memory_meta_by_id.get(mid, {})
+        meta_dict = meta_row.get("metadata")
+        if isinstance(meta_dict, str):
+            try:
+                meta_dict = json.loads(meta_dict)
+            except Exception:
+                meta_dict = {}
+        if not isinstance(meta_dict, dict):
+            meta_dict = {}
+
+        raw_str = (raw if isinstance(raw, str) else json.dumps(raw or "", default=str)).lower()
+        meta_str = json.dumps(meta_dict, default=str).lower()
+
+        # Exact identifier boost
+        has_exact_match = False
+        if exact_identifiers:
+            for ident in exact_identifiers:
+                ident_lower = ident.lower()
+                if ident_lower in raw_str or ident_lower in meta_str:
+                    has_exact_match = True
+                    break
+
+        score = float(res["score"])
+        if has_exact_match:
+            score += 100.0
+
+        # Epistemic calculations
+        epistemic_warnings: list[str] = []
+        valid_to = meta_row.get("valid_to")
+        now_dt = datetime.now(timezone.utc)
+        ref_time = as_of if as_of is not None else now_dt
+        if hasattr(ref_time, "tzinfo") and ref_time.tzinfo is None:
+            ref_time = ref_time.replace(tzinfo=timezone.utc)
+
+        if valid_to is not None:
+            if hasattr(valid_to, "tzinfo") and valid_to.tzinfo is None:
+                valid_to = valid_to.replace(tzinfo=timezone.utc)
+            if valid_to <= ref_time:
+                epistemic_warnings.append("atms_invalidated")
+
+        if mid in unresolved_contradiction_ids:
+            epistemic_warnings.append("unresolved_contradiction")
+
+        derivation_depth = int(meta_row.get("derivation_depth") or 0)
+        if derivation_depth >= 2:
+            epistemic_warnings.append(f"derived_inference_depth_{derivation_depth}")
+
+        assertion_type = str(meta_row.get("assertion_type") or "fact").lower()
+        prov_tier = str(meta_dict.get("provenance_tier") or "").lower()
+        if assertion_type == "opinion" or prov_tier == "unverified":
+            epistemic_warnings.append("low_provenance_tier")
+
+        if stale is True:
+            epistemic_warnings.append("stale_memory_retention")
+
+        # Synthesize confidence_score strictly in [0.0, 1.0]
+        c_score = float(confidence)
+        if "atms_invalidated" in epistemic_warnings:
+            c_score = min(c_score * 0.25, 0.25)
+        if "unresolved_contradiction" in epistemic_warnings:
+            c_score *= 0.5
+        if assertion_type == "opinion" or prov_tier == "unverified":
+            c_score *= 0.6
+        elif assertion_type == "preference":
+            c_score *= 0.8
+        elif assertion_type == "observation":
+            c_score *= 0.9
+
+        decay_rate = getattr(cfg, "NCE_DERIVATION_CONFIDENCE_DECAY", 0.85)
+        if derivation_depth > 0:
+            c_score *= decay_rate**derivation_depth
+
+        if stale is True:
+            c_score *= 0.8
+
+        confidence_score = float(min(1.0, max(0.0, round(c_score, 4))))
+
         results.append(
             {
                 "memory_id": res["memory_id"],
                 "payload_ref": ref,
-                "score": res["score"],
+                "score": score,
                 "raw_data": (raw[:_MAX_RAW_DATA_CHARS] if isinstance(raw, str) else raw)
                 if doc
                 else None,
                 "salience_score": salience_score,
                 "last_reinforced_at": last_reinforced_at.isoformat()
-                if last_reinforced_at and hasattr(last_reinforced_at, 'isoformat')
+                if last_reinforced_at and hasattr(last_reinforced_at, "isoformat")
                 else last_reinforced_at,
                 "confidence": confidence,
                 "stale": stale,
                 "reranker_score": None,
+                "confidence_score": confidence_score,
+                "epistemic_warnings": epistemic_warnings,
             }
         )
+
+    results.sort(key=lambda x: (-x["score"], str(x["memory_id"])))
 
     if rerank and results:
         from nce.contradictions import NLIUnavailableError
@@ -633,4 +865,14 @@ async def semantic_search(
             results.sort(key=lambda x: (-x["reranker_score"], -x["score"], str(x["memory_id"])))
             for r in results:
                 r["confidence"] = r["reranker_score"]
+                c_score = float(r["confidence"])
+                if "atms_invalidated" in r["epistemic_warnings"]:
+                    c_score = min(c_score * 0.25, 0.25)
+                if "unresolved_contradiction" in r["epistemic_warnings"]:
+                    c_score *= 0.5
+                if "low_provenance_tier" in r["epistemic_warnings"]:
+                    c_score *= 0.6
+                if "stale_memory_retention" in r["epistemic_warnings"]:
+                    c_score *= 0.8
+                r["confidence_score"] = float(min(1.0, max(0.0, round(c_score, 4))))
     return results

@@ -18,6 +18,7 @@ from starlette.responses import JSONResponse
 from nce import bridge_repo
 from nce.config import cfg
 from nce.extractors.dispatch import get_priority_queue
+from nce.http_body_limit import BoundedBodyMiddleware
 from nce.net_safety import BridgeURLValidationError, validate_webhook_payload_url
 from nce.observability import enqueue_traced
 from nce.tasks import process_bridge_event
@@ -25,6 +26,7 @@ from nce.tasks import process_bridge_event
 log = logging.getLogger("nce.webhook_receiver")
 
 app = FastAPI(title="NCE Webhook Receiver")
+app.add_middleware(BoundedBodyMiddleware)
 
 # Production guardrails (override via nce.config.cfg / env).
 _MAX_BODY_BYTES = cfg.WEBHOOK_MAX_BODY_BYTES

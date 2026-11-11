@@ -253,14 +253,20 @@ class CausalGraph:
         namespace_id: uuid.UUID,
         *,
         active_only: bool = True,
+        seed_node_ids: list[str] | set[str] | str | None = None,
+        max_hops: int = 3,
+        as_of: datetime | None = None,
     ) -> CausalGraph:
         """Load the topology_graph for *namespace_id* into memory.
 
         Args:
-            conn:         asyncpg connection (caller manages transaction).
-            namespace_id: Tenant UUID; enforces row-level isolation.
-            active_only:  When True (default), skip soft-deleted edges
-                          (valid_to IS NULL).
+            conn:          asyncpg connection (caller manages transaction).
+            namespace_id:  Tenant UUID; enforces row-level isolation.
+            active_only:   When True (default), skip soft-deleted edges
+                           (valid_to IS NULL).
+            seed_node_ids: Optional seed node IDs for bounded k-hop neighborhood CTE traversal.
+            max_hops:      Max hops to expand outward from seeds (default 3).
+            as_of:         Optional point-in-time timestamp for temporal graph filtering.
 
         Returns:
             CausalGraph populated from the current topology_graph rows.
@@ -270,9 +276,84 @@ class CausalGraph:
         from nce.causal.chrono import get_active_branch
 
         branch = get_active_branch()
+        effective_time = as_of
+        if branch and branch.get("target_time") and effective_time is None:
+            effective_time = branch["target_time"]
 
-        if branch and branch.get("target_time"):
-            target_time = branch["target_time"]
+        if seed_node_ids:
+            if isinstance(seed_node_ids, str):
+                seed_list = [seed_node_ids]
+            else:
+                seed_list = list(seed_node_ids)
+
+            rows = await conn.fetch(
+                """
+                WITH RECURSIVE traversal AS (
+                    SELECT
+                        tg.source_node_id,
+                        tg.source_node_type,
+                        tg.target_node_id,
+                        tg.target_node_type,
+                        tg.edge_type,
+                        tg.confidence_score,
+                        tg.decay_coefficient,
+                        tg.last_verified,
+                        0 AS depth,
+                        ARRAY[tg.source_node_id, tg.target_node_id] AS visited_nodes
+                    FROM topology_graph tg
+                    WHERE tg.namespace_id = $1::uuid
+                      AND (tg.source_node_id = ANY($2::text[]) OR tg.target_node_id = ANY($2::text[]))
+                      AND ($3::timestamptz IS NULL OR (tg.valid_from <= $3::timestamptz AND (tg.valid_to IS NULL OR tg.valid_to > $3::timestamptz)))
+                      AND ($4 IS FALSE OR tg.valid_to IS NULL)
+                    UNION
+                    SELECT
+                        next_edge.source_node_id,
+                        next_edge.source_node_type,
+                        next_edge.target_node_id,
+                        next_edge.target_node_type,
+                        next_edge.edge_type,
+                        next_edge.confidence_score,
+                        next_edge.decay_coefficient,
+                        next_edge.last_verified,
+                        t.depth + 1,
+                        t.visited_nodes || ARRAY[next_edge.source_node_id, next_edge.target_node_id]
+                    FROM traversal t
+                    JOIN topology_graph next_edge ON (
+                        next_edge.source_node_id = t.source_node_id OR next_edge.source_node_id = t.target_node_id
+                        OR next_edge.target_node_id = t.source_node_id OR next_edge.target_node_id = t.target_node_id
+                    )
+                    WHERE next_edge.namespace_id = $1::uuid
+                      AND t.depth < $5
+                      AND NOT (next_edge.source_node_id = ANY(t.visited_nodes) AND next_edge.target_node_id = ANY(t.visited_nodes))
+                      AND ($3::timestamptz IS NULL OR (next_edge.valid_from <= $3::timestamptz AND (next_edge.valid_to IS NULL OR next_edge.valid_to > $3::timestamptz)))
+                      AND ($4 IS FALSE OR next_edge.valid_to IS NULL)
+                )
+                SELECT DISTINCT
+                    source_node_id,
+                    source_node_type,
+                    target_node_id,
+                    target_node_type,
+                    edge_type,
+                    confidence_score,
+                    decay_coefficient,
+                    last_verified
+                FROM traversal
+                ORDER BY source_node_id, target_node_id
+                """,
+                namespace_id,
+                seed_list,
+                effective_time,
+                active_only,
+                max_hops,
+            )
+            base_graph = cls.from_rows(rows, namespace_id)
+            if branch and branch.get("hypothetical_states"):
+                from nce.causal.chrono import apply_hypothetical_states
+
+                return apply_hypothetical_states(base_graph, branch.get("hypothetical_states", {}))
+            return base_graph
+
+        if effective_time:
             rows = await conn.fetch(
                 """
                 SELECT
@@ -291,12 +372,14 @@ class CausalGraph:
                 ORDER BY tg.source_node_id, tg.target_node_id
                 """,
                 namespace_id,
-                target_time,
+                effective_time,
             )
             base_graph = cls.from_rows(rows, namespace_id)
-            from nce.causal.chrono import apply_hypothetical_states
+            if branch and branch.get("hypothetical_states"):
+                from nce.causal.chrono import apply_hypothetical_states
 
-            return apply_hypothetical_states(base_graph, branch.get("hypothetical_states", {}))
+                return apply_hypothetical_states(base_graph, branch.get("hypothetical_states", {}))
+            return base_graph
 
         # Default query for current active graph
         rows = await conn.fetch(
@@ -320,6 +403,27 @@ class CausalGraph:
         )
 
         return cls.from_rows(rows, namespace_id)
+
+    @classmethod
+    async def load_neighborhood_from_db(
+        cls,
+        conn,
+        namespace_id: uuid.UUID,
+        seed_node_ids: list[str] | set[str] | str,
+        *,
+        max_hops: int = 3,
+        as_of: datetime | None = None,
+        active_only: bool = True,
+    ) -> CausalGraph:
+        """Bounded k-hop recursive CTE neighborhood loader for CausalGraph."""
+        return await cls.load_from_db(
+            conn,
+            namespace_id,
+            active_only=active_only,
+            seed_node_ids=seed_node_ids,
+            max_hops=max_hops,
+            as_of=as_of,
+        )
 
     @classmethod
     def from_rows(

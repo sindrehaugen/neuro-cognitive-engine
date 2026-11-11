@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import uuid
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from starlette.requests import Request
+
+_REPO_ADMIN = Path(__file__).resolve().parent.parent / "admin"
 
 os.environ.setdefault("NCE_MASTER_KEY", "dev-test-key-32chars-long!!")
 
@@ -442,24 +446,25 @@ async def test_api_admin_signing_credentials_routes() -> None:
 @pytest.mark.asyncio
 async def test_serve_index_and_styles_resolve_repo_root_admin_dir() -> None:
     """Verify serve_index and serve_styles serve files from <repo_root>/admin/."""
-    from pathlib import Path
-
     from starlette.responses import FileResponse
 
     from nce.admin_handlers.health import serve_index, serve_styles
 
-    repo_admin = Path(__file__).resolve().parent.parent / "admin"
     req_index = Request({"type": "http", "method": "GET", "path": "/"})
     resp_index = await serve_index(req_index)
     assert resp_index.status_code == 200
     assert isinstance(resp_index, FileResponse)
-    assert Path(resp_index.path).resolve() == (repo_admin / "index.html").resolve()
+    assert await asyncio.to_thread(os.path.realpath, resp_index.path) == await asyncio.to_thread(
+        os.path.realpath, str(_REPO_ADMIN / "index.html")
+    )
 
     req_styles = Request({"type": "http", "method": "GET", "path": "/styles.css"})
     resp_styles = await serve_styles(req_styles)
     assert resp_styles.status_code == 200
     assert isinstance(resp_styles, FileResponse)
-    assert Path(resp_styles.path).resolve() == (repo_admin / "styles.css").resolve()
+    assert await asyncio.to_thread(os.path.realpath, resp_styles.path) == await asyncio.to_thread(
+        os.path.realpath, str(_REPO_ADMIN / "styles.css")
+    )
     assert resp_styles.media_type == "text/css"
 
 

@@ -55,7 +55,7 @@ log = logging.getLogger(__name__)
 # Module-level Jinja2 environment shared across all CatalogManager instances.
 # Creating a new Environment per request throws away Jinja2's internal template
 # cache, forcing re-parsing of raw_template strings on every call.
-_JINJA_ENV: Environment = Environment(undefined=StrictUndefined)  # nosec B701 — SQL templating only; data values emitted as asyncpg positional params via bind()->${N}; raw {{ value }} is FORBIDDEN (StrictUndefined raises); no HTML/browser sink
+_JINJA_ENV: Environment = Environment(undefined=StrictUndefined, autoescape=False)  # nosec B701  # noqa: S701 — SQL templating only; data values emitted as asyncpg positional params via bind()->${N}; autoescape would corrupt SQL operators (<, >, ', "); no HTML/browser sink
 
 
 # ---------------------------------------------------------------------------

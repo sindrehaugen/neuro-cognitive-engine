@@ -4,8 +4,8 @@
 > Persistent, multi-tenant, time-travelling memory across a four-database stack — with a brain on top.
 
 <p>
-  <img alt="version" src="https://img.shields.io/badge/version-3.3.0-blue">
-  <img alt="python" src="https://img.shields.io/badge/python-3.10%2B-3776ab">
+  <img alt="version" src="https://img.shields.io/badge/version-3.4.0-blue">
+  <img alt="python" src="https://img.shields.io/badge/python-3.10%20--%203.12-3776ab">
   <img alt="protocol" src="https://img.shields.io/badge/MCP-JSON--RPC%202.0-6e40c9">
   <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-blue">
 </p>
@@ -83,47 +83,56 @@ See [docs/cognitive_layer.md](docs/cognitive_layer.md).
 ```mermaid
 flowchart TB
   subgraph Clients [Clients]
-    IDE[MCP clients · Claude Desktop · Cursor]
-    PEER[Peer agent networks]
-    OPS[Operators / Admins]
+    IDE["MCP clients · Claude Desktop · Cursor"]
+    PEER["Peer agent networks"]
+    OPS["Operators / Admins"]
   end
 
-  subgraph Surfaces [Surfaces]
-    STDIO[server.py · MCP stdio]
-    A2A[a2a_server.py · A2A federation]
-    ADM[admin_server.py · REST + Admin UI]
-    WH[webhook_receiver · document bridges]
+  subgraph Surfaces [Surfaces & Ingress Gateways]
+    STDIO["server.py · MCP stdio"]
+    GW["mcp_gateway_server.py · Streamable HTTP /mcp"]
+    PROXY["nce.mcp_client_proxy · CLI bridge"]
+    A2A["nce/a2a_server.py · A2A federation"]
+    ADM["admin_server.py · REST + Admin UI"]
+    WH["nce/webhook_receiver · document bridges"]
   end
 
   subgraph Background [Background processing]
-    RQ[start_worker.py · RQ worker]
-    CRON[nce.cron · schedulers]
+    RQ["start_worker.py · RQ worker"]
+    CRON["nce.cron · schedulers"]
   end
 
   subgraph Engine [NCEEngine — orchestration]
-    ORCH[Saga write path]
-    COG[Cognitive workers]
-    TMP[Temporal / replay]
+    ORCH["Saga write path"]
+    COG["Cognitive workers · compile_working_memory"]
+    PROC["procedural_heuristics · distillation"]
+    TMP["Temporal / replay"]
   end
 
   subgraph Data [Quad-Database Stack]
-    PG[(PostgreSQL + pgvector)]
-    MG[(MongoDB)]
-    RD[(Redis)]
-    S3[(MinIO)]
+    PG[("PostgreSQL + pgvector")]
+    MG[("MongoDB")]
+    RD[("Redis")]
+    S3[("MinIO")]
   end
 
   IDE --> STDIO
+  IDE --> PROXY
+  PROXY --> GW
+  IDE --> GW
   PEER --> A2A
   OPS --> ADM
   STDIO --> ORCH
+  GW --> ORCH
   A2A --> ORCH
   ADM --> ORCH
   WH --> RQ
   RQ --> ORCH
   CRON --> COG
+  COG --> PROC
   ORCH --> PG & MG & RD & S3
   COG --> PG & MG
+  PROC --> PG
   TMP --> PG & S3
 ```
 
@@ -146,7 +155,9 @@ Duties are split across four engines so each does only what it is best at:
 
 ## Capabilities
 
-- **Hybrid recall** — `semantic_search` (pgvector cosine) with MongoDB hydration, `graph_search` GraphRAG BFS traversal, and neuromorphic **spiking spreading activation** with LTP/LTD weight adaptation.
+- **3-way Hybrid RRF & Cognitive Synthesis** — `semantic_search` combining vector embeddings (pgvector HNSW cosine), full-text search (`search_tsv`), and exact keyword/identifier boosting (SKU, orgnr, IP) via Reciprocal Rank Fusion, with calibrated `confidence_score` and `epistemic_warnings`; `compile_working_memory` (tool #71) dynamically synthesizes working memory across episodic, semantic, graph, and procedural tiers.
+- **Procedural memory & heuristics** — `procedural_heuristics` distillation extracts operational rules, trigger conditions, and action guidance from governed decisions with trigger-maintained full-text indexing and RLS isolation.
+- **Hybrid recall** — `semantic_search` with MongoDB `$in` batch hydration, `graph_search` GraphRAG BFS traversal, and neuromorphic **spiking spreading activation** with LTP/LTD weight adaptation.
 - **Time travel** — pass an `as_of` ISO-8601 timestamp to any read and see memory exactly as it stood: `valid_from <= as_of AND (valid_to IS NULL OR valid_to > as_of)`. Applies symmetrically to vector search and graph traversal.
 - **Snapshots & state diffing** — name a point in time (`create_snapshot`) and diff two instants with `compare_states`.
 - **Replay engine** — `replay_observe` streams the event log read-only; `replay_fork` rebuilds a namespace into an isolated target, either *deterministically* (LLM responses served from the MinIO cache, byte-identical) or *re-executed* (call the LLM fresh for A/B "what-if" divergence); `replay_reconstruct` for exact rebuilds.
@@ -161,16 +172,18 @@ Duties are split across four engines so each does only what it is best at:
 
 ## Surfaces & Entrypoints
 
-NCE is no longer "just an MCP server." It exposes several coordinated surfaces:
+NCE is no longer "just an MCP server." It exposes several coordinated surfaces protected by ASGI `BoundedBodyMiddleware` (`NCE_MAX_HTTP_BODY_BYTES`, rejecting oversized payloads with HTTP `413`):
 
-| Entrypoint | Transport | Purpose |
-| :--- | :--- | :--- |
-| `server.py` | MCP stdio (JSON-RPC 2.0) | Tool surface for LLM clients (Claude Desktop, Cursor, …) |
-| `admin_server.py` | HTTP (Starlette REST + Admin UI) | Operations, namespace/quota management, runtime tool toggles |
-| `nce/a2a_server.py` | HTTP (A2A RPC) | Federated, scope-bound memory sharing between agent networks |
-| `nce/webhook_receiver` | HTTP | Inbound document-bridge change notifications |
-| `start_worker.py` | RQ worker | Async jobs — code indexing, bridge sync, re-embedding |
-| `nce/cron.py` | Scheduler | Consolidation cycles, bridge renewal, GC |
+| Entrypoint | Transport | Purpose | Security & Limits |
+| :--- | :--- | :--- | :--- |
+| `server.py` | MCP stdio (JSON-RPC 2.0) | Direct tool surface for local LLM clients (Claude Desktop, Cursor) | Process-isolated stdio, tenant pinned via `NCE_MCP_NAMESPACE_ID` |
+| `mcp_gateway_server.py` | Streamable HTTP `/mcp` (SSE / JSON-RPC 2.0) | Zero-trust remote MCP gateway for IDEs and desktop clients | Scoped bearer tokens, fail-closed Redis governance, `BoundedBodyMiddleware` (HTTP `413`) |
+| `nce.mcp_client_proxy` | CLI bridge (stdio → HTTP `/mcp`) | Zero-secret local bridge (`nce-mcp-proxy`) connecting stdio-only MCP clients to HTTP `/mcp` | Zero database secrets on workstations, scoped token authentication |
+| `admin_server.py` | HTTP (Starlette REST + Admin UI) | Operations, namespace/quota management, runtime tool toggles | HMAC-SHA256 three-header auth, anti-replay nonces, `BoundedBodyMiddleware` (HTTP `413`) |
+| `nce/a2a_server.py` | HTTP (A2A RPC) | Federated, scope-bound memory sharing between agent networks | Ephemeral Ed25519/RS256 JWTs, atomic 1-time grant redemption, `BoundedBodyMiddleware` (HTTP `413`) |
+| `nce/webhook_receiver/main.py` | HTTP | Inbound document-bridge change notifications | Provider HMAC verification, SSRF egress validation, `BoundedBodyMiddleware` (HTTP `413`) |
+| `start_worker.py` | RQ worker | Async background jobs — code indexing, bridge sync, re-embedding | Queue-isolated execution, automatic retry, dead-letter queue (DLQ) |
+| `nce/cron.py` | Scheduler | Sleep consolidation cycles, salience decay pruning, bridge renewal, GC | Distributed Redis locking, non-blocking health probes |
 
 A **Dynamic Tools Console** in the Admin UI can enable/disable individual stdio tools or A2A skills at runtime (persisted to a Redis hash); disabled calls are rejected by the dispatch interceptor. In production, tool and engine governance fails **closed** (`-32005`) if Redis is unreachable to prevent unauthenticated or unauthorized dispatch.
 
@@ -269,14 +282,15 @@ make verify                        # runs verify_v1_launch.py end-to-end
 
 ## MCP Tool Surface
 
-Tools are dispatched through `nce/mcp_stdio_dispatch.py`, which enforces auth, quotas, and runtime enable/disable state. Highlights (`[ADMIN]` tools require `admin_api_key`):
+NCE provides **71** static core MCP tools dispatched through `nce/mcp_stdio_dispatch.py` and the Streamable HTTP `/mcp` gateway, enforcing auth, quotas, and runtime enable/disable state. Highlights (`[ADMIN]` tools require `admin_api_key`):
 
 | Tool | What it does |
 | :--- | :--- |
 | `store_memory` | Persist a memory; extract entities; build KG edges (Saga write) |
 | `store_artifact` | Ingest media/PDF/logs into MinIO + index metadata |
-| `semantic_search` | Vector cosine search + Mongo hydration; optional `as_of` |
-| `graph_search` | GraphRAG: anchor by similarity, BFS the KG, return a subgraph; optional `as_of` |
+| `semantic_search` | 3-way Hybrid RRF (pgvector cosine + BM25 keyword + SKU/orgnr/IP boost) with `confidence_score` & `epistemic_warnings`; optional `as_of` |
+| `compile_working_memory` | Cognitive synthesis tool (tool #71): assemble episodic, semantic, graph, and procedural memory tiers with epistemic confidence |
+| `graph_search` | GraphRAG: anchor by similarity, cycle-safe recursive CTE BFS traversal, return subgraph; optional `as_of` |
 | `describe_schema` | List live entity types & edge predicates (avoid hallucinated graph constraints) |
 | `suggest_queries` / `execute_query_template` | Discover and run pre-optimised query templates |
 | `index_code_file` / `check_indexing_status` / `search_codebase` | Async AST code indexing & semantic code search |
@@ -295,10 +309,11 @@ Migration tools (`start_migration`, `validate_migration`, `commit_migration`, �
 
 ## Security Model
 
-- **Multi-tenant by construction.** Every application checkout passes through `scoped_pg_session`, which sets `SET LOCAL nce.namespace_id = '<tenant-uuid>'`. All relational tables have RLS **enabled and forced**; policies validate via `get_nce_namespace()`. Privileged GC runs under a separate `BYPASSRLS` role, out of band.
-- **Encryption at rest.** PII, credentials, and sensitive cognitive payloads are AES-256-GCM encrypted under `NCE_MASTER_KEY`. An automated PII pipeline (Presidio/regex) supports redaction and reversible pseudonymisation — see [docs/pii.md](docs/pii.md).
-- **Integrity & non-repudiation.** The `event_log` is append-only (a `prevent_mutation` trigger blocks edits) and hash-chained; entries are HMAC-SHA256 signed over RFC 8785 (JCS) canonical JSON, with rotatable signing keys. See [docs/signing.md](docs/signing.md).
-- **AuthN/Z.** HMAC-authenticated admin HTTP with optional Redis-backed replay protection; JWT (HS256 secret or RS256 public key) for A2A and protected routes; optional **mTLS** behind your edge proxy.
+- **Multi-tenant by construction.** Every application checkout passes through `scoped_pg_session`, which sets `SET LOCAL nce.namespace_id = '<tenant-uuid>'`. All 121 relational tables have RLS **enabled and forced**; policies validate via `get_nce_namespace()`. Privileged GC runs under a separate `BYPASSRLS` role, out of band.
+- **Encryption at rest & GDPR crypto-shredding.** KEK/DEK AES-256-GCM envelope encryption (`encryption_deks` / `wrapped_dek`) allows cryptographic deletion of forgotten memories by nulling the wrapped DEK. PII, credentials, and sensitive cognitive payloads are encrypted under versioned KEK rings derived from `NCE_MASTER_KEY` — see [docs/pii.md](docs/pii.md).
+- **Integrity & WORM serialization.** The `event_log` is append-only (a `prevent_mutation` trigger blocks edits) and hash-chained. Per-namespace WORM serialization via `pg_advisory_xact_lock` (`acquire_event_log_worm_lock`) prevents Merkle-chain races. Entries are HMAC-SHA256 signed over RFC 8785 (JCS) canonical JSON, with rotatable signing keys — see [docs/signing.md](docs/signing.md).
+- **AuthN/Z & Anti-Replay.** HMAC-authenticated admin HTTP with mandatory production nonces validated against a Redis distributed store; sliding timestamp drift window; fail-closed production guards (`live_admin_override_enabled()`); JWT (HS256 secret or RS256 public key) for A2A and protected routes; optional **mTLS** behind your edge proxy.
+- **Network & Ingress Defense.** ASGI `BoundedBodyMiddleware` (`NCE_MAX_HTTP_BODY_BYTES`, HTTP `413`) enforces hard payload limits across all HTTP entrypoints. SSRF guards block private IP ranges, CGNAT (`100.64.0.0/10`), and IPv4-mapped IPv6 (`::ffff:169.254.169.254`), with strict host allowlisting (`NCE_SSRF_ALLOWLIST_HOSTS`).
 - **A2A federation.** Sharing tokens are stored only as SHA-256 hashes mapped to expirations and JSONB scopes; inbound queries are scope-checked then executed bound to the *owner's* RLS namespace.
 
 Full guide: [docs/enterprise_security.md](docs/enterprise_security.md) · [docs/multi_tenancy.md](docs/multi_tenancy.md).
@@ -320,10 +335,11 @@ For installation, engine documentation, and domain specifications, see the [nce-
 
 ## Tech Stack
 
-- **Runtime** — Python 3.10+
-- **Protocol** — MCP over JSON-RPC 2.0 (stdio); HTTP for admin/A2A/webhooks
-- **Relational + vector** — PostgreSQL 16 with `pgvector` and `pgcrypto`
-- **Episodic store** — MongoDB 7.0
+- **Runtime** — Python 3.10–3.12 (runtime 3.12)
+- **Protocol** — MCP over JSON-RPC 2.0 (stdio and Streamable HTTP `/mcp` gateway); HTTP for admin/A2A/webhooks
+- **Relational + vector** — PostgreSQL 16 with `pgvector` (HNSW iterative scan with `relaxed_order`), `pgcrypto`, and cycle-safe `WITH RECURSIVE` CTE graph queries
+- **Serialization & XML** — `orjson` (accelerated JSON & `tools/list` schema caching), `defusedxml` (XML-RPC Billion Laughs / XXE prevention)
+- **Episodic store** — MongoDB 7.0 (with `$in` batch hydration)
 - **Cache / queues** — Redis 7.4 (+ `rq`)
 - **Object storage** — MinIO (S3-compatible)
 - **NLP / graph** — spaCy (entities), NetworkX, HDBSCAN, cross-encoder NLI
@@ -380,5 +396,5 @@ The [`docs/`](docs/) tree is the source of truth. Start here:
 
 ---
 
-<sub>NCE — Neuro-Cognitive Engine · v3.3.0 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.</sub>
+<sub>NCE — Neuro-Cognitive Engine · v3.4.0 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.</sub>
 

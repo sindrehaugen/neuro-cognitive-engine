@@ -389,17 +389,46 @@ async def restore_namespace(
     episodes_col = db.episodes
 
     lines = snapshot_data.strip().split("\n")
+    parsed_items: list[tuple[int, dict]] = []
+    oids_to_fetch: list[ObjectId] = []
+    oid_strings: set[str] = set()
+
     for i, line in enumerate(lines):
         line = line.strip()
         if not line:
             continue
-
         try:
             record = json.loads(line)
+            parsed_items.append((i, record))
+            if record.get("type") == "memory":
+                mem_dict = record.get("memory") or {}
+                pref = mem_dict.get("payload_ref")
+                if pref and pref not in oid_strings:
+                    try:
+                        oids_to_fetch.append(ObjectId(pref))
+                        oid_strings.add(pref)
+                    except Exception:
+                        pass
         except json.JSONDecodeError as e:
             errors.append(f"Line {i + 1}: Invalid JSON: {str(e)}")
-            continue
 
+    doc_map: dict[str, dict] = {}
+    if oids_to_fetch and hasattr(episodes_col, "find"):
+        chunk_size = 500
+        for start_idx in range(0, len(oids_to_fetch), chunk_size):
+            chunk = oids_to_fetch[start_idx : start_idx + chunk_size]
+            try:
+                cursor = episodes_col.find({"_id": {"$in": chunk}})
+                if hasattr(cursor, "to_list") and callable(cursor.to_list):
+                    fetched = await cursor.to_list(length=len(chunk))
+                    if isinstance(fetched, list):
+                        for doc in fetched:
+                            if isinstance(doc, dict) and "_id" in doc:
+                                doc_map[str(doc["_id"])] = doc
+            except Exception:
+                pass
+
+    for i, record in parsed_items:
         rec_type = record.get("type")
         if rec_type != "memory":
             continue
@@ -414,13 +443,15 @@ async def restore_namespace(
             errors.append(f"Line {i + 1}: Missing payload_ref in memory details")
             continue
 
-        try:
-            doc = await episodes_col.find_one({"_id": ObjectId(payload_ref)})
-        except Exception as e:
-            errors.append(
-                f"Line {i + 1}: MongoDB fetch failed for payload_ref {payload_ref}: {str(e)}"
-            )
-            continue
+        doc = doc_map.get(payload_ref)
+        if doc is None:
+            try:
+                doc = await episodes_col.find_one({"_id": ObjectId(payload_ref)})
+            except Exception as e:
+                errors.append(
+                    f"Line {i + 1}: MongoDB fetch failed for payload_ref {payload_ref}: {str(e)}"
+                )
+                continue
 
         if not doc:
             errors.append(f"Line {i + 1}: MongoDB document not found for payload_ref {payload_ref}")
