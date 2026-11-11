@@ -942,7 +942,7 @@ class NCEEngine(OrchestratorBase):
         )
 
         async with self.pg_pool.acquire(timeout=10.0) as conn:
-            await verify_rls_catalog_consistency(conn)
+            await verify_rls_catalog_consistency(conn, require_plugin_tables=True)
 
     async def _check_global_legacy_warning(self):
         """Warn if ``_global_legacy`` namespace still has KG entities.

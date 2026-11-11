@@ -177,6 +177,26 @@ def test_mark_graph_write_processed_is_coroutine():
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _register_test_outbox_subscribers():
+    """Ensure Wave R-14 publish() sees active subscribers for test selectors."""
+    from nce import outbox_relay
+    from nce.events.bus import subscribe
+
+    snapshot = outbox_relay.snapshot_handlers()
+
+    async def _noop_handler(_conn, _event):
+        return None
+
+    try:
+        subscribe({"node_type": "account", "op": "upserted"}, _noop_handler)
+        subscribe({"node_type": "contact", "op": "upserted"}, _noop_handler)
+        subscribe({"node_type": "BOM_LINE", "op": "status_changed"}, _noop_handler)
+        yield
+    finally:
+        outbox_relay.restore_handlers(snapshot)
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_kg_upsert_emits_exactly_one_graph_write_event(pg_pool, namespace_id):

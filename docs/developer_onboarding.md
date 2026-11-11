@@ -44,7 +44,7 @@ This starts `docker-compose.local.yml` which launches five containers:
 | `nce-redis-local` | `redis:7.4-alpine` | `127.0.0.1:6379` |
 | `nce-postgres-local` | `pgvector/pgvector:pg16` | `127.0.0.1:5432` |
 | `nce-mongo-local` | `mongo:7.0` | `127.0.0.1:27017` |
-| `nce-minio-local` | `minio/minio:RELEASE.2024-11-07T00-52-20Z` | `127.0.0.1:9002` (S3 API) |
+| `nce-minio-local` | `alpine/minio:RELEASE.2025-10-15T17-29-55Z` | `127.0.0.1:9002` (S3 API) |
 | `nce-cognitive-local` | `ghcr.io/sindrehaugen/nce-cognitive:v1` | `127.0.0.1:11435` |
 
 **Option B — full application stack** (includes workers, admin, A2A, webhooks, Jaeger, Caddy):

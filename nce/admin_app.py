@@ -164,7 +164,7 @@ def build_admin_middleware() -> list[Middleware]:
         Middleware(
             BasicAuthMiddleware,
             protected_prefix="/",
-            excluded_prefixes=("/api/", "/healthz", "/public-api/"),
+            excluded_prefixes=("/api/", "/admin/plugins/api", "/healthz", "/public-api/"),
             username=cfg.NCE_ADMIN_USERNAME,
             password=cfg.NCE_ADMIN_PASSWORD,
             realm="NCE Admin",

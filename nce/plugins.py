@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import logging
+import re
 from pathlib import Path
 from typing import Any, Protocol, TypedDict, runtime_checkable
 
@@ -151,6 +152,57 @@ def get_all_plugin_migration_dirs() -> dict[str, Path]:
         except Exception as exc:
             log.exception("Error obtaining migration dir from plugin %s: %s", plugin_id, exc)
     return migration_dirs
+
+
+_SQL_LINE_COMMENT_RE = re.compile(r"--[^\n]*")
+_SQL_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+_SQL_ENABLE_RLS_RE = re.compile(
+    r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?:public\.)?([a-zA-Z_][a-zA-Z0-9_]*)\s+"
+    r"ENABLE\s+ROW\s+LEVEL\s+SECURITY",
+    re.IGNORECASE,
+)
+
+
+def get_all_plugin_tenant_rls_tables() -> dict[str, str]:
+    """Collect tenant RLS table -> namespace column declarations from discovered plugins.
+
+    Combines explicit ``plugin.get_tenant_rls_tables()`` mappings (when provided)
+    with ``ALTER TABLE ... ENABLE ROW LEVEL SECURITY`` statements declared in
+    each plugin's SQL migration directory so external plugins remain decoupled
+    from Core's static catalog while still undergoing fail-closed RLS policy checks.
+    """
+    tables: dict[str, str] = {}
+    plugins = load_plugins()
+    for plugin_id, plugin in plugins.items():
+        getter = getattr(plugin, "get_tenant_rls_tables", None)
+        if callable(getter):
+            try:
+                explicit = getter()
+                if isinstance(explicit, dict):
+                    for tbl, col in explicit.items():
+                        if (
+                            isinstance(tbl, str)
+                            and isinstance(col, str)
+                            and tbl.strip()
+                            and col.strip()
+                        ):
+                            tables[tbl.strip().lower()] = col.strip()
+            except Exception as exc:
+                log.exception("Error reading tenant RLS tables from plugin %s: %s", plugin_id, exc)
+
+    for plugin_id, mdir in get_all_plugin_migration_dirs().items():
+        try:
+            for sql_file in sorted(mdir.glob("*.sql")):
+                raw_sql = sql_file.read_text(encoding="utf-8")
+                cleaned = _SQL_LINE_COMMENT_RE.sub("", _SQL_BLOCK_COMMENT_RE.sub("", raw_sql))
+                for match in _SQL_ENABLE_RLS_RE.finditer(cleaned):
+                    tables.setdefault(match.group(1).lower(), "namespace_id")
+        except Exception as exc:
+            log.exception(
+                "Error scanning RLS tables in migrations for plugin %s: %s", plugin_id, exc
+            )
+
+    return tables
 
 
 def _normalize_filter_tokens(raw: str | None) -> set[str]:

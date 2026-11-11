@@ -543,7 +543,24 @@ async def verify_rls_enforcement(conn: asyncpg.Connection, table_name: str) -> N
     log.info("[rls-probe] %s: unscoped SELECT returned 0 rows — RLS active ✅", table_name)
 
 
-async def verify_rls_catalog_consistency(conn: asyncpg.Connection) -> None:
+def _plugin_tenant_rls_tables() -> dict[str, str]:
+    """Return plugin-contributed tenant RLS tables not already owned by Core."""
+    from nce.plugins import get_all_plugin_tenant_rls_tables
+
+    return {
+        tbl: col
+        for tbl, col in get_all_plugin_tenant_rls_tables().items()
+        if tbl not in EXPECTED_TENANT_RLS_TABLES
+        and tbl not in EXPECTED_SPECIAL_RLS_TABLES
+        and tbl not in EXPECTED_GLOBAL_TABLES
+    }
+
+
+async def verify_rls_catalog_consistency(
+    conn: asyncpg.Connection,
+    *,
+    require_plugin_tables: bool = False,
+) -> None:
     """
     Query pg_class, information_schema.columns, and pg_policies to verify
     the deployed schema matches NCE's intended RLS security posture.
@@ -594,12 +611,15 @@ async def verify_rls_catalog_consistency(conn: asyncpg.Connection) -> None:
 
     by_table = {row["table_name"]: row for row in rows}
     errors: list[str] = []
+    plugin_tenant_tables = _plugin_tenant_rls_tables()
+    effective_tenant_tables = {**EXPECTED_TENANT_RLS_TABLES, **plugin_tenant_tables}
 
-    # --- Tenant tables ---
-    for table_name in EXPECTED_TENANT_RLS_TABLES:
+    # --- Tenant tables (Core + installed plugins) ---
+    for table_name, namespace_column in effective_tenant_tables.items():
         row = by_table.get(table_name)
         if row is None:
-            errors.append(f"{table_name}: expected tenant table does not exist in schema")
+            if table_name in EXPECTED_TENANT_RLS_TABLES or require_plugin_tables:
+                errors.append(f"{table_name}: expected tenant table does not exist in schema")
             continue
         if not row["has_namespace_id"]:
             errors.append(f"{table_name}: missing namespace_id column")
@@ -609,7 +629,6 @@ async def verify_rls_catalog_consistency(conn: asyncpg.Connection) -> None:
             errors.append(f"{table_name}: no RLS policies found")
             continue
 
-        namespace_column = EXPECTED_TENANT_RLS_TABLES[table_name]
         policies = await conn.fetch(
             """
             SELECT policyname, qual, with_check
@@ -678,7 +697,7 @@ async def verify_rls_catalog_consistency(conn: asyncpg.Connection) -> None:
 
     # --- Undeclared namespace tables (drift detection) ---
     declared = (
-        set(EXPECTED_TENANT_RLS_TABLES) | set(EXPECTED_SPECIAL_RLS_TABLES) | EXPECTED_GLOBAL_TABLES
+        set(effective_tenant_tables) | set(EXPECTED_SPECIAL_RLS_TABLES) | EXPECTED_GLOBAL_TABLES
     )
     for table_name, row in by_table.items():
         if (
@@ -769,7 +788,7 @@ async def verify_rls_role_capability(conn: asyncpg.Connection) -> list[str]:
         findings.append(finding)
         _log_once(finding)
 
-    declared_tables = list(EXPECTED_TENANT_RLS_TABLES)
+    declared_tables = list({**EXPECTED_TENANT_RLS_TABLES, **_plugin_tenant_rls_tables()})
     match_rows = await conn.fetch(
         """
         SELECT tablename,

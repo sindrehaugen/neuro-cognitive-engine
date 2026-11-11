@@ -3,10 +3,12 @@
 {
 	# Disable Caddy's admin API for security hardening
 	admin off
+	# Preserve plain HTTP on :80 for container healthchecks while serving TLS on :443
+	auto_https disable_redirects
 }
 
 # Bind to HTTP and HTTPS with internal TLS termination
-http://:80, https://:443 {
+http://:80, https://localhost:443, https://127.0.0.1:443 {
 	# Internal self-signed TLS termination for HTTPS
 	tls internal
 

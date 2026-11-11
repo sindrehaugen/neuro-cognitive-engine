@@ -112,6 +112,14 @@ UNMANAGED_PG_AUDITED_SITES: Final[frozenset[str]] = frozenset(
         # namespace_id to scope against.
         "pricing.fx.persist",
         "pricing.fx.load",
+        # Geodata global reference tables (geodata_n50_land_cover, geodata_osm_elements,
+        # geodata_place_names — declared in EXPECTED_GLOBAL_TABLES, non-tenant reference data).
+        "geodata.n50.import",
+        "geodata.n50.bbox_query",
+        "geodata.osm.import",
+        "geodata.osm.bbox_query",
+        "geodata.place_names.import",
+        "geodata.place_names.nearest",
     }
 )
 
