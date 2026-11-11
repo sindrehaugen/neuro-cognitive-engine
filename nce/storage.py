@@ -5,13 +5,18 @@ Provides secure pre-signed URL generation with strict namespace tenant isolation
 
 from __future__ import annotations
 
+import hashlib
+import io
 import logging
 import mimetypes
+import re
 from datetime import timedelta
+from typing import Any
 from uuid import UUID
 
 from minio import Minio
 from minio.commonconfig import ENABLED
+from minio.error import S3Error
 from minio.lifecycleconfig import (
     AbortIncompleteMultipartUpload,
     Expiration,
@@ -176,3 +181,81 @@ def generate_secure_presigned_url(
     except Exception as e:
         log.error("Failed to generate pre-signed URL: %s", e)
         raise RuntimeError(f"Storage service failure: {e}") from e
+
+
+_ARTIFACT_TYPE_REGEX = re.compile(r"^[a-z0-9_-]{1,64}$")
+
+
+def build_write_once_object_key(
+    namespace_id: str | UUID,
+    artifact_type: str,
+    content_bytes: bytes | str,
+) -> str:
+    """Build a deterministic, write-once content-addressed object key.
+
+    Returns:
+        f"{ns_uuid}/{artifact_type}/{sha256}"
+    """
+    if not namespace_id:
+        raise ValueError("namespace_id is required")
+    try:
+        ns_uuid = str(UUID(str(namespace_id)))
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise ValueError(f"Invalid namespace_id: {namespace_id!r}") from exc
+
+    if not isinstance(artifact_type, str) or not _ARTIFACT_TYPE_REGEX.match(artifact_type):
+        raise ValueError(
+            f"Invalid artifact_type: {artifact_type!r}. Must match ^[a-z0-9_-]{{1,64}}$ without '..' or '/'."
+        )
+
+    if isinstance(content_bytes, str):
+        raw = content_bytes.encode("utf-8")
+    elif isinstance(content_bytes, bytes):
+        raw = content_bytes
+    else:
+        raise TypeError(f"content_bytes must be bytes or str, got {type(content_bytes)}")
+
+    digest = hashlib.sha256(raw).hexdigest()
+    return f"{ns_uuid}/{artifact_type}/{digest}"
+
+
+def put_write_once_object(
+    minio_client: Any,
+    bucket: str,
+    namespace_id: str | UUID,
+    artifact_type: str,
+    data: bytes,
+    content_type: str = "application/octet-stream",
+) -> str:
+    """Upload data to a write-once content-addressed object key idempotently.
+
+    Builds the key `{namespace_id}/{artifact_type}/{sha256}`. If the object already exists
+    with the same key, returns the key idempotently without overwriting.
+    """
+    key = build_write_once_object_key(namespace_id, artifact_type, data)
+
+    # Check if object already exists (write-once immutability)
+    try:
+        minio_client.stat_object(bucket, key)
+        log.debug("Write-once object already exists: %s/%s", bucket, key)
+        return key
+    except S3Error as exc:
+        if exc.code not in ("NoSuchKey", "404"):
+            # Unexpected S3 error
+            log.warning("stat_object unexpected error for %s/%s: %s", bucket, key, exc)
+    except Exception as exc:
+        # Client or mock without S3Error code, or error indicating missing object
+        exc_str = str(exc).lower()
+        if "nosuchkey" not in exc_str and "not found" not in exc_str and "404" not in exc_str:
+            log.debug("stat_object returned: %s", exc)
+
+    # Upload via put_object
+    minio_client.put_object(
+        bucket,
+        key,
+        io.BytesIO(data),
+        len(data),
+        content_type=content_type,
+    )
+    log.info("Uploaded write-once object: %s/%s", bucket, key)
+    return key

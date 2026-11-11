@@ -1411,9 +1411,30 @@ class HMACAuthMiddleware(BaseHTTPMiddleware):
           - nonce_store present + nonce present → check replay as before.
           - nonce_store present + nonce absent → skip (optional).
         """
+        is_prod = bool(
+            cfg.IS_PROD or os.environ.get("NCE_ENV", "").lower() in ("production", "prod")
+        )
+        if self._nonce_store is None:
+            if is_prod:
+                log.error(
+                    "HMAC nonce required in production but NonceStore is not configured — rejecting (prod fail-closed 503)"
+                )
+                return jsonrpc_error_response(
+                    _CODE_REPLAY,
+                    "NonceStore required in production",
+                    "nonce_store_unavailable",
+                    status_code=503,
+                )
+            if not self._nonce_required:
+                return None
+            log.warning(
+                "HMAC nonce required but NonceStore is not configured — allowing in dev/test"
+            )
+            return None
+
         if not self._nonce_required:
             # Legacy / opt-out path: only check if store present and nonce provided
-            if self._nonce_store is not None and nonce_value:
+            if nonce_value:
                 if not await self._nonce_store.check_and_store(nonce_value):
                     log.warning("HMAC nonce replay detected: nonce=%s...", nonce_value[:16])
                     return _jsonrpc_error(
@@ -1421,23 +1442,6 @@ class HMACAuthMiddleware(BaseHTTPMiddleware):
                         "Request already processed (replay detected)",
                         "replay_nonce_conflict",
                     )
-            return None
-
-        # --- nonce_required=True path ---
-        if self._nonce_store is None:
-            # No Redis store configured at all
-            if cfg.IS_PROD:
-                log.error(
-                    "HMAC nonce required but NonceStore is not configured — rejecting (prod fail-closed)"
-                )
-                return _jsonrpc_error(
-                    _CODE_REPLAY,
-                    "Authentication failed",
-                    "nonce_store_unavailable",
-                )
-            log.warning(
-                "HMAC nonce required but NonceStore is not configured — allowing in dev/test"
-            )
             return None
 
         # Store is configured; probe reachability

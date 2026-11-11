@@ -18,15 +18,17 @@ method sets the flag in the async context after ``run_in_executor`` completes.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import math
+import os
 import random
 import threading
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from nce.config import cfg
 from nce.observability import EMBEDDING_COUNT, EMBEDDING_FALLBACKS
@@ -35,6 +37,39 @@ if TYPE_CHECKING:
     pass
 
 log = logging.getLogger("nce-embeddings")
+
+
+class EmbeddingDimensionMismatchError(ValueError):
+    """Raised when a vector write attempts to mix dimensions or models against pinned namespace configuration."""
+
+
+def verify_namespace_embedding_pin(
+    namespace_id: Any,
+    provider: str | None,
+    model: str | None,
+    dim: int | None,
+    *,
+    pinned_provider: str | None = None,
+    pinned_model: str | None = None,
+    pinned_dim: int | None = None,
+) -> None:
+    """Verify that provider, model, and dimension match the namespace's pinned settings.
+
+    Raises EmbeddingDimensionMismatchError if mismatch occurs against pinned values.
+    """
+    if pinned_dim is not None and dim is not None and dim != pinned_dim:
+        raise EmbeddingDimensionMismatchError(
+            f"Namespace {namespace_id} embedding dimension mismatch: pinned to {pinned_dim}, got {dim}"
+        )
+    if pinned_provider is not None and provider is not None and provider != pinned_provider:
+        raise EmbeddingDimensionMismatchError(
+            f"Namespace {namespace_id} embedding provider mismatch: pinned to {pinned_provider!r}, got {provider!r}"
+        )
+    if pinned_model is not None and model is not None and model != pinned_model:
+        raise EmbeddingDimensionMismatchError(
+            f"Namespace {namespace_id} embedding model mismatch: pinned to {pinned_model!r}, got {model!r}"
+        )
+
 
 degraded_embedding_flag: ContextVar[bool] = ContextVar("degraded_embedding_flag", default=False)
 
@@ -299,14 +334,31 @@ def _load_sentence_transformer_cached(device: str):
             device,
         )
 
+    is_airgapped = os.getenv("NCE_AIRGAPPED", "").lower() in ("1", "true", "yes")
+
     try:
         kwargs: dict = {"trust_remote_code": trust, "device": device}
         if revision:
             kwargs["revision"] = revision
+        if is_airgapped:
+            kwargs["local_files_only"] = True
         model = SentenceTransformer(MODEL_ID, **kwargs)
         log.info("Embedding model ready (device=%r).", device)
         return model
     except Exception as e:
+        if is_airgapped:
+            # Check if failure is due to missing local files / attempted remote download
+            err_str = str(e).lower()
+            if (
+                "local_files_only" in err_str
+                or "connection" in err_str
+                or "not found locally" in err_str
+                or "offline" in err_str
+                or "cannot find" in err_str
+            ):
+                raise RuntimeError(
+                    f"Remote model download attempted while NCE_AIRGAPPED=true for model {MODEL_ID!r}: {e}"
+                ) from e
         log.warning("Could not load %s on %r: %s", MODEL_ID, device, e)
         return None
 
@@ -366,7 +418,6 @@ class EmbeddingBackend(ABC):
         """
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
-        import asyncio
 
         if not texts:
             return []
@@ -878,7 +929,6 @@ async def embed_batch(texts: list[str]) -> list[list[float]]:
 
     Raises ``ValueError`` when the batch count exceeds the limit.
     """
-    import asyncio
 
     if not texts:
         return []

@@ -183,3 +183,69 @@ class TestEbbinghausParameterEquivalence:
             decayed = compute_decayed_score(1.0, t0, hl, now=t1)
             ret = retention(t0, mc, _now=t1).retention
             assert abs(decayed - ret) < 1e-12
+
+
+class TestSalienceBuffer:
+    @pytest.mark.asyncio
+    async def test_buffer_salience_boost_skips_on_as_of_or_replay(self):
+        from unittest.mock import MagicMock
+        from uuid import uuid4
+
+        from nce.salience_buffer import buffer_salience_boost
+
+        redis_mock = MagicMock()
+        ns = uuid4()
+        mem = uuid4()
+
+        # as_of set -> returns False, no redis calls
+        res = await buffer_salience_boost(redis_mock, ns, mem, as_of="2026-01-01T00:00:00Z")
+        assert res is False
+        redis_mock.hincrbyfloat.assert_not_called()
+
+        # is_replay True -> returns False, no redis calls
+        res = await buffer_salience_boost(redis_mock, ns, mem, is_replay=True)
+        assert res is False
+        redis_mock.hincrbyfloat.assert_not_called()
+
+        # normal live retrieval -> writes HINCRBYFLOAT
+        res = await buffer_salience_boost(redis_mock, ns, mem, agent_id="agent-1", delta=0.08)
+        assert res is True
+        redis_mock.hincrbyfloat.assert_called_once_with(
+            f"nce:ns:{ns}:salience_buffer",
+            f"{mem}:agent-1",
+            0.08,
+        )
+
+    @pytest.mark.asyncio
+    async def test_flush_salience_buffer(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from uuid import uuid4
+
+        from nce.salience_buffer import flush_salience_buffer
+
+        redis_mock = MagicMock()
+        ns = uuid4()
+        mem = uuid4()
+        redis_mock.hgetall.return_value = {f"{mem}:agent-1".encode(): b"0.15"}
+        redis_mock.hdel = MagicMock()
+
+        pg_pool = MagicMock()
+
+        with patch("nce.salience_buffer.scoped_pg_session") as mock_scoped:
+            mock_conn = AsyncMock()
+            mock_scoped.return_value.__aenter__.return_value = mock_conn
+            with patch("nce.salience_buffer.reinforce", new_callable=AsyncMock) as mock_reinforce:
+                flushed = await flush_salience_buffer(redis_mock, pg_pool, ns)
+
+        assert flushed == 1
+        mock_reinforce.assert_called_once_with(
+            mock_conn,
+            memory_id=str(mem),
+            agent_id="agent-1",
+            namespace_id=str(ns),
+            delta=0.15,
+        )
+        redis_mock.hdel.assert_called_once_with(
+            f"nce:ns:{ns}:salience_buffer",
+            f"{mem}:agent-1".encode(),
+        )

@@ -613,6 +613,60 @@ def governed(
                 if k not in {conn_arg, redis_client_arg, "conn", "redis_client"}
             }
 
+            # Check provenance tier: external_untrusted blocks autonomous execution unless operator_approved=True
+            prov_tier = (
+                _get_arg("provenance_tier")
+                or (
+                    raw_args.get("arguments", {}).get("provenance_tier")
+                    if isinstance(raw_args.get("arguments"), dict)
+                    else None
+                )
+                or (
+                    raw_args.get("context", {}).get("provenance_tier")
+                    if isinstance(raw_args.get("context"), dict)
+                    else None
+                )
+            )
+            operator_approved = bool(
+                _get_arg("operator_approved")
+                or (
+                    raw_args.get("arguments", {}).get("operator_approved")
+                    if isinstance(raw_args.get("arguments"), dict)
+                    else False
+                )
+                or (
+                    raw_args.get("context", {}).get("operator_approved")
+                    if isinstance(raw_args.get("context"), dict)
+                    else False
+                )
+            )
+            if prov_tier == "external_untrusted" and not operator_approved:
+                queue_id = await _record_pending_approval(
+                    conn,
+                    namespace_id=namespace_id,
+                    agent_id=agent_id,
+                    action_type=action_type,
+                    target_system=target_system,
+                    target_entity_id=target_entity_id,
+                    idempotency_key=idempotency_key,
+                    reason="untrusted_provenance_requires_operator_approval",
+                    parameters=params,
+                    dry_run_result={"provenance_tier": "external_untrusted"},
+                )
+                log.info(
+                    "[governor] PROVENANCE_BLOCK: idempotency_key=%r action_type=%s approval_id=%s (external_untrusted requires operator_approved)",
+                    idempotency_key,
+                    action_type,
+                    queue_id,
+                )
+                return {
+                    "status": "pending_approval",
+                    "idempotency_key": idempotency_key,
+                    "action_type": action_type,
+                    "approval_id": str(queue_id),
+                    "reason": "untrusted_provenance_requires_operator_approval",
+                }
+
             # --- 4. Confirm-only default: no side effect without explicit confirm ---
             confirm: bool = bool(_get_arg(confirm_arg))
             if not confirm:

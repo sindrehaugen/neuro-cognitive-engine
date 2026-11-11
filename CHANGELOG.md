@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.3.0] - 2026-11-10
+
+### Added
+- **Streamable HTTP `/mcp` Gateway & Zero-Secret Client Proxy:** Introduced high-throughput SSE / JSON-RPC 2.0 streaming HTTP `/mcp` gateway and companion `nce.mcp_client_proxy` (`nce-mcp-proxy`), eliminating raw database credentials (`PG_DSN`, `MONGO_URI`) and `NCE_MASTER_KEY` from client workstation configurations.
+- **Progressive Tool Discovery & Token Scoping:** Added progressive schema exposure (`compact` single meta-tool `nce_discover_tools` vs `full`) and fine-grained dual-axis token restrictions (`type:*`, `cat:*`, explicit engine slugs).
+- **`/admin/plugins` Scoped Token Minter:** Added administrative endpoint (`POST /admin/plugins/api/mint-token`) and interactive UI modal for minting scoped bearer tokens and ready-to-copy desktop client configurations.
+- **KEK/DEK Envelope Encryption & Cryptographic Shredding (`nce/crypto/envelope.py`):** Added hierarchical key management with versioned KEK rings, KMS integration hooks, and per-subject AES-256-GCM DEK shredding with RFC 8785 canonical receipts.
+- **Database Migration `035_mcp_gateway_and_envelope_crypto.sql`:** Created `mcp_client_tokens` and `encryption_deks` with Row-Level Security, along with namespace embedding dimension/provider pinning and replay sandbox flags.
+- **Contributor License Agreement (`CLA.md`):** Formally codified project contributor intellectual property, copyright, and patent licensing terms.
+
+### Changed
+- **Fail-Closed Governance Semantics:** Standardized tool and engine governance across Redis dispatches to fail closed (`-32005`) in production when Redis is unreachable.
+- **Hard-Blocked Admin Override in Production:** Hardened `NCE_ADMIN_OVERRIDE` to raise `RuntimeError` at boot if set in production environments.
+- **Repo Hygiene & Dead Code Removal:** Safely pruned obsolete `nce-launch/` duplicate Go module directory.
+
+---
+
 ## [3.1.0] - 2026-11-10
 
 ### Added

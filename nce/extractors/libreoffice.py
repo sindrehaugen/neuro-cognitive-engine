@@ -66,6 +66,14 @@ def libreoffice_convert(
         log.warning("libreoffice_convert: binary safety check failed for %s", soffice)
         return None
     try:
+        from nce.extractors.sandbox import build_sanitized_subprocess_env, enforce_extraction_budget
+
+        enforce_extraction_budget(blob)
+    except Exception as e:
+        log.warning("libreoffice_convert: extraction budget exceeded: %s", e)
+        return None
+
+    try:
         with tempfile.TemporaryDirectory(prefix="nce_lo_") as d:
             td = Path(d)
             src = td / f"source{ext}"
@@ -90,6 +98,7 @@ def libreoffice_convert(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=False,
+                env=build_sanitized_subprocess_env(work_dir=td),
                 preexec_fn=make_confinement_preexec(),
             )
             with tracked_process(proc):

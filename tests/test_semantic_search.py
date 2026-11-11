@@ -800,3 +800,46 @@ class TestWaveI1BatchNLIReranking:
         assert len(scores) == 2
         assert scores[0] > 0.8
         assert scores[1] < 0.2
+
+
+class TestSemanticSearchSalienceBuffering:
+    @pytest.mark.asyncio
+    async def test_reinforcement_skipped_when_as_of_or_replay(self) -> None:
+        from nce.semantic_search import _fire_reinforcement
+
+        pool = MagicMock()
+        results = [{"memory_id": str(uuid.uuid4())}]
+
+        with patch("nce.salience.reinforce", new_callable=AsyncMock) as mock_reinforce:
+            # as_of set -> no reinforce
+            await _fire_reinforcement(pool, results, AGENT, NS, 0.05, as_of="2026-01-01T00:00:00Z")
+            mock_reinforce.assert_not_called()
+
+            # is_replay True -> no reinforce
+            await _fire_reinforcement(pool, results, AGENT, NS, 0.05, is_replay=True)
+            mock_reinforce.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_reinforcement_buffered_in_redis_when_enabled(self, monkeypatch) -> None:
+        from nce.semantic_search import _fire_reinforcement
+
+        monkeypatch.setenv("NCE_BUFFER_SALIENCE_IN_REDIS", "1")
+        redis_mock = MagicMock()
+        pool = MagicMock()
+        mem_id = str(uuid.uuid4())
+        results = [{"memory_id": mem_id}]
+
+        with patch(
+            "nce.salience_buffer.buffer_salience_boost", new_callable=AsyncMock
+        ) as mock_buffer:
+            with patch("nce.salience.reinforce", new_callable=AsyncMock) as mock_reinforce:
+                await _fire_reinforcement(
+                    pool,
+                    results,
+                    AGENT,
+                    NS,
+                    0.05,
+                    redis_client=redis_mock,
+                )
+                mock_buffer.assert_called_once()
+                mock_reinforce.assert_not_called()
