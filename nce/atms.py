@@ -483,6 +483,64 @@ def is_valid_uuid(val: Any) -> bool:
 _is_uuid = is_valid_uuid
 
 
+async def fetch_transitive_derived_memories(
+    conn: Any,
+    namespace_id: uuid.UUID,
+    memory_ids: set[str] | list[str] | str,
+    *,
+    max_depth: int = 10,
+    limit: int = 500,
+) -> set[str]:
+    """Transitive derived_from memory dependent lookup using a cycle-safe WITH RECURSIVE CTE."""
+    if isinstance(memory_ids, str):
+        target_ids = [memory_ids]
+    else:
+        target_ids = list(memory_ids)
+
+    valid_uuids = [uuid.UUID(str(i)) for i in target_ids if _is_uuid(i)]
+    if not valid_uuids or not hasattr(conn, "fetch") or not callable(conn.fetch):
+        return set()
+
+    try:
+        rows = await conn.fetch(
+            """
+            WITH RECURSIVE derived_cascade AS (
+                SELECT id, 0 AS depth, ARRAY[id] AS visited_ids
+                FROM memories
+                WHERE namespace_id = $1::uuid
+                  AND id = ANY($2::uuid[])
+                  AND valid_to IS NULL
+                UNION
+                SELECT m.id, dc.depth + 1, dc.visited_ids || m.id
+                FROM memories m
+                JOIN derived_cascade dc ON (
+                    m.derived_from @> jsonb_build_array(dc.id::text)
+                    OR m.derived_from @> jsonb_build_array(dc.id::uuid)
+                )
+                WHERE m.namespace_id = $1::uuid
+                  AND m.valid_to IS NULL
+                  AND dc.depth < $3
+                  AND NOT (m.id = ANY(dc.visited_ids))
+            )
+            SELECT id FROM derived_cascade WHERE depth > 0 LIMIT $4
+            """,
+            namespace_id,
+            valid_uuids,
+            max_depth,
+            limit,
+        )
+        if isinstance(rows, list):
+            return {
+                str(r["id"])
+                for r in rows
+                if (isinstance(r, dict) or hasattr(r, "__getitem__")) and "id" in r
+            }
+        return set()
+    except Exception as exc:
+        log.warning("fetch_transitive_derived_memories failed: %s", exc)
+        return set()
+
+
 async def evaluate_atms_intervention(
     conn: Any,  # asyncpg.Connection
     namespace_id: uuid.UUID,
@@ -502,6 +560,10 @@ async def evaluate_atms_intervention(
         if nid in atms.nodes:
             # Force invalidation if registered as DERIVED
             cascade.update(atms.propagate_deprecation(nid))
+
+    # Transitive derived_from memory dependents cascade via cycle-safe recursive CTE
+    derived_dependents = await fetch_transitive_derived_memories(conn, namespace_id, targets)
+    cascade.update(derived_dependents)
 
     return cascade
 

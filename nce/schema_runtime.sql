@@ -307,6 +307,95 @@ BEGIN
     END IF;
 END $$;
 
+CREATE OR REPLACE FUNCTION acquire_event_log_worm_lock(p_namespace_id UUID)
+RETURNS void
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF p_namespace_id IS NOT NULL THEN
+        PERFORM pg_advisory_xact_lock(
+            hashtext('nce_worm_event_log'),
+            hashtext(p_namespace_id::text)
+        );
+    END IF;
+END;
+$$;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        GRANT EXECUTE ON FUNCTION acquire_event_log_worm_lock(UUID) TO nce_app;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_gc') THEN
+        GRANT EXECUTE ON FUNCTION acquire_event_log_worm_lock(UUID) TO nce_gc;
+    END IF;
+END $$;
+
+CREATE OR REPLACE FUNCTION trg_acquire_event_log_worm_lock()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF NEW.namespace_id IS NOT NULL THEN
+        PERFORM acquire_event_log_worm_lock(NEW.namespace_id);
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_event_log_worm_advisory_lock ON event_log;
+CREATE TRIGGER trg_event_log_worm_advisory_lock
+    BEFORE INSERT ON event_log
+    FOR EACH ROW
+    EXECUTE FUNCTION trg_acquire_event_log_worm_lock();
+
+CREATE OR REPLACE FUNCTION sync_memories_search_tsv()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    meta_tokens TEXT;
+BEGIN
+    IF TG_OP = 'UPDATE'
+       AND NEW.content_fts IS NULL
+       AND NEW.wrapped_dek IS NULL
+       AND (OLD.content_fts IS NOT NULL OR OLD.search_tsv IS NOT NULL) THEN
+        NEW.search_tsv := NULL;
+        RETURN NEW;
+    END IF;
+
+    meta_tokens := concat_ws(
+        ' ',
+        COALESCE(NEW.name, ''),
+        COALESCE(NEW.filepath, ''),
+        COALESCE(NEW.metadata->>'summary', ''),
+        COALESCE(NEW.metadata->>'title', ''),
+        COALESCE(NEW.metadata->>'sku', ''),
+        COALESCE(NEW.metadata->>'orgnr', ''),
+        COALESCE(NEW.metadata->>'ip', ''),
+        COALESCE(NEW.metadata->>'ip_address', ''),
+        COALESCE(NEW.metadata->>'identifiers', '')
+    );
+
+    IF NEW.content_fts IS NULL AND btrim(meta_tokens) = '' THEN
+        RETURN NEW;
+    END IF;
+
+    NEW.search_tsv := COALESCE(NEW.content_fts, ''::tsvector)
+        || to_tsvector('simple', meta_tokens);
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_sync_memories_search_tsv ON memories;
+CREATE TRIGGER trg_sync_memories_search_tsv
+    BEFORE INSERT OR UPDATE ON memories
+    FOR EACH ROW
+    EXECUTE FUNCTION sync_memories_search_tsv();
+
 DO $$
 BEGIN
     REVOKE ALL ON a2a_grants FROM PUBLIC;
@@ -412,6 +501,48 @@ CREATE POLICY topology_graph_tenant_isolation ON topology_graph
     USING (namespace_id = get_nce_namespace());
 GRANT SELECT, INSERT, UPDATE, DELETE ON topology_graph TO nce_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON topology_graph TO nce_gc;
+
+CREATE OR REPLACE FUNCTION sync_procedural_heuristics_search_tsv()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    NEW.search_tsv :=
+        setweight(to_tsvector('english', COALESCE(NEW.rule_text, '')), 'A')
+        || setweight(to_tsvector('english', COALESCE(NEW.trigger_condition, '')), 'B')
+        || setweight(to_tsvector('english', COALESCE(NEW.action_guidance, '')), 'B')
+        || to_tsvector(
+            'simple',
+            concat_ws(
+                ' ',
+                COALESCE(NEW.rule_text, ''),
+                COALESCE(NEW.trigger_condition, ''),
+                COALESCE(NEW.action_guidance, '')
+            )
+        );
+    IF TG_OP = 'UPDATE' AND NEW.updated_at IS NOT DISTINCT FROM OLD.updated_at THEN
+        NEW.updated_at := NOW();
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_sync_procedural_heuristics_search_tsv ON procedural_heuristics;
+CREATE TRIGGER trg_sync_procedural_heuristics_search_tsv
+    BEFORE INSERT OR UPDATE ON procedural_heuristics
+    FOR EACH ROW
+    EXECUTE FUNCTION sync_procedural_heuristics_search_tsv();
+
+ALTER TABLE procedural_heuristics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE procedural_heuristics FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_policy ON procedural_heuristics;
+CREATE POLICY tenant_isolation_policy ON procedural_heuristics
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+GRANT SELECT, INSERT, UPDATE, DELETE ON procedural_heuristics TO nce_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON procedural_heuristics TO nce_gc;
 
 -- FIX-055: kg_node_embeddings are global (not namespace-scoped).
 ALTER TABLE kg_node_embeddings DISABLE ROW LEVEL SECURITY;

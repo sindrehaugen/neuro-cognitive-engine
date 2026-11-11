@@ -128,6 +128,7 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `check_indexing_status` |  |  |  |  |
 | `commit_migration` |  | yes |  | yes |
 | `compare_states` |  |  |  |  |
+| `compile_working_memory` |  |  |  |  |
 | `complete_bridge_auth` |  | yes |  |  |
 | `connect_bridge` |  | yes |  |  |
 | `consolidation_status` |  |  |  |  |
@@ -186,4 +187,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `validate_migration` |  |  |  | yes |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 98 REST endpoints, 70 MCP tools._
+_Totals: 98 REST endpoints, 71 MCP tools._

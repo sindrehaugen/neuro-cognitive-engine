@@ -72,6 +72,7 @@ from nce.auth import NamespaceContext
 from nce.config import cfg
 from nce.correlation import correlation_id_var
 from nce.db_utils import set_external_scope
+from nce.http_body_limit import BoundedBodyMiddleware
 from nce.jwt_auth import JWTAuthMiddleware
 from nce.models import GraphSearchRequest
 from nce.providers import LLMCircuitOpenError
@@ -1063,6 +1064,7 @@ app = Starlette(
         Route("/tasks/{task_id}/cancel", endpoint=tasks_cancel, methods=["POST"]),
     ],
 )
+app.add_middleware(BoundedBodyMiddleware)
 
 
 if __name__ == "__main__":

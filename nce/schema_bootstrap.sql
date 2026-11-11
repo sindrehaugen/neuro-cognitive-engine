@@ -115,6 +115,7 @@ ALTER TABLE memories ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{
 -- the corresponding episodes.raw_data ciphertext.  Read-path wiring lands in Batch 46.
 ALTER TABLE memories ADD COLUMN IF NOT EXISTS wrapped_dek BYTEA;
 ALTER TABLE memories ADD COLUMN IF NOT EXISTS dek_key_id TEXT;
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS search_tsv TSVECTOR;
 
 -- Data Migration from legacy tables
 DO $$
@@ -165,7 +166,7 @@ BEGIN
         WHERE constraint_name = 'ck_memories_memory_type'
     ) THEN
         ALTER TABLE memories ADD CONSTRAINT ck_memories_memory_type
-            CHECK (memory_type IN ('episodic', 'consolidated', 'decision', 'code_chunk'));
+            CHECK (memory_type IN ('episodic', 'consolidated', 'decision', 'code_chunk', 'procedural'));
     END IF;
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.check_constraints
@@ -185,6 +186,7 @@ END $$;
 
 -- Indexes for memories
 CREATE INDEX IF NOT EXISTS idx_memories_fts ON memories USING GIN (content_fts);
+CREATE INDEX IF NOT EXISTS idx_memories_search_tsv ON memories USING GIN (search_tsv);
 CREATE INDEX IF NOT EXISTS idx_memories_payload_ref ON memories (payload_ref);
 CREATE INDEX IF NOT EXISTS idx_memories_user ON memories (user_id);
 CREATE INDEX IF NOT EXISTS idx_memories_user_session ON memories (user_id, session_id, created_at DESC);
@@ -846,6 +848,83 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE;
 
+CREATE OR REPLACE FUNCTION acquire_event_log_worm_lock(p_namespace_id UUID)
+RETURNS void
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF p_namespace_id IS NOT NULL THEN
+        PERFORM pg_advisory_xact_lock(
+            hashtext('nce_worm_event_log'),
+            hashtext(p_namespace_id::text)
+        );
+    END IF;
+END;
+$$;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        GRANT EXECUTE ON FUNCTION acquire_event_log_worm_lock(UUID) TO nce_app;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_gc') THEN
+        GRANT EXECUTE ON FUNCTION acquire_event_log_worm_lock(UUID) TO nce_gc;
+    END IF;
+END $$;
+
+CREATE OR REPLACE FUNCTION trg_acquire_event_log_worm_lock()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF NEW.namespace_id IS NOT NULL THEN
+        PERFORM acquire_event_log_worm_lock(NEW.namespace_id);
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION sync_memories_search_tsv()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    meta_tokens TEXT;
+BEGIN
+    IF TG_OP = 'UPDATE'
+       AND NEW.content_fts IS NULL
+       AND NEW.wrapped_dek IS NULL
+       AND (OLD.content_fts IS NOT NULL OR OLD.search_tsv IS NOT NULL) THEN
+        NEW.search_tsv := NULL;
+        RETURN NEW;
+    END IF;
+
+    meta_tokens := concat_ws(
+        ' ',
+        COALESCE(NEW.name, ''),
+        COALESCE(NEW.filepath, ''),
+        COALESCE(NEW.metadata->>'summary', ''),
+        COALESCE(NEW.metadata->>'title', ''),
+        COALESCE(NEW.metadata->>'sku', ''),
+        COALESCE(NEW.metadata->>'orgnr', ''),
+        COALESCE(NEW.metadata->>'ip', ''),
+        COALESCE(NEW.metadata->>'ip_address', ''),
+        COALESCE(NEW.metadata->>'identifiers', '')
+    );
+
+    IF NEW.content_fts IS NULL AND btrim(meta_tokens) = '' THEN
+        RETURN NEW;
+    END IF;
+
+    NEW.search_tsv := COALESCE(NEW.content_fts, ''::tsvector)
+        || to_tsvector('simple', meta_tokens);
+    RETURN NEW;
+END;
+$$;
+
 -- --- Phase 3.1: A2A (Agent-to-Agent) Sharing Grants ---
 CREATE TABLE IF NOT EXISTS a2a_grants (
     id                   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1186,6 +1265,66 @@ CREATE TABLE IF NOT EXISTS topology_graph (
 -- topology_graph: close duplicate-edge gap (see migration 025 for dedup guard note)
 CREATE UNIQUE INDEX IF NOT EXISTS uq_topology_edge
     ON topology_graph (namespace_id, source_node_id, target_node_id, edge_type);
+
+ALTER TABLE topology_graph ADD COLUMN IF NOT EXISTS valid_from TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE topology_graph ADD COLUMN IF NOT EXISTS valid_to TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_topology_graph_temporal
+    ON topology_graph (namespace_id, valid_from, valid_to);
+
+CREATE TABLE IF NOT EXISTS procedural_heuristics (
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    namespace_id       UUID NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    memory_id          UUID,
+    rule_text          TEXT NOT NULL,
+    trigger_condition  TEXT NOT NULL DEFAULT '',
+    action_guidance    TEXT NOT NULL DEFAULT '',
+    source_type        TEXT NOT NULL DEFAULT 'governed_decision',
+    source_refs        JSONB NOT NULL DEFAULT '[]'::jsonb,
+    confidence_weight  FLOAT8 NOT NULL DEFAULT 0.5
+        CONSTRAINT ck_procedural_heuristics_confidence CHECK (confidence_weight >= 0.0 AND confidence_weight <= 1.0),
+    support_count      INT NOT NULL DEFAULT 1
+        CONSTRAINT ck_procedural_heuristics_support CHECK (support_count >= 0),
+    search_tsv         TSVECTOR,
+    valid_from         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    valid_to           TIMESTAMPTZ,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_procedural_heuristics_namespace_id
+    ON procedural_heuristics (namespace_id);
+CREATE INDEX IF NOT EXISTS idx_procedural_heuristics_memory_id
+    ON procedural_heuristics (memory_id);
+CREATE INDEX IF NOT EXISTS idx_procedural_heuristics_temporal
+    ON procedural_heuristics (namespace_id, valid_from, valid_to);
+CREATE INDEX IF NOT EXISTS idx_procedural_heuristics_search_tsv
+    ON procedural_heuristics USING GIN (search_tsv);
+
+CREATE OR REPLACE FUNCTION sync_procedural_heuristics_search_tsv()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    NEW.search_tsv :=
+        setweight(to_tsvector('english', COALESCE(NEW.rule_text, '')), 'A')
+        || setweight(to_tsvector('english', COALESCE(NEW.trigger_condition, '')), 'B')
+        || setweight(to_tsvector('english', COALESCE(NEW.action_guidance, '')), 'B')
+        || to_tsvector(
+            'simple',
+            concat_ws(
+                ' ',
+                COALESCE(NEW.rule_text, ''),
+                COALESCE(NEW.trigger_condition, ''),
+                COALESCE(NEW.action_guidance, '')
+            )
+        );
+    IF TG_OP = 'UPDATE' AND NEW.updated_at IS NOT DISTINCT FROM OLD.updated_at THEN
+        NEW.updated_at := NOW();
+    END IF;
+    RETURN NEW;
+END;
+$$;
 
 -- --- Row Level Security (Phase 0.1 Hardening) ---
 -- Applied after all tenant tables exist. Policies use get_nce_namespace() (fail-fast).

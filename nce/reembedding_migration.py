@@ -608,10 +608,12 @@ class PostgresAspectReembeddingStore:
                     from nce.db_utils import scoped_mongo_session
 
                     try:
+                        doc = None
                         async with scoped_mongo_session(self.mongo_client, ns_id) as s_db:
-                            doc = await s_db.code_files.find_one(
-                                {"_id": ObjectId(ref)}, {"raw_code": 1}
-                            )
+                            if hasattr(s_db.code_files, "find_one"):
+                                doc = await s_db.code_files.find_one(
+                                    {"_id": ObjectId(ref)}, {"raw_code": 1}
+                                )
                             if doc:
                                 canonical_text = doc.get("raw_code", "")
                     except Exception as exc:
@@ -627,6 +629,98 @@ class PostgresAspectReembeddingStore:
                 canonical_text=canonical_text,
                 embedding_v1=embedding_v1,
             )
+
+    async def load_rows_batch(self, memory_ids: list[str]) -> list[MemoryEmbeddingRow]:
+        """Batch load code_chunk memories with $in MongoDB hydration."""
+        if not memory_ids:
+            return []
+        import uuid as _uuid
+
+        uuid_objs = [_uuid.UUID(mid) for mid in memory_ids]
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id, payload_ref, name, filepath, embedding::vector as embedding_vector, namespace_id
+                FROM memories
+                WHERE id = ANY($1::uuid[])
+                """,
+                uuid_objs,
+            )
+        if not rows:
+            return []
+
+        # Batch hydrate code_files from MongoDB
+        ns_refs: dict[Any, list[tuple[str, Any]]] = {}
+        if self.aspect == "code_intent" and self.mongo_client is not None:
+            from bson import ObjectId
+
+            for r in rows:
+                ref = r["payload_ref"]
+                ns = r["namespace_id"]
+                if ref and len(ref) == 24 and ns:
+                    try:
+                        ns_refs.setdefault(ns, []).append((str(r["id"]), ObjectId(ref)))
+                    except Exception:
+                        pass
+
+        code_by_ref: dict[str, str] = {}
+        from nce.db_utils import scoped_mongo_session
+
+        for ns_id, ref_pairs in ns_refs.items():
+            chunk_size = 500
+            for i in range(0, len(ref_pairs), chunk_size):
+                chunk = ref_pairs[i : i + chunk_size]
+                chunk_oids = [oid for _, oid in chunk]
+                try:
+                    async with scoped_mongo_session(self.mongo_client, ns_id) as s_db:
+                        if hasattr(s_db.code_files, "find"):
+                            cursor = s_db.code_files.find(
+                                {"_id": {"$in": chunk_oids}}, {"raw_code": 1}
+                            )
+                            if hasattr(cursor, "to_list") and callable(cursor.to_list):
+                                docs = await cursor.to_list(length=len(chunk_oids))
+                                if isinstance(docs, list):
+                                    for d in docs:
+                                        if isinstance(d, dict) and "_id" in d:
+                                            code_by_ref[str(d["_id"])] = d.get("raw_code", "")
+                        if not code_by_ref and hasattr(s_db.code_files, "find_one"):
+                            for _, oid in chunk:
+                                d = await s_db.code_files.find_one({"_id": oid}, {"raw_code": 1})
+                                if d:
+                                    code_by_ref[str(d["_id"])] = d.get("raw_code", "")
+                except Exception as exc:
+                    log.warning("Batch Mongo code_files fetch failed for ns=%s: %s", ns_id, exc)
+
+        results: list[MemoryEmbeddingRow] = []
+        for row in rows:
+            mid = str(row["id"])
+            raw_emb = row["embedding_vector"]
+            embedding_v1: list[float] = []
+            if isinstance(raw_emb, str):
+                embedding_v1 = [float(x) for x in raw_emb.strip("[]").split(",") if x.strip()]
+            elif isinstance(raw_emb, list):
+                embedding_v1 = [float(x) for x in raw_emb]
+            elif raw_emb is not None:
+                embedding_v1 = [float(x) for x in str(raw_emb).strip("[]").split(",") if x.strip()]
+
+            canonical_text = ""
+            if self.aspect == "nl_intent":
+                canonical_text = row["name"] or ""
+            elif self.aspect == "code_intent":
+                ref = row["payload_ref"]
+                if ref and ref in code_by_ref:
+                    canonical_text = code_by_ref[ref]
+                if not canonical_text:
+                    canonical_text = row["filepath"] or ""
+
+            results.append(
+                MemoryEmbeddingRow(
+                    memory_id=mid,
+                    canonical_text=canonical_text,
+                    embedding_v1=embedding_v1,
+                )
+            )
+        return results
 
     async def write_embedding_v2(
         self,

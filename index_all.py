@@ -48,11 +48,14 @@ async def index_repo(namespace_id: str = "default"):
         # Use a semaphore to avoid overwhelming the database/Redis with too many concurrent requests
         sem = asyncio.Semaphore(10)
 
+        def _read_file_sync(p: str) -> str:
+            with open(p, encoding="utf-8") as f:
+                return f.read()
+
         async def process_file(filepath):
             async with sem:
                 try:
-                    with open(filepath, encoding="utf-8") as f:
-                        raw_code = f.read()
+                    raw_code = await asyncio.to_thread(_read_file_sync, filepath)
 
                     from uuid import UUID
 

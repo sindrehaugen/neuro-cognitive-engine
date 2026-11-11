@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -28,6 +29,7 @@ logger = logging.getLogger("nce-admin-plugins")
 
 REDIS_DISABLED_ENGINES_KEY = "nce:engines:disabled"
 _IN_MEMORY_DISABLED_ENGINES: set[str] = set()
+_PLUGINS_HTML_PATH = Path(__file__).resolve().parent.parent / "admin" / "plugins.html"
 MINTED_MCP_TOKENS: dict[str, dict[str, Any]] = {}
 
 
@@ -400,9 +402,8 @@ async def admin_plugins_console(request: Request, ctx: Any = None) -> Response:
     if "application/json" in accept or format_param == "json":
         return await admin_plugins_api(request, ctx)
 
-    html_path = Path(__file__).resolve().parent.parent / "admin" / "plugins.html"
-    if html_path.is_file():
-        return FileResponse(str(html_path), media_type="text/html")
+    if await asyncio.to_thread(os.path.isfile, str(_PLUGINS_HTML_PATH)):
+        return FileResponse(str(_PLUGINS_HTML_PATH), media_type="text/html")
     return HTMLResponse("Admin Plugins Console not found", status_code=404)
 
 

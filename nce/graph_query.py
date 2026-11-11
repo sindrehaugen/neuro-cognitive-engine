@@ -31,6 +31,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -740,6 +741,7 @@ class GraphRAGTraverser:
                             FROM kg_edges e2
                             WHERE (e2.subject_label = t.label OR e2.object_label = t.label)
                               AND ($4::uuid IS NULL OR e2.namespace_id = $4::uuid)
+                              AND ($6::timestamptz IS NULL OR e2.created_at <= $6::timestamptz)
                             ORDER BY e2.confidence DESC
                             LIMIT $5
                         ) e ON true
@@ -756,6 +758,7 @@ class GraphRAGTraverser:
                     MAX_NODES,
                     namespace_id,
                     max_edges_per_node,
+                    as_of,
                 )
                 visited = {r["label"] for r in labels}
 
@@ -770,10 +773,12 @@ class GraphRAGTraverser:
                         FROM kg_edges e
                         WHERE (e.subject_label = ANY($1::text[]) OR e.object_label = ANY($1::text[]))
                           AND ($2::uuid IS NULL OR e.namespace_id = $2::uuid)
+                          AND ($3::timestamptz IS NULL OR e.created_at <= $3::timestamptz)
                         ORDER BY e.subject_label, e.predicate, e.object_label, decayed_confidence DESC
                         """,
                         list(visited),
                         namespace_id,
+                        as_of,
                     )
                     all_edges = [
                         GraphEdge(
@@ -1435,6 +1440,34 @@ class GraphRAGTraverser:
                 user_id=user_id,
                 namespace_id=namespace_id,
             )
+
+    async def fetch_khop_subgraph(
+        self,
+        seed_label: str,
+        max_hops: int = 2,
+        namespace_id: str | UUID | None = None,
+        as_of: datetime | None = None,
+        conn: Any = None,
+        *,
+        _allow_global_sweep: bool = False,
+        max_edges_per_node: int = MAX_EDGES_PER_NODE,
+    ) -> Subgraph:
+        """Bounded k-hop recursive CTE subgraph traversal loading nodes and edges into Subgraph."""
+        ns_str = str(namespace_id) if namespace_id else None
+        visited_labels, edges = await self._bfs(
+            start_label=seed_label,
+            max_depth=max_hops,
+            namespace_id=ns_str,
+            as_of=as_of,
+            _allow_global_sweep=_allow_global_sweep or (namespace_id is None),
+            max_edges_per_node=max_edges_per_node,
+            conn=conn,
+        )
+        nodes = [
+            GraphNode(label=lbl, entity_type="NODE", payload_ref=None)
+            for lbl in sorted(visited_labels)
+        ]
+        return Subgraph(anchor=seed_label, nodes=nodes, edges=edges)
 
     async def get_subgraph(self, *args, **kwargs) -> Subgraph:
         """Alias for :meth:`search` — subgraph retrieval with edge pagination."""

@@ -216,12 +216,12 @@ async def test_existing_database_applies_migrations_before_schema_runtime(
             return None
 
         async def execute(self, sql: str, *args):
-            if "pg_advisory_xact_lock" in sql:
-                events.append("advisory_lock")
-            elif "CREATE TABLE" in sql and "SET namespace_id = global_ns_id" in sql:
+            if "CREATE TABLE" in sql and "SET namespace_id = global_ns_id" in sql:
                 events.append("schema_bootstrap")
             elif "tenant_tables" in sql:
                 events.append("schema_runtime")
+            elif "pg_advisory_xact_lock" in sql:
+                events.append("advisory_lock")
 
     class _FakePool:
         @asynccontextmanager

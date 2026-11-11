@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from nce.admin_handlers import _shared
 from nce.admin_handlers._shared import *  # noqa: F403
+
+_ADMIN_DIR = Path(__file__).resolve().parents[2] / "admin"
 
 
 async def get_health(request):
@@ -119,17 +122,15 @@ async def api_search(request):
 
 
 async def serve_index(request):
-    admin_dir = Path(__file__).resolve().parents[2] / "admin"
-    index_path = os.path.join(admin_dir, "index.html")
-    if os.path.exists(index_path):
+    index_path = os.path.join(_ADMIN_DIR, "index.html")
+    if await asyncio.to_thread(os.path.exists, index_path):
         return FileResponse(index_path)
     return HTMLResponse("Admin UI not found", status_code=404)
 
 
 async def serve_styles(request):
     """GET /styles.css — serve the admin dashboard stylesheet."""
-    admin_dir = Path(__file__).resolve().parents[2] / "admin"
-    styles_path = os.path.join(admin_dir, "styles.css")
-    if os.path.exists(styles_path):
+    styles_path = os.path.join(_ADMIN_DIR, "styles.css")
+    if await asyncio.to_thread(os.path.exists, styles_path):
         return FileResponse(styles_path, media_type="text/css")
     return HTMLResponse("styles.css not found", status_code=404)

@@ -409,6 +409,18 @@ def live_admin_override_enabled() -> bool:
     return live_env_str("NCE_ADMIN_OVERRIDE").lower() in {"1", "true", "yes", "on"}
 
 
+def live_max_http_body_bytes() -> int:
+    raw = live_env_str("NCE_MAX_HTTP_BODY_BYTES")
+    if raw:
+        return max(1, int(raw))
+    return max(1, int(cfg.NCE_MAX_HTTP_BODY_BYTES))
+
+
+def live_ssrf_allowlist_hosts() -> set[str]:
+    raw = live_env_str("NCE_SSRF_ALLOWLIST_HOSTS") or cfg.NCE_SSRF_ALLOWLIST_HOSTS or ""
+    return {h.strip().lower() for h in raw.split(",") if h.strip()}
+
+
 def live_admin_api_key() -> str:
     """The admin API key, resolved LIVE and honouring the ``*_FILE`` mount.
 
@@ -811,6 +823,8 @@ class _Config:
     # When true, webhook rate limits use the first X-Forwarded-For hop (trusted proxy only).
     NCE_WEBHOOK_TRUST_PROXY: bool = _bool_env("NCE_WEBHOOK_TRUST_PROXY", False)
     WEBHOOK_MAX_BODY_BYTES: int = max(1, int(os.getenv("WEBHOOK_MAX_BODY_BYTES", "1048576")))
+    NCE_MAX_HTTP_BODY_BYTES: int = _int_env("NCE_MAX_HTTP_BODY_BYTES", 10_485_760, minimum=1)
+    NCE_SSRF_ALLOWLIST_HOSTS: str = os.getenv("NCE_SSRF_ALLOWLIST_HOSTS", "")
     WEBHOOK_RATE_LIMIT: int = max(1, int(os.getenv("WEBHOOK_RATE_LIMIT", "120")))
     WEBHOOK_RATE_PERIOD_SECONDS: int = max(1, int(os.getenv("WEBHOOK_RATE_PERIOD_SECONDS", "60")))
     WEBHOOK_DEDUP_TTL_SECONDS: int = max(60, int(os.getenv("WEBHOOK_DEDUP_TTL_SECONDS", "86400")))
@@ -1037,6 +1051,10 @@ class _Config:
         os.getenv("CONSOLIDATION_CRON_INTERVAL_MINUTES", "360")
     )
     CONSOLIDATION_HALF_LIFE_DAYS: float = float(os.getenv("CONSOLIDATION_HALF_LIFE_DAYS", "30.0"))
+    CONSOLIDATION_MAX_CANDIDATE_MEMORIES: int = _int_env(
+        "CONSOLIDATION_MAX_CANDIDATE_MEMORIES", 2000, minimum=1
+    )
+    CONSOLIDATION_WINDOW_DAYS: int = _int_env("CONSOLIDATION_WINDOW_DAYS", 7, minimum=1)
     # Derivation depth guard (Batch 107 / Muscles A1).
     # Memories at or above this depth are excluded from clustering input so
     # hallucination compounding across consolidation generations is capped.

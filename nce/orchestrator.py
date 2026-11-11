@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from collections.abc import Callable
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -45,6 +47,11 @@ from nce.models import (
     StoreMemoryRequest,
 )
 from nce.orchestrators._base import OrchestratorBase
+
+_HERE = Path(__file__).resolve().parent
+_BOOTSTRAP_PATH = _HERE / "schema_bootstrap.sql"
+_RUNTIME_PATH = _HERE / "schema_runtime.sql"
+_MIGRATIONS_DIR = _HERE / "migrations"
 
 # Backward-compat alias — MemoryPayload was renamed to StoreMemoryRequest
 MemoryPayload = StoreMemoryRequest
@@ -452,13 +459,10 @@ class NCEEngine(OrchestratorBase):
         ``schema.sql`` itself is retained as the reviewable source of truth and the input to
         the generator; it is no longer executed.
         """
-        from pathlib import Path
-
         from nce.config import cfg
 
-        here = Path(__file__).resolve().parent
-        bootstrap_path = here / "schema_bootstrap.sql"
-        runtime_path = here / "schema_runtime.sql"
+        bootstrap_path = _BOOTSTRAP_PATH
+        runtime_path = _RUNTIME_PATH
 
         is_fresh = True
         async with self.pg_pool.acquire(timeout=10.0) as conn:
@@ -540,8 +544,6 @@ class NCEEngine(OrchestratorBase):
         be idempotent, and refusing to boot on a corrected migration would be
         worse than re-running an idempotent one.
         """
-        from pathlib import Path
-
         from nce.migration_ledger import (
             applied_checksums,
             ensure_ledger,
@@ -550,8 +552,8 @@ class NCEEngine(OrchestratorBase):
             should_skip,
         )
 
-        migrations_dir = Path(__file__).resolve().parent / "migrations"
-        if not migrations_dir.is_dir():
+        migrations_dir = _MIGRATIONS_DIR
+        if not await asyncio.to_thread(os.path.isdir, str(migrations_dir)):
             return
 
         # The ledger is bookkeeping, not a safety guard: if it cannot be created
@@ -689,9 +691,6 @@ class NCEEngine(OrchestratorBase):
         ``NCE_ALLOW_SCHEMA_SKEW`` acknowledges it (the same shape as the mTLS
         boot guard).
         """
-        import os
-        from pathlib import Path
-
         from nce.build_info import describe
         from nce.migration_ledger import (
             applied_checksums,
@@ -699,10 +698,13 @@ class NCEEngine(OrchestratorBase):
             missing_from_image,
         )
 
-        migrations_dir = Path(__file__).resolve().parent / "migrations"
-        if not migrations_dir.is_dir():
+        migrations_dir = _MIGRATIONS_DIR
+        if not await asyncio.to_thread(os.path.isdir, str(migrations_dir)):
             return
-        image_files = [p.name for p in sorted(migrations_dir.glob("*.sql"))]
+        image_files = [
+            p.name
+            for p in sorted(await asyncio.to_thread(lambda: list(migrations_dir.glob("*.sql"))))
+        ]
 
         try:
             async with self.pg_pool.acquire(timeout=10.0) as conn:

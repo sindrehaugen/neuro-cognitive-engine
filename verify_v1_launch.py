@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NCE v1.0 launch verification.
+NCE v3.4.0 launch verification.
 
 Checks (in order):
   1. Admin REST ``GET /api/health`` — Postgres, Mongo, Redis up (HMAC auth).
@@ -16,8 +16,8 @@ Run against a live stack (Compose or local) with the same env as the services::
 
 Override bases if needed::
 
-    TRIMCP_ADMIN_BASE_URL=http://127.0.0.1:8003 \\
-    TRIMCP_A2A_BASE_URL=http://127.0.0.1:8004 \\
+    NCE_ADMIN_BASE_URL=http://127.0.0.1:8003 \\
+    NCE_A2A_BASE_URL=http://127.0.0.1:8004 \\
     python verify_v1_launch.py
 
 Exit code ``0`` = PASS, ``1`` = FAIL.
@@ -283,7 +283,7 @@ async def _async_main(admin_base: str, a2a_base: str) -> None:
     cfg.validate()
     api_key = cfg.NCE_API_KEY
     if not api_key:
-        _fail("Configuration", "TRIMCP_API_KEY is empty (required for HMAC admin calls)")
+        _fail("Configuration", "NCE_API_KEY is empty (required for HMAC admin calls)")
 
     limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
     async with httpx.AsyncClient(
@@ -300,20 +300,24 @@ async def _async_main(admin_base: str, a2a_base: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="NCE v1.0 launch verification")
+    parser = argparse.ArgumentParser(description="NCE v3.4.0 launch verification")
     parser.add_argument(
         "--admin-url",
-        default=os.environ.get("TRIMCP_ADMIN_BASE_URL", "http://127.0.0.1:8003"),
-        help="Admin server base URL (default TRIMCP_ADMIN_BASE_URL or http://127.0.0.1:8003)",
+        default=os.environ.get(
+            "NCE_ADMIN_BASE_URL", os.environ.get("TRIMCP_ADMIN_BASE_URL", "http://127.0.0.1:8003")
+        ),
+        help="Admin server base URL (default NCE_ADMIN_BASE_URL or http://127.0.0.1:8003)",
     )
     parser.add_argument(
         "--a2a-url",
-        default=os.environ.get("TRIMCP_A2A_BASE_URL", "http://127.0.0.1:8004"),
-        help="A2A server base URL (default TRIMCP_A2A_BASE_URL or http://127.0.0.1:8004)",
+        default=os.environ.get(
+            "NCE_A2A_BASE_URL", os.environ.get("TRIMCP_A2A_BASE_URL", "http://127.0.0.1:8004")
+        ),
+        help="A2A server base URL (default NCE_A2A_BASE_URL or http://127.0.0.1:8004)",
     )
     args = parser.parse_args()
 
-    print("=== NCE v1.0 Launch Verification ===")
+    print("=== NCE v3.4.0 Launch Verification ===")
     print()
 
     try:

@@ -96,6 +96,7 @@ class MemoryType(StrEnum):
     consolidated = "consolidated"
     decision = "decision"
     code_chunk = "code_chunk"
+    procedural = "procedural"
 
 
 class PIIPolicy(StrEnum):
@@ -833,6 +834,44 @@ class SemanticSearchRequest(BaseModel):
     def _query_size(cls, v: str) -> str:
         if len(v) > _MAX_QUERY_LEN:
             raise ValueError(f"query exceeds maximum length ({_MAX_QUERY_LEN} characters)")
+        return v
+
+
+class CompileWorkingMemoryRequest(BaseModel):
+    """Input for the compile_working_memory MCP tool."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    goal: str = Field(min_length=1)
+    namespace_id: UUID4 | None = Field(
+        default=None,
+        description="Target namespace UUID. If omitted, inferred from context.",
+    )
+    agent_id: str | None = Field(
+        default=None,
+        description="Filter by agent. None = all agents in namespace.",
+    )
+    max_tokens: int = Field(
+        default=4000,
+        ge=64,
+        le=32768,
+        description="Maximum token budget for compiled working memory.",
+    )
+    as_of: datetime | None = Field(
+        default=None,
+        description="Point-in-time snapshot: return state valid at this timestamp.",
+    )
+
+    @field_validator("agent_id")
+    @classmethod
+    def _validate_agent_id(cls, v: str | None) -> str | None:
+        return _validate_agent_id(v) if v is not None else None
+
+    @field_validator("goal")
+    @classmethod
+    def _goal_size(cls, v: str) -> str:
+        if len(v) > _MAX_QUERY_LEN:
+            raise ValueError(f"goal exceeds maximum length ({_MAX_QUERY_LEN} characters)")
         return v
 
 

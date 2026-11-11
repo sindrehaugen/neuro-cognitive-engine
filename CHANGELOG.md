@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.4.0] - 2026-11-11
+
+### Added
+- **Cognitive Synthesis & Working Memory Assembly (`compile_working_memory`):** Added tool #71 to the core MCP surface, synthesizing episodic memories, semantic abstractions, knowledge graph relations, and procedural heuristics into cohesive working memory context with epistemic confidence scores and warning tags.
+- **3-Way Hybrid Reciprocal Rank Fusion (RRF):** Upgraded `semantic_search` to combine dense vector similarity (`pgvector` cosine), full-text BM25 ranking (`search_tsv`), and exact identifier boosting (SKU, `orgnr`, IP addresses) via Reciprocal Rank Fusion with calibrated `confidence_score` and `epistemic_warnings`.
+- **Procedural Memory Distillation (`procedural_heuristics`):** Added automated extraction and distillation of operational rules, trigger conditions, and action guidance from governed decisions, with trigger-maintained GIN `search_tsv` indexing and Row-Level Security isolation.
+- **Database Migration `036_hybrid_rrf_procedural_and_worm_lock.sql`:** Provisioned `procedural_heuristics` table (RLS table #121), `memories.search_tsv`, `topology_graph.valid_from`/`valid_to` temporal columns, and PL/pgSQL helpers `acquire_event_log_worm_lock()`, `sync_memories_search_tsv()`, and `sync_procedural_heuristics_search_tsv()`.
+- **Per-Namespace WORM Advisory Lock Serialization:** Added `acquire_event_log_worm_lock(p_namespace_id UUID)` and `trg_event_log_worm_advisory_lock` BEFORE INSERT trigger, serializing Merkle hash chaining strictly per namespace with zero cross-tenant contention.
+- **ASGI Ingress Cap (`BoundedBodyMiddleware`):** Added strict request body limiting (`NCE_MAX_HTTP_BODY_BYTES`, default 10 MiB) across Admin REST, Streamable HTTP `/mcp` Gateway, A2A, and Webhook Receiver, terminating oversized requests with HTTP `413 Payload Too Large`.
+- **SSRF Egress Hardening & Blindspot Closures:** Hardened `validate_outbound_url` against Carrier-Grade NAT (`100.64.0.0/10`) and IPv4-mapped IPv6 (`::ffff:169.254.169.254`) cloud metadata traversal, enforcing `NCE_SSRF_ALLOWLIST_HOSTS` on outbound webhook registrations and deliveries.
+
+### Changed
+- **`pgvector` HNSW Relaxed-Order Iterative Scan:** Enabled `SET LOCAL hnsw.iterative_scan = 'relaxed_order'` on tenant-filtered vector searches, avoiding premature index cutoff on highly selective queries.
+- **Cycle-Safe Recursive CTE GraphRAG:** Converted knowledge-graph multi-hop traversals into PostgreSQL `WITH RECURSIVE` CTE queries honouring temporal `valid_from`/`valid_to` bounds and cycle guards.
+- **MongoDB Batch Hydration:** Optimized episodic document hydration using single `$in` queries across ObjectID batches instead of sequential single-document roundtrips.
+- **`orjson` Fast Serialization & Schema Caching:** Replaced standard JSON encoders with `orjson` across HTTP and stdio layers, introducing TTL-bounded caching for dynamic `tools/list` discovery.
+- **Lightweight PEP 508 Base Packaging:** Streamlined `pyproject.toml` dependencies and entry points for clean wheel distribution.
+
+### Fixed
+- **Temporal Graph Attribute Alignment:** Fixed latent reference bug in `nce/causal/correlation.py` by adding `valid_from` and `valid_to` columns and index `idx_topology_graph_temporal` to `topology_graph`.
+- **Procedural Heuristics Tenant Isolation:** Ensured `procedural_heuristics` enforces strict `tenant_isolation_policy` and `FORCE ROW LEVEL SECURITY`.
+
+### Security
+- **Automated CI Security Quality Gates:** Enforced Ruff `S` (flake8-bandit), `ASYNC` (asyncio hazard detection), and `DTZ` (timezone-naive datetime rejection). Integrated blocking high-severity Bandit scans in CI.
+
+### Removed
+- **Legacy TriMCP Artifacts:** Safely pruned obsolete files including `trimcp-infra/`, `package.json`, `scripts/render-env.sh`, `build/windows/TriMCP-*`, and `trace_migrations.py`.
+
+---
+
 ## [3.3.0] - 2026-11-10
 
 ### Added

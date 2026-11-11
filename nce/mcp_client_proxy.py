@@ -8,11 +8,13 @@ or master encryption keys).
 
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Mapping
 
@@ -93,32 +95,52 @@ def main() -> int:
             continue
 
         data_bytes = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(http_url, data=data_bytes, headers=headers, method="POST")
+        parsed = urllib.parse.urlsplit(http_url)
+        if parsed.scheme not in ("http", "https"):
+            err_resp = {
+                "jsonrpc": "2.0",
+                "id": payload.get("id"),
+                "error": {"code": -32600, "message": "Invalid scheme"},
+            }
+            sys.stdout.write(json.dumps(err_resp) + "\n")
+            sys.stdout.flush()
+            continue
+
+        req_path = parsed.path or "/"
+        if parsed.query:
+            req_path += f"?{parsed.query}"
 
         try:
-            with urllib.request.urlopen(req) as resp:
-                resp_session = resp.headers.get("Mcp-Session-Id")
-                if resp_session and not session_id:
-                    session_id = resp_session
-                    headers["Mcp-Session-Id"] = session_id
+            if parsed.scheme == "https":
+                conn = http.client.HTTPSConnection(parsed.hostname, parsed.port or 443, timeout=30)
+            else:
+                conn = http.client.HTTPConnection(parsed.hostname, parsed.port or 80, timeout=30)
+            conn.request("POST", req_path, body=data_bytes, headers=headers)
+            resp = conn.getresponse()
+            resp_headers = dict(resp.getheaders())
+            resp_session = resp_headers.get("Mcp-Session-Id") or resp_headers.get("mcp-session-id")
+            if resp_session and not session_id:
+                session_id = resp_session
+                headers["Mcp-Session-Id"] = session_id
 
-                content_type = resp.headers.get("Content-Type", "")
-                resp_bytes = resp.read()
+            content_type = resp_headers.get("Content-Type", resp_headers.get("content-type", ""))
+            resp_bytes = resp.read()
+            conn.close()
 
-                if "text/event-stream" in content_type:
-                    # Parse SSE events looking for event: message or data: ...
-                    lines = resp_bytes.decode("utf-8", errors="replace").splitlines()
-                    for sse_line in lines:
-                        if sse_line.startswith("data:"):
-                            raw_data = sse_line[5:].strip()
-                            if raw_data:
-                                sys.stdout.write(raw_data + "\n")
-                                sys.stdout.flush()
-                else:
-                    resp_str = resp_bytes.decode("utf-8", errors="replace").strip()
-                    if resp_str:
-                        sys.stdout.write(resp_str + "\n")
-                        sys.stdout.flush()
+            if "text/event-stream" in content_type:
+                # Parse SSE events looking for event: message or data: ...
+                lines = resp_bytes.decode("utf-8", errors="replace").splitlines()
+                for sse_line in lines:
+                    if sse_line.startswith("data:"):
+                        raw_data = sse_line[5:].strip()
+                        if raw_data:
+                            sys.stdout.write(raw_data + "\n")
+                            sys.stdout.flush()
+            else:
+                resp_str = resp_bytes.decode("utf-8", errors="replace").strip()
+                if resp_str:
+                    sys.stdout.write(resp_str + "\n")
+                    sys.stdout.flush()
 
         except urllib.error.HTTPError as http_err:
             body = http_err.read().decode("utf-8", errors="replace")

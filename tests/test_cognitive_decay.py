@@ -44,7 +44,7 @@ def test_compute_decayed_score_future_updated_at_returns_unchanged():
 
 def test_compute_decayed_score_naive_updated_at_assumed_utc():
     reference_now = datetime(2026, 1, 10, 12, 0, tzinfo=timezone.utc)
-    naive = datetime(2026, 1, 9, 12, 0)
+    naive = datetime(2026, 1, 9, 12, 0)  # noqa: DTZ001 — intentional test of naive datetime handling
     out = salience.compute_decayed_score(1.0, naive, 30.0, now=reference_now)
     assert 0.9 < out <= 1.0
 

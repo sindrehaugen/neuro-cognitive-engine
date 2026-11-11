@@ -17,6 +17,10 @@ from pathlib import Path
 
 import asyncpg
 
+_NCE_DIR = Path(__file__).resolve().parents[1] / "nce"
+_SCHEMA_PATH = _NCE_DIR / "schema.sql"
+_MIGRATIONS_DIR = _NCE_DIR / "migrations"
+
 
 def _dsn() -> str:
     raw = (os.getenv("PG_DSN") or os.getenv("DATABASE_URL") or "").strip()
@@ -56,8 +60,9 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON topology_graph TO nce_gc;
 
 async def _apply_migrations(conn: asyncpg.Connection, migrations_dir: Path) -> None:
     """Apply top-level *.sql migrations in lexical order, excluding optional/ subdir."""
-    for path in sorted(migrations_dir.glob("*.sql")):
-        sql = path.read_text(encoding="utf-8")
+    paths = await asyncio.to_thread(lambda: sorted(migrations_dir.glob("*.sql")))
+    for path in paths:
+        sql = await asyncio.to_thread(path.read_text, encoding="utf-8")
         if "citus" in path.name:
             citus_available = await conn.fetchval(
                 "SELECT EXISTS(SELECT 1 FROM pg_available_extensions WHERE name = 'citus')"
@@ -215,16 +220,16 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE source_mode_heartbeat TO nce_gc;
 
 
 async def _main() -> None:
-    nce_dir = Path(__file__).resolve().parents[1] / "nce"
-    schema_path = nce_dir / "schema.sql"
-    migrations_dir = nce_dir / "migrations"
+    schema_path = _SCHEMA_PATH
+    migrations_dir = _MIGRATIONS_DIR
 
     conn = await asyncpg.connect(_dsn())
     try:
-        await conn.execute(schema_path.read_text(encoding="utf-8"))
+        schema_sql = await asyncio.to_thread(schema_path.read_text, encoding="utf-8")
+        await conn.execute(schema_sql)
         print(f"Applied schema from {schema_path}")
 
-        if migrations_dir.is_dir():
+        if await asyncio.to_thread(os.path.isdir, str(migrations_dir)):
             await _apply_migrations(conn, migrations_dir)
             print("Applied all migrations.")
 

@@ -5,7 +5,7 @@ import json
 import logging
 import math
 import uuid as _uuid_mod
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -589,17 +589,23 @@ class ConsolidationWorker:
                     "INSERT INTO consolidation_runs (namespace_id) VALUES ($1) RETURNING id",
                     namespace_id,
                 )
+                window_cutoff = datetime.now(timezone.utc) - timedelta(
+                    days=getattr(cfg, "CONSOLIDATION_WINDOW_DAYS", 7)
+                )
+                effective_since = (
+                    max(since_timestamp, window_cutoff)
+                    if since_timestamp is not None
+                    else window_cutoff
+                )
+                max_candidates = getattr(cfg, "CONSOLIDATION_MAX_CANDIDATE_MEMORIES", 2000)
                 sql = (
                     "SELECT id, payload_ref, embedding::text, derivation_depth FROM memories "
                     "WHERE namespace_id = $1 AND memory_type = 'episodic' "
                     "AND assertion_type = 'fact' AND valid_to IS NULL "
-                    "AND derivation_depth < $2"
+                    "AND derivation_depth < $2 AND created_at >= $3 "
+                    "ORDER BY created_at DESC LIMIT $4"
                 )
-                args: list = [namespace_id, cfg.NCE_MAX_DERIVATION_DEPTH]
-                if since_timestamp:
-                    sql += " AND created_at >= $3"
-                    args.append(since_timestamp)
-                sql += " ORDER BY created_at DESC LIMIT 1000"
+                args = [namespace_id, cfg.NCE_MAX_DERIVATION_DEPTH, effective_since, max_candidates]
                 memories = await conn.fetch(sql, *args)
         except Exception as e:
             log.exception("Failed to create consolidation run or fetch memories")
@@ -701,6 +707,9 @@ class ConsolidationWorker:
                     namespace_id,
                 )
 
+            # 5. Distill procedural heuristics from settled governed decisions & contradictions.
+            await self._distill_procedural_memory(namespace_id)
+
         except Exception as e:
             log.exception("Consolidation failed")
             if run_id is not None:
@@ -714,3 +723,14 @@ class ConsolidationWorker:
                         namespace_id,
                     )
             raise
+
+    async def _distill_procedural_memory(self, namespace_id: UUID) -> list[dict[str, Any]]:
+        """Best-effort procedural heuristic distillation during sleep consolidation."""
+        try:
+            from nce.procedural_memory import distill_procedural_heuristics
+
+            async with scoped_pg_session(self.pool, namespace_id) as conn:
+                return await distill_procedural_heuristics(conn, namespace_id)
+        except Exception as exc:
+            log.debug("Procedural heuristic distillation skipped/failed: %s", exc)
+            return []

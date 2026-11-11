@@ -490,7 +490,7 @@ class TestEdgeDecay:
         assert edge.decayed_confidence(_now=NOW) >= 0.001
 
     def test_naive_datetime_normalised_to_utc(self):
-        naive = datetime(2026, 5, 6, 12, 0, 0)  # naive, 30 days before NOW
+        naive = datetime(2026, 5, 6, 12, 0, 0)  # noqa: DTZ001 — naive, 30 days before NOW (intentional test of naive datetime normalization)
         edge = CausalEdge("A", "B", "connected_to", 0.9, 0.001, naive)
         result = edge.decayed_confidence(_now=NOW)
         assert 0.0 < result < 0.9

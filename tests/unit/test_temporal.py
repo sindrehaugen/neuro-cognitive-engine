@@ -133,7 +133,7 @@ class TestRetentionFormula:
 
     def test_naive_datetime_treated_as_utc(self):
         # Naive datetime (no tzinfo) should be accepted and treated as UTC.
-        naive_ts = datetime(2026, 5, 29, 12, 0, 0)  # 7 days ago, naive
+        naive_ts = datetime(2026, 5, 29, 12, 0, 0)  # noqa: DTZ001 — 7 days ago, naive (intentional test of naive datetime acceptance)
         result = retention(naive_ts, MemoryClass.INCIDENT, _now=NOW)
         assert result.retention == pytest.approx(math.exp(-1), rel=1e-3)
 

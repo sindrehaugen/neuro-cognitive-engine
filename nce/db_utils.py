@@ -19,6 +19,36 @@ from nce.observability import SCOPED_SESSION_LATENCY
 # Pool checkout timeout — prevents indefinite event-loop stall on exhaustion (FIX-010).
 POOL_ACQUIRE_TIMEOUT: Final[float] = 10.0
 
+# Cached pgvector HNSW iterative scan capability flag
+_HNSW_ITERATIVE_SCAN_SUPPORTED: bool | None = None
+
+
+async def enable_hnsw_iterative_scan(conn: Any) -> bool:
+    """Enable pgvector relaxed_order iterative scan for filtered vector queries.
+
+    Uses cached capability detection so unsupported PostgreSQL versions/mock connections
+    safely degrade without repeated failed roundtrips.
+    """
+    global _HNSW_ITERATIVE_SCAN_SUPPORTED
+    if _HNSW_ITERATIVE_SCAN_SUPPORTED is False:
+        return False
+
+    if not hasattr(conn, "execute") or not callable(conn.execute):
+        return False
+
+    try:
+        await conn.execute("SET LOCAL hnsw.iterative_scan = 'relaxed_order'")
+        _HNSW_ITERATIVE_SCAN_SUPPORTED = True
+        return True
+    except (asyncpg.UndefinedObjectError, asyncpg.PostgresError) as exc:
+        exc_str = str(exc).lower()
+        if "unrecognized configuration parameter" in exc_str or "hnsw.iterative_scan" in exc_str:
+            _HNSW_ITERATIVE_SCAN_SUPPORTED = False
+        return False
+    except Exception:
+        return False
+
+
 # Every production use of ``unmanaged_pg_connection`` must register a stable site id
 # here after security review (global tables / DDL / legacy non-tenant paths only).
 UNMANAGED_PG_AUDITED_SITES: Final[frozenset[str]] = frozenset(
@@ -410,6 +440,10 @@ async def scoped_pg_session(
 
         async with conn.transaction():
             await set_namespace_context(conn, ns_uuid)
+            try:
+                await enable_hnsw_iterative_scan(conn)
+            except Exception:
+                pass
             SCOPED_SESSION_LATENCY.observe(time.perf_counter() - t0)
             yield conn
             # SET LOCAL is automatically cleared at transaction end.

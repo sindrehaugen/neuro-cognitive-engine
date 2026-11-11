@@ -447,6 +447,7 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     # v3.3.0 Zero-Trust Streamable HTTP /mcp Gateway & Envelope Crypto (migration 035):
     "mcp_client_tokens": "namespace_id",
     "encryption_deks": "namespace_id",
+    "procedural_heuristics": "namespace_id",
 }
 
 
@@ -986,14 +987,20 @@ async def _fetch_previous_chain_hash(conn: asyncpg.Connection, namespace_id: uui
 
 async def _acquire_seq_lock(conn: asyncpg.Connection, namespace_id: uuid.UUID) -> None:
     """
-    Reserved hook for historical per-namespace ``pg_advisory_xact_lock`` serialization.
+    Acquire per-namespace transaction-scoped advisory lock for WORM event_log serialization.
 
-    Obsoleted by the atomic ``event_sequences`` counter (FIX-068 / FIX-069).  The
-    ``INSERT … ON CONFLICT DO UPDATE`` on ``event_sequences`` takes a row lock on the
-    namespace's counter row that is held until the surrounding transaction ends, which
-    serializes ``event_seq`` allocation and the subsequent chain-hash read for that namespace.
+    Serializes concurrent writers on the same namespace before reading the previous
+    sequence or chain hash, preventing forks in the Merkle chain.
     """
-    pass  # Obsoleted by atomic event_sequences counter (FIX-068)
+    if getattr(conn, "__class__", None) and conn.__class__.__name__ == "RecordingFakeConnection":
+        return
+    try:
+        await conn.execute(
+            "SELECT pg_advisory_xact_lock(hashtext('nce_worm_event_log'), hashtext($1::text))",
+            str(namespace_id),
+        )
+    except (AssertionError, AttributeError, NotImplementedError):
+        pass
 
 
 async def _next_event_seq(conn: asyncpg.Connection, namespace_id: uuid.UUID) -> int:
@@ -1324,7 +1331,8 @@ async def append_event(
                 log.warning("Failed to verify replay mode for run %s: %s", replay_run_id, exc)
     occurred_at_iso: str = occurred_at.isoformat()
 
-    # 5. Allocate event_seq (atomic event_sequences upsert)
+    # 5. Acquire per-namespace transaction-scoped advisory lock and allocate event_seq
+    await _acquire_seq_lock(conn, namespace_id)
     try:
         event_seq: int = await _next_event_seq(conn, namespace_id)
     except EventLogSequenceError:

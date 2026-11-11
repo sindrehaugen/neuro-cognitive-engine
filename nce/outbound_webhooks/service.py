@@ -21,6 +21,7 @@ from uuid import UUID
 import asyncpg  # type: ignore[import-untyped]
 import httpx
 
+from nce.net_safety import validate_outbound_url
 from nce.outbound_webhooks.models import OutboundWebhook
 
 log = logging.getLogger("nce.outbound_webhooks")
@@ -151,10 +152,16 @@ def send_webhook_http_sync(
     Designed for invocation inside zero-arg PostCommitAction callables outside
     the PostgreSQL transaction block.
     """
+    try:
+        url = validate_outbound_url(url)
+    except Exception as exc:
+        log.warning("[outbound_webhook] SSRF blocked delivery to %s: %s", url, exc)
+        return False
+
     body_bytes = json.dumps(payload_dict, default=str).encode("utf-8")
     headers = sign_outbound_webhook(secret, "POST", url, body_bytes)
     try:
-        with httpx.Client(timeout=timeout) as client:
+        with httpx.Client(timeout=timeout, follow_redirects=False) as client:
             resp = client.post(url, headers=headers, content=body_bytes)
             if resp.status_code >= 400:
                 log.warning(
@@ -210,6 +217,7 @@ async def create_webhook(
     ns_id = _coerce_uuid(namespace_id)
     if not url or not url.strip():
         raise ValueError("Webhook URL cannot be empty")
+    url = validate_outbound_url(url.strip())
     if not secret or not secret.strip():
         raise ValueError("Webhook HMAC secret cannot be empty")
 

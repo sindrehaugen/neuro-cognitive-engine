@@ -351,6 +351,8 @@ openvino==2026.4.1
     # via -r requirements.txt
 openvino-telemetry==2025.2.0
     # via openvino
+orjson==3.13.0
+    # via -r requirements.txt
 packaging==26.3
     # via
     #   deprecation

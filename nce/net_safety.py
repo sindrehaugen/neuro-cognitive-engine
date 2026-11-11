@@ -8,6 +8,8 @@ import socket
 from typing import Any
 from urllib.parse import urlparse
 
+from nce.config import cfg, live_ssrf_allowlist_hosts
+
 log = logging.getLogger("nce.net_safety")
 
 # Global registry for DNS-rebinding prevention pinning
@@ -104,6 +106,47 @@ _SSRF_DENIED_IPV6_NETWORKS: tuple[ipaddress.IPv6Network, ...] = tuple(
     )
 )
 
+# RFC 6598 Carrier Grade NAT (CGNAT) prefix
+_CGNAT_IPV4_NETWORK: ipaddress.IPv4Network = ipaddress.ip_network("100.64.0.0/10")
+
+BLOCKED_INTERNAL_HOSTNAMES: frozenset[str] = frozenset(
+    {
+        "localhost",
+        "host.docker.internal",
+        "gateway.docker.internal",
+        "kubernetes.default",
+        "kubernetes.default.svc",
+        "metadata.google.internal",
+        "metadata",
+        "instance-data",
+    }
+)
+
+
+def unwrap_ip(
+    ip: ipaddress.IPv4Address | ipaddress.IPv6Address,
+) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
+    """Unwrap IPv4-mapped IPv6 address (e.g. ::ffff:169.254.169.254 -> 169.254.169.254)."""
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        return ip.ipv4_mapped
+    return ip
+
+
+def is_ip_blocked(
+    ip: ipaddress.IPv4Address | ipaddress.IPv6Address,
+) -> bool:
+    """Return True if an IP is in private, link-local, CGNAT, loopback, non-global, or denied ranges."""
+    ip = unwrap_ip(ip)
+    if isinstance(ip, ipaddress.IPv4Address) and ip in _CGNAT_IPV4_NETWORK:
+        return True
+    if not ip.is_global:
+        return True
+    if ip.version == 6 and _ipv6_in_explicit_denylist(ip):
+        return True
+    if ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_loopback:
+        return True
+    return False
+
 
 class BridgeURLValidationError(ValueError):
     """Raised when a bridge-related URL fails safety checks."""
@@ -148,7 +191,7 @@ async def _resolve_ips(hostname: str) -> list[ipaddress.IPv4Address | ipaddress.
 
 
 def _all_loopback(ips: list[ipaddress.IPv4Address | ipaddress.IPv6Address]) -> bool:
-    return bool(ips) and all(ip.is_loopback for ip in ips)
+    return bool(ips) and all(unwrap_ip(ip).is_loopback for ip in ips)
 
 
 def _ipv6_in_explicit_denylist(
@@ -160,12 +203,7 @@ def _ipv6_in_explicit_denylist(
 
 
 def _any_non_public(ips: list[ipaddress.IPv4Address | ipaddress.IPv6Address]) -> bool:
-    for ip in ips:
-        if _ipv6_in_explicit_denylist(ip):
-            return True
-        if ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_loopback:
-            return True
-    return False
+    return any(is_ip_blocked(ip) for ip in ips)
 
 
 def _url_matches_prefix(url: str, prefix: str) -> bool:
@@ -498,3 +536,189 @@ def _verify_binary_safety(executable: str, expected_hash: str | None) -> str | N
             log.warning("binary_safety: failed to hash %s: %s", abs_path, e)
             return None
     return abs_path
+
+
+# ---------------------------------------------------------------------------
+# General Outbound URL Validation (SSRF Guard)
+# ---------------------------------------------------------------------------
+
+
+def _validate_outbound_url_common(
+    url: str,
+    *,
+    require_https: bool = False,
+) -> tuple[str, str, Any, set[str]]:
+    raw = (url or "").strip()
+    if not raw:
+        raise BridgeURLValidationError("outbound URL is empty")
+    if len(raw) > _MAX_URL_LEN:
+        raise BridgeURLValidationError(
+            f"outbound URL exceeds maximum length ({_MAX_URL_LEN} chars)"
+        )
+    parsed = urlparse(raw)
+    if parsed.username or parsed.password:
+        raise BridgeURLValidationError("outbound URL must not contain credentials")
+    allowed_schemes = ("https",) if require_https else ("http", "https")
+    if parsed.scheme not in allowed_schemes:
+        scheme_msg = "https" if require_https else "http or https"
+        raise BridgeURLValidationError(
+            f"outbound URL must use {scheme_msg} (got scheme={parsed.scheme!r})"
+        )
+    host = parsed.hostname
+    if not host:
+        raise BridgeURLValidationError("outbound URL is missing a hostname")
+
+    allowlist = live_ssrf_allowlist_hosts()
+    normalized_host = host.lower().strip().rstrip(".")
+
+    if normalized_host in allowlist:
+        return raw, host, parsed, allowlist
+
+    # Reject internal/metadata hostnames
+    if (
+        normalized_host in BLOCKED_INTERNAL_HOSTNAMES
+        or normalized_host.endswith(".internal")
+        or normalized_host.endswith(".local")
+        or ("." not in normalized_host and not normalized_host.startswith("["))
+    ):
+        raise BridgeURLValidationError(
+            f"outbound host {host!r} is a blocked internal or metadata hostname"
+        )
+
+    # Check if host is an IP literal
+    clean_host = host.strip("[]")
+    if "%" in clean_host:
+        clean_host = clean_host.split("%", 1)[0]
+    try:
+        ip = ipaddress.ip_address(clean_host)
+    except ValueError:
+        ip = None
+
+    if ip is not None:
+        unwrapped = unwrap_ip(ip)
+        if str(ip).lower() in allowlist or str(unwrapped).lower() in allowlist:
+            return raw, host, parsed, allowlist
+        if is_ip_blocked(ip):
+            raise BridgeURLValidationError(
+                f"outbound host {host!r} is a non-global or private IP address"
+            )
+        return raw, host, parsed, allowlist
+
+    return raw, host, parsed, allowlist
+
+
+def validate_outbound_url(
+    url: str,
+    *,
+    require_https: bool = False,
+    resolve_dns: bool = True,
+) -> str:
+    """Validate an outbound URL against SSRF attacks (sync).
+
+    Blocks private, link-local, loopback, CGNAT, IPv4-mapped IPv6,
+    cloud metadata, and internal Docker/Kubernetes hostnames unless allowlisted.
+    """
+    raw, host, _parsed, allowlist = _validate_outbound_url_common(url, require_https=require_https)
+    clean_host = host.strip("[]").split("%", 1)[0]
+    try:
+        ipaddress.ip_address(clean_host)
+        return raw
+    except ValueError:
+        pass
+
+    if normalized_host := host.lower().strip().rstrip("."):
+        if normalized_host in allowlist:
+            return raw
+
+    if not resolve_dns:
+        return raw
+
+    try:
+        infos = socket.getaddrinfo(host, None, 0, socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        is_prod = str(getattr(cfg, "NCE_ENV", "")).lower() in ("prod", "production")
+        if is_prod:
+            raise BridgeURLValidationError(f"cannot resolve host {host!r}: {exc}") from exc
+        log.warning("DNS resolution failed for %r in non-production environment: %s", host, exc)
+        return raw
+    except Exception as exc:
+        raise BridgeURLValidationError(f"DNS resolution failed for host {host!r}: {exc}") from exc
+
+    resolved_ips: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
+    for item in infos:
+        sockaddr = item[4]
+        try:
+            resolved_ips.append(_parse_ip_from_getaddrinfo(sockaddr[0]))
+        except ValueError:
+            continue
+
+    if not resolved_ips:
+        raise BridgeURLValidationError(f"no usable IP addresses for host {host!r}")
+
+    for ip in resolved_ips:
+        unwrapped = unwrap_ip(ip)
+        if str(ip).lower() in allowlist or str(unwrapped).lower() in allowlist:
+            continue
+        if is_ip_blocked(ip):
+            raise BridgeURLValidationError(
+                f"outbound host {host!r} resolves to non-global address {ip}"
+            )
+
+    _PINNED_HOSTS[host.lower().strip()] = str(resolved_ips[0])
+    return raw
+
+
+async def validate_outbound_url_async(
+    url: str,
+    *,
+    require_https: bool = False,
+    resolve_dns: bool = True,
+) -> str:
+    """Validate an outbound URL against SSRF attacks (async).
+
+    Blocks private, link-local, loopback, CGNAT, IPv4-mapped IPv6,
+    cloud metadata, and internal Docker/Kubernetes hostnames unless allowlisted.
+    """
+    raw, host, _parsed, allowlist = _validate_outbound_url_common(url, require_https=require_https)
+    clean_host = host.strip("[]").split("%", 1)[0]
+    try:
+        ipaddress.ip_address(clean_host)
+        return raw
+    except ValueError:
+        pass
+
+    if normalized_host := host.lower().strip().rstrip("."):
+        if normalized_host in allowlist:
+            return raw
+
+    if not resolve_dns:
+        return raw
+
+    try:
+        resolved_ips = await _resolve_ips(host)
+    except socket.gaierror as exc:
+        is_prod = str(getattr(cfg, "NCE_ENV", "")).lower() in ("prod", "production")
+        if is_prod:
+            raise BridgeURLValidationError(f"cannot resolve host {host!r}: {exc}") from exc
+        log.warning("DNS resolution failed for %r in non-production environment: %s", host, exc)
+        return raw
+    except BridgeURLValidationError as exc:
+        if "cannot resolve host" in str(exc):
+            is_prod = str(getattr(cfg, "NCE_ENV", "")).lower() in ("prod", "production")
+            if is_prod:
+                raise
+            log.warning("DNS resolution failed for %r in non-production environment: %s", host, exc)
+            return raw
+        raise
+
+    for ip in resolved_ips:
+        unwrapped = unwrap_ip(ip)
+        if str(ip).lower() in allowlist or str(unwrapped).lower() in allowlist:
+            continue
+        if is_ip_blocked(ip):
+            raise BridgeURLValidationError(
+                f"outbound host {host!r} resolves to non-global address {ip}"
+            )
+
+    _PINNED_HOSTS[host.lower().strip()] = str(resolved_ips[0])
+    return raw

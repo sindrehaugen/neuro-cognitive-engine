@@ -29,10 +29,14 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+import orjson
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
+
+from nce.http_body_limit import BoundedBodyMiddleware
 
 logger = logging.getLogger("nce.mcp_http_gateway")
 
@@ -57,6 +61,12 @@ _IN_MEMORY_MCP_CLIENT_TOKENS: dict[str, dict[str, Any]] = {}
 
 # Active gateway sessions keyed by session_id
 _GATEWAY_SESSIONS: dict[str, MCPGatewaySession] = {}
+
+# Cached tools/list definition fragments keyed by (exposure_mode, allowed_engines, expanded_tools, count)
+_TOOLS_LIST_CACHE: dict[
+    tuple[str, tuple[str, ...], tuple[str, ...], int],
+    list[dict[str, Any]],
+] = {}
 
 
 @dataclass
@@ -622,27 +632,51 @@ def create_mcp_gateway_app(engine: Any = None) -> Starlette:
             from nce.plugins import list_plugin_engine_descriptors
             from nce.tool_registry import TOOL_REGISTRY, infer_tool_engine
 
-            try:
-                descriptors = list_plugin_engine_descriptors()
-            except Exception:
-                descriptors = []
+            cache_key = (
+                session.tool_exposure_mode,
+                tuple(sorted(session.allowed_engines)),
+                tuple(sorted(session.expanded_tools)),
+                len(TOOLS),
+            )
 
-            exposed_tools: list[dict[str, Any]] = [DISCOVER_TOOLS_TOOL]
+            if cache_key in _TOOLS_LIST_CACHE:
+                exposed_tools = _TOOLS_LIST_CACHE[cache_key]
+            else:
+                try:
+                    descriptors = list_plugin_engine_descriptors()
+                except Exception:
+                    descriptors = []
 
-            if session.tool_exposure_mode == "compact":
-                for tool in TOOLS:
-                    spec = TOOL_REGISTRY.get(tool.name)
-                    tool_engine = infer_tool_engine(spec) if spec else None
-                    if tool_engine is None:
-                        # Core memory tool
-                        exposed_tools.append(
-                            {
-                                "name": tool.name,
-                                "description": tool.description,
-                                "inputSchema": tool.inputSchema,
-                            }
-                        )
-                    elif tool.name in session.expanded_tools:
+                exposed_tools = [DISCOVER_TOOLS_TOOL]
+
+                if session.tool_exposure_mode == "compact":
+                    for tool in TOOLS:
+                        spec = TOOL_REGISTRY.get(tool.name)
+                        tool_engine = infer_tool_engine(spec) if spec else None
+                        if tool_engine is None:
+                            # Core memory tool
+                            exposed_tools.append(
+                                {
+                                    "name": tool.name,
+                                    "description": tool.description,
+                                    "inputSchema": tool.inputSchema,
+                                }
+                            )
+                        elif tool.name in session.expanded_tools:
+                            if is_engine_allowed_for_session(
+                                tool_engine, session.allowed_engines, descriptors
+                            ):
+                                exposed_tools.append(
+                                    {
+                                        "name": tool.name,
+                                        "description": tool.description,
+                                        "inputSchema": tool.inputSchema,
+                                    }
+                                )
+                else:
+                    for tool in TOOLS:
+                        spec = TOOL_REGISTRY.get(tool.name)
+                        tool_engine = infer_tool_engine(spec) if spec else None
                         if is_engine_allowed_for_session(
                             tool_engine, session.allowed_engines, descriptors
                         ):
@@ -653,20 +687,8 @@ def create_mcp_gateway_app(engine: Any = None) -> Starlette:
                                     "inputSchema": tool.inputSchema,
                                 }
                             )
-            else:
-                for tool in TOOLS:
-                    spec = TOOL_REGISTRY.get(tool.name)
-                    tool_engine = infer_tool_engine(spec) if spec else None
-                    if is_engine_allowed_for_session(
-                        tool_engine, session.allowed_engines, descriptors
-                    ):
-                        exposed_tools.append(
-                            {
-                                "name": tool.name,
-                                "description": tool.description,
-                                "inputSchema": tool.inputSchema,
-                            }
-                        )
+
+                _TOOLS_LIST_CACHE[cache_key] = exposed_tools
 
             return {
                 "jsonrpc": "2.0",
@@ -936,7 +958,15 @@ def create_mcp_gateway_app(engine: Any = None) -> Starlette:
                     results.append(res)
             response_payload = results
         else:
+            req_method = body_json.get("method") if isinstance(body_json, dict) else None
             response_payload = await _handle_jsonrpc_request(session, body_json)
+            if not wants_sse and req_method == "tools/list":
+                content_bytes = orjson.dumps(response_payload)
+                return Response(
+                    content=content_bytes,
+                    media_type="application/json",
+                    headers={"Mcp-Session-Id": session.session_id},
+                )
 
         if wants_sse:
 
@@ -1027,4 +1057,8 @@ def create_mcp_gateway_app(engine: Any = None) -> Starlette:
         Route("/mcp", mcp_delete_endpoint, methods=["DELETE"]),
     ]
 
-    return Starlette(debug=False, routes=routes)
+    return Starlette(
+        debug=False,
+        routes=routes,
+        middleware=[Middleware(BoundedBodyMiddleware)],
+    )
