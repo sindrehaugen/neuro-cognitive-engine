@@ -99,3 +99,88 @@ async def test_scoped_pg_session_opens_transaction_before_namespace_and_body() -
 
     # SET LOCAL is cleared at transaction end — scoped_pg_session does not reset RLS.
     assert order == ["tx_enter", "set_ns", "body"]
+
+
+@pytest.mark.asyncio
+async def test_set_namespace_context_requires_active_transaction() -> None:
+    from nce.db_utils import set_namespace_context
+
+    conn = MagicMock()
+    conn.is_in_transaction = MagicMock(return_value=False)
+    conn.execute = AsyncMock()
+
+    ns = uuid4()
+    with pytest.raises(
+        RuntimeError,
+        match="SECURITY VIOLATION: set_namespace_context requires an active SQL transaction",
+    ):
+        await set_namespace_context(conn, ns)
+
+    # Active transaction passes
+    conn.is_in_transaction.return_value = True
+    await set_namespace_context(conn, ns)
+    conn.execute.assert_called_once_with("SELECT set_config('nce.namespace_id', $1, true)", str(ns))
+
+    # Test mock without is_in_transaction also passes (backward compat with untyped mock)
+    legacy_mock = MagicMock(spec=[])
+    legacy_mock.execute = AsyncMock()
+    await set_namespace_context(legacy_mock, ns)
+    legacy_mock.execute.assert_called_once_with(
+        "SELECT set_config('nce.namespace_id', $1, true)", str(ns)
+    )
+
+
+def test_validate_redis_namespace_key():
+    from nce.db_utils import validate_redis_namespace_key
+
+    ns = uuid4()
+    ns_str = str(ns)
+
+    # Valid simple subkey
+    assert validate_redis_namespace_key(ns, "cache:user") == f"nce:ns:{ns_str}:cache:user"
+    assert validate_redis_namespace_key(ns_str, "cache:user") == f"nce:ns:{ns_str}:cache:user"
+
+    # Already fully-qualified key under same namespace
+    full_key = f"nce:ns:{ns_str}:cache:user"
+    assert validate_redis_namespace_key(ns, full_key) == full_key
+
+    # Cross-tenant key attempts
+    other_ns = uuid4()
+    other_key = f"nce:ns:{other_ns}:cache:user"
+    with pytest.raises(ValueError, match="Cross-tenant access forbidden"):
+        validate_redis_namespace_key(ns, other_key)
+
+    # Cross-namespace wildcard attempts
+    with pytest.raises(ValueError, match="forbidden"):
+        validate_redis_namespace_key(ns, "nce:ns:*:keys")
+    with pytest.raises(ValueError, match="forbidden"):
+        validate_redis_namespace_key(ns, "*")
+    with pytest.raises(ValueError, match="forbidden"):
+        validate_redis_namespace_key(ns, "nce:*")
+
+    # Invalid namespace
+    with pytest.raises(ValueError):
+        validate_redis_namespace_key("", "key")
+    with pytest.raises(ValueError):
+        validate_redis_namespace_key("not-a-uuid", "key")
+
+
+def test_scoped_redis_client():
+    from nce.db_utils import ScopedRedisClient
+
+    mock_raw_redis = MagicMock()
+    mock_raw_redis.get.return_value = "val"
+    mock_raw_redis.hgetall.return_value = {"field": "1"}
+
+    ns = uuid4()
+    client = ScopedRedisClient(mock_raw_redis, ns)
+
+    assert client.get("mykey") == "val"
+    mock_raw_redis.get.assert_called_once_with(f"nce:ns:{ns}:mykey")
+
+    client.hgetall("hashkey")
+    mock_raw_redis.hgetall.assert_called_once_with(f"nce:ns:{ns}:hashkey")
+
+    # Cross-tenant access via client
+    with pytest.raises(ValueError):
+        client.get(f"nce:ns:{uuid4()}:stolen")

@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import os
 import signal
 import uuid
 from typing import Any
@@ -45,6 +46,31 @@ log = logging.getLogger("nce-mcp")
 engine: NCEEngine | None = None
 app = Server("nce-memory")
 
+
+def assert_local_stdio_allowed() -> None:
+    """Ensure direct database stdio server is permitted in the current environment.
+
+    In production (NCE_ENV=production or cfg.IS_PROD), direct stdio access with full
+    database secrets is disallowed unless explicitly overridden via NCE_ALLOW_LOCAL_STDIO.
+    Clients should connect via the zero-trust Streamable HTTP /mcp gateway instead.
+    """
+    from nce.config import cfg
+
+    is_prod = bool(
+        cfg.IS_PROD or os.environ.get("NCE_ENV", "").strip().lower() in ("production", "prod")
+    )
+    allowed = os.getenv("NCE_ALLOW_LOCAL_STDIO", "false").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if is_prod and not allowed:
+        raise RuntimeError(
+            "Direct database stdio server.py is disabled in production (NCE_ALLOW_LOCAL_STDIO=false); "
+            "use the zero-trust Streamable HTTP /mcp gateway."
+        )
+
+
 # Backward-compatible re-exports for tests and legacy imports.
 __all__ = [
     "app",
@@ -54,6 +80,7 @@ __all__ = [
     "_check_admin",
     "TOOLS",
     "main",
+    "assert_local_stdio_allowed",
 ]
 
 
@@ -72,6 +99,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
 
 async def main() -> None:
+    assert_local_stdio_allowed()
     from nce.mcp_stdio_main import run_stdio_server
 
     global engine

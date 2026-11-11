@@ -201,6 +201,16 @@ async def _create_run(
         divergence_seq,
         json.dumps(config_overrides, sort_keys=True) if config_overrides else None,
     )
+    # Mark target namespace as replay sandbox when column exists
+    try:
+        await conn.execute(
+            "UPDATE namespaces SET is_replay_sandbox = TRUE WHERE id = $1",
+            target_namespace_id,
+        )
+    except Exception as exc:
+        log.debug(
+            "Could not mark target namespace %s as replay sandbox: %s", target_namespace_id, exc
+        )
     log.info(
         "replay_run created: run_id=%s mode=%s replay_mode=%s ns=%s",
         run_id,
@@ -460,10 +470,15 @@ class ReplayContext:
     """Carries state for replay executions, ensuring deterministic UUID remapping."""
 
     def __init__(
-        self, target_namespace_id: uuid.UUID, source_namespace_id: uuid.UUID | None = None
+        self,
+        target_namespace_id: uuid.UUID,
+        source_namespace_id: uuid.UUID | None = None,
+        *,
+        is_replay_sandbox: bool = True,
     ) -> None:
         self.target_namespace_id = target_namespace_id
         self.source_namespace_id = source_namespace_id
+        self.is_replay_sandbox = is_replay_sandbox
         self.uuid_remap: dict[uuid.UUID, uuid.UUID] = {}
         self.mongo_remap: dict[str, str] = {}
         self._mongo_client: Any = None
@@ -1739,6 +1754,7 @@ async def _dispatch_and_apply_event(
         "replay_run_id": str(run_id),
         "source_event_id": str(src.event_id),
         "source_namespace_id": str(source_namespace_id),
+        "is_replay_sandbox": getattr(ctx, "is_replay_sandbox", True),
     }
 
     det_event_id = ctx.remap(src.event_id)

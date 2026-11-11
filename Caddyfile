@@ -58,6 +58,18 @@ http://:80, https://:443 {
 		}
 	}
 
+	# Route Streamable HTTP MCP gateway endpoints with unbuffered SSE streaming
+	@mcp_routes path /mcp /mcp/*
+	handle @mcp_routes {
+		reverse_proxy mcp-gateway:8005 {
+			flush_interval -1
+			# Sanitize proxy headers to prevent client-side IP spoofing
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
 	# Route everything else to the Admin UI / REST API
 	handle {
 		reverse_proxy admin:8003 {

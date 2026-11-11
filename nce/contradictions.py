@@ -381,6 +381,31 @@ async def _check_nli_contradiction(
     return nli_score, cand_text, nli_hit, signals
 
 
+_TIEBREAKER_BUDGET_LOCK = threading.Lock()
+_TIEBREAKER_CALL_HISTORY: dict[str, list[float]] = {}
+
+
+def check_llm_tiebreaker_budget(namespace_id: str, max_calls_per_minute: int = 20) -> bool:
+    """Sliding-window circuit breaker for LLM tiebreaker calls per tenant/namespace.
+
+    Returns True if call is permitted under budget; False if quota is exceeded.
+    """
+    now = time.monotonic()
+    window_s = 60.0
+    ns_key = str(namespace_id)
+
+    with _TIEBREAKER_BUDGET_LOCK:
+        history = _TIEBREAKER_CALL_HISTORY.setdefault(ns_key, [])
+        # Prune calls outside the sliding window
+        pruned = [t for t in history if now - t < window_s]
+        if len(pruned) >= max_calls_per_minute:
+            _TIEBREAKER_CALL_HISTORY[ns_key] = pruned
+            return False
+        pruned.append(now)
+        _TIEBREAKER_CALL_HISTORY[ns_key] = pruned
+        return True
+
+
 async def _resolve_with_llm(
     ns_for_factory: dict[str, Any],
     namespace_id: str,
@@ -407,6 +432,19 @@ async def _resolve_with_llm(
             return 0.0, "", False
         final_explanation = f"Detected via {', '.join(s['source'] for s in signals)}."
         return final_confidence, final_explanation, True
+
+    if not check_llm_tiebreaker_budget(namespace_id):
+        log.warning(
+            "LLM tiebreaker budget exceeded for namespace %s. Degrading to signal-only detection.",
+            namespace_id,
+        )
+        if not signals:
+            return 0.0, "", False
+        return (
+            final_confidence,
+            f"Detected via {', '.join(s['source'] for s in signals)} (LLM tiebreaker budget exceeded).",
+            True,
+        )
 
     consolidation = dict(ns_for_factory.get("consolidation") or {})
     provider_label = consolidation.get("llm_provider", "?")

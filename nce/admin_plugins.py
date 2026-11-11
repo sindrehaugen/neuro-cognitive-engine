@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
 import secrets
+import uuid
 from base64 import b64decode
 from binascii import Error as BinasciiError
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from starlette.requests import Request
 from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from starlette.routing import Route
 
 from nce import admin_state
 from nce.auth import _PBKDF2_HASH_FORMAT_PREFIX, verify_admin_password, verify_hmac
@@ -23,6 +28,7 @@ logger = logging.getLogger("nce-admin-plugins")
 
 REDIS_DISABLED_ENGINES_KEY = "nce:engines:disabled"
 _IN_MEMORY_DISABLED_ENGINES: set[str] = set()
+MINTED_MCP_TOKENS: dict[str, dict[str, Any]] = {}
 
 
 async def get_disabled_engines(
@@ -529,3 +535,194 @@ async def admin_plugins_toggle(request: Request, ctx: Any = None) -> JSONRespons
             "engine": updated,
         }
     )
+
+
+async def admin_plugins_mint_token(request: Request, ctx: Any = None) -> JSONResponse:
+    """POST /admin/plugins/api/mint-token and POST /api/admin/plugins/mint-token
+
+    Mint a scoped bearer token for Streamable HTTP /mcp gateway access and return
+    zero-secret desktop/IDE mcp_config.json snippet.
+    """
+    auth_err = _check_admin_auth(request)
+    if auth_err is not None:
+        return auth_err
+
+    body: dict[str, Any] = {}
+    try:
+        raw_body = await request.json()
+        if isinstance(raw_body, dict):
+            body = raw_body
+    except Exception:
+        body = {}
+
+    raw_ns = body.get("namespace_id")
+    if raw_ns:
+        try:
+            namespace_id = str(uuid.UUID(str(raw_ns)))
+        except (ValueError, TypeError):
+            namespace_id = str(raw_ns).strip()
+    else:
+        namespace_id = "00000000-0000-0000-0000-000000000001"
+
+    principal_id = str(body.get("principal_id") or "mcp-operator").strip() or "mcp-operator"
+
+    types_list = [str(t).strip() for t in body.get("types", []) if str(t).strip()]
+    cats_list = [str(c).strip() for c in body.get("categories", []) if str(c).strip()]
+    explicit_engines = [str(e).strip() for e in body.get("engines", []) if str(e).strip()]
+
+    allowed_engines: list[str] = []
+    for t in types_list:
+        allowed_engines.append(f"type:{t}")
+    for c in cats_list:
+        allowed_engines.append(f"cat:{c}")
+    for e in explicit_engines:
+        if e not in allowed_engines:
+            allowed_engines.append(e)
+
+    if not allowed_engines:
+        allowed_engines = ["*"]
+
+    raw_mode = str(body.get("tool_exposure_mode", "compact")).strip().lower()
+    tool_exposure_mode = raw_mode if raw_mode in ("compact", "full") else "compact"
+
+    try:
+        rate_limit_rpm = int(body.get("rate_limit_rpm", 120))
+        if rate_limit_rpm <= 0:
+            rate_limit_rpm = 120
+    except (ValueError, TypeError):
+        rate_limit_rpm = 120
+
+    try:
+        expires_in_days = int(body.get("expires_in_days", 30))
+        if expires_in_days <= 0:
+            expires_in_days = 30
+    except (ValueError, TypeError):
+        expires_in_days = 30
+
+    now_utc = datetime.now(timezone.utc)
+    expires_at = now_utc + timedelta(days=expires_in_days)
+    token_id = str(uuid.uuid4())
+
+    raw_token = f"nce_mcp_{secrets.token_urlsafe(32)}"
+    token_sha256 = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+    token_meta = {
+        "token_id": token_id,
+        "token_sha256": token_sha256,
+        "namespace_id": namespace_id,
+        "principal_id": principal_id,
+        "scopes": ["mcp:tools:call", "mcp:tools:discover"],
+        "allowed_engines": allowed_engines,
+        "tool_exposure_mode": tool_exposure_mode,
+        "rate_limit_rpm": rate_limit_rpm,
+        "expires_at": expires_at.isoformat(),
+        "created_at": now_utc.isoformat(),
+    }
+    MINTED_MCP_TOKENS[token_sha256] = token_meta
+
+    pg_pool = (
+        getattr(request.app.state, "pg_pool", None)
+        if hasattr(request, "app") and hasattr(request.app, "state")
+        else None
+    )
+    if pg_pool is None and getattr(admin_state, "engine", None):
+        pg_pool = getattr(admin_state.engine, "pg_pool", None)
+
+    if pg_pool is not None:
+        try:
+            from nce.db_utils import scoped_pg_session
+
+            async with scoped_pg_session(pg_pool, namespace_id) as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO mcp_client_tokens (
+                        token_id, token_sha256, namespace_id, principal_id,
+                        scopes, allowed_engines, tool_exposure_mode,
+                        rate_limit_rpm, expires_at, created_at
+                    ) VALUES (
+                        $1::uuid, $2, $3::uuid, $4,
+                        $5::jsonb, $6::text[], $7,
+                        $8, $9, $10
+                    )
+                    """,
+                    uuid.UUID(token_id),
+                    token_sha256,
+                    uuid.UUID(namespace_id),
+                    principal_id,
+                    json.dumps(token_meta["scopes"]),
+                    allowed_engines,
+                    tool_exposure_mode,
+                    rate_limit_rpm,
+                    expires_at,
+                    now_utc,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Could not persist mcp_client_token to DB (falling back to memory): %s", exc
+            )
+
+    mcp_config = {
+        "mcpServers": {
+            "nce-http": {
+                "url": "https://localhost:8443/mcp",
+                "headers": {"Authorization": f"Bearer {raw_token}"},
+            },
+            "nce-proxy": {
+                "command": "python",
+                "args": ["-m", "nce.mcp_client_proxy"],
+                "env": {
+                    "NCE_MCP_HTTP_URL": "https://localhost:8443/mcp",
+                    "NCE_MCP_CLIENT_TOKEN": raw_token,
+                },
+            },
+        }
+    }
+
+    return JSONResponse(
+        {
+            "status": "ok",
+            "token_id": token_id,
+            "token": raw_token,
+            "token_sha256": token_sha256,
+            "namespace_id": namespace_id,
+            "principal_id": principal_id,
+            "allowed_engines": allowed_engines,
+            "tool_exposure_mode": tool_exposure_mode,
+            "rate_limit_rpm": rate_limit_rpm,
+            "expires_at": expires_at.isoformat(),
+            "mcp_config_json": json.dumps(mcp_config, indent=2),
+        },
+        status_code=201,
+    )
+
+
+def register_admin_plugin_routes(routes: list[Route] | None = None, ctx: Any = None) -> list[Route]:
+    """Register all admin plugin endpoints including token minter onto route list."""
+
+    def _bind_local(hnd: Any) -> Any:
+        async def _endpoint(req: Any) -> Any:
+            try:
+                return await hnd(req, ctx)
+            except TypeError:
+                return await hnd(req)
+
+        _endpoint.__name__ = getattr(hnd, "__name__", "_endpoint")
+        _endpoint.__doc__ = getattr(hnd, "__doc__", None)
+        return _endpoint
+
+    plugin_routes = [
+        Route("/admin/plugins", _bind_local(admin_plugins_console), methods=["GET"]),
+        Route("/admin/plugins/api", _bind_local(admin_plugins_api), methods=["GET"]),
+        Route("/admin/plugins/api/toggle", _bind_local(admin_plugins_toggle), methods=["POST"]),
+        Route(
+            "/admin/plugins/api/mint-token", _bind_local(admin_plugins_mint_token), methods=["POST"]
+        ),
+        Route("/api/admin/plugins", _bind_local(admin_plugins_api), methods=["GET"]),
+        Route("/api/admin/plugins/toggle", _bind_local(admin_plugins_toggle), methods=["POST"]),
+        Route(
+            "/api/admin/plugins/mint-token", _bind_local(admin_plugins_mint_token), methods=["POST"]
+        ),
+    ]
+    if routes is not None:
+        routes.extend(plugin_routes)
+    return plugin_routes

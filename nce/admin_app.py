@@ -19,6 +19,7 @@ from nce.admin_handlers import pricing as pricing_handlers
 from nce.admin_plugins import (
     admin_plugins_api,
     admin_plugins_console,
+    admin_plugins_mint_token,
     admin_plugins_toggle,
 )
 from nce.auth import (
@@ -234,8 +235,14 @@ def build_admin_routes(ctx: Any = None) -> list[Route]:
         Route("/admin/plugins", _bind(admin_plugins_console, ctx), methods=["GET"]),
         Route("/admin/plugins/api", _bind(admin_plugins_api, ctx), methods=["GET"]),
         Route("/admin/plugins/api/toggle", _bind(admin_plugins_toggle, ctx), methods=["POST"]),
+        Route(
+            "/admin/plugins/api/mint-token", _bind(admin_plugins_mint_token, ctx), methods=["POST"]
+        ),
         Route("/api/admin/plugins", _bind(admin_plugins_api, ctx), methods=["GET"]),
         Route("/api/admin/plugins/toggle", _bind(admin_plugins_toggle, ctx), methods=["POST"]),
+        Route(
+            "/api/admin/plugins/mint-token", _bind(admin_plugins_mint_token, ctx), methods=["POST"]
+        ),
         Route("/api/admin/source-mode", endpoint=h.api_source_mode_get, methods=["GET"]),
         Route("/api/admin/source-mode", endpoint=h.api_source_mode_put, methods=["PUT"]),
         Route("/api/admin/a2a/grants", endpoint=h.api_admin_a2a_grants, methods=["GET"]),

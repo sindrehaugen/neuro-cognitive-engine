@@ -145,6 +145,38 @@ class OutboxDeliveryError(Exception):
     """
 
 
+async def is_namespace_replay_sandbox(conn: Any, namespace_id: Any) -> bool:
+    """Return True if the namespace is marked as a replay sandbox or replay environment is active."""
+    import os
+
+    if os.getenv("NCE_REPLAY_SANDBOX", "").lower() in ("1", "true", "yes"):
+        return True
+
+    if namespace_id is None or conn is None:
+        return False
+
+    try:
+        if callable(getattr(conn, "fetchval", None)):
+            res = await conn.fetchval(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'namespaces' AND column_name = 'is_replay_sandbox'
+                )
+                """
+            )
+            if res:
+                is_sandbox = await conn.fetchval(
+                    "SELECT is_replay_sandbox FROM namespaces WHERE id = $1",
+                    namespace_id,
+                )
+                return bool(is_sandbox)
+    except Exception as exc:
+        log.debug("Error checking is_namespace_replay_sandbox for %s: %s", namespace_id, exc)
+
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Decorator-based handler registry
 # ---------------------------------------------------------------------------
@@ -543,20 +575,42 @@ async def deliver_one(
                 actions.append(action)
 
         if matching_webhooks:
-            from nce.outbound_webhooks import (
-                prepare_webhook_payload,
-                send_webhook_http_sync,
-            )
+            is_sandbox = await is_namespace_replay_sandbox(conn, ns_id)
+            if is_sandbox:
+                log.info(
+                    "[outbox] namespace_id=%s is replay sandbox — fencing %d external outbound webhook(s) for event_id=%s",
+                    ns_id,
+                    len(matching_webhooks),
+                    event["id"],
+                )
+                try:
+                    await conn.execute(
+                        """
+                        UPDATE outbox_events
+                        SET error_message = 'fenced_replay_sandbox'
+                        WHERE id = $1
+                        """,
+                        event["id"],
+                    )
+                except Exception as exc:
+                    log.debug(
+                        "Could not record fenced_replay_sandbox on event %s: %s", event["id"], exc
+                    )
+            else:
+                from nce.outbound_webhooks import (
+                    prepare_webhook_payload,
+                    send_webhook_http_sync,
+                )
 
-            payload_dict = prepare_webhook_payload(event)
-            for wh in matching_webhooks:
-                target_url = wh.url
-                hmac_secret = wh.secret
+                payload_dict = prepare_webhook_payload(event)
+                for wh in matching_webhooks:
+                    target_url = wh.url
+                    hmac_secret = wh.secret
 
-                def _build_action(u: str, s: str, p: dict[str, Any]) -> PostCommitAction:
-                    return lambda: send_webhook_http_sync(u, s, p)
+                    def _build_action(u: str, s: str, p: dict[str, Any]) -> PostCommitAction:
+                        return lambda: send_webhook_http_sync(u, s, p)
 
-                actions.append(_build_action(target_url, hmac_secret, payload_dict))
+                    actions.append(_build_action(target_url, hmac_secret, payload_dict))
 
         return actions
 

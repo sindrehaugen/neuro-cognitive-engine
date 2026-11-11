@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -358,3 +359,88 @@ async def test_shred_memory_cross_tenant_denied():
 
     # Verify that remove_object was NEVER called
     minio_client.remove_object.assert_not_called()
+
+
+# =============================================================================
+# Write-Once Object Key and Storage Tests
+# =============================================================================
+
+
+def test_build_write_once_object_key():
+    from nce.storage import build_write_once_object_key
+
+    ns_id = uuid4()
+    content = b"sample test artifact data"
+    key = build_write_once_object_key(ns_id, "chat_attachment", content)
+    assert key.startswith(f"{ns_id}/chat_attachment/")
+    sha = hashlib.sha256(content).hexdigest()
+    assert key == f"{ns_id}/chat_attachment/{sha}"
+
+    # String input also supported
+    key_str = build_write_once_object_key(
+        str(ns_id), "chat_attachment", "sample test artifact data"
+    )
+    assert key_str == key
+
+    # Invalid namespace
+    with pytest.raises(ValueError):
+        build_write_once_object_key("", "chat_attachment", content)
+    with pytest.raises(ValueError):
+        build_write_once_object_key("not-a-uuid", "chat_attachment", content)
+
+    # Invalid artifact type (path traversal / special chars)
+    with pytest.raises(ValueError):
+        build_write_once_object_key(ns_id, "../escaped", content)
+    with pytest.raises(ValueError):
+        build_write_once_object_key(ns_id, "nested/path", content)
+    with pytest.raises(ValueError):
+        build_write_once_object_key(ns_id, "INVALID-UPPERCASE", content)
+
+
+def test_put_write_once_object_new_upload():
+    from nce.storage import put_write_once_object
+
+    minio_mock = MagicMock(spec=Minio)
+    minio_mock.stat_object.side_effect = Exception("NoSuchKey")
+
+    ns_id = uuid4()
+    content = b"immutable blob bytes"
+    key = put_write_once_object(
+        minio_client=minio_mock,
+        bucket="test-bucket",
+        namespace_id=ns_id,
+        artifact_type="model_weights",
+        data=content,
+    )
+
+    sha = hashlib.sha256(content).hexdigest()
+    assert key == f"{ns_id}/model_weights/{sha}"
+    minio_mock.stat_object.assert_called_once_with("test-bucket", key)
+    minio_mock.put_object.assert_called_once()
+    args, kwargs = minio_mock.put_object.call_args
+    assert args[0] == "test-bucket"
+    assert args[1] == key
+    assert args[3] == len(content)
+
+
+def test_put_write_once_object_idempotent_existing():
+    from nce.storage import put_write_once_object
+
+    minio_mock = MagicMock(spec=Minio)
+    minio_mock.stat_object.return_value = MagicMock()
+
+    ns_id = uuid4()
+    content = b"already existing blob bytes"
+    key = put_write_once_object(
+        minio_client=minio_mock,
+        bucket="test-bucket",
+        namespace_id=ns_id,
+        artifact_type="doc_archive",
+        data=content,
+    )
+
+    sha = hashlib.sha256(content).hexdigest()
+    assert key == f"{ns_id}/doc_archive/{sha}"
+    minio_mock.stat_object.assert_called_once_with("test-bucket", key)
+    # Should NOT call put_object because object already exists
+    minio_mock.put_object.assert_not_called()

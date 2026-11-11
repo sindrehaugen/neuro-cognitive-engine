@@ -229,6 +229,151 @@ async def set_external_scope(conn: asyncpg.Connection, scope_id: str | UUID) -> 
     )
 
 
+async def set_namespace_context(conn: Any, namespace_id: str | UUID) -> None:
+    """Set the Postgres session variable consumed by RLS policies.
+
+    Requires an active SQL transaction (BEGIN) before executing set_config.
+    """
+    if hasattr(conn, "is_in_transaction") and callable(conn.is_in_transaction):
+        if conn.is_in_transaction() is False:
+            raise RuntimeError(
+                "SECURITY VIOLATION: set_namespace_context requires an active SQL transaction (BEGIN) to prevent autocommit/PgBouncer GUC leakage."
+            )
+    ns_str = str(namespace_id)
+    await conn.execute(
+        "SELECT set_config('nce.namespace_id', $1, true)",
+        ns_str,
+    )
+
+
+def validate_redis_namespace_key(namespace_id: str | UUID, key: str) -> str:
+    """Validate namespace_id as a canonical UUID and enforce nce:ns:{ns_uuid}:{key} prefix.
+
+    Raises ValueError if namespace_id is invalid, or if key accesses another tenant
+    or uses cross-namespace wildcard *.
+    """
+    if not namespace_id:
+        raise ValueError("namespace_id is required")
+    try:
+        ns_uuid = str(UUID(str(namespace_id)))
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise ValueError(f"Invalid namespace_id: {namespace_id!r}") from exc
+
+    if not isinstance(key, str) or not key.strip():
+        raise ValueError("key must be a non-empty string")
+
+    expected_prefix = f"nce:ns:{ns_uuid}:"
+
+    if key.startswith(expected_prefix):
+        return key
+
+    if key.startswith("nce:ns:"):
+        parts = key.split(":")
+        if len(parts) >= 3:
+            target_ns = parts[2]
+            if "*" in target_ns:
+                raise ValueError(f"Cross-namespace wildcard access forbidden: {key}")
+            try:
+                target_uuid = str(UUID(target_ns))
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise ValueError(f"Invalid namespace in key: {key}") from exc
+            if target_uuid != ns_uuid:
+                raise ValueError(
+                    f"Cross-tenant access forbidden: key belongs to {target_uuid}, expected {ns_uuid}"
+                )
+        raise ValueError(f"Cross-tenant access forbidden: {key}")
+
+    if key == "*" or key.startswith("nce:*") or key.startswith("*"):
+        raise ValueError(f"Cross-namespace wildcard access forbidden: {key}")
+
+    if key.startswith("nce:"):
+        raise ValueError(f"Unscoped nce: key forbidden: {key}")
+
+    return f"{expected_prefix}{key}"
+
+
+class ScopedRedisClient:
+    """Redis wrapper enforcing tenant namespace isolation on all key operations."""
+
+    def __init__(self, client: Any, namespace_id: str | UUID):
+        if not namespace_id:
+            raise ValueError("namespace_id is required for ScopedRedisClient")
+        try:
+            self._namespace_id = str(UUID(str(namespace_id)))
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise ValueError(f"Invalid namespace_id: {namespace_id!r}") from exc
+        self._client = client
+
+    @property
+    def namespace_id(self) -> str:
+        return self._namespace_id
+
+    @property
+    def client(self) -> Any:
+        return self._client
+
+    def _scope_key(self, key: str) -> str:
+        return validate_redis_namespace_key(self._namespace_id, key)
+
+    def get(self, name: str) -> Any:
+        return self._client.get(self._scope_key(name))
+
+    def set(self, name: str, value: Any, *args: Any, **kwargs: Any) -> Any:
+        return self._client.set(self._scope_key(name), value, *args, **kwargs)
+
+    def delete(self, *names: str) -> Any:
+        scoped_names = [self._scope_key(n) for n in names]
+        return self._client.delete(*scoped_names)
+
+    def exists(self, *names: str) -> Any:
+        scoped_names = [self._scope_key(n) for n in names]
+        return self._client.exists(*scoped_names)
+
+    def expire(self, name: str, time: Any) -> Any:
+        return self._client.expire(self._scope_key(name), time)
+
+    def ttl(self, name: str) -> Any:
+        return self._client.ttl(self._scope_key(name))
+
+    def hget(self, name: str, key: str) -> Any:
+        return self._client.hget(self._scope_key(name), key)
+
+    def hset(self, name: str, *args: Any, **kwargs: Any) -> Any:
+        return self._client.hset(self._scope_key(name), *args, **kwargs)
+
+    def hgetall(self, name: str) -> Any:
+        return self._client.hgetall(self._scope_key(name))
+
+    def hdel(self, name: str, *keys: Any) -> Any:
+        return self._client.hdel(self._scope_key(name), *keys)
+
+    def hkeys(self, name: str) -> Any:
+        return self._client.hkeys(self._scope_key(name))
+
+    def hexists(self, name: str, key: str) -> Any:
+        return self._client.hexists(self._scope_key(name), key)
+
+    def hincrby(self, name: str, key: str, amount: int = 1) -> Any:
+        return self._client.hincrby(self._scope_key(name), key, amount)
+
+    def hincrbyfloat(self, name: str, key: str, amount: float = 1.0) -> Any:
+        return self._client.hincrbyfloat(self._scope_key(name), key, amount)
+
+    def keys(self, pattern: str = "*") -> Any:
+        if pattern == "*" or not pattern:
+            scoped_pattern = f"nce:ns:{self._namespace_id}:*"
+        elif pattern.startswith(f"nce:ns:{self._namespace_id}:"):
+            scoped_pattern = pattern
+        elif pattern.startswith("nce:ns:") or pattern.startswith("nce:"):
+            raise ValueError(f"Cross-namespace pattern forbidden: {pattern}")
+        else:
+            scoped_pattern = f"nce:ns:{self._namespace_id}:{pattern}"
+        return self._client.keys(scoped_pattern)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._client, name)
+
+
 @asynccontextmanager
 async def scoped_pg_session(
     pool: asyncpg.Pool,
@@ -276,9 +421,31 @@ async def scoped_pg_session(
 class ScopedMongoCollection:
     """Wrapper around Motor's AsyncIOMotorCollection to enforce and auto-inject namespace scoping."""
 
-    def __init__(self, collection: Any, namespace_id: str):
+    def __init__(self, collection: Any, namespace_id: str | UUID):
+        if not namespace_id:
+            raise ValueError("namespace_id is required for ScopedMongoCollection")
+        try:
+            self._namespace_id = str(UUID(str(namespace_id)))
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise ValueError(f"Invalid namespace_id: {namespace_id!r}") from exc
         self._collection = collection
-        self._namespace_id = namespace_id
+
+    def _validate_filter_operators(self, filter_spec: Any) -> None:
+        """Reject $where and un-scoped cross-tenant filter operators."""
+        if isinstance(filter_spec, dict):
+            for key, val in filter_spec.items():
+                if key == "$where":
+                    raise ValueError(
+                        "SECURITY VIOLATION: $where operator is forbidden in scoped Mongo queries."
+                    )
+                if isinstance(val, dict):
+                    self._validate_filter_operators(val)
+                elif isinstance(val, list):
+                    for item in val:
+                        self._validate_filter_operators(item)
+        elif isinstance(filter_spec, list):
+            for item in filter_spec:
+                self._validate_filter_operators(item)
 
     def _scope_filter(self, filter_spec: Any) -> dict[str, Any]:
         """Ensures namespace_id matches scope, or auto-injects it."""
@@ -287,6 +454,8 @@ class ScopedMongoCollection:
 
         if not isinstance(filter_spec, dict):
             raise ValueError(f"Filter must be a dictionary, got {type(filter_spec)}")
+
+        self._validate_filter_operators(filter_spec)
 
         if "namespace_id" in filter_spec:
             ns_val = filter_spec["namespace_id"]
@@ -301,6 +470,10 @@ class ScopedMongoCollection:
             new_filter = dict(filter_spec)
             new_filter["namespace_id"] = self._namespace_id
             return new_filter
+
+    def _inject_filter(self, filter_spec: Any) -> dict[str, Any]:
+        """Alias for _scope_filter."""
+        return self._scope_filter(filter_spec)
 
     def _scope_document(self, document: Any) -> dict[str, Any]:
         """Ensures document has correct namespace_id for writes/inserts."""

@@ -45,6 +45,7 @@ lingers in Redis so the registries don't grow unbounded between sweeps.
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING
 
 from redis import Redis, from_url
@@ -52,7 +53,6 @@ from rq import Queue, Worker
 from rq.registry import StartedJobRegistry
 
 from nce.config import cfg
-from nce.extractors.dispatch import BATCH_QUEUE, DIAG_INGEST_QUEUE, HIGH_PRIORITY_QUEUE
 
 if TYPE_CHECKING:
     from rq.job import Job
@@ -60,12 +60,21 @@ if TYPE_CHECKING:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [Worker] %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
+# Canonical priority queues in strict dequeue order:
+# Dequeued left-to-right so high-priority / critical work is serviced first.
+PRIORITY_QUEUES: list[str] = [
+    "nce-critical",
+    "nce-default",
+    "nce-bulk",
+    "high_priority",
+    "batch_processing",
+    "diag_ingest",
+    "default",
+]
+
 # Lane ordering is load-bearing (§5.4): high-priority first, legacy last.
-# ``diag_ingest`` is included so a default single-process deployment picks up
-# diagnostic jobs.  Production should run a **separate worker process with
-# ``concurrency=1``** bound exclusively to ``diag_ingest`` so that heavy bundle
-# jobs never starve ``high_priority`` or ``batch_processing`` workers.
-QUEUE_NAMES: tuple[str, ...] = (HIGH_PRIORITY_QUEUE, BATCH_QUEUE, DIAG_INGEST_QUEUE, "default")
+# Used as the default queue order when RQ_QUEUES env var is not explicitly overridden.
+QUEUE_NAMES: tuple[str, ...] = tuple(PRIORITY_QUEUES)
 
 # Retention for finished/failed job metadata (seconds). Bounds Redis growth so
 # the registries stay small enough to sweep cheaply.
@@ -144,7 +153,12 @@ class RecoveringWorker(Worker):
 
 def start_worker() -> None:
     redis_conn = from_url(cfg.REDIS_URL)
-    queues = [Queue(name, connection=redis_conn) for name in QUEUE_NAMES]
+    raw_env_queues = os.environ.get("RQ_QUEUES", "").strip()
+    if raw_env_queues:
+        queue_names = [q.strip() for q in raw_env_queues.split(",") if q.strip()]
+    else:
+        queue_names = list(QUEUE_NAMES)
+    queues = [Queue(name, connection=redis_conn) for name in queue_names]
     worker = RecoveringWorker(queues, connection=redis_conn)
     # Recover anything abandoned by a previous worker crash before we start.
     maintain_started_registries(queues, redis_conn)

@@ -818,3 +818,123 @@ def test_plugin_migration_dirs_preserves_nce_verticals_first_order(tmp_path):
     ):
         dirs = get_all_plugin_migration_dirs()
         assert list(dirs.keys()) == ["nce_verticals", "alpha_external"]
+
+
+# ===========================================================================
+# Area 8: Scoped /mcp Gateway Token Minter & Zero-Secret Config Contract
+# ===========================================================================
+
+
+def test_admin_plugins_mint_token_auth_rejection():
+    """Unauthenticated or invalid credential requests to /admin/plugins/api/mint-token return 401."""
+    mock_engine = MagicMock()
+    mock_engine.redis_client = MockRedisClient()
+
+    with (
+        patch.object(cfg, "NCE_ADMIN_OVERRIDE", False),
+        patch.dict(
+            os.environ, {"NCE_ADMIN_OVERRIDE": "false", "NCE_ADMIN_API_KEY": "secret-admin-key"}
+        ),
+        patch("nce.admin_state.engine", mock_engine),
+    ):
+        with TestClient(app, raise_server_exceptions=False) as client:
+            # 1. Unauthenticated -> 401
+            r1 = client.post("/admin/plugins/api/mint-token", json={})
+            assert r1.status_code == 401
+
+            # 2. Invalid credentials -> 401
+            r2 = client.post(
+                "/api/admin/plugins/mint-token",
+                headers={"X-Admin-Api-Key": "bad-key"},
+                json={},
+            )
+            assert r2.status_code == 401
+
+
+def test_admin_plugins_mint_token_generation_contract():
+    """POST /admin/plugins/api/mint-token generates one-time bearer token and zero-secret mcp_config.json."""
+    import json
+
+    from nce.admin_plugins import MINTED_MCP_TOKENS
+
+    mock_engine = MagicMock()
+    mock_engine.redis_client = MockRedisClient()
+    mock_engine.pg_pool = None  # DB offline / unit test mode
+
+    headers = {"X-Admin-Api-Key": "test-admin-key"}
+
+    with (
+        patch.object(cfg, "NCE_ADMIN_OVERRIDE", True),
+        patch.dict(os.environ, {"NCE_ADMIN_API_KEY": "test-admin-key"}),
+        patch("nce.admin_state.engine", mock_engine),
+    ):
+        with TestClient(app, raise_server_exceptions=False) as client:
+            resp = client.post(
+                "/admin/plugins/api/mint-token",
+                headers=headers,
+                json={
+                    "namespace_id": "11111111-2222-3333-4444-555555555555",
+                    "principal_id": "desktop-operator",
+                    "types": ["core-domain", "infra-iot"],
+                    "categories": ["commercial"],
+                    "tool_exposure_mode": "compact",
+                    "rate_limit_rpm": 240,
+                    "expires_in_days": 60,
+                },
+            )
+            assert resp.status_code == 201
+            data = resp.json()
+
+            assert data["status"] == "ok"
+            assert data["namespace_id"] == "11111111-2222-3333-4444-555555555555"
+            assert data["principal_id"] == "desktop-operator"
+            assert data["tool_exposure_mode"] == "compact"
+            assert data["rate_limit_rpm"] == 240
+
+            # Verify allowed_engines structure
+            assert "type:core-domain" in data["allowed_engines"]
+            assert "type:infra-iot" in data["allowed_engines"]
+            assert "cat:commercial" in data["allowed_engines"]
+
+            # Verify token structure
+            raw_token = data["token"]
+            assert raw_token.startswith("nce_mcp_")
+            token_sha256 = data["token_sha256"]
+            assert token_sha256 in MINTED_MCP_TOKENS
+
+            # Verify zero-secret mcp_config_json
+            cfg_obj = json.loads(data["mcp_config_json"])
+            assert "mcpServers" in cfg_obj
+            assert "nce-http" in cfg_obj["mcpServers"]
+            assert "nce-proxy" in cfg_obj["mcpServers"]
+            assert cfg_obj["mcpServers"]["nce-http"]["url"] == "https://localhost:8443/mcp"
+            assert (
+                cfg_obj["mcpServers"]["nce-http"]["headers"]["Authorization"]
+                == f"Bearer {raw_token}"
+            )
+
+            # Ensure zero infra secrets leaked in desktop config!
+            raw_cfg_str = data["mcp_config_json"]
+            assert "PG_DSN" not in raw_cfg_str
+            assert "MONGO_URI" not in raw_cfg_str
+            assert "NCE_MASTER_KEY" not in raw_cfg_str
+            assert "postgresql://" not in raw_cfg_str
+
+
+def test_register_admin_plugin_routes_helper():
+    """Verify register_admin_plugin_routes helper successfully mounts endpoints."""
+    from nce.admin_plugins import register_admin_plugin_routes
+
+    custom_routes = []
+    registered = register_admin_plugin_routes(custom_routes)
+    assert len(registered) >= 7
+    assert len(custom_routes) >= 7
+
+    paths = {r.path for r in registered}
+    assert "/admin/plugins" in paths
+    assert "/admin/plugins/api" in paths
+    assert "/admin/plugins/api/toggle" in paths
+    assert "/admin/plugins/api/mint-token" in paths
+    assert "/api/admin/plugins" in paths
+    assert "/api/admin/plugins/toggle" in paths
+    assert "/api/admin/plugins/mint-token" in paths

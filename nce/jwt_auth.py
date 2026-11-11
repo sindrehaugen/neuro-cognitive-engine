@@ -105,6 +105,93 @@ _ASYMMETRIC_ALGORITHMS: frozenset[str] = frozenset(
 _HMAC_ALGORITHMS: frozenset[str] = frozenset({"HS256", "HS384", "HS512"})
 
 
+class JWTAlgorithmConfusionError(ValueError):
+    """Raised when an algorithm confusion attack or algorithm mismatch is detected."""
+
+
+def _is_asymmetric_key(key: Any) -> bool:
+    """Check if the provided key object/string represents an asymmetric public or private key."""
+    if isinstance(key, str):
+        k = key.strip()
+        return (
+            "-----BEGIN PUBLIC KEY-----" in k
+            or "-----BEGIN RSA PUBLIC KEY-----" in k
+            or "-----BEGIN CERTIFICATE-----" in k
+            or "-----BEGIN EC PUBLIC KEY-----" in k
+            or ("-----BEGIN" in k and "PUBLIC KEY" in k)
+        )
+    if isinstance(key, bytes):
+        return (
+            b"-----BEGIN PUBLIC KEY-----" in key
+            or b"-----BEGIN RSA PUBLIC KEY-----" in key
+            or b"-----BEGIN CERTIFICATE-----" in key
+            or b"-----BEGIN EC PUBLIC KEY-----" in key
+            or (b"-----BEGIN" in key and b"PUBLIC KEY" in key)
+        )
+    if isinstance(key, dict):
+        return key.get("kty") in ("RSA", "EC", "OKP")
+    if hasattr(key, "public_bytes") or hasattr(key, "verify"):
+        return True
+    return False
+
+
+def verify_jwt_isolated(
+    token: str,
+    *,
+    key: Any,
+    expected_issuer: str | None = None,
+    asymmetric_only: bool = False,
+    allowed_algorithms: list[str] | set[str] | tuple[str, ...] | None = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Verify a JWT while strictly isolating symmetric from asymmetric algorithms.
+
+    Inspects the unverified JWT header BEFORE decoding. If the key is an asymmetric
+    public key or asymmetric_only=True, strictly rejects HS256/384/512 and 'none' with
+    JWTAlgorithmConfusionError before jwt.decode is called.
+    """
+    try:
+        header = jwt.get_unverified_header(token)
+    except Exception as exc:
+        raise DecodeError(f"Invalid JWT header: {exc}") from exc
+
+    alg = header.get("alg")
+    if not alg or str(alg).lower() == "none":
+        raise JWTAlgorithmConfusionError(
+            "Algorithm 'none' or missing 'alg' header is strictly forbidden."
+        )
+
+    is_asym = asymmetric_only or _is_asymmetric_key(key)
+    if is_asym:
+        if (
+            alg in _HMAC_ALGORITHMS
+            or str(alg).upper().startswith("HS")
+            or str(alg).lower() == "none"
+        ):
+            raise JWTAlgorithmConfusionError(
+                f"JWTAlgorithmConfusionError: symmetric algorithm {alg!r} is strictly forbidden with asymmetric key/mode."
+            )
+
+    if allowed_algorithms is not None:
+        if alg not in allowed_algorithms:
+            raise JWTAlgorithmConfusionError(
+                f"Algorithm {alg!r} is not allowed. Permitted: {sorted(allowed_algorithms)}"
+            )
+        algorithms_to_use = [alg]
+    else:
+        if is_asym:
+            algorithms_to_use = sorted(_ASYMMETRIC_ALGORITHMS)
+        else:
+            algorithms_to_use = sorted(_HMAC_ALGORITHMS)
+
+    decode_kwargs = dict(kwargs)
+    decode_kwargs["algorithms"] = algorithms_to_use
+    if expected_issuer:
+        decode_kwargs["issuer"] = expected_issuer
+
+    return jwt.decode(token, key, **decode_kwargs)
+
+
 # ---------------------------------------------------------------------------
 # Helpers — JSON-RPC 2.0 error responses (same shape as nce.auth)
 # ---------------------------------------------------------------------------
@@ -547,7 +634,9 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
 # ---------------------------------------------------------------------------
 
 __all__ = [
+    "JWTAlgorithmConfusionError",
     "JWTAuthMiddleware",
     "JWTDecodeError",
     "decode_agent_token",
+    "verify_jwt_isolated",
 ]

@@ -444,6 +444,9 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "agreements": "namespace_id",
     "agreement_parties": "namespace_id",
     "agreement_templates": "namespace_id",
+    # v3.3.0 Zero-Trust Streamable HTTP /mcp Gateway & Envelope Crypto (migration 035):
+    "mcp_client_tokens": "namespace_id",
+    "encryption_deks": "namespace_id",
 }
 
 

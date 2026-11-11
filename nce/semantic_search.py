@@ -83,7 +83,43 @@ async def _fire_reinforcement(
     agent_id: str,
     namespace_id: str,
     delta: float,
+    *,
+    as_of: Any = None,
+    is_replay: bool = False,
+    redis_client: Any = None,
 ) -> None:
+    if as_of is not None or is_replay:
+        log.debug("Salience reinforcement skipped: as_of=%s is_replay=%s", as_of, is_replay)
+        return
+
+    import os
+
+    buffer_in_redis = redis_client is not None and os.environ.get(
+        "NCE_BUFFER_SALIENCE_IN_REDIS", ""
+    ).lower() in ("1", "true", "yes")
+
+    if buffer_in_redis:
+        try:
+            from nce.salience_buffer import buffer_salience_boost
+
+            for res in results:
+                mem_id = res.get("memory_id")
+                if mem_id:
+                    await buffer_salience_boost(
+                        redis_client=redis_client,
+                        namespace_id=namespace_id,
+                        memory_id=mem_id,
+                        agent_id=agent_id,
+                        delta=delta,
+                        as_of=as_of,
+                        is_replay=is_replay,
+                    )
+            return
+        except Exception:
+            log.warning(
+                "Redis salience buffering failed; falling back to direct DB reinforcement (non-fatal)"
+            )
+
     from nce.salience import reinforce
 
     try:
@@ -123,7 +159,7 @@ async def check_nli_relevance(premise: str, hypothesis: str) -> float:
         from nce.http_resilience import request_with_retry
 
         url = f"{base_url}/v1/nlp/nli"
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, trust_env=False) as client:
             resp = await request_with_retry(
                 client,
                 "POST",
@@ -232,6 +268,8 @@ async def semantic_search(
     as_of=None,
     at_timestamp=None,
     rerank: bool = False,
+    is_replay: bool = False,
+    redis_client: Any = None,
 ) -> list[dict]:
     """Semantic search with pgvector cosine + FTS hybrid ranking.
 
@@ -477,15 +515,19 @@ async def semantic_search(
                 # then read as plaintext (only encrypted rows would be affected).
                 wrapped_by_ref = {}
 
-    asyncio.create_task(
-        _fire_reinforcement(
-            pg_pool,
-            top_results,
-            agent_id,
-            namespace_id,
-            reinforcement_delta,
+    if as_of is None and not is_replay:
+        asyncio.create_task(
+            _fire_reinforcement(
+                pg_pool,
+                top_results,
+                agent_id,
+                namespace_id,
+                reinforcement_delta,
+                as_of=as_of,
+                is_replay=is_replay,
+                redis_client=redis_client,
+            )
         )
-    )
 
     from nce.db_utils import scoped_mongo_session
 

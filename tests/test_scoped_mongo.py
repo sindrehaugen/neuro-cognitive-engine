@@ -110,3 +110,20 @@ async def test_scoped_mongo_session_basic_isolation():
 
         await s_db.episodes.delete_many({"foo": "bar"})
         coll_mock.delete_many.assert_called_with({"foo": "bar", "namespace_id": ns_id})
+
+        # 10. Test $where is rejected with security violation
+        with pytest.raises(ValueError, match="SECURITY VIOLATION: \\$where operator is forbidden"):
+            await s_db.episodes.find_one({"$where": "this.secret == 'leak'"})
+
+        with pytest.raises(ValueError, match="SECURITY VIOLATION: \\$where operator is forbidden"):
+            s_db.episodes.find({"nested": {"$where": "1 == 1"}})
+
+
+def test_scoped_mongo_collection_rejects_empty_namespace():
+    from nce.db_utils import ScopedMongoCollection
+
+    with pytest.raises(ValueError, match="namespace_id is required"):
+        ScopedMongoCollection(MagicMock(), "")
+
+    with pytest.raises(ValueError, match="Invalid namespace_id"):
+        ScopedMongoCollection(MagicMock(), "not-a-uuid")

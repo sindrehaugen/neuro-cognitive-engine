@@ -4,7 +4,7 @@
 > Persistent, multi-tenant, time-travelling memory across a four-database stack — with a brain on top.
 
 <p>
-  <img alt="version" src="https://img.shields.io/badge/version-3.0.0-blue">
+  <img alt="version" src="https://img.shields.io/badge/version-3.3.0-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.10%2B-3776ab">
   <img alt="protocol" src="https://img.shields.io/badge/MCP-JSON--RPC%202.0-6e40c9">
   <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-blue">
@@ -172,7 +172,7 @@ NCE is no longer "just an MCP server." It exposes several coordinated surfaces:
 | `start_worker.py` | RQ worker | Async jobs — code indexing, bridge sync, re-embedding |
 | `nce/cron.py` | Scheduler | Consolidation cycles, bridge renewal, GC |
 
-A **Dynamic Tools Console** in the Admin UI can enable/disable individual stdio tools or A2A skills at runtime (persisted to a Redis hash); disabled calls are rejected by the dispatch interceptor. If Redis is unreachable the interceptor fails *open* to avoid cascading outages.
+A **Dynamic Tools Console** in the Admin UI can enable/disable individual stdio tools or A2A skills at runtime (persisted to a Redis hash); disabled calls are rejected by the dispatch interceptor. In production, tool and engine governance fails **closed** (`-32005`) if Redis is unreachable to prevent unauthenticated or unauthorized dispatch.
 
 ---
 
@@ -228,35 +228,42 @@ make verify                        # runs verify_v1_launch.py end-to-end
 ---
 
 ## Connecting an MCP Client
+ 
+ ### Claude Desktop
+ 
+ Connect directly to NCE's zero-trust Streamable HTTP gateway `/mcp` or use the zero-secret `nce.mcp_client_proxy`. Neither requires database connection strings (`PG_DSN`, `MONGO_URI`) or `NCE_MASTER_KEY` on client workstations.
+ 
+ Edit `%APPDATA%\Claude\claude_desktop_config.json` (Windows) or
+ `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
+ 
+ ```json
+ {
+   "mcpServers": {
+     "nce-http": {
+       "url": "https://localhost:8443/mcp",
+       "headers": {
+         "Authorization": "Bearer nce_mcp_REPLACE_WITH_SCOPED_TOKEN"
+       }
+     },
+     "nce-proxy": {
+       "command": "python",
+       "args": [
+         "-m",
+         "nce.mcp_client_proxy"
+       ],
+       "env": {
+         "NCE_MCP_HTTP_URL": "https://localhost:8443/mcp",
+         "NCE_MCP_CLIENT_TOKEN": "nce_mcp_REPLACE_WITH_SCOPED_TOKEN"
+       }
+     }
+   }
+ }
+ ```
+ 
+ Mint scoped bearer tokens directly from the `/admin/plugins` console UI or via `POST /admin/plugins/api/mint-token`.
+ 
+ **Cursor** — *Settings → MCP → Add New Tool*, type `command` with `python -m nce.mcp_client_proxy` or direct HTTP URL `https://localhost:8443/mcp`. A ready-to-edit template ships as [`mcp_config.json.example`](mcp_config.json.example).
 
-### Claude Desktop
-
-Edit `%APPDATA%\Claude\claude_desktop_config.json` (Windows) or
-`~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
-
-```json
-{
-  "mcpServers": {
-    "nce-memory": {
-      "command": "python",
-      "args": ["/absolute/path/to/NCE/server.py"],
-      "env": {
-        "MONGO_URI": "mongodb://127.0.0.1:27017",
-        "PG_DSN": "postgresql://mcp_user:mcp_password@127.0.0.1:5432/memory_meta",
-        "REDIS_URL": "redis://127.0.0.1:6379/0",
-        "MINIO_ENDPOINT": "127.0.0.1:9002",
-        "MINIO_ACCESS_KEY": "mcp_admin",
-        "MINIO_SECRET_KEY": "super_secure_minio_password",
-        "NCE_MASTER_KEY": "your-32-byte-master-key",
-        "NCE_MCP_API_KEY": "your-client-api-key",
-        "NCE_MCP_NAMESPACE_ID": "00000000-0000-4000-8000-000000000001"
-      }
-    }
-  }
-}
-```
-
-**Cursor** — *Settings → MCP → Add New Tool*, command `python`, args `["/absolute/path/to/NCE/server.py"]`, same `env` block. A ready-to-edit template ships as [`mcp_config.json.example`](mcp_config.json.example).
 
 ---
 
@@ -365,7 +372,7 @@ The [`docs/`](docs/) tree is the source of truth. Start here:
 
 - Set `NCE_ENV=production`; supply strong random `NCE_API_KEY`, `NCE_ADMIN_API_KEY`, `NCE_MASTER_KEY` (≥32 bytes).
 - `NCE_ADMIN_PASSWORD` must be a `$pbkdf2$…` hash; set `NCE_LOAD_DOTENV=false`.
-- Keep guardrails on: `NCE_ADMIN_OVERRIDE=false`.
+- Guardrails enforced: `NCE_ADMIN_OVERRIDE` is hard-blocked in `NCE_ENV=production` (raises `RuntimeError` at boot if set).
 - Enforce TLS everywhere (`?sslmode=require` for Postgres); prefer `NCE_ADMIN_MTLS_ENABLED=true` behind your edge proxy.
 - Leave the `prevent_mutation` trigger on `event_log` in place — never disable WORM.
 - Migration MCP tools stay disabled in prod (`NCE_DISABLE_MIGRATION_MCP=true`) outside controlled windows.
@@ -373,4 +380,5 @@ The [`docs/`](docs/) tree is the source of truth. Start here:
 
 ---
 
-<sub>NCE — Neuro-Cognitive Engine · v3.0.0 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.</sub>
+<sub>NCE — Neuro-Cognitive Engine · v3.3.0 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.</sub>
+
