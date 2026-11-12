@@ -2,7 +2,7 @@
 
 # NCE Quick Start Guide
 
-Welcome to **NCE v3.4.1**. This guide covers running the engine **from source** (Docker + Python), selecting a deployment posture, and connecting the MCP server to Cursor or Claude Desktop. Package installers, when available, layer on top of the same `server.py` and Compose stack.
+Welcome to **NCE v3.4.2**. This guide covers running the engine **from source** (Docker + Python), selecting a deployment posture, and connecting the MCP server to Cursor or Claude Desktop. Package installers, when available, layer on top of the same `server.py` and Compose stack.
 
 ## 1. Prerequisite: stack and repo
 
@@ -22,7 +22,7 @@ Welcome to **NCE v3.4.1**. This guide covers running the engine **from source** 
 
 ### Cloud
 
-- Use managed equivalents for each store; point `.env` at cloud URIs. No code changes required for the v3.4.1 paths.
+- Use managed equivalents for each store; point `.env` at cloud URIs. No code changes required for the v3.4.2 paths.
 
 ## 3. Connect to your LLM client
 

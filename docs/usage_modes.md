@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** ffc8e59 (main) · **Last-audited:** 2026-11-12
 
 # NCE Usage Modes
 
@@ -51,6 +51,10 @@ Or via Claude Desktop / Cursor config (`mcp_config.json`):
   }
 }
 ```
+
+### Native Launcher Shim (`go/cmd/nce-launch`)
+
+The repository also maintains `go/` (`go/cmd/nce-launch/`), a static `CGO_ENABLED=0` Go launcher shim for native desktop and server distributions. It handles hardware topology probing (`go/hardware/`), OS keyring and MSAL/JWT credential resolution (`go/auth/`), and mode-aware MCP stdio startup without requiring a pre-activated Python virtualenv on the host PATH. It is built and tested on every pull request by `.github/workflows/ci.yml` (`Go (build & test)` and `make linux-shim` via `build/linux/build.sh`) and packaged into platform installers by `.github/workflows/release.yml` (see [deploy/README.md](../deploy/README.md) for installer details).
 
 ### JSON-RPC wire format
 

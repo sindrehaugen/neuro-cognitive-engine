@@ -2,7 +2,7 @@
 
 # NCE Documentation Index
 
-Technical specifications, architectural guides, and operational references for NCE v3.4.1.
+Technical specifications, architectural guides, and operational references for NCE v3.4.2.
 
 ---
 

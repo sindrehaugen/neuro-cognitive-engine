@@ -1,25 +1,31 @@
-# NCE v1.0 — Local Development docker-compose override template.
+# NCE v3.4.2 — Local Development docker-compose override template.
 #
 # Copy this file to 'docker-compose.override.yml' in the project root to enable
-# developer-friendly customizations for local development (CPU defaults, hot reloading,
-# and direct database/S3 port access):
+# developer-friendly customizations for local development (single-replica CPU defaults,
+# live source mounts, debug logging, and direct localhost service ports):
 #
 #   cp docker-compose.override.example.yml docker-compose.override.yml
-#   docker compose up -d
+#   make up   # or: python scripts/bootstrap-compose-secrets.py && docker compose up -d
 #
+# Default host ports from docker-compose.yml:
+#   5432 Postgres · 27017 MongoDB · 6379 Redis · 9002 MinIO S3 · 9003 MinIO Console
+#   8003 admin · 8004 a2a · 8005 mcp-gateway · 8080 webhook-receiver · 8082/8443 Caddy
 
 services:
-  # 1. CPU-Only Development Worker Override
-  # By default, the main docker-compose.yml defines the worker service under the 'gpu'
-  # profile and allocates NVIDIA GPU hardware resources. This override strips the GPU
-  # profile and constraints, allowing the worker to run seamlessly on standard CPU-only machines.
+  # 1. Single-Replica Local Development Worker Override
+  # Scales RQ background workers down to 1 replica for lower local RAM/CPU footprint
+  # and mounts local source files so edits are picked up on `docker compose restart worker`.
   worker:
-    profiles: [] # Clear the 'gpu' profile so the worker starts by default on 'docker compose up'
-    deploy: {}    # Remove hardware reservation requirements for NVIDIA GPUs
+    volumes:
+      - ./nce:/app/nce
+      - ./start_worker.py:/app/start_worker.py
+    environment:
+      NCE_ENV: dev
+      LOG_LEVEL: DEBUG
+    deploy:
+      replicas: 1
 
-  # 2. Expose Storage & Databases to Localhost
-  # Maps internal ports directly to your localhost, enabling inspection using GUI tools
-  # (e.g. DBeaver/TablePlus for PostgreSQL, MongoDB Compass, RedisInsight, or MinIO Web UI).
+  # 2. Expose Backing Datastores Exclusively on Loopback (127.0.0.1)
   postgres:
     ports:
       - "127.0.0.1:5432:5432"
@@ -37,35 +43,52 @@ services:
       - "127.0.0.1:9002:9000" # MinIO S3 API Endpoint
       - "127.0.0.1:9003:9001" # MinIO Web Console UI
 
-  # 3. Mount Local Codebase for Hot-Reloading
-  # Mounts your local 'nce' package directly inside the running containers.
-  # This lets you edit Python files on your host machine and see the changes reflected
-  # in Uvicorn/RQ workers instantly without having to run 'docker compose build'.
+  # 3. Mount Local Codebase & Single-Worker Dev Overrides Across Application Surfaces
+  mcp-gateway:
+    ports:
+      - "127.0.0.1:8005:8005"
+    volumes:
+      - ./nce:/app/nce
+      - ./mcp_gateway_server.py:/app/mcp_gateway_server.py
+    environment:
+      MCP_GATEWAY_WORKERS: "1"
+      NCE_ENV: dev
+      LOG_LEVEL: DEBUG
+
   admin:
+    ports:
+      - "127.0.0.1:8003:8003"
     volumes:
       - ./nce:/app/nce
       - ./admin_server.py:/app/admin_server.py
     environment:
-      - NCE_ENV=dev
-      - LOG_LEVEL=DEBUG
+      ADMIN_WORKERS: "1"
+      NCE_ENV: dev
+      LOG_LEVEL: DEBUG
 
   a2a:
+    ports:
+      - "127.0.0.1:8004:8004"
     volumes:
       - ./nce:/app/nce
     environment:
-      - NCE_ENV=dev
-      - LOG_LEVEL=DEBUG
+      A2A_WORKERS: "1"
+      NCE_ENV: dev
+      LOG_LEVEL: DEBUG
 
   webhook-receiver:
+    ports:
+      - "127.0.0.1:8080:8080"
     volumes:
       - ./nce:/app/nce
     environment:
-      - NCE_ENV=dev
-      - LOG_LEVEL=DEBUG
+      WEBHOOK_WORKERS: "1"
+      NCE_ENV: dev
+      LOG_LEVEL: DEBUG
 
   cron:
     volumes:
       - ./nce:/app/nce
     environment:
-      - NCE_ENV=dev
-      - LOG_LEVEL=DEBUG
+      NCE_ENV: dev
+      LOG_LEVEL: DEBUG

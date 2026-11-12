@@ -1,15 +1,40 @@
-# See https://pre-commit.com for more information
-# See https://pre-commit.com/hooks.html for more hooks
+# Pre-commit hooks aligned with CI quality gates (.github/workflows/ci.yml & pyproject.toml).
+# Install: pre-commit install
+# Run manually: pre-commit run --all-files
 repos:
   - repo: local
     hooks:
+      - id: ruff-check
+        name: Ruff lint (E, F, I, UP, G004, W605, ASYNC, DTZ, S)
+        description: Enforces pyproject.toml Ruff lint rules including asyncio, timezone, and security gates
+        entry: ruff check .
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: ruff-format
+        name: Ruff format (check)
+        description: Verifies code formatting matches pyproject.toml ruff.format rules
+        entry: ruff format --check .
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: mypy
+        name: Mypy typecheck (nce/)
+        description: Static type checking on nce/ matching `make typecheck`
+        entry: mypy nce/
+        language: system
+        pass_filenames: false
+        files: ^nce/
+        types: [python]
+
       - id: check-empty-with
         name: Check for empty with blocks
         description: Detects `with ContextManager(): pass` anti-patterns
         entry: python scripts/check_empty_with.py
-        language: python
-        language_version: python3.11
+        language: system
         pass_filenames: false
         always_run: true
-        files: ^(nce/|server\.py|admin_server\.py|start_worker\.py)
+        files: ^(nce/|server\.py|mcp_gateway_server\.py|admin_server\.py|start_worker\.py)
         types: [python]
