@@ -78,6 +78,7 @@ class CognitiveOrchestrator(OrchestratorBase):
         memory_id: str,
         agent_id: str,
         namespace_id: str,
+        crypto_shred: bool = False,
     ) -> dict:
         """[Phase 1.1] Set salience to 0.0 for the calling agent.
 

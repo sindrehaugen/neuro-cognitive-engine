@@ -150,6 +150,7 @@ async def test_check_health_integration_broken_master_key(pg_pool, monkeypatch):
     engine.pg_pool = pg_pool
 
     # Temporarily set NCE_MASTER_KEY to a wrong key (32 bytes of 'y')
+    monkeypatch.delenv("NCE_MASTER_KEY_FILE", raising=False)
     monkeypatch.setenv("NCE_MASTER_KEY", "y" * 32)
 
     # Call check_health

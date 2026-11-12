@@ -1,4 +1,4 @@
-# NCE v3.4.2 — Local Development docker-compose override template.
+# NCE v3.4.3 — Local Development docker-compose override template.
 #
 # Copy this file to 'docker-compose.override.yml' in the project root to enable
 # developer-friendly customizations for local development (single-replica CPU defaults,

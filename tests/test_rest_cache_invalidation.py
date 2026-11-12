@@ -1,16 +1,15 @@
-"""REST-surface mutations must invalidate the MCP response cache.
+"""REST-surface mutations must invalidate the Pure-Core MCP response cache.
 
-Covers Core's entity-resolution REST mutation (`api_entity_resolution_queue_confirm`)
-invalidating the cacheable MCP read (`merge_queue_list`) against a real Redis instance.
+Covers Pure-Core REST mutations (`api_admin_namespaces_update_metadata`) invalidating
+cacheable Pure-Core MCP tool reads (`graph_search`) against a real Redis instance,
+with zero dependency on vertical-engine tables or modules.
 """
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
 import uuid
-from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -18,10 +17,9 @@ import pytest
 import redis.asyncio as aioredis
 
 from nce import admin_state
-from nce.admin_handlers import entity_resolution as er_routes
+from nce.admin_handlers import fleet as fleet_routes
 from nce.admin_handlers._shared import bump_mcp_cache_generation
 from nce.auth import _mcp_bound_namespace_id
-from nce.entity_resolution import mcp_handlers as er_cores
 from nce.mcp_stdio_dispatch import execute_call_tool
 
 pytestmark = pytest.mark.integration
@@ -62,10 +60,29 @@ class _StubRequest:
         return self._body
 
 
-class _StubEngine:
+class _StubCoreEngine:
     def __init__(self, redis_client: Any) -> None:
         self.redis_client = redis_client
         self.pg_pool = None
+        self.state_label = "before-rest-mutation"
+        self.graph_search_calls = 0
+
+    async def graph_search(self, req: Any) -> dict[str, Any]:
+        self.graph_search_calls += 1
+        return {
+            "namespace_id": str(req.namespace_id),
+            "query": req.query,
+            "nodes": [{"label": self.state_label, "entity_type": "CONCEPT"}],
+            "edges": [],
+        }
+
+    async def manage_namespace(self, payload: Any, admin_identity: str = "admin") -> dict[str, Any]:
+        self.state_label = "after-rest-mutation"
+        return {
+            "status": "ok",
+            "namespace_id": str(payload.namespace_id),
+            "admin_identity": admin_identity,
+        }
 
 
 async def _open_redis():
@@ -83,76 +100,52 @@ async def _open_redis():
 
 
 @pytest.mark.asyncio
-async def test_rest_merge_queue_confirm_invalidates_mcp_queue_listing(monkeypatch):
-    """Confirming a merge queue row via REST must invalidate `merge_queue_list` MCP cache."""
+async def test_rest_namespace_metadata_mutation_invalidates_mcp_graph_search_cache(monkeypatch):
+    """Updating namespace metadata over REST must invalidate cached `graph_search` MCP responses."""
     monkeypatch.setattr("nce.quotas.cfg.NCE_QUOTAS_ENABLED", False)
 
     redis_client = await _open_redis()
     namespace_id = _mcp_bound_namespace_id() or str(uuid.uuid4())
-    queue_id = str(uuid.uuid4())
-
-    rows = [
-        {
-            "id": queue_id,
-            "node_type": "Vendor",
-            "candidate_payload": {"name": "Acme AS"},
-            "target_node_id": None,
-            "score": 0.91,
-            "status": "pending",
-            "created_at": datetime(2026, 8, 25, 9, 0, tzinfo=timezone.utc),
-        }
-    ]
-
-    @contextlib.asynccontextmanager
-    async def fake_session(pool, ns):
-        yield object()
-
-    async def fake_list_pending(conn, namespace_id, **kw):
-        return [dict(r) for r in rows if r["status"] == "pending"]
-
-    async def fake_confirm(conn, *, namespace_id, queue_id, decided_by):
-        for r in rows:
-            if r["id"] == str(queue_id):
-                r["status"] = "confirmed"
-        return None
-
-    monkeypatch.setattr(er_cores, "scoped_pg_session", fake_session)
-    monkeypatch.setattr(er_cores, "list_pending", fake_list_pending)
-    monkeypatch.setattr(er_routes, "scoped_pg_session", fake_session)
-    monkeypatch.setattr(er_routes, "confirm", fake_confirm)
-
-    engine = _StubEngine(redis_client)
+    engine = _StubCoreEngine(redis_client)
     monkeypatch.setattr(admin_state, "engine", engine, raising=False)
 
-    read_args = {"namespace_id": namespace_id, "agent_id": "u1"}
+    read_args = {"namespace_id": namespace_id, "agent_id": "u1", "query": "core-graph"}
 
     try:
         first = json.loads(
-            (await execute_call_tool(engine, "merge_queue_list", dict(read_args)))[0].text
+            (await execute_call_tool(engine, "graph_search", dict(read_args)))[0].text
         )
-        assert len(first["pending"]) == 1, first
+        assert first["nodes"][0]["label"] == "before-rest-mutation", first
+        assert engine.graph_search_calls == 1
 
         assert await redis_client.keys("mcp_cache:v*"), (
-            "Precondition failed: the first MCP read did not populate the cache."
+            "Precondition failed: the first MCP read did not populate the Redis cache."
         )
 
-        response = await er_routes.api_entity_resolution_queue_confirm(
+        # Second identical read before REST mutation must be served from Redis cache.
+        cached = json.loads(
+            (await execute_call_tool(engine, "graph_search", dict(read_args)))[0].text
+        )
+        assert cached["nodes"][0]["label"] == "before-rest-mutation"
+        assert engine.graph_search_calls == 1
+
+        response = await fleet_routes.api_admin_namespaces_update_metadata(
             _StubRequest(
-                path_params={"queue_id": queue_id},
-                body={"namespace_id": namespace_id, "decided_by": "reviewer-1"},
+                path_params={"namespace_id": namespace_id},
+                body={"temporal_retention_days": 120},
             )
         )
         assert response.status_code == 200, getattr(response, "body", response)
-        assert rows[0]["status"] == "confirmed", "the mutation did not commit"
+        assert engine.state_label == "after-rest-mutation", "the REST mutation did not commit"
 
-        second = json.loads(
-            (await execute_call_tool(engine, "merge_queue_list", dict(read_args)))[0].text
+        after = json.loads(
+            (await execute_call_tool(engine, "graph_search", dict(read_args)))[0].text
         )
-
-        assert second["pending"] == [], (
-            "STALE MCP CACHE: the row was confirmed over REST, but the cacheable MCP "
-            f"tool `merge_queue_list` still lists it as pending: {second['pending']!r}."
+        assert after["nodes"][0]["label"] == "after-rest-mutation", (
+            "STALE MCP CACHE: namespace metadata was updated over REST, but cacheable MCP "
+            f"tool `graph_search` still returned pre-mutation state: {after!r}."
         )
+        assert engine.graph_search_calls == 2
 
         await bump_mcp_cache_generation(engine, route="api_settings_update")
     finally:

@@ -121,7 +121,7 @@ _SPEC_WITH_ALLOWLIST = ResourceSpec(
     engine="probe",
     entity="widgets",
     node_type="PROBE_WIDGET",
-    table_name="stock_locations",
+    table_name="memories",
     writable_fields=("name", "cost_price"),
     tier_allowlists={"contractor": ("id", "name")},
 )
@@ -130,7 +130,7 @@ _SPEC_WITHOUT_ALLOWLIST = ResourceSpec(
     engine="probe",
     entity="gadgets",
     node_type="PROBE_GADGET",
-    table_name="stock_locations",
+    table_name="memories",
     writable_fields=("name", "cost_price"),
 )
 
@@ -174,7 +174,7 @@ def test_redact_item_sensitive_substrings_still_stripped_for_declared_tier():
         engine="probe",
         entity="parts",
         node_type="PROBE_PART",
-        table_name="stock_locations",
+        table_name="memories",
         writable_fields=("name", "cost_price"),
         tier_allowlists={"contractor": ("id", "name", "cost_price")},
     )

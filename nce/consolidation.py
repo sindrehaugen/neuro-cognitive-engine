@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import io
 import json
 import logging
 import math
@@ -18,6 +20,7 @@ from nce.event_log import append_event
 from nce.mongo_bulk import fetch_episodes_raw_by_ref, normalize_payload_ref
 from nce.providers import LLMProvider, Message
 from nce.sanitize import sanitize_llm_payload
+from nce.signing import canonical_json
 
 log = logging.getLogger(__name__)
 
@@ -107,13 +110,18 @@ class ConsolidationWorker:
         provider: LLMProvider,
         mongo_client: Any | None = None,
         embed_provider: Any | None = None,
+        minio_client: Any | None = None,
     ):
         self.pool = pool
         self.provider = provider
         self._llm = provider
         self.mongo_client = mongo_client
         self._embed_provider = embed_provider
+        self.minio_client = minio_client
         self._pending_contradictions: list[dict[str, Any]] = []
+        self._last_consolidation_prompt: str = ""
+        self._last_wrapped_dek: bytes | None = None
+        self._last_dek_key_id: str | None = None
 
     # ------------------------------------------------------------------
     # Private helpers (extracted from run_consolidation per Clean Code)
@@ -176,19 +184,38 @@ class ConsolidationWorker:
     async def _build_cluster_llm_documents(
         self, cluster_mems: list, namespace_id: UUID
     ) -> list[dict]:
-        """Resolve Mongo episode bodies in one ``$in`` query; fallback without Mongo."""
+        """Resolve Mongo episode bodies in one ``$in`` query (decrypting DEKs); fallback without Mongo."""
+        from nce.envelope import maybe_decrypt_raw_data
+
         refs = [m["payload_ref"] for m in cluster_mems]
-        by_ref: dict[str, str] = {}
+        by_ref: dict[str, Any] = {}
         if self.mongo_client is not None and refs:
             from nce.db_utils import scoped_mongo_session
 
             async with scoped_mongo_session(self.mongo_client, namespace_id) as s_db:
-                by_ref = await fetch_episodes_raw_by_ref(s_db, refs)
+                by_ref = await fetch_episodes_raw_by_ref(s_db, refs, decode_bytes=False)
 
         docs: list[dict] = []
         for m in cluster_mems:
             key = normalize_payload_ref(m["payload_ref"])
-            content = by_ref.get(key, "")
+            raw_blob = by_ref.get(key, "")
+            wdek = (
+                m.get("wrapped_dek")
+                if hasattr(m, "get")
+                else (m["wrapped_dek"] if "wrapped_dek" in m else None)
+            )
+            try:
+                content = maybe_decrypt_raw_data(
+                    raw_blob,
+                    bytes(wdek) if wdek is not None else None,
+                )
+            except Exception as dec_exc:
+                log.warning(
+                    "Skipping unreadable/shredded memory %s in consolidation cluster: %s",
+                    m.get("id") if hasattr(m, "get") else m["id"],
+                    dec_exc,
+                )
+                continue
             if not content and self.mongo_client is None:
                 # Tests / Mongo-less runs: preserve prior behaviour (ref string only).
                 content = key or str(m["payload_ref"])
@@ -210,7 +237,10 @@ class ConsolidationWorker:
     ) -> ConsolidatedAbstraction | None:
         """Call LLM, validate abstraction, return None on any failure."""
         llm_documents = await self._build_cluster_llm_documents(cluster_mems, namespace_id)
+        if not llm_documents:
+            return None
         messages = _build_consolidation_messages(json.dumps(llm_documents))
+        self._last_consolidation_prompt = messages[1].content if len(messages) > 1 else ""
 
         try:
             abstraction: ConsolidatedAbstraction = await self.provider.complete(
@@ -263,10 +293,12 @@ class ConsolidationWorker:
     async def _store_abstraction_in_mongo(self, namespace_id: UUID, abstraction_text: str) -> str:
         """Store consolidated abstraction in MongoDB and return the payload_ref.
 
-        When mongo_client is None (e.g. test environments or Mongo-less deployments),
-        falls back to a UUID-based ref prefixed with ``nomongo/`` so the caller can
-        tell it apart from a real ObjectId.
+        When ``NCE_ENVELOPE_ENCRYPTION_ENABLED`` is True, encrypts ``abstraction_text``
+        under a fresh per-memory DEK and records ``_last_wrapped_dek`` + ``_last_dek_key_id``
+        for persistence on the consolidated ``memories`` row.
         """
+        self._last_wrapped_dek = None
+        self._last_dek_key_id = None
         if self.mongo_client is None:
             import uuid
 
@@ -279,9 +311,17 @@ class ConsolidationWorker:
             return fallback_ref
         from nce.db_utils import scoped_mongo_session
 
+        raw_payload: Any = abstraction_text
+        if cfg.NCE_ENVELOPE_ENCRYPTION_ENABLED:
+            from nce.envelope import encrypt_raw_data
+
+            raw_payload, self._last_wrapped_dek, self._last_dek_key_id = encrypt_raw_data(
+                abstraction_text
+            )
+
         async with scoped_mongo_session(self.mongo_client, namespace_id) as s_db:
             result = await s_db.episodes.insert_one(
-                {"raw_data": abstraction_text, "source": "consolidation"}
+                {"raw_data": raw_payload, "source": "consolidation"}
             )
             return str(result.inserted_id)
 
@@ -332,6 +372,165 @@ class ConsolidationWorker:
             return None
         return f"[{','.join(str(float(x)) for x in vec)}]"
 
+    async def _emit_consolidation_event(
+        self,
+        conn: Any,
+        *,
+        namespace_id: UUID,
+        abstraction: ConsolidatedAbstraction,
+        mem_ids: list[str],
+        consolidated_memory_id: Any,
+        payload_ref: str,
+        new_depth: int,
+        prompt_text: str | None = None,
+        event_id: _uuid_mod.UUID | None = None,
+    ) -> tuple[_uuid_mod.UUID, str | None, bytes | None]:
+        """Persist consolidation LLM synthesis to MinIO replay cache and append WORM event."""
+        resolved_event_id = event_id if event_id is not None else _uuid_mod.uuid4()
+        resolved_prompt = (
+            prompt_text
+            if prompt_text is not None
+            else getattr(self, "_last_consolidation_prompt", "")
+        )
+        provider_obj = getattr(self, "provider", None)
+        provider_id = (
+            provider_obj.model_identifier()
+            if provider_obj is not None
+            and callable(getattr(provider_obj, "model_identifier", None))
+            else str(type(provider_obj).__name__)
+        )
+
+        payload_doc: dict[str, Any] = {
+            "prompt": resolved_prompt,
+            "response": abstraction.model_dump(),
+            "provider": provider_id,
+        }
+        raw_bytes = canonical_json(payload_doc)
+        computed_hash = hashlib.sha256(raw_bytes).digest()
+        candidate_uri = f"nce-llm-payloads/{namespace_id}/{resolved_event_id}.json"
+
+        persisted_uri: str | None = None
+        persisted_hash: bytes | None = None
+
+        minio_client = getattr(self, "minio_client", None)
+        if minio_client is not None:
+            try:
+                bucket, key = candidate_uri.split("/", 1)
+
+                def _upload_direct() -> None:
+                    from minio.error import S3Error
+
+                    try:
+                        if not minio_client.bucket_exists(bucket):
+                            minio_client.make_bucket(bucket)
+                    except S3Error:
+                        pass
+                    minio_client.put_object(
+                        bucket,
+                        key,
+                        io.BytesIO(raw_bytes),
+                        len(raw_bytes),
+                        content_type="application/json",
+                    )
+
+                await asyncio.to_thread(_upload_direct)
+                persisted_uri = candidate_uri
+                persisted_hash = computed_hash
+            except Exception as exc:
+                log.warning(
+                    "Consolidation LLM payload cache upload via minio_client failed (%s); "
+                    "recording event without MinIO payload URI.",
+                    exc,
+                )
+        elif (
+            not getattr(self, "_auto_minio_unreachable", False)
+            and cfg.MINIO_ENDPOINT
+            and cfg.MINIO_ACCESS_KEY
+            and cfg.MINIO_SECRET_KEY
+        ):
+            try:
+                import urllib3
+                from minio import Minio
+                from minio.error import S3Error
+
+                bucket, key = candidate_uri.split("/", 1)
+
+                def _upload_configured() -> None:
+                    fast_client = Minio(
+                        cfg.MINIO_ENDPOINT,
+                        access_key=cfg.MINIO_ACCESS_KEY,
+                        secret_key=cfg.MINIO_SECRET_KEY,
+                        secure=cfg.MINIO_SECURE,
+                        http_client=urllib3.PoolManager(
+                            timeout=urllib3.Timeout(connect=0.3, read=3.0),
+                            retries=urllib3.Retry(total=1, backoff_factor=0.05),
+                        ),
+                    )
+                    try:
+                        if not fast_client.bucket_exists(bucket):
+                            fast_client.make_bucket(bucket)
+                    except S3Error:
+                        pass
+                    fast_client.put_object(
+                        bucket,
+                        key,
+                        io.BytesIO(raw_bytes),
+                        len(raw_bytes),
+                        content_type="application/json",
+                    )
+
+                await asyncio.to_thread(_upload_configured)
+                persisted_uri = candidate_uri
+                persisted_hash = computed_hash
+            except Exception as exc:
+                self._auto_minio_unreachable = True
+                log.warning(
+                    "Consolidation MinIO replay cache unreachable/unconfigured (%s); "
+                    "degrading gracefully without llm_payload_uri.",
+                    exc,
+                )
+
+        event_params = abstraction.model_dump()
+        event_params["source_memories"] = mem_ids
+        event_params["consolidated_memory_id"] = str(consolidated_memory_id)
+        event_params["payload_ref"] = payload_ref
+        event_params["derivation_depth"] = new_depth
+        if persisted_uri is not None:
+            event_params["llm_response_uri"] = persisted_uri
+
+        # Collect the event_log IDs of the source memories so the consolidation
+        # event records full N-parent causal lineage in event_parents (Batch 120).
+        source_event_ids: list[_uuid_mod.UUID] = []
+        for mid_str in mem_ids:
+            try:
+                _uuid_mod.UUID(mid_str)
+            except (ValueError, AttributeError):
+                continue
+            eid = await conn.fetchval(
+                "SELECT id FROM event_log WHERE params->>'memory_id' = $1 "
+                "AND namespace_id = $2::uuid "
+                "ORDER BY event_seq ASC LIMIT 1",
+                mid_str,
+                namespace_id,
+            )
+            if eid is not None:
+                source_event_ids.append(
+                    eid if isinstance(eid, _uuid_mod.UUID) else _uuid_mod.UUID(str(eid))
+                )
+
+        await append_event(
+            conn=conn,
+            namespace_id=namespace_id,
+            agent_id="system",
+            event_type="consolidation_run",
+            params=event_params,
+            llm_payload_uri=persisted_uri,
+            llm_payload_hash=persisted_hash,
+            parent_event_ids=source_event_ids if source_event_ids else None,
+            event_id=resolved_event_id,
+        )
+        return resolved_event_id, persisted_uri, persisted_hash
+
     async def _store_consolidated_memory(
         self,
         conn,
@@ -342,6 +541,10 @@ class ConsolidationWorker:
         mem_ids: list,
         payload_ref: str,
         embedding_vec: str | None = None,
+        wrapped_dek: bytes | None = None,
+        dek_key_id: str | None = None,
+        origin_event_id: _uuid_mod.UUID | None = None,
+        prompt_text: str | None = None,
     ) -> tuple[Any, int]:
         """Store consolidated memory row + WORM-compliant event log (inside PG transaction).
 
@@ -350,6 +553,14 @@ class ConsolidationWorker:
 
         Returns (new_mem_id, new_derivation_depth).
         """
+        resolved_event_id = origin_event_id if origin_event_id is not None else _uuid_mod.uuid4()
+        resolved_wdek = (
+            wrapped_dek if wrapped_dek is not None else getattr(self, "_last_wrapped_dek", None)
+        )
+        resolved_dek_id = (
+            dek_key_id if dek_key_id is not None else getattr(self, "_last_dek_key_id", None)
+        )
+
         # Derivation depth = max(parent depths) + 1 (Batch 107 / Muscles A1).
         parent_depths = [int(m.get("derivation_depth") or 0) for m in cluster_mems]
         new_depth = max(parent_depths) + 1
@@ -386,40 +597,31 @@ class ConsolidationWorker:
                 new_depth,
             )
 
-        event_params = abstraction.model_dump()
-        event_params["source_memories"] = mem_ids
-        event_params["consolidated_memory_id"] = str(new_mem_id)
-        event_params["payload_ref"] = payload_ref
-        event_params["derivation_depth"] = new_depth
+        await conn.execute(
+            """
+            UPDATE memories
+            SET wrapped_dek = $1,
+                dek_key_id = $2,
+                origin_event_id = $3::uuid
+            WHERE id = $4::uuid AND namespace_id = $5::uuid
+            """,
+            resolved_wdek,
+            resolved_dek_id,
+            resolved_event_id,
+            new_mem_id,
+            namespace_id,
+        )
 
-        # Collect the event_log IDs of the source memories so the consolidation
-        # event records full N-parent causal lineage in event_parents (Batch 120).
-        source_event_ids: list[_uuid_mod.UUID] = []
-        for mid_str in mem_ids:
-            try:
-                _uuid_mod.UUID(mid_str)
-            except (ValueError, AttributeError):
-                continue
-            eid = await conn.fetchval(
-                "SELECT id FROM event_log WHERE params->>'memory_id' = $1 "
-                "AND namespace_id = $2::uuid "
-                "ORDER BY event_seq ASC LIMIT 1",
-                mid_str,
-                namespace_id,
-            )
-            if eid is not None:
-                source_event_ids.append(
-                    eid if isinstance(eid, _uuid_mod.UUID) else _uuid_mod.UUID(str(eid))
-                )
-
-        # Use append_event() — the only authorised WORM event writer.
-        await append_event(
-            conn=conn,
+        await self._emit_consolidation_event(
+            conn,
             namespace_id=namespace_id,
-            agent_id="system",
-            event_type="consolidation_run",
-            params=event_params,
-            parent_event_ids=source_event_ids if source_event_ids else None,
+            abstraction=abstraction,
+            mem_ids=mem_ids,
+            consolidated_memory_id=new_mem_id,
+            payload_ref=payload_ref,
+            new_depth=new_depth,
+            prompt_text=prompt_text,
+            event_id=resolved_event_id,
         )
 
         return new_mem_id, new_depth
@@ -432,6 +634,7 @@ class ConsolidationWorker:
         abstraction: ConsolidatedAbstraction,
         mem_ids: list,
         new_depth: int = 0,
+        origin_event_id: _uuid_mod.UUID | None = None,
     ):
         """Insert KG nodes/edges + apply source-memory decay (inside PG transaction).
 
@@ -441,16 +644,18 @@ class ConsolidationWorker:
         for entity in abstraction.key_entities:
             await conn.execute(
                 """
-                INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin)
-                VALUES ($1, 'Entity', $2, 'consolidation')
+                INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin, origin_event_id)
+                VALUES ($1, 'Entity', $2, 'consolidation', $3::uuid)
                 ON CONFLICT (label, namespace_id) DO UPDATE
                     SET change_origin = CASE
                         WHEN kg_nodes.change_origin IN ('sync', 'webhook') THEN kg_nodes.change_origin
                         ELSE EXCLUDED.change_origin
-                    END
+                    END,
+                    origin_event_id = COALESCE(EXCLUDED.origin_event_id, kg_nodes.origin_event_id)
                 """,
                 entity,
                 namespace_id,
+                origin_event_id,
             )
 
         # Attenuate confidence by γ^depth to prevent hallucination compounding.
@@ -465,20 +670,22 @@ class ConsolidationWorker:
                 await conn.execute(
                     """
                     INSERT INTO kg_edges (subject_label, predicate, object_label, confidence,
-                                         namespace_id, change_origin)
-                    VALUES ($1, $2, $3, $4, $5, 'consolidation')
+                                         namespace_id, change_origin, origin_event_id)
+                    VALUES ($1, $2, $3, $4, $5, 'consolidation', $6::uuid)
                     ON CONFLICT (subject_label, predicate, object_label, namespace_id) DO UPDATE
                         SET confidence = EXCLUDED.confidence,
                             change_origin = CASE
                                 WHEN kg_edges.change_origin IN ('sync', 'webhook') THEN kg_edges.change_origin
                                 ELSE EXCLUDED.change_origin
-                            END
+                            END,
+                            origin_event_id = COALESCE(EXCLUDED.origin_event_id, kg_edges.origin_event_id)
                     """,
                     subj,
                     pred,
                     obj,
                     attenuated_confidence,
                     namespace_id,
+                    origin_event_id,
                 )
 
         if cfg.CONSOLIDATION_DECAY_SOURCES:
@@ -599,7 +806,7 @@ class ConsolidationWorker:
                 )
                 max_candidates = getattr(cfg, "CONSOLIDATION_MAX_CANDIDATE_MEMORIES", 2000)
                 sql = (
-                    "SELECT id, payload_ref, embedding::text, derivation_depth FROM memories "
+                    "SELECT id, payload_ref, wrapped_dek, embedding::text, derivation_depth FROM memories "
                     "WHERE namespace_id = $1 AND memory_type = 'episodic' "
                     "AND assertion_type = 'fact' AND valid_to IS NULL "
                     "AND derivation_depth < $2 AND created_at >= $3 "
@@ -669,6 +876,7 @@ class ConsolidationWorker:
                     embedding_vec = await self._embed_abstraction(abstraction.abstraction)
 
                     # PG transaction: memory row + WORM event log via append_event().
+                    cluster_event_id = _uuid_mod.uuid4()
                     async with scoped_pg_session(self.pool, namespace_id) as conn:
                         _, new_depth = await self._store_consolidated_memory(
                             conn,
@@ -678,6 +886,7 @@ class ConsolidationWorker:
                             mem_ids=mem_ids,
                             payload_ref=payload_ref,
                             embedding_vec=embedding_vec,
+                            origin_event_id=cluster_event_id,
                         )
                         await self._update_kg(
                             conn,
@@ -685,6 +894,7 @@ class ConsolidationWorker:
                             abstraction=abstraction,
                             mem_ids=mem_ids,
                             new_depth=new_depth,
+                            origin_event_id=cluster_event_id,
                         )
                     abstractions_created += 1
                 except Exception as e:

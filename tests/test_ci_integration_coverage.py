@@ -64,7 +64,6 @@ KNOWN_UNWIRED: frozenset[str] = frozenset(
         "tests/test_chain_and_decay_integration.py",
         "tests/test_cron_chain_verify.py",
         "tests/test_dlq_triage.py",
-        "tests/test_echo_suppression.py",
         "tests/test_emit_on_graph_write.py",
         "tests/test_envelope_encryption_integration.py",
         "tests/test_envelope_read_consumers.py",

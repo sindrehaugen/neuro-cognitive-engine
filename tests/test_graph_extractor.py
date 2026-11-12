@@ -240,7 +240,8 @@ class TestDeduplicateGraphEdgeWeights:
 async def test_extract_async():
     """Verify that extract_async offloads successfully and yields expected nodes/edges."""
     text = "Redis connects to PostgreSQL"
-    entities, triplets = await extract_async(text)
+    with patch("nce.graph_extractor._spacy_extract", side_effect=ImportError("no spacy model")):
+        entities, triplets = await extract_async(text)
 
     assert len(entities) >= 2
     assert any(e.label.lower() == "redis" for e in entities)

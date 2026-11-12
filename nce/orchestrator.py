@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 import asyncpg
 import redis.asyncio as redis
+import urllib3
 from minio import Minio
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, ConfigDict, Field
@@ -175,6 +176,8 @@ class NCEEngine(OrchestratorBase):
         self.mongo_client = AsyncIOMotorClient(
             cfg.MONGO_URI,
             serverSelectionTimeoutMS=5_000,
+            connectTimeoutMS=5_000,
+            socketTimeoutMS=5_000,
         )
         self.pg_pool = await asyncpg.create_pool(
             cfg.PG_DSN,
@@ -221,6 +224,7 @@ class NCEEngine(OrchestratorBase):
         # the skew first turns 13 lines of "add to EXPECTED_TENANT_RLS_TABLES"
         # into "this image is older than this database".
         await self._verify_schema_version()
+        await self._ensure_initial_signing_key()
         await self._verify_master_key_matches_data()
         await self._verify_worm_enforcement()
         await self._verify_rls_enforcement()
@@ -234,6 +238,14 @@ class NCEEngine(OrchestratorBase):
             access_key=cfg.MINIO_ACCESS_KEY,
             secret_key=cfg.MINIO_SECRET_KEY,
             secure=cfg.MINIO_SECURE,
+            http_client=urllib3.PoolManager(
+                timeout=urllib3.Timeout(connect=2.0, read=5.0),
+                retries=urllib3.Retry(
+                    total=2,
+                    backoff_factor=0.2,
+                    status_forcelist=(502, 503, 504),
+                ),
+            ),
         )
 
         # Ensure audio/video buckets exist asynchronously
@@ -408,10 +420,16 @@ class NCEEngine(OrchestratorBase):
         return f"hash:{namespace_prefix}{scope_key}:{filepath}"
 
     def _init_minio_buckets(self):
-        """Creates default media buckets if they do not exist."""
+        """Creates default artifact, LLM payload, and media buckets if they do not exist."""
         from minio.error import S3Error
 
-        buckets = ["mcp-audio", "mcp-video", "mcp-images"]
+        buckets = [
+            "nce-artifacts",
+            "nce-llm-payloads",
+            "mcp-audio",
+            "mcp-video",
+            "mcp-images",
+        ]
         for b in buckets:
             try:
                 if not self.minio_client.bucket_exists(b):
@@ -744,6 +762,32 @@ class NCEEngine(OrchestratorBase):
             raise RuntimeError("FATAL: " + message)
         log.critical("%s%s", message, " (acknowledged)" if acknowledged else "")
 
+    async def _ensure_initial_signing_key(self) -> None:
+        """Auto-seed the initial active signing key ONLY on a brand-new empty signing_keys table."""
+        if not self.pg_pool:
+            return
+        raw_mk = cfg.NCE_MASTER_KEY or ""
+        if len(raw_mk.encode("utf-8")) < 32:
+            return
+
+        try:
+            async with self.pg_pool.acquire(timeout=10.0) as conn:
+                async with conn.transaction():
+                    await conn.execute("SELECT pg_advisory_xact_lock(78636501)")
+                    total_keys = await conn.fetchval("SELECT COUNT(*) FROM signing_keys")
+                    if int(total_keys or 0) == 0:
+                        from nce.signing import rotate_key
+
+                        new_key_id = await rotate_key(conn)
+                        log.info(
+                            "[key] Bootstrapped initial active signing key %s on empty signing_keys table.",
+                            new_key_id,
+                        )
+        except asyncpg.InsufficientPrivilegeError:
+            log.debug(
+                "[key] Unprivileged DB role cannot inspect signing_keys; skipping bootstrap check."
+            )
+
     async def _verify_master_key_matches_data(self) -> None:
         """Report (and in production, refuse) a master key that cannot open its data.
 
@@ -876,6 +920,10 @@ class NCEEngine(OrchestratorBase):
                 inserted = await seed_node_ownership_all_namespaces(conn)
             if inserted:
                 log.info("[ownership-seed] seeded %d row(s) across all namespaces", inserted)
+        except asyncpg.UndefinedTableError:
+            log.debug(
+                "[ownership-seed] node_ownership_registry absent (Pure Core); skipping bulk seed"
+            )
         except Exception as exc:
             log.warning("[ownership-seed] Bulk seed failed: %s", exc)
 
@@ -1030,10 +1078,15 @@ class NCEEngine(OrchestratorBase):
 
     # --- Phase 0.2: Memory Integrity ---
 
-    async def verify_memory(self, memory_id: str, as_of: datetime | None = None) -> dict:
+    async def verify_memory(
+        self,
+        memory_id: str,
+        as_of: datetime | None = None,
+        namespace_id: str | UUID | None = None,
+    ) -> dict:
         """[Phase 0.2] Delegate to MemoryOrchestrator."""
         await self._ensure_memory()
-        return await self.memory.verify_memory(memory_id, as_of)
+        return await self.memory.verify_memory(memory_id, as_of, namespace_id=namespace_id)
 
     # --- Phase 1.2: Consolidation Tools ---
 
@@ -1480,8 +1533,24 @@ class NCEEngine(OrchestratorBase):
         await self._ensure_cognitive("boost_memory")
         return await self.cognitive.boost_memory(memory_id, agent_id, namespace_id, factor)
 
-    async def forget_memory(self, memory_id: str, agent_id: str, namespace_id: str) -> dict:
-        """[Phase 1.1] Forget memory — delegating to CognitiveOrchestrator."""
+    async def forget_memory(
+        self,
+        memory_id: str,
+        agent_id: str,
+        namespace_id: str,
+        crypto_shred: bool = False,
+    ) -> dict:
+        """[Phase 1.1 / Part II.4] Soft-forget or cryptographically shred a memory."""
+        if crypto_shred:
+            shred_res = await self.shred_memory(str(memory_id), str(namespace_id), agent_id)
+            return {
+                "status": shred_res.get("status", "success"),
+                "forgotten": True,
+                "crypto_shred": True,
+                "memory_id": str(memory_id),
+                "namespace_id": str(namespace_id),
+                "receipt": shred_res.get("receipt"),
+            }
         await self._ensure_cognitive("forget_memory")
         return await self.cognitive.forget_memory(memory_id, agent_id, namespace_id)
 

@@ -52,13 +52,17 @@ def _is_unsafe_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
 
 
 @functools.lru_cache(maxsize=1024)
-def _resolve_safe_ip(hostname: str) -> str:
+def _resolve_safe_ip(hostname: str, allow_loopback: bool = False) -> str:
     """Resolve *hostname* once and return the first safe IP string.
 
     Cache entries are never invalidated (TTL-less). Acceptable for SSRF
     defence; transport-level IP pinning is the DNS-rebinding mitigation.
+    When *allow_loopback* is True (reserved for the bundled local cognitive
+    sidecar after ``validate_base_url(..., allow_loopback=True)``), loopback
+    and Docker-bridge private IPs are permitted while link-local/metadata,
+    multicast, and non-loopback reserved addresses remain blocked.
     """
-    if hostname in _BLOCKED_HOSTNAMES:
+    if not allow_loopback and hostname in _BLOCKED_HOSTNAMES:
         _block_request(hostname, f"Host {hostname!r} is not allowed")
 
     try:
@@ -74,7 +78,18 @@ def _resolve_safe_ip(hostname: str) -> str:
             ip = ipaddress.ip_address(ip_str)
         except ValueError:
             continue
-        if _is_unsafe_ip(ip):
+        mapped = ip.ipv4_mapped if hasattr(ip, "ipv4_mapped") and ip.ipv4_mapped is not None else ip
+        if allow_loopback:
+            if (
+                mapped.is_link_local
+                or mapped.is_multicast
+                or (mapped.is_reserved and not mapped.is_loopback)
+            ):
+                _block_request(
+                    hostname,
+                    f"Host {hostname!r} resolves to non-public IP {ip_str}",
+                )
+        elif _is_unsafe_ip(ip):
             _block_request(
                 hostname,
                 f"Host {hostname!r} resolves to non-public IP {ip_str}",
@@ -94,7 +109,8 @@ class SafeAsyncClient(httpx.AsyncClient):
     ``follow_redirects=True`` explicitly to allow redirect following.
     """
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, *, allow_loopback: bool = False, **kwargs: Any) -> None:
+        self._allow_loopback = allow_loopback
         kwargs.setdefault("trust_env", False)
         if "limits" not in kwargs:
             kwargs["limits"] = httpx.Limits(
@@ -133,7 +149,7 @@ class SafeAsyncClient(httpx.AsyncClient):
             loop = asyncio.get_running_loop()
             try:
                 resolved_ip = await asyncio.wait_for(
-                    loop.run_in_executor(None, _resolve_safe_ip, hostname),
+                    loop.run_in_executor(None, _resolve_safe_ip, hostname, self._allow_loopback),
                     timeout=2.0,
                 )
             except asyncio.TimeoutError:

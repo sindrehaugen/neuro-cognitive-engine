@@ -108,11 +108,15 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "namespace_id": {"type": "string"},
-                "user_id": {"type": "string"},
-                "session_id": {"type": "string"},
+                "user_id": {"type": "string", "default": "system"},
+                "session_id": {"type": "string", "default": "default"},
+                "artifact_type": {
+                    "type": "string",
+                    "enum": ["image", "audio", "video", "pdf", "binary", "log"],
+                },
                 "media_type": {
                     "type": "string",
-                    "enum": ["audio", "video", "image", "pdf", "log", "other"],
+                    "enum": ["image", "audio", "video", "pdf", "binary", "log", "other"],
                 },
                 "file_path_on_disk": {
                     "type": "string",
@@ -125,9 +129,6 @@ TOOLS = [
             },
             "required": [
                 "namespace_id",
-                "user_id",
-                "session_id",
-                "media_type",
                 "file_path_on_disk",
                 "summary",
             ],
@@ -642,13 +643,18 @@ TOOLS = [
     ),
     Tool(
         name="forget_memory",
-        description="[Phase 1.1] Sets salience to 0.0 for the calling agent.",
+        description="[Phase 1.1] Sets salience to 0.0 for the calling agent (or cryptographically shreds when crypto_shred=true).",
         inputSchema={
             "type": "object",
             "properties": {
                 "memory_id": {"type": "string"},
                 "agent_id": {"type": "string"},
                 "namespace_id": {"type": "string"},
+                "crypto_shred": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "When true, cryptographically shreds the memory DEK and purges derivatives.",
+                },
             },
             "required": ["memory_id", "agent_id", "namespace_id"],
         },
@@ -1345,6 +1351,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "memory_id": {"type": "string"},
+                "namespace_id": {"type": "string"},
                 "as_of": {"type": "string", "format": "date-time"},
             },
             "required": ["memory_id"],

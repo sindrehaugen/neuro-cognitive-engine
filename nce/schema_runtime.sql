@@ -148,8 +148,8 @@ DROP POLICY IF EXISTS tenant_isolation_policy ON replay_runs;
 CREATE POLICY tenant_isolation_policy ON replay_runs
     FOR ALL TO nce_app
     USING (
-        source_namespace_id IS NOT NULL
-        AND source_namespace_id = get_nce_namespace()
+        (source_namespace_id IS NOT NULL AND source_namespace_id = get_nce_namespace())
+        OR (target_namespace_id IS NOT NULL AND target_namespace_id = get_nce_namespace())
     )
     WITH CHECK (
         source_namespace_id IS NOT NULL

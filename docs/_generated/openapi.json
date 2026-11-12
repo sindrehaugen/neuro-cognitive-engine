@@ -916,6 +916,11 @@
           "agent_id": {
             "type": "string"
           },
+          "crypto_shred": {
+            "default": false,
+            "description": "When true, cryptographically shreds the memory DEK and purges derivatives.",
+            "type": "boolean"
+          },
           "memory_id": {
             "type": "string"
           },
@@ -1814,16 +1819,28 @@
       },
       "Tool_store_artifact_Input": {
         "properties": {
+          "artifact_type": {
+            "enum": [
+              "image",
+              "audio",
+              "video",
+              "pdf",
+              "binary",
+              "log"
+            ],
+            "type": "string"
+          },
           "file_path_on_disk": {
             "description": "Local path to the artifact file",
             "type": "string"
           },
           "media_type": {
             "enum": [
+              "image",
               "audio",
               "video",
-              "image",
               "pdf",
+              "binary",
               "log",
               "other"
             ],
@@ -1833,6 +1850,7 @@
             "type": "string"
           },
           "session_id": {
+            "default": "default",
             "type": "string"
           },
           "summary": {
@@ -1840,14 +1858,12 @@
             "type": "string"
           },
           "user_id": {
+            "default": "system",
             "type": "string"
           }
         },
         "required": [
           "namespace_id",
-          "user_id",
-          "session_id",
-          "media_type",
           "file_path_on_disk",
           "summary"
         ],
@@ -2055,6 +2071,9 @@
             "type": "string"
           },
           "memory_id": {
+            "type": "string"
+          },
+          "namespace_id": {
             "type": "string"
           }
         },
@@ -2394,7 +2413,7 @@
       "forget_memory": {
         "admin_only": false,
         "cacheable": false,
-        "description": "[Phase 1.1] Sets salience to 0.0 for the calling agent.",
+        "description": "[Phase 1.1] Sets salience to 0.0 for the calling agent (or cryptographically shreds when crypto_shred=true).",
         "inputSchema": {
           "$ref": "#/components/schemas/Tool_forget_memory_Input"
         },

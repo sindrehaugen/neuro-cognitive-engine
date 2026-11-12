@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import uuid
+from contextlib import asynccontextmanager, nullcontext
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
@@ -29,12 +30,12 @@ from nce.config import cfg
 from nce.db_utils import scoped_mongo_session, scoped_pg_session
 from nce.models import (
     _SAFE_ID_RE,
-    ArtifactPayload,
     AssertionType,
     MediaPayload,
     MemoryType,
     NamespacePIIConfig,
     SagaState,
+    StoreArtifactRequest,
     StoreMemoryRequest,
 )
 from nce.mongo_bulk import fetch_episodes_raw_by_ref, normalize_payload_ref
@@ -73,6 +74,7 @@ class MemoryOrchestrator(OrchestratorBase):
         super().__init__(pg_pool, mongo_client=mongo_client, redis_client=redis_client)
         self.pg_read_pool = pg_read_pool
         self.minio_client = minio_client
+        self._bg_cleanup_tasks: set[asyncio.Task[Any]] = set()
 
     # ------------------------------------------------------------------
     # Helpers
@@ -271,9 +273,9 @@ class MemoryOrchestrator(OrchestratorBase):
             returned_rows = await conn.fetch(
                 """
                 INSERT INTO kg_nodes (label, entity_type, embedding, payload_ref, namespace_id,
-                                      change_origin)
+                                      change_origin, origin_event_id)
                 SELECT unnest($1::text[]), unnest($2::text[]), unnest($3::text[])::vector, $4,
-                       $5::uuid, $6
+                       $5::uuid, $6, $7::uuid
                 ON CONFLICT (label, namespace_id) DO UPDATE
                     SET entity_type  = EXCLUDED.entity_type,
                         embedding    = EXCLUDED.embedding,
@@ -282,6 +284,7 @@ class MemoryOrchestrator(OrchestratorBase):
                             WHEN kg_nodes.change_origin IN ('sync', 'webhook') THEN kg_nodes.change_origin
                             ELSE EXCLUDED.change_origin
                         END,
+                        origin_event_id = COALESCE(EXCLUDED.origin_event_id, kg_nodes.origin_event_id),
                         updated_at   = NOW()
                 RETURNING id, label
                 """,
@@ -291,6 +294,7 @@ class MemoryOrchestrator(OrchestratorBase):
                 inserted_mongo_id,
                 payload.namespace_id,
                 change_origin,
+                saga_event_id,
             )
             label_to_id = {row["label"]: row["id"] for row in returned_rows}
 
@@ -339,9 +343,9 @@ class MemoryOrchestrator(OrchestratorBase):
             await conn.execute(
                 """
                 INSERT INTO kg_edges (subject_label, predicate, object_label, confidence,
-                                      payload_ref, namespace_id, change_origin)
+                                      payload_ref, namespace_id, change_origin, origin_event_id)
                 SELECT unnest($1::text[]), unnest($2::text[]), unnest($3::text[]),
-                       unnest($4::float[]), $5, $6::uuid, $7
+                       unnest($4::float[]), $5, $6::uuid, $7, $8::uuid
                 ON CONFLICT (subject_label, predicate, object_label, namespace_id) DO UPDATE
                     SET confidence   = EXCLUDED.confidence,
                         payload_ref = EXCLUDED.payload_ref,
@@ -349,6 +353,7 @@ class MemoryOrchestrator(OrchestratorBase):
                             WHEN kg_edges.change_origin IN ('sync', 'webhook') THEN kg_edges.change_origin
                             ELSE EXCLUDED.change_origin
                         END,
+                        origin_event_id = COALESCE(EXCLUDED.origin_event_id, kg_edges.origin_event_id),
                         updated_at   = NOW()
                 """,
                 subjs,
@@ -358,6 +363,7 @@ class MemoryOrchestrator(OrchestratorBase):
                 inserted_mongo_id,
                 payload.namespace_id,
                 change_origin,
+                saga_event_id,
             )
 
         # Phase 2.2: Append to event log
@@ -423,32 +429,69 @@ class MemoryOrchestrator(OrchestratorBase):
         return str(row["id"])
 
     async def _saga_log_transition(
-        self, saga_id: str, state: SagaState, payload_patch: dict | None = None
+        self,
+        saga_id: str,
+        state: SagaState | str,
+        payload_patch: dict | None = None,
+        *,
+        namespace_id: UUID | str | None = None,
+        payload_extra: dict | None = None,
     ) -> None:
-        """Update saga state on an independent connection, optionally merging payload."""
+        """Update saga state on an independent RLS-scoped transaction, optionally merging payload."""
+        merged_patch = {**(payload_patch or {}), **(payload_extra or {})}
+        state_val = state.value if isinstance(state, SagaState) else str(state)
         async with self.pg_pool.acquire(timeout=10.0) as conn:
-            if payload_patch:
-                await conn.execute(
-                    """
-                    UPDATE saga_execution_log
-                    SET state = $1, updated_at = NOW(),
-                        payload = payload || $3::jsonb
-                    WHERE id = $2::uuid
-                    """,
-                    state,
-                    saga_id,
-                    json.dumps(payload_patch),
-                )
-            else:
-                await conn.execute(
-                    """
-                    UPDATE saga_execution_log
-                    SET state = $1, updated_at = NOW()
-                    WHERE id = $2::uuid
-                    """,
-                    state,
-                    saga_id,
-                )
+            async with conn.transaction():
+                if namespace_id is not None:
+                    await set_namespace_context(conn, namespace_id)
+                if merged_patch:
+                    if namespace_id is not None:
+                        await conn.execute(
+                            """
+                            UPDATE saga_execution_log
+                            SET state = $1, updated_at = NOW(),
+                                payload = payload || $3::jsonb
+                            WHERE id = $2::uuid AND namespace_id = $4::uuid
+                            """,
+                            state_val,
+                            saga_id,
+                            json.dumps(merged_patch),
+                            str(namespace_id),
+                        )
+                    else:
+                        await conn.execute(
+                            """
+                            UPDATE saga_execution_log
+                            SET state = $1, updated_at = NOW(),
+                                payload = payload || $3::jsonb
+                            WHERE id = $2::uuid
+                            """,
+                            state_val,
+                            saga_id,
+                            json.dumps(merged_patch),
+                        )
+                else:
+                    if namespace_id is not None:
+                        await conn.execute(
+                            """
+                            UPDATE saga_execution_log
+                            SET state = $1, updated_at = NOW()
+                            WHERE id = $2::uuid AND namespace_id = $3::uuid
+                            """,
+                            state_val,
+                            saga_id,
+                            str(namespace_id),
+                        )
+                    else:
+                        await conn.execute(
+                            """
+                            UPDATE saga_execution_log
+                            SET state = $1, updated_at = NOW()
+                            WHERE id = $2::uuid
+                            """,
+                            state_val,
+                            saga_id,
+                        )
 
     async def _apply_rollback_on_failure(
         self,
@@ -470,13 +513,31 @@ class MemoryOrchestrator(OrchestratorBase):
         log.error("[SAGA] Transaction failed: %s", e)
         SagaMetrics.record_failure("overall")
 
-        # 1. Mongo rollback
-        if inserted_mongo_id and inserted_result is not None:
+        mongo_rollback_deferred = False
+        target_oid: Any = None
+
+        # 1. Mongo rollback (uses pre-generated ObjectId even if insert_one timed out mid-flight)
+        if inserted_mongo_id and collection is not None:
             log.warning("[ROLLBACK] Removing orphaned Mongo doc %s", inserted_mongo_id)
             try:
-                await collection.delete_one({"_id": inserted_result.inserted_id})
+                if ObjectId.is_valid(str(inserted_mongo_id)):
+                    target_oid = ObjectId(str(inserted_mongo_id))
+                elif (
+                    inserted_result is not None
+                    and getattr(inserted_result, "inserted_id", None) is not None
+                ):
+                    target_oid = inserted_result.inserted_id
+                else:
+                    target_oid = inserted_mongo_id
+                await asyncio.wait_for(
+                    collection.delete_one(
+                        {"_id": target_oid, "namespace_id": str(payload.namespace_id)}
+                    ),
+                    timeout=5.0,
+                )
                 log.info("[ROLLBACK] Mongo doc %s removed.", inserted_mongo_id)
             except Exception as mongo_exc:
+                mongo_rollback_deferred = True
                 log.error("[ROLLBACK] Mongo cleanup failed: %s", mongo_exc)
                 SagaMetrics.record_failure("mongo_rollback")
 
@@ -564,11 +625,81 @@ class MemoryOrchestrator(OrchestratorBase):
 
         if saga_id:
             try:
-                await self._saga_log_transition(saga_id, SagaState.ROLLED_BACK)
+                if mongo_rollback_deferred and inserted_mongo_id:
+                    await self._saga_log_transition(
+                        saga_id,
+                        SagaState.RECOVERY_NEEDED,
+                        namespace_id=payload.namespace_id,
+                        payload_extra={"inserted_mongo_id": inserted_mongo_id},
+                    )
+                else:
+                    await self._saga_log_transition(
+                        saga_id,
+                        SagaState.ROLLED_BACK,
+                        namespace_id=payload.namespace_id,
+                    )
             except Exception as saga_exc:
-                log.error("[SAGA-LOG] Failed to transition to rolled_back: %s", saga_exc)
+                log.error("[SAGA-LOG] Failed to transition saga failure state: %s", saga_exc)
+
+        if mongo_rollback_deferred and collection is not None and target_oid is not None:
+            try:
+                loop = asyncio.get_running_loop()
+                tasks_set = getattr(self, "_bg_cleanup_tasks", None)
+                if tasks_set is None:
+                    tasks_set = set()
+                    self._bg_cleanup_tasks = tasks_set
+                cleanup_task = loop.create_task(
+                    self._deferred_mongo_cleanup(
+                        collection=collection,
+                        target_oid=target_oid,
+                        namespace_id=payload.namespace_id,
+                        saga_id=str(saga_id) if saga_id else None,
+                    )
+                )
+                tasks_set.add(cleanup_task)
+                cleanup_task.add_done_callback(tasks_set.discard)
+            except RuntimeError:
+                pass
 
         log.info("[ROLLBACK] Tri-Stack remains pure.")
+
+    async def _deferred_mongo_cleanup(
+        self,
+        *,
+        collection: Any,
+        target_oid: Any,
+        namespace_id: UUID,
+        saga_id: str | None,
+    ) -> None:
+        """Bounded background retry to delete delayed in-flight Mongo writes after unpause."""
+        for delay in (2.0, 4.0, 8.0, 15.0):
+            await asyncio.sleep(delay)
+            try:
+                await asyncio.wait_for(
+                    collection.delete_one({"_id": target_oid, "namespace_id": str(namespace_id)}),
+                    timeout=5.0,
+                )
+                log.info("[ROLLBACK] Deferred Mongo cleanup removed doc %s.", target_oid)
+                if saga_id:
+                    try:
+                        await self._saga_log_transition(
+                            saga_id,
+                            SagaState.ROLLED_BACK,
+                            namespace_id=namespace_id,
+                        )
+                    except Exception as saga_exc:
+                        log.warning(
+                            "[SAGA-LOG] Deferred saga transition failed for %s: %s",
+                            saga_id,
+                            saga_exc,
+                        )
+                return
+            except Exception as retry_exc:
+                log.debug(
+                    "[ROLLBACK] Deferred Mongo cleanup retry pending for %s: %s",
+                    target_oid,
+                    retry_exc,
+                )
 
     # ------------------------------------------------------------------
     # store_memory (Saga Pattern)
@@ -692,7 +823,12 @@ class MemoryOrchestrator(OrchestratorBase):
         return None
 
     async def _store_episodic_mongodb(
-        self, payload: StoreMemoryRequest, sanitized_heavy: str, pii_result: Any
+        self,
+        payload: StoreMemoryRequest,
+        sanitized_heavy: str,
+        pii_result: Any,
+        *,
+        episode_oid: ObjectId | None = None,
     ) -> tuple[str, Any, bytes | None, str | None]:
         """STEP 1: Episodic Commit (MongoDB).
 
@@ -714,6 +850,21 @@ class MemoryOrchestrator(OrchestratorBase):
 
             raw_data, wrapped_dek, dek_key_id = encrypt_raw_data(sanitized_heavy)
 
+        oid = episode_oid if episode_oid is not None else ObjectId()
+        inserted_mongo_id = str(oid)
+        doc = {
+            "_id": oid,
+            "user_id": user_id,
+            "session_id": session_id,
+            "namespace_id": str(payload.namespace_id),
+            "type": payload.memory_type.value,
+            "raw_data": raw_data,
+            "metadata": payload.metadata,
+            "pii_redacted": pii_result.redacted,
+            "pii_entities_found": pii_result.entities_found,
+            "ingested_at": datetime.now(timezone.utc),
+        }
+
         async with scoped_mongo_session(self.mongo_client, payload.namespace_id) as db:
             from pymongo.write_concern import WriteConcern
 
@@ -725,20 +876,11 @@ class MemoryOrchestrator(OrchestratorBase):
                 raw_coll = raw_coll.with_options(write_concern=WriteConcern(w="majority", j=True))
             scoped_coll = ScopedMongoCollection(raw_coll, str(payload.namespace_id))
 
-            inserted_result = await scoped_coll.insert_one(
-                {
-                    "user_id": user_id,
-                    "session_id": session_id,
-                    "namespace_id": str(payload.namespace_id),
-                    "type": payload.memory_type.value,
-                    "raw_data": raw_data,
-                    "metadata": payload.metadata,
-                    "pii_redacted": pii_result.redacted,
-                    "pii_entities_found": pii_result.entities_found,
-                    "ingested_at": datetime.now(timezone.utc),
-                }
-            )
-        inserted_mongo_id = str(inserted_result.inserted_id)
+            inserted_result = await scoped_coll.insert_one(doc)
+        if inserted_result is not None and isinstance(
+            getattr(inserted_result, "inserted_id", None), (ObjectId, str)
+        ):
+            inserted_mongo_id = str(inserted_result.inserted_id)
         log.debug("[Mongo] Inserted episode. id=%s", inserted_mongo_id)
         return inserted_mongo_id, inserted_result, wrapped_dek, dek_key_id
 
@@ -914,16 +1056,24 @@ class MemoryOrchestrator(OrchestratorBase):
                     triplets,
                 ) = await self._apply_pii_pipeline(payload)
 
-                # STEP 1: Episodic Commit (MongoDB)
+                # STEP 1: Episodic Commit (MongoDB) — pre-bind ObjectId so rollback
+                # cleans up delayed/in-flight writes even on socket/selection timeouts.
                 user_id = payload.metadata.get("user_id") if payload.metadata else None
                 session_id = payload.metadata.get("session_id") if payload.metadata else None
+                pre_oid = ObjectId()
+                inserted_mongo_id = str(pre_oid)
 
                 (
                     inserted_mongo_id,
                     inserted_result,
                     wrapped_dek,
                     dek_key_id,
-                ) = await self._store_episodic_mongodb(payload, sanitized_heavy, pii_result)
+                ) = await self._store_episodic_mongodb(
+                    payload,
+                    sanitized_heavy,
+                    pii_result,
+                    episode_oid=pre_oid,
+                )
 
                 # Pre-compute all embeddings OUTSIDE the PG transaction
                 all_texts = [sanitized_summary] + [e.label for e in entities]
@@ -952,7 +1102,11 @@ class MemoryOrchestrator(OrchestratorBase):
                 pg_committed = True
 
             except Exception as e:
-                collection = self.mongo_client.memory_archive.episodes
+                collection = (
+                    self.mongo_client.memory_archive.episodes
+                    if self.mongo_client is not None
+                    else None
+                )
                 await self._apply_rollback_on_failure(
                     e=e,
                     payload=payload,
@@ -968,7 +1122,10 @@ class MemoryOrchestrator(OrchestratorBase):
             # --- PG committed; all subsequent failures are advisory ---
             try:
                 await self._saga_log_transition(
-                    saga_id, SagaState.PG_COMMITTED, payload_patch={"memory_id": str(memory_id)}
+                    saga_id,
+                    SagaState.PG_COMMITTED,
+                    payload_patch={"memory_id": str(memory_id)},
+                    namespace_id=payload.namespace_id,
                 )
             except Exception:
                 log.warning("[SAGA] PG_COMMITTED transition failed.", exc_info=True)
@@ -984,7 +1141,11 @@ class MemoryOrchestrator(OrchestratorBase):
             )
 
             try:
-                await self._saga_log_transition(saga_id, SagaState.COMPLETED)
+                await self._saga_log_transition(
+                    saga_id,
+                    SagaState.COMPLETED,
+                    namespace_id=payload.namespace_id,
+                )
             except Exception:
                 log.warning("[SAGA] COMPLETED transition failed.", exc_info=True)
 
@@ -1024,11 +1185,11 @@ class MemoryOrchestrator(OrchestratorBase):
     # store_artifact (formerly store_media)
     # ------------------------------------------------------------------
 
-    async def store_artifact(self, payload: ArtifactPayload) -> str:
+    async def store_artifact(self, payload: StoreArtifactRequest) -> str:
         """Upload artifact to MinIO, index summary into Tri-Stack."""
         tracer = get_tracer()
         with tracer.start_as_current_span("orchestrator.store_artifact") as span:
-            span.set_attribute("nce.artifact_type", payload.media_type)
+            span.set_attribute("nce.artifact_type", payload.artifact_type)
             with SagaMetrics("store_artifact"):
 
                 def _resolve_and_validate_path(staging_dir: str | None, file_path: str) -> str:
@@ -1056,10 +1217,11 @@ class MemoryOrchestrator(OrchestratorBase):
                 if self.minio_client is None:
                     raise RuntimeError("MinIO client not configured — cannot store media.")
 
-                bucket_name = f"mcp-{payload.media_type}"
+                bucket_name = "nce-artifacts"
                 file_ext = os.path.splitext(safe_path)[1]
                 object_name = (
-                    f"{payload.namespace_id}/{payload.session_id}/{uuid.uuid4().hex}{file_ext}"
+                    f"{payload.namespace_id}/{payload.artifact_type}/"
+                    f"{payload.session_id}/{uuid.uuid4().hex}{file_ext}"
                 )
 
                 # Enforce that the object name carries the namespace prefix
@@ -1069,12 +1231,18 @@ class MemoryOrchestrator(OrchestratorBase):
                         "Access denied: Object name must start with namespace prefix."
                     )
 
-                await asyncio.to_thread(
-                    self.minio_client.fput_object,
-                    bucket_name,
-                    object_name,
-                    safe_path,
-                )
+                def _ensure_bucket_and_upload() -> None:
+                    from minio.error import S3Error
+
+                    try:
+                        if not self.minio_client.bucket_exists(bucket_name):
+                            self.minio_client.make_bucket(bucket_name)
+                    except S3Error as exc:
+                        if exc.code not in {"BucketAlreadyOwnedByYou", "BucketAlreadyExists"}:
+                            raise
+                    self.minio_client.fput_object(bucket_name, object_name, safe_path)
+
+                await asyncio.to_thread(_ensure_bucket_and_upload)
                 log.info(
                     "[MinIO] Uploaded artifact to %s/%s",
                     bucket_name,
@@ -1084,7 +1252,8 @@ class MemoryOrchestrator(OrchestratorBase):
                 media_metadata = {
                     "bucket": bucket_name,
                     "object_name": object_name,
-                    "media_type": payload.media_type,
+                    "artifact_type": payload.artifact_type,
+                    "media_type": payload.artifact_type,
                     "original_path": payload.file_path_on_disk,
                     "user_id": payload.user_id,
                     "session_id": payload.session_id,
@@ -1150,96 +1319,235 @@ class MemoryOrchestrator(OrchestratorBase):
             return self.pg_read_pool
         return self.pg_pool
 
-    async def verify_memory(self, memory_id: str, as_of: datetime | None = None) -> dict:
-        """[Phase 0.2] Verify integrity and causal provenance of a memory."""
+    @asynccontextmanager
+    async def _tenant_conn(self, namespace_id: str | UUID | None, *, read_only: bool = False):
+        """Acquire a tenant-scoped connection when namespace_id is supplied."""
+        pool = self._db_pool(read_only=read_only)
+        if namespace_id is not None:
+            async with scoped_pg_session(pool, namespace_id) as conn:
+                yield conn
+        else:
+            async with pool.acquire(timeout=10.0) as conn:
+                yield conn
+
+    async def verify_memory(
+        self,
+        memory_id: str,
+        as_of: datetime | None = None,
+        namespace_id: str | UUID | None = None,
+    ) -> dict:
+        """[Phase 0.2] Verify integrity and causal provenance of a memory under forced RLS."""
+        from nce import auth as _nce_auth
+        from nce.envelope import maybe_decrypt_raw_data
+        from nce.event_log import DataIntegrityError, verify_event_signature
         from nce.signing import (
             decrypt_signing_key,
             require_master_key,
             verify_fields,
         )
 
-        async with self._db_pool(read_only=True).acquire(timeout=10.0) as conn:
-            if as_of:
-                row = await conn.fetchrow(
-                    """
-                    SELECT m.*, sk.encrypted_key, sk.key_id as signing_key_id
-                    FROM memories m
-                    LEFT JOIN signing_keys sk ON sk.key_id = m.signature_key_id
-                    WHERE m.id = $1 AND m.valid_from <= $2
-                      AND (m.valid_to IS NULL OR m.valid_to > $2)
-                    ORDER BY m.valid_from DESC LIMIT 1
-                    """,
-                    UUID(memory_id),
-                    as_of,
-                )
+        if namespace_id is None:
+            get_sess = getattr(_nce_auth, "get_current_mcp_session", None)
+            if callable(get_sess):
+                sess = get_sess()
+                sess_ns = getattr(sess, "namespace_id", None) if sess is not None else None
+                if sess_ns:
+                    namespace_id = sess_ns
+
+        mem_uuid = UUID(str(memory_id))
+        ns_uuid = UUID(str(namespace_id)) if namespace_id is not None else None
+
+        async with self._tenant_conn(ns_uuid, read_only=True) as conn:
+            if as_of is not None:
+                if ns_uuid is not None:
+                    row = await conn.fetchrow(
+                        """
+                        SELECT id, namespace_id, agent_id, created_at, assertion_type,
+                               payload_ref, signature, signature_key_id, origin_event_id, wrapped_dek
+                        FROM memories
+                        WHERE id = $1 AND namespace_id = $2::uuid
+                          AND valid_from <= $3
+                          AND (valid_to IS NULL OR valid_to > $3)
+                        ORDER BY valid_from DESC LIMIT 1
+                        """,
+                        mem_uuid,
+                        ns_uuid,
+                        as_of,
+                    )
+                else:
+                    row = await conn.fetchrow(
+                        """
+                        SELECT id, namespace_id, agent_id, created_at, assertion_type,
+                               payload_ref, signature, signature_key_id, origin_event_id, wrapped_dek
+                        FROM memories
+                        WHERE id = $1 AND valid_from <= $2
+                          AND (valid_to IS NULL OR valid_to > $2)
+                        ORDER BY valid_from DESC LIMIT 1
+                        """,
+                        mem_uuid,
+                        as_of,
+                    )
             else:
-                row = await conn.fetchrow(
-                    """
-                    SELECT m.*, sk.encrypted_key, sk.key_id as signing_key_id
-                    FROM memories m
-                    LEFT JOIN signing_keys sk ON sk.key_id = m.signature_key_id
-                    WHERE m.id = $1 AND m.valid_to IS NULL
-                    """,
-                    UUID(memory_id),
-                )
+                if ns_uuid is not None:
+                    row = await conn.fetchrow(
+                        """
+                        SELECT id, namespace_id, agent_id, created_at, assertion_type,
+                               payload_ref, signature, signature_key_id, origin_event_id, wrapped_dek
+                        FROM memories
+                        WHERE id = $1 AND namespace_id = $2::uuid AND valid_to IS NULL
+                        """,
+                        mem_uuid,
+                        ns_uuid,
+                    )
+                else:
+                    row = await conn.fetchrow(
+                        """
+                        SELECT id, namespace_id, agent_id, created_at, assertion_type,
+                               payload_ref, signature, signature_key_id, origin_event_id, wrapped_dek
+                        FROM memories
+                        WHERE id = $1 AND valid_to IS NULL
+                        """,
+                        mem_uuid,
+                    )
 
             if not row:
                 return {"valid": False, "reason": "memory_not_found"}
 
-            if row["signature_key_id"] is None:
-                return {"valid": None, "reason": "not_signed", "payload_hash": None}
+            row_ns = row["namespace_id"]
 
-            with require_master_key() as master_key:
-                raw_key = decrypt_signing_key(bytes(row["encrypted_key"]), master_key)
+            # Compute or read tenant-scoped payload hash over decrypted episodic content
+            payload_hash: str | None = None
+            cache_key = f"mem_verify_hash:{row_ns}:{memory_id}"
+            if self.redis_client is not None:
+                try:
+                    cached_hash = await self.redis_client.get(cache_key)
+                    if cached_hash is not None:
+                        payload_hash = (
+                            cached_hash.decode("utf-8")
+                            if isinstance(cached_hash, (bytes, bytearray))
+                            else str(cached_hash)
+                        )
+                except Exception:
+                    pass
 
-            fields = {
-                "namespace_id": str(row["namespace_id"]),
-                "agent_id": row["agent_id"],
-                "payload_ref": row["payload_ref"],
-                "created_at": row["created_at"].isoformat(),
-                "assertion_type": row["assertion_type"],
-            }
-
-            is_valid = verify_fields(fields, raw_key, bytes(row["signature"]))
-
-            payload_hash = None
-            # Cache the payload hash in Redis to avoid recalculating on every call.
-            # The cache is invalidated if the memory is updated (payload_ref changes).
-            cache_key = f"mem_verify_hash:{memory_id}"
-            try:
-                cached_hash = await self.redis_client.get(cache_key)
-                if cached_hash is not None:
-                    payload_hash = cached_hash.decode("utf-8")
-            except Exception:
-                pass  # Cache miss or Redis down — recalculate below
-
-            if payload_hash is None:
-                async with scoped_mongo_session(self.mongo_client, row["namespace_id"]) as s_db:
-                    doc = await s_db.episodes.find_one({"_id": row["payload_ref"]})
+            if payload_hash is None and row["payload_ref"] and self.mongo_client is not None:
+                raw_ref = str(row["payload_ref"])
+                query_oid: Any = ObjectId(raw_ref) if ObjectId.is_valid(raw_ref) else raw_ref
+                async with scoped_mongo_session(self.mongo_client, row_ns) as s_db:
+                    doc = await s_db.episodes.find_one({"_id": query_oid})
                 if doc:
-                    # Part II.4: hash the *decrypted* content so the payload hash is
-                    # stable across the plaintext→ciphertext rollout (legacy rows
-                    # have wrapped_dek NULL and read as plaintext).
-                    from nce.envelope import maybe_decrypt_raw_data
-
-                    wrapped = row["wrapped_dek"]
-                    content = maybe_decrypt_raw_data(
-                        doc.get("raw_data", ""),
-                        bytes(wrapped) if wrapped is not None else None,
-                    )
-                    payload_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
                     try:
-                        await self.redis_client.setex(cache_key, cfg.REDIS_TTL, payload_hash)
+                        wrapped = row["wrapped_dek"]
+                        content = maybe_decrypt_raw_data(
+                            doc.get("raw_data", ""),
+                            bytes(wrapped) if wrapped is not None else None,
+                        )
+                        payload_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+                        if self.redis_client is not None:
+                            try:
+                                await self.redis_client.setex(
+                                    cache_key, cfg.REDIS_TTL, payload_hash
+                                )
+                            except Exception:
+                                pass
                     except Exception:
-                        pass  # Non-critical cache write
+                        payload_hash = None
 
-            return {
-                "valid": is_valid,
-                "reason": "ok" if is_valid else "signature_mismatch",
-                "signed_at": row["created_at"].isoformat(),
-                "key_id": row["signing_key_id"],
-                "payload_hash": payload_hash,
-            }
+            # Verify cryptographic provenance via linked event_log record under tenant RLS
+            ev_ctx = (
+                nullcontext(conn)
+                if ns_uuid is not None
+                else self._tenant_conn(row_ns, read_only=True)
+            )
+            async with ev_ctx as ev_conn:
+                event_record = None
+                if row["origin_event_id"] is not None:
+                    event_record = await ev_conn.fetchrow(
+                        "SELECT * FROM event_log WHERE namespace_id = $1 AND id = $2",
+                        row_ns,
+                        row["origin_event_id"],
+                    )
+                if event_record is None:
+                    event_record = await ev_conn.fetchrow(
+                        """
+                        SELECT * FROM event_log
+                        WHERE namespace_id = $1
+                          AND event_type = 'store_memory'
+                          AND params->>'memory_id' = $2
+                        ORDER BY event_seq DESC
+                        LIMIT 1
+                        """,
+                        row_ns,
+                        str(row["id"]),
+                    )
+
+                if event_record is not None:
+                    try:
+                        await verify_event_signature(ev_conn, event_record)
+                        is_valid = True
+                    except DataIntegrityError:
+                        is_valid = False
+                    occurred_at = event_record["occurred_at"]
+                    signed_at_str = (
+                        occurred_at.isoformat()
+                        if hasattr(occurred_at, "isoformat")
+                        else str(occurred_at)
+                    )
+                    return {
+                        "valid": bool(is_valid),
+                        "reason": "ok" if is_valid else "signature_mismatch",
+                        "memory_id": str(row["id"]),
+                        "origin_event_id": str(event_record["id"]),
+                        "signature_key_id": event_record["signature_key_id"],
+                        "key_id": event_record["signature_key_id"],
+                        "signed_at": signed_at_str,
+                        "payload_hash": payload_hash,
+                    }
+
+                # Fallback only when legacy row has direct memories.signature without event_log
+                if row["signature"] is not None and row["signature_key_id"] is not None:
+                    sk = await ev_conn.fetchrow(
+                        "SELECT encrypted_key, key_id FROM signing_keys WHERE key_id = $1",
+                        row["signature_key_id"],
+                    )
+                    if sk is None:
+                        return {
+                            "valid": False,
+                            "reason": "signing_key_missing",
+                            "memory_id": str(row["id"]),
+                            "origin_event_id": None,
+                            "signature_key_id": row["signature_key_id"],
+                            "payload_hash": payload_hash,
+                        }
+                    with require_master_key() as master_key:
+                        raw_key = decrypt_signing_key(bytes(sk["encrypted_key"]), master_key)
+                    fields = {
+                        "namespace_id": str(row["namespace_id"]),
+                        "agent_id": row["agent_id"],
+                        "payload_ref": row["payload_ref"],
+                        "created_at": row["created_at"].isoformat(),
+                        "assertion_type": row["assertion_type"],
+                    }
+                    is_valid = verify_fields(fields, raw_key, bytes(row["signature"]))
+                    return {
+                        "valid": bool(is_valid),
+                        "reason": "ok" if is_valid else "signature_mismatch",
+                        "memory_id": str(row["id"]),
+                        "origin_event_id": None,
+                        "signature_key_id": sk["key_id"],
+                        "key_id": sk["key_id"],
+                        "signed_at": row["created_at"].isoformat(),
+                        "payload_hash": payload_hash,
+                    }
+
+                return {
+                    "valid": None,
+                    "reason": "not_signed",
+                    "memory_id": str(row["id"]),
+                    "origin_event_id": None,
+                    "signature_key_id": None,
+                    "payload_hash": None,
+                }
 
     # ------------------------------------------------------------------
     # unredact_memory
@@ -1550,6 +1858,7 @@ class MemoryOrchestrator(OrchestratorBase):
                 candidate_keys.append(f"cache:{namespace_id}:{user_id}:{session_id}")
             if mem_agent:
                 candidate_keys.append(f"cache:{namespace_id}:{mem_agent}")
+            candidate_keys.append(f"mem_verify_hash:{namespace_id}:{memory_id}")
             candidate_keys.append(f"mem_verify_hash:{memory_id}")
             for key in candidate_keys:
                 try:

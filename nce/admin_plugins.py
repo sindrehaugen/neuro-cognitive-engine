@@ -539,6 +539,11 @@ async def admin_plugins_toggle(request: Request, ctx: Any = None) -> JSONRespons
     )
 
 
+ALLOWED_MCP_TOKEN_SCOPES: frozenset[str] = frozenset(
+    {"mcp:tools:discover", "mcp:tools:call", "admin"}
+)
+
+
 async def admin_plugins_mint_token(request: Request, ctx: Any = None) -> JSONResponse:
     """POST /admin/plugins/api/mint-token and POST /api/admin/plugins/mint-token
 
@@ -557,6 +562,30 @@ async def admin_plugins_mint_token(request: Request, ctx: Any = None) -> JSONRes
             body = raw_body
     except Exception:
         body = {}
+
+    raw_scopes = body.get("scopes")
+    if raw_scopes is None:
+        scopes_list = ["mcp:tools:call", "mcp:tools:discover"]
+    else:
+        if not isinstance(raw_scopes, list) or len(raw_scopes) == 0:
+            return JSONResponse(
+                {"error": "'scopes' must be a non-empty list of allowed scope strings"},
+                status_code=400,
+            )
+        scopes_list = []
+        for scope_item in raw_scopes:
+            if not isinstance(scope_item, str) or scope_item not in ALLOWED_MCP_TOKEN_SCOPES:
+                return JSONResponse(
+                    {
+                        "error": (
+                            f"Invalid scope {scope_item!r}. "
+                            f"Allowed scopes: {sorted(ALLOWED_MCP_TOKEN_SCOPES)}"
+                        )
+                    },
+                    status_code=400,
+                )
+            if scope_item not in scopes_list:
+                scopes_list.append(scope_item)
 
     raw_ns = body.get("namespace_id")
     if raw_ns:
@@ -614,7 +643,7 @@ async def admin_plugins_mint_token(request: Request, ctx: Any = None) -> JSONRes
         "token_sha256": token_sha256,
         "namespace_id": namespace_id,
         "principal_id": principal_id,
-        "scopes": ["mcp:tools:call", "mcp:tools:discover"],
+        "scopes": scopes_list,
         "allowed_engines": allowed_engines,
         "tool_exposure_mode": tool_exposure_mode,
         "rate_limit_rpm": rate_limit_rpm,
@@ -689,6 +718,7 @@ async def admin_plugins_mint_token(request: Request, ctx: Any = None) -> JSONRes
             "token_sha256": token_sha256,
             "namespace_id": namespace_id,
             "principal_id": principal_id,
+            "scopes": scopes_list,
             "allowed_engines": allowed_engines,
             "tool_exposure_mode": tool_exposure_mode,
             "rate_limit_rpm": rate_limit_rpm,

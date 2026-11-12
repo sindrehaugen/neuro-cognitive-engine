@@ -47,7 +47,8 @@ import threading
 import time
 from base64 import b64decode
 from binascii import Error as BinasciiError
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
+from contextvars import ContextVar
 from typing import Any
 from uuid import UUID
 
@@ -437,23 +438,46 @@ def _bind_mcp_tenant_namespace(arguments: dict[str, Any]) -> None:
         raise ScopeError("tenant", "namespace_id does not match configured MCP tenant")
 
 
+mcp_http_session_var: ContextVar[Any | None] = ContextVar("mcp_http_session", default=None)
+
+
+def get_current_mcp_session() -> Any | None:
+    """Return the active Streamable HTTP ``MCPGatewaySession`` if inside ``/mcp`` dispatch."""
+    return mcp_http_session_var.get()
+
+
+@contextmanager
+def bind_mcp_http_session(session: Any):
+    """Bind *session* to :data:`mcp_http_session_var` for the duration of a tool call."""
+    token = mcp_http_session_var.set(session)
+    try:
+        yield session
+    finally:
+        mcp_http_session_var.reset(token)
+
+
 def _validate_scope(scope: str, arguments: dict[str, Any]) -> None:
     """Validate that the caller possesses the required RBAC scope.
 
     For ``"admin"`` scope — validates ``admin_api_key`` against the
-    ``NCE_ADMIN_API_KEY`` environment variable (constant-time comparison).
-    Accepts ``NCE_ADMIN_OVERRIDE=true`` as a development bypass.
+    ``NCE_ADMIN_API_KEY`` environment variable (constant-time comparison), or
+    accepts an active HTTP ``/mcp`` session carrying ``"admin"`` in
+    ``session.scopes``.  Accepts ``NCE_ADMIN_OVERRIDE=true`` as a development bypass.
 
-    For ``"tenant"`` scope — implicitly granted to all authenticated callers
-    in the current authentication model.  Reserved for future JWT-based
-    enforcement.
+    For ``"tenant"`` scope — implicitly granted to authenticated HTTP ``/mcp``
+    sessions or callers presenting ``mcp_api_key``.
 
     Raises:
         ScopeError: When the caller lacks the required scope.
     """
+    mcp_session = get_current_mcp_session()
+
     if scope == "admin":
         # Dev override — intentionally first so local dev is frictionless
         if _admin_override_enabled():
+            return
+
+        if mcp_session is not None and "admin" in (getattr(mcp_session, "scopes", None) or ()):
             return
 
         server_key = _admin_server_api_key()
@@ -473,6 +497,9 @@ def _validate_scope(scope: str, arguments: dict[str, Any]) -> None:
             raise ScopeError("admin", "invalid admin_api_key")
 
     elif scope == "tenant":
+        if mcp_session is not None and not arguments.get("mcp_api_key"):
+            return
+
         server_key = _mcp_server_api_key()
         if not server_key:
             from nce.config import cfg
@@ -534,6 +561,10 @@ def require_scope(scope: str):
 
             # 2. Extract admin_identity before stripping (forwarded as kwarg)
             admin_identity = arguments.get("admin_identity")
+            if admin_identity is None:
+                mcp_session = get_current_mcp_session()
+                if mcp_session is not None:
+                    admin_identity = getattr(mcp_session, "principal_id", None)
 
             # 3. Strip auth keys so extra='forbid' models never see them
             clean_args = {k: v for k, v in arguments.items() if k not in _MCP_AUTH_KEYS}

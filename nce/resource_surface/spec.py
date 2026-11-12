@@ -130,13 +130,14 @@ class SecondaryTable:
             EXPECTED_SPECIAL_RLS_TABLES,
             EXPECTED_TENANT_RLS_TABLES,
         )
-        from nce.plugins import get_all_plugin_tenant_rls_tables
+        from nce.plugins import get_all_plugin_global_tables, get_all_plugin_tenant_rls_tables
 
         if (
             self.table_name not in EXPECTED_TENANT_RLS_TABLES
             and self.table_name not in EXPECTED_GLOBAL_TABLES
             and self.table_name not in EXPECTED_SPECIAL_RLS_TABLES
             and self.table_name not in get_all_plugin_tenant_rls_tables()
+            and self.table_name not in get_all_plugin_global_tables()
         ):
             raise ValueError(
                 f"SecondaryTable {self.table_name!r} is in neither "
@@ -408,9 +409,12 @@ class ResourceSpec:
                 EXPECTED_SPECIAL_RLS_TABLES,
                 EXPECTED_TENANT_RLS_TABLES,
             )
-            from nce.plugins import get_all_plugin_tenant_rls_tables
+            from nce.plugins import get_all_plugin_global_tables, get_all_plugin_tenant_rls_tables
 
-            if self.table_name in EXPECTED_GLOBAL_TABLES:
+            if (
+                self.table_name in EXPECTED_GLOBAL_TABLES
+                or self.table_name in get_all_plugin_global_tables()
+            ):
                 scope = "global"
             elif (
                 self.table_name in EXPECTED_TENANT_RLS_TABLES

@@ -28,7 +28,7 @@ from nce.a2a import (
     verify_grant_status,
     verify_token,
 )
-from nce.auth import NamespaceContext
+from nce.auth import NamespaceContext, set_namespace_context
 from nce.mcp_errors import mcp_handler
 from nce.mcp_utils import build_caller_context as _build_caller_context
 from nce.mcp_utils import parse_scopes as _parse_scopes
@@ -44,14 +44,27 @@ _MAX_SHARING_TOKEN_LEN: int = 4_096
 # ---------------------------------------------------------------------------
 
 
+def _parse_bool(val: Any, default: bool = False) -> bool:
+    """Coerce bool-like MCP arguments without treating string 'false'/'0' as True."""
+    if val is None:
+        return default
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, str):
+        return val.strip().lower() not in ("", "0", "false", "no", "off")
+    return bool(val)
+
+
 def _build_grant_request(arguments: dict[str, Any]) -> A2AGrantRequest:
     """Build a typed A2AGrantRequest from raw MCP arguments."""
+    raw_exp = arguments.get("expires_in_seconds")
     return A2AGrantRequest(
         target_namespace_id=arguments.get("target_namespace_id"),
         target_agent_id=arguments.get("target_agent_id"),
         scopes=_parse_scopes(arguments.get("scopes", [])),
-        expires_in_seconds=int(arguments.get("expires_in_seconds", 3600)),
-        can_delegate=bool(arguments.get("can_delegate", False)),
+        expires_in_seconds=int(3600 if raw_exp is None else raw_exp),
+        can_delegate=_parse_bool(arguments.get("can_delegate"), False),
+        one_time=_parse_bool(arguments.get("one_time"), False),
     )
 
 
@@ -67,7 +80,10 @@ async def handle_a2a_create_grant(engine: NCEEngine, arguments: dict[str, Any]) 
     grant_request = _build_grant_request(arguments)
 
     async with engine.pg_pool.acquire(timeout=10.0) as conn:
-        response: A2AGrantResponse = await create_grant(conn, caller_ctx, grant_request)
+        async with conn.transaction():
+            if caller_ctx.namespace_id is not None:
+                await set_namespace_context(conn, caller_ctx.namespace_id)
+            response: A2AGrantResponse = await create_grant(conn, caller_ctx, grant_request)
 
     return json.dumps(
         {
@@ -92,7 +108,10 @@ async def handle_a2a_revoke_grant(engine: NCEEngine, arguments: dict[str, Any]) 
         raise ValueError("grant_id must be a valid UUID")
 
     async with engine.pg_pool.acquire(timeout=10.0) as conn:
-        revoked = await revoke_grant(conn, grant_id, caller_ctx)
+        async with conn.transaction():
+            if caller_ctx.namespace_id is not None:
+                await set_namespace_context(conn, caller_ctx.namespace_id)
+            revoked = await revoke_grant(conn, grant_id, caller_ctx)
 
     return json.dumps({"revoked": revoked})
 
@@ -101,10 +120,13 @@ async def handle_a2a_revoke_grant(engine: NCEEngine, arguments: dict[str, Any]) 
 async def handle_a2a_list_grants(engine: NCEEngine, arguments: dict[str, Any]) -> str:
     """List all active A2A sharing grants owned by this namespace."""
     caller_ctx = _build_caller_context(arguments)
-    include_inactive = bool(arguments.get("include_inactive", False))
+    include_inactive = _parse_bool(arguments.get("include_inactive"), False)
 
     async with engine.pg_pool.acquire(timeout=10.0) as conn:
-        grants = await list_grants(conn, caller_ctx, include_inactive=include_inactive)
+        async with conn.transaction():
+            if caller_ctx.namespace_id is not None:
+                await set_namespace_context(conn, caller_ctx.namespace_id)
+            grants = await list_grants(conn, caller_ctx, include_inactive=include_inactive)
 
     return json.dumps({"status": "ok", "grants": grants}, default=str)
 
@@ -121,37 +143,42 @@ async def handle_a2a_query_shared(engine: NCEEngine, arguments: dict[str, Any]) 
     )
 
     async with engine.pg_pool.acquire(timeout=10.0) as conn:
-        verified = await verify_token(conn, req.sharing_token, consumer_ctx)
+        async with conn.transaction():
+            if consumer_ctx.namespace_id is not None:
+                await set_namespace_context(conn, consumer_ctx.namespace_id)
+            verified = await verify_token(conn, req.sharing_token, consumer_ctx)
 
-        resource_id = req.resource_id or str(verified.owner_namespace_id)
-        if req.resource_type != "namespace" and not req.resource_id:
-            raise ValueError(f"resource_id is required when resource_type={req.resource_type!r}")
+            resource_id = req.resource_id or str(verified.owner_namespace_id)
+            if req.resource_type != "namespace" and not req.resource_id:
+                raise ValueError(
+                    f"resource_id is required when resource_type={req.resource_type!r}"
+                )
 
-        enforce_scope(
-            verified.scopes,
-            req.resource_type,
-            resource_id,
-            str(verified.owner_namespace_id),
-        )
+            enforce_scope(
+                verified.scopes,
+                req.resource_type,
+                resource_id,
+                str(verified.owner_namespace_id),
+            )
 
-        # Append signed event on the owner's log
-        owner_ctx = NamespaceContext(
-            namespace_id=verified.owner_namespace_id,
-            agent_id=verified.owner_agent_id,
-        )
-        from nce.a2a import _append_a2a_event
+            # Append signed event on the owner's log
+            owner_ctx = NamespaceContext(
+                namespace_id=verified.owner_namespace_id,
+                agent_id=verified.owner_agent_id,
+            )
+            from nce.a2a import _append_a2a_event
 
-        await _append_a2a_event(
-            conn,
-            owner_ctx=owner_ctx,
-            event_type="a2a_shared_query",
-            params={
-                "consumer_namespace_id": str(consumer_ctx.namespace_id),
-                "consumer_agent_id": consumer_ctx.agent_id,
-                "grant_id": str(verified.grant_id),
-                "query": req.query,
-            },
-        )
+            await _append_a2a_event(
+                conn,
+                owner_ctx=owner_ctx,
+                event_type="a2a_shared_query",
+                params={
+                    "consumer_namespace_id": str(consumer_ctx.namespace_id),
+                    "consumer_agent_id": consumer_ctx.agent_id,
+                    "grant_id": str(verified.grant_id),
+                    "query": req.query,
+                },
+            )
 
     if verified.owner_namespace_id == consumer_ctx.namespace_id:
         log.warning(
@@ -173,15 +200,17 @@ async def handle_a2a_query_shared(engine: NCEEngine, arguments: dict[str, Any]) 
     if results:
         memory_ids = [res["memory_id"] for res in results]
         async with engine.pg_pool.acquire(timeout=10.0) as conn:
-            rows = await conn.fetch(
-                """
-                SELECT id, signature, signature_key_id
-                FROM memories
-                WHERE id = ANY($1) AND namespace_id = $2
-                """,
-                memory_ids,
-                verified.owner_namespace_id,
-            )
+            async with conn.transaction():
+                await set_namespace_context(conn, verified.owner_namespace_id)
+                rows = await conn.fetch(
+                    """
+                    SELECT id, signature, signature_key_id
+                    FROM memories
+                    WHERE id = ANY($1) AND namespace_id = $2
+                    """,
+                    memory_ids,
+                    verified.owner_namespace_id,
+                )
             sig_map = {
                 row["id"]: {
                     "signature": row["signature"].hex() if row["signature"] else None,
@@ -212,12 +241,15 @@ async def handle_a2a_verify_grant_status(engine: NCEEngine, arguments: dict[str,
             raise ValueError("grant_id must be a valid UUID")
 
     async with engine.pg_pool.acquire(timeout=10.0) as conn:
-        res = await verify_grant_status(
-            conn=conn,
-            ctx=caller_ctx,
-            sharing_token=sharing_token,
-            grant_id=grant_id,
-        )
+        async with conn.transaction():
+            if caller_ctx.namespace_id is not None:
+                await set_namespace_context(conn, caller_ctx.namespace_id)
+            res = await verify_grant_status(
+                conn=conn,
+                ctx=caller_ctx,
+                sharing_token=sharing_token,
+                grant_id=grant_id,
+            )
     return json.dumps(res)
 
 
@@ -239,13 +271,16 @@ async def handle_a2a_update_grant_scopes(engine: NCEEngine, arguments: dict[str,
         raise ValueError("mode must be 'replace' or 'append'")
 
     async with engine.pg_pool.acquire(timeout=10.0) as conn:
-        res = await update_grant_scopes(
-            conn=conn,
-            owner_ctx=owner_ctx,
-            grant_id=grant_id,
-            scopes=scopes,
-            mode=mode,
-        )
+        async with conn.transaction():
+            if owner_ctx.namespace_id is not None:
+                await set_namespace_context(conn, owner_ctx.namespace_id)
+            res = await update_grant_scopes(
+                conn=conn,
+                owner_ctx=owner_ctx,
+                grant_id=grant_id,
+                scopes=scopes,
+                mode=mode,
+            )
     return json.dumps(res)
 
 
@@ -262,9 +297,12 @@ async def handle_a2a_inspect_grant(engine: NCEEngine, arguments: dict[str, Any])
         raise ValueError("grant_id must be a valid UUID")
 
     async with engine.pg_pool.acquire(timeout=10.0) as conn:
-        res = await inspect_grant(
-            conn=conn,
-            owner_ctx=owner_ctx,
-            grant_id=grant_id,
-        )
+        async with conn.transaction():
+            if owner_ctx.namespace_id is not None:
+                await set_namespace_context(conn, owner_ctx.namespace_id)
+            res = await inspect_grant(
+                conn=conn,
+                owner_ctx=owner_ctx,
+                grant_id=grant_id,
+            )
     return json.dumps(res)

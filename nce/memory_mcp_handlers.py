@@ -53,7 +53,7 @@ def _serialize(data: object) -> str:
 @mcp_handler
 async def handle_store_memory(engine: NCEEngine, arguments: dict[str, Any]) -> str:
     """Persist a memory (conversation turn, document, or summary) to the Tri-Stack."""
-    payload = StoreMemoryRequest(**arguments)
+    payload = StoreMemoryRequest(**model_kwargs(arguments))
     result = await engine.store_memory(payload)
     payload_ref = result.get("payload_ref")
     if not isinstance(payload_ref, str) or not payload_ref:
@@ -67,7 +67,7 @@ async def handle_store_memory(engine: NCEEngine, arguments: dict[str, Any]) -> s
 @mcp_handler
 async def handle_store_artifact(engine: NCEEngine, arguments: dict[str, Any]) -> str:
     """Ingest large artifacts (media, PDF, log, etc.) into the Quad-Stack."""
-    payload = ArtifactPayload(**arguments)
+    payload = ArtifactPayload(**model_kwargs(arguments))
     mongo_id = await engine.store_artifact(payload)
     return _ok_response(mongo_id, storage="minio")
 
@@ -92,7 +92,7 @@ async def handle_store_media(engine: NCEEngine, arguments: dict[str, Any]) -> st
 @mcp_handler
 async def handle_semantic_search(engine: NCEEngine, arguments: dict[str, Any]) -> str:
     """Search stored memories by semantic similarity (pgvector cosine search)."""
-    req = SemanticSearchRequest(**arguments)
+    req = SemanticSearchRequest(**model_kwargs(arguments))
     results = await engine.semantic_search(
         query=req.query,
         namespace_id=str(req.namespace_id),
@@ -107,7 +107,7 @@ async def handle_semantic_search(engine: NCEEngine, arguments: dict[str, Any]) -
 @mcp_handler
 async def handle_get_recent_context(engine: NCEEngine, arguments: dict[str, Any]) -> str:
     """Retrieve the most recent cached context for a user/session from Redis."""
-    req = GetRecentContextRequest(**arguments)
+    req = GetRecentContextRequest(**model_kwargs(arguments))
     context = await engine.recall_recent(
         namespace_id=str(req.namespace_id),
         agent_id=req.agent_id or "default",
@@ -121,7 +121,7 @@ async def handle_get_recent_context(engine: NCEEngine, arguments: dict[str, Any]
 @mcp_handler
 async def handle_boost_memory(engine: NCEEngine, arguments: dict[str, Any]) -> str:
     """Boost the salience of a memory for the calling agent."""
-    req = BoostMemoryRequest(**arguments)
+    req = BoostMemoryRequest(**model_kwargs(arguments))
     res = await engine.boost_memory(
         memory_id=str(req.memory_id),
         agent_id=req.agent_id,
@@ -133,13 +133,16 @@ async def handle_boost_memory(engine: NCEEngine, arguments: dict[str, Any]) -> s
 
 @mcp_handler
 async def handle_forget_memory(engine: NCEEngine, arguments: dict[str, Any]) -> str:
-    """Set salience to 0.0 for the calling agent (soft-delete)."""
-    req = ForgetMemoryRequest(**arguments)
-    res = await engine.forget_memory(
-        memory_id=str(req.memory_id),
-        agent_id=req.agent_id,
-        namespace_id=str(req.namespace_id),
-    )
+    """Set salience to 0.0 for the calling agent (or crypto-shred when crypto_shred=true)."""
+    req = ForgetMemoryRequest(**model_kwargs(arguments))
+    forget_kwargs: dict[str, Any] = {
+        "memory_id": str(req.memory_id),
+        "agent_id": req.agent_id,
+        "namespace_id": str(req.namespace_id),
+    }
+    if req.crypto_shred:
+        forget_kwargs["crypto_shred"] = True
+    res = await engine.forget_memory(**forget_kwargs)
     return _serialize(res)
 
 

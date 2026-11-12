@@ -51,11 +51,28 @@ async def handle_manage_namespace(
 @mcp_handler
 async def handle_verify_memory(engine: NCEEngine, arguments: dict[str, Any]) -> str:
     """Verify the integrity and causal provenance of a memory."""
+    from nce import auth as _nce_auth
     from nce.temporal import parse_as_of
 
     as_of_dt = parse_as_of(arguments.get("as_of")) if "as_of" in arguments else None
-    res = await engine.verify_memory(memory_id=arguments["memory_id"], as_of=as_of_dt)
-    return json.dumps(res)
+    namespace_id = arguments.get("namespace_id")
+    if namespace_id is None:
+        get_sess = getattr(_nce_auth, "get_current_mcp_session", None)
+        if callable(get_sess):
+            sess = get_sess()
+            sess_ns = getattr(sess, "namespace_id", None) if sess is not None else None
+            if sess_ns:
+                namespace_id = sess_ns
+
+    if namespace_id is not None:
+        res = await engine.verify_memory(
+            memory_id=arguments["memory_id"],
+            as_of=as_of_dt,
+            namespace_id=namespace_id,
+        )
+    else:
+        res = await engine.verify_memory(memory_id=arguments["memory_id"], as_of=as_of_dt)
+    return json.dumps(res, default=str)
 
 
 @require_scope("admin")

@@ -27,11 +27,28 @@ except ImportError:  # pragma: no cover
     _CRYPTOGRAPHY_AVAILABLE = False
 
 import asyncpg  # type: ignore[import-untyped]
+from cachetools import TTLCache  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field
 
 from nce.auth import NamespaceContext, set_namespace_context
 
 log = logging.getLogger("nce.a2a")
+
+# Tracks owner_namespace_id by SHA-256 token_hash for open bearer grants
+# (target_namespace_id IS NULL) so RLS lookup under a cross-tenant consumer
+# can switch to the grant owner's namespace context when verifying the token.
+_OPEN_GRANT_OWNERS: TTLCache = TTLCache(maxsize=4096, ttl=86400 * 30)
+
+
+def _decode_scopes_json(raw: Any) -> list[Any]:
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        parsed = json.loads(raw)
+        return list(parsed) if isinstance(parsed, list) else []
+    if isinstance(raw, (list, tuple)):
+        return list(raw)
+    return []
 
 
 async def _append_a2a_event(
@@ -686,6 +703,8 @@ async def create_grant(
     scopes_json = json.dumps([s.model_dump() for s in request.scopes])
 
     async with conn.transaction():
+        if owner_ctx.namespace_id is not None:
+            await set_namespace_context(conn, owner_ctx.namespace_id)
         await conn.execute(
             """
             INSERT INTO a2a_grants (
@@ -724,6 +743,9 @@ async def create_grant(
             },
         )
 
+    if request.target_namespace_id is None and owner_ctx.namespace_id is not None:
+        _OPEN_GRANT_OWNERS[token_hash] = owner_ctx.namespace_id
+
     log.info(
         "A2A grant created: grant_id=%s owner_ns=%s target_ns=%s scopes=%d expires=%s can_delegate=%s",
         grant_id,
@@ -752,17 +774,20 @@ async def verify_token(
     """
     token_hash = _hash_token(token)
 
-    row = await conn.fetchrow(
-        """
+    _select_active_grant_sql = """
         SELECT id, owner_namespace_id, owner_agent_id,
                target_namespace_id, target_agent_id,
                scopes, expires_at, status, can_delegate,
                one_time, usage_count
         FROM a2a_grants
         WHERE token_hash = $1 AND status = 'active'
-        """,
-        token_hash,
-    )
+    """
+    row = await conn.fetchrow(_select_active_grant_sql, token_hash)
+    if not row:
+        cached_owner_ns = _OPEN_GRANT_OWNERS.get(token_hash)
+        if cached_owner_ns is not None and cached_owner_ns != consumer_ctx.namespace_id:
+            await set_namespace_context(conn, cached_owner_ns)
+            row = await conn.fetchrow(_select_active_grant_sql, token_hash)
 
     if not row:
         log.warning("A2A token verification failed: not found or inactive hash=<redacted>")
@@ -773,7 +798,11 @@ async def verify_token(
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
 
+    owner_ns_id = row["owner_namespace_id"]
+
     if expires_at < datetime.now(timezone.utc):
+        if owner_ns_id is not None and owner_ns_id != consumer_ctx.namespace_id:
+            await set_namespace_context(conn, owner_ns_id)
         await conn.execute(
             "UPDATE a2a_grants SET status = 'expired' WHERE id = $1 AND status = 'active'",
             row["id"],
@@ -810,7 +839,11 @@ async def verify_token(
             )
             raise A2AAuthorizationError("Token is not valid for this agent.")
 
-    # Successful verification - increment usage count and deactivate if one_time
+    # Successful verification - increment usage count and deactivate if one_time.
+    # Under FORCE ROW LEVEL SECURITY, a2a_grants WITH CHECK requires
+    # owner_namespace_id = get_nce_namespace(), so switch RLS to owner_ns_id.
+    if owner_ns_id is not None and owner_ns_id != consumer_ctx.namespace_id:
+        await set_namespace_context(conn, owner_ns_id)
     update_res = await conn.execute(
         """
         UPDATE a2a_grants
@@ -825,7 +858,7 @@ async def verify_token(
     if isinstance(update_res, str) and update_res.endswith(" 0"):
         raise A2AAuthorizationError("One-time sharing token has already been used.")
 
-    scopes_data = json.loads(row["scopes"])
+    scopes_data = _decode_scopes_json(row["scopes"])
     scopes = [A2AScope.model_validate(s) for s in scopes_data]
 
     return VerifiedGrant(
@@ -851,6 +884,8 @@ async def revoke_grant(
     Returns True if successfully revoked, False if not found / already inactive.
     """
     async with conn.transaction():
+        if owner_ctx.namespace_id is not None:
+            await set_namespace_context(conn, owner_ctx.namespace_id)
         result = await conn.execute(
             """
             UPDATE a2a_grants
@@ -935,7 +970,7 @@ async def list_grants(
                 str(row["target_namespace_id"]) if row["target_namespace_id"] else None
             ),
             "target_agent_id": row["target_agent_id"],
-            "scopes": json.loads(row["scopes"]),
+            "scopes": _decode_scopes_json(row["scopes"]),
             "status": row["status"],
             "expires_at": row["expires_at"].isoformat(),
             "can_delegate": row["can_delegate"],
@@ -1016,17 +1051,20 @@ async def verify_grant_status(
 
     if sharing_token is not None:
         token_hash = _hash_token(sharing_token)
-        row = await conn.fetchrow(
-            """
+        _status_token_sql = """
             SELECT id, owner_namespace_id, owner_agent_id,
                    target_namespace_id, target_agent_id,
                    scopes, expires_at, status, created_at, can_delegate,
                    one_time, usage_count
             FROM a2a_grants
             WHERE token_hash = $1
-            """,
-            token_hash,
-        )
+        """
+        row = await conn.fetchrow(_status_token_sql, token_hash)
+        if not row:
+            cached_owner_ns = _OPEN_GRANT_OWNERS.get(token_hash)
+            if cached_owner_ns is not None and cached_owner_ns != ctx.namespace_id:
+                await set_namespace_context(conn, cached_owner_ns)
+                row = await conn.fetchrow(_status_token_sql, token_hash)
     else:
         row = await conn.fetchrow(
             """
@@ -1049,8 +1087,11 @@ async def verify_grant_status(
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
 
+    owner_ns = row["owner_namespace_id"]
     status = row["status"]
     if status == "active" and expires_at < datetime.now(timezone.utc):
+        if owner_ns is not None and owner_ns != ctx.namespace_id:
+            await set_namespace_context(conn, owner_ns)
         await conn.execute(
             "UPDATE a2a_grants SET status = 'expired' WHERE id = $1",
             row["id"],
@@ -1059,7 +1100,6 @@ async def verify_grant_status(
         log.info("A2A token auto-expired during status check: grant_id=%s", row["id"])
 
     # Enforce NamespaceContext security boundaries (must be owner or target)
-    owner_ns = row["owner_namespace_id"]
     target_ns = row["target_namespace_id"]
     target_agent = row["target_agent_id"]
 
@@ -1088,7 +1128,7 @@ async def verify_grant_status(
         "owner_agent_id": row["owner_agent_id"],
         "target_namespace_id": str(target_ns) if target_ns else None,
         "target_agent_id": target_agent,
-        "scopes": json.loads(row["scopes"]),
+        "scopes": _decode_scopes_json(row["scopes"]),
         "status": status,
         "expires_at": expires_at.isoformat(),
         "can_delegate": row["can_delegate"],
@@ -1133,7 +1173,7 @@ async def update_grant_scopes(
 
     # Apply append or replace strategy
     if mode == "append":
-        existing_data = json.loads(row["scopes"])
+        existing_data = _decode_scopes_json(row["scopes"])
         merged_scopes = [A2AScope.model_validate(s) for s in existing_data]
 
         # Merge input scopes, filtering out exact duplicates
@@ -1153,6 +1193,8 @@ async def update_grant_scopes(
     scopes_json = json.dumps([s.model_dump() for s in final_scopes])
 
     async with conn.transaction():
+        if owner_ctx.namespace_id is not None:
+            await set_namespace_context(conn, owner_ctx.namespace_id)
         await conn.execute(
             "UPDATE a2a_grants SET scopes = $1::jsonb WHERE id = $2",
             scopes_json,
@@ -1221,7 +1263,7 @@ async def inspect_grant(
         if row["target_namespace_id"]
         else None,
         "target_agent_id": row["target_agent_id"],
-        "scopes": json.loads(row["scopes"]),
+        "scopes": _decode_scopes_json(row["scopes"]),
         "status": row["status"],
         "expires_at": expires_at.isoformat(),
         "can_delegate": row["can_delegate"],

@@ -149,11 +149,11 @@ async def test_garbage_collector_minio_pruning():
 
     minio_mock = MagicMock(spec=Minio)
 
-    # Mock buckets
+    # Mock buckets (including unified nce-artifacts bucket + legacy mcp-* buckets)
     b1 = MagicMock()
     b1.name = "mcp-image"
     b2 = MagicMock()
-    b2.name = "mcp-document"
+    b2.name = "nce-artifacts"
     b3 = MagicMock()
     b3.name = "not-mcp-bucket"
 
@@ -179,9 +179,14 @@ async def test_garbage_collector_minio_pruning():
         minutes=5
     )  # Young, unreferenced
 
+    orphan_nce_artifact_obj = MagicMock()
+    orphan_nce_artifact_obj.is_dir = False
+    orphan_nce_artifact_obj.object_name = "ns-1/pdf/session-1/doc1.pdf"
+    orphan_nce_artifact_obj.last_modified = datetime.now(timezone.utc) - timedelta(days=2)
+
     minio_mock.list_objects.side_effect = lambda bucket_name, recursive: {
         "mcp-image": [ref_obj, orphan_old_obj, orphan_young_obj],
-        "mcp-document": [],
+        "nce-artifacts": [orphan_nce_artifact_obj],
     }[bucket_name]
 
     # Reference set (ref_obj is referenced, the others are not)
@@ -189,9 +194,10 @@ async def test_garbage_collector_minio_pruning():
 
     deleted_count = await _collect_minio_orphans(minio_mock, minio_refs)
 
-    # Should only delete orphan_old_obj (1 deletion)
-    assert deleted_count == 1
-    minio_mock.remove_object.assert_called_once_with("mcp-image", "ns-1/session-1/img2.png")
+    # Should delete orphan_old_obj + orphan_nce_artifact_obj (2 deletions)
+    assert deleted_count == 2
+    minio_mock.remove_object.assert_any_call("mcp-image", "ns-1/session-1/img2.png")
+    minio_mock.remove_object.assert_any_call("nce-artifacts", "ns-1/pdf/session-1/doc1.pdf")
 
 
 # =============================================================================
@@ -291,12 +297,13 @@ async def test_store_artifact_object_name_prefix(monkeypatch):
     res = await orchestrator.store_artifact(payload)
     assert res == "some_ref"
 
-    # Assert that fput_object was called with an object_name starting with f"{ns_id}/"
+    # Assert that fput_object was called on nce-artifacts with an object_name starting with f"{ns_id}/image/"
     minio_client.fput_object.assert_called_once()
     args, kwargs = minio_client.fput_object.call_args
     # signature: fput_object(bucket_name, object_name, file_path)
+    assert args[0] == "nce-artifacts"
     called_object_name = args[1]
-    assert called_object_name.startswith(f"{ns_id}/")
+    assert called_object_name.startswith(f"{ns_id}/image/session1/")
 
 
 @pytest.mark.asyncio

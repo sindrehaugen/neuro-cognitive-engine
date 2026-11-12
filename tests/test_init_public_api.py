@@ -13,10 +13,22 @@ _EXPECTED_ALL = frozenset(
         "NCEEngine",
         "MemoryPayload",
         "MediaPayload",
+        "ArtifactPayload",
+        "StoreArtifactRequest",
         "OrchestratorConfig",
         "run_gc_loop",
     }
 )
+
+
+@pytest.fixture(autouse=True)
+def _restore_nce_modules():
+    saved = {k: v for k, v in sys.modules.items() if k == "nce" or k.startswith("nce.")}
+    try:
+        yield
+    finally:
+        _purge_nce_modules()
+        sys.modules.update(saved)
 
 
 def _purge_nce_modules() -> None:
@@ -54,7 +66,7 @@ def test_all_contains_expected_exports() -> None:
     nce = _fresh_nce()
 
     assert set(nce.__all__) == set(_EXPECTED_ALL)
-    assert len(nce.__all__) == 5
+    assert len(nce.__all__) == 7
 
 
 def test_unknown_attribute_raises() -> None:

@@ -14,11 +14,26 @@ import logging
 import uuid
 from typing import Any
 
+from nce.auth import get_current_mcp_session, set_namespace_context
 from nce.background_task_manager import create_tracked_task
 from nce.mcp_errors import mcp_handler
 from nce.orchestrator import NCEEngine
 
 log = logging.getLogger("nce.replay_mcp_handlers")
+
+
+def _resolve_optional_namespace_id(arguments: dict[str, Any]) -> uuid.UUID | None:
+    raw_ns = arguments.get("namespace_id")
+    if raw_ns is None:
+        mcp_session = get_current_mcp_session()
+        if mcp_session is not None:
+            raw_ns = getattr(mcp_session, "namespace_id", None)
+    if raw_ns is None:
+        return None
+    if isinstance(raw_ns, uuid.UUID):
+        return raw_ns
+    raw_str = str(raw_ns).strip()
+    return uuid.UUID(raw_str) if raw_str else None
 
 
 @mcp_handler
@@ -149,7 +164,12 @@ async def handle_replay_status(engine: NCEEngine, arguments: dict[str, Any]) -> 
     """[ADMIN] Check the status of a replay run."""
     from nce.replay import get_run_status
 
-    status = await get_run_status(engine.pg_pool, uuid.UUID(arguments["run_id"]))
+    raw_run_id = arguments["run_id"] if "run_id" in arguments else arguments["replay_run_id"]
+    status = await get_run_status(
+        engine.pg_pool,
+        uuid.UUID(str(raw_run_id)),
+        namespace_id=_resolve_optional_namespace_id(arguments),
+    )
     return json.dumps(status)
 
 
@@ -158,7 +178,11 @@ async def handle_get_event_provenance(engine: NCEEngine, arguments: dict[str, An
     """Get the full provenance chain for a memory."""
     from nce.replay import get_event_provenance
 
-    provenance = await get_event_provenance(engine.pg_pool, uuid.UUID(arguments["memory_id"]))
+    provenance = await get_event_provenance(
+        engine.pg_pool,
+        uuid.UUID(arguments["memory_id"]),
+        namespace_id=_resolve_optional_namespace_id(arguments),
+    )
     return json.dumps(provenance)
 
 
@@ -188,7 +212,11 @@ async def handle_explain_memory(engine: NCEEngine, arguments: dict[str, Any]) ->
     """Client-facing tool returning the signed receipt for a memory."""
     from nce.replay import get_event_provenance
 
-    provenance = await get_event_provenance(engine.pg_pool, uuid.UUID(arguments["memory_id"]))
+    provenance = await get_event_provenance(
+        engine.pg_pool,
+        uuid.UUID(arguments["memory_id"]),
+        namespace_id=_resolve_optional_namespace_id(arguments),
+    )
     chain = provenance.get("chain", [])
     if not chain:
         return json.dumps(
@@ -252,7 +280,9 @@ async def handle_explain_past_decision(engine: NCEEngine, arguments: dict[str, A
     beliefs: list[dict[str, Any]] = []
     for row in belief_rows:
         memory_id = row["id"]
-        provenance = await get_event_provenance(engine.pg_pool, memory_id)
+        provenance = await get_event_provenance(
+            engine.pg_pool, memory_id, namespace_id=namespace_id
+        )
         # Only receipts that existed *at or before* T were knowable then.
         valid_chain = [
             evt
@@ -326,19 +356,24 @@ async def handle_explain_past_decision(engine: NCEEngine, arguments: dict[str, A
         # state digest of source vs. target *as of the fork point* — the same mechanism
         # ReconstructiveReplay uses.  This is what makes the counterfactual provable.
         async with engine.pg_pool.acquire(timeout=10.0) as digest_conn:
-            fork_point_ts = await digest_conn.fetchval(
-                "SELECT occurred_at FROM event_log WHERE namespace_id = $1 AND event_seq = $2",
-                frozen_config.source_namespace_id,
-                frozen_config.fork_seq,
-            )
-            source_digest = await compute_namespace_state_digest(
-                digest_conn, frozen_config.source_namespace_id, as_of=fork_point_ts
-            )
-            target_digest = await compute_namespace_state_digest(
-                digest_conn, frozen_config.target_namespace_id, as_of=fork_point_ts
-            )
+            async with digest_conn.transaction():
+                await set_namespace_context(digest_conn, frozen_config.source_namespace_id)
+                fork_point_ts = await digest_conn.fetchval(
+                    "SELECT occurred_at FROM event_log WHERE namespace_id = $1 AND event_seq = $2",
+                    frozen_config.source_namespace_id,
+                    frozen_config.fork_seq,
+                )
+                source_digest = await compute_namespace_state_digest(
+                    digest_conn, frozen_config.source_namespace_id, as_of=fork_point_ts
+                )
+                await set_namespace_context(digest_conn, frozen_config.target_namespace_id)
+                target_digest = await compute_namespace_state_digest(
+                    digest_conn, frozen_config.target_namespace_id, as_of=fork_point_ts
+                )
 
-        status = await get_run_status(engine.pg_pool, fork_run_id)
+        status = await get_run_status(
+            engine.pg_pool, fork_run_id, namespace_id=frozen_config.source_namespace_id
+        )
         response["counterfactual"] = {
             "run_id": str(fork_run_id),
             "status": status["status"],

@@ -214,10 +214,11 @@ class GraphOrchestrator(OrchestratorBase):
             )
 
             try:
-                code_docs = await fetch_code_files_raw_by_ref(
-                    self._mongo_db,
-                    [normalize_payload_ref(r["payload_ref"]) for r in rows],
-                )
+                async with self._get_scoped_mongo(namespace_id) as s_db:
+                    code_docs = await fetch_code_files_raw_by_ref(
+                        s_db,
+                        [normalize_payload_ref(r["payload_ref"]) for r in rows],
+                    )
             except Exception as exc:
                 log.warning(
                     "Code file hydrate failed for %d refs: %s",

@@ -41,33 +41,33 @@ USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
 WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
 ```
 
-### 2a. Authoritative Source of Truth: `EXPECTED_TENANT_RLS_TABLES` (121 Tables)
+### 2a. Authoritative Source of Truth: `EXPECTED_TENANT_RLS_TABLES` (35 Tables)
 
-**The definitive source of truth for RLS-protected tables across NCE is `EXPECTED_TENANT_RLS_TABLES` defined in [`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py) (121 tables), rather than the partial `schema.sql` loop (41 tables) or the initial migration 001 seed (14 tables).**
+**The definitive source of truth for Core single-namespace RLS-protected tables across NCE is `EXPECTED_TENANT_RLS_TABLES` defined in [`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py) (35 tables), rather than the partial `schema.sql` loop (19 tables) or the initial migration 001 seed (14 tables).**
 
-At runtime, NCE executes `verify_rls_catalog_consistency()` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py)) during server startup, inspecting PostgreSQL's `pg_tables`, `pg_class.relrowsecurity`, and `pg_policies` catalogs to strictly validate all 121 tenant tables against the active schema.
+At runtime, NCE executes `verify_rls_catalog_consistency()` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py)) during server startup, inspecting PostgreSQL's `pg_tables`, `pg_class.relrowsecurity`, and `pg_policies` catalogs to strictly validate all 35 tenant tables (plus `a2a_grants` in `EXPECTED_SPECIAL_RLS_TABLES` = 36 Pure-Core forced-RLS tables, and any plugin-registered tables via `nce.plugins`) against the active schema.
 
-The catalog consistency validator categorizes all tables in the engine into three exhaustive sets:
+The catalog consistency validator categorizes all Pure-Core tables in the engine into three exhaustive sets (dynamically extended at runtime by installed plugins via `nce.plugins`):
 
-1. **`EXPECTED_TENANT_RLS_TABLES` (121 tables)**: All standard tenant-isolated tables where rows belong to a single tenant and are partitioned by a `namespace_id` column.
-2. **`EXPECTED_SPECIAL_RLS_TABLES` (1 table)**: `a2a_grants`, which enforces a dual-namespace ownership policy (`owner_namespace_id` and `target_namespace_id`).
-3. **`EXPECTED_GLOBAL_TABLES` (6 tables)**: Shared tables intentionally without RLS across all tenants (`embedding_models`, `kg_node_embeddings`, `reembedding_runs`, `event_sequences`, `applied_migrations`, `product_catalog`). A table in `EXPECTED_GLOBAL_TABLES` carries no `namespace_id` and no RLS by design. `product_catalog` is the first business table to sit here (the existing five are platform/infrastructure). `applied_migrations` is deployment state — which migration files this database has applied — not tenant data, which is why it carries no `namespace_id` (see `nce/migration_ledger.py`).
+1. **`EXPECTED_TENANT_RLS_TABLES` (35 tables)**: All standard Pure-Core single-namespace tenant-isolated tables (34 `namespace_id` tables plus `replay_runs` scoped on `source_namespace_id`). Installed plugins (such as `nce-vertical-engines`) extend this dynamically via `get_all_plugin_tenant_rls_tables()`.
+2. **`EXPECTED_SPECIAL_RLS_TABLES` (1 table)**: `a2a_grants`, which enforces a dual-namespace ownership policy (`owner_namespace_id` and `target_namespace_id`) with `FORCE ROW LEVEL SECURITY`.
+3. **`EXPECTED_GLOBAL_TABLES` (5 tables)**: Shared Pure-Core platform tables intentionally without RLS across all tenants (`embedding_models`, `kg_node_embeddings`, `reembedding_runs`, `event_sequences`, `applied_migrations`). A table in `EXPECTED_GLOBAL_TABLES` carries no `namespace_id` and no RLS by design; installed plugins dynamically register plugin global tables via `get_all_plugin_global_tables()`. `applied_migrations` is deployment state — which migration files this database has applied — not tenant data, which is why it carries no `namespace_id` (see `nce/migration_ledger.py`).
 
 > [!NOTE]
 > **Hybrid Tenancy Model (`query_templates`):** `query_templates` is the sole hybrid table on the estate. Its `namespace_id` is nullable: global seed query templates are stored with `namespace_id IS NULL`, while tenant-specific templates store the tenant's UUID. Tenant isolation is enforced via predicate `(namespace_id IS NULL OR namespace_id = $N)`, matching the `USING` policy clause.
 
 ```
                               ┌─────────────────────────────────────────────────────────┐
-                              │            NCE Database Schema Surface                  │
-                              │                 (121 Total Tables)                      │
+                              │          NCE Pure-Core RLS Schema Surface               │
+                              │         (36 Forced-RLS + 5 Global Core Tables)          │
                               └────────────────────────────┬────────────────────────────┘
                                                            │
                      ┌─────────────────────────────────────┼─────────────────────────────────────┐
                      ▼                                     ▼                                     ▼
         ┌─────────────────────────┐           ┌─────────────────────────┐           ┌─────────────────────────┐
         │EXPECTED_TENANT_RLS_TABLES│          │EXPECTED_SPECIAL_RLS_TBLS│           │ EXPECTED_GLOBAL_TABLES  │
-        │       (121 Tables)      │           │        (1 Table)        │           │       (6 Tables)        │
-        │ Single namespace_id RLS │           │  a2a_grants (Dual-NS)   │           │ Intentionally Global    │
+        │       (35 Tables)       │           │        (1 Table)        │           │       (5 Tables)        │
+        │ Single-Namespace RLS    │           │  a2a_grants (Dual-NS)   │           │ Intentionally Global    │
         └─────────────────────────┘           └─────────────────────────┘           └─────────────────────────┘
 ```
 
@@ -75,60 +75,35 @@ The catalog consistency validator categorizes all tables in the engine into thre
 
 | Surface Definition | Table Count | Scope / Description | Why It Is Not the Source of Truth |
 | :--- | :---: | :--- | :--- |
-| **Migration [`001_enable_rls.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/001_enable_rls.sql)** | 14 | Initial baseline seed (`memories`, `kg_nodes`, `kg_edges`, `pii_redactions`, `memory_salience`, `contradictions`, `snapshots`, `event_log`, `resource_quotas`, `consolidation_runs`, `bridge_subscriptions`, `dead_letter_queue`, `embedding_migrations`, `memory_embeddings`) + `a2a_grants`. | Only seeds initial v1 tables; omits post-v1 migrations ([`002`–`050`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/)). |
-| **[`schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) `tenant_tables` loop** | 41 | Dynamic PL/pgSQL array loop in `nce/schema.sql`. Additional tables (`replay_runs`, `outbox_events`, `saga_execution_log`, `topology_graph`, `economy_contracts`, `stock_locations`, `inventory_items`, etc.) receive policy statements inline outside the loop. | Incomplete as a standalone list; lacks 80 tables (121 − 41) handled inline or in newer vertical engine migrations. |
-| **`EXPECTED_TENANT_RLS_TABLES` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py))** | **121** | Authoritative programmatic specification covering all core, cognitive, governance, diagnostics, shared-core, and vertical-engine tables. Validated by `verify_rls_catalog_consistency()` at startup. | **Definitive source of truth**: Enforced by automated runtime assertions against live database catalog metadata. |
+| **Migration [`001_enable_rls.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/001_enable_rls.sql)** | 14 | Initial baseline seed (`memories`, `kg_nodes`, `kg_edges`, `pii_redactions`, `memory_salience`, `contradictions`, `snapshots`, `event_log`, `resource_quotas`, `consolidation_runs`, `bridge_subscriptions`, `dead_letter_queue`, `embedding_migrations`, `memory_embeddings`) + `a2a_grants`. | Only seeds initial v1 tables; omits post-v1 Core migrations ([`002`–`036`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/)). |
+| **[`schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) `tenant_tables` loop** | 19 | Dynamic PL/pgSQL array loop in `nce/schema.sql`. Additional Core tables (`replay_runs`, `outbox_events`, `saga_execution_log`, `topology_graph`, `signing_credentials`, `principal_bindings`, `outbound_webhooks`, `mcp_client_tokens`, `encryption_deks`, `procedural_heuristics`, etc.) receive policy statements inline or in migrations `001`–`036`. | Incomplete as a standalone list; lacks 16 tables (35 − 19) handled inline or in later Core migrations. |
+| **`EXPECTED_TENANT_RLS_TABLES` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py))** | **35** | Authoritative Pure-Core programmatic specification covering all 35 single-namespace forced-RLS Core tables (36 total with `a2a_grants`; dynamically extended by plugins via `nce.plugins`). Validated by `verify_rls_catalog_consistency()` at startup. | **Definitive source of truth**: Enforced by automated runtime assertions against live database catalog metadata. |
 
-### 2c. Complete Inventory of the 121 Tenant RLS Tables
+### 2c. Complete Inventory of the 35 Tenant RLS Tables
 
-The 121 tables in `EXPECTED_TENANT_RLS_TABLES` span all 34 functional domains of NCE:
+The 35 tables in `EXPECTED_TENANT_RLS_TABLES` span all 10 Pure-Core functional domains of NCE:
 
 | Subsystem Domain | Count | Table Names | Description |
 | :--- | :---: | :--- | :--- |
 | **Core Memory & Graph** | 8 | `memories`, `kg_nodes`, `kg_edges`, `pii_redactions`, `memory_salience`, `contradictions`, `snapshots`, `event_log` | Core semantic vectors, relational knowledge graph nodes/edges, episodic event log (WORM), and privacy redactions. |
-| **Infrastructure & Saga** | 6 | `resource_quotas`, `outbox_events`, `saga_execution_log`, `consolidation_runs`, `bridge_subscriptions`, `dead_letter_queue` | Distributed multi-DB write sagas, reliable outbox delivery, bridge OAuth tracking, and tenant quotas. |
+| **Infrastructure, Saga & Replay** | 7 | `resource_quotas`, `outbox_events`, `saga_execution_log`, `consolidation_runs`, `bridge_subscriptions`, `dead_letter_queue`, `replay_runs` | Distributed multi-DB write sagas, reliable outbox delivery, bridge OAuth tracking, deterministic event replay (`source_namespace_id`), and tenant quotas. |
 | **Embeddings & Query** | 6 | `embedding_migrations`, `memory_embeddings`, `embedding_aspects`, `graph_schema_registry`, `query_templates`, `v3_cognitive_ledger` | Dynamic vector aspect representations, schema registry, cognitive ledger, and embedding backfills. |
 | **Topology & Auditing** | 3 | `topology_graph`, `audit_log`, `active_learning_queue` | Network topology models, security mutation audit trail, and active learning queues. |
-| **Dynamics 365 Bridge** | 4 | `d365_integrations`, `d365_netbox_mappings`, `d365_sync_runs`, `d365_delta_tokens` | Dynamics 365 Dataverse sync profiles, entity mappings, sync execution runs, and delta change tokens. |
 | **Muscles & Governance** | 5 | `processed_outbox_events`, `actor_trust`, `event_parents`, `action_approval_queue`, `action_idempotency` | Causal DAG parents (WORM), actor trust scoring, dry-run approval queues, and idempotency tracking. |
-| **Diagnostics Engine** | 3 | `diag_ingestions`, `diag_anomalies`, `device_health_rollup` | Hardware diagnostic log ingestions, detected anomalies, and aggregated device health rollups. |
-| **Shared-Core Foundation** | 6 | `node_ownership_registry`, `entity_merge_queue`, `source_mode_config`, `divergence_log`, `source_mode_heartbeat`, `bom_line_content` | Cross-engine entity resolution, survivorship merges, source mode routing (D365/NCE/Both), divergence logs, the flip-gate staleness heartbeat (did a parity comparison actually run in the window, independent of whether it found a divergence), and the shared BOM line content store consumed by the design, economy and inventory engines. |
-| **Product Engine** | 4 | `product_prices`, `product_match_feedback`, `product_enrichment_log`, `product_packages` | PIM catalog entries, price tiers, distributor matching feedback, supplier enrichment review audit, and package catalog definitions expanded via inventory kitting's reserve_kit (Wave B-7). |
-| **Procurement Engine** | 3 | `procurement_bid_prices`, `procurement_po_lines`, `procurement_deal_registrations` | Consumer projection cache for Product BID and supplier pricing models; purchase order lines and status state machine (PR-2); supplier deal registrations protecting pricing/terms for a specific opportunity (Wave B-15). |
-| **System Design Engine** | 4 | `system_design_device_capabilities`, `system_design_geometry`, `system_design_node_state`, `system_design_design_requests` | Device capability attributes, functional location models, and design BOM constraints; canvas geometry (x/y in grid units, origin top-left, y-down; rack `position`/`face` in NetBox's vocabulary) plus the per-DESIGN optimistic-concurrency version row; per-node lifecycle state (NetBox status/revision/salience for DEVICE, RACK and CABLE); and the C12 DESIGN_REQUEST satellite (Wave C-4), replacing the prior `system_design_geometry.meta` JSONB scheme. `system_design_geometry` deliberately holds **two key grains** under one natural key — geometry rows keyed by a node label (`version IS NULL`) and one version row keyed by the design label (`version IS NOT NULL`). In `system_design_node_state` a row exists only where somebody declared something, so absence stays meaningful. |
-| **Sales Engine** | 10 | `sales_read_model`, `sales_targets`, `sales_signed_baselines`, `sales_customers`, `sales_leads`, `sales_deals`, `sales_quotes`, `sales_contacts`, `sales_quote_templates`, `sales_deal_participants` | Pipeline read models, sales quotas/targets, immutable signed quote baselines, C12 relational resources for customers, leads, deals, quotes, and contacts, reusable quote starting-point templates (Wave B-7), and deal stakeholders (Wave B-3). |
-| **Vendors & Contractors** | 2 | `vendor_scorecards`, `contractor_profiles` | Partner contractor profiles (external scoped) and supplier performance scorecards. |
-| **Agreements Engine** | 5 | `agreement_review_queue`, `agreement_extraction_runs`, `agreements`, `agreement_parties`, `agreement_templates` | OCR contract extraction runs, legal/financial human review queue, and C12 relational resources for agreements, parties/signatures, and contract templates. |
-| **Economy Engine** | 7 | `economy_bom_actual_costs`, `economy_postings`, `economy_contracts`, `economy_billing_runs`, `economy_billing_candidates`, `economy_billing_candidate_lines`, `economy_customer_invoices` | BOM line actual cost cascades, balanced general ledger postings (`sum=0`), recurring contract stores, C12 BILLING_RUN/BILLING_CANDIDATE resources (Wave B-12) with their priced line items, and the C12 CUSTOMER_INVOICE resource (Wave B-13, proposal transition). |
-| **Inventory Engine** | 5 | `stock_locations`, `inventory_items`, `inventory_transactions`, `goods_receipts`, `inventory_rma` | Logistics location hierarchies (warehouses/zones/bins/vans), per-SKU inventory stock balances, the append-only movement/valuation ledger, inbound goods-receipt records, and returns/RMA with WEEE disposal state. |
-| **Assets Engine** | 2 | `assets`, `telemetry_samples` | Relational asset register seeded from BOM lines (Module 9), keyed per `(namespace_id, bom_line_id)`. |
-| **Support Engine** | 4 | `service_tickets`, `sla_clocks`, `customer_health`, `support_ticket_actions` | Native ServiceTicket store, live SLA countdown clocks, rolling customer health & churn-risk scoring, and append-only ticket action log (Module 10, Wave D-5). |
-| **Field Tech Engine** | 3 | `work_orders`, `checklists`, `time_entries` | Physical work orders, ISO9001 checklist verification records, and GPS/manual time tracking (Module 12). |
-| **HR Engine** | 4 | `employees`, `skills`, `certifications`, `absences` | Native employee master data, skills matrix, cert lifecycle & expiry tracking, and sensitive leave/absence records (Module 13). |
-| **Marketing Engine** | 3 | `case_studies`, `testimonials`, `content_assets` | Case studies, customer testimonials with dual-tier consent lifecycle, and content asset library with AEO/GEO metadata (Module 14). |
-| **Staff & Resources Engine** | 5 | `resources`, `allocations`, `travel_legs`, `stays`, `per_diems` | Schedulable abstraction registry (people, contractors, vehicles, tools), capacity calendar, conflict-excluded allocations (btree_gist), travel legs, lodging stays, and statutory per-diem allowances (Module 15). |
-| **Customer Portal Engine** | 3 | `portal_users`, `portal_document_shares`, `portal_service_requests` | Customer login identities (external scoped), scoped and expiring document grants, and service request intake before Support hand-off (Module 17). |
-| **Business Insights Engine** | 1 | `business_insights_kpi_snapshots` | Cached point-in-time KPI roll-up snapshots and historical performance trends (Module 16). |
-| **Decision Feedback** | 1 | `decision_feedback` | Cross-engine human decision and outcome telemetry (Phase 2, Wave C10). |
-| **Signing Service** | 1 | `signing_credentials` | Encrypted broker signing credentials per tenant namespace (Sales / Cross-Engine Wave Q-4). |
-| **Notifications & Reminders** | 3 | `notifications`, `reminders`, `notification_subscriptions` | Principal notification inbox, scheduled reminders, and event-driven subscription preferences (Module 18 / Shared Core C13). |
-| **Document Register** | 3 | `documents`, `document_links`, `document_shares` | Master document register, polymorphic entity graph edges, and expiring share tokens (Module 19 / Shared Core C14). |
-| **Legal Entity Register** | 1 | `legal_entities` | Multi-tenant legal entity master register with org.nr, parent group relations, and roles (Module 20 / Shared Core C15). |
-| **Principal Mapping** | 1 | `principal_bindings` | Multi-tenant principal identity mapping to employee, customer, contractor identities and roles (Module 21 / Shared Core C16). |
-| **Outbound Webhooks** | 1 | `outbound_webhooks` | Outbound webhook subscriptions with event selector matching, HMAC-SHA256 request signing, and transactional outbox relay delivery (Module 22 / Shared Core C4). |
-| **Site Master Data** | 1 | `sites` | Multi-tenant site and building master register with cadastre identity, validated address, coordinates, height, and footprint geometry (Module 23 / Shared Core C17). |
+| **Signing Service** | 1 | `signing_credentials` | Encrypted broker signing credentials per tenant namespace (migration 032). |
+| **Principal Mapping** | 1 | `principal_bindings` | Multi-tenant principal identity mapping to roles and external scopes (migration 033). |
+| **Outbound Webhooks** | 1 | `outbound_webhooks` | Outbound webhook subscriptions with event selector matching, HMAC-SHA256 request signing, and transactional outbox relay delivery (migration 034). |
 | **MCP Gateway & Envelope Crypto** | 2 | `mcp_client_tokens`, `encryption_deks` | Scoped SHA-256 hashed MCP client bearer tokens and versioned KEK-wrapped tenant/subject AES-256-GCM DEKs (v3.3.0 / migration 035). |
 | **Procedural Memory** | 1 | `procedural_heuristics` | Distilled procedural guardrails and heuristics with tenant RLS and trigger-maintained `search_tsv` (v3.4.0 / migration 036). |
 
 ---
 
-### 2d. Inventory of the 6 Global Reference & Platform Tables
+### 2d. Inventory of the 5 Global Platform Tables
 
-The 6 tables in `EXPECTED_GLOBAL_TABLES` carry no `namespace_id` and have RLS disabled by design:
+The 5 Pure-Core tables in `EXPECTED_GLOBAL_TABLES` carry no `namespace_id` and have RLS disabled by design (plugin global tables are merged dynamically via `get_all_plugin_global_tables()`):
 
 | Subsystem Domain | Table Name | Description |
 | :--- | :--- | :--- |
-| **Product Engine** | `product_catalog` | Shared parts library and master equipment catalog (manufacturer, mfr_part_no, specifications). One row per physical part, shared across all tenants. *(Note: `product_prices` remains strictly tenant-scoped).* |
 | **Embeddings & Vector** | `embedding_models` | Configured semantic embedding model registry and dimensional specifications. |
 | **Embeddings & Vector** | `kg_node_embeddings` | Knowledge graph semantic vector embeddings. |
 | **Embeddings & Vector** | `reembedding_runs` | Vector migration and re-embedding execution tracking. |

@@ -8,9 +8,10 @@ Verifies that with ``NCE_ENVELOPE_ENCRYPTION_ENABLED=true``:
   SKIPPED (not raised), flagged ``metadata.dek_unreadable=true``, and
   ``nce_envelope_decrypt_failures_total`` increments.
 
-Scope audit results:
-  - ``contradictions.py``: ZERO raw_data reads — EXCLUDED.
-  - ``consolidation.py``: only WRITES its abstraction raw_data — EXCLUDED.
+Scope audit results (updated v3.4.3):
+  - ``contradictions.py``: reads ``episodes.raw_data`` via ``maybe_decrypt_raw_data``.
+  - ``consolidation.py``: reads ``episodes.raw_data`` via ``maybe_decrypt_raw_data``
+    AND envelope-encrypts consolidated abstractions when ``NCE_ENVELOPE_ENCRYPTION_ENABLED=true``.
   - ``re_embedder.py``: reads ``episodes.raw_data`` RAW — INCLUDED (patched here).
   - ``reembedding_worker.py``: reads both ``episodes.raw_data`` and
     ``code_files.raw_code`` RAW — primary test target.

@@ -44,7 +44,13 @@ class _FakeAcquire:
 
 
 def _engine_pool_context(conn: object | None = None) -> MagicMock:
-    conn = conn or AsyncMock()
+    if conn is None:
+        mock_conn = AsyncMock()
+        tx = AsyncMock()
+        tx.__aenter__ = AsyncMock(return_value=None)
+        tx.__aexit__ = AsyncMock(return_value=None)
+        mock_conn.transaction = MagicMock(return_value=tx)
+        conn = mock_conn
     engine = MagicMock()
     engine.pg_pool = MagicMock()
     engine.pg_pool.acquire = MagicMock(side_effect=lambda *_a, **_k: _FakeAcquire(conn))

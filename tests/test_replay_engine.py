@@ -218,13 +218,26 @@ async def test_handle_store_memory_handler() -> None:
     # Call 2: memory_salience select
     assert mock_conn.fetchrow.call_count == 2
 
-    # Check execute calls
-    # Call 1: INSERT INTO memories
-    # Call 2: INSERT INTO memory_salience
-    assert mock_conn.execute.call_count == 2
+    # Check execute calls:
+    # 1. set_config(src_ns) before SELECT FROM memories
+    # 2. set_config(target_ns) before INSERT INTO memories
+    # 3. INSERT INTO memories
+    # 4. set_config(src_ns) before SELECT FROM memory_salience
+    # 5. set_config(target_ns) before INSERT INTO memory_salience
+    # 6. INSERT INTO memory_salience
+    assert mock_conn.execute.call_count == 6
+
+    rls_calls = [
+        c[0][1]
+        for c in mock_conn.execute.call_args_list
+        if "set_config('nce.namespace_id'" in c[0][0]
+    ]
+    assert rls_calls == [str(src_ns), str(target_ns), str(src_ns), str(target_ns)]
 
     # Verify the arguments to INSERT INTO memories
-    memories_insert_call = mock_conn.execute.call_args_list[0]
+    memories_insert_call = next(
+        c for c in mock_conn.execute.call_args_list if "INSERT INTO memories" in c[0][0]
+    )
     sql_query_memories = memories_insert_call[0][0]
     args_memories = memories_insert_call[0][1:]
 
@@ -239,7 +252,7 @@ async def test_handle_store_memory_handler() -> None:
     assert args_memories[0] == new_mem_id
     assert args_memories[1] == target_ns
     assert args_memories[2] == "agent-1"
-    assert args_memories[3] == [0.1] * 768
+    assert args_memories[3] == json.dumps([0.1] * 768)
     assert args_memories[4] == "fact"
     assert args_memories[5] == "episodic"
     assert args_memories[6] == expected_target_ref
@@ -252,7 +265,9 @@ async def test_handle_store_memory_handler() -> None:
     assert args_memories[11] is None
 
     # Verify the arguments to INSERT INTO memory_salience
-    salience_insert_call = mock_conn.execute.call_args_list[1]
+    salience_insert_call = next(
+        c for c in mock_conn.execute.call_args_list if "INSERT INTO memory_salience" in c[0][0]
+    )
     sql_query_salience = salience_insert_call[0][0]
     args_salience = salience_insert_call[0][1:]
 

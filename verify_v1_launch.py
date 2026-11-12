@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NCE v3.4.2 launch verification.
+NCE v3.4.3 launch verification.
 
 Checks (in order):
   1. Admin REST ``GET /api/health`` — Postgres, Mongo, Redis up (HMAC auth).
@@ -33,6 +33,7 @@ import json
 import os
 import sys
 import time
+import uuid
 from typing import Any
 from uuid import UUID
 
@@ -73,6 +74,7 @@ def _admin_hmac_headers(api_key: str, method: str, path: str, body: bytes = b"")
     sig = hmac.new(api_key.encode("utf-8"), canonical.encode("utf-8"), hashlib.sha256).hexdigest()
     return {
         "X-NCE-Timestamp": str(ts),
+        "X-NCE-Nonce": uuid.uuid4().hex,
         "Authorization": f"HMAC-SHA256 {sig}",
     }
 
@@ -314,7 +316,7 @@ async def _async_main(admin_base: str, a2a_base: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="NCE v3.4.2 launch verification")
+    parser = argparse.ArgumentParser(description="NCE v3.4.3 launch verification")
     parser.add_argument(
         "--admin-url",
         default=os.environ.get(
@@ -331,7 +333,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    print("=== NCE v3.4.2 Launch Verification ===")
+    print("=== NCE v3.4.3 Launch Verification ===")
     print()
 
     try:

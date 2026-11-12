@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "neuro-cognitive-engine"
-version = "3.4.2"
+version = "3.4.3"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -14,14 +14,20 @@ dependencies = [
     "fastapi>=0.162.2",
     "httpx>=0.28.1",
     "mcp>=1.30.0,<2",
+    "minio>=7.2.20",
     "motor>=3.7.1",
     "networkx>=3.4.2",
     "numpy>=2.2.6",
     "orjson>=3.10.15",
+    "Pillow>=12.3.0",
     "pydantic>=2.13.5",
     "PyJWT>=2.15.1",
+    "pytesseract>=0.3.13",
     "python-dotenv>=1.2.4",
+    "python-multipart>=0.0.20",
     "redis>=8.1.0",
+    "RestrictedPython>=8.0",
+    "scikit-learn>=1.7.2",
     "starlette>=1.7.0",
     "StrEnum>=0.5.0; python_version < '3.11'",
     "uvicorn>=0.54.0",

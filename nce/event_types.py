@@ -52,6 +52,7 @@ EventType = Literal[
     # A2A_EVENTS
     "a2a_grant_created",
     "a2a_grant_revoked",
+    "a2a_grant_updated",
     "a2a_shared_query",
     # SECURITY_EVENTS — key rotation audit
     "signing_key_rotated",
@@ -236,6 +237,7 @@ EVENT_FORBIDDEN_PARAM_KEYS: Final[dict[str, frozenset[str]]] = {
     # Never persist raw bearer material or hashed secrets in provenance payloads.
     "a2a_grant_created": frozenset({"sharing_token", "token_hash", "scopes"}),
     "a2a_grant_revoked": frozenset({"sharing_token", "token_hash"}),
+    "a2a_grant_updated": frozenset({"sharing_token", "token_hash", "scopes"}),
     # Batch 112: raw payload must never appear in the WORM rejection record — only the hash.
     "quarantine_rejected": frozenset(
         {"payload", "raw_payload", "content", "summary", "heavy_payload"}

@@ -298,7 +298,7 @@ async def _select_candidates(
     """
     return await conn.fetch(
         """
-        SELECT id, payload_ref, 1 - (embedding <=> $1::vector) AS similarity
+        SELECT id, payload_ref, wrapped_dek, 1 - (embedding <=> $1::vector) AS similarity
         FROM memories
         WHERE namespace_id = $2::uuid
           AND memory_type = 'episodic'
@@ -661,11 +661,13 @@ async def _detect_contradictions_impl(
     ns_for_factory = _namespace_provider_metadata(ns_row)
 
     from nce.db_utils import scoped_mongo_session
+    from nce.envelope import maybe_decrypt_raw_data
 
     async with scoped_mongo_session(mongo_client, namespace_id) as s_db:
         raw_by_ref = await fetch_episodes_raw_by_ref(
             s_db,
             [c["payload_ref"] for c in candidates],
+            decode_bytes=False,
         )
 
     detected: list[dict] = []
@@ -673,7 +675,24 @@ async def _detect_contradictions_impl(
     for candidate in candidates:
         cand_id = str(candidate["id"])
         key = normalize_payload_ref(candidate["payload_ref"])
-        cand_text_prefetch = raw_by_ref.get(key, "") if key is not None else ""
+        raw_blob = raw_by_ref.get(key, "") if key is not None else ""
+        wdek = (
+            candidate.get("wrapped_dek")
+            if hasattr(candidate, "get")
+            else (candidate["wrapped_dek"] if "wrapped_dek" in candidate else None)
+        )
+        try:
+            cand_text_prefetch = maybe_decrypt_raw_data(
+                raw_blob,
+                bytes(wdek) if wdek is not None else None,
+            )
+        except Exception as dec_exc:
+            log.warning(
+                "Skipping unreadable/shredded candidate memory %s during contradiction check: %s",
+                cand_id,
+                dec_exc,
+            )
+            continue
 
         async with scoped_pg_session(pg_pool, namespace_id) as conn:
             kg_hit = await _check_kg_contradiction(conn, triplets, cand_id)

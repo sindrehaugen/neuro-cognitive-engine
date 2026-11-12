@@ -22,6 +22,8 @@ __all__ = [
     "NCEEngine",
     "MemoryPayload",
     "MediaPayload",
+    "ArtifactPayload",
+    "StoreArtifactRequest",
     "OrchestratorConfig",
     "run_gc_loop",
 ]
@@ -49,6 +51,8 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "NCEEngine": ("nce.orchestrator", "NCEEngine"),
     "MemoryPayload": ("nce.orchestrator", "MemoryPayload"),
     "MediaPayload": ("nce.orchestrator", "MediaPayload"),
+    "ArtifactPayload": ("nce.models", "ArtifactPayload"),
+    "StoreArtifactRequest": ("nce.models", "StoreArtifactRequest"),
     "OrchestratorConfig": ("nce.config", "OrchestratorConfig"),
     "run_gc_loop": ("nce.garbage_collector", "run_gc_loop"),
 }
