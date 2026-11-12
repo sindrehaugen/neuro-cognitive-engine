@@ -103,7 +103,7 @@ jobs:
       - name: Fetch full history (needed for banner-SHA resolution)
         run: git fetch --prune --unshallow || git fetch --prune
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip

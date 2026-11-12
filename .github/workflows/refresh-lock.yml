@@ -41,7 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           # 3.12 deliberately: it is the RUNTIME's Python (python:3.12-slim-bookworm in
           # deploy/multiuser/Dockerfile), which is the version the lock has to represent.
