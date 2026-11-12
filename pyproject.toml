@@ -11,7 +11,7 @@ dependencies = [
     "asyncpg>=0.32.0",
     "cryptography>=50.0.2",
     "defusedxml>=0.7.1",
-    "fastapi>=0.143.2",
+    "fastapi>=0.162.2",
     "httpx>=0.28.1",
     "mcp>=1.30.0,<2",
     "motor>=3.7.1",
@@ -23,7 +23,7 @@ dependencies = [
     "python-dotenv>=1.2.4",
     "redis>=8.1.0",
     "starlette>=1.7.0",
-    "StrEnum>=0.4.15; python_version < '3.11'",
+    "StrEnum>=0.5.0; python_version < '3.11'",
     "uvicorn>=0.54.0",
 ]
 
