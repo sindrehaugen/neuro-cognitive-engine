@@ -4,7 +4,7 @@
 > Persistent, multi-tenant, time-travelling memory across a four-database stack — with a brain on top.
 
 <p>
-  <img alt="version" src="https://img.shields.io/badge/version-3.4.1-blue">
+  <img alt="version" src="https://img.shields.io/badge/version-3.4.2-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.10%20--%203.12-3776ab">
   <img alt="protocol" src="https://img.shields.io/badge/MCP-JSON--RPC%202.0-6e40c9">
   <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-blue">
@@ -179,8 +179,9 @@ NCE is no longer "just an MCP server." It exposes several coordinated surfaces p
 | `server.py` | MCP stdio (JSON-RPC 2.0) | Direct tool surface for local LLM clients (Claude Desktop, Cursor) | Process-isolated stdio, tenant pinned via `NCE_MCP_NAMESPACE_ID` |
 | `mcp_gateway_server.py` | Streamable HTTP `/mcp` (SSE / JSON-RPC 2.0) | Zero-trust remote MCP gateway for IDEs and desktop clients | Scoped bearer tokens, fail-closed Redis governance, `BoundedBodyMiddleware` (HTTP `413`) |
 | `nce.mcp_client_proxy` | CLI bridge (stdio → HTTP `/mcp`) | Zero-secret local bridge (`nce-mcp-proxy`) connecting stdio-only MCP clients to HTTP `/mcp` | Zero database secrets on workstations, scoped token authentication |
+| `go/cmd/nce-launch` | Native CLI shim (Go) | Mode-aware native launcher shim for desktop/server installers | OS keyring + MSAL/JWT auth, bounded `<5s` hardware topology probes |
 | `admin_server.py` | HTTP (Starlette REST + Admin UI) | Operations, namespace/quota management, runtime tool toggles | HMAC-SHA256 three-header auth, anti-replay nonces, `BoundedBodyMiddleware` (HTTP `413`) |
-| `nce/a2a_server.py` | HTTP (A2A RPC) | Federated, scope-bound memory sharing between agent networks | Ephemeral Ed25519/RS256 JWTs, atomic 1-time grant redemption, `BoundedBodyMiddleware` (HTTP `413`) |
+| `nce/a2a_server.py` | HTTP (A2A RPC) | Federated, scope-bound memory sharing between agent networks | JWT Bearer tokens (`RS256`/`ES256`/`PS256` public key or `HS256` secret), atomic 1-time grant redemption, `BoundedBodyMiddleware` (HTTP `413`) |
 | `nce/webhook_receiver/main.py` | HTTP | Inbound document-bridge change notifications | Provider HMAC verification, SSRF egress validation, `BoundedBodyMiddleware` (HTTP `413`) |
 | `start_worker.py` | RQ worker | Async background jobs — code indexing, bridge sync, re-embedding | Queue-isolated execution, automatic retry, dead-letter queue (DLQ) |
 | `nce/cron.py` | Scheduler | Sleep consolidation cycles, salience decay pruning, bridge renewal, GC | Distributed Redis locking, non-blocking health probes |
@@ -212,7 +213,7 @@ make up          # bootstraps compose secrets, then `docker compose up -d --buil
 make status      # container health
 ```
 
-This launches the Quad-Stack (`nce-postgres`, `nce-mongo`, `nce-redis`, `nce-minio`), the cognitive model, and the application services (`worker`, `cron`, `admin`, `a2a`, `webhook-receiver`) behind Caddy, plus Jaeger.
+This launches the Quad-Stack (`nce-postgres`, `nce-mongo`, `nce-redis`, `nce-minio`), the cognitive model, and the application services (`mcp-gateway`, `admin`, `a2a`, `webhook-receiver`, `worker`, `cron`) behind Caddy, plus Jaeger.
 
 **Databases only** (when you want to run the app from your host):
 
@@ -227,9 +228,10 @@ python -m venv .venv
 .venv\Scripts\activate            # Windows ·  source .venv/bin/activate on macOS/Linux
 pip install -r requirements.txt
 
-python server.py                   # MCP stdio server (listens on stdin for JSON-RPC)
+python mcp_gateway_server.py       # primary Streamable HTTP /mcp gateway (:8005)
+python server.py                   # local dev MCP stdio server (stdin/stdout JSON-RPC)
 python start_worker.py             # background RQ worker  (separate shell)
-python -m nce.cron                 # schedulers           (separate shell)
+python -m nce.cron                 # schedulers            (separate shell)
 ```
 
 ### 4. Verify
@@ -309,10 +311,10 @@ Migration tools (`start_migration`, `validate_migration`, `commit_migration`, �
 
 ## Security Model
 
-- **Multi-tenant by construction.** Every application checkout passes through `scoped_pg_session`, which sets `SET LOCAL nce.namespace_id = '<tenant-uuid>'`. All 121 relational tables have RLS **enabled and forced**; policies validate via `get_nce_namespace()`. Privileged GC runs under a separate `BYPASSRLS` role, out of band.
+- **Multi-tenant by construction.** Every application checkout passes through `scoped_pg_session`, which sets `SET LOCAL nce.namespace_id = '<tenant-uuid>'`. All **36** tenant-scoped Core relational tables (out of 43 Core SQL tables; expanding to **121** verified tenant tables in `EXPECTED_TENANT_RLS_TABLES` when `nce-vertical-engines` is installed) have RLS **enabled and forced**; policies validate via `get_nce_namespace()`. Privileged GC runs under a separate `BYPASSRLS` role, out of band.
 - **Encryption at rest & GDPR crypto-shredding.** KEK/DEK AES-256-GCM envelope encryption (`encryption_deks` / `wrapped_dek`) allows cryptographic deletion of forgotten memories by nulling the wrapped DEK. PII, credentials, and sensitive cognitive payloads are encrypted under versioned KEK rings derived from `NCE_MASTER_KEY` — see [docs/pii.md](docs/pii.md).
 - **Integrity & WORM serialization.** The `event_log` is append-only (a `prevent_mutation` trigger blocks edits) and hash-chained. Per-namespace WORM serialization via `pg_advisory_xact_lock` (`acquire_event_log_worm_lock`) prevents Merkle-chain races. Entries are HMAC-SHA256 signed over RFC 8785 (JCS) canonical JSON, with rotatable signing keys — see [docs/signing.md](docs/signing.md).
-- **AuthN/Z & Anti-Replay.** HMAC-authenticated admin HTTP with mandatory production nonces validated against a Redis distributed store; sliding timestamp drift window; fail-closed production guards (`live_admin_override_enabled()`); JWT (HS256 secret or RS256 public key) for A2A and protected routes; optional **mTLS** behind your edge proxy.
+- **AuthN/Z & Anti-Replay.** HMAC-authenticated admin HTTP with mandatory production nonces validated against a Redis distributed store; sliding timestamp drift window; fail-closed production guards (`live_admin_override_enabled()`); JWT Bearer tokens (`RS256`/`ES256`/`PS256` public key or `HS256` secret) for A2A and protected routes; optional **mTLS** behind your edge proxy.
 - **Network & Ingress Defense.** ASGI `BoundedBodyMiddleware` (`NCE_MAX_HTTP_BODY_BYTES`, HTTP `413`) enforces hard payload limits across all HTTP entrypoints. SSRF guards block private IP ranges, CGNAT (`100.64.0.0/10`), and IPv4-mapped IPv6 (`::ffff:169.254.169.254`), with strict host allowlisting (`NCE_SSRF_ALLOWLIST_HOSTS`).
 - **A2A federation.** Sharing tokens are stored only as SHA-256 hashes mapped to expirations and JSONB scopes; inbound queries are scope-checked then executed bound to the *owner's* RLS namespace.
 
@@ -396,5 +398,5 @@ The [`docs/`](docs/) tree is the source of truth. Start here:
 
 ---
 
-<sub>NCE — Neuro-Cognitive Engine · v3.4.1 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.</sub>
+NCE — Neuro-Cognitive Engine · v3.4.2 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.
 

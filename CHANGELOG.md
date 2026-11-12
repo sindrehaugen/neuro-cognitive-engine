@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.4.2] - 2026-11-12
+
+### Changed
+- **Dependency Floors & Python 3.12 Lockfile Sync:** Incorporated Dependabot floor upgrades (`ffc8e59`, `de9b7f0`, `243af33`, `afa6bb1`) across `pyproject.toml`, `requirements.txt`, `requirements-dev.txt`, and `requirements.lock` (`fastapi>=0.162.2`, `striprtf>=0.0.35`, `sse-starlette>=3.5.1`, `StrEnum>=0.5.0`, `setuptools>=84.2.1`, `ruff==0.17.4`, `pytest>=9.2.0`, `pytest-asyncio>=1.4.1.post1`, ML stack, and OpenTelemetry SDKs) alongside GitHub Actions bumps (`actions/setup-python@v7` in `78e06c8` and `softprops/action-gh-release@v3` in `ac01960`).
+- **Developer Config & Pre-Commit Parity:** Updated `.pre-commit-config.yaml` to run current `pyproject.toml` Ruff lint (`ASYNC`, `DTZ`, `S`, `W605`), `ruff format --check`, `mypy nce/`, and `check_empty_with.py` (including `mcp_gateway_server.py`); refreshed `docker-compose.override.example.yml` for `mcp-gateway`, `admin`, `a2a`, `webhook-receiver`, single-replica CPU `worker`, and `cron`.
+- **Documentation & Entrypoint Alignment:** Updated `README.md` Quickstart (`mcp-gateway` Compose service and `python mcp_gateway_server.py` host run), synchronized A2A JWT algorithm documentation (`RS256`/`ES256`/`PS256` public key or `HS256` secret), clarified Core forced-RLS table counts (`36` Core tenant tables vs. `121` full `EXPECTED_TENANT_RLS_TABLES` catalog), documented the native `go/cmd/nce-launch` CLI shim in `docs/usage_modes.md`, fixed footer spacing, and pruned superseded remote branches.
+
+---
+
 ## [3.4.1] - 2026-11-11
 
 ### Fixed
